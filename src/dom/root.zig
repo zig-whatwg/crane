@@ -79,6 +79,7 @@ pub const origin_record = @import("origin_record.zig");
 pub const document_origin = @import("document_origin.zig");
 pub const window_documents = @import("window_documents.zig");
 pub const child_navigables = @import("child_navigables.zig");
+pub const cross_origin = @import("cross_origin.zig");
 pub const window_globals = @import("window_globals.zig");
 pub const content_navigables = @import("content_navigables.zig");
 pub const style_sheet_owners = @import("style_sheet_owners.zig");

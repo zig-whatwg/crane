@@ -110,6 +110,10 @@ pub fn sameOriginDomain(a: *runtime.Instance, b: *runtime.Instance) bool {
     if (a == b) return true;
     const a_settings = of(a) orelse return false;
     const b_settings = of(b) orelse return false;
+    // Step 1 before any serialization: one record is one origin, and the
+    // engine asks this on every access to another realm's WindowProxy or
+    // Location (cross_origin.isPlatformObjectSameOrigin).
+    if (sharedRecord(a, b)) return true;
     const a_origin = a_settings.origin(a) catch return false;
     defer a.ctx.allocator.free(a_origin);
     const b_origin = b_settings.origin(b) catch return false;
@@ -118,6 +122,12 @@ pub fn sameOriginDomain(a: *runtime.Instance, b: *runtime.Instance) bool {
         .{ .serialized = a_origin, .record = originRecordOf(a) },
         .{ .serialized = b_origin, .record = originRecordOf(b) },
     );
+}
+
+/// Whether both globals' settings objects hold one origin record.
+fn sharedRecord(a: *runtime.Instance, b: *runtime.Instance) bool {
+    const a_record = originRecordOf(a) orelse return false;
+    return originRecordOf(b) == a_record;
 }
 
 pub fn reportingOf(global: *runtime.Instance) ?*@import("reporting.zig").State {

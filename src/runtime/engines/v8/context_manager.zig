@@ -807,6 +807,15 @@ pub fn get(v8_ctx: *v8.Context) ?runtime.Context {
     return null;
 }
 
+/// The realm registered under `key` (keyOf: the context's Crane id), or
+/// null. Reads no context: the cross-origin access check asks it with the
+/// id V8's current context carries (cross_origin.zig).
+pub fn getByKey(key: usize) ?runtime.Context {
+    const state = &(manager_state orelse return null);
+    const entry = state.contexts.get(key) orelse return null;
+    return &entry.runtime_ctx;
+}
+
 /// Is a context with this raw address still registered?
 ///
 /// Takes the ADDRESS, not the Global<Context>*, on purpose. `get()` above has to

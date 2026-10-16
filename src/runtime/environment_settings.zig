@@ -22,24 +22,20 @@ const Allocator = std.mem.Allocator;
 /// Origin representation for security checks
 ///
 /// Per URL Standard and HTML Standard, an origin is either:
-/// - A tuple origin: (scheme, host, port, domain)
+/// - A tuple origin: (scheme, host, port)
 /// - An opaque origin: unique, never same-origin with anything
 ///
 /// This is a simplified version that works with the Environment Settings Object.
 /// For full URL origin handling, see src/url/origin.zig
+///
+/// It has no domain: HTML's origin with its domain - the one a document
+/// shares, which document.domain changes - is dom.origin_record's record,
+/// and "same origin-domain" is decided there (dom.global_settings).
 pub const Origin = struct {
     /// Tuple origin components
     scheme: []const u8,
     host: []const u8,
     port: ?u16,
-
-    /// document.domain's opt-in, null by default. Set it with `setDomain`,
-    /// which follows the origin's ownership: an `initOwned` origin owns a
-    /// copy (deinit frees it, as it frees the scheme and host), an `init`
-    /// one borrows, as it borrows its scheme and host. The origin a
-    /// document shares, domain included, is dom.origin_record's record;
-    /// this value is a copy of one for a settings object.
-    domain: ?[]const u8 = null,
 
     /// Opaque origin marker (unique, never same-origin with anything)
     is_opaque: bool = false,
@@ -88,25 +84,11 @@ pub const Origin = struct {
         };
     }
 
-    /// Set (or, with null, clear) the domain: a copy for an owned origin -
-    /// the caller's slice may go at once - and the slice itself for a
-    /// borrowed one.
-    pub fn setDomain(self: *Self, domain: ?[]const u8) Allocator.Error!void {
-        const alloc = self.allocator orelse {
-            self.domain = domain;
-            return;
-        };
-        const copy: ?[]const u8 = if (domain) |d| try alloc.dupe(u8, d) else null;
-        if (self.domain) |old| alloc.free(old);
-        self.domain = copy;
-    }
-
     /// Free owned strings if any
     pub fn deinit(self: *Self) void {
         if (self.allocator) |alloc| {
             if (self.scheme.len > 0) alloc.free(self.scheme);
             if (self.host.len > 0) alloc.free(self.host);
-            if (self.domain) |domain| alloc.free(domain);
         }
         self.* = undefined;
     }
@@ -133,22 +115,6 @@ pub const Origin = struct {
         }
 
         return true;
-    }
-
-    /// Check if same-origin-domain (relaxed for document.domain)
-    ///
-    /// Per HTML Standard 7.1.1, including the distinction between an unset
-    /// domain and one explicitly set to the origin's own host.
-    pub fn isSameOriginDomain(self: Self, other: Self) bool {
-        // 1. This representation has no shared opaque-origin identity.
-        if (self.is_opaque or other.is_opaque) return false;
-        // 2.1. Equal non-null domains and schemes; hosts and ports ignored.
-        if (self.domain) |domain| {
-            const other_domain = other.domain orelse return false;
-            return std.mem.eql(u8, self.scheme, other.scheme) and std.mem.eql(u8, domain, other_domain);
-        }
-        // 2.2-3. Same origin only when neither has set a domain.
-        return other.domain == null and self.isSameOrigin(other);
     }
 
     /// Serialize origin to string

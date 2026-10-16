@@ -14,7 +14,7 @@
 //! ```
 //! src/html/window/
 //! ├── browsing_context.zig   # BrowsingContext, BrowsingContextGroup
-//! ├── window_proxy.zig       # WindowProxy with cross-origin restrictions
+//! ├── window_proxy.zig       # a navigable's WindowProxy record (no access checks)
 //! ├── iframe_integration.zig # IFrame ↔ BrowsingContext lifecycle
 //! ├── ui_backend.zig         # Pluggable UI (alert, confirm, prompt, print)
 //! ├── animation_frame.zig    # requestAnimationFrame scheduling
@@ -57,7 +57,6 @@ pub const SandboxFlags = browsing_context.SandboxFlags;
 pub const window_proxy = @import("window_proxy.zig");
 pub const WindowProxy = window_proxy.WindowProxy;
 pub const Origin = window_proxy.Origin;
-pub const CrossOriginProperty = window_proxy.CrossOriginProperty;
 pub const WindowProxyError = window_proxy.WindowProxyError;
 
 // IFrame Integration (§7.5)

@@ -3841,6 +3841,9 @@ fn attachRealm(
         // Its Browser is the parent's, recorded before its Window is made.
         .browser_scope = parent.browser_scope,
         .create_global_object = FrameWindow.create,
+        // HTML IsPlatformObjectSameOrigin [cross_origin_objects]; it reads no
+        // host (this one lives only while the realm is made).
+        .is_platform_object_same_origin = if (engine.capabilities.cross_origin_objects != .unsupported) dom_module.cross_origin.isPlatformObjectSameOrigin else null,
         .host = &frame_window,
     }) catch |err| {
         log.debug("a frame's realm was not made: {}", .{err});

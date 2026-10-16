@@ -75,6 +75,10 @@ pub const capabilities: engine.Capabilities = .{
     .code_generation_checks = .native,
     // The construct callback sees NewTarget (FunctionCallbackInfo::NewTarget).
     .html_constructor = .native,
+    // ObjectTemplate::SetAccessCheckCallbackAndHandler on the Window global
+    // and Location templates, per-realm security tokens, and
+    // FunctionTemplate::SetAcceptAnyReceiver (cross_origin.zig).
+    .cross_origin_objects = .native,
 };
 
 /// Every operation is V8 code: a test binary that compiles them all links V8.

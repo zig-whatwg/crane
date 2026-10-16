@@ -13,6 +13,7 @@ const ffi = @import("ffi.zig");
 const js_scope = @import("js_scope.zig");
 const context_manager = @import("context_manager.zig");
 const isolate_ownership = @import("isolate_ownership.zig");
+const cross_origin = @import("cross_origin.zig");
 
 const EngineError = runtime.EngineError;
 const JSValue = runtime.JSValue;
@@ -189,17 +190,30 @@ const NativeOperation = struct {
     name: []const u8,
     callback: ffi.FunctionCallback,
     length: i32,
+    /// Whether the function skips WebIDL's "perform a security check" for a
+    /// cross-origin `this` (cross_origin.acceptsAnyReceiver, as the generated
+    /// binding's Window operations do) [cross_origin_objects].
+    accepts_any_receiver: bool,
+
+    fn window(comptime name: []const u8, callback: ffi.FunctionCallback, length: i32) NativeOperation {
+        return .{
+            .name = name,
+            .callback = callback,
+            .length = length,
+            .accepts_any_receiver = comptime cross_origin.acceptsAnyReceiver("Window", name, .operation),
+        };
+    }
 };
 
 /// The Window members bound natively (see installWindowOperations'
 /// declaration for why these are not the generated binding).
 const window_operation_natives = [_]NativeOperation{
-    .{ .name = "setTimeout", .callback = setTimeoutCallback, .length = 1 },
-    .{ .name = "clearTimeout", .callback = clearTimeoutCallback, .length = 0 },
-    .{ .name = "setInterval", .callback = setIntervalCallback, .length = 1 },
-    .{ .name = "clearInterval", .callback = clearTimeoutCallback, .length = 0 },
-    .{ .name = "requestAnimationFrame", .callback = requestAnimationFrameCallback, .length = 1 },
-    .{ .name = "cancelAnimationFrame", .callback = cancelAnimationFrameCallback, .length = 1 },
+    .window("setTimeout", setTimeoutCallback, 1),
+    .window("clearTimeout", clearTimeoutCallback, 0),
+    .window("setInterval", setIntervalCallback, 1),
+    .window("clearInterval", clearTimeoutCallback, 0),
+    .window("requestAnimationFrame", requestAnimationFrameCallback, 1),
+    .window("cancelAnimationFrame", cancelAnimationFrameCallback, 1),
 };
 
 pub fn installWindowOperations(realm: runtime.Context, operations: *const runtime.WindowOperations) EngineError!void {
@@ -247,6 +261,11 @@ fn defineNatives(isolate: *ffi.Isolate, context: *ffi.Context, global: *ffi.Obje
         defer ffi.v8_FunctionTemplate_Dispose(template);
         ffi.v8_FunctionTemplate_SetLength(template, native.length);
         ffi.v8_FunctionTemplate_RemovePrototype(template);
+        // WebIDL 3.7.6 step 2.3, "perform a security check" (HTML 7.2.1.1):
+        // none of these is in CrossOriginProperties, so a cross-origin
+        // WindowProxy `this` throws SecurityError before the arguments are
+        // looked at - V8's access check on the receiver.
+        if (!native.accepts_any_receiver) ffi.v8_FunctionTemplate_SetAcceptAnyReceiver(template, false);
         const function = ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return EngineError.OperationFailed;
         defer ffi.v8_Function_Dispose(function);
         const key = ffi.v8_String_NewFromUtf8(isolate, native.name.ptr, @intCast(native.name.len)) orelse return EngineError.OperationFailed;

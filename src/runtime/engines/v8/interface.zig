@@ -31,6 +31,8 @@ const std = @import("std");
 const log = std.log.scoped(.v8_interface);
 const debug = @import("debug.zig");
 const v8 = @import("ffi.zig");
+const cross_origin = @import("cross_origin.zig");
+const engine_capabilities = @import("protocol.zig").capabilities;
 const conv = @import("conversions.zig");
 const runtime = @import("runtime");
 /// Public for tests/v8, which builds and frees overloads with the testing
@@ -1276,13 +1278,16 @@ fn ArgView(comptime mask: u32) type {
     };
 }
 
-/// Throw the WebIDL error an impl's member returned. It is made in the
-/// member's own realm (`member_context`, the current realm) - except a
-/// SecurityError, which a cross-origin check raises: browsers raise it from
-/// the [[Get]], [[Set]] or [[Call]] the CALLER's realm performs (HTML
-/// CrossOriginGet / CrossOriginSet, the Location members' first step), so it
-/// is made in the entered realm, where the caller's try/catch and
-/// `instanceof DOMException` expect it - as the attribute getters already do.
+/// Throw the WebIDL error an impl's member returned, in the member's own
+/// realm (`member_context`, the current realm) - a SecurityError too: a
+/// member's own steps throw it there (document.open's origin check, as
+/// html/webappapis/dynamic-markup-insertion/opening-the-input-stream/
+/// bailout-exception-vs-return-origin.sub.window.js expects of
+/// `iframe.contentDocument.open()`). The cross-origin checks of the
+/// WindowProxy and Location are V8's [cross_origin_objects]: their
+/// SecurityError is the caller's, made by the access check's interceptors
+/// (cross_origin.zig) before any member runs. This used to make every
+/// SecurityError in the entered realm, for the checks impls made then.
 ///
 /// ExceptionPending is not an error to make: the member's steps ran script
 /// that threw (an iterator, a toString, a callback) and the engine has that
@@ -1292,12 +1297,14 @@ fn ArgView(comptime mask: u32) type {
 /// where an operation's caught it first (review-codex-aria D7).
 fn throwMemberError(isolate: *v8.Isolate, member_context: *v8.Context, err: anyerror) void {
     if (err == error.ExceptionPending) return;
-    if (err == error.SecurityError) {
-        if (v8.v8_Isolate_GetEnteredOrMicrotaskContext(isolate)) |entered| {
-            // Owned: a fresh Global<Context>, used only to pick the realm.
-            defer v8.v8_Context_Dispose(entered);
-            conv.throwWebIDLErrorFromContext(isolate, entered, @errorName(err));
-            return;
+    if (comptime engine_capabilities.cross_origin_objects == .unsupported) {
+        if (err == error.SecurityError) {
+            if (v8.v8_Isolate_GetEnteredOrMicrotaskContext(isolate)) |entered| {
+                // Owned: a fresh Global<Context>, used only to pick the realm.
+                defer v8.v8_Context_Dispose(entered);
+                conv.throwWebIDLErrorFromContext(isolate, entered, @errorName(err));
+                return;
+            }
         }
     }
     conv.throwWebIDLErrorFromContext(isolate, member_context, @errorName(err));
@@ -1726,6 +1733,95 @@ pub fn V8Interface(comptime Interface: type) type {
 
         /// Interface name
         pub const name = interface_name;
+
+        // ============================================================================
+        // HTML 7.2.1 cross-origin objects [cross_origin_objects]
+        // ============================================================================
+
+        /// Whether this interface's function for `use` of member `js_name`
+        /// accepts any receiver (cross_origin.acceptsAnyReceiver): false
+        /// makes V8 run WebIDL's "perform a security check" for a WindowProxy
+        /// or Location `this` of another realm before the callback.
+        fn acceptsAnyReceiver(comptime js_name: []const u8, comptime use: cross_origin.Use) bool {
+            return comptime cross_origin.acceptsAnyReceiver(interface_name, js_name, use);
+        }
+
+        /// Whether operation `zig_name`'s function lets V8 run its security
+        /// check: every checked one but those returning a promise, whose
+        /// SecurityError the binding rejects with (MethodCallback,
+        /// cross_origin.receiverIsAccessible).
+        fn engineChecksReceiver(comptime js_name: []const u8, comptime zig_name: []const u8) bool {
+            return comptime !acceptsAnyReceiver(js_name, .operation) and !bindingChecksReceiver(zig_name);
+        }
+
+        /// Whether operation `zig_name` runs WebIDL's security check in the
+        /// binding, where its SecurityError rejects the promise the operation
+        /// returns (WebIDL 3.7.6): fetch() and createImageBitmap(), the
+        /// promise-returning members of the interfaces a Window implements
+        /// that every browser exposes on any page (WindowOrWorkerGlobalScope).
+        /// Every other operation of those interfaces throws V8's synchronous
+        /// SecurityError, as html/browsers/origin/cross-origin-objects/
+        /// cross-origin-objects.html expects ("Only certain properties are
+        /// usable as cross-origin this objects": fetch and createImageBitmap
+        /// reject, everything else throws). Two deviations meet here: the
+        /// CSSOM View scroll methods return a Promise in Crane's IDL but
+        /// undefined in Chrome, Firefox and Safari; and Crane exposes the
+        /// [SecureContext] promise-returning members (showOpenFilePicker,
+        /// getDigitalGoodsService, ...) on a non-secure page, where browsers
+        /// expose none. When [SecureContext] exposure lands, this widens to
+        /// every promise-returning operation but the scroll methods.
+        fn bindingChecksReceiver(comptime zig_name: []const u8) bool {
+            if (comptime !cross_origin.isSecurityChecked(interface_name) or !returnsPromise(Interface, zig_name)) return false;
+            const rejecting = [_][]const u8{ "call_fetch", "call_createImageBitmap", "call_createImageBitmap__1" };
+            inline for (rejecting) |rejecting_name| {
+                if (comptime std.mem.eql(u8, rejecting_name, zig_name)) return true;
+            }
+            return false;
+        }
+
+        /// The binding's own callback for operation `js_name`: the steps of
+        /// the cross-origin function CrossOriginGetOwnPropertyHelper makes
+        /// for it (cross_origin.zig), on its `this`.
+        pub fn operationCallback(comptime js_name: []const u8) v8.FunctionCallback {
+            inline for (methods) |method| {
+                if (comptime std.mem.eql(u8, method[0], js_name)) return MethodCallback(method[1]).callback;
+            }
+            @compileError(interface_name ++ " has no operation " ++ js_name);
+        }
+
+        /// Operation `js_name`'s `length` (WebIDL 3.7.6: its shortest
+        /// overload's required arguments), as the binding gives it.
+        pub fn operationLength(comptime js_name: []const u8) c_int {
+            inline for (methods) |method| {
+                if (comptime std.mem.eql(u8, method[0], js_name)) return if (method.len >= 3) method[2] else 0;
+            }
+            @compileError(interface_name ++ " has no operation " ++ js_name);
+        }
+
+        /// The binding's own getter callback for attribute `js_name`.
+        pub fn attributeGetterCallback(comptime js_name: []const u8) v8.FunctionCallback {
+            inline for (properties) |prop| {
+                if (comptime std.mem.eql(u8, prop[0], js_name)) return PropertyGetterCallback(interface_name, prop[1]).callback;
+            }
+            @compileError(interface_name ++ " has no attribute " ++ js_name);
+        }
+
+        /// The binding's own setter callback for attribute `js_name`: its
+        /// [PutForwards] setter or its own.
+        pub fn attributeSetterCallback(comptime js_name: []const u8) v8.FunctionCallback {
+            if (comptime @hasDecl(Meta, "put_forwards_attributes")) {
+                inline for (Meta.put_forwards_attributes) |pf| {
+                    if (comptime std.mem.eql(u8, pf[0], js_name)) return PutForwardsSetterCallback(js_name, pf[1]).callback;
+                }
+            }
+            inline for (properties) |prop| {
+                if (comptime std.mem.eql(u8, prop[0], js_name)) {
+                    const setter_name: ?[]const u8 = prop[2];
+                    return makeSetterCallback(interface_name, setter_name orelse @compileError(interface_name ++ "." ++ js_name ++ " has no setter"));
+                }
+            }
+            @compileError(interface_name ++ " has no attribute " ++ js_name);
+        }
 
         // ============================================================================
         // Static Callback Storage (Chromium Pattern)
@@ -2384,13 +2480,17 @@ pub fn V8Interface(comptime Interface: type) type {
                     null;
 
                 // Set as accessor property on the target object
-                // This creates an own property visible to Object.getOwnPropertyDescriptor
-                _ = v8.v8_Object_SetAccessorProperty(
+                // This creates an own property visible to Object.getOwnPropertyDescriptor.
+                // Each function runs WebIDL's security check for a
+                // cross-origin `this` unless HTML lists it (cross_origin.zig).
+                _ = v8.v8_Object_SetAccessorPropertyChecked(
                     target_object,
                     context,
                     prop_name_str,
                     getter_cb,
                     setter_cb,
+                    comptime acceptsAnyReceiver(prop_name, .getter),
+                    comptime acceptsAnyReceiver(prop_name, .setter),
                 );
             }
         }
@@ -2452,6 +2552,9 @@ pub fn V8Interface(comptime Interface: type) type {
                     v8.v8_FunctionTemplate_SetLength(tmpl, arity);
                     // Not a constructor: no `prototype` (as on the prototype).
                     v8.v8_FunctionTemplate_RemovePrototype(tmpl);
+                    // WebIDL's security check for a cross-origin `this`,
+                    // unless HTML lists the operation (cross_origin.zig).
+                    if (comptime engineChecksReceiver(method_name, zig_name)) v8.v8_FunctionTemplate_SetAcceptAnyReceiver(tmpl, false);
                     // Get Function from template
                     const method_fn = v8.v8_FunctionTemplate_GetFunction(
                         tmpl,
@@ -2658,6 +2761,19 @@ pub fn V8Interface(comptime Interface: type) type {
                 v8.v8_ObjectTemplate_SetImmutableProto(instance_tmpl);
             }
 
+            // HTML 7.2.3 and 7.2.4: the WindowProxy and a Location are exotic
+            // objects whose internal methods are cross-origin ones when
+            // IsPlatformObjectSameOrigin fails - V8's access check and its
+            // interceptors [cross_origin_objects]. Window's instance template
+            // is every realm's global template (protocol_realms.windowTemplate,
+            // the snapshot generator), so its global proxy - the WindowProxy -
+            // has them.
+            if (comptime std.mem.eql(u8, interface_name, "Window")) {
+                cross_origin.installOnTemplate(instance_tmpl, .window);
+            } else if (comptime std.mem.eql(u8, interface_name, "Location")) {
+                cross_origin.installOnTemplate(instance_tmpl, .location);
+            }
+
             // Trusted Types: a TrustedScript is code-like (TC39 Dynamic Code
             // Brand Checks, [[HostDefinedIsCodeLike]]), so `eval(ts)` and
             // `new Function(ts)` reach HostEnsureCanCompileStrings with
@@ -2757,6 +2873,18 @@ pub fn V8Interface(comptime Interface: type) type {
                 v8.v8_ObjectTemplate_SetImmutableProto(proto_tmpl);
             }
 
+            // HTML 7.2.4: every member of Location is [LegacyUnforgeable] -
+            // an own property of each instance, non-configurable (WebIDL
+            // 3.7.5 "define the unforgeable regular operations / attributes"),
+            // with none on Location.prototype - and "Location object setup"
+            // adds own valueOf and %Symbol.toPrimitive%. Codegen does not mark
+            // [LegacyUnforgeable] members; Location is the interface whose
+            // members all are, and whose cross-origin [[GetOwnProperty]]
+            // reports `href` and `replace` as own.
+            const unforgeable_members = comptime std.mem.eql(u8, interface_name, "Location");
+            const member_tmpl = if (unforgeable_members) instance_tmpl else proto_tmpl;
+            if (unforgeable_members) v8.v8_ObjectTemplate_SetLocationValueOfAndToPrimitive(instance_tmpl);
+
             // Register EAGER properties as accessors on prototype (defined upfront)
             // eager_properties is tuple array: .{ "propName", "get_propName", "set_propName" or null }
             // IMPORTANT: Use callbacks from EagerCallbackStore - SAME callbacks registered in registerExternalReferences()
@@ -2796,12 +2924,18 @@ pub fn V8Interface(comptime Interface: type) type {
                     EagerCallbackStore.setters[prop_idx];
 
                 // Use SetAccessorProperty instead of SetAccessor to create visible descriptors
-                // This makes the getter/setter appear in Object.getOwnPropertyDescriptor
-                v8.v8_ObjectTemplate_SetAccessorProperty(
-                    proto_tmpl,
+                // This makes the getter/setter appear in Object.getOwnPropertyDescriptor.
+                // Each function runs WebIDL's security check for a
+                // cross-origin `this` unless HTML lists it (cross_origin.zig).
+                v8.v8_ObjectTemplate_SetAccessorPropertyChecked(
+                    member_tmpl,
                     prop_name_str,
                     getter_cb,
                     setter_cb,
+                    comptime acceptsAnyReceiver(prop_name, .getter),
+                    comptime acceptsAnyReceiver(prop_name, .setter),
+                    // [LegacyUnforgeable]: { [[Configurable]]: false }.
+                    if (unforgeable_members) v8.PropertyAttribute.DontDelete else v8.PropertyAttribute.None,
                 );
             }
 
@@ -2986,7 +3120,9 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (should_register) {
                     // Pass zig_name as comptime parameter to generate proper callback
                     // Also pass template for signature-based receiver type checking
-                    registerMethod(zig_name, isolate, template, proto_tmpl, method_name, arity);
+                    // [LegacyUnforgeable] operations: { [[Writable]]: false,
+                    // [[Configurable]]: false }, on the instance.
+                    registerMethod(zig_name, method_name, isolate, template, member_tmpl, arity, if (unforgeable_members) v8.PropertyAttribute.ReadOnly | v8.PropertyAttribute.DontDelete else v8.PropertyAttribute.None);
                 }
             }
 
@@ -3106,6 +3242,18 @@ pub fn V8Interface(comptime Interface: type) type {
         fn realmWindow(method_ctx: *v8.Context, method_global: *v8.Object) ?*anyopaque {
             if (@import("context_manager.zig").getWindowForContext(method_ctx)) |window| return @ptrCast(window);
             return v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+        }
+
+        /// The Window of `this_obj` when it is a realm's global object - its
+        /// creation context's WindowProxy - or null for any other object.
+        fn globalReceiverWindow(this_obj: *v8.Object) ?*anyopaque {
+            const this_ctx = v8.v8_Object_GetCreationContext(this_obj) orelse return null;
+            defer v8.v8_Context_Dispose(this_ctx);
+            const this_global = v8.v8_Context_Global(this_ctx) orelse return null;
+            // Owned, and only compared and read here.
+            defer v8.v8_Object_Dispose(this_global);
+            if (!v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(this_global))) return null;
+            return realmWindow(this_ctx, this_global);
         }
 
         /// WebIDL 3.7.6 attribute getter and setter step 1: "If O is not a
@@ -3306,31 +3454,14 @@ pub fn V8Interface(comptime Interface: type) type {
                                             //
                                             // Fall through to throw TypeError
                                         } else {
-                                            // this has an internal field - it's some Window instance
-                                            // Check if it's a DIFFERENT global (cross-realm case)
-                                            // If this_obj is caller's global (different from method's global),
-                                            // use method's global per WebIDL implicit this rules
-                                            const global_ptr = realmWindow(method_ctx, method_global);
-
-                                            // Check if this_obj is a global object from any context
-                                            // by checking if it equals its own context's global
-                                            if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
-                                                defer v8.v8_Context_Dispose(this_ctx);
-                                                if (v8.v8_Context_Global(this_ctx)) |this_global| {
-                                                    // Owned: v8_Context_Global allocates where V8's Context::Global()
-                                                    // returns a borrowed Local. Everything below only compares it or
-                                                    // reads an internal field, so releasing at block exit is correct.
-                                                    defer v8.v8_Object_Dispose(this_global);
-                                                    if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(this_global))) {
-                                                        // this IS a global object (caller's global)
-                                                        // This happens when getter.call(null) coerces to caller's global
-                                                        // Use method's global instead
-                                                        if (global_ptr != null) {
-                                                            break :blk global_ptr;
-                                                        }
-                                                    }
-                                                }
-                                            }
+                                            // `this` has a Window field: when it is a global
+                                            // object - another realm's WindowProxy - the
+                                            // attribute acts on THAT window (WebIDL 3.7.6:
+                                            // O is `this`; a null `this` V8 already made the
+                                            // function's own global). A cross-origin one got
+                                            // here only for a member HTML lets through
+                                            // (cross_origin.acceptsAnyReceiver).
+                                            if (globalReceiverWindow(this_obj)) |this_window| break :blk this_window;
 
                                             // this is not a global object but has Window internal field
                                             // This is Object.create(Window.prototype) case -> throw TypeError
@@ -3420,6 +3551,14 @@ pub fn V8Interface(comptime Interface: type) type {
                                         return;
                                     }
                                 }
+                            }
+
+                            // [LegacyLenientThis] on a [Global] interface (Window's
+                            // onmouseenter, onmouseleave): `this` is no Window -
+                            // return undefined (WebIDL 3.7.6 step 1.2.1).
+                            if (is_lenient_this) {
+                                conv.setReturnUndefined(info);
+                                return;
                             }
 
                             // Throw TypeError from getter's realm (function's creation context)
@@ -3527,28 +3666,20 @@ pub fn V8Interface(comptime Interface: type) type {
                                     conv.setReturnUndefined(info);
                                     return;
                                 }
-                                // CRITICAL: For cross-origin SecurityError, throw in the CALLER's context
-                                // (the entered context), not the getter's creation context.
-                                // This ensures the caller's try/catch can catch the exception.
-                                // Without this, sandboxed iframes can't catch SecurityError when
-                                // accessing parent.document because the exception is thrown in
-                                // the parent's context, not the iframe's context.
-                                // Both owned - each a fresh Global<Context> - and used only
-                                // to choose the realm the exception is made in, which
-                                // throwWebIDLErrorFromContext enters and leaves. Kept, they
-                                // were two Globals per throwing getter call, and the current
-                                // one is the getter's realm: each pinned it.
-                                const entered_ctx = v8.v8_Isolate_GetEnteredOrMicrotaskContext(isolate_inner);
+                                // The error is the getter's realm's - a SecurityError
+                                // too (throwMemberError says why): the cross-origin
+                                // checks are V8's [cross_origin_objects]. Without them,
+                                // a SecurityError is made in the CALLER's (entered)
+                                // realm, as the impls' own checks needed. Each context
+                                // is a fresh Global, owned, used only to pick the realm.
+                                const entered_ctx = if (comptime engine_capabilities.cross_origin_objects == .unsupported)
+                                    v8.v8_Isolate_GetEnteredOrMicrotaskContext(isolate_inner)
+                                else
+                                    null;
                                 defer if (entered_ctx) |ctx| v8.v8_Context_Dispose(ctx);
-                                const current_ctx = v8.v8_Isolate_GetCurrentContext(isolate_inner);
-                                defer if (current_ctx) |ctx| v8.v8_Context_Dispose(ctx);
-                                const entered_raw = if (entered_ctx) |ctx| v8.v8_Context_GetRawAddress(ctx) else null;
-                                const current_raw = if (current_ctx) |ctx| v8.v8_Context_GetRawAddress(ctx) else null;
                                 const getter_context = error_realm.get();
-                                const getter_raw = if (getter_context) |ctx| v8.v8_Context_GetRawAddress(ctx) else null;
-                                log.debug("[interface] err={s} entered_raw={?*} current_raw={?*} getter_raw={?*}\n", .{ @errorName(err), entered_raw, current_raw, getter_raw });
                                 const error_context = if (err == error.SecurityError)
-                                    entered_ctx orelse current_ctx orelse getter_context
+                                    entered_ctx orelse getter_context
                                 else
                                     getter_context;
                                 if (error_context) |ctx| {
@@ -4006,6 +4137,21 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
 
                 fn body(info: *const v8.FunctionCallbackInfo) void {
+                    // WebIDL "perform a security check" for a promise-returning
+                    // operation of an interface a Window or Location implements:
+                    // in the binding, inside rejectOnThrow, so its SecurityError
+                    // rejects the promise (V8 checks every other such member).
+                    if (comptime bindingChecksReceiver(zig_name)) {
+                        if (!cross_origin.receiverIsAccessible(info)) {
+                            const isolate = info.getIsolate();
+                            if (v8.v8_Isolate_GetCurrentContext(isolate)) |current| {
+                                // Owned: a fresh Global<Context>, used only to pick the realm.
+                                defer v8.v8_Context_Dispose(current);
+                                conv.throwWebIDLErrorFromContext(isolate, current, "SecurityError");
+                            }
+                            return;
+                        }
+                    }
                     // An overloaded operation is installed as its FIRST
                     // overload; pick the one the arguments mean.
                     if (comptime overloadSetFor(zig_name)) |set| {
@@ -4113,21 +4259,10 @@ pub fn V8Interface(comptime Interface: type) type {
                                         //
                                         // Fall through to throw TypeError
                                     } else {
-                                        const global_ptr = realmWindow(method_ctx, method_global);
-                                        if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
-                                            defer v8.v8_Context_Dispose(this_ctx);
-                                            if (v8.v8_Context_Global(this_ctx)) |this_global| {
-                                                // Owned: v8_Context_Global allocates where V8's Context::Global()
-                                                // returns a borrowed Local. Everything below only compares it or
-                                                // reads an internal field, so releasing at block exit is correct.
-                                                defer v8.v8_Object_Dispose(this_global);
-                                                if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(this_global))) {
-                                                    // this IS a global (caller's global) -> use method's global
-                                                    if (global_ptr != null) {
-                                                        break :blk @as(*runtime.Instance, @ptrCast(@alignCast(global_ptr)));
-                                                    }
-                                                }
-                                            }
+                                        // Another realm's WindowProxy: the operation acts
+                                        // on that window (see PropertyGetterCallback).
+                                        if (globalReceiverWindow(this_obj)) |this_window| {
+                                            break :blk @as(*runtime.Instance, @ptrCast(@alignCast(this_window)));
                                         }
                                     }
                                 }
@@ -4948,11 +5083,12 @@ pub fn V8Interface(comptime Interface: type) type {
         /// Our MethodCallback validates `this` via internal field inspection instead.
         fn registerMethod(
             comptime zig_name: []const u8,
+            comptime method_name: []const u8,
             isolate: *v8.Isolate,
             receiver_template: *v8.FunctionTemplate,
             proto_tmpl: *v8.ObjectTemplate,
-            method_name: []const u8,
             arity: c_int,
+            attributes: c_int,
         ) void {
             _ = receiver_template; // Unused - cross-realm support requires no V8 signature
 
@@ -4993,6 +5129,10 @@ pub fn V8Interface(comptime Interface: type) type {
             // This ensures Reflect.ownKeys(method) returns ["length", "name"].
             v8.v8_FunctionTemplate_RemovePrototype(method_tmpl);
 
+            // WebIDL's security check for a cross-origin `this`, unless HTML
+            // lists the operation (cross_origin.zig).
+            if (comptime engineChecksReceiver(method_name, zig_name)) v8.v8_FunctionTemplate_SetAcceptAnyReceiver(method_tmpl, false);
+
             // Add FunctionTemplate to prototype (not the function itself)
             // ObjectTemplate::Set accepts Templates or primitives
             // Set with DontEnum attribute to make methods non-enumerable (spec-compliant)
@@ -5005,12 +5145,13 @@ pub fn V8Interface(comptime Interface: type) type {
             };
             defer v8.v8_String_Dispose(name_str);
             // Per WebIDL spec §3.7.6, method properties should be:
-            // { writable: true, enumerable: true, configurable: true }
+            // { writable: true, enumerable: true, configurable: true } -
+            // an unforgeable one's neither writable nor configurable.
             v8.v8_ObjectTemplate_SetWithAttributes(
                 proto_tmpl,
                 name_str,
                 @ptrCast(method_tmpl),
-                v8.PropertyAttribute.None, // Methods are enumerable per WebIDL spec
+                attributes,
             );
         }
 
@@ -8149,22 +8290,9 @@ pub fn V8Interface(comptime Interface: type) type {
                                         //
                                         // Fall through to throw TypeError
                                     } else {
-                                        const global_ptr = realmWindow(method_ctx, method_global);
-                                        if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
-                                            defer v8.v8_Context_Dispose(this_ctx);
-                                            if (v8.v8_Context_Global(this_ctx)) |this_global| {
-                                                // Owned: v8_Context_Global allocates where V8's Context::Global()
-                                                // returns a borrowed Local. Everything below only compares it or
-                                                // reads an internal field, so releasing at block exit is correct.
-                                                defer v8.v8_Object_Dispose(this_global);
-                                                if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(this_global))) {
-                                                    // this IS a global object (caller's global) -> use method's global
-                                                    if (global_ptr != null) {
-                                                        break :blk global_ptr;
-                                                    }
-                                                }
-                                            }
-                                        }
+                                        // Another realm's WindowProxy: the setter acts on
+                                        // that window (see PropertyGetterCallback).
+                                        if (globalReceiverWindow(this_obj)) |this_window| break :blk this_window;
                                     }
                                 }
                             }
@@ -8242,6 +8370,13 @@ pub fn V8Interface(comptime Interface: type) type {
                                     return;
                                 }
                             }
+                        }
+
+                        // [LegacyLenientThis] on a [Global] interface: `this` is
+                        // no Window - return (WebIDL 3.7.6 setter step 1.3.1).
+                        if (is_lenient_this) {
+                            conv.setReturnUndefined(info);
+                            return;
                         }
 
                         // Throw TypeError from setter's realm (function's creation context)

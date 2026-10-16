@@ -170,7 +170,6 @@ pub const BrowsingContextGroup = window.BrowsingContextGroup;
 pub const SandboxFlags = window.SandboxFlags;
 pub const WindowProxy = window.WindowProxy;
 pub const Origin = window.Origin;
-pub const CrossOriginProperty = window.CrossOriginProperty;
 pub const WindowProxyError = window.WindowProxyError;
 pub const IFrameIntegration = window.IFrameIntegration;
 pub const IFrameState = window.IFrameState;

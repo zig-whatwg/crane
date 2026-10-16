@@ -3287,3 +3287,65 @@ pub extern fn v8_PatternMatcher_Delete(matcher: ?*PatternMatcher) void;
 /// kAuto microtask checkpoint.
 pub extern fn v8_MatchesPatternAttribute(isolate: *Isolate, matcher: ?*PatternMatcher, pattern: [*]const u16, pattern_len: c_int, value: [*]const u16, value_len: c_int) c_int;
 // ---- end lane: cxsupport ----
+// ---- lane: xorigin2 (HTML 7.2.1 cross-origin objects) ----
+/// One entry of CrossOriginProperties (v8_wrapper.cpp's CrossOriginMember):
+/// the member's name and the binding's own steps for it.
+pub const CrossOriginMember = extern struct {
+    name: [*]const u8,
+    name_len: usize,
+    method: ?FunctionCallback = null,
+    getter: ?FunctionCallback = null,
+    setter: ?FunctionCallback = null,
+    length: c_int = 0,
+};
+
+/// The adapter's Zig half of the cross-origin checks (cross_origin.zig), as
+/// v8_wrapper.cpp's CrossOriginDispatch declares it.
+pub const CrossOriginDispatch = extern struct {
+    same_origin: *const fn (isolate: *Isolate, current_realm: ?*anyopaque, object: ?*anyopaque) callconv(.c) bool,
+    throw_security_error: *const fn (isolate: *Isolate) callconv(.c) void,
+    child_at: *const fn (index: u32, info: *const PropertyCallbackInfo) callconv(.c) Intercepted,
+    child_count: *const fn (window: ?*anyopaque) callconv(.c) u32,
+    child_named: *const fn (isolate: *Isolate, window: ?*anyopaque, name: [*]const u8, name_len: usize) callconv(.c) ?*Value,
+    window_members: [*]const CrossOriginMember,
+    window_member_count: usize,
+    location_members: [*]const CrossOriginMember,
+    location_member_count: usize,
+};
+
+/// The process's cross-origin dispatch, once, at process start.
+pub extern fn v8_SetCrossOriginDispatch(dispatch: *const CrossOriginDispatch) void;
+/// The cross-origin access check and interceptors on `tpl` (kind 0: a Window
+/// global template, 1: Location's instance template).
+pub extern fn v8_ObjectTemplate_SetCrossOriginAccessCheck(tpl: *ObjectTemplate, kind: c_int) void;
+/// The isolate's failed-access-check callback: a SecurityError.
+pub extern fn v8_Isolate_SetCrossOriginFailedAccessCheck(isolate: *Isolate) void;
+/// FunctionTemplate::SetAcceptAnyReceiver: false runs WebIDL's security check.
+pub extern fn v8_FunctionTemplate_SetAcceptAnyReceiver(tpl: *FunctionTemplate, value: bool) void;
+/// v8_ObjectTemplate_SetAccessorProperty with each function's receiver check.
+pub extern fn v8_ObjectTemplate_SetAccessorPropertyChecked(
+    self: *ObjectTemplate,
+    name: *String,
+    getter: ?FunctionCallback,
+    setter: ?FunctionCallback,
+    getter_accepts_any_receiver: bool,
+    setter_accepts_any_receiver: bool,
+    attributes: c_int,
+) void;
+/// HTML "Location object setup" steps 3-4: own valueOf (%Object.prototype.valueOf%)
+/// and %Symbol.toPrimitive% (undefined), read-only, non-enumerable, non-configurable.
+pub extern fn v8_ObjectTemplate_SetLocationValueOfAndToPrimitive(tpl: *ObjectTemplate) void;
+/// v8_Object_SetAccessorProperty with each function's receiver check.
+pub extern fn v8_Object_SetAccessorPropertyChecked(
+    object: *Object,
+    context: *Context,
+    name: *String,
+    getter: ?FunctionCallback,
+    setter: ?FunctionCallback,
+    getter_accepts_any_receiver: bool,
+    setter_accepts_any_receiver: bool,
+) bool;
+/// The cross-origin template callbacks, for the snapshot's external
+/// references: writes up to `capacity`, answers the count.
+pub extern fn v8_CrossOrigin_ExternalReferences(out: [*]usize, capacity: usize) usize;
+// ---- end lane: xorigin2 ----

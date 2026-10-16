@@ -1290,6 +1290,11 @@ pub const Context = struct {
             // The realm's Browser, recorded before its Window is made.
             .browser_scope = self.browser_scope,
             .create_global_object = createWindow,
+            // HTML IsPlatformObjectSameOrigin, which the engine asks on every
+            // access to this realm's WindowProxy or Locations from another
+            // realm [cross_origin_objects]; without it, the Window's own
+            // checks (Window.get_document).
+            .is_platform_object_same_origin = if (engine.capabilities.cross_origin_objects != .unsupported) dom_mod.cross_origin.isPlatformObjectSameOrigin else null,
             .host = self,
         }) catch |err| {
             log.debug("the page's realm was not made: {}", .{err});

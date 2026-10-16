@@ -1,26 +1,16 @@
-//! WindowProxy - HTML Standard §7.4
+//! The navigable's WindowProxy record on the navigation side: its browsing
+//! context, and the origin of its active document as the navigation recorded
+//! it, for navigation's own same-origin decisions (reusing the initial
+//! about:blank document's Window, the unload timing of a same-origin
+//! predecessor).
 //!
-//! A WindowProxy is the interface through which cross-origin access to a Window
-//! is controlled. It acts as a security wrapper around the Window object.
+//! It runs no access check. The WindowProxy script sees is the engine's
+//! global proxy, and HTML 7.2.1's cross-origin checks are the engine's
+//! [cross_origin_objects]: it asks the host's IsPlatformObjectSameOrigin
+//! (dom.cross_origin) on every access, over the documents' shared origin
+//! records (dom.origin_record), whose domains document.domain sets.
 //!
-//! Spec: https://html.spec.whatwg.org/multipage/window-object.html#the-windowproxy-exotic-object
-//!
-//! ## Cross-Origin Restrictions
-//!
-//! Per the HTML Standard, only certain properties are accessible cross-origin:
-//! - window, self (returns WindowProxy)
-//! - location (limited access)
-//! - close, closed, focus, blur (methods/properties)
-//! - frames, length (frame access)
-//! - top, opener, parent (navigation)
-//! - postMessage (messaging)
-//!
-//! All other properties (document, localStorage, etc.) throw SecurityError cross-origin.
-//!
-//! ## Architecture
-//!
-//! WindowProxy wraps a Window and BrowsingContext, checking origin before
-//! allowing property access. The accessor origin is tracked for security checks.
+//! Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-windowproxy-exotic-object
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -30,15 +20,11 @@ const Navigables = @import("browsing_context.zig").Navigables;
 /// Origin representation for security checks
 /// Per URL Standard and HTML Standard
 pub const Origin = struct {
-    /// Tuple origin: (scheme, host, port, domain)
+    /// Tuple origin: (scheme, host, port). No domain: the origin a document
+    /// shares, domain included, is dom.origin_record's record.
     scheme: []const u8,
     host: []const u8,
     port: ?u16,
-
-    /// The domain set by document.domain, or null until explicitly set.
-    /// BORROWED, like scheme and host: do not keep this view beyond the
-    /// owning document's lifetime or its next domain change.
-    domain: ?[]const u8 = null,
 
     /// Opaque origin (unique, never same-origin with anything)
     is_opaque: bool = false,
@@ -86,53 +72,11 @@ pub const Origin = struct {
 
         return true;
     }
-
-    /// HTML 7.1.1 "same origin-domain". Setting a domain on only one
-    /// origin revokes access even when scheme, host and port still match.
-    pub fn isSameOriginDomain(self: Origin, other: Origin) bool {
-        // 1. This representation has no shared opaque-origin identity.
-        if (self.is_opaque or other.is_opaque) return false;
-        // 2.1. Both domains must be set; their schemes still have to match,
-        // but their original hosts and ports no longer participate.
-        if (self.domain) |domain| {
-            const other_domain = other.domain orelse return false;
-            return std.mem.eql(u8, self.scheme, other.scheme) and std.mem.eql(u8, domain, other_domain);
-        }
-        // 2.2-3. Same origin is sufficient only with BOTH domains null.
-        return other.domain == null and self.isSameOrigin(other);
-    }
 };
 
 /// HTML "same origin-domain" over canonical origin serializations and the
 /// separately stored domains: dom.origin_record's, the one comparison.
 pub const sameOriginDomainValues = @import("dom").origin_record.sameOriginDomainValues;
-
-/// Properties allowed for cross-origin access
-/// Per HTML Standard §7.4.6
-pub const CrossOriginProperty = enum {
-    // WindowProxy/Window self-references
-    window,
-    self_,
-    frames,
-
-    // Navigation
-    top,
-    opener,
-    parent,
-
-    // State
-    closed,
-    length,
-
-    // Methods
-    close,
-    focus,
-    blur,
-    postMessage,
-
-    // Location (special handling)
-    location,
-};
 
 /// Error types for WindowProxy operations
 pub const WindowProxyError = error{
@@ -148,15 +92,15 @@ pub const WindowProxyError = error{
     OutOfMemory,
 };
 
-/// WindowProxy exotic object per HTML Standard §7.4
-///
-/// This is the object through which all Window access is mediated.
-/// It checks origin before allowing access to Window properties.
+/// A navigable's WindowProxy record (see the module comment): no access
+/// checks - those are the engine's.
 pub const WindowProxy = struct {
     /// The associated browsing context
     browsing_context: *BrowsingContext,
 
-    /// The origin of this window's document
+    /// The origin of the navigable's active document, as the navigation
+    /// recorded it: for navigation's same-origin decisions only. Its domain
+    /// is not here - document.domain changes the document's origin record.
     document_origin: Origin,
 
     /// Allocator for dynamic operations
@@ -174,30 +118,6 @@ pub const WindowProxy = struct {
     /// Set the document origin (called when document loads)
     pub fn setDocumentOrigin(self: *WindowProxy, origin: Origin) void {
         self.document_origin = origin;
-    }
-
-    /// Check if an accessor origin can access a property
-    /// Returns true if access is allowed, false if SecurityError should be thrown
-    pub fn canAccess(self: *const WindowProxy, accessor_origin: Origin, property: CrossOriginProperty) bool {
-        // Same origin-domain permits unrestricted access.
-        if (self.document_origin.isSameOriginDomain(accessor_origin)) {
-            return true;
-        }
-
-        // Cross-origin: only specific properties allowed
-        return switch (property) {
-            .window, .self_, .frames => true,
-            .top, .opener, .parent => true,
-            .closed, .length => true,
-            .close, .focus, .blur, .postMessage => true,
-            .location => true, // Location has its own restrictions
-        };
-    }
-
-    /// Check if an accessor can access any property (unrestricted)
-    /// This is used for same-origin checks before accessing arbitrary properties
-    pub fn isSameOriginAccess(self: *const WindowProxy, accessor_origin: Origin) bool {
-        return self.document_origin.isSameOriginDomain(accessor_origin);
     }
 
     /// Get the WindowProxy itself (always allowed)
@@ -299,47 +219,6 @@ pub const WindowProxy = struct {
         // This requires integration with the event system
         _ = self;
     }
-
-    /// Check if a property name is a cross-origin allowed property
-    pub fn isCrossOriginAllowedProperty(property_name: []const u8) ?CrossOriginProperty {
-        const map = std.StaticStringMap(CrossOriginProperty).initComptime(.{
-            .{ "window", .window },
-            .{ "self", .self_ },
-            .{ "frames", .frames },
-            .{ "top", .top },
-            .{ "opener", .opener },
-            .{ "parent", .parent },
-            .{ "closed", .closed },
-            .{ "length", .length },
-            .{ "close", .close },
-            .{ "focus", .focus },
-            .{ "blur", .blur },
-            .{ "postMessage", .postMessage },
-            .{ "location", .location },
-        });
-        return map.get(property_name);
-    }
-
-    /// Attempt to access a property by name
-    /// Returns error.SecurityError if cross-origin access to restricted property
-    pub fn accessProperty(
-        self: *const WindowProxy,
-        accessor_origin: Origin,
-        property_name: []const u8,
-    ) WindowProxyError!void {
-        // The ordinary property path requires same origin-domain.
-        if (self.document_origin.isSameOriginDomain(accessor_origin)) {
-            return;
-        }
-
-        // Cross-origin: check if property is in allowed list
-        if (isCrossOriginAllowedProperty(property_name)) |_| {
-            return; // Allowed
-        }
-
-        // Not in allowed list - SecurityError
-        return WindowProxyError.SecurityError;
-    }
 };
 
 // ============================================================================
@@ -368,85 +247,6 @@ test "Origin - opaque origins" {
     try std.testing.expect(!opaque1.isSameOrigin(opaque2));
     try std.testing.expect(!opaque1.isSameOrigin(tuple));
     try std.testing.expect(!tuple.isSameOrigin(opaque1));
-}
-
-test "WindowProxy - same origin access" {
-    const allocator = std.testing.allocator;
-    var navigables = Navigables.init(allocator);
-    defer navigables.deinit();
-
-    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
-    defer ctx.deinit();
-
-    var proxy = WindowProxy.init(allocator, ctx);
-    proxy.setDocumentOrigin(Origin.init("https", "example.com", 443));
-
-    const accessor = Origin.init("https", "example.com", 443);
-
-    // Same-origin can access everything
-    try std.testing.expect(proxy.isSameOriginAccess(accessor));
-    try proxy.accessProperty(accessor, "document");
-    try proxy.accessProperty(accessor, "localStorage");
-}
-
-test "WindowProxy - cross origin access restrictions" {
-    const allocator = std.testing.allocator;
-    var navigables = Navigables.init(allocator);
-    defer navigables.deinit();
-
-    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
-    defer ctx.deinit();
-
-    var proxy = WindowProxy.init(allocator, ctx);
-    proxy.setDocumentOrigin(Origin.init("https", "example.com", 443));
-
-    const cross_origin_accessor = Origin.init("https", "other.com", 443);
-
-    // Cross-origin cannot access restricted properties
-    try std.testing.expect(!proxy.isSameOriginAccess(cross_origin_accessor));
-
-    // Restricted properties throw SecurityError
-    try std.testing.expectError(
-        WindowProxyError.SecurityError,
-        proxy.accessProperty(cross_origin_accessor, "document"),
-    );
-    try std.testing.expectError(
-        WindowProxyError.SecurityError,
-        proxy.accessProperty(cross_origin_accessor, "localStorage"),
-    );
-    try std.testing.expectError(
-        WindowProxyError.SecurityError,
-        proxy.accessProperty(cross_origin_accessor, "sessionStorage"),
-    );
-}
-
-test "WindowProxy - cross origin allowed properties" {
-    const allocator = std.testing.allocator;
-    var navigables = Navigables.init(allocator);
-    defer navigables.deinit();
-
-    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
-    defer ctx.deinit();
-
-    var proxy = WindowProxy.init(allocator, ctx);
-    proxy.setDocumentOrigin(Origin.init("https", "example.com", 443));
-
-    const cross_origin = Origin.init("https", "other.com", 443);
-
-    // These properties ARE allowed cross-origin
-    try proxy.accessProperty(cross_origin, "window");
-    try proxy.accessProperty(cross_origin, "self");
-    try proxy.accessProperty(cross_origin, "frames");
-    try proxy.accessProperty(cross_origin, "top");
-    try proxy.accessProperty(cross_origin, "opener");
-    try proxy.accessProperty(cross_origin, "parent");
-    try proxy.accessProperty(cross_origin, "closed");
-    try proxy.accessProperty(cross_origin, "length");
-    try proxy.accessProperty(cross_origin, "close");
-    try proxy.accessProperty(cross_origin, "focus");
-    try proxy.accessProperty(cross_origin, "blur");
-    try proxy.accessProperty(cross_origin, "postMessage");
-    try proxy.accessProperty(cross_origin, "location");
 }
 
 test "WindowProxy - getClosed" {
@@ -482,17 +282,4 @@ test "WindowProxy - getLength" {
     _ = try BrowsingContext.initChild(allocator, parent);
 
     try std.testing.expectEqual(@as(u32, 1), proxy.getLength());
-}
-
-test "WindowProxy - isCrossOriginAllowedProperty" {
-    // Allowed properties
-    try std.testing.expect(WindowProxy.isCrossOriginAllowedProperty("window") != null);
-    try std.testing.expect(WindowProxy.isCrossOriginAllowedProperty("self") != null);
-    try std.testing.expect(WindowProxy.isCrossOriginAllowedProperty("postMessage") != null);
-    try std.testing.expect(WindowProxy.isCrossOriginAllowedProperty("location") != null);
-
-    // Not allowed
-    try std.testing.expect(WindowProxy.isCrossOriginAllowedProperty("document") == null);
-    try std.testing.expect(WindowProxy.isCrossOriginAllowedProperty("localStorage") == null);
-    try std.testing.expect(WindowProxy.isCrossOriginAllowedProperty("alert") == null);
 }

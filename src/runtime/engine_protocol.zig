@@ -683,11 +683,12 @@ pub const WindowRealmOptions = struct {
     global_this: GlobalThis = .new_window_proxy,
     /// The realm of the navigable's parent - an iframe's container document's
     /// window, or a popup's opener - or null for a top-level one. A realm
-    /// with a parent shares its engine-level access with it (V8's security
-    /// token; the WindowProxy checks are the host's), ends when the parent
-    /// ends if it has not already, and - made while the parent's script runs -
-    /// is entered only for the calls that run in it. A realm without one
-    /// stays the agent's entered realm for its life.
+    /// with a parent does not share engine-level access with it: every
+    /// access from another realm to its WindowProxy or a Location asks
+    /// `is_platform_object_same_origin` [cross_origin_objects]. It ends when
+    /// the parent ends if it has not already, and - made while the parent's
+    /// script runs - is entered only for the calls that run in it. A realm
+    /// without one stays the agent's entered realm for its life.
     parent: ?Context = null,
     /// The Browser the realm belongs to (runtime.BrowserScope,
     /// docs/instances.md): the engine records it as the realm's
@@ -705,8 +706,13 @@ pub const WindowRealmOptions = struct {
     /// and fails.
     create_global_object: *const fn (realm: Context, global_this: JSValue, host: ?*anyopaque) ?*Instance,
     /// HTML IsPlatformObjectSameOrigin, for the WindowProxy and Location
-    /// cross-origin checks: whether `object` is same origin-domain with
-    /// `current`.
+    /// cross-origin checks [cross_origin_objects]: whether the current
+    /// settings object's origin is same origin-domain with the origin of
+    /// `object`'s relevant settings object. `current` is the current realm.
+    /// `object` is the realm's Window or a Location, BORROWED for the call.
+    /// Asked on every access from another realm, never cached: a document's
+    /// domain changes at any time. Null: every realm reaches this one's
+    /// WindowProxy and Location as a same-origin one would.
     is_platform_object_same_origin: ?*const fn (host: ?*anyopaque, current: Context, object: *Instance) bool = null,
     host: ?*anyopaque = null,
 };
@@ -791,6 +797,18 @@ pub const Capabilities = struct {
     /// element upgrade run its constructor (JavaScriptCore's public C API
     /// hands a JSObjectCallAsConstructorCallback no NewTarget).
     html_constructor: Support,
+    /// HTML 7.2.1 "cross-origin objects": the engine runs the WindowProxy's
+    /// and Location's cross-origin internal methods - IsPlatformObjectSameOrigin
+    /// through WindowRealmOptions.is_platform_object_same_origin on every
+    /// access from another realm, CrossOriginGet / CrossOriginSet /
+    /// CrossOriginGetOwnPropertyHelper / CrossOriginOwnPropertyKeys, the
+    /// cached cross-origin functions, and WebIDL's "perform a security check"
+    /// for a cross-origin `this`. Unsupported: the engine runs no such check;
+    /// the host keeps its own in the members that need one (Window's
+    /// `document`), and every other property of another realm's WindowProxy
+    /// or Location is reached as a same-origin one would be. A
+    /// security-relevant difference, declared.
+    cross_origin_objects: Support,
 };
 
 /// The capabilities of the engine this build selected.

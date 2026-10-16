@@ -55,6 +55,8 @@ pub fn initializeEngine(options: engine.EngineOptions) Error!void {
     ffi.v8_SetProtocolCodeGenerationDispatchers(onCodeGenerationFromStrings, onWasmCodeGeneration);
     // HostCreateShadowRealmContextCallback's, the same way.
     shadow_realm.installDispatcher();
+    // [cross_origin_objects]: the access checks' dispatch, the same way.
+    @import("cross_origin.zig").installDispatch();
     engine_snapshot = null;
     if (options.snapshot) |stamped| engine_snapshot = try usableSnapshot(stamped);
 }
@@ -255,6 +257,10 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     // [[CanBlock]]: false for a similar-origin window agent, whose one thread
     // Atomics.wait() would freeze - it throws a TypeError instead.
     ffi.v8_Isolate_SetAllowAtomicsWait(isolate, options.can_block);
+    // [cross_origin_objects]: what V8 hands no cross-origin interceptor - a
+    // [[Delete]], [[DefineOwnProperty]] or security-checked call on another
+    // realm's WindowProxy or Location - throws a SecurityError.
+    @import("cross_origin.zig").installOnIsolate(isolate);
 
     const record = std.heap.c_allocator.create(AgentRecord) catch return error.OutOfMemory;
     errdefer std.heap.c_allocator.destroy(record);
