@@ -4375,7 +4375,26 @@ fn createAuxiliaryNavigable(
     // and sandbox-window-open-srcdoc.html ("popup is isolated from an
     // isolated iframe").
     browsing_context.popup_sandboxing_flags = popup_sandboxing_flags;
-    const creation_flags = sandboxing.creationSandboxingFlags(.{ .popup = popup_sandboxing_flags });
+    // "Create a new auxiliary browsing context and document": its creator is
+    // the opener's active document.
+    const creator: ?*runtime.Instance = if (opener_bc.getActiveDocument()) |d| @ptrCast(@alignCast(d)) else null;
+    // The initial about:blank document's flags: its creation sandboxing
+    // flags (the popup sandboxing flag set). Deviation, stated (golden rule
+    // 2): also the CSP-derived sandboxing flags of the policy container it
+    // inherits from its creator ("create a new browsing context and
+    // document" step 19.2), as Chrome 154 and Safari 27 do - they pass
+    // the-iframe-element/sandbox-inherit-to-blank-document-unsandboxed.html
+    // 4/4 ("The initial empty document inherit sandbox via CSP": a popup
+    // that escapes its CSP-sandboxed opener's attribute-free sandbox still
+    // starts on a sandboxed, cross-origin about:blank); Firefox 157 2/4.
+    // The spec gives the initial document only its creation flags; a later
+    // navigation's flags follow the spec (its policy container's
+    // CSP-derived flags).
+    const inherited_csp_flags = if (creator) |document|
+        (if (dom_module.policy_containers.of(document)) |container| sandboxing.cspDerivedSandboxingFlags(&container.csp_list) else SandboxingFlagSet.empty)
+    else
+        SandboxingFlagSet.empty;
+    const creation_flags = sandboxing.creationSandboxingFlags(.{ .popup = popup_sandboxing_flags }).unionWith(inherited_csp_flags);
     integration.container_origin = dom_module.navigables.parseOriginFromString(opener_origin);
     integration.state = .creating_initial_document;
     // Its WindowProxy, whose document origin - the initial about:blank's, the
@@ -4388,9 +4407,6 @@ fn createAuxiliaryNavigable(
     // paths below free the integration.
     integration.setNextSandboxingFlags(creation_flags);
 
-    // "Create a new auxiliary browsing context and document": its creator is
-    // the opener's active document.
-    const creator: ?*runtime.Instance = if (opener_bc.getActiveDocument()) |d| @ptrCast(@alignCast(d)) else null;
     integration.parent_realm = @ptrCast(opener_realm);
     _ = attachNavigableContext(integration, opener_realm, browsing_context, if (creation_flags.origin) null else opener_origin, creator, allocator) orelse {
         integration.deinit();
