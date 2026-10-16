@@ -71,8 +71,6 @@ src/webidl/impls/Document.zig Range.call_insertNode 1
 src/webidl/impls/Document.zig Range.call_surroundContents 2
 src/webidl/impls/Element.zig DOMTokenList.setElement 2
 src/webidl/impls/Element.zig NamedNodeMap.setOwnerElement 1
-src/webidl/impls/Element.zig ParentNode.closest 1
-src/webidl/impls/Element.zig ParentNode.matches 1
 src/webidl/impls/File.zig Blob.processBlobParts 1
 src/webidl/impls/File.zig Blob.setBlobData 2
 src/webidl/impls/FileReaderSync.zig Blob.InternalState 1

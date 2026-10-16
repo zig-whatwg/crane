@@ -55,8 +55,10 @@ pub const SelectorAnalysis = struct {
     /// For class fast path: the class name to filter by
     class_name: ?[]const u8 = null,
 
-    /// For tag fast path: the tag name to filter by
+    /// For tag fast path: the tag name to filter by, as written and
+    /// ASCII-lowercased (HTML 4.16.2 decides which an element compares with).
     tag_name: ?[]const u8 = null,
+    lower_tag_name: ?[]const u8 = null,
 
     /// Whether there are additional selectors to verify after fast path
     needs_verification: bool = false,
@@ -100,11 +102,15 @@ fn analyzeCompound(compound: *const CompoundSelector, has_ancestors: bool) Selec
                 result.class_name = class_sel.class_name;
             },
             .Type => |type_sel| {
+                // A namespace constraint is checked only by full matching.
+                if (type_sel.namespace != .any) return .{ .fast_path = .none };
                 has_tag = true;
                 result.tag_name = type_sel.tag_name;
+                result.lower_tag_name = type_sel.lower_name;
             },
-            .Universal => {
-                // Universal doesn't narrow search
+            .Universal => |universal| {
+                // `*` and `*|*` do not narrow the search; `|*` does.
+                if (universal.namespace != .any) return .{ .fast_path = .none };
             },
             else => {
                 // Attribute, pseudo-class, pseudo-element - no fast path
@@ -186,13 +192,9 @@ pub fn isTagOnlySelector(selector_list: *const SelectorList) bool {
 // ============================================================================
 
 const testing = std.testing;
-const Tokenizer = @import("tokenizer.zig").Tokenizer;
-const Parser = parser.Parser;
 
 fn parseSelector(allocator: Allocator, input: []const u8) !SelectorList {
-    var tokenizer = Tokenizer.init(allocator, input);
-    var p = try Parser.init(allocator, &tokenizer);
-    return try p.parse();
+    return parser.parseSelectorList(allocator, input);
 }
 
 test "analyzeSelector - ID selector" {

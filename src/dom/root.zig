@@ -155,6 +155,8 @@ pub const shadow_dom_algorithms = @import("shadow_dom_algorithms.zig");
 pub const range_tracking = @import("range_tracking.zig");
 pub const event_dispatch = @import("event_dispatch.zig");
 pub const selectors = @import("selectors.zig");
+/// querySelector / matches / closest over platform objects.
+pub const selector_matching = @import("selector_matching.zig");
 pub const fast_path = @import("fast_path.zig");
 pub const html_mock = @import("html_mock.zig");
 pub const attribute_algorithms = @import("attribute_algorithms.zig");

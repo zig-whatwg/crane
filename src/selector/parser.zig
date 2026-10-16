@@ -1,11 +1,31 @@
+//! Selector parsing: Selectors 4 section 16's grammar over CSS Syntax 3
+//! tokens (tokenizer.zig).
+//!
+//! Spec: https://drafts.csswg.org/selectors-4/#grammar (specs/w3c/
+//! selectors-4.md, Editor's Draft of 18 September 2026) and CSS Syntax 3
+//! 5.4.1 "parse something according to a CSS grammar": the whole input is
+//! tokenized, blocks are matched ("[", "(" and functions, each closed by its
+//! own closing token or by the end of the input - an unclosed construct is a
+//! parse error, not a failure), and the grammar is matched against the
+//! tokens.
+//!
+//! DOM declares no namespace prefixes ("Support for namespaces within
+//! selectors is not planned"), so `*|E` and `|E` are the namespace forms
+//! that can be valid, and any named prefix is an undeclared one: the
+//! selector is invalid (Selectors 4 3.9).
+//!
+//! Ownership: names and values are slices of the input as written, or - when
+//! an escape had to be decoded or a name lowercased - of strings the
+//! outermost SelectorList owns (`SelectorList.strings`). Either way the AST
+//! lives no longer than the input and the list.
+
 const std = @import("std");
 const infra = @import("infra");
 const Allocator = std.mem.Allocator;
-const Tokenizer = @import("tokenizer.zig").Tokenizer;
-const Token = @import("tokenizer.zig").Token;
+const tokenizer_mod = @import("tokenizer.zig");
+const Tokenizer = tokenizer_mod.Tokenizer;
+const Token = tokenizer_mod.Token;
 const AncestorHashes = infra.AncestorHashes;
-const hashString = infra.hashString;
-const hashStringLower = infra.hashStringLower;
 const context = @import("context.zig");
 const MatchResult = context.MatchResult;
 
@@ -13,16 +33,21 @@ const MatchResult = context.MatchResult;
 // AST Node Types
 // ============================================================================
 
-/// Top-level selector list (comma-separated selectors)
+/// A selector list: complex selectors, comma-separated in the source.
 pub const SelectorList = struct {
     selectors: []ComplexSelector,
     allocator: Allocator,
+    /// The decoded and lowercased strings the AST points into. Only the
+    /// outermost list of a parse owns any; nested lists' are empty.
+    strings: [][]u8 = &.{},
 
     pub fn deinit(self: *SelectorList) void {
         for (self.selectors) |*selector| {
             selector.deinit();
         }
         self.allocator.free(self.selectors);
+        for (self.strings) |s| self.allocator.free(s);
+        if (self.strings.len != 0) self.allocator.free(self.strings);
     }
 };
 
@@ -107,8 +132,9 @@ pub const ComplexSelector = struct {
 
     allocator: Allocator,
 
-    /// If true, this is a relative selector (starts with combinator)
-    /// Used in :has() for relative matching
+    /// A relative selector (Selectors 4 3.4, in :has()): anchored at an
+    /// element by `initial_combinator`, the descendant combinator when none
+    /// is written.
     is_relative: bool = false,
 
     /// For relative selectors, the initial combinator
@@ -283,12 +309,33 @@ pub const CompoundSelector = struct {
 
         return spec;
     }
+
+    /// Whether the compound holds a pseudo-element (and so represents no
+    /// element in the tree: querySelector and matches() never match it).
+    pub fn hasPseudoElement(self: *const CompoundSelector) bool {
+        for (self.simple_selectors) |*simple| if (simple.* == .PseudoElement) return true;
+        return false;
+    }
+};
+
+/// The namespace a type, universal or attribute selector accepts (Selectors
+/// 4 5.3 and 6.4). With no prefix declared, a type selector without a prefix
+/// accepts any namespace, and an attribute selector without one accepts only
+/// no namespace.
+pub const NamespaceConstraint = enum {
+    /// `*|` - any namespace, or none.
+    any,
+    /// `|` - no namespace.
+    none,
 };
 
 /// Simple selector (atomic selector)
 pub const SimpleSelector = union(enum) {
-    Universal,
-    Type: struct { tag_name: []const u8 },
+    /// `*`, `*|*` (any namespace) or `|*` (no namespace).
+    Universal: struct { namespace: NamespaceConstraint = .any },
+    /// A type selector: its name as written and ASCII-lowercased (HTML
+    /// 4.16.2 compares HTML elements in HTML documents with the lowercase).
+    Type: struct { tag_name: []const u8, lower_name: []const u8, namespace: NamespaceConstraint = .any },
     Class: struct { class_name: []const u8 },
     Id: struct { id: []const u8 },
     Attribute: AttributeSelector,
@@ -297,9 +344,7 @@ pub const SimpleSelector = union(enum) {
 
     pub fn deinit(self: *SimpleSelector, allocator: Allocator) void {
         switch (self.*) {
-            .Attribute => |*attr| attr.deinit(),
             .PseudoClass => |*pseudo| pseudo.deinit(allocator),
-            .PseudoElement => |*pseudo| pseudo.deinit(allocator),
             else => {},
         }
     }
@@ -318,19 +363,32 @@ pub const SimpleSelector = union(enum) {
     }
 };
 
+/// The attribute selector's case modifier (Selectors 4 6.3).
+pub const AttributeCase = enum {
+    /// No modifier: the document language decides (HTML 4.16.2).
+    default,
+    /// `i`: ASCII case-insensitive.
+    insensitive,
+    /// `s`: identical to.
+    sensitive,
+};
+
 /// Attribute selector
 pub const AttributeSelector = struct {
+    /// The attribute's name as written, and ASCII-lowercased: HTML 4.16.2
+    /// compares the lowercase with attributes of HTML elements in HTML
+    /// documents and the name as written with every other attribute.
     name: []const u8,
+    lower_name: []const u8,
+    /// `[attr]` and `[|attr]` match only attributes in no namespace;
+    /// `[*|attr]` any attribute with that local name.
+    namespace: NamespaceConstraint = .none,
     matcher: AttributeMatcher,
-    case_sensitive: bool = true,
-    allocator: ?Allocator = null, // Allocator used to allocate name (for cleanup)
-
-    /// Free the allocated name string if this selector owns its allocation.
-    pub fn deinit(self: *AttributeSelector) void {
-        if (self.allocator) |alloc| {
-            alloc.free(self.name);
-        }
-    }
+    case: AttributeCase = .default,
+    /// HTML 4.16.2: the lowercase name is one whose VALUES an HTML element
+    /// in an HTML document matches ASCII case-insensitively (without `s`).
+    /// Decided once, here, so matching plain selectors never looks it up.
+    html_case_insensitive_value: bool = false,
 };
 
 /// Attribute matching operators
@@ -354,10 +412,15 @@ pub const PseudoClassSelector = struct {
                 selector_list_ptr.deinit();
                 allocator.destroy(selector_list_ptr);
             },
+            .Host => |maybe| if (maybe) |selector_list_ptr| {
+                selector_list_ptr.deinit();
+                allocator.destroy(selector_list_ptr);
+            },
             .NthChild, .NthLastChild => |pattern| if (pattern.of) |selector_list_ptr| {
                 selector_list_ptr.deinit();
                 allocator.destroy(selector_list_ptr);
             },
+            .Lang => |ranges| allocator.free(ranges),
             else => {},
         }
     }
@@ -369,27 +432,21 @@ pub const PseudoClassSelector = struct {
             .Where => Specificity{},
 
             // :is(), :not(), :has() take the max specificity of their arguments
-            .Is, .Not, .Has => |selector_list_ptr| blk: {
-                var max_spec = Specificity{};
-                for (selector_list_ptr.selectors) |*selector| {
-                    const spec = selector.calculateSpecificity();
-                    max_spec = max_spec.max(spec);
-                }
-                break :blk max_spec;
-            },
+            .Is, .Not, .Has => |selector_list_ptr| maxSpecificity(selector_list_ptr),
 
             // Selectors 4 16.1: ":nth-child(An+B of S)" is the specificity of
             // a pseudo-class plus that of its most specific complex selector
             // in S.
             .NthChild, .NthLastChild => |pattern| blk: {
                 var spec = Specificity{ .class = 1 };
-                if (pattern.of) |selector_list_ptr| {
-                    var max_spec = Specificity{};
-                    for (selector_list_ptr.selectors) |*selector| max_spec = max_spec.max(selector.calculateSpecificity());
-                    spec.id += max_spec.id;
-                    spec.class += max_spec.class;
-                    spec.element += max_spec.element;
-                }
+                if (pattern.of) |selector_list_ptr| spec = spec.add(maxSpecificity(selector_list_ptr));
+                break :blk spec;
+            },
+
+            // CSS Scoping: :host() is a pseudo-class plus its argument.
+            .Host => |maybe| blk: {
+                var spec = Specificity{ .class = 1 };
+                if (maybe) |selector_list_ptr| spec = spec.add(maxSpecificity(selector_list_ptr));
                 break :blk spec;
             },
 
@@ -397,12 +454,21 @@ pub const PseudoClassSelector = struct {
             else => Specificity{ .class = 1 },
         };
     }
+
+    fn maxSpecificity(list: *const SelectorList) Specificity {
+        var max_spec = Specificity{};
+        for (list.selectors) |*selector| max_spec = max_spec.max(selector.calculateSpecificity());
+        return max_spec;
+    }
 };
 
 /// Direction for :dir() pseudo-class
 pub const Direction = enum {
     ltr,
     rtl,
+    /// Selectors 4 7.1: "Values other than ltr and rtl are not invalid, but
+    /// do not match anything."
+    other,
 };
 
 /// Pseudo-class types
@@ -465,18 +531,25 @@ pub const PseudoClassKind = union(enum) {
     VolumeLocked,
     Heading: u6,
 
-    // Language pseudo-classes
-    Lang: []const u8,
+    // Language pseudo-classes: :lang()'s language ranges (Selectors 4 7.2),
+    // the slice owned by the pseudo-class, the strings by the list.
+    Lang: []const []const u8,
     Dir: Direction,
 
     // Negation and matching
     Not: *SelectorList,
     Is: *SelectorList,
     Where: *SelectorList,
+    /// :has(<relative-selector-list>): every selector is relative.
     Has: *SelectorList,
 
     // Scoping
     Scope,
+
+    /// CSS Scoping 3.2.1: `:host` (null) or `:host(<compound-selector>)` - the
+    /// shadow host, seen from inside its shadow tree. (:host-context() is
+    /// not supported: see functionalPseudoClass.)
+    Host: ?*SelectorList,
 
     // Location pseudo-class (Selectors 4 8.2): the document's target element.
     Target,
@@ -494,17 +567,15 @@ pub const NthPattern = struct {
     b: i32, // Constant
     /// ":nth-child(An+B of S)" and ":nth-last-child(An+B of S)": only the
     /// siblings matching S count, and the element must match S itself
-    /// (Selectors 4 14.4.1). OWNED by the pseudo-class; null without "of".
+    /// (Selectors 4 13.3.1). OWNED by the pseudo-class; null without "of".
     of: ?*SelectorList = null,
 };
 
-/// Pseudo-element selector
+/// Pseudo-element selector: its name, ASCII-lowercased (Selectors 4 3.6.1).
+/// A pseudo-element is no element of the tree, so a compound holding one
+/// matches no element.
 pub const PseudoElementSelector = struct {
     name: []const u8,
-
-    pub fn deinit(_: *PseudoElementSelector, _: Allocator) void {
-        // No dynamic allocation, nothing to free
-    }
 };
 
 // ============================================================================
@@ -518,810 +589,949 @@ pub const ParserError = error{
     OutOfMemory,
 };
 
+/// Selectors 4 17.1 "parse a selector": `source` as a <selector-list>, or an
+/// error when it is an invalid selector. The list owns what it decoded.
+pub fn parseSelectorList(allocator: Allocator, source: []const u8) ParserError!SelectorList {
+    var tokenizer = Tokenizer.init(allocator, source);
+    var parser = try Parser.init(allocator, &tokenizer);
+    defer parser.deinit();
+    return parser.parse();
+}
+
 // ============================================================================
 // Parser
 // ============================================================================
 
+/// What a selector may contain where it is being parsed.
+const Context = struct {
+    /// Only <complex-real-selector>s: no pseudo-element (the arguments of
+    /// :is(), :where(), :not(), :has(), :nth-child(of) and :host()).
+    real: bool = false,
+    /// Inside :has(), where :has() is not valid (Selectors 4 4.5).
+    in_has: bool = false,
+};
+
+/// An end-of-input token, what reading past a range returns.
+const eof_token = Token{ .tag = .eof, .value = "", .start = 0, .end = 0 };
+
+/// A cursor over a range of tokens: a block's contents or a comma-separated
+/// piece. Past its end it reads EOF.
+const Stream = struct {
+    tokens: []const Token,
+    pos: usize = 0,
+
+    fn peek(self: *const Stream) Token {
+        return self.peekAt(0);
+    }
+
+    fn peekAt(self: *const Stream, offset: usize) Token {
+        const at = self.pos + offset;
+        return if (at < self.tokens.len) self.tokens[at] else eof_token;
+    }
+
+    fn atEnd(self: *const Stream) bool {
+        return self.pos >= self.tokens.len;
+    }
+
+    fn advance(self: *Stream) void {
+        self.pos += 1;
+    }
+
+    /// Skip whitespace; whether there was any.
+    fn skipWhitespace(self: *Stream) bool {
+        const before = self.pos;
+        while (self.pos < self.tokens.len and self.tokens[self.pos].tag == .whitespace) self.pos += 1;
+        return self.pos != before;
+    }
+};
+
 pub const Parser = struct {
     allocator: Allocator,
     tokenizer: *Tokenizer,
+    /// Every token of the input, the EOF token last.
+    tokens: []Token,
+    /// Decoded and lowercased strings, handed to the list `parse` returns.
+    strings: std.ArrayList([]u8) = .empty,
+    /// After `parse`: the token the parse stopped at - always the EOF token,
+    /// since the whole input is the selector list.
     current_token: ?Token = null,
-    peeked_token: ?Token = null,
 
-    pub fn init(allocator: Allocator, tokenizer: *Tokenizer) !Parser {
-        var parser = Parser{
-            .allocator = allocator,
-            .tokenizer = tokenizer,
-        };
-        // Prime the parser with first token
-        try parser.advance();
+    pub fn init(allocator: Allocator, tokenizer: *Tokenizer) ParserError!Parser {
+        const tokens = try tokenizer.tokenize();
+        var parser = Parser{ .allocator = allocator, .tokenizer = tokenizer, .tokens = tokens };
+        errdefer parser.deinit();
+        // Decode, once, every value written with an escape (or a NUL or a
+        // surrogate): the AST holds the decoded values.
+        for (parser.tokens) |*token| {
+            if (!token.needs_decode) continue;
+            const decoded = try tokenizer_mod.decode(allocator, token.*);
+            parser.strings.append(allocator, decoded) catch |err| {
+                allocator.free(decoded);
+                return err;
+            };
+            token.value = decoded;
+        }
+        parser.current_token = tokens[0];
         return parser;
     }
 
     pub fn deinit(self: *Parser) void {
-        _ = self;
-        // Parser doesn't own AST nodes after parse() returns
-        // Caller responsible for calling SelectorList.deinit()
+        self.allocator.free(self.tokens);
+        for (self.strings.items) |s| self.allocator.free(s);
+        self.strings.deinit(self.allocator);
     }
 
-    /// Parse complete selector list
+    /// Selectors 4 17.1 "parse a selector": the whole input as a
+    /// <selector-list>. The list owns the strings the parse decoded.
     pub fn parse(self: *Parser) ParserError!SelectorList {
-        return try self.parseSelectorList();
+        const all = self.tokens[0 .. self.tokens.len - 1];
+        var list = try self.parseList(all, .{}, .{ .forgiving = false, .relative = false });
+        errdefer list.deinit();
+        self.current_token = self.tokens[self.tokens.len - 1];
+        list.strings = try self.strings.toOwnedSlice(self.allocator);
+        return list;
     }
 
     // ========================================================================
-    // Grammar Rules
+    // Lists
     // ========================================================================
 
-    /// Parse selector list (comma-separated complex selectors)
-    pub fn parseSelectorList(self: *Parser) ParserError!SelectorList {
-        var selectors = infra.List(ComplexSelector).init(self.allocator);
+    const ListKind = struct {
+        /// <forgiving-selector-list> (16.1): invalid items are dropped.
+        forgiving: bool,
+        /// <relative-selector-list>.
+        relative: bool,
+    };
+
+    /// A comma-separated list of complex (or relative) selectors over
+    /// `tokens`. CSS Syntax 3 5.4.2 "parse a comma-separated list according
+    /// to a CSS grammar": commas inside blocks do not separate.
+    fn parseList(self: *Parser, tokens: []const Token, ctx: Context, kind: ListKind) ParserError!SelectorList {
+        var selectors: std.ArrayList(ComplexSelector) = .empty;
         errdefer {
-            for (selectors.toSliceMut()) |*selector| {
-                selector.deinit();
-            }
-            selectors.deinit();
+            for (selectors.items) |*selector| selector.deinit();
+            selectors.deinit(self.allocator);
         }
 
-        // Parse first complex selector
-        try selectors.append(try self.parseComplexSelector());
-
-        // Parse additional selectors (comma-separated)
-        while (self.current_token) |token| {
-            if (token.tag == .comma) {
-                try self.advance();
-                self.skipWhitespace();
-                try selectors.append(try self.parseComplexSelector());
-            } else {
-                break;
-            }
-        }
-
-        return SelectorList{
-            .selectors = try selectors.toOwnedSlice(),
-            .allocator = self.allocator,
-        };
-    }
-
-    /// Parse selector list with forgiving error handling
-    /// Invalid selectors are silently dropped instead of failing entire list
-    /// Used by :is(), :where(), :has() per Selectors Level 4 spec
-    fn parseForgivingSelectorList(self: *Parser) ParserError!SelectorList {
-        var selectors = infra.List(ComplexSelector).init(self.allocator);
-        errdefer {
-            for (0..selectors.len) |i| {
-                selectors.toSliceMut()[i].deinit();
-            }
-            selectors.deinit();
-        }
-
-        // Parse first complex selector (with error recovery)
-        if (self.parseComplexSelector()) |selector| {
-            try selectors.append(selector);
-        } else |_| {
-            // First selector failed - skip to next comma or end
-            self.skipToCommaOrEnd();
-        }
-
-        // Parse additional selectors (comma-separated)
-        while (self.current_token) |token| {
-            if (token.tag == .comma) {
-                try self.advance();
-                self.skipWhitespace();
-
-                // Try to parse next selector, skip if invalid
-                if (self.parseComplexSelector()) |selector| {
-                    try selectors.append(selector);
-                } else |_| {
-                    // Invalid selector - skip to next comma or end
-                    self.skipToCommaOrEnd();
-                }
-            } else {
-                break;
-            }
-        }
-
-        // If all selectors were invalid, return empty list (matches nothing)
-        return SelectorList{
-            .selectors = try selectors.toOwnedSlice(),
-            .allocator = self.allocator,
-        };
-    }
-
-    /// Skip tokens until comma or end (for error recovery)
-    fn skipToCommaOrEnd(self: *Parser) void {
-        while (self.current_token) |token| {
-            if (token.tag == .comma or token.tag == .rparen) {
-                break;
-            }
-            self.advance() catch break;
-        }
-    }
-
-    /// Parse complex selector (combinator chain)
-    ///
-    /// Parses left-to-right but stores in RTL order for efficient matching.
-    /// Example: "div > p.active" parses as:
-    /// - compound = "p.active" (rightmost)
-    /// - combinators = [{Child, "div"}]
-    fn parseComplexSelector(self: *Parser) ParserError!ComplexSelector {
-        // Temporary storage for LTR parsing
-        var ltr_compounds = infra.List(CompoundSelector).init(self.allocator);
-        defer ltr_compounds.deinit();
-        var ltr_combinators = infra.List(Combinator).init(self.allocator);
-        defer ltr_combinators.deinit();
-
-        errdefer {
-            for (ltr_compounds.toSliceMut()) |*compound| {
-                compound.deinit();
-            }
-        }
-
-        // Check for relative selector (starts with combinator)
-        var is_relative = false;
-        var initial_combinator: ?Combinator = null;
-
-        // Peek ahead for combinator at start (relative selector)
-        const first_combinator = try self.parseCombinator();
-        if (first_combinator) |comb| {
-            is_relative = true;
-            initial_combinator = comb;
-            self.skipWhitespace();
-        }
-
-        // Parse first compound selector
-        try ltr_compounds.append(try self.parseCompoundSelector());
-
-        // Parse combinator chain (LTR)
+        var piece_start: usize = 0;
+        var i: usize = 0;
         while (true) {
-            const combinator = try self.parseCombinator();
-            if (combinator == null) break;
-
-            self.skipWhitespace();
-            try ltr_combinators.append(combinator.?);
-            try ltr_compounds.append(try self.parseCompoundSelector());
-        }
-
-        // Convert to RTL storage order
-        // If we have: [div, p, span] with combinators [>, +]
-        // We want: compound=span, combinators=[{+, p}, {>, div}]
-
-        const compounds_slice = ltr_compounds.toSlice();
-        const combinators_slice = ltr_combinators.toSlice();
-
-        if (compounds_slice.len == 1) {
-            // No combinators - just return the single compound
-            const result_compound = compounds_slice[0];
-            // Clear the list without freeing (we're transferring ownership)
-            ltr_compounds.clear();
-            return ComplexSelector{
-                .compound = result_compound,
-                .combinators = &.{},
-                .allocator = self.allocator,
-                .is_relative = is_relative,
-                .initial_combinator = initial_combinator,
-            };
-        }
-
-        // Rightmost compound is the subject
-        const subject_compound = compounds_slice[compounds_slice.len - 1];
-
-        // Build RTL combinator pairs
-        var rtl_combinators = infra.List(CombinatorPair).init(self.allocator);
-        errdefer {
-            for (rtl_combinators.toSliceMut()) |*pair| {
-                pair.compound.deinit();
+            const at_comma = i < tokens.len and tokens[i].tag == .comma;
+            if (i >= tokens.len or at_comma) {
+                const piece = tokens[piece_start..i];
+                if (self.parseComplex(piece, ctx, kind.relative)) |selector| {
+                    selectors.append(self.allocator, selector) catch |err| {
+                        var dropped = selector;
+                        dropped.deinit();
+                        return err;
+                    };
+                } else |err| switch (err) {
+                    error.OutOfMemory => return err,
+                    // 16.1 "Remove all failure items ... and all items that
+                    // are invalid selectors."
+                    else => if (!kind.forgiving) return err,
+                }
+                if (i >= tokens.len) break;
+                i += 1;
+                piece_start = i;
+                continue;
             }
-            rtl_combinators.deinit();
+            i = try self.skipComponentValue(tokens, i);
         }
 
-        // Iterate from right to left (excluding rightmost compound)
-        var i: usize = compounds_slice.len - 1;
-        while (i > 0) {
-            i -= 1;
-            // Combinator at index i connects compounds[i] and compounds[i+1]
-            try rtl_combinators.append(CombinatorPair{
-                .combinator = combinators_slice[i],
-                .compound = compounds_slice[i],
-            });
-        }
-
-        // Clear the original list without freeing (ownership transferred)
-        ltr_compounds.clear();
-
-        var result = ComplexSelector{
-            .compound = subject_compound,
-            .combinators = try rtl_combinators.toOwnedSlice(),
+        return SelectorList{
+            .selectors = try selectors.toOwnedSlice(self.allocator),
             .allocator = self.allocator,
-            .is_relative = is_relative,
-            .initial_combinator = initial_combinator,
         };
-
-        // Precompute ancestor hashes for bloom filter rejection
-        result.computeAncestorHashes();
-
-        // Precompute backtracking info for optimized failure recovery
-        result.computeBacktrackingInfo();
-
-        return result;
     }
 
-    /// Parse combinator (>, +, ~, or whitespace)
-    fn parseCombinator(self: *Parser) ParserError!?Combinator {
-        const token = self.current_token orelse return null;
+    /// The index after the component value at `start`: a token, or a whole
+    /// block or function up to its closing token (or the end).
+    fn skipComponentValue(self: *Parser, tokens: []const Token, start: usize) ParserError!usize {
+        if (closerOf(tokens[start].tag) == null) return start + 1;
+        const close = try self.matchingClose(tokens, start);
+        return if (close < tokens.len) close + 1 else close;
+    }
 
-        return switch (token.tag) {
-            .gt => blk: {
-                try self.advance();
-                break :blk Combinator.Child;
-            },
-            .plus => blk: {
-                try self.advance();
-                break :blk Combinator.NextSibling;
-            },
-            .tilde => blk: {
-                try self.advance();
-                break :blk Combinator.SubsequentSibling;
-            },
-            .whitespace => blk: {
-                try self.advance();
-                // Peek ahead - if next token is combinator, this whitespace is just spacing
-                if (self.current_token) |next_token| {
-                    if (next_token.tag == .gt or next_token.tag == .plus or next_token.tag == .tilde) {
-                        return try self.parseCombinator();
-                    }
-                }
-                // Whitespace followed by compound selector = descendant combinator
-                if (self.isCompoundStart()) {
-                    break :blk Combinator.Descendant;
-                }
-                // Whitespace at end of selector
-                return null;
-            },
+    /// The index of the token closing the block or function opened at
+    /// `open`, or `tokens.len` when the end of the input closes it (CSS
+    /// Syntax 3 5.5.9 / 5.5.10: a parse error, not a failure). A closing
+    /// token of another kind inside is an ordinary token.
+    fn matchingClose(self: *Parser, tokens: []const Token, open: usize) ParserError!usize {
+        var expected: std.ArrayList(Token.Tag) = .empty;
+        defer expected.deinit(self.allocator);
+        try expected.append(self.allocator, closerOf(tokens[open].tag).?);
+        var i = open + 1;
+        while (i < tokens.len) : (i += 1) {
+            const tag = tokens[i].tag;
+            if (tag == expected.items[expected.items.len - 1]) {
+                _ = expected.pop();
+                if (expected.items.len == 0) return i;
+            } else if (closerOf(tag)) |closer| {
+                try expected.append(self.allocator, closer);
+            }
+        }
+        return tokens.len;
+    }
+
+    fn closerOf(tag: Token.Tag) ?Token.Tag {
+        return switch (tag) {
+            .function, .lparen => .rparen,
+            .lbracket => .rbracket,
+            .lbrace => .rbrace,
             else => null,
         };
     }
 
-    /// Parse compound selector (one or more simple selectors)
-    fn parseCompoundSelector(self: *Parser) ParserError!CompoundSelector {
-        var simple_selectors = infra.List(SimpleSelector).init(self.allocator);
+    // ========================================================================
+    // Complex selectors
+    // ========================================================================
+
+    /// <complex-selector> (or <relative-selector>) over all of `tokens`,
+    /// whitespace around it allowed. Stored right to left.
+    fn parseComplex(self: *Parser, tokens: []const Token, ctx: Context, relative: bool) ParserError!ComplexSelector {
+        var stream = Stream{ .tokens = tokens };
+        _ = stream.skipWhitespace();
+
+        var ltr_compounds: std.ArrayList(CompoundSelector) = .empty;
+        defer ltr_compounds.deinit(self.allocator);
+        var ltr_combinators: std.ArrayList(Combinator) = .empty;
+        defer ltr_combinators.deinit(self.allocator);
+        errdefer for (ltr_compounds.items) |*compound| compound.deinit();
+
+        // <relative-selector> = <combinator>? <complex-selector>: with no
+        // combinator the descendant combinator is implied (3.4).
+        var initial_combinator: ?Combinator = null;
+        if (relative) {
+            initial_combinator = combinatorOf(stream.peek()) orelse .Descendant;
+            if (combinatorOf(stream.peek()) != null) {
+                stream.advance();
+                _ = stream.skipWhitespace();
+            }
+        }
+
+        // "An empty selector, i.e. one that contains no compound selector,
+        // is invalid."
+        if (stream.atEnd()) return error.InvalidSelector;
+
+        while (true) {
+            var compound = try self.parseCompound(&stream, ctx);
+            const has_pseudo_element = compound.hasPseudoElement();
+            ltr_compounds.append(self.allocator, compound) catch |err| {
+                compound.deinit();
+                return err;
+            };
+
+            const had_whitespace = stream.skipWhitespace();
+            if (stream.atEnd()) break;
+            // 3.6.5: a combinator after a pseudo-element is invalid (none of
+            // the pseudo-elements here has internal structure).
+            if (has_pseudo_element) return error.InvalidSelector;
+
+            const combinator: Combinator = if (combinatorOf(stream.peek())) |explicit| blk: {
+                stream.advance();
+                _ = stream.skipWhitespace();
+                break :blk explicit;
+            } else if (had_whitespace) .Descendant else return error.InvalidSelector;
+            // A combinator with no compound after it.
+            if (stream.atEnd()) return error.InvalidSelector;
+            try ltr_combinators.append(self.allocator, combinator);
+        }
+
+        // Convert to RTL storage order: [div, p, span] with combinators
+        // [>, +] becomes compound=span, combinators=[{+, p}, {>, div}].
+        const compounds = ltr_compounds.items;
+        var rtl_combinators: std.ArrayList(CombinatorPair) = .empty;
+        errdefer rtl_combinators.deinit(self.allocator);
+        try rtl_combinators.ensureTotalCapacity(self.allocator, compounds.len - 1);
+        var i: usize = compounds.len - 1;
+        while (i > 0) {
+            i -= 1;
+            rtl_combinators.appendAssumeCapacity(.{ .combinator = ltr_combinators.items[i], .compound = compounds[i] });
+        }
+        const pairs = try rtl_combinators.toOwnedSlice(self.allocator);
+        const subject = compounds[compounds.len - 1];
+        // Ownership of every compound has moved into `result`.
+        ltr_compounds.clearRetainingCapacity();
+
+        var result = ComplexSelector{
+            .compound = subject,
+            .combinators = pairs,
+            .allocator = self.allocator,
+            .is_relative = relative,
+            .initial_combinator = initial_combinator,
+        };
+        result.computeAncestorHashes();
+        result.computeBacktrackingInfo();
+        return result;
+    }
+
+    /// <combinator> = '>' | '+' | '~'
+    fn combinatorOf(token: Token) ?Combinator {
+        if (token.tag != .delim) return null;
+        return switch (token.delim) {
+            '>' => .Child,
+            '+' => .NextSibling,
+            '~' => .SubsequentSibling,
+            else => null,
+        };
+    }
+
+    // ========================================================================
+    // Compound selectors
+    // ========================================================================
+
+    /// <compound-selector> [ <pseudo-compound-selector> ]*: a type selector
+    /// and subclass selectors, then pseudo-elements with the pseudo-classes
+    /// allowed after them - no whitespace in between.
+    fn parseCompound(self: *Parser, stream: *Stream, ctx: Context) ParserError!CompoundSelector {
+        var simples: std.ArrayList(SimpleSelector) = .empty;
         errdefer {
-            for (0..simple_selectors.len) |i| {
-                simple_selectors.toSliceMut()[i].deinit(self.allocator);
-            }
-            simple_selectors.deinit();
+            for (simples.items) |*simple| simple.deinit(self.allocator);
+            simples.deinit(self.allocator);
         }
 
-        // Parse first simple selector
-        try simple_selectors.append(try self.parseSimpleSelector());
+        if (try self.parseTypeSelector(stream)) |type_selector| try simples.append(self.allocator, type_selector);
 
-        // Parse additional simple selectors (no whitespace between)
-        while (self.isSimpleSelectorStart()) {
-            try simple_selectors.append(try self.parseSimpleSelector());
+        // The pseudo-element the compound has reached, if any.
+        var pseudo_element: ?[]const u8 = null;
+        while (true) {
+            const token = stream.peek();
+            var simple: SimpleSelector = switch (token.tag) {
+                .hash => blk: {
+                    // <id-selector> = <hash-token>, whose value "must be an
+                    // identifier".
+                    if (!token.hash_is_id or pseudo_element != null) return error.InvalidSelector;
+                    stream.advance();
+                    break :blk .{ .Id = .{ .id = token.value } };
+                },
+                .delim => blk: {
+                    // <class-selector> = '.' <ident-token>
+                    if (token.delim != '.') break;
+                    if (pseudo_element != null) return error.InvalidSelector;
+                    const name = stream.peekAt(1);
+                    if (name.tag != .ident) return error.InvalidSelector;
+                    stream.pos += 2;
+                    break :blk .{ .Class = .{ .class_name = name.value } };
+                },
+                .lbracket => blk: {
+                    if (pseudo_element != null) return error.InvalidSelector;
+                    const close = try self.matchingClose(stream.tokens, stream.pos);
+                    const contents = stream.tokens[stream.pos + 1 .. close];
+                    stream.pos = if (close < stream.tokens.len) close + 1 else close;
+                    break :blk .{ .Attribute = try self.parseAttribute(contents) };
+                },
+                .colon => blk: {
+                    if (stream.peekAt(1).tag == .colon) {
+                        // <pseudo-element-selector> = ':' <pseudo-class-selector>
+                        if (ctx.real) return error.InvalidSelector;
+                        stream.pos += 2;
+                        const name = try self.parsePseudoElement(stream, pseudo_element);
+                        pseudo_element = name;
+                        break :blk .{ .PseudoElement = .{ .name = name } };
+                    }
+                    stream.advance();
+                    const parsed = try self.parsePseudoClass(stream, ctx, pseudo_element);
+                    if (parsed == .PseudoElement) {
+                        // A legacy one-colon pseudo-element (:before, ...).
+                        if (ctx.real or pseudo_element != null) {
+                            var dropped = parsed;
+                            dropped.deinit(self.allocator);
+                            return error.InvalidSelector;
+                        }
+                        pseudo_element = parsed.PseudoElement.name;
+                    }
+                    break :blk parsed;
+                },
+                else => break,
+            };
+            simples.append(self.allocator, simple) catch |err| {
+                simple.deinit(self.allocator);
+                return err;
+            };
         }
 
-        if (simple_selectors.len == 0) {
-            return error.InvalidSelector;
-        }
-
+        if (simples.items.len == 0) return error.InvalidSelector;
         return CompoundSelector{
-            .simple_selectors = try simple_selectors.toOwnedSlice(),
+            .simple_selectors = try simples.toOwnedSlice(self.allocator),
             .allocator = self.allocator,
         };
     }
 
-    /// Parse simple selector
-    fn parseSimpleSelector(self: *Parser) ParserError!SimpleSelector {
-        const token = self.current_token orelse return error.UnexpectedEOF;
+    /// <type-selector> = <wq-name> | <ns-prefix>? '*', where
+    /// <wq-name> = <ns-prefix>? <ident-token> and
+    /// <ns-prefix> = [ <ident-token> | '*' ]? '|' - no whitespace inside.
+    /// Null when the compound starts with no type selector.
+    fn parseTypeSelector(self: *Parser, stream: *Stream) ParserError!?SimpleSelector {
+        const t0 = stream.peek();
+        const t1 = stream.peekAt(1);
+        const t2 = stream.peekAt(2);
 
-        return switch (token.tag) {
-            .asterisk => blk: {
-                try self.advance();
-                break :blk SimpleSelector.Universal;
-            },
-            .ident => blk: {
-                const tag_name = token.value;
-                try self.advance();
-                break :blk SimpleSelector{ .Type = .{ .tag_name = tag_name } };
-            },
-            .dot => blk: {
-                try self.advance();
-                const class_token = self.current_token orelse return error.UnexpectedEOF;
-                if (class_token.tag != .ident) return error.InvalidSelector;
-                const class_name = class_token.value;
-                try self.advance();
-                break :blk SimpleSelector{ .Class = .{ .class_name = class_name } };
-            },
-            .hash => blk: {
-                const id = token.value;
-                try self.advance();
-                break :blk SimpleSelector{ .Id = .{ .id = id } };
-            },
-            .lbracket => blk: {
-                break :blk SimpleSelector{ .Attribute = try self.parseAttribute() };
-            },
-            .colon => blk: {
-                try self.advance();
-                // Check for pseudo-element (::)
-                if (self.current_token) |next_token| {
-                    if (next_token.tag == .colon) {
-                        try self.advance();
-                        return try self.parsePseudoElement();
-                    }
-                }
-                break :blk SimpleSelector{ .PseudoClass = try self.parsePseudoClass() };
-            },
-            else => error.InvalidSelector,
-        };
+        // ns-prefix '|' followed by a name or '*'.
+        if (t1.isDelim('|') and (t0.tag == .ident or t0.isDelim('*'))) {
+            if (t2.tag != .ident and !t2.isDelim('*')) return error.InvalidSelector;
+            // A named prefix is never declared: "A type selector or universal
+            // selector containing a namespace prefix that has not been
+            // previously declared is an invalid selector."
+            if (t0.tag == .ident) return error.InvalidSelector;
+            stream.pos += 3;
+            return try self.typeOrUniversal(t2, .any);
+        }
+        if (t0.isDelim('|')) {
+            if (t1.tag != .ident and !t1.isDelim('*')) return error.InvalidSelector;
+            stream.pos += 2;
+            return try self.typeOrUniversal(t1, .none);
+        }
+        if (t0.tag == .ident or t0.isDelim('*')) {
+            stream.advance();
+            return try self.typeOrUniversal(t0, .any);
+        }
+        return null;
     }
 
-    /// Parse attribute selector
-    fn parseAttribute(self: *Parser) ParserError!AttributeSelector {
-        // Consume '['
-        try self.expectToken(.lbracket);
-        try self.advance();
+    fn typeOrUniversal(self: *Parser, name: Token, namespace: NamespaceConstraint) ParserError!SimpleSelector {
+        if (name.tag != .ident) return .{ .Universal = .{ .namespace = namespace } };
+        return .{ .Type = .{ .tag_name = name.value, .lower_name = try self.lowercase(name.value), .namespace = namespace } };
+    }
 
-        // Parse attribute name
-        const name_token = self.current_token orelse return error.UnexpectedEOF;
-        if (name_token.tag != .ident) return error.InvalidSelector;
+    // ========================================================================
+    // Attribute selectors
+    // ========================================================================
 
-        // Per HTML spec and Selectors spec: attribute names are ASCII case-insensitive in HTML
-        // Normalize to lowercase for consistent matching
-        const name = try std.ascii.allocLowerString(self.allocator, name_token.value);
-        // Every failure below - no value, no ']', a stray token - returns
-        // after the name was lowered into an allocation of its own.
-        errdefer self.allocator.free(name);
-        try self.advance();
+    /// <attribute-selector> = '[' <wq-name> ']' |
+    ///   '[' <wq-name> <attr-matcher> [ <string-token> | <ident-token> ]
+    ///   <attr-modifier>? ']'
+    /// over the block's contents (whitespace allowed between the parts, not
+    /// inside the name or the matcher).
+    fn parseAttribute(self: *Parser, contents: []const Token) ParserError!AttributeSelector {
+        var stream = Stream{ .tokens = contents };
+        _ = stream.skipWhitespace();
 
-        // Check for matcher operator
-        const token = self.current_token orelse return error.UnexpectedEOF;
+        // <wq-name>
+        var namespace: NamespaceConstraint = .none;
+        const t0 = stream.peek();
+        const t1 = stream.peekAt(1);
+        const t2 = stream.peekAt(2);
+        const name_token: Token = if (t0.isDelim('*') and t1.isDelim('|')) blk: {
+            if (t2.tag != .ident) return error.InvalidSelector;
+            namespace = .any;
+            stream.pos += 3;
+            break :blk t2;
+        } else if (t0.isDelim('|') and t1.tag == .ident) blk: {
+            stream.pos += 2;
+            break :blk t1;
+        } else if (t0.tag == .ident) blk: {
+            // ident '|' ident is a named prefix - never declared, so invalid.
+            // ident '|' '=' is the name and the dash-match matcher.
+            if (t1.isDelim('|') and t2.tag == .ident) return error.InvalidSelector;
+            stream.advance();
+            break :blk t0;
+        } else return error.InvalidSelector;
 
-        var matcher: AttributeMatcher = undefined;
+        const lower_name = try self.lowercase(name_token.value);
+        var selector = AttributeSelector{
+            .name = name_token.value,
+            .lower_name = lower_name,
+            .namespace = namespace,
+            .matcher = .Presence,
+            .html_case_insensitive_value = isHtmlCaseInsensitiveValueAttribute(lower_name),
+        };
 
+        _ = stream.skipWhitespace();
+        if (stream.atEnd()) return selector;
+
+        // <attr-matcher> = [ '~' | '|' | '^' | '$' | '*' ]? '='
+        const m0 = stream.peek();
+        if (m0.tag != .delim) return error.InvalidSelector;
+        var operator: u21 = '=';
+        if (m0.delim != '=') {
+            if (!stream.peekAt(1).isDelim('=')) return error.InvalidSelector;
+            operator = m0.delim;
+            stream.advance();
+        }
+        stream.advance();
+        _ = stream.skipWhitespace();
+
+        // [ <string-token> | <ident-token> ]
+        const value_token = stream.peek();
+        if (value_token.tag != .string and value_token.tag != .ident) return error.InvalidSelector;
+        const value = value_token.value;
+        stream.advance();
+        selector.matcher = switch (operator) {
+            '=' => .{ .Exact = .{ .value = value } },
+            '~' => .{ .Includes = .{ .value = value } },
+            '|' => .{ .DashMatch = .{ .value = value } },
+            '^' => .{ .Prefix = .{ .value = value } },
+            '$' => .{ .Suffix = .{ .value = value } },
+            '*' => .{ .Substring = .{ .value = value } },
+            else => return error.InvalidSelector,
+        };
+
+        // <attr-modifier> = i | s, ASCII case-insensitive (3.7).
+        _ = stream.skipWhitespace();
+        if (!stream.atEnd()) {
+            const modifier = stream.peek();
+            if (modifier.tag != .ident) return error.InvalidSelector;
+            if (std.ascii.eqlIgnoreCase(modifier.value, "i")) {
+                selector.case = .insensitive;
+            } else if (std.ascii.eqlIgnoreCase(modifier.value, "s")) {
+                selector.case = .sensitive;
+            } else return error.InvalidSelector;
+            stream.advance();
+            _ = stream.skipWhitespace();
+        }
+        if (!stream.atEnd()) return error.InvalidSelector;
+        return selector;
+    }
+
+    // ========================================================================
+    // Pseudo-classes
+    // ========================================================================
+
+    /// After ':': <pseudo-class-selector> = ':' <ident-token> |
+    /// ':' <function-token> <any-value> ')' - or a legacy one-colon
+    /// pseudo-element. `after_pseudo_element` is the pseudo-element this
+    /// compound already has: only some pseudo-classes may follow one.
+    fn parsePseudoClass(self: *Parser, stream: *Stream, ctx: Context, after_pseudo_element: ?[]const u8) ParserError!SimpleSelector {
+        const token = stream.peek();
         switch (token.tag) {
-            .rbracket => {
-                // [attr] - presence only
-                matcher = AttributeMatcher.Presence;
-            },
-            .equals => {
-                try self.advance();
-                const value = try self.parseAttributeValue();
-                matcher = AttributeMatcher{ .Exact = .{ .value = value } };
-            },
-            .prefix_match => {
-                try self.advance();
-                const value = try self.parseAttributeValue();
-                matcher = AttributeMatcher{ .Prefix = .{ .value = value } };
-            },
-            .suffix_match => {
-                try self.advance();
-                const value = try self.parseAttributeValue();
-                matcher = AttributeMatcher{ .Suffix = .{ .value = value } };
-            },
-            .substring_match => {
-                try self.advance();
-                const value = try self.parseAttributeValue();
-                matcher = AttributeMatcher{ .Substring = .{ .value = value } };
-            },
-            .includes_match => {
-                try self.advance();
-                const value = try self.parseAttributeValue();
-                matcher = AttributeMatcher{ .Includes = .{ .value = value } };
-            },
-            .dash_match => {
-                try self.advance();
-                const value = try self.parseAttributeValue();
-                matcher = AttributeMatcher{ .DashMatch = .{ .value = value } };
-            },
-            else => return error.InvalidSelector,
-        }
-
-        // Check for case-sensitivity flag ('i' or 's') before ']'
-        var case_sensitive = true;
-
-        // Skip whitespace before checking for flag
-        self.skipWhitespace();
-
-        // Check if current token is a case-sensitivity flag
-        if (self.current_token) |flag_token| {
-            if (flag_token.tag == .ident) {
-                const flag = flag_token.value;
-                if (std.mem.eql(u8, flag, "i") or std.mem.eql(u8, flag, "s")) {
-                    if (std.mem.eql(u8, flag, "i")) {
-                        case_sensitive = false;
-                    }
-                    // Consume the flag
-                    try self.advance();
-                    // Skip any whitespace after the flag
-                    self.skipWhitespace();
+            .ident => {
+                stream.advance();
+                const name = token.value;
+                // 16: <legacy-pseudo-element-selector> = ':' [before | after
+                // | first-line | first-letter], never a pseudo-class.
+                for ([_][]const u8{ "before", "after", "first-line", "first-letter" }) |legacy| {
+                    if (std.ascii.eqlIgnoreCase(name, legacy)) return .{ .PseudoElement = .{ .name = legacy } };
                 }
-            }
-        }
-
-        // Consume ']'
-        try self.expectToken(.rbracket);
-        try self.advance();
-
-        return AttributeSelector{
-            .name = name,
-            .matcher = matcher,
-            .case_sensitive = case_sensitive,
-            .allocator = self.allocator,
-        };
-    }
-
-    /// Parse attribute value (string or identifier)
-    fn parseAttributeValue(self: *Parser) ParserError![]const u8 {
-        const token = self.current_token orelse return error.UnexpectedEOF;
-        const value = switch (token.tag) {
-            .string, .ident => token.value,
+                const kind = simplePseudoClass(name) orelse return error.InvalidSelector;
+                if (after_pseudo_element) |pseudo| if (!allowedAfterPseudoElement(pseudo, kind)) return error.InvalidSelector;
+                return .{ .PseudoClass = .{ .kind = kind } };
+            },
+            .function => {
+                const close = try self.matchingClose(stream.tokens, stream.pos);
+                const args = stream.tokens[stream.pos + 1 .. close];
+                stream.pos = if (close < stream.tokens.len) close + 1 else close;
+                const kind = try self.functionalPseudoClass(token.value, args, ctx);
+                var selector = PseudoClassSelector{ .kind = kind };
+                if (after_pseudo_element) |pseudo| if (!allowedAfterPseudoElement(pseudo, kind)) {
+                    selector.deinit(self.allocator);
+                    return error.InvalidSelector;
+                };
+                return .{ .PseudoClass = selector };
+            },
             else => return error.InvalidSelector,
-        };
-        try self.advance();
-        return value;
-    }
-
-    /// Parse pseudo-class selector
-    fn parsePseudoClass(self: *Parser) ParserError!PseudoClassSelector {
-        const name_token = self.current_token orelse return error.UnexpectedEOF;
-        if (name_token.tag != .ident) return error.InvalidSelector;
-        const name = name_token.value;
-        try self.advance();
-
-        // Check for function pseudo-class (with parentheses)
-        if (self.current_token) |token| {
-            if (token.tag == .lparen) {
-                return try self.parseFunctionalPseudoClass(name);
-            }
         }
-
-        // Simple pseudo-class (no arguments)
-        const kind = try self.parsePseudoClassName(name);
-        return PseudoClassSelector{ .kind = kind };
     }
 
-    /// Parse pseudo-class name without arguments
-    fn parsePseudoClassName(_: *Parser, name: []const u8) ParserError!PseudoClassKind {
-        if (std.mem.eql(u8, name, "first-child")) return .FirstChild;
-        if (std.mem.eql(u8, name, "last-child")) return .LastChild;
-        if (std.mem.eql(u8, name, "only-child")) return .OnlyChild;
-        if (std.mem.eql(u8, name, "first-of-type")) return .FirstOfType;
-        if (std.mem.eql(u8, name, "last-of-type")) return .LastOfType;
-        if (std.mem.eql(u8, name, "only-of-type")) return .OnlyOfType;
-        if (std.mem.eql(u8, name, "empty")) return .Empty;
-        if (std.mem.eql(u8, name, "root")) return .Root;
-        if (std.mem.eql(u8, name, "scope")) return .Scope;
-        if (std.ascii.eqlIgnoreCase(name, "any-link")) return .AnyLink;
-        if (std.ascii.eqlIgnoreCase(name, "link")) return .Link;
-        if (std.ascii.eqlIgnoreCase(name, "visited")) return .Visited;
-        if (std.mem.eql(u8, name, "hover")) return .Hover;
-        if (std.mem.eql(u8, name, "active")) return .Active;
-        if (std.mem.eql(u8, name, "focus")) return .Focus;
-        if (std.mem.eql(u8, name, "focus-visible")) return .FocusVisible;
-        if (std.mem.eql(u8, name, "focus-within")) return .FocusWithin;
-        if (std.ascii.eqlIgnoreCase(name, "enabled")) return .Enabled;
-        if (std.ascii.eqlIgnoreCase(name, "disabled")) return .Disabled;
-        if (std.ascii.eqlIgnoreCase(name, "read-only")) return .ReadOnly;
-        if (std.ascii.eqlIgnoreCase(name, "read-write")) return .ReadWrite;
-        if (std.ascii.eqlIgnoreCase(name, "checked")) return .Checked;
-        if (std.ascii.eqlIgnoreCase(name, "valid")) return .Valid;
-        if (std.ascii.eqlIgnoreCase(name, "invalid")) return .Invalid;
-        if (std.ascii.eqlIgnoreCase(name, "default")) return .Default;
-        if (std.ascii.eqlIgnoreCase(name, "indeterminate")) return .Indeterminate;
-        if (std.ascii.eqlIgnoreCase(name, "required")) return .Required;
-        if (std.ascii.eqlIgnoreCase(name, "optional")) return .Optional;
-        if (std.ascii.eqlIgnoreCase(name, "in-range")) return .InRange;
-        if (std.ascii.eqlIgnoreCase(name, "out-of-range")) return .OutOfRange;
-        if (std.ascii.eqlIgnoreCase(name, "placeholder-shown")) return .PlaceholderShown;
-        if (std.ascii.eqlIgnoreCase(name, "autofill")) return .Autofill;
-        if (std.ascii.eqlIgnoreCase(name, "-webkit-autofill")) return .Autofill;
-        if (std.ascii.eqlIgnoreCase(name, "user-valid")) return .UserValid;
-        if (std.ascii.eqlIgnoreCase(name, "user-invalid")) return .UserInvalid;
-        if (std.ascii.eqlIgnoreCase(name, "open")) return .Open;
-        if (std.ascii.eqlIgnoreCase(name, "popover-open")) return .PopoverOpen;
-        if (std.ascii.eqlIgnoreCase(name, "modal")) return .Modal;
-        if (std.ascii.eqlIgnoreCase(name, "playing")) return .Playing;
-        if (std.ascii.eqlIgnoreCase(name, "paused")) return .Paused;
-        if (std.ascii.eqlIgnoreCase(name, "seeking")) return .Seeking;
-        if (std.ascii.eqlIgnoreCase(name, "buffering")) return .Buffering;
-        if (std.ascii.eqlIgnoreCase(name, "stalled")) return .Stalled;
-        if (std.ascii.eqlIgnoreCase(name, "muted")) return .Muted;
-        if (std.ascii.eqlIgnoreCase(name, "volume-locked")) return .VolumeLocked;
-        if (std.ascii.eqlIgnoreCase(name, "heading")) return .{ .Heading = 0b111111 };
-        if (std.mem.eql(u8, name, "target")) return .Target;
-        if (std.ascii.eqlIgnoreCase(name, "defined")) return .Defined;
+    /// The non-functional pseudo-classes, by name (ASCII case-insensitive,
+    /// Selectors 4 3.5). Null for one Crane does not support, which makes the
+    /// selector invalid (3.9: "UAs must treat as invalid any pseudo-classes
+    /// ... for which they have no usable level of support").
+    fn simplePseudoClass(name: []const u8) ?PseudoClassKind {
+        const Entry = struct { []const u8, PseudoClassKind };
+        const table = [_]Entry{
+            .{ "first-child", .FirstChild },             .{ "last-child", .LastChild },
+            .{ "only-child", .OnlyChild },               .{ "first-of-type", .FirstOfType },
+            .{ "last-of-type", .LastOfType },            .{ "only-of-type", .OnlyOfType },
+            .{ "empty", .Empty },                        .{ "root", .Root },
+            .{ "scope", .Scope },                        .{ "any-link", .AnyLink },
+            .{ "link", .Link },                          .{ "visited", .Visited },
+            .{ "hover", .Hover },                        .{ "active", .Active },
+            .{ "focus", .Focus },                        .{ "focus-visible", .FocusVisible },
+            .{ "focus-within", .FocusWithin },           .{ "enabled", .Enabled },
+            .{ "disabled", .Disabled },                  .{ "read-only", .ReadOnly },
+            .{ "read-write", .ReadWrite },               .{ "checked", .Checked },
+            .{ "valid", .Valid },                        .{ "invalid", .Invalid },
+            .{ "default", .Default },                    .{ "indeterminate", .Indeterminate },
+            .{ "required", .Required },                  .{ "optional", .Optional },
+            .{ "in-range", .InRange },                   .{ "out-of-range", .OutOfRange },
+            .{ "placeholder-shown", .PlaceholderShown }, .{ "autofill", .Autofill },
+            // Appendix B: a legacy selector alias of :autofill.
+            .{ "-webkit-autofill", .Autofill },          .{ "user-valid", .UserValid },
+            .{ "user-invalid", .UserInvalid },           .{ "open", .Open },
+            .{ "popover-open", .PopoverOpen },           .{ "modal", .Modal },
+            .{ "playing", .Playing },                    .{ "paused", .Paused },
+            .{ "seeking", .Seeking },                    .{ "buffering", .Buffering },
+            .{ "stalled", .Stalled },                    .{ "muted", .Muted },
+            .{ "volume-locked", .VolumeLocked },         .{ "heading", .{ .Heading = 0b111111 } },
+            .{ "target", .Target },                      .{ "defined", .Defined },
+            .{ "host", .{ .Host = null } },
+        };
+        for (table) |entry| {
+            if (std.ascii.eqlIgnoreCase(name, entry[0])) return entry[1];
+        }
+        return null;
+    }
 
+    /// 3.6.3: "This specification allows any pseudo-element to be followed
+    /// by any combination of the logical combination pseudo-classes and the
+    /// user action pseudo-classes." ::part() (CSS Shadow Parts) also allows
+    /// the pseudo-classes that are not tree-structural.
+    fn allowedAfterPseudoElement(pseudo_element: []const u8, kind: PseudoClassKind) bool {
+        switch (kind) {
+            .Hover, .Active, .Focus, .FocusVisible, .FocusWithin, .Is, .Where, .Not => return true,
+            .FirstChild, .LastChild, .OnlyChild, .FirstOfType, .LastOfType, .OnlyOfType, .Empty, .Root, .NthChild, .NthLastChild, .NthOfType, .NthLastOfType, .Has, .Scope, .Host => return false,
+            else => return std.mem.eql(u8, pseudo_element, "part"),
+        }
+    }
+
+    /// A functional pseudo-class `name(` over its arguments `args`.
+    fn functionalPseudoClass(self: *Parser, name: []const u8, args: []const Token, ctx: Context) ParserError!PseudoClassKind {
+        const real = Context{ .real = true, .in_has = ctx.in_has };
+        if (std.ascii.eqlIgnoreCase(name, "not")) {
+            // 4.3: :not(<complex-real-selector-list>).
+            return .{ .Not = try self.boxedList(args, real, .{ .forgiving = false, .relative = false }) };
+        }
+        if (std.ascii.eqlIgnoreCase(name, "is")) {
+            return .{ .Is = try self.boxedList(args, real, .{ .forgiving = true, .relative = false }) };
+        }
+        if (std.ascii.eqlIgnoreCase(name, "where")) {
+            return .{ .Where = try self.boxedList(args, real, .{ .forgiving = true, .relative = false }) };
+        }
+        if (std.ascii.eqlIgnoreCase(name, "has")) {
+            // 4.5: "The :has() pseudo-class cannot be nested; :has() is not
+            // valid within :has()", and its argument is a
+            // <relative-selector-list> (unforgiving since 2022 - all three
+            // engines).
+            if (ctx.in_has) return error.InvalidSelector;
+            return .{ .Has = try self.boxedList(args, .{ .real = true, .in_has = true }, .{ .forgiving = false, .relative = true }) };
+        }
+        if (std.ascii.eqlIgnoreCase(name, "nth-child") or std.ascii.eqlIgnoreCase(name, "nth-last-child")) {
+            var stream = Stream{ .tokens = args };
+            var pattern = try parseAnPlusB(&stream);
+            _ = stream.skipWhitespace();
+            if (!stream.atEnd()) {
+                // 13.3.1: :nth-child(<an+b> [of <complex-real-selector-list>]?)
+                const of = stream.peek();
+                if (of.tag != .ident or !std.ascii.eqlIgnoreCase(of.value, "of")) return error.InvalidSelector;
+                stream.advance();
+                pattern.of = try self.boxedList(args[stream.pos..], real, .{ .forgiving = false, .relative = false });
+            }
+            return if (std.ascii.eqlIgnoreCase(name, "nth-child")) .{ .NthChild = pattern } else .{ .NthLastChild = pattern };
+        }
+        if (std.ascii.eqlIgnoreCase(name, "nth-of-type") or std.ascii.eqlIgnoreCase(name, "nth-last-of-type")) {
+            var stream = Stream{ .tokens = args };
+            const pattern = try parseAnPlusB(&stream);
+            _ = stream.skipWhitespace();
+            if (!stream.atEnd()) return error.InvalidSelector;
+            return if (std.ascii.eqlIgnoreCase(name, "nth-of-type")) .{ .NthOfType = pattern } else .{ .NthLastOfType = pattern };
+        }
+        if (std.ascii.eqlIgnoreCase(name, "lang")) return .{ .Lang = try self.parseLanguageRanges(args) };
+        if (std.ascii.eqlIgnoreCase(name, "dir")) {
+            // 7.1: "The argument to :dir() must be a single identifier".
+            const ident = try singleToken(args, .ident);
+            return .{ .Dir = if (std.ascii.eqlIgnoreCase(ident.value, "ltr")) .ltr else if (std.ascii.eqlIgnoreCase(ident.value, "rtl")) .rtl else .other };
+        }
+        if (std.ascii.eqlIgnoreCase(name, "state")) {
+            // HTML: ":state(<custom-ident>)".
+            return .{ .State = (try singleToken(args, .ident)).value };
+        }
+        if (std.ascii.eqlIgnoreCase(name, "heading")) return .{ .Heading = try parseHeadingLevels(args) };
+        if (std.ascii.eqlIgnoreCase(name, "host")) {
+            // CSS Scoping 3.2.1: :host(<compound-selector>).
+            return .{ .Host = try self.compoundArgument(args, real) };
+        }
+        // :host-context() (CSS Scoping 3.2.1) is invalid here, as in Firefox
+        // and Safari - only Chrome parses it (wpt.fyi cc74d2669f,
+        // css/css-shadow/host-context-parsing.html: ":host-context(.a)"
+        // valid PASS/FAIL/FAIL), and the CSSWG marks it at risk.
         return error.InvalidSelector;
     }
 
-    /// Parse functional pseudo-class (with arguments)
-    fn parseFunctionalPseudoClass(self: *Parser, name: []const u8) ParserError!PseudoClassSelector {
-        // Consume '('
-        try self.expectToken(.lparen);
-        try self.advance();
-        self.skipWhitespace();
-
-        var kind: PseudoClassKind = undefined;
-
-        // Check pseudo-class type
-        if (std.mem.eql(u8, name, "nth-child")) {
-            var pattern = try self.parseNthPattern();
-            pattern.of = try self.parseNthOfSelector();
-            kind = PseudoClassKind{ .NthChild = pattern };
-        } else if (std.mem.eql(u8, name, "nth-last-child")) {
-            var pattern = try self.parseNthPattern();
-            pattern.of = try self.parseNthOfSelector();
-            kind = PseudoClassKind{ .NthLastChild = pattern };
-        } else if (std.mem.eql(u8, name, "state")) {
-            // HTML: ":state(<custom-ident>)". The ident is a slice of the
-            // selector string, as :lang()'s argument is.
-            const token = self.current_token orelse return error.UnexpectedEOF;
-            if (token.tag != .ident or !isCssIdentifier(token.value)) return error.InvalidSelector;
-            try self.advance();
-            kind = PseudoClassKind{ .State = token.value };
-        } else if (std.mem.eql(u8, name, "nth-of-type")) {
-            const pattern = try self.parseNthPattern();
-            kind = PseudoClassKind{ .NthOfType = pattern };
-        } else if (std.mem.eql(u8, name, "nth-last-of-type")) {
-            const pattern = try self.parseNthPattern();
-            kind = PseudoClassKind{ .NthLastOfType = pattern };
-        } else if (std.mem.eql(u8, name, "not")) {
-            const selector_list = try self.allocator.create(SelectorList);
-            errdefer self.allocator.destroy(selector_list);
-            selector_list.* = try self.parseSelectorList();
-            kind = PseudoClassKind{ .Not = selector_list };
-        } else if (std.mem.eql(u8, name, "is")) {
-            const selector_list = try self.allocator.create(SelectorList);
-            errdefer self.allocator.destroy(selector_list);
-            selector_list.* = try self.parseForgivingSelectorList();
-            kind = PseudoClassKind{ .Is = selector_list };
-        } else if (std.mem.eql(u8, name, "where")) {
-            const selector_list = try self.allocator.create(SelectorList);
-            errdefer self.allocator.destroy(selector_list);
-            selector_list.* = try self.parseForgivingSelectorList();
-            kind = PseudoClassKind{ .Where = selector_list };
-        } else if (std.mem.eql(u8, name, "has")) {
-            const selector_list = try self.allocator.create(SelectorList);
-            errdefer self.allocator.destroy(selector_list);
-            selector_list.* = try self.parseForgivingSelectorList();
-            kind = PseudoClassKind{ .Has = selector_list };
-        } else if (std.mem.eql(u8, name, "lang")) {
-            const lang_code = try self.parseLanguageCode();
-            kind = PseudoClassKind{ .Lang = lang_code };
-        } else if (std.ascii.eqlIgnoreCase(name, "heading")) {
-            kind = .{ .Heading = try self.parseHeadingLevels() };
-        } else if (std.ascii.eqlIgnoreCase(name, "dir")) {
-            const direction = try self.parseDirection();
-            kind = PseudoClassKind{ .Dir = direction };
-        } else {
-            return error.InvalidSelector;
-        }
-        // From here the kind owns what its argument parsed into - a selector
-        // list and its block, :nth-child's `of` list - and a missing ')'
-        // returns with it.
-        errdefer {
-            var parsed = PseudoClassSelector{ .kind = kind };
-            parsed.deinit(self.allocator);
-        }
-
-        self.skipWhitespace();
-
-        // Consume ')'
-        try self.expectToken(.rparen);
-        try self.advance();
-
-        return PseudoClassSelector{ .kind = kind };
+    /// A selector list in a block of its own, owned by the pseudo-class.
+    fn boxedList(self: *Parser, tokens: []const Token, ctx: Context, kind: ListKind) ParserError!*SelectorList {
+        const list = try self.allocator.create(SelectorList);
+        errdefer self.allocator.destroy(list);
+        list.* = try self.parseList(tokens, ctx, kind);
+        return list;
     }
 
-    /// Parse nth pattern (an+b)
-    fn parseNthPattern(self: *Parser) ParserError!NthPattern {
-        // Handle special keywords
-        const token = self.current_token orelse return error.UnexpectedEOF;
-        if (token.tag == .ident) {
-            if (std.mem.eql(u8, token.value, "odd")) {
-                try self.advance();
-                return NthPattern{ .a = 2, .b = 1 };
-            }
-            if (std.mem.eql(u8, token.value, "even")) {
-                try self.advance();
-                return NthPattern{ .a = 2, .b = 0 };
-            }
+    /// A <compound-selector> argument (:host(), ::slotted()),
+    /// as a one-selector list.
+    fn compoundArgument(self: *Parser, tokens: []const Token, ctx: Context) ParserError!*SelectorList {
+        var stream = Stream{ .tokens = tokens };
+        _ = stream.skipWhitespace();
+        const start = stream.pos;
+        if (stream.atEnd()) return error.InvalidSelector;
+        var compound = try self.parseCompound(&stream, ctx);
+        compound.deinit();
+        _ = stream.skipWhitespace();
+        if (!stream.atEnd()) return error.InvalidSelector;
+        // Parsed once to validate; parse the same tokens as a complex
+        // selector of one compound, which is what matching takes.
+        return self.boxedList(tokens[start..], ctx, .{ .forgiving = false, .relative = false });
+    }
+
+    /// The only token of `args` (whitespace around it allowed), of `tag`.
+    fn singleToken(args: []const Token, tag: Token.Tag) ParserError!Token {
+        var stream = Stream{ .tokens = args };
+        _ = stream.skipWhitespace();
+        const token = stream.peek();
+        if (token.tag != tag) return error.InvalidSelector;
+        stream.advance();
+        _ = stream.skipWhitespace();
+        if (!stream.atEnd()) return error.InvalidSelector;
+        return token;
+    }
+
+    /// 7.2: :lang() takes "a comma-separated list of one or more language
+    /// ranges", each a valid <ident> or <string>.
+    fn parseLanguageRanges(self: *Parser, args: []const Token) ParserError![]const []const u8 {
+        var ranges: std.ArrayList([]const u8) = .empty;
+        errdefer ranges.deinit(self.allocator);
+        var stream = Stream{ .tokens = args };
+        while (true) {
+            _ = stream.skipWhitespace();
+            const token = stream.peek();
+            if (token.tag != .ident and token.tag != .string) return error.InvalidSelector;
+            try ranges.append(self.allocator, token.value);
+            stream.advance();
+            _ = stream.skipWhitespace();
+            if (stream.atEnd()) break;
+            if (stream.peek().tag != .comma) return error.InvalidSelector;
+            stream.advance();
         }
-
-        // Parse an+b pattern
-        // Simplified parser - handles common cases
-        // Full implementation would need more complex parsing
-
-        var a: i32 = 0;
-        var b: i32 = 0;
-
-        // Try to parse coefficient (a)
-        if (token.tag == .ident) {
-            // Could be "n", "2n", "-n", etc.
-            const value = token.value;
-            if (std.mem.endsWith(u8, value, "n")) {
-                const coeff_str = value[0 .. value.len - 1];
-                if (coeff_str.len == 0) {
-                    a = 1;
-                } else if (std.mem.eql(u8, coeff_str, "-")) {
-                    a = -1;
-                } else if (std.mem.eql(u8, coeff_str, "+")) {
-                    a = 1;
-                } else {
-                    a = std.fmt.parseInt(i32, coeff_str, 10) catch return error.InvalidSelector;
-                }
-                try self.advance();
-                self.skipWhitespace();
-
-                // Check for +b or -b
-                if (self.current_token) |next_token| {
-                    if (next_token.tag == .plus) {
-                        try self.advance();
-                        self.skipWhitespace();
-                        const b_token = self.current_token orelse return error.UnexpectedEOF;
-                        b = std.fmt.parseInt(i32, b_token.value, 10) catch return error.InvalidSelector;
-                        try self.advance();
-                    } else if (next_token.tag == .ident and next_token.value[0] == '-') {
-                        b = std.fmt.parseInt(i32, next_token.value, 10) catch return error.InvalidSelector;
-                        try self.advance();
-                    }
-                }
-            } else {
-                // Just a number (b only)
-                b = std.fmt.parseInt(i32, value, 10) catch return error.InvalidSelector;
-                try self.advance();
-            }
-        } else {
-            return error.InvalidSelector;
-        }
-
-        return NthPattern{ .a = a, .b = b };
-    }
-
-    /// Whether `value`, which the tokenizer returned as an ident, is a CSS
-    /// <ident-token> (CSS Syntax 4.3.9 "would start an identifier"): this
-    /// tokenizer also hands numbers over as idents, and a <custom-ident>
-    /// cannot start with a digit, or with "-" and a digit.
-    fn isCssIdentifier(value: []const u8) bool {
-        if (value.len == 0) return false;
-        if (std.ascii.isDigit(value[0])) return false;
-        if (value[0] == '-' and value.len > 1 and std.ascii.isDigit(value[1])) return false;
-        if (std.mem.eql(u8, value, "-")) return false;
-        return true;
-    }
-
-    /// Selectors 4 14.4.1: the optional "of <complex-real-selector-list>"
-    /// after An+B in :nth-child() and :nth-last-child(). OWNED by the caller
-    /// (the pseudo-class); null when there is none.
-    fn parseNthOfSelector(self: *Parser) ParserError!?*SelectorList {
-        self.skipWhitespace();
-        const token = self.current_token orelse return null;
-        if (token.tag != .ident or !std.ascii.eqlIgnoreCase(token.value, "of")) return null;
-        try self.advance();
-        self.skipWhitespace();
-        const selector_list = try self.allocator.create(SelectorList);
-        errdefer self.allocator.destroy(selector_list);
-        selector_list.* = try self.parseSelectorList();
-        return selector_list;
-    }
-
-    /// Parse language code for :lang() pseudo-class
-    fn parseLanguageCode(self: *Parser) ParserError![]const u8 {
-        const token = self.current_token orelse return error.UnexpectedEOF;
-
-        // Language code can be either an identifier or a string
-        const lang_code = switch (token.tag) {
-            .ident, .string => token.value,
-            else => return error.InvalidSelector,
-        };
-
-        try self.advance();
-        return lang_code;
+        return try ranges.toOwnedSlice(self.allocator);
     }
 
     /// HTML :heading(<integer>#), CSS Values 4 integer syntax. Keep only
-    /// levels 1–6 in the mask, while accepting every syntactically valid integer.
-    fn parseHeadingLevels(self: *Parser) ParserError!u6 {
+    /// levels 1-6 in the mask, while accepting every syntactically valid
+    /// integer.
+    fn parseHeadingLevels(args: []const Token) ParserError!u6 {
         var levels: u6 = 0;
+        var stream = Stream{ .tokens = args };
         while (true) {
-            var token = self.current_token orelse return error.UnexpectedEOF;
-            const negative = token.tag == .minus;
-            if (token.tag == .plus or negative) {
-                const end = token.end;
-                try self.advance();
-                token = self.current_token orelse return error.UnexpectedEOF;
-                if (token.start != end) return error.InvalidSelector;
-            }
-            if (token.tag != .ident or token.value.len == 0) return error.InvalidSelector;
-            var level: u8 = 0;
-            for (token.value) |digit| {
-                if (!std.ascii.isDigit(digit)) return error.InvalidSelector;
-                level = @min(7, level * 10 + digit - '0');
-            }
-            if (!negative and level >= 1 and level <= 6) levels |= @as(u6, 1) << @as(u3, @intCast(level - 1));
-            try self.advance();
-            self.skipWhitespace();
-            const next = self.current_token orelse return error.UnexpectedEOF;
-            if (next.tag != .comma) return levels;
-            try self.advance();
-            self.skipWhitespace();
+            _ = stream.skipWhitespace();
+            const token = stream.peek();
+            if (token.tag != .number or !token.is_integer) return error.InvalidSelector;
+            if (token.number >= 1 and token.number <= 6) levels |= @as(u6, 1) << @as(u3, @intFromFloat(token.number - 1));
+            stream.advance();
+            _ = stream.skipWhitespace();
+            if (stream.atEnd()) return levels;
+            if (stream.peek().tag != .comma) return error.InvalidSelector;
+            stream.advance();
         }
     }
 
-    /// Parse direction for :dir() pseudo-class.
-    fn parseDirection(self: *Parser) ParserError!Direction {
-        const token = self.current_token orelse return error.UnexpectedEOF;
+    // ========================================================================
+    // Pseudo-elements
+    // ========================================================================
 
-        // Direction must be either "ltr" or "rtl"
-        if (token.tag != .ident) return error.InvalidSelector;
-
-        const direction = if (std.ascii.eqlIgnoreCase(token.value, "ltr"))
-            Direction.ltr
-        else if (std.ascii.eqlIgnoreCase(token.value, "rtl"))
-            Direction.rtl
-        else
-            return error.InvalidSelector;
-
-        try self.advance();
-        return direction;
+    /// After '::': a pseudo-element's name (lowercase), or an error for one
+    /// Crane does not know. `after` is the pseudo-element already in the
+    /// compound: 3.6.4 allows only defined sub-pseudo-elements after one.
+    fn parsePseudoElement(self: *Parser, stream: *Stream, after: ?[]const u8) ParserError![]const u8 {
+        const token = stream.peek();
+        const name: []const u8 = switch (token.tag) {
+            .ident => blk: {
+                stream.advance();
+                if (knownPseudoElement(token.value, &plain_pseudo_elements)) |known| break :blk known;
+                // Appendix B: "All other pseudo-elements whose names begin
+                // with "-webkit-" ... and that are not functional notations
+                // must be treated as valid at parse time."
+                if (token.value.len > 8 and std.ascii.startsWithIgnoreCase(token.value, "-webkit-")) break :blk try self.lowercase(token.value);
+                return error.InvalidSelector;
+            },
+            .function => blk: {
+                const known = knownPseudoElement(token.value, &functional_pseudo_elements) orelse return error.InvalidSelector;
+                const close = try self.matchingClose(stream.tokens, stream.pos);
+                const args = stream.tokens[stream.pos + 1 .. close];
+                stream.pos = if (close < stream.tokens.len) close + 1 else close;
+                try self.validatePseudoElementArgument(known, args);
+                break :blk known;
+            },
+            else => return error.InvalidSelector,
+        };
+        if (after) |first| {
+            // ::before::marker and ::after::marker; the tree-abiding
+            // pseudo-elements of a ::slotted() or ::part() element.
+            const ok = if (std.mem.eql(u8, first, "before") or std.mem.eql(u8, first, "after"))
+                std.mem.eql(u8, name, "marker")
+            else if (std.mem.eql(u8, first, "slotted") or std.mem.eql(u8, first, "part"))
+                !std.mem.eql(u8, name, "slotted") and !std.mem.eql(u8, name, "part")
+            else
+                false;
+            if (!ok) return error.InvalidSelector;
+        }
+        return name;
     }
 
-    /// Parse pseudo-element selector
-    fn parsePseudoElement(self: *Parser) ParserError!SimpleSelector {
-        const name_token = self.current_token orelse return error.UnexpectedEOF;
-        if (name_token.tag != .ident) return error.InvalidSelector;
-        const name = name_token.value;
-        try self.advance();
+    const plain_pseudo_elements = [_][]const u8{
+        "before",          "after",       "first-line", "first-letter",         "marker",
+        "placeholder",     "selection",   "backdrop",   "file-selector-button", "grammar-error",
+        "spelling-error",  "target-text", "cue",        "details-content",      "search-text",
+        "checkmark",       "picker-icon", "column",     "scroll-marker",        "scroll-marker-group",
+        "view-transition",
+    };
 
-        return SimpleSelector{ .PseudoElement = .{ .name = name } };
+    const functional_pseudo_elements = [_][]const u8{
+        "slotted",             "part",                  "highlight",
+        "cue",                 "view-transition-group", "view-transition-image-pair",
+        "view-transition-old", "view-transition-new",   "picker",
+        "scroll-button",
+    };
+
+    fn knownPseudoElement(name: []const u8, table: []const []const u8) ?[]const u8 {
+        for (table) |known| if (std.ascii.eqlIgnoreCase(name, known)) return known;
+        return null;
+    }
+
+    /// ::slotted(<compound-selector>), ::part(<ident>+), ::highlight(<ident>);
+    /// the others need some argument.
+    fn validatePseudoElementArgument(self: *Parser, name: []const u8, args: []const Token) ParserError!void {
+        if (std.mem.eql(u8, name, "slotted")) {
+            var list = try self.compoundArgument(args, .{ .real = true });
+            list.deinit();
+            self.allocator.destroy(list);
+            return;
+        }
+        var stream = Stream{ .tokens = args };
+        _ = stream.skipWhitespace();
+        if (stream.atEnd()) return error.InvalidSelector;
+        if (std.mem.eql(u8, name, "part")) {
+            while (!stream.atEnd()) {
+                if (stream.peek().tag != .ident) return error.InvalidSelector;
+                stream.advance();
+                _ = stream.skipWhitespace();
+            }
+        } else if (std.mem.eql(u8, name, "highlight")) {
+            _ = try singleToken(args, .ident);
+        }
+    }
+
+    // ========================================================================
+    // An+B
+    // ========================================================================
+
+    /// CSS Syntax 3 6.2 <an+b>, from the start of `stream` (leading
+    /// whitespace allowed). Leaves the stream after the B part.
+    fn parseAnPlusB(stream: *Stream) ParserError!NthPattern {
+        _ = stream.skipWhitespace();
+        const token = stream.peek();
+        switch (token.tag) {
+            .ident => {
+                // odd | even
+                if (std.ascii.eqlIgnoreCase(token.value, "odd")) {
+                    stream.advance();
+                    return .{ .a = 2, .b = 1 };
+                }
+                if (std.ascii.eqlIgnoreCase(token.value, "even")) {
+                    stream.advance();
+                    return .{ .a = 2, .b = 0 };
+                }
+                stream.advance();
+                // -n... forms: A is -1.
+                if (token.value.len > 0 and token.value[0] == '-') return nAndB(stream, -1, token.value[1..]);
+                return nAndB(stream, 1, token.value);
+            },
+            .delim => {
+                // '+'?† n ...: the '+' must touch the ident.
+                if (token.delim != '+') return error.InvalidSelector;
+                const ident = stream.peekAt(1);
+                if (ident.tag != .ident or ident.value.len == 0 or ident.value[0] == '-') return error.InvalidSelector;
+                stream.pos += 2;
+                return nAndB(stream, 1, ident.value);
+            },
+            .number => {
+                // <integer>: A is 0, B is the integer's value.
+                if (!token.is_integer) return error.InvalidSelector;
+                stream.advance();
+                return .{ .a = 0, .b = clampInt(token.number) };
+            },
+            .dimension => {
+                // <n-dimension> ... : A is the dimension's value.
+                if (!token.is_integer) return error.InvalidSelector;
+                stream.advance();
+                return nAndB(stream, clampInt(token.number), token.value);
+            },
+            else => return error.InvalidSelector,
+        }
+    }
+
+    /// The rest of an <an+b> whose A part is `a` and whose ident (or unit),
+    /// without A's sign, is `unit`: "n", "n-", or "n-<digits>".
+    fn nAndB(stream: *Stream, a: i32, unit: []const u8) ParserError!NthPattern {
+        if (unit.len == 0 or (unit[0] != 'n' and unit[0] != 'N')) return error.InvalidSelector;
+        const rest = unit[1..];
+        if (rest.len == 0) {
+            // n, optionally followed by <signed-integer> or
+            // ['+' | '-'] <signless-integer>.
+            const save = stream.pos;
+            _ = stream.skipWhitespace();
+            const next = stream.peek();
+            if (next.tag == .number and next.is_integer and next.sign != .none) {
+                stream.advance();
+                return .{ .a = a, .b = clampInt(next.number) };
+            }
+            if (next.isDelim('+') or next.isDelim('-')) {
+                stream.advance();
+                _ = stream.skipWhitespace();
+                const int = stream.peek();
+                if (int.tag != .number or !int.is_integer or int.sign != .none) return error.InvalidSelector;
+                stream.advance();
+                const b = clampInt(int.number);
+                return .{ .a = a, .b = if (next.delim == '-') -b else b };
+            }
+            stream.pos = save;
+            return .{ .a = a, .b = 0 };
+        }
+        if (rest[0] != '-') return error.InvalidSelector;
+        const digits = rest[1..];
+        if (digits.len == 0) {
+            // n- <signless-integer>: B is the negation of the integer.
+            _ = stream.skipWhitespace();
+            const int = stream.peek();
+            if (int.tag != .number or !int.is_integer or int.sign != .none) return error.InvalidSelector;
+            stream.advance();
+            return .{ .a = a, .b = -clampInt(int.number) };
+        }
+        // n-<digits>: B is the digits, negated.
+        for (digits) |d| if (!std.ascii.isDigit(d)) return error.InvalidSelector;
+        const value = std.fmt.parseFloat(f64, digits) catch return error.InvalidSelector;
+        return .{ .a = a, .b = -clampInt(value) };
+    }
+
+    fn clampInt(value: f64) i32 {
+        const max: f64 = std.math.maxInt(i32);
+        const min: f64 = std.math.minInt(i32);
+        return @intFromFloat(std.math.clamp(@trunc(value), min, max));
     }
 
     // ========================================================================
     // Utilities
     // ========================================================================
 
-    /// Check if current position is start of compound selector
-    fn isCompoundStart(self: *const Parser) bool {
-        const token = self.current_token orelse return false;
-        return switch (token.tag) {
-            .ident, .dot, .hash, .lbracket, .colon, .asterisk => true,
-            else => false,
+    /// `s` ASCII-lowercased: `s` itself when it has no uppercase ASCII, else
+    /// a copy the parse's list owns.
+    fn lowercase(self: *Parser, s: []const u8) ParserError![]const u8 {
+        for (s) |c| {
+            if (std.ascii.isUpper(c)) break;
+        } else return s;
+        const lowered = try std.ascii.allocLowerString(self.allocator, s);
+        self.strings.append(self.allocator, lowered) catch |err| {
+            self.allocator.free(lowered);
+            return err;
         };
-    }
-
-    /// Check if current position is start of simple selector
-    fn isSimpleSelectorStart(self: *const Parser) bool {
-        const token = self.current_token orelse return false;
-        return switch (token.tag) {
-            .dot, .hash, .lbracket, .colon => true,
-            else => false,
-        };
-    }
-
-    /// Advance to next token
-    fn advance(self: *Parser) ParserError!void {
-        self.current_token = self.tokenizer.nextToken() catch |err| {
-            return switch (err) {
-                error.UnexpectedToken => error.UnexpectedToken,
-                error.UnexpectedEOF => error.UnexpectedEOF,
-            };
-        };
-    }
-
-    /// Skip whitespace tokens
-    fn skipWhitespace(self: *Parser) void {
-        while (self.current_token) |token| {
-            if (token.tag != .whitespace) break;
-            self.advance() catch break;
-        }
-    }
-
-    /// Expect specific token type
-    fn expectToken(self: *const Parser, expected: Token.Tag) ParserError!void {
-        const token = self.current_token orelse return error.UnexpectedEOF;
-        if (token.tag != expected) return error.UnexpectedToken;
+        return lowered;
     }
 };
+
+/// HTML 4.16.2: the attributes whose values an HTML element in an HTML
+/// document matches ASCII case-insensitively, by (lowercase) name.
+pub fn isHtmlCaseInsensitiveValueAttribute(lower_name: []const u8) bool {
+    const names = [_][]const u8{
+        "accept",  "accept-charset", "align",     "alink",      "axis",     "bgcolor",
+        "charset", "checked",        "clear",     "codetype",   "color",    "compact",
+        "declare", "defer",          "dir",       "direction",  "disabled", "enctype",
+        "face",    "frame",          "hreflang",  "http-equiv", "lang",     "language",
+        "link",    "media",          "method",    "multiple",   "nohref",   "noresize",
+        "noshade", "nowrap",         "readonly",  "rel",        "rev",      "rules",
+        "scope",   "scrolling",      "selected",  "shape",      "target",   "text",
+        "type",    "valign",         "valuetype", "vlink",
+    };
+    for (names) |name| if (std.mem.eql(u8, lower_name, name)) return true;
+    return false;
+}
 
 // ============================================================================
 // Tests
@@ -1329,22 +1539,13 @@ pub const Parser = struct {
 
 const testing = @import("std").testing;
 
-// ============================================================================
-// Backtracking Analysis Tests
-// ============================================================================
-
 fn parseSelector(allocator: std.mem.Allocator, input: []const u8) !SelectorList {
-    var tokenizer = Tokenizer.init(allocator, input);
-    var p = try Parser.init(allocator, &tokenizer);
-    return try p.parse();
+    return parseSelectorList(allocator, input);
 }
 
 test "BacktrackingInfo - no combinators" {
-    const allocator = testing.allocator;
-
-    var selector = try parseSelector(allocator, "div.class");
+    var selector = try parseSelector(testing.allocator, "div.class");
     defer selector.deinit();
-
     const complex = &selector.selectors[0];
     try testing.expect(!complex.backtracking.has_descendant_combinator);
     try testing.expect(!complex.backtracking.has_sibling_combinator);
@@ -1353,11 +1554,8 @@ test "BacktrackingInfo - no combinators" {
 }
 
 test "BacktrackingInfo - descendant combinator" {
-    const allocator = testing.allocator;
-
-    var selector = try parseSelector(allocator, "div p");
+    var selector = try parseSelector(testing.allocator, "div p");
     defer selector.deinit();
-
     const complex = &selector.selectors[0];
     try testing.expect(complex.backtracking.has_descendant_combinator);
     try testing.expect(!complex.backtracking.has_sibling_combinator);
@@ -1365,22 +1563,16 @@ test "BacktrackingInfo - descendant combinator" {
 }
 
 test "BacktrackingInfo - child combinator" {
-    const allocator = testing.allocator;
-
-    var selector = try parseSelector(allocator, "div > p");
+    var selector = try parseSelector(testing.allocator, "div > p");
     defer selector.deinit();
-
     const complex = &selector.selectors[0];
     try testing.expect(!complex.backtracking.has_descendant_combinator);
     try testing.expect(!complex.backtracking.has_sibling_combinator);
 }
 
 test "BacktrackingInfo - sibling combinators" {
-    const allocator = testing.allocator;
-
-    var selector = try parseSelector(allocator, "div + p");
+    var selector = try parseSelector(testing.allocator, "div + p");
     defer selector.deinit();
-
     const complex = &selector.selectors[0];
     try testing.expect(!complex.backtracking.has_descendant_combinator);
     try testing.expect(complex.backtracking.has_sibling_combinator);
@@ -1388,69 +1580,36 @@ test "BacktrackingInfo - sibling combinators" {
 }
 
 test "BacktrackingInfo - mixed combinators" {
-    const allocator = testing.allocator;
-
-    var selector = try parseSelector(allocator, "div > span p + a");
+    var selector = try parseSelector(testing.allocator, "div > span p + a");
     defer selector.deinit();
-
     const complex = &selector.selectors[0];
     try testing.expect(complex.backtracking.has_descendant_combinator);
     try testing.expect(complex.backtracking.has_sibling_combinator);
 }
 
 test "BacktrackingInfo - ancestor ID detection" {
-    const allocator = testing.allocator;
-
-    var selector = try parseSelector(allocator, "#header div p");
+    var selector = try parseSelector(testing.allocator, "#header div p");
     defer selector.deinit();
-
-    const complex = &selector.selectors[0];
-    try testing.expect(complex.backtracking.has_ancestor_id);
+    try testing.expect(selector.selectors[0].backtracking.has_ancestor_id);
 }
 
 test "getFailureRecovery - descendant combinator failure" {
-    const allocator = testing.allocator;
-
-    var selector = try parseSelector(allocator, "div span p");
+    var selector = try parseSelector(testing.allocator, "div span p");
     defer selector.deinit();
-
-    const complex = &selector.selectors[0];
-    // Failure at first combinator (descendant) should allow descendant restart
-    const recovery = complex.getFailureRecovery(0);
-    try testing.expectEqual(MatchResult.not_matched_restart_descendant, recovery);
+    try testing.expectEqual(MatchResult.not_matched_restart_descendant, selector.selectors[0].getFailureRecovery(0));
 }
 
 test "getFailureRecovery - sibling combinator failure" {
-    const allocator = testing.allocator;
-
-    var selector = try parseSelector(allocator, "div + p");
+    var selector = try parseSelector(testing.allocator, "div + p");
     defer selector.deinit();
-
-    const complex = &selector.selectors[0];
-    // Failure at sibling combinator should allow sibling restart
-    const recovery = complex.getFailureRecovery(0);
-    try testing.expectEqual(MatchResult.not_matched_restart_later_sibling, recovery);
+    try testing.expectEqual(MatchResult.not_matched_restart_later_sibling, selector.selectors[0].getFailureRecovery(0));
 }
 
 test "getFailureRecovery - child combinator failure with descendant backup" {
-    const allocator = testing.allocator;
-
-    var selector = try parseSelector(allocator, "div span > p");
+    var selector = try parseSelector(testing.allocator, "div span > p");
     defer selector.deinit();
-
-    const complex = &selector.selectors[0];
-    // Failure at child combinator (index 1) with descendant combinator at index 0
-    const recovery = complex.getFailureRecovery(1);
-    try testing.expectEqual(MatchResult.not_matched_restart_descendant, recovery);
+    try testing.expectEqual(MatchResult.not_matched_restart_descendant, selector.selectors[0].getFailureRecovery(1));
 }
-
-// ============================================================================
-// Specificity Tests
-// ============================================================================
-
-// ============================================================================
-// :target, :state() and :nth-child(An+B of S)
-// ============================================================================
 
 test "parse :target as a pseudo-class" {
     var selector = try parseSelector(testing.allocator, "div:target");
@@ -1500,39 +1659,34 @@ fn expectInvalidSelector(input: []const u8) !void {
     } else |_| {}
 }
 
-test "an attribute selector that fails after its name frees the lowered name" {
-    // parseAttribute lowers the name into an allocation first; each of these
-    // fails after that (leaks lane, 2026-10-02: 42 in
-    // dom/nodes/ParentNode-querySelector-All.html alone).
-    try expectInvalidSelector("[Foo");
+test "an attribute selector that fails after its name frees what it made" {
+    // Each fails after the name was lowered into an allocation of its own
+    // (leaks lane, 2026-10-02: 42 in dom/nodes/ParentNode-querySelector-All.html alone).
+    try expectInvalidSelector("[Foo=]");
     try expectInvalidSelector("[foo=]");
-    try expectInvalidSelector("[foo bar]");
-    try expectInvalidSelector("[foo=bar");
-    try expectInvalidSelector("[foo='bar' x]");
-    try expectInvalidSelector("div [foo~=]");
+    try expectInvalidSelector("[Foo bar]");
+    try expectInvalidSelector("[FOO='bar' x]");
+    try expectInvalidSelector("div [Foo~=]");
     // The success path still hands the name to the selector.
     var valid = try parseSelector(testing.allocator, "[Foo='bar' i]");
     defer valid.deinit();
     const attribute = valid.selectors[0].compound.simple_selectors[0].Attribute;
-    try testing.expectEqualStrings("foo", attribute.name);
-    try testing.expect(!attribute.case_sensitive);
+    try testing.expectEqualStrings("foo", attribute.lower_name);
+    try testing.expectEqualStrings("Foo", attribute.name);
+    try testing.expect(attribute.case == .insensitive);
 }
 
 test "a functional pseudo-class that fails frees its selector list and its block" {
-    // parseFunctionalPseudoClass makes the list's block before parsing into
-    // it, and the kind before its ')' (leaks lane, 2026-10-02: 18 in
-    // dom/nodes/ParentNode-querySelector-All.html alone).
-    try expectInvalidSelector(":not(");
+    // Each parses part of an argument into a list before failing.
+    try expectInvalidSelector(":not(.a ])");
     try expectInvalidSelector(":not([)");
-    try expectInvalidSelector(":not(.a");
-    try expectInvalidSelector(":not(.a .b");
-    try expectInvalidSelector(":is(.a");
-    try expectInvalidSelector(":where(.a");
-    try expectInvalidSelector(":has(> .a");
-    try expectInvalidSelector(":nth-child(2 of .a");
+    try expectInvalidSelector(":not(.a, %)");
+    try expectInvalidSelector(":has(> .a, >)");
+    try expectInvalidSelector(":nth-child(2 of .a, %)");
     try expectInvalidSelector(":nth-child(2 of [)");
-    try expectInvalidSelector(":nth-last-child(2n+1 of .a");
+    try expectInvalidSelector(":nth-last-child(2n+1 of .a .b %)");
     try expectInvalidSelector("div:not([foo=]):is(.a)");
+    try expectInvalidSelector(":is(.a):not(.b) %");
     // The success path still owns each list.
     var valid = try parseSelector(testing.allocator, ":not(.a, [b]):is(.c):where(.d):has(> .e):nth-child(2 of .f)");
     defer valid.deinit();

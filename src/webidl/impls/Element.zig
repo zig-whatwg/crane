@@ -26,7 +26,6 @@ const Element = interfaces.Element;
 // Import related impls
 const DOMTokenListImpl = @import("DOMTokenList.zig");
 const NamedNodeMapImpl = @import("NamedNodeMap.zig");
-const ParentNodeImpl = @import("ParentNode.zig");
 
 // Import mixins for shared interface methods
 const mixins = @import("mixins");
@@ -1297,8 +1296,8 @@ fn existingAttrNodeAtHook(element: *runtime.Instance, index: usize) ?*runtime.In
     return if (link.isLive()) link.instance else null;
 }
 
-// Note: matches(), closest(), and webkitMatchesSelector() delegate to ParentNode mixin
-// which has access to the selector module. Element.zig cannot access selector directly.
+// Note: matches(), closest(), and webkitMatchesSelector() match through
+// dom.selector_matching, which querySelector() shares.
 
 // =============================================================================
 // Insert Adjacent Algorithm (DOM §4.10.7)
@@ -1731,9 +1730,9 @@ pub fn call_hasAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
 /// DOM §4.10.4 - Returns true if element matches the given selector
 /// Spec: https://dom.spec.whatwg.org/#dom-element-matches
 pub fn call_matches(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!bool {
-    // matches() is an Element method (not ParentNode mixin method)
-    // Use ParentNode impl's helper function for selector matching
-    return ParentNodeImpl.matches(instance, selectors);
+    // The matching is dom.selector_matching's, shared with ParentNode's
+    // querySelector() and querySelectorAll().
+    return dom.selector_matching.matches(instance, selectors.asSlice());
 }
 
 /// Operation: releasePointerCapture
@@ -2179,9 +2178,7 @@ pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: run
 /// DOM §4.10.4 - Returns closest ancestor (or self) matching selector
 /// Spec: https://dom.spec.whatwg.org/#dom-element-closest
 pub fn call_closest(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!?*runtime.Instance {
-    // closest() is an Element method (not ParentNode mixin method)
-    // Use ParentNode impl's helper function for selector matching
-    return ParentNodeImpl.closest(instance, selectors);
+    return dom.selector_matching.closest(instance, selectors.asSlice());
 }
 
 /// Operation: getSpatialNavigationContainer

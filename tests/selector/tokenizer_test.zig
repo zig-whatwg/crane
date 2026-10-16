@@ -1,476 +1,184 @@
-//! Tokenizer Tests (Selectors Level 4)
-//!
-//! Comprehensive test suite for CSS Selector tokenizer.
-//! Tests all token types, edge cases, and error handling.
+//! The selector tokenizer is CSS Syntax 3's (section 4): these pin each
+//! token type and the escape, preprocessing and number rules the
+//! querySelector WPT files exercise.
 
 const std = @import("std");
 const testing = std.testing;
 const selector = @import("selector");
 const Tokenizer = selector.Tokenizer;
 const Token = selector.Token;
+const Tag = Token.Tag;
 
-// ============================================================================
-// Basic Token Tests
-// ============================================================================
-
-test "Tokenizer: ident token" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "div");
-
-    const tok1 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.ident, tok1.tag);
-    try testing.expectEqualStrings("div", tok1.value);
-
-    const tok2 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.eof, tok2.tag);
-}
-
-test "Tokenizer: hash token (#id)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "#myId");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.hash, tok.tag);
-    try testing.expectEqualStrings("myId", tok.value);
-}
-
-test "Tokenizer: dot token" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, ".");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.dot, tok.tag);
-}
-
-test "Tokenizer: asterisk token (*)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "*");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.asterisk, tok.tag);
-}
-
-test "Tokenizer: string token (double quotes)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "\"hello world\"");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.string, tok.tag);
-    try testing.expectEqualStrings("hello world", tok.value);
-}
-
-test "Tokenizer: string token (single quotes)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "'hello world'");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.string, tok.tag);
-    try testing.expectEqualStrings("hello world", tok.value);
-}
-
-test "Tokenizer: whitespace token" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "   ");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.whitespace, tok.tag);
-    try testing.expectEqualStrings("   ", tok.value);
-}
-
-// ============================================================================
-// Combinator Tokens
-// ============================================================================
-
-test "Tokenizer: child combinator (>)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, ">");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.gt, tok.tag);
-}
-
-test "Tokenizer: next-sibling combinator (+)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "+");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.plus, tok.tag);
-}
-
-test "Tokenizer: subsequent-sibling combinator (~)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "~");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.tilde, tok.tag);
-}
-
-// ============================================================================
-// Attribute Matcher Tokens
-// ============================================================================
-
-test "Tokenizer: prefix match (^=)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "^=");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.prefix_match, tok.tag);
-}
-
-test "Tokenizer: suffix match ($=)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "$=");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.suffix_match, tok.tag);
-}
-
-test "Tokenizer: substring match (*=)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "*=");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.substring_match, tok.tag);
-}
-
-test "Tokenizer: includes match (~=)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "~=");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.includes_match, tok.tag);
-}
-
-test "Tokenizer: dash match (|=)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "|=");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.dash_match, tok.tag);
-}
-
-// ============================================================================
-// Delimiter Tokens
-// ============================================================================
-
-test "Tokenizer: comma" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, ",");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.comma, tok.tag);
-}
-
-test "Tokenizer: parentheses" {
-    const allocator = testing.allocator;
-    var tokenizer1 = Tokenizer.init(allocator, "(");
-    var tokenizer2 = Tokenizer.init(allocator, ")");
-
-    const tok1 = try tokenizer1.nextToken();
-    try testing.expectEqual(Token.Tag.lparen, tok1.tag);
-
-    const tok2 = try tokenizer2.nextToken();
-    try testing.expectEqual(Token.Tag.rparen, tok2.tag);
-}
-
-test "Tokenizer: brackets" {
-    const allocator = testing.allocator;
-    var tokenizer1 = Tokenizer.init(allocator, "[");
-    var tokenizer2 = Tokenizer.init(allocator, "]");
-
-    const tok1 = try tokenizer1.nextToken();
-    try testing.expectEqual(Token.Tag.lbracket, tok1.tag);
-
-    const tok2 = try tokenizer2.nextToken();
-    try testing.expectEqual(Token.Tag.rbracket, tok2.tag);
-}
-
-test "Tokenizer: colon" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, ":");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.colon, tok.tag);
-}
-
-test "Tokenizer: equals" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "=");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.equals, tok.tag);
-}
-
-// ============================================================================
-// Complex Selector Tests
-// ============================================================================
-
-test "Tokenizer: simple selector (div.container)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "div.container");
-
-    const tok1 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.ident, tok1.tag);
-    try testing.expectEqualStrings("div", tok1.value);
-
-    const tok2 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.dot, tok2.tag);
-
-    const tok3 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.ident, tok3.tag);
-    try testing.expectEqualStrings("container", tok3.value);
-
-    const tok4 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.eof, tok4.tag);
-}
-
-test "Tokenizer: combinator selector (div > p)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "div > p");
-
-    const tok1 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.ident, tok1.tag);
-    try testing.expectEqualStrings("div", tok1.value);
-
-    const tok2 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.whitespace, tok2.tag);
-
-    const tok3 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.gt, tok3.tag);
-
-    const tok4 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.whitespace, tok4.tag);
-
-    const tok5 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.ident, tok5.tag);
-    try testing.expectEqualStrings("p", tok5.value);
-}
-
-test "Tokenizer: attribute selector ([href^='https'])" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "[href^='https']");
-
-    const tok1 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.lbracket, tok1.tag);
-
-    const tok2 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.ident, tok2.tag);
-    try testing.expectEqualStrings("href", tok2.value);
-
-    const tok3 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.prefix_match, tok3.tag);
-
-    const tok4 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.string, tok4.tag);
-    try testing.expectEqualStrings("https", tok4.value);
-
-    const tok5 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.rbracket, tok5.tag);
-}
-
-test "Tokenizer: pseudo-class selector (:first-child)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, ":first-child");
-
-    const tok1 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.colon, tok1.tag);
-
-    const tok2 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.ident, tok2.tag);
-    try testing.expectEqualStrings("first-child", tok2.value);
-}
-
-test "Tokenizer: nth-child selector (:nth-child(2n+1))" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, ":nth-child(2n+1)");
-
-    const tok1 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.colon, tok1.tag);
-
-    const tok2 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.ident, tok2.tag);
-    try testing.expectEqualStrings("nth-child", tok2.value);
-
-    const tok3 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.lparen, tok3.tag);
-
-    const tok4 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.ident, tok4.tag);
-    try testing.expectEqualStrings("2n", tok4.value);
-
-    const tok5 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.plus, tok5.tag);
-
-    const tok6 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.ident, tok6.tag);
-    try testing.expectEqualStrings("1", tok6.value);
-
-    const tok7 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.rparen, tok7.tag);
-}
-
-// ============================================================================
-// Edge Cases
-// ============================================================================
-
-test "Tokenizer: identifier with hyphen (custom-element)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "custom-element");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.ident, tok.tag);
-    try testing.expectEqualStrings("custom-element", tok.value);
-}
-
-test "Tokenizer: identifier with underscore (my_class)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "my_class");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.ident, tok.tag);
-    try testing.expectEqualStrings("my_class", tok.value);
-}
-
-test "Tokenizer: identifier starting with hyphen (-webkit-transform)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "-webkit-transform");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.ident, tok.tag);
-    try testing.expectEqualStrings("-webkit-transform", tok.value);
-}
-
-test "Tokenizer: string with escaped quote" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "\"hello \\\" world\"");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.string, tok.tag);
-    // Note: tokenizer doesn't process escapes, just skips them
-    try testing.expectEqualStrings("hello \\\" world", tok.value);
-}
-
-test "Tokenizer: multiple whitespace types" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, " \t\n\r");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.whitespace, tok.tag);
-    try testing.expectEqualStrings(" \t\n\r", tok.value);
-}
-
-test "Tokenizer: empty input" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "");
-
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.eof, tok.tag);
-}
-
-// ============================================================================
-// Error Cases
-// ============================================================================
-
-test "Tokenizer: unclosed string (double quote)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "\"unclosed");
-
-    try testing.expectError(error.UnexpectedEOF, tokenizer.nextToken());
-}
-
-test "Tokenizer: unclosed string (single quote)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "'unclosed");
-
-    try testing.expectError(error.UnexpectedEOF, tokenizer.nextToken());
-}
-
-test "Tokenizer: hash without identifier" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "#");
-
-    try testing.expectError(error.UnexpectedToken, tokenizer.nextToken());
-}
-
-test "Tokenizer: invalid character" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "@");
-
-    try testing.expectError(error.UnexpectedToken, tokenizer.nextToken());
-}
-
-test "Tokenizer: string with unescaped newline" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "\"hello\nworld\"");
-
-    try testing.expectError(error.UnexpectedToken, tokenizer.nextToken());
-}
-
-// ============================================================================
-// Tokenize Full Selector Tests
-// ============================================================================
-
-test "Tokenizer: tokenize() - simple selector" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "div");
-
+fn expectTags(input: []const u8, tags: []const Tag) !void {
+    var tokenizer = Tokenizer.init(testing.allocator, input);
     const tokens = try tokenizer.tokenize();
-    defer allocator.free(tokens);
-
-    try testing.expectEqual(@as(usize, 2), tokens.len); // ident + eof
-    try testing.expectEqual(Token.Tag.ident, tokens[0].tag);
-    try testing.expectEqual(Token.Tag.eof, tokens[1].tag);
+    defer testing.allocator.free(tokens);
+    const got = try testing.allocator.alloc(Tag, tokens.len);
+    defer testing.allocator.free(got);
+    for (tokens, 0..) |token, i| got[i] = token.tag;
+    try testing.expectEqualSlices(Tag, tags, got);
 }
 
-test "Tokenizer: tokenize() - complex selector" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "div.class#id");
-
-    const tokens = try tokenizer.tokenize();
-    defer allocator.free(tokens);
-
-    try testing.expectEqual(@as(usize, 5), tokens.len); // div . class #id eof
+fn first(input: []const u8) Token {
+    var tokenizer = Tokenizer.init(testing.allocator, input);
+    return tokenizer.nextToken() catch unreachable;
 }
 
-// ============================================================================
-// Zero-Copy Verification
-// ============================================================================
+/// The token's value as the spec defines it.
+fn expectValue(token: Token, expected: []const u8) !void {
+    if (!token.needs_decode) return testing.expectEqualStrings(expected, token.value);
+    const decoded = try selector.tokenizer.decode(testing.allocator, token);
+    defer testing.allocator.free(decoded);
+    try testing.expectEqualStrings(expected, decoded);
+}
 
-test "Tokenizer: zero-copy token values" {
-    const allocator = testing.allocator;
+test "idents, hashes, strings, delims and punctuation" {
+    try expectTags("div.container", &.{ .ident, .delim, .ident, .eof });
+    try expectTags("div > p", &.{ .ident, .whitespace, .delim, .whitespace, .ident, .eof });
+    try expectTags("[href^='https']", &.{ .lbracket, .ident, .delim, .delim, .string, .rbracket, .eof });
+    try expectTags("a, b", &.{ .ident, .comma, .whitespace, .ident, .eof });
+    try expectTags(":first-child", &.{ .colon, .ident, .eof });
+    try expectTags("{}();", &.{ .lbrace, .rbrace, .lparen, .rparen, .semicolon, .eof });
+    try expectTags("<!-- -->", &.{ .cdo, .whitespace, .cdc, .eof });
+    try expectTags("", &.{.eof});
+    try expectValue(first("custom-element"), "custom-element");
+    try expectValue(first("-webkit-transform"), "-webkit-transform");
+    try expectValue(first("--green"), "--green");
+    try expectValue(first("'hello world'"), "hello world");
+    try testing.expect(first("*").isDelim('*'));
+    try testing.expect(first("|").isDelim('|'));
+}
+
+test "a function token is its name and the open parenthesis" {
+    const token = first("nth-child(2n+1)");
+    try testing.expectEqual(Tag.function, token.tag);
+    try expectValue(token, "nth-child");
+    try expectTags(":not(a)", &.{ .colon, .function, .ident, .rparen, .eof });
+    // A space before "(" makes an ident and a "(".
+    try expectTags("not (a)", &.{ .ident, .whitespace, .lparen, .ident, .rparen, .eof });
+}
+
+test "a hash is an id hash only when its name would start an ident" {
+    const id = first("#foo");
+    try testing.expectEqual(Tag.hash, id.tag);
+    try testing.expect(id.hash_is_id);
+    try expectValue(id, "foo");
+    try testing.expect(first("#--").hash_is_id);
+    try testing.expect(!first("#5cm").hash_is_id);
+    try testing.expect(!first("#-5").hash_is_id);
+    // "#" with no name is a delim.
+    try testing.expect(first("#").isDelim('#'));
+    try testing.expect(first("# a").isDelim('#'));
+}
+
+test "numbers, percentages and dimensions carry value, type and sign" {
+    const n = first("+5");
+    try testing.expectEqual(Tag.number, n.tag);
+    try testing.expectEqual(@as(f64, 5), n.number);
+    try testing.expectEqual(Token.Sign.plus, n.sign);
+    try testing.expect(n.is_integer);
+    const d = first("2n-1");
+    try testing.expectEqual(Tag.dimension, d.tag);
+    try testing.expectEqual(@as(f64, 2), d.number);
+    try expectValue(d, "n-1");
+    const cm = first(".5cm");
+    try testing.expectEqual(Tag.dimension, cm.tag);
+    try testing.expect(!cm.is_integer);
+    try testing.expectEqual(Tag.percentage, first("50%").tag);
+    try testing.expect(!first("1e3").is_integer);
+    // 2n+1: a dimension "2n" and a signed number "+1".
+    try expectTags("2n+1", &.{ .dimension, .number, .eof });
+    try expectTags("-n-1", &.{ .ident, .eof });
+    try expectTags("+ 2", &.{ .delim, .whitespace, .number, .eof });
+}
+
+test "CSS escapes decode per consume an escaped code point" {
+    try expectValue(first("\\30 x"), "0x");
+    try expectValue(first("\\30x"), "0x");
+    try expectValue(first("\\000030x"), "0x");
+    try expectValue(first("hel\\6Co"), "hello");
+    try expectValue(first("\\.comma"), ".comma");
+    try expectValue(first("\\g"), "g");
+    // Zero, a surrogate and a value past U+10FFFF are U+FFFD.
+    try expectValue(first("zero\\0"), "zero\u{FFFD}");
+    try expectValue(first("s\\d83d"), "s\u{FFFD}");
+    try expectValue(first("big\\110000"), "big\u{FFFD}");
+    try expectValue(first("\\10fFfF0"), "\u{10FFFF}0");
+    // CRLF after a hex escape is one whitespace; FF and TAB are whitespace.
+    try expectValue(first("spac\\65\r\ns"), "spaces");
+    try expectValue(first("sp\\61\tc\\65\x0Cs"), "spaces");
+    // "\" at the end of the input is a valid escape: U+FFFD.
+    try expectValue(first("eof\\"), "eof\u{FFFD}");
+    try expectValue(first("#eof\\"), "eof\u{FFFD}");
+    // An escaped space keeps the ident going.
+    try expectValue(first("spaces\\ in"), "spaces in");
+    // "\" before a newline is no escape: a delim.
+    try testing.expect(first("\\\nx").isDelim('\\'));
+}
+
+test "preprocessing: NUL and an encoded surrogate are U+FFFD ident code points" {
+    try expectValue(first("ab\x00c"), "ab\u{FFFD}c");
+    try expectValue(first("#\x00"), "\u{FFFD}");
+    // A lone surrogate a DOMString carries as WTF-8.
+    try expectValue(first("a\xED\xA0\xBDb"), "a\u{FFFD}b");
+}
+
+test "every non-ASCII code point is an ident code point, as in all three engines" {
+    try expectValue(first("#\u{A0}"), "\u{A0}");
+    try expectValue(first("#\u{2003}"), "\u{2003}");
+    try expectValue(first("\u{1F511}x"), "\u{1F511}x");
+}
+
+test "strings: escapes, line continuations, EOF and newlines" {
+    try expectValue(first("\"a\\\"b\""), "a\"b");
+    try expectValue(first("\"\\e9\""), "\u{E9}");
+    try expectValue(first("\"\\0000e9\""), "\u{E9}");
+    try expectValue(first("\"a\\\nb\""), "ab");
+    try expectValue(first("\"a\\\r\nb\""), "ab");
+    // Cut off by the end of the input: still a string, and "\" at the end
+    // is dropped.
+    const unclosed = first("\"center");
+    try testing.expectEqual(Tag.string, unclosed.tag);
+    try expectValue(unclosed, "center");
+    try expectValue(first("'a\\"), "a");
+    // A raw newline makes a bad string.
+    try expectTags("\"a\nb\"", &.{ .bad_string, .whitespace, .ident, .string, .eof });
+}
+
+test "comments produce no token" {
+    try expectTags("a/* x */b", &.{ .ident, .ident, .eof });
+    try expectTags("a /**/ b", &.{ .ident, .whitespace, .whitespace, .ident, .eof });
+    try expectTags("a/* open", &.{ .ident, .eof });
+}
+
+test "url() makes a url token unless its argument is quoted" {
+    const url = first("url( a.png )");
+    try testing.expectEqual(Tag.url, url.tag);
+    try expectValue(url, "a.png");
+    try testing.expectEqual(Tag.function, first("url('a')").tag);
+    try testing.expectEqual(Tag.bad_url, first("url(a b)").tag);
+}
+
+test "a delim is any other code point" {
+    for ("!$%&*+-./<=>?^|~") |c| {
+        const input = [_]u8{c};
+        try testing.expect(first(&input).isDelim(c));
+    }
+    try testing.expect(first("@").isDelim('@'));
+    try testing.expectEqual(Tag.at_keyword, first("@media").tag);
+}
+
+test "positions and zero-copy values" {
     const input = "div.container";
-    var tokenizer = Tokenizer.init(allocator, input);
-
-    const tok1 = try tokenizer.nextToken();
-    // Token value should be a slice into input
-    try testing.expect(@intFromPtr(tok1.value.ptr) >= @intFromPtr(input.ptr));
-    try testing.expect(@intFromPtr(tok1.value.ptr) < @intFromPtr(input.ptr) + input.len);
-}
-
-// ============================================================================
-// Position Tracking
-// ============================================================================
-
-test "Tokenizer: token position tracking" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "div.container");
-
-    const tok1 = try tokenizer.nextToken();
-    try testing.expectEqual(@as(usize, 0), tok1.start);
-    try testing.expectEqual(@as(usize, 3), tok1.end);
-
-    const tok2 = try tokenizer.nextToken();
-    try testing.expectEqual(@as(usize, 3), tok2.start);
-    try testing.expectEqual(@as(usize, 4), tok2.end);
-
-    const tok3 = try tokenizer.nextToken();
-    try testing.expectEqual(@as(usize, 4), tok3.start);
-    try testing.expectEqual(@as(usize, 13), tok3.end);
-}
-
-test "Tokenizer: a dashed ident (--foo) is one ident token" {
-    var tokenizer = Tokenizer.init(testing.allocator, "--green");
-    const token = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.ident, token.tag);
-    try testing.expectEqualStrings("--green", token.value);
+    var tokenizer = Tokenizer.init(testing.allocator, input);
+    const a = try tokenizer.nextToken();
+    try testing.expectEqual(@as(usize, 0), a.start);
+    try testing.expectEqual(@as(usize, 3), a.end);
+    try testing.expect(a.value.ptr == input.ptr);
+    const b = try tokenizer.nextToken();
+    try testing.expectEqual(@as(usize, 3), b.start);
+    try testing.expectEqual(@as(usize, 4), b.end);
+    const c = try tokenizer.nextToken();
+    try testing.expectEqual(@as(usize, 13), c.end);
+    try testing.expect(!c.needs_decode);
 }
