@@ -4,27 +4,45 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
 pub const State = interfaces.HTMLSourceElement.State;
-pub const InternalState = struct { url: ?[]const u8 = null };
+/// The URL its src resolved to, made with the element: a block of the
+/// Browser's arena, registered (dom.orphan_states). A source removed from
+/// its tree while script held no wrapper of it - `innerHTML = ''` over a
+/// parsed `<audio><source src>` - is an orphan nothing deinits; a block of
+/// its own leaked, and its URL with it (lane orphanleak,
+/// crane/cl-orphan-media.html).
+pub const InternalState = struct {
+    /// The allocator the URL came from: the context's.
+    allocator: std.mem.Allocator,
+    url: ?[]const u8 = null,
+
+    /// What the state owns, without its element (dom.orphan_states).
+    pub fn deinit(self: *InternalState) void {
+        if (self.url) |url| self.allocator.free(url);
+        self.url = null;
+    }
+};
+
+const States = dom.orphan_states.Swept(.html_source_element, InternalState);
 
 pub fn installHooks() void {
     dom.media_elements.installSourceElement(sourceURL);
     dom.attribute_change_steps.install("source", attributeChanged);
+    // The states no deinit reached - orphaned sources' - at their Browser's
+    // end.
+    States.installSweep();
 }
 pub fn init(allocator: std.mem.Allocator, comptime StateType: type, vtable: *const runtime.VTable, ctx: runtime.Context) !*runtime.Instance {
     const instance = try interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
     instance.getState(State).own._internal = null;
     errdefer instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
-    const data = try allocator.create(InternalState);
-    data.* = .{};
-    instance.getState(State).own._internal = data;
+    instance.getState(State).own._internal = try States.create(instance, .{ .allocator = ctx.allocator });
     return instance;
 }
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
-    if (state.own._internal) |data| {
+    if (state.own._internal != null) {
         state.own._internal = null;
-        if (data.url) |url| instance.ctx.allocator.free(url);
-        instance.ctx.allocator.destroy(data);
+        States.destroy(instance);
     }
     interfaces.HTMLElement.deinit(instance);
 }

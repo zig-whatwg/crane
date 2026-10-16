@@ -39,8 +39,20 @@
 //! - SVGScriptElement (with HTMLScriptElement's): an orphaned SVG script's
 //!   script text (lane fraginert: one per `<svg><script>` dropped by
 //!   innerHTML = '' while unwrapped, crane/san-svg-detach-*).
+//! - Every node type whose own state owns something (lane orphanleak,
+//!   dom.orphan_states, held by tools/lint_refcount.zig's state rules):
+//!   HTMLFieldSetElement, HTMLButtonElement, HTMLSelectElement,
+//!   HTMLOutputElement, HTMLObjectElement, HTMLInputElement (custom
+//!   validity, an output's default value, an input's value), HTMLFormElement
+//!   (named elements, past names, pending navigations), HTMLSourceElement
+//!   (its URL), HTMLMediaElement and HTMLTrackElement (their whole state,
+//!   which queued tasks may outlive the element with), ShadowRoot (its
+//!   adopted style sheets' hold), HTMLIFrameElement (cached attribute
+//!   strings) and Attr (its names and value). An orphaned fieldset, source,
+//!   audio or video leaked its block on every parsed tree dropped unwrapped
+//!   (crane/cl-orphan-*).
 //!
-//! lint-impls: hook for EventTarget, HTMLScriptElement, SVGScriptElement, HTMLElement, Element, HTMLTextAreaElement, HTMLOptionElement, ProcessingInstruction, HTMLSlotElement, HTMLImageElement, Text, Comment, DocumentType, DocumentFragment, CharacterData, Node, Document
+//! lint-impls: hook for EventTarget, HTMLScriptElement, SVGScriptElement, HTMLElement, Element, HTMLTextAreaElement, HTMLOptionElement, ProcessingInstruction, HTMLSlotElement, HTMLImageElement, Text, Comment, DocumentType, DocumentFragment, CharacterData, Node, Document, Attr, HTMLButtonElement, HTMLFieldSetElement, HTMLFormElement, HTMLIFrameElement, HTMLInputElement, HTMLMediaElement, HTMLObjectElement, HTMLOutputElement, HTMLSelectElement, HTMLSourceElement, HTMLTrackElement, ShadowRoot
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -78,7 +90,9 @@ pub const Phase = enum {
 };
 const phase_count = @typeInfo(Phase).@"enum".fields.len;
 
-const max_sweeps = 8;
+/// Room per phase: `.element_types` holds a sweep per node type whose state
+/// has one (dom.orphan_states), eighteen since lane orphanleak.
+const max_sweeps = 32;
 var sweeps: [phase_count][max_sweeps]Sweep = undefined;
 var count: [phase_count]usize = @splat(0);
 
@@ -89,7 +103,7 @@ pub fn install(phase: Phase, sweep: Sweep) void {
     for (sweeps[p][0..count[p]]) |existing| {
         if (existing == sweep) return;
     }
-    if (count[p] == max_sweeps) @panic("dom.teardown_sweeps: a phase has room for 8 sweeps");
+    if (count[p] == max_sweeps) @panic("dom.teardown_sweeps: a phase has room for 32 sweeps");
     sweeps[p][count[p]] = sweep;
     count[p] += 1;
 }

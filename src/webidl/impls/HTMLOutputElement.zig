@@ -17,17 +17,34 @@ pub const ImplError = error{
     NotImplemented,
 };
 
+/// A block of the Browser's arena, registered (dom.orphan_states): an output
+/// removed from its tree while script held no wrapper of it is an orphan
+/// nothing deinits, and a block of its own had no exit then (lane
+/// orphanleak).
 pub const InternalState = struct {
+    /// The allocator the custom validity message and the default value
+    /// override came from: the context's.
+    allocator: std.mem.Allocator,
     validation: forms.Validation = .{},
     // HTML 4.10.12: null means the default is computed from descendant text.
     default_value_override: ?runtime.DOMString = null,
+
+    /// What the state owns, without its element (dom.orphan_states): the
+    /// custom validity message and the default value override. The validity
+    /// object is the element's to release (`deinit`).
+    pub fn deinit(self: *InternalState) void {
+        self.validation.custom_error.deinit(self.allocator);
+        if (self.default_value_override) |*value| value.deinit(self.allocator);
+        self.default_value_override = null;
+    }
 };
+
+const States = @import("dom").orphan_states.Swept(.html_output_element, InternalState);
 
 fn internalState(instance: *runtime.Instance) !*InternalState {
     const state = instance.getState(State);
     if (state.own._internal) |internal| return internal;
-    const internal = try instance.ctx.allocator.create(InternalState);
-    internal.* = .{};
+    const internal = try States.create(instance, .{ .allocator = instance.ctx.allocator });
     state.own._internal = internal;
     return internal;
 }
@@ -58,6 +75,9 @@ fn constraintFlags(instance: *runtime.Instance) forms.ValidityFlags {
 
 pub fn installHooks() void {
     @import("dom").form_controls.install(.{ .is = &isValidationControl, .reset = &resetAlgorithm, .validity_flags = &constraintFlags });
+    // The states no deinit reached - orphaned outputs' - at their Browser's
+    // end.
+    States.installSweep();
 }
 
 /// Initialize instance (creates the instance)
@@ -77,9 +97,8 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal| {
         if (internal.validation.validity_traced) @import("engine").forgetTracedChild(instance, .{ .name = "validity" });
         internal.validation.deinit(instance.ctx.allocator);
-        if (internal.default_value_override) |*value| value.deinit(instance.ctx.allocator);
-        instance.ctx.allocator.destroy(internal);
         state.own._internal = null;
+        States.destroy(instance);
     }
     interfaces.HTMLElement.deinit(instance);
 }

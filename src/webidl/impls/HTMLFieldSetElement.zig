@@ -16,17 +16,29 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+/// The fieldset's custom validity and its elements collection: a block of
+/// the Browser's arena, registered (dom.orphan_states), made with the
+/// element. A fieldset removed from its tree while script held no wrapper of
+/// it - `innerHTML = ''` over a parsed form - is an orphan nothing deinits,
+/// and a block of its own leaked once per orphaned fieldset (lane
+/// orphanleak, crane/cl-orphan-form-controls.html).
 pub const InternalState = struct {
+    /// The allocator the custom validity message came from: the context's.
     allocator: std.mem.Allocator,
     validation: forms.Validation = .{},
     elements: ?*runtime.Instance = null,
     elements_generation: u64 = 0,
     elements_traced: bool = false,
+
+    /// What the state owns, without its element (dom.orphan_states): the
+    /// custom validity message. The elements collection and the validity
+    /// object are the element's to release (`deinit`).
+    pub fn deinit(self: *InternalState) void {
+        self.validation.custom_error.deinit(self.allocator);
+    }
 };
+
+const States = @import("dom").orphan_states.Swept(.html_field_set_element, InternalState);
 
 fn validationState(instance: *runtime.Instance) !*forms.Validation {
     return &(instance.getState(State).own._internal orelse return error.InvalidStateError).validation;
@@ -43,6 +55,9 @@ fn constraintFlags(instance: *runtime.Instance) forms.ValidityFlags {
 
 pub fn installHooks() void {
     @import("dom").form_controls.install(.{ .is = &isValidationControl, .validity_flags = &constraintFlags });
+    // The states no deinit reached - orphaned fieldsets' - at their
+    // Browser's end.
+    States.installSweep();
 }
 
 /// Initialize instance (creates the instance)
@@ -55,9 +70,7 @@ pub fn init(
 ) !*runtime.Instance {
     const instance = try interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
-    const internal = try allocator.create(InternalState);
-    internal.* = .{ .allocator = allocator };
-    instance.getState(State).own._internal = internal;
+    instance.getState(State).own._internal = try States.create(instance, .{ .allocator = ctx.allocator });
     return instance;
 }
 
@@ -69,8 +82,8 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.validation.deinit(instance.ctx.allocator);
         if (internal.elements_traced) @import("engine").forgetTracedChild(instance, .{ .name = "elements" });
         if (!internal.elements_traced) if (liveChild(internal.elements, internal.elements_generation)) |collection| runtime.Instance.deinit(collection);
-        internal.allocator.destroy(internal);
         state.own._internal = null;
+        States.destroy(instance);
     }
     interfaces.HTMLElement.deinit(instance);
 }

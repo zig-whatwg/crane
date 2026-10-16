@@ -21,7 +21,18 @@ const Kind = enum(u16) { event, failure, read, next_source, release_delay, pause
 /// (4.8.11.8 step 6); Chromium and Gecko both use 250ms.
 const timeupdate_interval_ms: u64 = 250;
 
+/// A block of the Browser's runtime arena (`arena`), registered in the
+/// Browser's side table while its element lives: queued tasks may hold it
+/// past its element's deinit (`common.Activity`), so the registry does not
+/// own the block - `freeOwner` returns it, when the last of them lets go.
+/// An element removed from its tree while script held no wrapper of it is
+/// an orphan nothing deinits; its state is freed by the sweep at its
+/// Browser's end (`sweepRemaining`). A block of its own had no exit then,
+/// and leaked once per orphaned audio or video (lane orphanleak,
+/// crane/cl-orphan-media.html).
 pub const InternalState = struct {
+    /// The arena the block came from: its element's Browser's.
+    arena: *runtime.ArenaAllocator,
     activity: common.Activity,
     resource: common.Resource,
     load: LoadState,
@@ -650,14 +661,46 @@ fn freeOwner(context: *anyopaque) void {
     if (self.src_url) |url| self.load.allocator.free(url);
     self.pending_play.deinit(self.load.allocator);
     self.activity.microtasks.deinit(self.load.allocator);
-    self.load.allocator.destroy(self);
+    self.arena.destroy(InternalState, self);
+}
+/// The states of the elements no deinit has reached yet, by element: the
+/// orphans' are what is left at the Browser's end. The blocks are not the
+/// registry's (`set`): `freeOwner` returns each.
+const Registry = runtime.InstanceRegistry(.html_media_element, InternalState);
+
+/// `dom.teardown_sweeps`: free the state of every media element of `scope`'s
+/// Browser that no deinit reached - an orphan, removed from its tree while
+/// script held no wrapper of it - at the Browser's end. Its removal canceled
+/// it (`removed`: no fetch, no clock, no decoder, its play promises
+/// released), and the realm's end and the event loop's, before this, dropped
+/// its stable sections and tasks; so it is idle, and goes as its last task
+/// would have let it go (`freeOwner`). One still holding work is left to
+/// that work rather than freed under it.
+fn sweepRemaining(scope: *runtime.BrowserScope) void {
+    var entries = Registry.iterator(scope) orelse return;
+    while (entries.next()) |entry| {
+        const self = entry.internal;
+        // The element is not deinit'd and never will be: nothing is kept
+        // alive for it (an orphan has no wrapper to keep).
+        self.activity.instance = null;
+        self.activity.kept_alive = false;
+        if (self.decoder) |*decoder| decoder.deinit();
+        self.decoder = null;
+        for (self.pending_play.items) |*promise| engine.releasePromiseCapability(promise);
+        self.pending_play.clearRetainingCapacity();
+        self.activity.maybeFree();
+    }
+    Registry.clear(scope);
 }
 pub fn init(allocator: std.mem.Allocator, comptime StateType: type, vtable: *const runtime.VTable, ctx: runtime.Context) !*runtime.Instance {
     const instance = try interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
     instance.getState(State).own._internal = null;
     errdefer instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
-    const self = try allocator.create(InternalState);
-    self.* = .{ .activity = .{ .allocator = allocator, .instance = instance, .owner = self, .run = runTask, .abort = abortOwner, .free = freeOwner }, .resource = .{ .allocator = allocator, .ctx = ctx, .owner = self, .notify = InternalState.queueRead }, .load = LoadState.init(allocator) };
+    const arena = runtime.arenaOf(instance);
+    const self = try arena.create(InternalState);
+    errdefer arena.destroy(InternalState, self);
+    self.* = .{ .arena = arena, .activity = .{ .allocator = allocator, .instance = instance, .owner = self, .run = runTask, .abort = abortOwner, .free = freeOwner }, .resource = .{ .allocator = allocator, .ctx = ctx, .owner = self, .notify = InternalState.queueRead }, .load = LoadState.init(allocator) };
+    try Registry.set(instance, self);
     instance.getState(State).own._internal = self;
     return instance;
 }
@@ -665,6 +708,9 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |self| {
         state.own._internal = null;
+        // Its own exit from here: the sweep is for the states no deinit
+        // reaches.
+        Registry.remove(instance);
         self.cancel();
         self.object_edge.release(instance);
         self.error_edge.release(instance);
@@ -682,6 +728,9 @@ pub fn installHooks() void {
     dom.mutation.registerRemovingStepsCallback(removed) catch @panic("media removing hook allocation");
     dom.document_fetches.install(.{ .discard = cancelRealm, .prepare_abort = prepareDocumentAbort, .abort = abortDocument });
     dom.unloading_cleanup.install(cancelRealm);
+    // The states no deinit reached - orphaned media elements' - at their
+    // Browser's end.
+    dom.teardown_sweeps.install(.element_types, &sweepRemaining);
 }
 fn cancelRealm(ctx: runtime.Context) void {
     const registry = common.liveRegistry(ctx) orelse return;

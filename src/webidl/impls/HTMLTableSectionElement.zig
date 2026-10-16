@@ -17,10 +17,12 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+/// The element's collections, made when script first asks for one. A block
+/// of the Browser's runtime arena: it owns nothing beyond itself (each
+/// collection is a child its wrapper keeps), so an element removed from its
+/// tree while nothing wrapped it - an orphan nothing deinits - leaves its
+/// block to the arena's end, not to the process's (lane orphanleak;
+/// dom.orphan_states).
 pub const InternalState = struct {
     rows: tables.Collection = .{},
 };
@@ -28,7 +30,7 @@ pub const InternalState = struct {
 fn internalState(instance: *runtime.Instance) !*InternalState {
     const state = instance.getState(State);
     if (state.own._internal) |internal| return internal;
-    const internal = try instance.ctx.allocator.create(InternalState);
+    const internal = try runtime.arenaOf(instance).create(InternalState);
     internal.* = .{};
     state.own._internal = internal;
     return internal;
@@ -53,7 +55,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.rows.deinit(instance, "rows");
-        instance.ctx.allocator.destroy(internal);
+        runtime.arenaOf(instance).destroy(InternalState, internal);
         state.own._internal = null;
     }
     interfaces.HTMLElement.deinit(instance);

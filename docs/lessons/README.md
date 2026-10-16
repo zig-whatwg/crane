@@ -459,6 +459,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Dictionary input tests do not verify return shapes](codegen-dictionary-input-tests-do-not-verify-return-shapes.md) - Test dictionary round trips in JavaScript, including present null and inherited members; native values and input-only tests cannot establish the return shape.
 
 ### Testing
+- [Only state made natively can be orphaned - a wrap reaches up to the root](testing-only-state-made-natively-can-be-orphaned.md) - An orphan is a subtree script never touched: reproduce an orphan leak with state the engine makes on its own, first with state made at parse time; reading the node from script wraps it and every ancestor.
 - [A named interceptor changes ordinary property reads](testing-a-named-interceptor-changes-ordinary-property-reads.md) - The cost of registering an interceptor includes ordinary operations that fall through it. Exercise those operations explicitly.
 - [A failed assertion can hide a later operation](testing-a-failed-assertion-can-hide-a-later-operation.md) - Coverage follows executed operations, not assertions written below an earlier failure.
 - [A passing parent test may omit the popup assertion](testing-a-passing-parent-test-may-omit-the-popup-assertion.md) - A browser result proves only the assertions it actually reports.

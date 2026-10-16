@@ -56,6 +56,7 @@ progress = [
   "3bfc905d14, 01b5401afb, 61b73e0ee3, a85be6b6a1 - refcount step 3 (rc3): every parent write through NodeBase.setParent (lint-refcount at 0), subtree_holds kept along the host-including chain (shadow roots, template contents), the Document's referencing_nodes and foreign_holds (D6); shadow mode, checked after every mutation in unit tests and under CRANE_REFCOUNT_CHECK; no behaviour change",
   "77781a10b6 - an `any` attribute setter's value is released once the setter returns, fails or its conversion fails (every `any` setter read for keepers, setterValueIsBorrowed); ElementInternals' ARIA arrays no longer root their inputs, and a setter's ExceptionPending reaches script as script's own exception (setterleak)",
   "8321e646e2, 8a73cd6881 - a returned record's JSValue values and a returned sequence's union elements made for the call are released, by value (jsValueConversionIsFresh, unionValueIsOwned): URLPattern exec() leaked its groups and its input String every call (regexop)",
+  "20b73238c6..475f16540a - every node type's own state has an exit for an orphan (a node removed while nothing wrapped it): dom.orphan_states (an arena block, a registry entry and a teardown sweep), applied to 20 types (fieldset, canvas, audio/video, source, track leaked a block per parsed orphan); lint-refcount's state rules keep the class from regrowing (orphanleak)",
 ]
 
   [[infra.items]]

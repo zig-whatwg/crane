@@ -1,4 +1,4 @@
-//! Reference counting's two structural rules, as a ratchet: `zig build
+//! Reference counting's structural rules, and node state's exits, as a ratchet: `zig build
 //! lint-refcount` (and so `zig build test`) fails when src/ breaks them more
 //! than tools/refcount_baseline.txt records (tmp/plans/refcount-design.md,
 //! section 7 step 2; src/dom/refcount.zig).
@@ -26,6 +26,24 @@
 //!    `structural_links` below names fields that may hold one (none: a child, a
 //!    shadow root and a template's contents live with their tree and carry no
 //!    count of their own).
+//! 3. A node's own state block has an exit (lane orphanleak). A node removed
+//!    from its tree while script held no wrapper of it is an ORPHAN that no
+//!    tree teardown and no collector reaches before refcounting lands, so
+//!    its deinit never runs; its state's exit is then its type's teardown
+//!    sweep at its Browser's end, or the runtime arena's end for a block
+//!    that owns nothing more (src/dom/orphan_states.zig). In a node
+//!    interface's impl:
+//!    - `state-heap-block`: `<allocator>.create(InternalState)` with an
+//!      allocator that is not an arena - a block whose one exit is the
+//!      deinit an orphan never runs (twelve such leaked, one per orphan).
+//!    - `state-no-sweep`: an `InternalState` whose `deinit` frees anything
+//!      (a body of more than `_ = x;` discards) in a file that installs no
+//!      teardown sweep (`teardown_sweeps.install`, a `Swept` type's
+//!      `installSweep`, `orphan_states.installRegistrySweep`): what the state
+//!      owns has no exit for an orphan.
+//!    The default is the rule: a new node type's state has an exit or the
+//!    check fails. A state that frees what it owns inline in the node's
+//!    deinit, with no `InternalState.deinit`, is not seen - give it one.
 //!
 //! Key: `path rule` or `path ref-in-node-state.<Container>.<field>`. The
 //! baseline only goes down: after paying some off, `zig build lint-refcount --
@@ -155,6 +173,11 @@ pub fn findings(gpa: std.mem.Allocator, path: []const u8, source: [:0]const u8) 
         }
     }
 
+    // Rule 3's facts about the file: whether it installs a teardown sweep,
+    // and its InternalState's deinit, if it has one.
+    var installs_sweep = false;
+    var state_deinit: ?std.zig.Ast.Node.Index = null;
+
     i = 0;
     while (i < tree.nodes.len) : (i += 1) {
         const node: std.zig.Ast.Node.Index = @enumFromInt(i);
@@ -180,10 +203,27 @@ pub fn findings(gpa: std.mem.Allocator, path: []const u8, source: [:0]const u8) 
             }
         }
 
+        // Rule 3: a node's own state block has an exit.
+        if (every_container_is_node_state) {
+            var call_buffer: [1]std.zig.Ast.Node.Index = undefined;
+            if (tree.fullCall(&call_buffer, node)) |call| {
+                const callee = nodeText(&tree, call.ast.fn_expr);
+                if (isSweepInstall(callee)) installs_sweep = true;
+                if (isHeapStateBlock(&tree, call)) try out.append(gpa, .{
+                    .line = @intCast(tree.tokenLocation(0, first).line + 1),
+                    .key = try gpa.dupe(u8, "state-heap-block"),
+                    .code = nodeText(&tree, node),
+                });
+            }
+        }
+
         // Rule 2: a counted reference in node state.
         var buffer: [2]std.zig.Ast.Node.Index = undefined;
         const container = tree.fullContainerDecl(&buffer, node) orelse continue;
         const container_name = names.get(node) orelse "(anonymous)";
+        if (every_container_is_node_state and std.mem.eql(u8, container_name, "InternalState")) {
+            if (deinitMember(&tree, container.ast.members)) |member| state_deinit = member;
+        }
         var has_node_base = false;
         for (container.ast.members) |member| {
             const field = tree.fullContainerField(member) orelse continue;
@@ -206,7 +246,67 @@ pub fn findings(gpa: std.mem.Allocator, path: []const u8, source: [:0]const u8) 
             });
         }
     }
+    if (state_deinit) |member| if (!installs_sweep) try out.append(gpa, .{
+        .line = @intCast(tree.tokenLocation(0, tree.firstToken(member)).line + 1),
+        .key = try gpa.dupe(u8, "state-no-sweep"),
+        .code = firstLine(nodeText(&tree, member)),
+    });
     return out;
+}
+
+fn firstLine(text: []const u8) []const u8 {
+    return text[0 .. std.mem.indexOfScalar(u8, text, '\n') orelse text.len];
+}
+
+/// Rule 3: whether `call` makes a node's InternalState block outside the
+/// runtime arena - `<allocator>.create(InternalState)` with an allocator
+/// that is not an arena (`runtime.arenaOf(instance)`, an `arena` local, a
+/// registry's `createIn(instance, arena)`). Such a block's one exit is the
+/// node's deinit, which an orphan never runs.
+fn isHeapStateBlock(tree: *const std.zig.Ast, call: std.zig.Ast.full.Call) bool {
+    if (call.ast.params.len != 1) return false;
+    if (!std.mem.eql(u8, nodeText(tree, call.ast.params[0]), "InternalState")) return false;
+    if (tree.nodeTag(call.ast.fn_expr) != .field_access) return false;
+    const object, const field_token = tree.nodeData(call.ast.fn_expr).node_and_token;
+    if (!std.mem.eql(u8, tree.tokenSlice(field_token), "create")) return false;
+    return std.ascii.indexOfIgnoreCase(nodeText(tree, object), "arena") == null;
+}
+
+/// Rule 3: whether a callee installs a teardown sweep - `dom.teardown_sweeps`'
+/// `install`, a `dom.orphan_states.Swept` type's `installSweep`, or
+/// `dom.orphan_states.installRegistrySweep`.
+fn isSweepInstall(callee: []const u8) bool {
+    return std.mem.endsWith(u8, callee, "teardown_sweeps.install") or
+        std.mem.endsWith(u8, callee, ".installSweep") or
+        std.mem.endsWith(u8, callee, "orphan_states.installRegistrySweep");
+}
+
+/// Rule 3: the `deinit` function among a container's members, if any.
+fn deinitMember(tree: *const std.zig.Ast, members: []const std.zig.Ast.Node.Index) ?std.zig.Ast.Node.Index {
+    for (members) |member| {
+        if (tree.nodeTag(member) != .fn_decl) continue;
+        const proto = tree.nodeData(member).node_and_node[0];
+        var buffer: [1]std.zig.Ast.Node.Index = undefined;
+        const fn_proto = tree.fullFnProto(&buffer, proto) orelse continue;
+        const name = fn_proto.name_token orelse continue;
+        if (!std.mem.eql(u8, tree.tokenSlice(name), "deinit")) continue;
+        if (discardsOnly(tree, tree.nodeData(member).node_and_node[1])) return null;
+        return member;
+    }
+    return null;
+}
+
+/// Whether a function body does nothing: no statements, or only `_ = x;`
+/// discards - a deinit that frees nothing owns nothing.
+fn discardsOnly(tree: *const std.zig.Ast, body: std.zig.Ast.Node.Index) bool {
+    var buffer: [2]std.zig.Ast.Node.Index = undefined;
+    const statements = tree.blockStatements(&buffer, body) orelse return false;
+    for (statements) |statement| {
+        if (tree.nodeTag(statement) != .assign) return false;
+        const lhs, _ = tree.nodeData(statement).node_and_node;
+        if (!std.mem.eql(u8, nodeText(tree, lhs), "_")) return false;
+    }
+    return true;
 }
 
 // ============================================================================
@@ -268,8 +368,9 @@ pub fn parseBaseline(gpa: std.mem.Allocator, text: []const u8) !Counts {
 
 const header =
     \\# Reference-counting rule breaches in src/: path rule count. Rules: `parent-write` (an
-    \\# assignment to `.parent_node` outside NodeBase's setter) and
-    \\# `ref-in-node-state.<Container>.<field>` (a counted reference inside node state); see
+    \\# assignment to `.parent_node` outside NodeBase's setter),
+    \\# `ref-in-node-state.<Container>.<field>` (a counted reference inside node state), and
+    \\# `state-heap-block` / `state-no-sweep` (a node state with no exit for an orphan); see
     \\# tools/lint_refcount.zig. A ratchet - `zig build lint-refcount`, part of `zig build
     \\# test`, fails if any count rises or a new pair appears. After paying some off, lower it
     \\# with `zig build lint-refcount -- --update`. Never raise it by hand.
@@ -397,7 +498,9 @@ pub fn main(init: std.process.Init) !void {
             \\A node's parent link changes through NodeBase's one setter, which keeps the
             \\count word's parent bit and every ancestor's `subtree_holds` in step; node
             \\state never holds a counted reference to a node (a native cycle): use WeakRef
-            \\or a raw pointer. tmp/plans/refcount-design.md sections 1.3 and 7.
+            \\or a raw pointer. tmp/plans/refcount-design.md sections 1.3 and 7. A node's
+            \\own state has an exit for an orphan: a block of the runtime arena, and a
+            \\teardown sweep for what it owns (src/dom/orphan_states.zig).
             \\
         , .{});
         try out.flush();
@@ -516,6 +619,79 @@ test "ref-in-node-state: every container in a node interface's impl is node stat
 test "ref-in-node-state: a holder struct that is not node state is free to count" {
     try expectFindings("src/dom/range_boundaries.zig",
         \\pub const Boundary = struct { node: Ref(NodeBase), offset: u32 };
+    , &.{});
+}
+
+test "state-heap-block: a node's InternalState from a non-arena allocator" {
+    try expectFindings("src/webidl/impls/HTMLNewElement.zig",
+        \\pub const InternalState = struct { flag: bool = false };
+        \\fn make(instance: *Instance, allocator: Allocator) !void {
+        \\    const a = try allocator.create(InternalState);
+        \\    const b = try instance.ctx.allocator.create(InternalState);
+        \\    const c = try runtime.arenaOf(instance).create(InternalState);
+        \\    const d = try arena.create(InternalState);
+        \\    const e = try Registry.createIn(instance, runtime.arenaOf(instance));
+        \\    const f = try allocator.create(OtherState);
+        \\    _ = .{ a, b, c, d, e, f };
+        \\}
+    , &.{ "3:state-heap-block", "4:state-heap-block" });
+    // Not node state: a non-node impl's block has its wrapper's exit.
+    try expectFindings("src/webidl/impls/Blob.zig",
+        \\fn make(allocator: Allocator) !void { _ = try allocator.create(InternalState); }
+    , &.{});
+}
+
+test "state-no-sweep: an InternalState that frees anything needs a sweep; a no-op deinit owns nothing" {
+    const frees =
+        \\pub const InternalState = struct {
+        \\    allocator: Allocator,
+        \\    name: []u8,
+        \\    pub fn deinit(self: *InternalState) void {
+        \\        self.allocator.free(self.name);
+        \\    }
+        \\};
+    ;
+    // The default: a node type's state that owns something has no exit for
+    // an orphan until its file installs a sweep.
+    try expectFindings("src/webidl/impls/HTMLNewElement.zig", frees, &.{"4:state-no-sweep"});
+    try expectFindings("src/webidl/impls/HTMLNewElement.zig", frees ++
+        \\
+        \\pub fn installHooks() void { States.installSweep(); }
+    , &.{});
+    try expectFindings("src/webidl/impls/HTMLNewElement.zig", frees ++
+        \\
+        \\pub fn installHooks() void { dom.orphan_states.installRegistrySweep(Registry); }
+    , &.{});
+    try expectFindings("src/webidl/impls/HTMLNewElement.zig", frees ++
+        \\
+        \\pub fn installHooks() void { dom.teardown_sweeps.install(.element_types, &sweep); }
+    , &.{});
+    // A deinit that frees nothing - empty, or only discards - is not a
+    // reason to sweep.
+    try expectFindings("src/webidl/impls/HTMLAnchorLikeElement.zig",
+        \\pub const InternalState = struct {
+        \\    rel_list: ?*Instance = null,
+        \\    pub fn deinit(self: *InternalState) void {
+        \\        _ = self;
+        \\    }
+        \\};
+        \\const Other = struct { pub fn deinit(self: *Other) void {} };
+    , &.{});
+    try expectFindings("src/webidl/impls/HTMLNewElement.zig",
+        \\pub const InternalState = struct { pub fn deinit(_: *InternalState) void {} };
+    , &.{});
+    // Only a node's InternalState: another container's deinit is not one.
+    try expectFindings("src/webidl/impls/HTMLNewElement.zig",
+        \\const Cache = struct { list: []u8, pub fn deinit(self: *Cache) void { gpa.free(self.list); } };
+    , &.{});
+    try expectFindings("src/webidl/impls/Range.zig", frees, &.{});
+}
+
+test "state rules: test declarations are not production code" {
+    try expectFindings("src/webidl/impls/HTMLNewElement.zig",
+        \\test "a heap block in a test" {
+        \\    _ = try std.testing.allocator.create(InternalState);
+        \\}
     , &.{});
 }
 

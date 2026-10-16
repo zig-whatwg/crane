@@ -36,19 +36,35 @@ pub const ImplError = error{
 };
 
 /// Custom validity is independent of the button's type and attributes.
+///
+/// A block of the Browser's arena, registered (dom.orphan_states): a button
+/// removed from its tree while script held no wrapper of it is an orphan
+/// nothing deinits, and a block of its own had no exit then (lane
+/// orphanleak).
 pub const InternalState = struct {
+    /// The allocator the custom validity message came from: the context's.
+    allocator: std.mem.Allocator,
     validation: forms.Validation = .{},
     // HTML's explicitly set attr-element is WEAK. Generation is the weak
     // reference's liveness test, not a substitute for a missing traced hold.
     command_target: ?dom.custom_elements.KeptInstance = null,
+
+    /// What the state owns, without its element (dom.orphan_states): the
+    /// custom validity message. The validity object is the element's to
+    /// release (`deinit`).
+    pub fn deinit(self: *InternalState) void {
+        self.validation.custom_error.deinit(self.allocator);
+    }
 };
 
-/// Constraint state is allocated only when script first uses the API.
+const States = dom.orphan_states.Swept(.html_button_element, InternalState);
+
+/// Constraint state is allocated when it is first used - by script, or by
+/// matching :valid and :invalid (form_associated.validationState).
 fn validationState(instance: *runtime.Instance) !*forms.Validation {
     const state = instance.getState(State);
     if (state.own._internal) |internal| return &internal.validation;
-    const internal = try instance.ctx.allocator.create(InternalState);
-    internal.* = .{};
+    const internal = try States.create(instance, .{ .allocator = instance.ctx.allocator });
     state.own._internal = internal;
     return &internal.validation;
 }
@@ -69,6 +85,9 @@ pub fn installHooks() void {
     // Installed before any button exists (idempotent).
     dom.activation.install(.{ .has = &hasActivationBehavior, .run = &runActivationBehavior });
     dom.attribute_change_steps.install("button", &attributeChangeSteps);
+    // The states no deinit reached - orphaned buttons' - at their Browser's
+    // end.
+    States.installSweep();
 }
 
 fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, _: ?[]const u8, _: ?[]const u8, namespace: ?[]const u8) void {
@@ -94,8 +113,8 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal| {
         if (internal.validation.validity_traced) @import("engine").forgetTracedChild(instance, .{ .name = "validity" });
         internal.validation.deinit(instance.ctx.allocator);
-        instance.ctx.allocator.destroy(internal);
         state.own._internal = null;
+        States.destroy(instance);
     }
     interfaces.HTMLElement.deinit(instance);
 }

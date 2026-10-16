@@ -96,33 +96,27 @@ pub const InternalState = struct {
     ad_auction_headers: bool = false,
     shared_storage_writable: bool = false,
 
-    /// From `arena` - its element's Browser's (runtime.arenaOf) - as the
-    /// element's own state is.
-    pub fn init(allocator: std.mem.Allocator, arena: *runtime.ArenaAllocator) !*InternalState {
-        const state = try arena.create(InternalState);
-
+    /// A new state, its integration from `arena` - its element's Browser's
+    /// (runtime.arenaOf). The state's own block is the registry's
+    /// (`States.create`, in initOwn).
+    pub fn init(allocator: std.mem.Allocator, arena: *runtime.ArenaAllocator) !InternalState {
         const integration = try arena.create(IFrameIntegration);
         integration.* = IFrameIntegration.init(allocator);
         integration.block_arena = arena;
 
-        log.debug("[InternalState.init] Created integration={*} for state={*}", .{ integration, state });
+        log.debug("[InternalState.init] Created integration={*}", .{integration});
 
-        state.* = .{
+        return .{
             .integration = integration,
             .allocator = allocator,
         };
-
-        return state;
     }
 
+    /// What the state owns, without its element (dom.orphan_states): the
+    /// cached attribute strings. Its content navigable is the element's to
+    /// release (`deinit`, before this): an orphaned iframe's was destroyed by
+    /// its removing steps, and its integration is a block of the arena.
     pub fn deinit(self: *InternalState) void {
-        // Clean up integration, then return ITS block too - `init` takes a second
-        // arena allocation for it, and releasing only what it points to left the
-        // struct held for the life of the process. A navigation step running
-        // script with it in hand puts that off until it is done (see
-        // `IFrameIntegration.busy`).
-        dom_module.navigables.releaseContentNavigable(self.integration);
-
         // NOTE: Do NOT call DOMTokenList.deinit() on sandbox_token_list here.
         // The [SameObject] DOMTokenList instances are managed by the V8 wrapper cache.
         // During context cleanup, the wrapper cache iterates all instances and calls
@@ -136,10 +130,17 @@ pub const InternalState = struct {
                 if (@field(self, field.name)) |str| {
                     self.allocator.free(str);
                 }
+                @field(self, field.name) = null;
             }
         }
     }
 };
+
+/// The iframe's state: a block of the Browser's arena, registered, so an
+/// iframe no deinit reaches - one removed while script held no wrapper of
+/// it - still frees its cached strings at its Browser's end
+/// (dom.orphan_states, lane orphanleak).
+const States = dom_module.orphan_states.Swept(.html_iframe_element, InternalState);
 
 /// `instance`'s iframe state, or null when it is no HTMLIFrameElement. A
 /// checked cast: the DOM's steps reach this with any element whose name is
@@ -181,6 +182,8 @@ pub fn installHooks() void {
         .create_browsing_context_and_document = &createBrowsingContextAndDocument,
         .process_frame_attributes = &processFrameAttributes,
     });
+    // The states no deinit reached, at their Browser's end.
+    States.installSweep();
 }
 
 /// HTMLIFrameElement's own construction steps: the generated chain runs HTMLElement's first.
@@ -189,7 +192,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     _ = args;
     // Initialize internal state
     const state = instance.getState(State);
-    state.own._internal = try InternalState.init(allocator, runtime.arenaOf(instance));
+    state.own._internal = try States.create(instance, try InternalState.init(allocator, runtime.arenaOf(instance)));
     log.debug("[HTMLIFrameElement.init] instance={*} -> internal={*} -> integration={*}", .{ instance, state.own._internal.?, state.own._internal.?.integration });
 
     // Set Node's local name for iframe identification during DOM operations
@@ -217,11 +220,16 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         log.debug("[HTMLIFrameElement.deinit] instance={*} -> integration={*}", .{ instance, internal.integration });
-        internal.deinit();
-        // The state block too, and no pointer left to it: a second deinit
-        // must find nothing to free.
+        // Release the integration, then return ITS block too - `init` takes
+        // an arena allocation for it, and releasing only what it points to
+        // left the struct held for the life of the process. A navigation
+        // step running script with it in hand puts that off until it is
+        // done (see `IFrameIntegration.busy`).
+        dom_module.navigables.releaseContentNavigable(internal.integration);
+        // What the state owns, then its block, and no pointer left to it: a
+        // second deinit must find nothing to free.
         state.own._internal = null;
-        runtime.arenaOf(instance).destroy(InternalState, internal);
+        States.destroy(instance);
     } else {
         log.debug("[HTMLIFrameElement.deinit] instance={*} -> No internal state", .{instance});
     }

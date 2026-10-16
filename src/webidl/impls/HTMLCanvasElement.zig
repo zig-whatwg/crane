@@ -29,8 +29,14 @@ const ContextMode = enum { none, @"2d" };
 /// context's output bitmap ("they are shared", the 2D context creation
 /// algorithm step 4); with no context it is transparent black of the
 /// width and height attributes' size, which nothing stores.
+///
+/// A block of the Browser's runtime arena, made with the element: it owns
+/// nothing beyond itself (the context is a child its wrapper keeps), so a
+/// canvas removed from its tree while nothing wrapped it - an orphan nothing
+/// deinits - leaves its block to the arena's end. A block of its own leaked
+/// once per orphaned canvas (lane orphanleak, crane/cl-orphan-canvas.html;
+/// dom.orphan_states).
 pub const InternalState = struct {
-    allocator: std.mem.Allocator,
     mode: ContextMode = .none,
     /// The 2D context, made once and handed out by every getContext("2d").
     context: ?*runtime.Instance = null,
@@ -63,8 +69,9 @@ fn bitmapSize(instance: *runtime.Instance) struct { u32, u32 } {
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
     _ = StateType;
     _ = args;
-    const internal = try allocator.create(InternalState);
-    internal.* = .{ .allocator = allocator };
+    _ = allocator;
+    const internal = try runtime.arenaOf(instance).create(InternalState);
+    internal.* = .{};
     instance.getState(State).own._internal = internal;
 }
 
@@ -76,7 +83,7 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
         // state: script that still holds it gets InvalidStateError.
         if (internal.context) |context| internal.context_kept.release(context, interfaces.CanvasRenderingContext2D.deinit);
         state.own._internal = null;
-        internal.allocator.destroy(internal);
+        runtime.arenaOf(instance).destroy(InternalState, internal);
     };
 }
 

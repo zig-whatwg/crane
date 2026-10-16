@@ -27,11 +27,26 @@ pub const ImplError = error{
 };
 
 /// The element's processing record (src/html/embedded_content.zig), made
-/// with the element and handed back when it goes.
+/// with the element and handed back when it goes, and its custom validity.
+/// A block of the Browser's arena, registered (dom.orphan_states): an object
+/// no deinit reaches - an orphan, removed from its tree while script held no
+/// wrapper of it - still frees its custom validity message at its Browser's
+/// end. Its record is the arena's too.
 pub const InternalState = struct {
+    /// The allocator the custom validity message came from: the context's.
+    allocator: std.mem.Allocator,
     content: *embedded_content.Content,
     validation: forms.Validation = .{},
+
+    /// What the state owns, without its element (dom.orphan_states): the
+    /// custom validity message. The record and the validity object are the
+    /// element's to hand back (`deinit`).
+    pub fn deinit(self: *InternalState) void {
+        self.validation.custom_error.deinit(self.allocator);
+    }
 };
+
+const States = dom.orphan_states.Swept(.html_object_element, InternalState);
 
 /// `instance`'s state, or null when it is no HTMLObjectElement - the DOM's
 /// steps reach this with any element named "object".
@@ -66,6 +81,8 @@ pub fn installHooks() void {
     dom.mutation.registerRemovingStepsCallback(&removingSteps) catch {};
     // "Its data attribute is set, changed, or removed", and its type.
     dom.attribute_change_steps.install("object", &attributeChangeSteps);
+    // The states no deinit reached, at their Browser's end.
+    States.installSweep();
 }
 
 /// Initialize instance (creates the instance)
@@ -85,15 +102,10 @@ pub fn init(
     if (dom.instance_bridge.getNodeBase(instance)) |node_base| {
         if (!node_base.node_name_allocated) node_base.node_name = "OBJECT";
     }
-    // From the runtime arena, as the iframe's state is: an element torn
-    // down with its tree may never run its own deinit.
-    const arena = runtime.arenaOf(instance);
-    const internal = try arena.create(InternalState);
-    errdefer arena.destroy(InternalState, internal);
-    internal.* = .{
-        .content = try embedded_content.create(allocator, instance, .object),
-    };
-    instance.getState(StateType).own._internal = internal;
+    // From the runtime arena, registered: an element torn down with its
+    // tree may never run its own deinit (dom.orphan_states).
+    const content = try embedded_content.create(allocator, instance, .object);
+    instance.getState(StateType).own._internal = try States.create(instance, .{ .allocator = ctx.allocator, .content = content });
     return instance;
 }
 
@@ -106,7 +118,7 @@ pub fn deinit(instance: *runtime.Instance) void {
             // A second deinit must find nothing to free.
             state.own._internal = null;
             embedded_content.elementGone(internal.content);
-            runtime.arenaOf(instance).destroy(InternalState, internal);
+            States.destroy(instance);
         }
     }
     interfaces.HTMLElement.deinit(instance);
