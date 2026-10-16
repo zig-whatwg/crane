@@ -372,7 +372,11 @@ pub fn get_response(instance: *runtime.Instance) anyerror!runtime.JSValue {
         .blob => {
             const mime_type = try response_algo.finalMimeTypeBytes(allocator, xhr_state);
             defer allocator.free(mime_type);
-            const blob = try blob_bytes.create(instance.ctx, xhr_state.received_bytes.items, mime_type);
+            // MIME serialization is isomorphic bytes; Blob.type is a
+            // DOMString, and response step 6 preserves parameter-value case.
+            const type_string = try infra.bytes.isomorphicDecodeToUtf8(allocator, mime_type);
+            defer allocator.free(type_string);
+            const blob = try blob_bytes.createWithType(instance.ctx, xhr_state.received_bytes.items, type_string);
             made = engine.retainValue(instance.ctx, .{ .instance = blob }) catch |err| {
                 blob.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(blob));
                 return err;

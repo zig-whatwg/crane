@@ -10,7 +10,7 @@
 //! Each Blob has these internal slots:
 //! - [[BlobData]]: A byte sequence (the blob's data)
 //! - [[Size]]: The size of the byte sequence
-//! - [[Type]]: A lowercase ASCII MIME type string
+//! - [[Type]]: A MIME type string (constructor input is lowercased ASCII)
 //!
 //! ## Memory Management
 //!
@@ -31,13 +31,13 @@ const std = @import("std");
 /// Per W3C File API spec, a Blob has:
 /// - An associated byte sequence (immutable)
 /// - A size (derived from byte sequence length)
-/// - A type (lowercase ASCII MIME type)
+/// - A type (constructors normalize it; other specifications may set it)
 pub const BlobData = struct {
     /// The blob's byte sequence (owned)
     bytes: []const u8,
 
-    /// The MIME type (lowercase ASCII, validated)
-    /// Empty string if not provided or invalid
+    /// The MIME type as a UTF-8 DOMString. Constructors normalize it to
+    /// lowercase ASCII or empty; specification-created types are preserved.
     mime_type: []const u8,
 
     /// Memory allocator for cleanup
@@ -81,6 +81,24 @@ pub const BlobData = struct {
             .owns_bytes = true,
         };
 
+        return self;
+    }
+
+    /// A specification-created Blob whose type is already serialized.
+    /// Unlike the public constructor, this preserves the given DOMString
+    /// (UTF-8), including MIME parameter-value case. The caller validates it.
+    pub fn initWithType(allocator: std.mem.Allocator, bytes: []const u8, mime_type: []const u8) !*BlobData {
+        const self = try allocator.create(BlobData);
+        errdefer allocator.destroy(self);
+        const owned_bytes = try allocator.dupe(u8, bytes);
+        errdefer allocator.free(owned_bytes);
+        const owned_type = try allocator.dupe(u8, mime_type);
+        self.* = .{
+            .bytes = owned_bytes,
+            .mime_type = owned_type,
+            .allocator = allocator,
+            .owns_bytes = true,
+        };
         return self;
     }
 

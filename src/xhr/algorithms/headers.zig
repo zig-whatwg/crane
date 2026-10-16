@@ -312,10 +312,16 @@ pub fn overrideMimeType(
     // override MIME type to application/octet-stream. (Parsing reports
     // failure as null.)
     const mimesniff = @import("mimesniff");
-    const parsed = mimesniff.parseMimeType(allocator, mime) catch |err| switch (err) {
+    // `mime` is a DOMString in WTF-8, not a header's isomorphic bytes.
+    const units = std.unicode.wtf8ToWtf16LeAlloc(allocator, mime) catch |err| switch (err) {
         error.OutOfMemory => return HeaderError.OutOfMemory,
         else => null,
     };
+    defer if (units) |value| allocator.free(value);
+    const parsed = if (units) |value|
+        mimesniff.parseMimeTypeFromString(allocator, allocator, value) catch return HeaderError.OutOfMemory
+    else
+        null;
     state.override_mime_type = parsed orelse
         ((mimesniff.parseMimeType(allocator, "application/octet-stream") catch return HeaderError.OutOfMemory).?);
 }
