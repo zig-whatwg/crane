@@ -295,6 +295,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A release predicate must dispatch as its converter does](architecture-a-release-predicate-must-dispatch-as-its-converter-does.md) - Write a release predicate as a mirror of the converter's dispatch: a type the converter handles specially must be handled specially, and first, in the predicate too.
 - [A missing partition key is not a shared cache partition](architecture-a-missing-partition-key-is-not-a-shared-cache-partition.md) - An absent partition is missing information, not permission to share.
 - [A task taken from a sink runs outside every realm until it enters one](architecture-a-task-from-a-sink-runs-outside-every-realm.md) - A sink's task is not in any realm. Before it touches the engine, enter its realm with `runTaskInRealm` - and test the worker case, since the window loop hides the mistake.
+- [A traced value read still owns its handle](architecture-a-traced-value-read-still-owns-its-handle.md) - Object identity, reachability and ownership of the returned handle are three separate questions: a `tracedValue` read is Owned, so a getter may hand it on with `take()`, but it never goes into a record whose converter only borrows it.
 
 ### Spec Compliance
 - [Parse selectors over CSS tokens, not characters](spec-compliance-parse-selectors-over-css-tokens.md) - A selector is a CSS grammar over CSS tokens: tokenize per CSS Syntax 3 first, and validity questions answer themselves.
