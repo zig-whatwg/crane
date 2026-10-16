@@ -56,6 +56,7 @@ const Recorder = struct {
         const line = switch (message) {
             .resolve_registration => |m| std.fmt.allocPrint(self.allocator, "{d}: resolve registration {s}", .{ environment.id, m.registration.scope_url }),
             .resolve_boolean => |m| std.fmt.allocPrint(self.allocator, "{d}: resolve {}", .{ environment.id, m.value }),
+            .resolve_undefined => std.fmt.allocPrint(self.allocator, "{d}: resolve undefined", .{environment.id}),
             .reject => |m| std.fmt.allocPrint(self.allocator, "{d}: reject {s}", .{ environment.id, @tagName(m.kind) }),
             .worker_state => |m| std.fmt.allocPrint(self.allocator, "{d}: worker {d} {s}", .{ environment.id, m.worker, @tagName(m.state) }),
             .registration_slot => |m| std.fmt.allocPrint(self.allocator, "{d}: {s} = {d}", .{ environment.id, @tagName(m.slot), if (m.worker) |w| w.id else 0 }),

@@ -1,9 +1,17 @@
 //! Implementation for ServiceWorkerGlobalScope interface
 //!
-//! WHATWG Service Worker + Cookie Store Standard Integration
+//! Spec: Service Workers 4.1 ServiceWorkerGlobalScope
+//! https://w3c.github.io/ServiceWorker/#serviceworkerglobalscope-interface
 //!
-//! The ServiceWorkerGlobalScope includes the cookieStore attribute and
-//! oncookiechange event handler from the CookieStore API.
+//! The global object of a service worker's realm (Setup
+//! ServiceWorkerGlobalScope step 8.1). The worker host
+//! (src/html/worker_host.zig, its service kind) runs the worker: its agent,
+//! its loop, its script. What is here is the scope's own members: its
+//! service worker's registration and ServiceWorker objects
+//! (src/service_worker/realm.zig makes them in this realm), skipWaiting(),
+//! clients, and the Cookie Store integration (cookieStore). Every event
+//! handler - oninstall, onactivate, onfetch, onmessage, oncookiechange and
+//! the rest - is the generated one (dom.event_handlers).
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -12,6 +20,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const service_worker = @import("service_worker");
 const ServiceWorkerGlobalScope = interfaces.ServiceWorkerGlobalScope;
 
 pub const State = ServiceWorkerGlobalScope.State;
@@ -22,415 +31,70 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-/// Internal state for ServiceWorkerGlobalScope implementation
+/// The scope's own state.
 pub const InternalState = struct {
-    /// The origin host for this service worker
-    origin_host: []const u8,
-    /// Whether this is a secure context
-    is_secure_context: bool,
     /// Lazily initialized CookieStore instance (SameObject)
-    cookie_store: ?*runtime.Instance,
-    /// The oncookiechange event handler
-    oncookiechange_handler: ?*const anyopaque,
-    /// Allocator for internal allocations
+    cookie_store: ?*runtime.Instance = null,
     allocator: std.mem.Allocator,
-
-    pub fn init(allocator: std.mem.Allocator, origin_host: []const u8, is_secure_context: bool) !*InternalState {
-        const internal = try allocator.create(InternalState);
-        errdefer allocator.destroy(internal);
-
-        const host_copy = try allocator.dupe(u8, origin_host);
-        errdefer allocator.free(host_copy);
-
-        internal.* = InternalState{
-            .origin_host = host_copy,
-            .is_secure_context = is_secure_context,
-            .cookie_store = null,
-            .oncookiechange_handler = null,
-            .allocator = allocator,
-        };
-
-        return internal;
-    }
-
-    pub fn deinit(self: *InternalState) void {
-        // Note: cookie_store is owned by the runtime GC, we don't deinit it here
-        self.allocator.free(self.origin_host);
-        self.allocator.destroy(self);
-    }
 };
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-
-    // Initialize internal state with default values
-    const internal = try InternalState.init(allocator, "localhost", true);
-
-    const state = instance.getState(StateType);
-    state.own._internal = internal;
-
-    return instance;
+/// ServiceWorkerGlobalScope's own construction steps: the generated chain
+/// runs WorkerGlobalScope's first (its URL, type and policy container are the
+/// service worker's, through the worker host's settings).
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .allocator = allocator };
+    instance.getState(State).own._internal = internal;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// ServiceWorkerGlobalScope's own teardown: the generated chain runs
+/// WorkerGlobalScope's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        internal.deinit();
-    }
+    const internal = state.own._internal orelse return;
+    internal.allocator.destroy(internal);
+    state.own._internal = null;
 }
 
-/// Helper to get internal state from instance
-fn getInternalState(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return state.own._internal;
-}
-
-/// Getter for clients
+/// Getter for clients (4.1.1): "the Clients object that is associated with
+/// this" - made on first use ([SameObject], kept by the generated getter).
 pub fn get_clients(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return interfaces.Clients.init(instance.ctx.allocator, instance.ctx);
 }
 
-/// Getter for registration
+/// Getter for registration (4.1.2): this's service worker's containing
+/// registration's object in this realm.
 pub fn get_registration(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return service_worker.realm.registrationOf(instance);
 }
 
-/// Getter for serviceWorker
+/// Getter for serviceWorker (4.1.3): this's service worker's object in this
+/// realm.
 pub fn get_serviceWorker(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for oninstall
-pub fn get_oninstall(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onactivate
-pub fn get_onactivate(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onfetch
-pub fn get_onfetch(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onmessage
-pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onmessageerror
-pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onperiodicsync
-pub fn get_onperiodicsync(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return service_worker.realm.serviceWorkerOf(instance);
 }
 
 /// Getter for cookieStore
 /// https://cookiestore.spec.whatwg.org/#dom-serviceworkerglobalscope-cookiestore
 ///
 /// Returns the CookieStore for this service worker's origin.
-/// CookieStore is a SecureContext-only feature.
 pub fn get_cookieStore(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternalState(instance) orelse return error.NotImplemented;
-
-    // SecureContext check
-    if (!internal.is_secure_context) {
-        return error.SecurityError;
-    }
-
+    const internal = instance.getState(State).own._internal orelse return error.NotImplemented;
     // Lazy initialization (SameObject behavior)
-    if (internal.cookie_store) |store| {
-        return store;
-    }
-
-    // Create new CookieStore for this origin
+    if (internal.cookie_store) |store| return store;
+    // [SecureContext]: a service worker's global is always one.
     const cookie_store = interfaces.CookieStore.initWith(
         internal.allocator,
         instance.ctx,
-        .{ .is_secure_context = internal.is_secure_context },
-    ) catch {
-        return error.OutOfMemory;
-    };
-
+        .{ .is_secure_context = true },
+    ) catch return error.OutOfMemory;
     internal.cookie_store = cookie_store;
     return cookie_store;
 }
 
-/// Getter for oncookiechange
-/// https://cookiestore.spec.whatwg.org/#dom-serviceworkerglobalscope-oncookiechange
-pub fn get_oncookiechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const internal = getInternalState(instance) orelse return null;
-    // Cast the stored opaque pointer back to EventHandler type
-    if (internal.oncookiechange_handler) |handler| {
-        return @ptrCast(@alignCast(handler));
-    }
-    return null;
-}
-
-/// Getter for onsync
-pub fn get_onsync(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for oncontentdelete
-pub fn get_oncontentdelete(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onbackgroundfetchsuccess
-pub fn get_onbackgroundfetchsuccess(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onbackgroundfetchfail
-pub fn get_onbackgroundfetchfail(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onbackgroundfetchabort
-pub fn get_onbackgroundfetchabort(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onbackgroundfetchclick
-pub fn get_onbackgroundfetchclick(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onpush
-pub fn get_onpush(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onpushsubscriptionchange
-pub fn get_onpushsubscriptionchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for oncanmakepayment
-pub fn get_oncanmakepayment(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onpaymentrequest
-pub fn get_onpaymentrequest(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onnotificationclick
-pub fn get_onnotificationclick(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onnotificationclose
-pub fn get_onnotificationclose(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for oninstall
-pub fn set_oninstall(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onactivate
-pub fn set_onactivate(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onfetch
-pub fn set_onfetch(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onmessage
-pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onmessageerror
-pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onperiodicsync
-pub fn set_onperiodicsync(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for oncookiechange
-/// https://cookiestore.spec.whatwg.org/#dom-serviceworkerglobalscope-oncookiechange
-pub fn set_oncookiechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const internal = getInternalState(instance) orelse return error.NotImplemented;
-    internal.oncookiechange_handler = value;
-}
-
-/// Setter for onsync
-pub fn set_onsync(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for oncontentdelete
-pub fn set_oncontentdelete(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onbackgroundfetchsuccess
-pub fn set_onbackgroundfetchsuccess(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onbackgroundfetchfail
-pub fn set_onbackgroundfetchfail(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onbackgroundfetchabort
-pub fn set_onbackgroundfetchabort(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onbackgroundfetchclick
-pub fn set_onbackgroundfetchclick(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onpush
-pub fn set_onpush(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onpushsubscriptionchange
-pub fn set_onpushsubscriptionchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for oncanmakepayment
-pub fn set_oncanmakepayment(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onpaymentrequest
-pub fn set_onpaymentrequest(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onnotificationclick
-pub fn set_onnotificationclick(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onnotificationclose
-pub fn set_onnotificationclose(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Operation: skipWaiting
+/// Operation: skipWaiting (4.1.4).
 pub fn call_skipWaiting(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-// ============================================================================
-// Public API for integration
-// ============================================================================
-
-/// Create a new ServiceWorkerGlobalScope for a given origin
-/// This is used when creating a new service worker context.
-pub fn createForOrigin(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-    origin_host: []const u8,
-    is_secure_context: bool,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-
-    const internal = try InternalState.init(allocator, origin_host, is_secure_context);
-
-    const state = instance.getState(StateType);
-    state.own._internal = internal;
-
-    return instance;
-}
-
-/// Get the CookieStore for this service worker (if available)
-pub fn getCookieStore(instance: *runtime.Instance) ?*runtime.Instance {
-    const internal = getInternalState(instance) orelse return null;
-    return internal.cookie_store;
-}
-
-/// Get the oncookiechange handler
-pub fn getOncookiechangeHandler(instance: *runtime.Instance) ?*const anyopaque {
-    const internal = getInternalState(instance) orelse return null;
-    return internal.oncookiechange_handler;
+    return service_worker.realm.skipWaiting(instance);
 }

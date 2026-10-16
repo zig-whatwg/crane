@@ -310,7 +310,10 @@ pub const Message = union(enum) {
     resolve_registration: struct { promise: u64, registration: RegistrationSnapshot },
     /// Resolve Job Promise: an unregister job's boolean.
     resolve_boolean: struct { promise: u64, value: bool },
-    /// Reject Job Promise.
+    /// skipWaiting() step 2.3 and claim() step 3.2: resolve the promise with
+    /// undefined.
+    resolve_undefined: struct { promise: u64 },
+    /// Reject Job Promise (and claim()'s InvalidStateError).
     reject: struct { promise: u64, kind: ErrorKind, message: []const u8 },
     /// Update Worker State step 4: set the ServiceWorker object's state, if
     /// the realm has one for the worker, and fire statechange at it.

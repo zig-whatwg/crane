@@ -95,7 +95,8 @@ pub fn parseAgainst(allocator: Allocator, input: []const u8, base: ?[]const u8) 
         else => return null,
     };
     defer record.deinit();
-    return serializer.serialize(allocator, &record, false) catch error.OutOfMemory;
+    const serialized = serializer.serialize(allocator, &record, false) catch return error.OutOfMemory;
+    return @constCast(serialized);
 }
 
 /// Match Service Worker Registration steps 2-6: of `scopes` (the serialized

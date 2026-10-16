@@ -696,6 +696,184 @@ fn isJavaScriptMimeType(mime_type: []const u8) bool {
 }
 
 // ============================================================================
+// A service worker's script resources (Service Workers, the Update
+// algorithm's step 7 and its imported scripts' step 21)
+// ============================================================================
+
+/// Which of a service worker's script resources a fetch is for.
+pub const ServiceWorkerResourceKind = enum {
+    /// Update step 7, "fetch a classic worker script" (or a module worker
+    /// script graph's root) with destination "serviceworker": mode
+    /// "same-origin", credentials "same-origin", and the fetch hook's steps
+    /// 1-5 - the `Service-Worker: script` header, service-workers mode
+    /// "none", redirect mode "error".
+    main_script,
+    /// Update step 21.2, an imported script compared byte for byte: "a new
+    /// request whose url is importUrl, client is job's client, destination
+    /// is "script", parser metadata is "not parser-inserted", and whose
+    /// use-URL-credentials flag is set" - a new request's mode, "no-cors".
+    imported_script,
+};
+
+/// What a service worker script fetch is made with: its client's (the job's
+/// client's, copied when the job was made - Update runs on the Browser's
+/// service worker job thread, not the client's).
+pub const ServiceWorkerFetchOptions = struct {
+    kind: ServiceWorkerResourceKind,
+    /// The fetch hook's step 2 (21.3 for an imported script): the request's
+    /// cache mode is "no-cache".
+    bypass_http_cache: bool = false,
+    /// The client's origin, serialized: the request's origin (a Soft
+    /// Update's job, which has no client, passes its registration's).
+    origin: ?[]const u8 = null,
+    /// The client's policy container (BORROWED; cloned into the request),
+    /// whose CSP list main fetch step 7 checks the request against.
+    policy_container: ?*const fetch.internal.PolicyContainer = null,
+    /// The client's Browser's cookie jar, network and blob URL store
+    /// (BORROWED: Browser-lifetime).
+    cookie_jar: ?*fetch.internal.CookieJar = null,
+    network: ?*fetch.network.NetworkContext = null,
+    blob_url_store: ?*anyopaque = null,
+};
+
+/// What a service worker script fetch got: the facts of the response the
+/// Update algorithm reads, unclassified - the caller decides what a status,
+/// a MIME type or a scope means. Every slice OWNED (`deinit`).
+pub const ServiceWorkerResource = struct {
+    allocator: Allocator,
+    status: u16,
+    /// The response's body bytes.
+    body: []u8,
+    /// The response's URL (after redirects, which a main script never has).
+    final_url: []u8,
+    /// The Content-Type header's value, or "" when it has none.
+    content_type: []u8,
+    /// The `Service-Worker-Allowed` header's value, isomorphic decoded
+    /// (header bytes kept as they are), or null (the fetch hook's step 8-9).
+    service_worker_allowed: ?[]u8 = null,
+    /// HTML "create a policy container from a fetch response" (Update step
+    /// 10), for a main script.
+    policy_container: ?fetch.internal.PolicyContainer = null,
+    /// The response's cache state is not "local" (steps 19 and 21.7).
+    from_network: bool,
+
+    pub fn deinit(self: *ServiceWorkerResource) void {
+        self.allocator.free(self.body);
+        self.allocator.free(self.final_url);
+        self.allocator.free(self.content_type);
+        if (self.service_worker_allowed) |value| self.allocator.free(value);
+        if (self.policy_container) |*container| container.deinit();
+    }
+
+    /// The policy container, handed over.
+    pub fn takePolicyContainer(self: *ServiceWorkerResource) ?fetch.internal.PolicyContainer {
+        const container = self.policy_container;
+        self.policy_container = null;
+        return container;
+    }
+};
+
+/// The request a service worker script fetch makes for `url`
+/// (serialized), as Update step 7 and its fetch hook build it: for a main
+/// script, destination "serviceworker", mode "same-origin" with the
+/// request's origin the client's (so a cross-origin URL, or a redirect -
+/// which redirect mode "error" refuses outright - never passes as
+/// same-origin), credentials "same-origin", `Service-Worker: script`; for an
+/// imported script, destination "script" and a new request's mode,
+/// "no-cors". Service-workers mode "none" either way. OWNED (`deinit`).
+pub fn serviceWorkerScriptRequest(allocator: Allocator, url: []const u8, options: ServiceWorkerFetchOptions) error{OutOfMemory}!*fetch.internal.InternalRequest {
+    const request = fetch.internal.InternalRequest.init(allocator, url) catch return error.OutOfMemory;
+    errdefer request.deinit();
+    switch (options.kind) {
+        .main_script => {
+            request.destination = .serviceworker;
+            request.mode = .same_origin;
+            request.credentials_mode = .same_origin;
+            // The fetch hook's step 1: `Service-Worker: script` (Appendix B).
+            request.header_list.append("Service-Worker", "script") catch return error.OutOfMemory;
+            // Step 5: a redirect is a network error.
+            request.redirect_mode = .@"error";
+        },
+        .imported_script => {
+            request.destination = .script;
+            request.parser_metadata = .not_parser_inserted;
+            request.use_url_credentials = true;
+        },
+    }
+    // Step 3 (and 6.3.2 step 7): no service worker sees the request.
+    request.service_workers_mode = .none;
+    if (options.bypass_http_cache) request.cache_mode = .no_cache;
+    // The client's origin, set: a request left at "client" here - with no
+    // client to resolve it from on the job thread - would read every URL as
+    // same-origin (InternalRequest.currentUrlIsSameOrigin).
+    if (options.origin) |origin| try request.setOrigin(origin);
+    if (options.policy_container) |container| {
+        request.setPolicyContainer(try container.clone(allocator));
+    }
+    request.cookie_jar = options.cookie_jar;
+    request.network = options.network;
+    request.blob_url_store = options.blob_url_store;
+    return request;
+}
+
+/// Fetch one of a service worker's script resources, `url` (serialized),
+/// synchronously - the job thread waits for it, as Update step 7 does
+/// ("asynchronously complete these steps"). A network error - a failed
+/// fetch, a refused one (CSP, a cross-origin main script), a redirect of a
+/// main script - is error.NetworkError; any response is returned, whatever
+/// its status.
+pub fn fetchServiceWorkerResource(allocator: Allocator, url: []const u8, options: ServiceWorkerFetchOptions) error{ NetworkError, OutOfMemory }!ServiceWorkerResource {
+    const request = try serviceWorkerScriptRequest(allocator, url, options);
+    defer request.deinit();
+    var result = fetch.algorithms.fetch(allocator, request, .{}) catch |err| return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        else => error.NetworkError,
+    };
+    defer result.timing_info.deinit();
+    const response = result.response;
+    defer response.deinit();
+    if (response.response_type == .@"error") return error.NetworkError;
+
+    const body = try allocator.dupe(u8, if (response.body) |b| b.getBytes() else "");
+    errdefer allocator.free(body);
+    const final_url = try allocator.dupe(u8, response.url() orelse url);
+    errdefer allocator.free(final_url);
+    const content_type = try allocator.dupe(u8, response.header_list.getFirstValue("content-type") orelse "");
+    errdefer allocator.free(content_type);
+    const allowed = response.header_list.get(allocator, "Service-Worker-Allowed") catch return error.OutOfMemory;
+    errdefer if (allowed) |value| allocator.free(value);
+    var resource: ServiceWorkerResource = .{
+        .allocator = allocator,
+        .status = response.status,
+        .body = body,
+        .final_url = final_url,
+        .content_type = content_type,
+        .service_worker_allowed = if (allowed) |value| @constCast(value) else null,
+        .from_network = response.cache_state != .local,
+    };
+    if (options.kind == .main_script) {
+        // Step 10: its policy container - CSP, Referrer-Policy and the
+        // reporting endpoints of the response.
+        const csp_value = response.header_list.get(allocator, "Content-Security-Policy") catch return error.OutOfMemory;
+        defer if (csp_value) |value| allocator.free(value);
+        const csp_report_only = response.header_list.get(allocator, "Content-Security-Policy-Report-Only") catch return error.OutOfMemory;
+        defer if (csp_report_only) |value| allocator.free(value);
+        const referrer_policy_value = response.header_list.get(allocator, "Referrer-Policy") catch return error.OutOfMemory;
+        defer if (referrer_policy_value) |value| allocator.free(value);
+        const reporting_endpoints = response.header_list.get(allocator, "Reporting-Endpoints") catch return error.OutOfMemory;
+        defer if (reporting_endpoints) |value| allocator.free(value);
+        resource.policy_container = fetch.internal.PolicyContainer.fromResponseHeaders(allocator, .{
+            .url = final_url,
+            .csp = csp_value,
+            .csp_report_only = csp_report_only,
+            .referrer_policy = referrer_policy_value,
+            .reporting_endpoints = reporting_endpoints,
+        }) catch return error.OutOfMemory;
+    }
+    return resource;
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 

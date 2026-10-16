@@ -1,4 +1,8 @@
 //! Implementation for InstallEvent interface
+//!
+//! Spec: Service Workers 4.5 InstallEvent. The install event a service
+//! worker's thread fires (Install step 11.3.1) is one; addRoutes() (the
+//! static router) waits for Handle Fetch.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -16,41 +20,17 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+/// No state of its own: its extended lifetime is ExtendableEvent's (the
+/// generated chain hands it the `lifetime` construction argument).
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
+/// new InstallEvent(type, eventInitDict): DOM's inner event creation steps.
 pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ExtendableEventInit)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &InstallEvent.vtable, ctx);
-    errdefer deinit(instance);
-
-    _ = @"type";
-    _ = eventInitDict;
-    // TODO: Implement constructor logic with parameters
-
+    const instance = try InstallEvent.init(ctx.allocator, ctx);
+    errdefer InstallEvent.deinit(instance);
+    const event_construction = @import("dom").event_construction;
+    const event_init = if (eventInitDict.was_passed) eventInitDict.value.base else dictionaries.EventInit{};
+    try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(event_init));
     return instance;
 }
 

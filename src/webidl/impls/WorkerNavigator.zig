@@ -130,10 +130,12 @@ pub fn get_hid(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return error.NotImplemented;
 }
 
-/// Getter for serviceWorker
+/// Getter for serviceWorker (Service Workers 3.3): "the
+/// ServiceWorkerContainer object that is associated with this" - made in its
+/// relevant realm on first use and kept by the generated getter
+/// ([SameObject]), which the binding ties to this object's wrapper.
 pub fn get_serviceWorker(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return interfaces.ServiceWorkerContainer.init(instance.ctx.allocator, instance.ctx);
 }
 
 /// Getter for storage

@@ -5752,6 +5752,8 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     service_worker_mod.addImport("interfaces", interfaces_mod);
     service_worker_mod.addImport("dictionaries", dictionaries_mod);
     service_worker_mod.addImport("enums", enums_mod);
+    // Setup ServiceWorkerGlobalScope step 1: the unsafe creation time.
+    service_worker_mod.addImport("hr_time", hr_time_mod);
     // The URL Standard's parser, serializer and origins (scope and script URL
     // checks, registration matching).
     service_worker_mod.addImport("basic_parser", url_basic_parser_mod);
