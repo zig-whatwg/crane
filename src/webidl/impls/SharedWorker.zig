@@ -128,7 +128,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     // "SyntaxError" DOMException.
     const base_url = apiBaseURL(instance);
     defer if (base_url) |b| allocator.free(b);
-    const url_record = resolveScriptURL(allocator, compliant_script_url, base_url) catch |err| switch (err) {
+    const url_record = encodingParseScriptURL(instance, allocator, compliant_script_url, base_url) catch |err| switch (err) {
         error.SyntaxError => return error.SyntaxError,
         else => |e| return e,
     };
@@ -289,9 +289,30 @@ fn memberString(ctx: runtime.Context, object: runtime.JSValue, member: []const u
     return try engine.convertToDOMString(ctx, got.value, ctx.allocator);
 }
 
-/// `script_url` encoding-parsed relative to `api_base_url` and serialized.
-/// OWNED (`allocator`). SyntaxError when it does not parse.
-/// Deviation, stated (encoding-parse-utf8): the query is encoded as UTF-8, not with the document's encoding - queued.
+/// HTML "encoding-parsing a URL" given `script_url`, relative to the outside
+/// settings, serialized (the constructor's "Let urlRecord/workerURL be the
+/// result of encoding-parsing a URL given compliantScriptURL, relative to
+/// outsideSettings"): a window's settings parse against its document's base
+/// URL and encode the query with its document's character encoding - the
+/// one helper every document URL goes through, dom.encoding_parse - and a
+/// worker's against its API base URL, in UTF-8. OWNED (`allocator`).
+/// SyntaxError for failure.
+fn encodingParseScriptURL(instance: *runtime.Instance, allocator: std.mem.Allocator, script_url: []const u8, api_base_url: ?[]const u8) error{ SyntaxError, OutOfMemory }![]const u8 {
+    if (relevantWindow(instance)) |window| {
+        if (interfaces.Window.get_document(window) catch null) |document| {
+            const serialized = (try @import("dom").encoding_parse.encodingParseAndSerialize(document, script_url)) orelse
+                return error.SyntaxError;
+            defer document.ctx.allocator.free(serialized);
+            return allocator.dupe(u8, serialized);
+        }
+    }
+    return resolveScriptURL(allocator, script_url, api_base_url);
+}
+
+/// `script_url` parsed relative to `api_base_url` and serialized, its query
+/// encoded as UTF-8: encoding-parsing relative to a worker's settings, whose
+/// API URL character encoding is UTF-8. OWNED (`allocator`). SyntaxError
+/// when it does not parse.
 fn resolveScriptURL(allocator: std.mem.Allocator, script_url: []const u8, api_base_url: ?[]const u8) error{ SyntaxError, OutOfMemory }![]const u8 {
     var base_record: ?@import("url_record").URLRecord = null;
     defer if (base_record) |*b| b.deinit();
