@@ -84,6 +84,7 @@ pub fn installHooks() void {
     dom_module.script_elements.install(.{
         .mark_parser_inserted = &markParserInsertedStep,
         .mark_already_started = &markAlreadyStartedStep,
+        .clear_force_async = &clearForceAsyncStep,
         .script_text = &scriptTextStep,
         .delays_load_event = &scriptsDelayLoadEvent,
     });
@@ -699,6 +700,14 @@ fn markParserInsertedStep(element: *runtime.Instance, parser_document: *runtime.
     if (element.stateAs(State) == null) return;
     const internal = getInternal(element) orelse return;
     internal.parser_document = parser_document;
+    internal.force_async = false;
+}
+
+/// dom.script_elements: "set the element's force async to false", with no
+/// parser document (the fragment parser's Fragment scripting mode).
+fn clearForceAsyncStep(element: *runtime.Instance) void {
+    if (element.stateAs(State) == null) return;
+    const internal = getInternal(element) orelse return;
     internal.force_async = false;
 }
 

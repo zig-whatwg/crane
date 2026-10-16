@@ -85,11 +85,53 @@ pub const ParseOptions = struct {
     origin: ?*dom.origin_record.OriginRecord = null,
 };
 
+/// HTML 13.2.4.5 "parser scripting mode": the two the HTML fragment parsing
+/// algorithm takes (its step 1 asserts one of them).
+pub const ScriptingMode = enum {
+    /// "Scripts are enabled, however they are marked as already started,
+    /// essentially preventing them from executing." The algorithm's default:
+    /// innerHTML, outerHTML, insertAdjacentHTML, setHTMLUnsafe.
+    inert,
+    /// "Scripts are executed as soon as they are inserted into the document
+    /// as part of a the HTML fragment parsing algorithm": the parser leaves a
+    /// script's parser document null and its already started false ("in
+    /// head", script start tag, steps 3 and 5), so inserting it prepares it
+    /// as script-inserted. createContextualFragment(), and setHTMLUnsafe's
+    /// runScripts.
+    fragment,
+};
+
 /// Options for the HTML fragment parsing algorithm.
 pub const FragmentOptions = struct {
     /// Its allowDeclarativeShadowRoots argument (default false): true for
     /// setHTMLUnsafe ("set and filter HTML" step 7).
     allow_declarative_shadow_roots: bool = false,
+    /// Its scriptingMode argument (default Inert).
+    scripting_mode: ScriptingMode = .inert,
+    /// Build the fragment in an inert document - the context document's
+    /// template contents owner document, which has no browsing context - with
+    /// no custom element registry, instead of in the context's own document.
+    /// Nothing the markup names is fetched, no event handler content
+    /// attribute is compiled and no custom element is constructed until the
+    /// nodes are inserted into a document that has a browsing context: the
+    /// insertion adopts them (DOM "insert" step 7.1), their adopting steps
+    /// run, and the connected ones upgrade.
+    ///
+    /// For "set and filter HTML" when a sanitizer filters the result
+    /// (setHTML, and setHTMLUnsafe given a sanitizer), so that nothing the
+    /// filter removes ever runs. The fragment parsing algorithm's own text
+    /// builds in the target's document (step 16's fragment is the root
+    /// insertion target), as innerHTML does in every browser; the inert
+    /// document is the browsers' for the sanitizing entry points: Blink's
+    /// FragmentParser::ParseHTMLFragmentInternal parses into
+    /// context->GetDocument().EnsureTemplateDocument() with a null registry
+    /// whenever a streaming sanitizer runs (ForceInertTemplate::kForce),
+    /// Gecko's nsContentUtils::SetAndFilterHTML into
+    /// CreateInertHTMLDocument(doc) ("We MUST NOT cause any requests during
+    /// parsing"), and both insert the result with an ordinary append, which
+    /// adopts it. WebKit's template contents owner document is the same kind
+    /// of document (Document::ensureTemplateDocument).
+    inert_document: bool = false,
 };
 
 /// Namespace enumeration matching the parser's namespace
@@ -329,6 +371,18 @@ pub fn parseFragment(
     html: []const u8,
     target: ?*runtime.Instance,
 ) ParseError!*runtime.Instance {
+    return parseFragmentIn(allocator, ctx, html, target, .inert);
+}
+
+/// HTML 8.5 "the fragment parsing algorithm steps" with their optional
+/// scriptingMode (default Inert): Fragment for createContextualFragment().
+pub fn parseFragmentIn(
+    allocator: Allocator,
+    ctx: runtime.Context,
+    html: []const u8,
+    target: ?*runtime.Instance,
+    scripting_mode: ScriptingMode,
+) ParseError!*runtime.Instance {
     // HTML §8.5 "the fragment parsing algorithm steps" step 2: "If
     // context's node document is an XML document, then set algorithm to the
     // XML fragment parsing algorithm."
@@ -339,7 +393,9 @@ pub fn parseFragment(
             else => error.InvalidStateError,
         };
     };
-    return parseFragmentWith(allocator, ctx, html, target, .{});
+    // Step 3: the HTML fragment parsing algorithm, given target, markup,
+    // false, and scriptingMode.
+    return parseFragmentWith(allocator, ctx, html, target, .{ .scripting_mode = scripting_mode });
 }
 
 /// The element a fragment parse into `target` takes as its context - a
@@ -373,8 +429,12 @@ pub fn parseFragmentWith(
     // Fragment parsing step 17 makes the root insertion target a
     // DocumentFragment. For a template context that fragment is its inert
     // content: create-for-token step 6 finds no registry there, even if the
-    // template element itself has the document's global registry.
-    const registry: dom.custom_elements.RegistrySelection = if (is_template)
+    // template element itself has the document's global registry. An inert
+    // build looks no registry up either (Blink passes a null registry with
+    // ForceInertTemplate::kForce: "we shouldn't run custom element
+    // callbacks. Those will be run whenever the result template will be
+    // inserted into the final document").
+    const registry: dom.custom_elements.RegistrySelection = if (is_template or options.inert_document)
         .{ .explicit = null }
     else if (target) |value|
         .{ .explicit = if (is_shadow)
@@ -383,7 +443,7 @@ pub fn parseFragmentWith(
             interfaces.Element.get_customElementRegistry(value) catch return error.InvalidStateError }
     else
         .default;
-    const conversion = Conversion{ .fragment = true, .registry = registry };
+    var conversion = Conversion{ .fragment = true, .registry = registry, .scripting_mode = options.scripting_mode };
     // The context element's local name and namespace. Its HTML-specific
     // steps below - the tokenizer state, the insertion mode - are for an
     // element in the HTML namespace; a foreign context (innerHTML on an svg
@@ -450,6 +510,11 @@ pub fn parseFragmentWith(
             // Fragment parsing steps 10–11: inherit disabled scripting.
             tree_builder.scripting_enabled = document_internals.isScriptingEnabled(context_document) and
                 (interfaces.Document.get_defaultView(context_document) catch null) != null;
+            // Step 10's Disabled mode, for the scripts: the parser sets their
+            // parser document ("in head", script start tag, step 3), so DOM
+            // insertion never prepares them - none runs, as with Inert's
+            // already started.
+            if (!tree_builder.scripting_enabled) conversion.scripting_mode = .inert;
             if (document_internals.getMode(context_document)) |mode| tree_builder.quirks_mode = switch (mode) {
                 .no_quirks => .no_quirks,
                 .quirks => .quirks,
@@ -520,6 +585,25 @@ pub fn parseFragmentWith(
     if (context_element) |elem| {
         owner_doc = interfaces.Node.get_ownerDocument(elem) catch null;
     }
+    // The inert build's document: the context document's template contents
+    // owner document (HTML 4.12.3 "appropriate template contents owner
+    // document"), which has no browsing context. The fragment is its node
+    // too, so inserting it adopts every node into the target's document.
+    //
+    // A template context builds there too: its fragment is the template's
+    // contents' (innerHTML "replace all"s into them, which would adopt every
+    // node into that document anyway). Built in the template's own document
+    // first, an img would schedule a load and an onclick attribute compile a
+    // handler before that adoption - Crane compiles at set time - where the
+    // spec's tree, adopted, has neither. Blink's FragmentParser
+    // (IsA<HTMLTemplateElement>(*context_element) ->
+    // GetDocument().EnsureTemplateDocument()) and WebKit's
+    // createFragmentForMarkup (contextElement.hasTagName(templateTag) ->
+    // ensureTemplateDocument()) build there directly, and Gecko parses into
+    // the template's content fragment.
+    if (options.inert_document or is_template) if (owner_doc) |doc| {
+        owner_doc = dom.template_contents.ownerDocument(doc) catch return error.InvalidStateError;
+    };
 
     if (owner_doc) |doc| node_document.set(fragment, doc) catch return error.InvalidStateError;
 
@@ -550,6 +634,10 @@ pub fn parseFragmentWith(
 const Conversion = struct {
     fragment: bool = false,
     registry: dom.custom_elements.RegistrySelection = .default,
+    /// The parser's scripting mode, for its script elements. A document's
+    /// conversion (DOMParser, whose document has scripting disabled) marks
+    /// them as Inert does: none ever runs.
+    scripting_mode: ScriptingMode = .inert,
     /// A full document's parse: the elements whose creation met "create an
     /// element for a token" step 15's parser conditions, associated once the
     /// tree is built (a foster-parented control can precede its form).
@@ -632,7 +720,7 @@ fn convertChildrenToDom(
     // template's insertion target is its content DocumentFragment, whose
     // registry lookup is null even when the template itself has one.
     const child_conversion: Conversion = if (target != parent_dom)
-        .{ .fragment = conversion.fragment, .registry = .{ .explicit = null }, .associations = conversion.associations }
+        .{ .fragment = conversion.fragment, .registry = .{ .explicit = null }, .associations = conversion.associations, .scripting_mode = conversion.scripting_mode }
     else
         conversion;
     var index: usize = 0;
@@ -697,7 +785,7 @@ fn attachDeclarativeShadow(
     // The template's contents are the shadow root (7.11.6); create-for-token
     // step 6 looks the registry up from it.
     const shadow_registry = interfaces.ShadowRoot.get_customElementRegistry(shadow) catch return error.InvalidStateError;
-    try convertChildrenToDom(allocator, ctx, request.template, shadow, owner_document, .{ .fragment = conversion.fragment, .registry = .{ .explicit = shadow_registry }, .associations = conversion.associations });
+    try convertChildrenToDom(allocator, ctx, request.template, shadow, owner_document, .{ .fragment = conversion.fragment, .registry = .{ .explicit = shadow_registry }, .associations = conversion.associations, .scripting_mode = conversion.scripting_mode });
     return true;
 }
 
@@ -764,19 +852,26 @@ fn createElementNode(
         dom.custom_elements.initialize(element, null, is_value, .undefined) catch return error.InvalidStateError;
     }
 
-    if (owner_document) |doc| {
-        // "in head", a start tag whose tag name is "script", step 4: the
-        // element's parser document and force async - and "if the parser was
-        // created as part of the HTML fragment parsing algorithm, then set the
-        // script element's already started to true". This conversion serves
-        // the fragment parser (innerHTML, outerHTML) and DOMParser, whose
-        // document has scripting disabled - where "prepare the script
-        // element" sets already started (step 15) before it returns at step
-        // 18 - so every script made here is already started: none ever runs,
-        // however it is later inserted, moved or cloned.
-        if (is_script) dom.script_elements.markParserInserted(element, doc);
-    }
-    if (is_script) dom.script_elements.markAlreadyStarted(element);
+    if (is_script) switch (conversion.scripting_mode) {
+        // "in head", a start tag whose tag name is "script", steps 3-5: the
+        // element's parser document, its force async false, and - "if the
+        // parser's scripting mode is Inert" - already started. This serves
+        // the fragment parser's Inert mode (innerHTML, outerHTML) and
+        // DOMParser, whose document has scripting disabled - where "prepare
+        // the script element" sets already started (step 15) before it
+        // returns at step 18 - so every script made here is already started:
+        // none ever runs, however it is later inserted, moved or cloned.
+        .inert => {
+            if (owner_document) |doc| dom.script_elements.markParserInserted(element, doc);
+            dom.script_elements.markAlreadyStarted(element);
+        },
+        // Fragment: step 3 leaves the parser document null - "treats
+        // parser-inserted scripts as if they were not parser-inserted" - and
+        // step 4 sets force async to false; already started stays false, so
+        // the script is prepared when it becomes connected (HTML "the script
+        // element", its post-connection steps).
+        .fragment => dom.script_elements.clearForceAsync(element),
+    };
 
     // "Append each attribute in the given token to element."
     for (tree_node.attributes.toSlice()) |attr| parser_script_execution.appendParsedAttribute(element, attr);

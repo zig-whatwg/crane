@@ -29,6 +29,10 @@ const interfaces = @import("interfaces");
 pub const Implementation = struct {
     mark_parser_inserted: *const fn (element: *runtime.Instance, parser_document: *runtime.Instance) void,
     mark_already_started: *const fn (element: *runtime.Instance) void,
+    /// "Set the element's force async to false" alone: the fragment parser's
+    /// Fragment scripting mode leaves the parser document null. Optional, so
+    /// a host that never parses in that mode need not supply it.
+    clear_force_async: ?*const fn (element: *runtime.Instance) void = null,
     /// The element's script text, if it is an HTML script element.
     script_text: ?*const fn (element: *runtime.Instance) ?*ScriptText = null,
     /// A prepared HTML script's flag delays its preparation-time document.
@@ -100,6 +104,15 @@ pub fn installSvg(impl: SvgImplementation) void {
 pub fn markParserInserted(element: *runtime.Instance, parser_document: *runtime.Instance) void {
     if (implementation) |impl| impl.mark_parser_inserted(element, parser_document);
     if (svgFlags(element)) |flags| flags.parser_inserted = true;
+}
+
+/// Set `element`'s force async to false, leaving its parser document null
+/// ("in head", a start tag whose tag name is "script", steps 3-4, in the
+/// Fragment scripting mode). A no-op for an element that is no HTML script
+/// element: an SVG script has no force async.
+pub fn clearForceAsync(element: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    if (impl.clear_force_async) |clear| clear(element);
 }
 
 /// Set `element`'s already started to true. A no-op for an element that is
