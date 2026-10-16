@@ -17,7 +17,7 @@ fn checkSubsumes(allocator: std.mem.Allocator, required: []const u8, returned: [
 }
 
 test "CSPEE validates the complete serialized policy before parsing" {
-    for ([_][]const u8{ "", "script-src x,y", "x%20y", "img-src x\r\nTest: injected", "img-src x\x0c", "img-src é", "img-src x; report-to", "report-uri /endpoint" }) |invalid| {
+    for ([_][]const u8{ "", "   ", "\t", "script-src x,y", "x%20y", "img-src x\r\nTest: injected", "img-src x\x0c", "img-src é", "img-src x; report-to", "report-uri /endpoint" }) |invalid| {
         try std.testing.expect(!try ee.isValidAttribute(std.testing.allocator, invalid, null, null));
     }
     for ([_][]const u8{ "img-src 'none'", "unknown-policy x", "  ; IMG-src\t'self'; ;", "script-src https://example.test/a?b=c" }) |valid| {

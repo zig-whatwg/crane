@@ -20,6 +20,11 @@ const Allocator = std.mem.Allocator;
 /// NavigationRequest::SetupCSPEmbeddedEnforcement interprets 'self'.
 pub fn isValidAttribute(allocator: Allocator, value: []const u8, parent: ?[]const u8, origin: ?*const types.Origin) !bool {
     if (value.len == 0 or value.len > 4096) return false;
+    // The serialized-CSP grammar needs a directive, so a value of nothing but
+    // whitespace is no requirement at all: Chromium's SplitAndTrim yields no
+    // policy for it, and the frame falls back to its parent's requirement
+    // (row 43 review S3). A value of bare `;` stays valid; Chromium sends it.
+    if (std.mem.trim(u8, value, " \t\x0b\x0c").len == 0) return false;
     var tokens = std.mem.splitScalar(u8, value, ';');
     while (tokens.next()) |token| {
         const text = std.mem.trim(u8, token, " \t");
