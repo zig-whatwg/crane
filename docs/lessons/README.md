@@ -293,6 +293,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A setter borrows an `any` and takes a callback - on every path](architecture-a-setter-borrows-an-any-and-takes-a-callback-on-every-path.md) - Ownership of an argument is decided once, by its conversion, and holds on the error path too: release what the callee borrows whatever it returned, and leave what it takes to the taker even when it fails.
 - [A JSValue's type cannot say whether its conversion is fresh](architecture-a-jsvalue-s-type-cannot-say-whether-its-conversion-is-fresh.md) - A type-level "is it fresh?" answer must be "kept" for JSValue and unions, so it leaks every fresh value: ask the value (its arm) with an allowlist, and keep borrowed arms as the default.
 - [A release predicate must dispatch as its converter does](architecture-a-release-predicate-must-dispatch-as-its-converter-does.md) - Write a release predicate as a mirror of the converter's dispatch: a type the converter handles specially must be handled specially, and first, in the predicate too.
+- [A missing partition key is not a shared cache partition](architecture-a-missing-partition-key-is-not-a-shared-cache-partition.md) - An absent partition is missing information, not permission to share.
 
 ### Spec Compliance
 - [A form's past names go at the change of owner, and insertBefore is one](spec-compliance-past-names-go-at-the-owner-change.md) - A rule keyed on a change of a computed value needs the change, not a later comparison - and a remove-then-insert is two changes even when the value ends where it began.
@@ -429,6 +430,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A secure context is the document's own URL and every ancestor's](spec-compliance-a-secure-context-is-the-documents-own-url-and-every-ancestor.md) - An environment fact with a stored default and no writer is a bug waiting for its first reader - derive it from the state that decides it, at the moment it is asked.
 - [A request whose origin is left "client" is same origin with everything](spec-compliance-a-request-origin-left-client-is-same-origin-with-everything.md) - When a request has no client to resolve "client", set its origin - and test a same-origin request with a URL that must fail, because an unset origin makes every URL pass.
 - [A blob URL's entry is resolved when the URL is parsed, not when it is fetched](spec-compliance-a-blob-url-entry-is-resolved-when-the-url-is-parsed.md) - When a spec parses a URL in one step and fetches it in a later task, the blob URL entry belongs to the parse: capture it there, or a revoke in between turns a valid script into a network error.
+- [Created Blob types do not use constructor normalization](spec-compliance-created-blob-types-do-not-use-constructor-normalization.md) - Follow the creating algorithm's type rules, and name whether each MIME value is a string or header bytes.
 
 ### Codegen
 
@@ -574,6 +576,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [The test allocator costs more than a fast native operation](testing-the-test-allocator-costs-more-than-a-fast-native-operation.md) - A per-call timing through `std.testing.allocator` measures stack-trace capture, not the code under test - time with the C allocator and check for leaks in a separate test.
 - [refAllDecls on a module that imports the engine needs V8 linked](testing-refalldecls-on-a-module-that-imports-engine-needs-v8-linked.md) - Once a module imports `engine`, its native tests must not reference anything that reaches the protocol - scope refAllDecls, and run the rest in tests/v8.
 - [Read a test's META lines with upstream's regex, and stop where upstream stops](testing-read-wpt-metadata-with-upstreams-regex.md) - The runner's variant set must be upstream's manifest, not an approximation of it: port the regex and the expansion table, and before changing the parser, diff its run set against MANIFEST.json for the whole worklist.
+- [A partition test needs a cross-site top level](testing-a-partition-test-needs-a-cross-site-top-level.md) - Partitioning is by site: a cross-site test needs HTTP_NOTSAMESITE_ORIGIN; a www1 subdomain is the same site and only passes while partitioning is off.
 
 ### Debugging
 
