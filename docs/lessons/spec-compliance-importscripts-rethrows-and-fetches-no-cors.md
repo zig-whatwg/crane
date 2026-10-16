@@ -1,6 +1,7 @@
 # Spec Compliance: importScripts() fetches no-cors and runs with rethrow errors
 
 **Date**: 2026-09-30
+**Status** (2026-10-16): the rethrow half of the Fix is superseded. Throwing the kept value again relocated it to the importScripts() call (V8 computes a new message at the calling frame). importScripts() now runs each script with `engine.runClassicScriptRethrowingErrors`, which leaves the original exception pending (TryCatch::ReThrow). See [Throwing a caught exception again relocates it](debugging-throwing-a-caught-exception-again-relocates-it.md).
 **Lesson**: An importScripts()ed script is fetched with a new request's default mode, "no-cors", and run with "rethrow errors" true: what it throws goes to the caller's catch - or, muted, becomes a NetworkError - and is never reported to the worker's onerror.
 
 **Why**: "Import scripts into worker global scope" runs "fetch a classic worker-imported script" (no-cors, destination script, the unsafe response's status and JavaScript MIME type checked) and then "run a classic script" with rethrow errors, "letting the exception ... continue to be processed by the calling script".

@@ -148,7 +148,7 @@ fn engineError(err: engine.Error) runtime.EngineError {
         error.OutOfMemory => error.OutOfMemory,
         error.DataCloneError => error.DataCloneError,
         error.NotSupported => error.NotSupported,
-        error.OperationFailed, error.ExceptionReported => error.OperationFailed,
+        error.OperationFailed, error.ExceptionReported, error.MutedScriptError => error.OperationFailed,
     };
 }
 
@@ -411,9 +411,12 @@ pub fn fetchClassicWorkerImportedScript(ctx: runtime.Context, url: []const u8) e
 ///  settings. Rethrow evaluationStatus.[[Value]]. If rethrow errors is true
 ///  and script's muted errors is true: Clean up after running script with
 ///  settings. Throw a "NetworkError" DOMException." So what the script throws
-/// - a parse error included - reaches importScripts()'s caller, and is not
-/// reported: the engine's report hands the value here, and it is thrown
-/// again once the engine has cleaned up (ExceptionPending).
+/// - a parse error included - reaches importScripts()'s caller as it was
+/// thrown, and is not reported: the engine leaves the original exception
+/// pending (ExceptionPending), with the location it was thrown at - an
+/// uncaught one is reported at the imported script, however many
+/// importScripts() calls it crossed (workers/Worker-nested-importScripts-error.html).
+/// Throwing the value again from here located it at the importScripts() call.
 ///
 /// importScripts() is called from script: the execution context stack is not
 /// empty, so "clean up after running script" performs no microtask
@@ -427,42 +430,14 @@ pub fn runImportedScript(ctx: runtime.Context, script: *const ImportedScript) an
     // an import() in it included.
     const record = try wctx.classicScript(if (script.muted) "about:blank" else script.url);
 
-    var rethrow: Rethrow = .{ .realm = realm };
-    defer if (rethrow.value) |value| value.release();
     wctx.entered += 1;
     defer wctx.entered -= 1;
-    engine.runClassicScript(realm, .{ .utf8 = script.source }, script.url, record, rethrow.reporter()) catch |err| switch (err) {
-        error.ExceptionReported => {},
+    engine.runClassicScriptRethrowingErrors(realm, .{ .utf8 = script.source }, script.url, record, script.muted) catch |err| switch (err) {
+        // 8.2: a muted script's error is a NetworkError.
+        error.MutedScriptError => return error.NetworkError,
         else => return err,
     };
-
-    if (rethrow.thrown) {
-        if (script.muted) return error.NetworkError;
-        const value = rethrow.value orelse return error.NetworkError;
-        try engine.throwValue(realm, value.value);
-        return error.ExceptionPending;
-    }
 }
-
-/// The engine's "report an exception" for a script run with rethrow errors
-/// true: nothing is reported; the thrown value is kept for the caller.
-const Rethrow = struct {
-    realm: runtime.Context,
-    thrown: bool = false,
-    /// OWNED.
-    value: ?engine.Owned = null,
-
-    fn reporter(self: *Rethrow) engine.Reporter {
-        return .{ .report = keep, .host = self };
-    }
-
-    fn keep(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
-        const self: *Rethrow = @ptrCast(@alignCast(host orelse return));
-        self.thrown = true;
-        if (self.value) |old| old.release();
-        self.value = engine.retainValue(self.realm, info.error_value) catch null;
-    }
-};
 
 fn forScope(ctx: runtime.Context) ?*WorkerHost {
     for (live_contexts.items) |live| {

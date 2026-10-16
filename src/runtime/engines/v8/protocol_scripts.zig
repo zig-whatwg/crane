@@ -269,6 +269,85 @@ pub fn runClassicScript(realm: Context, source: engine.ScriptSource, url: []cons
     try call.runThenCleanUp();
 }
 
+/// Steps 5-8 of "run a classic script" with rethrow errors true, as a body
+/// v8_RunWithMicrotasksSuppressed runs: the wrapper compiles and runs the
+/// script, and ReThrow()s what it threw (8.1) - or, muted, clears it (8.2).
+const EvaluateRethrowing = struct {
+    scope: ScriptScope,
+    source: engine.ScriptSource,
+    url: []const u8,
+    host_defined: ?*anyopaque,
+    muted_errors: bool,
+    /// Out: an error before evaluation (the source was no string).
+    failure: ?Error = null,
+    /// Out: v8_Script_RunRethrowingErrors' answer.
+    outcome: c_int = 0,
+
+    fn run(data: ?*anyopaque) callconv(.c) void {
+        const self: *EvaluateRethrowing = @ptrCast(@alignCast(data orelse return));
+        const isolate = self.scope.isolate;
+        var made_text: ?*ffi.String = null;
+        defer if (made_text) |t| ffi.v8_String_Dispose(t);
+        const text: *ffi.String = switch (self.source) {
+            .utf8 => |bytes| blk: {
+                made_text = support.newString(isolate, bytes) catch |err| {
+                    self.failure = err;
+                    return;
+                };
+                break :blk made_text.?;
+            },
+            .string => |value| blk: {
+                const handle = support.handleOf(value) orelse {
+                    self.failure = error.TypeError;
+                    return;
+                };
+                if (!ffi.v8_Value_IsString(handle)) {
+                    self.failure = error.TypeError;
+                    return;
+                }
+                break :blk @ptrCast(handle);
+            },
+        };
+        var name: ?*ffi.String = null;
+        defer if (name) |n| ffi.v8_String_Dispose(n);
+        if (self.url.len > 0) name = support.newString(isolate, self.url) catch |err| {
+            self.failure = err;
+            return;
+        };
+        self.outcome = ffi.v8_Script_RunRethrowingErrors(self.scope.context(), text, name, self.host_defined, self.muted_errors);
+    }
+};
+
+/// HTML "run a classic script" with rethrow errors true (see the
+/// declaration): what the script throws stays pending as it was thrown, or
+/// - muted - is cleared for the host's NetworkError. "Clean up after running
+/// script" runs first either way: the exception stays pending through it,
+/// and, called from script (importScripts()), the stack is not empty, so it
+/// performs no checkpoint.
+pub fn runClassicScriptRethrowingErrors(realm: Context, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque, muted_errors: bool) Error!void {
+    // 4. Prepare to run script.
+    var call = EvaluateRethrowing{
+        .scope = try prepareToRunScript(realm),
+        .source = source,
+        .url = url,
+        .host_defined = host_defined,
+        .muted_errors = muted_errors,
+    };
+    // 5-7, and the wrapper's ReThrow or clear of 8.1-8.2.
+    ffi.v8_RunWithMicrotasksSuppressed(call.scope.isolate, EvaluateRethrowing.run, &call);
+    // 8.1.1, 8.2.1, 9: clean up after running script.
+    cleanUpAfterRunningScript(call.scope);
+    if (call.failure) |err| return err;
+    return switch (call.outcome) {
+        // 10: a normal completion.
+        0 => {},
+        // 8.2.2: muted - nothing pending; the host throws the NetworkError.
+        2 => error.MutedScriptError,
+        // 8.1.2: the original exception, pending; or a termination going on.
+        else => error.ExceptionPending,
+    };
+}
+
 /// A classic script's completion value (see the declaration): run a classic
 /// script, with what it throws reported as step 8.3 does, and the normal
 /// completion's value kept.

@@ -625,6 +625,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A format enum error never reaches the codec](debugging-a-format-enum-error-never-reaches-the-codec.md) - An enum failure precedes the implementation: a shared message is not evidence of a shared codec defect.
 - [Check the binding receiver before changing the impl](debugging-check-the-binding-receiver-before-changing-the-impl.md) - Trace the actual receiver through the binding; an impl cannot reconstruct an argument the binding discarded.
 - [A permission query cannot repair its settings object](debugging-a-permission-query-cannot-repair-its-settings-object.md) - A consumer's correct behavior cannot compensate for incorrect shared settings; repair the owner and keep the reproducer.
+- [Throwing a caught exception again relocates it - only ReThrow keeps where it was thrown](debugging-throwing-a-caught-exception-again-relocates-it.md) - A value is not an exception: to pass an exception on with its location, rethrow it where it was caught (TryCatch::ReThrow) - catching it as a value and throwing that again moves it to the line that threw it again.
 
 ### Workflow
 - [Zig optimizes a compilation at its root module's level; a module's own mode is its semantics](workflow-zig-optimizes-a-compilation-at-its-root-module-s-level.md) - The root module's mode is the optimizer; every other module's mode is its semantics. To speed up a binary without losing a module's Debug-only checks, raise the root and leave the module.

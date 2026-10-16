@@ -3057,6 +3057,11 @@ pub extern fn v8_CompileEventHandlerWithParameters(
 /// "") and carries `host_defined` (null: none). Free the result with
 /// v8_FreeScriptCompileResult; its script is OWNED.
 pub extern fn v8_Script_CompileWithHostDefined_Safe(context: *Context, source: *String, resource_name: ?*String, host_defined: ?*anyopaque) *V8ScriptCompileResult;
+/// HTML "run a classic script" with rethrow errors true: compile and run, and
+/// on an abrupt completion TryCatch::ReThrow (the original message kept).
+/// 0 normal; 1 the exception is pending again; 2 it was muted and cleared;
+/// -1 the isolate is terminating.
+pub extern fn v8_Script_RunRethrowingErrors(context: *Context, source: *String, resource_name: ?*String, host_defined: ?*anyopaque, muted_errors: bool) c_int;
 
 /// Whether V8's platform is initialized in this process.
 pub extern fn v8_Platform_IsInitialized() bool;

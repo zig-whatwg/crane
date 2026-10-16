@@ -120,6 +120,11 @@ pub fn defineBuiltinFunction(_: Context, _: []const u8, _: u32, _: *const engine
 pub fn runClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, _: ?*anyopaque, _: engine.Reporter) Error!void {
     return error.NotSupported;
 }
+/// Runs no script yet, as runClassicScript. The route: the engine's own
+/// rethrow - an error object carries the location it was thrown at.
+pub fn runClassicScriptRethrowingErrors(_: Context, _: engine.ScriptSource, _: []const u8, _: ?*anyopaque, _: bool) Error!void {
+    return error.NotSupported;
+}
 pub fn evaluateClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, _: ?*anyopaque, _: engine.Reporter) Error!Owned {
     return error.NotSupported;
 }

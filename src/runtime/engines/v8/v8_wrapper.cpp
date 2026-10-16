@@ -11558,6 +11558,51 @@ V8ScriptCompileResult* v8_Script_CompileWithHostDefined_Safe(
     return result;
 }
 
+/// HTML "run a classic script" with rethrow errors true (steps 5-8), for the
+/// engine protocol's runClassicScriptRethrowingErrors: compile `source` as a
+/// classic script named `resource_name` and run it, under a TryCatch that
+/// does not keep what it catches. Blink's V8ScriptRunner does the same for
+/// importScripts() (RethrowErrorsOption): TryCatch::ReThrow puts the
+/// exception back with the message of its ORIGINAL throw, where
+/// Isolate::ThrowException would compute a new one at the calling frame.
+/// Returns 0: a normal completion. 1: the script did not parse or threw, and
+/// the exception is pending again, as thrown (8.1, muted errors false). 2: it
+/// did, with `muted_errors`: nothing is pending (8.2: the host throws a
+/// NetworkError). -1: the isolate is terminating; the termination goes on.
+int v8_Script_RunRethrowingErrors(
+    Global<Context>* context,
+    Global<String>* source,
+    Global<String>* resource_name,
+    void* host_defined,
+    bool muted_errors
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+
+    Local<Context> local_context = context->Get(isolate);
+    Context::Scope context_scope(local_context);
+    Local<String> local_source = source->Get(isolate);
+    Local<Value> local_resource_name = resource_name ? resource_name->Get(isolate).As<Value>() : String::Empty(isolate).As<Value>();
+
+    Local<Data> host_defined_options;
+    if (host_defined) host_defined_options = protocolHostDefinedOptions(isolate, 0, host_defined);
+    ScriptOrigin origin(local_resource_name, 0, 0, false, -1, Local<Value>(), false, false, false, host_defined_options);
+
+    TryCatch try_catch(isolate);
+    Local<Script> script;
+    if (Script::Compile(local_context, local_source, &origin).ToLocal(&script)) {
+        (void)script->Run(local_context);
+    }
+    if (!try_catch.HasCaught()) return 0;
+    if (try_catch.HasTerminated() || !try_catch.CanContinue()) {
+        try_catch.ReThrow();
+        return -1;
+    }
+    if (muted_errors) return 2;
+    try_catch.ReThrow();
+    return 1;
+}
+
 /// Whether V8's platform is initialized in this process. V8's flags must be
 /// set before it is (they are frozen after), and it cannot be initialized
 /// again once disposed.
