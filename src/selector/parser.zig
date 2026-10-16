@@ -598,8 +598,13 @@ pub const ParserError = error{
 /// Selectors 4 17.1 "parse a selector": `source` as a <selector-list>, or an
 /// error when it is an invalid selector. The list owns what it decoded.
 pub fn parseSelectorList(allocator: Allocator, source: []const u8) ParserError!SelectorList {
-    var tokenizer = Tokenizer.init(allocator, source);
-    var parser = try Parser.init(allocator, &tokenizer);
+    // The tokens and the parse's working lists live on the stack while they
+    // fit: querySelector parses on every call, and allocations are most of a
+    // short selector's cost. The list and its strings use `allocator`.
+    var stack = std.heap.stackFallback(4096, allocator);
+    const scratch = stack.get();
+    var tokenizer = Tokenizer.init(scratch, source);
+    var parser = try Parser.initWithScratch(allocator, scratch, &tokenizer);
     defer parser.deinit();
     return parser.parse();
 }
@@ -652,7 +657,11 @@ const Stream = struct {
 };
 
 pub const Parser = struct {
+    /// What the SelectorList and its strings are allocated with.
     allocator: Allocator,
+    /// The tokens and the working lists of the parse, freed before it
+    /// returns (the tokenizer's allocator).
+    scratch: Allocator,
     tokenizer: *Tokenizer,
     /// Every token of the input, the EOF token last.
     tokens: []Token,
@@ -663,8 +672,14 @@ pub const Parser = struct {
     current_token: ?Token = null,
 
     pub fn init(allocator: Allocator, tokenizer: *Tokenizer) ParserError!Parser {
+        return initWithScratch(allocator, tokenizer.allocator, tokenizer);
+    }
+
+    /// `scratch` is the tokenizer's allocator, for the tokens and the
+    /// parse's working lists; `allocator` makes what `parse` returns.
+    pub fn initWithScratch(allocator: Allocator, scratch: Allocator, tokenizer: *Tokenizer) ParserError!Parser {
         const tokens = try tokenizer.tokenize();
-        var parser = Parser{ .allocator = allocator, .tokenizer = tokenizer, .tokens = tokens };
+        var parser = Parser{ .allocator = allocator, .scratch = scratch, .tokenizer = tokenizer, .tokens = tokens };
         errdefer parser.deinit();
         // Decode, once, every value written with an escape (or a NUL or a
         // surrogate): the AST holds the decoded values.
@@ -682,7 +697,7 @@ pub const Parser = struct {
     }
 
     pub fn deinit(self: *Parser) void {
-        self.allocator.free(self.tokens);
+        self.scratch.free(self.tokens);
         for (self.strings.items) |s| self.allocator.free(s);
         self.strings.deinit(self.allocator);
     }
@@ -714,10 +729,8 @@ pub const Parser = struct {
     /// to a CSS grammar": commas inside blocks do not separate.
     fn parseList(self: *Parser, tokens: []const Token, ctx: Context, kind: ListKind) ParserError!SelectorList {
         var selectors: std.ArrayList(ComplexSelector) = .empty;
-        errdefer {
-            for (selectors.items) |*selector| selector.deinit();
-            selectors.deinit(self.allocator);
-        }
+        defer selectors.deinit(self.scratch);
+        errdefer for (selectors.items) |*selector| selector.deinit();
 
         var piece_start: usize = 0;
         var i: usize = 0;
@@ -726,7 +739,7 @@ pub const Parser = struct {
             if (i >= tokens.len or at_comma) {
                 const piece = tokens[piece_start..i];
                 if (self.parseComplex(piece, ctx, kind.relative)) |selector| {
-                    selectors.append(self.allocator, selector) catch |err| {
+                    selectors.append(self.scratch, selector) catch |err| {
                         var dropped = selector;
                         dropped.deinit();
                         return err;
@@ -746,7 +759,7 @@ pub const Parser = struct {
         }
 
         return SelectorList{
-            .selectors = try selectors.toOwnedSlice(self.allocator),
+            .selectors = try self.allocator.dupe(ComplexSelector, selectors.items),
             .allocator = self.allocator,
         };
     }
@@ -765,8 +778,8 @@ pub const Parser = struct {
     /// token of another kind inside is an ordinary token.
     fn matchingClose(self: *Parser, tokens: []const Token, open: usize) ParserError!usize {
         var expected: std.ArrayList(Token.Tag) = .empty;
-        defer expected.deinit(self.allocator);
-        try expected.append(self.allocator, closerOf(tokens[open].tag).?);
+        defer expected.deinit(self.scratch);
+        try expected.append(self.scratch, closerOf(tokens[open].tag).?);
         var i = open + 1;
         while (i < tokens.len) : (i += 1) {
             const tag = tokens[i].tag;
@@ -774,7 +787,7 @@ pub const Parser = struct {
                 _ = expected.pop();
                 if (expected.items.len == 0) return i;
             } else if (closerOf(tag)) |closer| {
-                try expected.append(self.allocator, closer);
+                try expected.append(self.scratch, closer);
             }
         }
         return tokens.len;
@@ -800,9 +813,9 @@ pub const Parser = struct {
         _ = stream.skipWhitespace();
 
         var ltr_compounds: std.ArrayList(CompoundSelector) = .empty;
-        defer ltr_compounds.deinit(self.allocator);
+        defer ltr_compounds.deinit(self.scratch);
         var ltr_combinators: std.ArrayList(Combinator) = .empty;
-        defer ltr_combinators.deinit(self.allocator);
+        defer ltr_combinators.deinit(self.scratch);
         errdefer for (ltr_compounds.items) |*compound| compound.deinit();
 
         // <relative-selector> = <combinator>? <complex-selector>: with no
@@ -823,7 +836,7 @@ pub const Parser = struct {
         while (true) {
             var compound = try self.parseCompound(&stream, ctx);
             const has_pseudo_element = compound.hasPseudoElement();
-            ltr_compounds.append(self.allocator, compound) catch |err| {
+            ltr_compounds.append(self.scratch, compound) catch |err| {
                 compound.deinit();
                 return err;
             };
@@ -841,21 +854,17 @@ pub const Parser = struct {
             } else if (had_whitespace) .Descendant else return error.InvalidSelector;
             // A combinator with no compound after it.
             if (stream.atEnd()) return error.InvalidSelector;
-            try ltr_combinators.append(self.allocator, combinator);
+            try ltr_combinators.append(self.scratch, combinator);
         }
 
         // Convert to RTL storage order: [div, p, span] with combinators
         // [>, +] becomes compound=span, combinators=[{+, p}, {>, div}].
         const compounds = ltr_compounds.items;
-        var rtl_combinators: std.ArrayList(CombinatorPair) = .empty;
-        errdefer rtl_combinators.deinit(self.allocator);
-        try rtl_combinators.ensureTotalCapacity(self.allocator, compounds.len - 1);
-        var i: usize = compounds.len - 1;
-        while (i > 0) {
-            i -= 1;
-            rtl_combinators.appendAssumeCapacity(.{ .combinator = ltr_combinators.items[i], .compound = compounds[i] });
+        const pairs: []CombinatorPair = if (compounds.len == 1) &.{} else try self.allocator.alloc(CombinatorPair, compounds.len - 1);
+        for (pairs, 0..) |*pair, k| {
+            const i = compounds.len - 2 - k;
+            pair.* = .{ .combinator = ltr_combinators.items[i], .compound = compounds[i] };
         }
-        const pairs = try rtl_combinators.toOwnedSlice(self.allocator);
         const subject = compounds[compounds.len - 1];
         // Ownership of every compound has moved into `result`.
         ltr_compounds.clearRetainingCapacity();
@@ -892,12 +901,10 @@ pub const Parser = struct {
     /// allowed after them - no whitespace in between.
     fn parseCompound(self: *Parser, stream: *Stream, ctx: Context) ParserError!CompoundSelector {
         var simples: std.ArrayList(SimpleSelector) = .empty;
-        errdefer {
-            for (simples.items) |*simple| simple.deinit(self.allocator);
-            simples.deinit(self.allocator);
-        }
+        defer simples.deinit(self.scratch);
+        errdefer for (simples.items) |*simple| simple.deinit(self.allocator);
 
-        if (try self.parseTypeSelector(stream)) |type_selector| try simples.append(self.allocator, type_selector);
+        if (try self.parseTypeSelector(stream)) |type_selector| try simples.append(self.scratch, type_selector);
 
         // The pseudo-element the compound has reached, if any.
         var pseudo_element: ?[]const u8 = null;
@@ -951,7 +958,7 @@ pub const Parser = struct {
                 },
                 else => break,
             };
-            simples.append(self.allocator, simple) catch |err| {
+            simples.append(self.scratch, simple) catch |err| {
                 simple.deinit(self.allocator);
                 return err;
             };
@@ -960,7 +967,7 @@ pub const Parser = struct {
         if (simples.items.len == 0) return error.InvalidSelector;
         return CompoundSelector{
             .active_hover_quirk = !ctx.real and usesOnlyActiveOrHover(simples.items),
-            .simple_selectors = try simples.toOwnedSlice(self.allocator),
+            .simple_selectors = try self.allocator.dupe(SimpleSelector, simples.items),
             .allocator = self.allocator,
         };
     }
@@ -1300,20 +1307,20 @@ pub const Parser = struct {
     /// ranges", each a valid <ident> or <string>.
     fn parseLanguageRanges(self: *Parser, args: []const Token) ParserError![]const []const u8 {
         var ranges: std.ArrayList([]const u8) = .empty;
-        errdefer ranges.deinit(self.allocator);
+        defer ranges.deinit(self.scratch);
         var stream = Stream{ .tokens = args };
         while (true) {
             _ = stream.skipWhitespace();
             const token = stream.peek();
             if (token.tag != .ident and token.tag != .string) return error.InvalidSelector;
-            try ranges.append(self.allocator, token.value);
+            try ranges.append(self.scratch, token.value);
             stream.advance();
             _ = stream.skipWhitespace();
             if (stream.atEnd()) break;
             if (stream.peek().tag != .comma) return error.InvalidSelector;
             stream.advance();
         }
-        return try ranges.toOwnedSlice(self.allocator);
+        return try self.allocator.dupe([]const u8, ranges.items);
     }
 
     /// HTML :heading(<integer>#), CSS Values 4 integer syntax. Keep only

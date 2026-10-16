@@ -64,16 +64,19 @@ pub const Error = error{ SyntaxError, OutOfMemory };
 /// `scope`'s descendants that scope-matches `selectors`; null when none.
 pub fn querySelector(scope: *runtime.Instance, selectors: []const u8) Error!?*runtime.Instance {
     const scope_node = instance_bridge.getNodeBase(scope) orelse return null;
-    // DOM "scope-match a selectors string" steps 1-2.
-    var list = try parse(scope.ctx.getAllocator(), selectors);
+    // DOM "scope-match a selectors string" steps 1-2. The parsed selector
+    // lives for this call only: parse it on the stack while it fits.
+    var parse_memory = std.heap.stackFallback(parse_stack_bytes, scope.ctx.getAllocator());
+    var list = try parse(parse_memory.get(), selectors);
     defer list.deinit();
     var nth_cache = NthIndexCache{ .allocator = scope.ctx.getAllocator() };
     defer nth_cache.deinit();
     var matcher = Matcher.init(scope_node, scope);
     matcher.nth_cache = &nth_cache;
+    const fast = FastPath.of(&list);
     var walk = Walk.init(scope_node);
     while (walk.next()) |node| {
-        if (matcher.matchesForQuery(node, &list)) return instanceOf(node);
+        if (matcher.matchesForQuery(node, &list, fast)) return instanceOf(node);
     }
     return null;
 }
@@ -83,15 +86,17 @@ pub fn querySelector(scope: *runtime.Instance, selectors: []const u8) Error!?*ru
 /// `out` as tree nodes.
 pub fn querySelectorAll(allocator: std.mem.Allocator, scope: *runtime.Instance, selectors: []const u8, out: *std.ArrayList(*NodeBase)) Error!void {
     const scope_node = instance_bridge.getNodeBase(scope) orelse return;
-    var list = try parse(scope.ctx.getAllocator(), selectors);
+    var parse_memory = std.heap.stackFallback(parse_stack_bytes, scope.ctx.getAllocator());
+    var list = try parse(parse_memory.get(), selectors);
     defer list.deinit();
     var nth_cache = NthIndexCache{ .allocator = allocator };
     defer nth_cache.deinit();
     var matcher = Matcher.init(scope_node, scope);
     matcher.nth_cache = &nth_cache;
+    const fast = FastPath.of(&list);
     var walk = Walk.init(scope_node);
     while (walk.next()) |node| {
-        if (matcher.matchesForQuery(node, &list)) try out.append(allocator, node);
+        if (matcher.matchesForQuery(node, &list, fast)) try out.append(allocator, node);
     }
 }
 
@@ -99,7 +104,8 @@ pub fn querySelectorAll(allocator: std.mem.Allocator, scope: *runtime.Instance, 
 /// `element` matches, with `element` the scoping root.
 pub fn matches(element: *runtime.Instance, selectors: []const u8) Error!bool {
     // Steps 1-2: parse, or throw a SyntaxError.
-    var list = try parse(element.ctx.getAllocator(), selectors);
+    var parse_memory = std.heap.stackFallback(parse_stack_bytes, element.ctx.getAllocator());
+    var list = try parse(parse_memory.get(), selectors);
     defer list.deinit();
     const node = instance_bridge.getNodeBase(element) orelse return false;
     if (node.node_type != ELEMENT_NODE) return false;
@@ -111,7 +117,8 @@ pub fn matches(element: *runtime.Instance, selectors: []const u8) Error!bool {
 /// DOM closest(selectors): the first of `element`'s inclusive ancestor
 /// elements, nearest first, that matches, with `element` the scoping root.
 pub fn closest(element: *runtime.Instance, selectors: []const u8) Error!?*runtime.Instance {
-    var list = try parse(element.ctx.getAllocator(), selectors);
+    var parse_memory = std.heap.stackFallback(parse_stack_bytes, element.ctx.getAllocator());
+    var list = try parse(parse_memory.get(), selectors);
     defer list.deinit();
     const node = instance_bridge.getNodeBase(element) orelse return null;
     const matcher = Matcher.init(node, element);
@@ -124,6 +131,12 @@ pub fn closest(element: *runtime.Instance, selectors: []const u8) Error!?*runtim
     }
     return null;
 }
+
+/// The stack the entry points parse a selector into before falling back to
+/// the realm's allocator: a typical selector list's tree fits, so a query
+/// allocates nothing to parse (every call parses; WebKit, Blink and Gecko
+/// cache the parse per document instead).
+const parse_stack_bytes = 8192;
 
 /// Selectors 4 17.1 "parse a selector"; failure is DOM's SyntaxError.
 pub fn parse(allocator: std.mem.Allocator, selectors: []const u8) Error!SelectorList {
@@ -283,11 +296,17 @@ const Matcher = struct {
         return matcher;
     }
 
-    /// querySelector's candidates are the scope's descendants; the fast
-    /// paths below only skip the full matcher for selectors it would answer
-    /// the same way.
-    fn matchesForQuery(self: *const Matcher, node: *NodeBase, list: *const SelectorList) bool {
-        return self.matchesList(.{ .node = node }, list);
+    /// querySelector's candidates are the scope's descendants. A selector of
+    /// one simple selector takes a fast path that answers exactly as the full
+    /// matcher would, without its per-element machinery.
+    fn matchesForQuery(self: *const Matcher, node: *NodeBase, list: *const SelectorList, fast: FastPath) bool {
+        return switch (fast) {
+            .none => self.matchesList(.{ .node = node }, list),
+            .all => true,
+            .tag => |tag| if (dataOf(node)) |data| self.matchesType(data, tag.name, tag.lower_name, .any) else false,
+            .class => |name| if (dataOf(node)) |data| self.hasClass(data, name) else false,
+            .id => |id| if (dataOf(node)) |data| self.idIs(data, id) else false,
+        };
     }
 
     /// "Match a selector against an element": any complex selector of the
@@ -300,7 +319,11 @@ const Matcher = struct {
     }
 
     fn matchesComplex(self: *const Matcher, subject: Subject, complex: *const ComplexSelector) bool {
-        return self.matchChain(complex, 0, subject) == .matched;
+        // The subject compound first: most elements fail it, and then no
+        // combinator is walked.
+        if (!self.matchesCompound(subject, &complex.compound)) return false;
+        if (complex.combinators.len == 0 and !complex.is_relative) return true;
+        return self.matchCombinators(complex, 0, subject) == .matched;
     }
 
     /// Selectors 4 17.3 "match a complex selector against an element", from
@@ -310,6 +333,11 @@ const Matcher = struct {
     fn matchChain(self: *const Matcher, complex: *const ComplexSelector, index: usize, subject: Subject) Result {
         const compound = if (index == 0) &complex.compound else &complex.combinators[index - 1].compound;
         if (!self.matchesCompound(subject, compound)) return .not_matched_restart_from_closest_later_sibling;
+        return self.matchCombinators(complex, index, subject);
+    }
+
+    /// The rest of matchChain, once the compound at `index` matched `subject`.
+    fn matchCombinators(self: *const Matcher, complex: *const ComplexSelector, index: usize, subject: Subject) Result {
         if (index == complex.combinators.len) {
             if (!complex.is_relative) return .matched;
             return self.matchAnchor(complex.initial_combinator orelse .Descendant, subject);
@@ -389,6 +417,9 @@ const Matcher = struct {
 
     fn matchesCompound(self: *const Matcher, subject: Subject, compound: *const CompoundSelector) bool {
         if (subject.featureless) return self.matchesFeaturelessCompound(subject, compound);
+        // `*` alone matches every element, with no element data to read.
+        if (compound.simple_selectors.len == 1 and compound.simple_selectors[0] == .Universal and
+            compound.simple_selectors[0].Universal.namespace == .any) return true;
         const data = dataOf(subject.node) orelse return false;
         for (compound.simple_selectors) |*simple| {
             if (!self.matchesSimple(subject.node, data, simple)) return false;
@@ -470,13 +501,27 @@ const Matcher = struct {
     /// three at wpt.fyi cc74d2669f; Gecko's AttrSelectorWithOptionalNamespace
     /// picks `local_name_lower` by the element alone).
     fn matchesAttribute(self: *const Matcher, data: *const ElementData, attribute: *const AttributeSelector) bool {
-        const html = self.html_document and namespaceIs(data, html_namespace);
-        const wanted = if (html) attribute.lower_name else attribute.name;
+        // Whether the element is an HTML element in an HTML document decides
+        // the name only when the selector's name has upper case, and the
+        // value only for HTML's list without a modifier: read it then.
+        const name_cased = attribute.lower_name.ptr != attribute.name.ptr;
+        const name_html = name_cased and self.html_document and namespaceIs(data, html_namespace);
+        const wanted = if (name_html) attribute.lower_name else attribute.name;
+        if (attribute.namespace == .none) {
+            // At most one attribute in no namespace has the name.
+            const entry = data.findAttribute(null, wanted) orelse return false;
+            const value_html = name_html or (attribute.html_case_insensitive_value and attribute.case == .default and
+                self.html_document and namespaceIs(data, html_namespace));
+            return matchesValue(attribute, entry, value_html);
+        }
         var it = data.attributeIterator();
         while (it.next()) |entry| {
             if (attribute.namespace == .none and entry.namespace_uri != null) continue;
             if (!std.mem.eql(u8, entry.local_name, wanted)) continue;
-            if (matchesValue(attribute, entry, html)) return true;
+            // The value's case rule, read only for an attribute that is there.
+            const value_html = name_html or (attribute.html_case_insensitive_value and attribute.case == .default and
+                self.html_document and namespaceIs(data, html_namespace));
+            if (matchesValue(attribute, entry, value_html)) return true;
         }
         return false;
     }
@@ -730,11 +775,52 @@ fn contains(haystack: []const u8, needle: []const u8, insensitive: bool) bool {
 /// Whether the class attribute value `classes`, split on ASCII whitespace
 /// (DOM's ordered set parser), holds `name`.
 fn classListHas(classes: []const u8, name: []const u8, insensitive: bool) bool {
-    if (classes.len < name.len) return false;
-    var words = std.mem.tokenizeAny(u8, classes, " \t\n\r\x0C");
-    while (words.next()) |word| if (eql(word, name, insensitive)) return true;
+    if (name.len == 0 or classes.len < name.len) return false;
+    if (insensitive) {
+        var words = std.mem.tokenizeAny(u8, classes, " \t\n\r\x0C");
+        while (words.next()) |word| if (std.ascii.eqlIgnoreCase(word, name)) return true;
+        return false;
+    }
+    // Find `name` where whitespace or an end bounds it on both sides: a
+    // substring search, no tokenizing (the common class attribute holds one
+    // or two names).
+    var from: usize = 0;
+    while (std.mem.indexOfPos(u8, classes, from, name)) |at| {
+        const end = at + name.len;
+        if ((at == 0 or isAsciiWhitespace(classes[at - 1])) and (end == classes.len or isAsciiWhitespace(classes[end]))) return true;
+        from = at + 1;
+    }
     return false;
 }
+
+fn isAsciiWhitespace(c: u8) bool {
+    return c == ' ' or c == '\t' or c == '\n' or c == '\r' or c == 0x0C;
+}
+
+/// A selector of exactly one simple selector that querySelector can test
+/// directly: a type selector in any namespace, a class, an ID, or `*`.
+const FastPath = union(enum) {
+    none,
+    all,
+    tag: struct { name: []const u8, lower_name: []const u8 },
+    class: []const u8,
+    id: []const u8,
+
+    fn of(list: *const SelectorList) FastPath {
+        if (list.selectors.len != 1) return .none;
+        const complex = &list.selectors[0];
+        if (complex.combinators.len != 0 or complex.is_relative) return .none;
+        const compound = &complex.compound;
+        if (compound.simple_selectors.len != 1 or compound.active_hover_quirk) return .none;
+        return switch (compound.simple_selectors[0]) {
+            .Universal => |universal| if (universal.namespace == .any) .all else .none,
+            .Type => |t| if (t.namespace == .any) .{ .tag = .{ .name = t.tag_name, .lower_name = t.lower_name } } else .none,
+            .Class => |c| .{ .class = c.class_name },
+            .Id => |id| .{ .id = id.id },
+            else => .none,
+        };
+    }
+};
 
 /// 13.2 :empty: no element child and no text (Selectors 3's "text nodes
 /// ... must be considered" content; comments and processing instructions
@@ -953,6 +1039,16 @@ test "extended filtering per RFC 4647 3.3.2, as :lang() uses it" {
     // The empty range matches only an untagged language.
     try testing.expect(languageRangeMatches("", ""));
     try testing.expect(!languageRangeMatches("en", ""));
+}
+
+test "class lists: a whole name bounded by ASCII whitespace or an end" {
+    try testing.expect(classListHas("row", "row", false));
+    try testing.expect(classListHas("a\trow\nb", "row", false));
+    try testing.expect(!classListHas("rows narrow", "row", false));
+    try testing.expect(classListHas("narrow row", "row", false));
+    try testing.expect(!classListHas("", "row", false));
+    try testing.expect(classListHas("A ROW", "row", true));
+    try testing.expect(!classListHas("ROW", "row", false));
 }
 
 test "attribute values: empty operands never match, ~= splits on ASCII whitespace" {

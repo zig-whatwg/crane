@@ -572,6 +572,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [refAllDecls on a module that imports the engine needs V8 linked](testing-refalldecls-on-a-module-that-imports-engine-needs-v8-linked.md) - Once a module imports `engine`, its native tests must not reference anything that reaches the protocol - scope refAllDecls, and run the rest in tests/v8.
 
 ### Debugging
+- [A per-call allocation in a lonely size class maps a page every call](debugging-a-per-call-allocation-in-a-lonely-size-class-maps-a-page.md) - Count allocations AND look at where they land: a per-call allocation that empties a DebugAllocator page costs a syscall pair; put call-lifetime data on the stack.
 
 - [A Range oracle can overflow on contradictory node order](debugging-range-oracle-stack-overflow-can-start-in-node-order.md) - Check oracle dependencies and native ordering antisymmetry before replacing a correct Range helper.
 - [A pull inflater needs short-input and block-transition tests](debugging-a-pull-inflater-needs-short-input-and-block-transition-tests.md) - Test streaming adapters at interrupted operations and block transitions with external data.

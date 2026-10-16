@@ -46,6 +46,8 @@ pub const Implementation = struct {
     get: *const fn (document: *runtime.Instance, state: State) ?*runtime.Instance,
     /// Designate `element` (null: nothing) for `state` in `document`.
     set: *const fn (document: *runtime.Instance, state: State, element: ?*runtime.Instance) void,
+    /// All three, in State order, in one read (the removing steps).
+    get_all: *const fn (document: *runtime.Instance) [3]?*runtime.Instance,
 };
 
 // process-wide: immutable function pointers Document installs once at process start (crane.Process); they read only the document they are given, so one serves every Browser and thread
@@ -90,8 +92,11 @@ pub fn removingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
         parent_instance
     else
         (interfaces.Node.get_ownerDocument(parent_instance) catch return) orelse return;
-    for ([_]State{ .hovered, .pointed, .activated }) |state| {
-        const element = impl.get(document, state) orelse continue;
+    // One read of the three states: removal is a hot path, and nearly
+    // always nothing is designated.
+    const designations = impl.get_all(document);
+    for (designations, [_]State{ .hovered, .pointed, .activated }) |maybe, state| {
+        const element = maybe orelse continue;
         const designated = instance_bridge.getNodeBase(element) orelse continue;
         if (!isShadowIncludingInclusiveDescendant(designated, node)) continue;
         impl.set(document, state, successor(parent));
@@ -150,8 +155,11 @@ test "set forwards to the installed implementation" {
             last_state = state;
             last_element = element;
         }
+        fn getAll(_: *runtime.Instance) [3]?*runtime.Instance {
+            return .{ null, null, null };
+        }
     };
-    implementation = .{ .get = &Record.get, .set = &Record.set };
+    implementation = .{ .get = &Record.get, .set = &Record.set, .get_all = &Record.getAll };
     var document: runtime.Instance = undefined;
     set(&document, .pointed, null);
     try std.testing.expect(Record.last_state.? == .pointed);

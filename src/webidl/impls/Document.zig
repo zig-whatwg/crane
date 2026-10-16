@@ -715,7 +715,7 @@ pub fn installHooks() void {
     @import("dom").target_element.install(.{ .get = &targetElement, .set = &setTargetElement });
     // The elements :hover and :active rest on (user input sets them), and
     // the removing steps that pass them on when their element leaves.
-    @import("dom").pointer_states.install(.{ .get = &pointerState, .set = &setPointerState });
+    @import("dom").pointer_states.install(.{ .get = &pointerState, .set = &setPointerState, .get_all = &pointerStates });
     @import("dom").mutation.registerRemovingStepsCallback(&@import("dom").pointer_states.removingSteps) catch @panic("pointer state removing steps allocation");
     // User input (testdriver lane): the focusing steps designate a document's
     // focused area (src/html/focus.zig), and a top-level traversable's system
@@ -890,6 +890,19 @@ fn pointerState(document: *runtime.Instance, state: @import("dom").pointer_state
         .activated => internal.activated_element,
     } orelse return null;
     return if (link.isLive()) link.instance else null;
+}
+
+/// dom.pointer_states: the three states, in State order, in one read.
+fn pointerStates(document: *runtime.Instance) [3]?*runtime.Instance {
+    const internal = getInternal(document) orelse return .{ null, null, null };
+    const links = [3]?@import("same_object.zig").Link{ internal.hovered_element, internal.pointed_element, internal.activated_element };
+    var out: [3]?*runtime.Instance = .{ null, null, null };
+    for (links, 0..) |maybe, i| {
+        if (maybe) |link| if (link.isLive()) {
+            out[i] = link.instance;
+        };
+    }
+    return out;
 }
 
 /// dom.pointer_states: designate `element` (null: nothing) for `state`.
