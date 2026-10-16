@@ -832,6 +832,8 @@ const Navigation = struct {
     /// for a document whose URL requires storing it (about:, data:): a clone
     /// of the navigation params' policy container. Owned until recorded.
     history_policy_container: ?fetch_mod.internal.PolicyContainer = null,
+    /// CSPEE §2.4: target snapshot's required CSP, owned before enqueue.
+    required_csp: ?[]u8 = null,
     /// Mixed Content 4.3 for the source snapshot's fetch client. Captured
     /// by value; a later document must not change this navigation's policy.
     prohibits_mixed_security_contexts: bool = false,
@@ -877,6 +879,7 @@ const Navigation = struct {
         if (self.javascript_policy_container) |*container| container.deinit();
         if (self.traversal_policy_container) |*container| container.deinit();
         if (self.history_policy_container) |*container| container.deinit();
+        if (self.required_csp) |required| self.allocator.free(required);
         self.allocator.free(self.url);
         self.allocator.destroy(self);
     }
@@ -1154,6 +1157,10 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         .traversal_from = options.traversal_from,
         .browser_initiated = options.user_involvement == .browser_ui,
         .csp_navigation_type = options.csp_navigation_type,
+    };
+    record.required_csp = determineRequiredCSP(integration, url) catch {
+        record.destroy();
+        return;
     };
     if (options.srcdoc) |html| {
         record.srcdoc = allocator.dupe(u8, html) catch {
@@ -1483,6 +1490,12 @@ fn startFetch(record: *Navigation) void {
             record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
         };
+        // CSPEE §2.4 item 7: set the request header from the target snapshot.
+        if (record.required_csp) |required| request.header_list.set("Sec-Required-CSP", required) catch {
+            request.deinit();
+            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+            return queueNavigationTask(record.integration, record.id, &runCommit);
+        };
         // Main fetch steps 4 and 7 report the request's CSP violations to its
         // client's global (CSP 2.4.2). The record outlives the fetch: its
         // destroy terminates it.
@@ -1712,7 +1725,7 @@ fn runCommit(context: ?*anyopaque) void {
     // by Content Security Policy? returns "Blocked"", the response is a
     // network error - the frame shows an error document, of an opaque
     // origin, and its load event still fires.
-    if (frameAncestorsBlock(integration, record, response)) {
+    if (frameAncestorsBlock(integration, record, response) or requiredCSPBlocks(integration, record, response)) {
         response.deinit();
         record.response = navigation_fetch.networkErrorResult(integration.allocator, record.url) catch null;
         if (record.response == null) {
@@ -1913,32 +1926,41 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
     if (record.traversal_entry != 0 and navigate_steps.requiresStoringPolicyContainerInHistory(response_url)) {
         if (integration.browsing_context) |bc| {
             if (bc.jointHistory() catch null) |history| {
-                if (history.historyPolicyContainer(record.traversal_entry)) |container| return container.clone(allocator) catch null;
+                if (history.historyPolicyContainer(record.traversal_entry)) |container| {
+                    var restored = container.clone(allocator) catch return null;
+                    // CSPEE leaves local history unspecified; HTML cloning
+                    // intentionally leaves required_csp null. Chrome 154's
+                    // RenderFrameHostImpl::TakeNewDocumentPropertiesFromNavigation
+                    // (render_frame_host_impl.cc:17120) records the current
+                    // requirement separately; ComputeFinalPolicies keeps the
+                    // old enforced policies (navigation_policy_container_builder.cc:295-302).
+                    if (!response.is_network_error) if (record.required_csp) |required| {
+                        restored.required_csp = allocator.dupe(u8, required) catch {
+                            restored.deinit();
+                            return null;
+                        };
+                    };
+                    return restored;
+                }
             }
         }
     }
-    // 2. "If responseURL is about:srcdoc": a clone of parentPolicyContainer,
-    // the container document's.
-    if (record.srcdoc != null or navigate_steps.matchesAboutSrcdoc(response_url)) {
-        if (integration.iframe_element) |element_ptr| {
-            const element: *runtime.Instance = @ptrCast(@alignCast(element_ptr));
-            if (interfaces.Node.get_ownerDocument(element) catch null) |parent| {
-                if (dom_module.policy_containers.of(parent)) |container| return container.clone(allocator) catch null;
-            }
-        }
-    }
-    // 3. "If responseURL is local and initiatorPolicyContainer is not null,
-    // then return a clone of initiatorPolicyContainer."
     const scheme = navigate_steps.schemeOf(response_url);
     const is_local = std.mem.eql(u8, scheme, "about") or std.mem.eql(u8, scheme, "blob") or std.mem.eql(u8, scheme, "data");
-    if (is_local) {
-        if (record.initiator_policy_container) |*container| return container.clone(allocator) catch null;
-        if (record.traversal_policy_container) |*container| return container.clone(allocator) catch null;
-    }
-    // 4. "If responsePolicyContainer is not null, then return
-    // responsePolicyContainer": "create a policy container from a fetch
-    // response" for the response a fetch made.
-    var result = if (std.mem.eql(u8, scheme, "http") or std.mem.eql(u8, scheme, "https") or std.mem.eql(u8, scheme, "data")) blk: {
+    var result = blk: {
+        // 2. A srcdoc document inherits its container document's policies.
+        if (record.srcdoc != null or navigate_steps.matchesAboutSrcdoc(response_url)) {
+            if (containerDocumentOf(integration)) |parent| {
+                if (dom_module.policy_containers.of(parent)) |container| break :blk container.clone(allocator) catch return null;
+            }
+        }
+        // 3. A local response inherits its initiator's policy container.
+        if (is_local) {
+            if (record.initiator_policy_container) |*container| break :blk container.clone(allocator) catch return null;
+            if (record.traversal_policy_container) |*container| break :blk container.clone(allocator) catch return null;
+        }
+        // 4-5. Otherwise use the response's container, or a new one.
+        if (!std.mem.eql(u8, scheme, "http") and !std.mem.eql(u8, scheme, "https") and !std.mem.eql(u8, scheme, "data")) break :blk PolicyContainer.init(allocator);
         const headers = response.headers;
         break :blk PolicyContainer.fromResponseHeaders(allocator, .{
             .url = response_url,
@@ -1947,7 +1969,21 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
             .referrer_policy = if (headers) |h| h.get("referrer-policy") else null,
             .reporting_endpoints = if (headers) |h| h.get("reporting-endpoints") else null,
         }) catch return null;
-    } else PolicyContainer.init(allocator); // 5. "Return a new policy container."
+    };
+    // CSPEE §2.4 items 9-11: after inheritance, apply the target snapshot's
+    // requirement. History's stored local policy returned above is unchanged.
+    if (record.required_csp != null and !response.is_network_error) {
+        const uses_parent_origin = @import("csp").embedded_enforcement.allowsBlanketEnforcement("null", response_url, null);
+        const local_origin = if (uses_parent_origin) blk: {
+            const parent = containerDocumentOf(integration) orelse break :blk null;
+            break :blk documentOriginOf(parent, allocator);
+        } else null;
+        defer if (local_origin) |origin| allocator.free(origin);
+        result.applyRequiredCSP(record.required_csp, if (uses_parent_origin) local_origin orelse "null" else response_url, blanketCSPAcceptance(integration, record, response)) catch {
+            result.deinit();
+            return null;
+        };
+    }
     // Upgrade Insecure Requests 3.3: a nested browsing context whose
     // embedding document's insecure requests policy is Upgrade has Upgrade,
     // and so does every Document created in it.
@@ -1959,18 +1995,85 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
     return result;
 }
 
+/// CSPEE §2.4.1: snapshot a valid iframe attribute, otherwise the embedding
+/// document's requirement. No allocation on the absent-attribute/null path.
+fn determineRequiredCSP(integration: *IFrameIntegration, url: []const u8) !?[]u8 {
+    const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse return null));
+    const parent = (try interfaces.Node.get_ownerDocument(element)) orelse return null;
+    const inherited = if (dom_module.policy_containers.of(parent)) |container| container.required_csp else null;
+    if (dom_module.navigables.containerKind(element) == .iframe) {
+        if (try interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("csp"))) |attribute| {
+            var value = attribute;
+            defer value.deinit(element.ctx.allocator);
+            var origin = if (inherited != null) try fetch_mod.internal.policy_container.selfOriginOf(integration.allocator, url) else null;
+            defer if (origin) |*o| o.deinit();
+            if (try @import("csp").embedded_enforcement.isValidAttribute(integration.allocator, value.asSlice(), inherited, if (origin) |*o| o else null)) {
+                return try integration.allocator.dupe(u8, value.asSlice());
+            }
+        }
+    }
+    return if (inherited) |value| try integration.allocator.dupe(u8, value) else null;
+}
+
+fn blanketCSPAcceptance(integration: *IFrameIntegration, record: *const Navigation, response: *const navigation_fetch.NavigationFetchResult) bool {
+    if (record.required_csp == null) return false;
+    const url = if (response.final_url.len > 0) response.final_url else record.url;
+    const header = if (response.headers) |headers| headers.get("allow-csp-from") else null;
+    const ee = @import("csp").embedded_enforcement;
+    if (ee.allowsBlanketEnforcement("null", url, header)) return true;
+    const value = header orelse return false;
+    // Deviation from CSPEE §4.2's literal serialization comparison:
+    // Chrome 154 ParseAllowCSPFromHeader parses a URL and compares its
+    // origin, accepting canonical-equivalent URLs with paths too.
+    const allowed_origin = fetch_mod.internal.origins.serializedOriginOf(integration.allocator, std.mem.trim(u8, value, " \t")) catch return false;
+    defer integration.allocator.free(allowed_origin);
+    if (std.mem.eql(u8, allowed_origin, "null")) return false;
+    const parent = containerDocumentOf(integration) orelse return false;
+    // Chromium 154 NavigationRequest::CheckCSPEmbeddedEnforcement uses the
+    // parent frame's committed origin, including self/history navigations.
+    const origin = documentOriginOf(parent, integration.allocator) orelse return false;
+    defer integration.allocator.free(origin);
+    return ee.allowsBlanketEnforcement(origin, url, allowed_origin);
+}
+
+/// CSPEE §4.1: explicit acceptance or subsumption, otherwise an error document.
+fn requiredCSPBlocks(integration: *IFrameIntegration, record: *const Navigation, response: *const navigation_fetch.NavigationFetchResult) bool {
+    const required = record.required_csp orelse return false;
+    if (response.is_network_error or blanketCSPAcceptance(integration, record, response)) return false;
+    const allocator = integration.allocator;
+    const csp = @import("csp");
+    const url = if (response.final_url.len > 0) response.final_url else record.url;
+    const headers = response.headers;
+    var container = fetch_mod.internal.PolicyContainer.fromResponseHeaders(allocator, .{
+        .url = url,
+        .csp = if (headers) |h| h.get("content-security-policy") else null,
+        .csp_report_only = if (headers) |h| h.get("content-security-policy-report-only") else null,
+    }) catch return true;
+    defer container.deinit();
+    var policy = csp.parsing.parseSerializedCSP(allocator, required, .header, .enforce) catch return true;
+    defer policy.deinit();
+    return !(csp.embedded_enforcement.subsumes(allocator, &policy, &container.csp_list) catch false);
+}
+
 /// CSP 4.2.5 for a frame's navigation: whether the response's own
 /// frame-ancestors (its CSP headers) rejects one of the target's container
-/// documents' origins. Not modelled, stated: violation reports; and a
-/// navigation request's own CSP list's navigation response checks (step 3),
-/// which only frame-ancestors would have, and it ignores "source".
+/// documents' origins. The request's own list cannot reject its source in
+/// step 3: frame-ancestors is the only navigation-response directive and
+/// ignores that type.
 fn frameAncestorsBlock(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult) bool {
     if (integration.iframe_element == null or response.is_network_error) return false;
     const headers = response.headers orelse return false;
-    const csp_value = headers.get("content-security-policy") orelse return false;
+    const csp_value = headers.get("content-security-policy");
+    const report_only = headers.get("content-security-policy-report-only");
+    if (csp_value == null and report_only == null) return false;
     const allocator = integration.allocator;
     const response_url = if (response.final_url.len > 0) response.final_url else record.url;
-    var container = fetch_mod.internal.PolicyContainer.fromResponseHeaders(allocator, .{ .url = response_url, .csp = csp_value }) catch return false;
+    var container = fetch_mod.internal.PolicyContainer.fromResponseHeaders(allocator, .{
+        .url = response_url,
+        .csp = csp_value,
+        .csp_report_only = report_only,
+        .reporting_endpoints = headers.get("reporting-endpoints"),
+    }) catch return false;
     defer container.deinit();
     const scheme = navigate_steps.schemeOf(response_url);
     const is_local = std.mem.eql(u8, scheme, "about") or std.mem.eql(u8, scheme, "blob") or std.mem.eql(u8, scheme, "data");
@@ -1979,28 +2082,52 @@ fn frameAncestorsBlock(integration: *IFrameIntegration, record: *Navigation, res
     // first, as their ASCII serializations parse.
     const csp = @import("csp");
     const AncestorOrigin = csp.directives.frame_ancestors.AncestorOrigin;
-    var ancestors: [64]AncestorOrigin = undefined;
-    var serialized: [64]?[]u8 = @splat(null);
-    defer for (serialized) |o| if (o) |bytes| allocator.free(bytes);
-    var count: usize = 0;
+    var ancestors: std.ArrayListUnmanaged(AncestorOrigin) = .empty;
+    defer ancestors.deinit(allocator);
+    var serialized: std.ArrayListUnmanaged([]u8) = .empty;
+    defer {
+        for (serialized.items) |bytes| allocator.free(bytes);
+        serialized.deinit(allocator);
+    }
     var document = containerDocumentOf(integration);
-    while (document) |doc| : (count += 1) {
-        if (count == ancestors.len) break;
+    while (document) |doc| {
         const origin = documentOriginOf(doc, allocator);
-        serialized[count] = origin;
-        ancestors[count] = if (origin) |o| ancestorOriginOf(o) else null;
-        const window = (interfaces.Document.get_defaultView(doc) catch null) orelse {
-            count += 1;
-            break;
+        if (origin) |owned| serialized.append(allocator, owned) catch {
+            allocator.free(owned);
+            return true;
         };
-        const parent_container = dom_module.navigable_container.of(window) orelse {
-            count += 1;
-            break;
-        };
+        ancestors.append(allocator, if (origin) |o| ancestorOriginOf(o) else null) catch return true;
+        const window = (interfaces.Document.get_defaultView(doc) catch null) orelse break;
+        const parent_container = dom_module.navigable_container.of(window) orelse break;
         document = interfaces.Node.get_ownerDocument(parent_container) catch null;
     }
-    return csp.directives.frame_ancestors.shouldNavigationResponseBeBlocked(&container.csp_list, is_local, ancestors[0..count]);
+    var report_context: NavigationResponseReporter = .{
+        .sender = if (containerDocumentOf(integration)) |parent| windowOfRealm(parent.ctx) else null,
+        .url = response_url,
+        .response = response,
+        .endpoints = container.endpoints,
+    };
+    return csp.directives.frame_ancestors.checkNavigationResponse(&container.csp_list, is_local, ancestors.items, response_url, .{ .context = &report_context, .report = NavigationResponseReporter.report });
 }
+
+/// Borrowed only during the synchronous CSP check; the public reporting
+/// helper snapshots all native values before queuing delivery.
+const NavigationResponseReporter = struct {
+    sender: ?*runtime.Instance,
+    url: []const u8,
+    response: *const navigation_fetch.NavigationFetchResult,
+    endpoints: ?*fetch_mod.internal.policy_container.Endpoints,
+
+    fn report(context: *anyopaque, violation: *const @import("csp").violation_events.Violation) void {
+        const self: *NavigationResponseReporter = @ptrCast(@alignCast(context));
+        dom_module.csp_violations.reportNavigationResponse(self.sender orelse return, violation, .{
+            .url = self.url,
+            .referrer = self.response.referrer orelse "",
+            .status = self.response.status,
+            .endpoints = self.endpoints,
+        }) catch {};
+    }
+};
 
 /// A serialized tuple origin ("scheme://host[:port]") as frame-ancestors
 /// matches it; null for "null", an opaque origin.
@@ -4429,22 +4556,13 @@ pub fn set_browsingTopics(instance: *runtime.Instance, value: bool) anyerror!voi
 
 /// Getter for csp
 pub fn get_csp(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return runtime.DOMString.initInterned("");
-
-    if (internal.csp_attr) |csp| {
-        return runtime.DOMString.initInterned(csp);
-    }
-    return runtime.DOMString.initInterned("");
+    // CSP Embedded Enforcement §2.1: reflect the content attribute.
+    return dom_module.reflection.get(runtime.DOMString, instance, .{ .name = "csp" });
 }
 
 /// Setter for csp
 pub fn set_csp(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    if (internal.csp_attr) |old| {
-        internal.allocator.free(old);
-    }
-    internal.csp_attr = try internal.allocator.dupe(u8, value.asSlice());
+    try dom_module.reflection.set(runtime.DOMString, instance, .{ .name = "csp" }, value);
 }
 
 /// Getter for credentialless

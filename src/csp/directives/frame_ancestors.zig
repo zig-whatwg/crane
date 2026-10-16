@@ -76,6 +76,19 @@ pub fn shouldNavigationResponseBeBlocked(
     response_url_is_local: bool,
     ancestors: []const AncestorOrigin,
 ) bool {
+    return checkNavigationResponse(response_csp_list, response_url_is_local, ancestors, "", null);
+}
+
+/// §4.2.5 step 2: report each violated response policy, including report-only,
+/// then return whether any enforced policy blocks. A violation has no global
+/// or element; the caller supplies response metadata to its reporter.
+pub fn checkNavigationResponse(
+    response_csp_list: *const types.CSPList,
+    response_url_is_local: bool,
+    ancestors: []const AncestorOrigin,
+    response_url: []const u8,
+    reporter: ?@import("../violation_events.zig").Reporter,
+) bool {
     // § 6.4.2.1 step 1: a local response is "Allowed"; step 4: so is a
     // target that is not a child navigable.
     if (response_url_is_local or ancestors.len == 0) return false;
@@ -88,9 +101,18 @@ pub fn shouldNavigationResponseBeBlocked(
             const origin = ancestor orelse break true;
             if (!matching.doesUrlMatchSourceList(origin.scheme, origin.host, origin.port, "", &directive.value, self_origin, 0)) break true;
         } else false;
-        // § 4.2.5 step 2.1.5: an enforced policy blocks; a report-only one
-        // would only report (not modelled, stated).
-        if (violates and policy.disposition == .enforce) blocked = true;
+        if (violates) {
+            if (reporter) |target| target.reportViolation(&.{
+                .policy = policy,
+                .effective_directive = "frame-ancestors",
+                // §4.2.5 step 3: the response URL. Three-way browser split:
+                // WebKit uses this URL, Chromium its origin, Gecko a
+                // same-origin ancestor URI or none. The spec breaks the tie;
+                // reporting strips credentials and fragments under §5.4.
+                .resource = .{ .url = response_url },
+            });
+            if (policy.disposition == .enforce) blocked = true;
+        }
     }
     return blocked;
 }
