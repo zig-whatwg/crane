@@ -19,6 +19,7 @@ const runtime = @import("runtime");
 const protocol = @import("engine");
 const interfaces = @import("interfaces");
 const cross_origin = @import("v8").cross_origin;
+const v8_engine = @import("v8").engine;
 
 /// The test's IsPlatformObjectSameOrigin: one answer for every pair, and a
 /// count of the times the adapter asked.
@@ -267,6 +268,58 @@ test "a window member called with another same-origin window's this acts on that
     defer pair.close();
     try pair.inFrame("name = 'inner'; name", "inner");
     try pair.inPage("name = 'outer'; Object.getOwnPropertyDescriptor(window, 'name').get.call(w)", "inner");
+}
+
+/// Window operations that do nothing, for a realm whose natively bound
+/// timers and animation frames (installWindowOperations) a test calls. The
+/// values they are handed are theirs to release.
+const idle_window_operations = runtime.WindowOperations{
+    .initializeTimer = struct {
+        fn f(_: runtime.Context, handler: runtime.WindowTimerHandler, _: i32, arguments: []const runtime.JSValue, _: bool) i32 {
+            switch (handler) {
+                inline else => |h| v8_engine.v8ReleaseValue(h),
+            }
+            for (arguments) |argument| v8_engine.v8ReleaseValue(argument);
+            return 0;
+        }
+    }.f,
+    .clearTimer = struct {
+        fn f(_: runtime.Context, _: i32) void {}
+    }.f,
+    .requestAnimationFrame = struct {
+        fn f(_: runtime.Context, callback: runtime.JSValue) u32 {
+            v8_engine.v8ReleaseValue(callback);
+            return 0;
+        }
+    }.f,
+    .cancelAnimationFrame = struct {
+        fn f(_: runtime.Context, _: u32) void {}
+    }.f,
+    .windowDestroyed = struct {
+        fn f(_: runtime.Context) void {}
+    }.f,
+};
+
+test "the natively bound window operations run WebIDL's security check for a cross-origin this" {
+    // setTimeout, clearTimeout, setInterval, clearInterval,
+    // requestAnimationFrame and cancelAnimationFrame are bound by
+    // installWindowOperations, not the generated binding; none is in
+    // CrossOriginProperties, so each throws the current realm's
+    // SecurityError for a cross-origin WindowProxy `this` - before its
+    // arguments are looked at (html/browsers/origin/cross-origin-objects/
+    // cross-origin-objects.html, "Only certain properties are usable as
+    // cross-origin this objects").
+    var host: Host = .{ .same_origin = false };
+    const pair = try Pair.open(&host);
+    defer pair.close();
+    try protocol.installWindowOperations(pair.page, &idle_window_operations);
+    try pair.inPage(outcome ++
+        \\['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'requestAnimationFrame', 'cancelAnimationFrame']
+        \\  .map((n) => outcome(() => globalThis[n].call(w))).join()
+    , "SecurityError:current,SecurityError:current,SecurityError:current,SecurityError:current,SecurityError:current,SecurityError:current");
+    // Same origin-domain, the operation runs on its own window.
+    host.same_origin = true;
+    try pair.inPage(outcome ++ "outcome(() => clearTimeout.call(w, 1))", "undefined");
 }
 
 test "a cross-origin Location exposes only href's setter and replace" {
