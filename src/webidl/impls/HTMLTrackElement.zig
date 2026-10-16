@@ -13,7 +13,16 @@ const hooks = dom.media_elements;
 const same_object = @import("same_object.zig");
 pub const State = interfaces.HTMLTrackElement.State;
 const Kind = enum(u16) { read, failure };
+/// A block of the Browser's runtime arena (`arena`), registered in the
+/// Browser's side table while its element lives: queued tasks may hold it
+/// past its element's deinit (`common.Activity`), so the registry does not
+/// own the block - `freeOwner` returns it, when the last of them lets go.
+/// A track removed from its tree while script held no wrapper of it is an
+/// orphan nothing deinits; its state is freed by the sweep at its Browser's
+/// end (`sweepRemaining`, lane orphanleak).
 pub const InternalState = struct {
+    /// The arena the block came from: its element's Browser's.
+    arena: *runtime.ArenaAllocator,
     activity: common.Activity,
     resource: common.Resource,
     track: ?*runtime.Instance = null,
@@ -103,8 +112,11 @@ pub fn init(allocator: std.mem.Allocator, comptime StateType: type, vtable: *con
     const instance = try interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
     instance.getState(State).own._internal = null;
     errdefer instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
-    const self = try allocator.create(InternalState);
-    self.* = .{ .activity = .{ .allocator = allocator, .instance = instance, .owner = self, .run = runTask, .abort = abortOwner, .free = freeOwner }, .resource = .{ .allocator = allocator, .ctx = ctx, .owner = self, .notify = InternalState.queueRead } };
+    const arena = runtime.arenaOf(instance);
+    const self = try arena.create(InternalState);
+    errdefer arena.destroy(InternalState, self);
+    self.* = .{ .arena = arena, .activity = .{ .allocator = allocator, .instance = instance, .owner = self, .run = runTask, .abort = abortOwner, .free = freeOwner }, .resource = .{ .allocator = allocator, .ctx = ctx, .owner = self, .notify = InternalState.queueRead } };
+    try Registry.set(instance, self);
     instance.getState(State).own._internal = self;
     return instance;
 }
@@ -112,6 +124,9 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |self| {
         state.own._internal = null;
+        // Its own exit from here: the sweep is for the states no deinit
+        // reaches.
+        Registry.remove(instance);
         self.cancel();
         if (self.track) |track| self.kept.release(track, hooks.trackElementDestroyed);
         self.activity.detach();
@@ -126,7 +141,28 @@ fn freeOwner(context: *anyopaque) void {
     if (self.url) |url| allocator.free(url);
     if (self.selected_url) |url| allocator.free(url);
     self.activity.microtasks.deinit(allocator);
-    allocator.destroy(self);
+    self.arena.destroy(InternalState, self);
+}
+/// The states of the tracks no deinit has reached yet, by element: the
+/// orphans' are what is left at the Browser's end. The blocks are not the
+/// registry's (`set`): `freeOwner` returns each.
+const Registry = runtime.InstanceRegistry(.html_track_element, InternalState);
+
+/// `dom.teardown_sweeps`: free the state of every track element of `scope`'s
+/// Browser that no deinit reached - an orphan - at the Browser's end, as its
+/// last task would have (`freeOwner`). The realm's end and the event loop's,
+/// before this, dropped its stable sections and tasks; one still holding
+/// work is left to that work rather than freed under it. Its text track is
+/// an object of its own, the collector's.
+fn sweepRemaining(scope: *runtime.BrowserScope) void {
+    var entries = Registry.iterator(scope) orelse return;
+    while (entries.next()) |entry| {
+        const self = entry.internal;
+        self.activity.instance = null;
+        self.activity.kept_alive = false;
+        self.activity.maybeFree();
+    }
+    Registry.clear(scope);
 }
 fn abortOwner(context: *anyopaque) void {
     const self: *InternalState = @ptrCast(@alignCast(context));
@@ -182,6 +218,9 @@ pub fn installHooks() void {
     dom.mutation.registerRemovingStepsCallback(removed) catch @panic("track removing hook allocation");
     dom.document_fetches.install(.{ .discard = cancelRealm, .prepare_abort = prepareDocumentAbort, .abort = abortDocument });
     dom.unloading_cleanup.install(cancelRealm);
+    // The states no deinit reached - orphaned tracks' - at their Browser's
+    // end.
+    dom.teardown_sweeps.install(.element_types, &sweepRemaining);
 }
 fn modeChanged(instance: *runtime.Instance, _: hooks.Mode, _: hooks.Mode) void {
     if (interfaces.Node.get_parentNode(instance) catch null) |parent| if (common.isMedia(parent)) hooks.textTrackModeChanged(parent);
