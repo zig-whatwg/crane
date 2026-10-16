@@ -9,7 +9,7 @@
 //! - Tree construction (§13.2.6): Building the DOM tree from tokens
 //!
 //! The tokenizer processes the input stream character by character using
-//! an 80-state state machine, emitting tokens like DOCTYPE, start tags,
+//! an 84-state state machine, emitting tokens like DOCTYPE, start tags,
 //! end tags, comments, and characters.
 
 const std = @import("std");

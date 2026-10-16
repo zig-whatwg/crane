@@ -25,6 +25,7 @@ const Token = @import("tokens.zig").Token;
 const TagToken = @import("tokens.zig").TagToken;
 const DoctypeToken = @import("tokens.zig").DoctypeToken;
 const CommentToken = @import("tokens.zig").CommentToken;
+const ProcessingInstructionToken = @import("tokens.zig").ProcessingInstructionToken;
 const Tokenizer = @import("tokenizer.zig").Tokenizer;
 const State = @import("tokenizer_states.zig").State;
 const ParseErrorCode = @import("parse_errors.zig").ParseErrorCode;
@@ -291,6 +292,9 @@ pub const TreeNode = struct {
     doctype_public_id: ?[]const u8,
     /// DOCTYPE system identifier
     doctype_system_id: ?[]const u8,
+    /// A processing instruction's target (owned); its data is
+    /// `text_content`. Null for every other node.
+    pi_target: ?[]const u8 = null,
     /// Force quirks flag (for DOCTYPE)
     force_quirks: bool,
     /// Allocator
@@ -305,6 +309,7 @@ pub const TreeNode = struct {
         element,
         text,
         comment,
+        processing_instruction,
     };
 
     /// An attribute as "create an element for a token" appends it: a local
@@ -422,6 +427,17 @@ pub const TreeNode = struct {
         return node;
     }
 
+    /// Create a new processing instruction node: `target` (copied) and, as
+    /// its text content, `data`.
+    pub fn initProcessingInstruction(allocator: Allocator, target: []const u8, data: []const u8) !*TreeNode {
+        const node = try initComment(allocator);
+        errdefer node.deinit();
+        node.node_type = .processing_instruction;
+        node.pi_target = try allocator.dupe(u8, target);
+        try node.text_content.appendSlice(data);
+        return node;
+    }
+
     /// Create a new DOCTYPE node.
     pub fn initDoctype(allocator: Allocator, name: ?[]const u8, public_id: ?[]const u8, system_id: ?[]const u8, force_quirks: bool) !*TreeNode {
         const node = try allocator.create(TreeNode);
@@ -474,6 +490,7 @@ pub const TreeNode = struct {
         self.text_content.deinit();
         // A declarative shadow root's request belongs to its template.
         if (self.owns_declarative_shadow) if (self.declarative_shadow) |request| self.allocator.destroy(request);
+        if (self.pi_target) |target| self.allocator.free(target);
         // Free DOCTYPE fields
         if (self.doctype_name) |n| self.allocator.free(n);
         if (self.doctype_public_id) |p| self.allocator.free(p);
@@ -1241,6 +1258,8 @@ pub const TreeBuilder = struct {
                 // Insert a comment
                 try self.insertComment(comment);
             },
+            // "A processing instruction token: Insert a processing instruction."
+            .processing_instruction => |pi| try self.insertProcessingInstruction(pi),
             .doctype => {
                 // Parse error, ignore the token
                 self.reportError(.unexpected_token_in_foreign_content);
@@ -1635,6 +1654,8 @@ pub const TreeBuilder = struct {
                 // Insert comment as last child of Document
                 try self.insertCommentIn(self.document, comment);
             },
+            // "Insert a processing instruction given (the Document object, null)."
+            .processing_instruction => |pi| try self.insertProcessingInstructionIn(self.document, pi),
             .doctype => |doctype| {
                 // Handle DOCTYPE
                 try self.handleInitialDoctype(doctype);
@@ -1723,6 +1744,8 @@ pub const TreeBuilder = struct {
                 // Insert comment as last child of Document
                 try self.insertCommentIn(self.document, comment);
             },
+            // "Insert a processing instruction given (the Document object, null)."
+            .processing_instruction => |pi| try self.insertProcessingInstructionIn(self.document, pi),
             .character => |char| {
                 // Ignore whitespace
                 if (isHtmlWhitespace(char)) return;
@@ -1811,6 +1834,8 @@ pub const TreeBuilder = struct {
             .comment => |comment| {
                 try self.insertComment(comment);
             },
+            // "A processing instruction token: Insert a processing instruction."
+            .processing_instruction => |pi| try self.insertProcessingInstruction(pi),
             .doctype => {
                 self.reportError(.missing_doctype_name);
             },
@@ -1883,6 +1908,8 @@ pub const TreeBuilder = struct {
             .comment => |comment| {
                 try self.insertComment(comment);
             },
+            // "A processing instruction token: Insert a processing instruction."
+            .processing_instruction => |pi| try self.insertProcessingInstruction(pi),
             .doctype => {
                 self.reportError(.missing_doctype_name);
             },
@@ -2169,7 +2196,9 @@ pub const TreeBuilder = struct {
                     try self.processToken(token);
                 }
             },
-            .comment => {
+            // "A comment token, A processing instruction token: Process the
+            // token using the rules for the "in head" insertion mode."
+            .comment, .processing_instruction => {
                 try self.handleInHeadMode(token);
             },
             .eof => {
@@ -2202,6 +2231,8 @@ pub const TreeBuilder = struct {
             .comment => |comment| {
                 try self.insertComment(comment);
             },
+            // "A processing instruction token: Insert a processing instruction."
+            .processing_instruction => |pi| try self.insertProcessingInstruction(pi),
             .doctype => {
                 self.reportError(.missing_doctype_name);
             },
@@ -2317,6 +2348,8 @@ pub const TreeBuilder = struct {
             .comment => |comment| {
                 try self.insertComment(comment);
             },
+            // "A processing instruction token: Insert a processing instruction."
+            .processing_instruction => |pi| try self.insertProcessingInstruction(pi),
             .doctype => {
                 self.reportError(.missing_doctype_name);
             },
@@ -3039,6 +3072,8 @@ pub const TreeBuilder = struct {
             .comment => |comment| {
                 try self.insertComment(comment);
             },
+            // "A processing instruction token: Insert a processing instruction."
+            .processing_instruction => |pi| try self.insertProcessingInstruction(pi),
             .doctype => {
                 self.reportError(.missing_doctype_name);
             },
@@ -3335,6 +3370,8 @@ pub const TreeBuilder = struct {
             .comment => |comment| {
                 try self.insertComment(comment);
             },
+            // "A processing instruction token: Insert a processing instruction."
+            .processing_instruction => |pi| try self.insertProcessingInstruction(pi),
             .doctype => {
                 self.reportError(.missing_doctype_name);
             },
@@ -3651,7 +3688,7 @@ pub const TreeBuilder = struct {
     /// HTML Standard §13.2.6.4.16
     fn handleInTemplateMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
-            .character, .comment, .doctype, .text_run => {
+            .character, .comment, .processing_instruction, .doctype, .text_run => {
                 try self.handleInBodyMode(token);
             },
             .start_tag => |tag| {
@@ -3743,6 +3780,12 @@ pub const TreeBuilder = struct {
                 const html = self.open_elements.get(0);
                 if (html) |h| try self.insertCommentIn(h, comment);
             },
+            // "Insert a processing instruction given (the first element in
+            // the stack of open elements (the html element), null)."
+            .processing_instruction => |pi| {
+                const html = self.open_elements.get(0);
+                if (html) |h| try self.insertProcessingInstructionIn(h, pi);
+            },
             .doctype => {
                 self.reportError(.missing_doctype_name);
             },
@@ -3799,6 +3842,8 @@ pub const TreeBuilder = struct {
             .comment => |comment| {
                 try self.insertComment(comment);
             },
+            // "A processing instruction token: Insert a processing instruction."
+            .processing_instruction => |pi| try self.insertProcessingInstruction(pi),
             .doctype => {
                 self.reportError(.missing_doctype_name);
             },
@@ -3867,6 +3912,8 @@ pub const TreeBuilder = struct {
             .comment => |comment| {
                 try self.insertComment(comment);
             },
+            // "A processing instruction token: Insert a processing instruction."
+            .processing_instruction => |pi| try self.insertProcessingInstruction(pi),
             .doctype => {
                 self.reportError(.missing_doctype_name);
             },
@@ -3902,6 +3949,8 @@ pub const TreeBuilder = struct {
             .comment => |comment| {
                 try self.insertCommentIn(self.document, comment);
             },
+            // "Insert a processing instruction given (the Document object, null)."
+            .processing_instruction => |pi| try self.insertProcessingInstructionIn(self.document, pi),
             .doctype, .eof => {},
             .character => |char| {
                 if (isHtmlWhitespace(char)) {
@@ -3943,6 +3992,8 @@ pub const TreeBuilder = struct {
             .comment => |comment| {
                 try self.insertCommentIn(self.document, comment);
             },
+            // "Insert a processing instruction given (the Document object, null)."
+            .processing_instruction => |pi| try self.insertProcessingInstructionIn(self.document, pi),
             .doctype => {
                 try self.handleInBodyMode(token);
             },
@@ -4206,6 +4257,35 @@ pub const TreeBuilder = struct {
         parent.appendChild(node);
 
         // Notify DOM adapter of comment creation and parent-child relationship
+        self.flushPendingText();
+        if (self.dom_adapter_on_node_created) |callback| {
+            callback(node, self.dom_adapter_context);
+        }
+        self.flushPendingText();
+        if (self.dom_adapter_on_child_appended) |callback| {
+            callback(parent, node, self.dom_adapter_context);
+        }
+    }
+
+    /// "Insert a processing instruction" with no insertion location: at the
+    /// current node, as "insert a comment" does.
+    fn insertProcessingInstruction(self: *TreeBuilder, pi: ProcessingInstructionToken) !void {
+        try self.insertProcessingInstructionIn(self.currentNode() orelse self.document, pi);
+    }
+
+    /// HTML 13.2.6.1 "insert a processing instruction", given the insertion
+    /// location (`parent`, null) - the Document, the html element, or the
+    /// current node. Like a comment it is never foster-parented: every mode
+    /// that can have foster parenting enabled handles the token itself first.
+    ///
+    /// Steps 1-2: piTarget and data are the token's. Step 4 ("creating a
+    /// processing instruction node" given targetParent's node document) is
+    /// the DOM adapter's, which it does through Document's
+    /// createProcessingInstruction; step 5 is the append.
+    fn insertProcessingInstructionIn(self: *TreeBuilder, parent: *TreeNode, pi: ProcessingInstructionToken) !void {
+        const node = try TreeNode.initProcessingInstruction(self.allocator, pi.getTarget(), pi.getData());
+        parent.appendChild(node);
+
         self.flushPendingText();
         if (self.dom_adapter_on_node_created) |callback| {
             callback(node, self.dom_adapter_context);

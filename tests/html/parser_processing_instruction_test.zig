@@ -18,7 +18,6 @@ const parser = @import("html").parser;
 const Tokenizer = parser.Tokenizer;
 const TreeBuilder = parser.TreeBuilder;
 const TreeNode = parser.TreeNode;
-const Token = parser.Token;
 const ParseError = parser.ParseError;
 
 // =============================================================================
@@ -71,17 +70,15 @@ fn tokenize(input: []const u8) ![]u8 {
                 try output.appendSlice(allocator, tag.getTagName());
                 try output.append(allocator, '>');
             },
+            .processing_instruction => |pi| {
+                try output.appendSlice(allocator, "PI(");
+                try output.appendSlice(allocator, pi.getTarget());
+                try output.append(allocator, '|');
+                try output.appendSlice(allocator, pi.getData());
+                try output.append(allocator, ')');
+            },
+            .doctype => try output.appendSlice(allocator, "(doctype)"),
             .eof => try output.appendSlice(allocator, "(EOF)"),
-            else => if (comptime @hasField(Token, "processing_instruction")) {
-                if (owned == .processing_instruction) {
-                    const pi = owned.processing_instruction;
-                    try output.appendSlice(allocator, "PI(");
-                    try output.appendSlice(allocator, pi.getTarget());
-                    try output.append(allocator, '|');
-                    try output.appendSlice(allocator, pi.getData());
-                    try output.append(allocator, ')');
-                } else try output.appendSlice(allocator, "(other)");
-            } else try output.appendSlice(allocator, "(other)"),
         }
         if (owned == .eof) break;
     }
@@ -237,14 +234,15 @@ fn dumpNode(output: *std.ArrayList(u8), node: *TreeNode, depth: usize) !void {
             try output.appendSlice(allocator, node.doctype_name orelse "");
             try output.appendSlice(allocator, ">\n");
         },
-        else => if (comptime @hasField(TreeNode, "pi_target")) {
+        .processing_instruction => {
             // html5lib's dump: "<?" target " " data "?>".
             try output.appendSlice(allocator, "<?");
             try output.appendSlice(allocator, node.pi_target orelse "");
             try output.append(allocator, ' ');
             try output.appendSlice(allocator, node.text_content.toSlice());
             try output.appendSlice(allocator, "?>\n");
-        } else try output.appendSlice(allocator, "(other)\n"),
+        },
+        .document => try output.appendSlice(allocator, "#document\n"),
     }
     var child = node.first_child;
     while (child) |c| : (child = c.next_sibling) try dumpNode(output, c, children_depth);

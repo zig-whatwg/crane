@@ -224,6 +224,7 @@ pub const DomTreeAdapter = struct {
             .element => try self.createElementNode(tree_node),
             .text => try self.createTextNode(tree_node),
             .comment => try self.createCommentNode(tree_node),
+            .processing_instruction => try self.createProcessingInstructionNode(tree_node),
             .doctype => try self.createDoctypeNode(tree_node),
             .document => {
                 // Document node is already created, just map it
@@ -435,6 +436,19 @@ pub const DomTreeAdapter = struct {
         };
 
         return comment;
+    }
+
+    /// Create a ProcessingInstruction DOM node from a TreeNode, through
+    /// Document's createProcessingInstruction (DOM 4.5).
+    fn createProcessingInstructionNode(self: *DomTreeAdapter, tree_node: *TreeNode) DomTreeAdapterError!*runtime.Instance {
+        return interfaces.Document.call_createProcessingInstruction(
+            self.document,
+            runtime.DOMString.initInterned(tree_node.pi_target orelse ""),
+            runtime.DOMString.initInterned(tree_node.text_content.toSlice()),
+        ) catch |err| switch (err) {
+            error.OutOfMemory => DomTreeAdapterError.OutOfMemory,
+            else => DomTreeAdapterError.DomOperationFailed,
+        };
     }
 
     /// Create a DocumentType DOM node from a TreeNode.

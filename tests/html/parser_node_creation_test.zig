@@ -93,6 +93,28 @@ test "a comment the adapter makes is a comment node" {
     try testing.expectEqual(interfaces.Node.get_COMMENT_NODE(), try interfaces.Node.get_nodeType(comment));
 }
 
+test "a processing instruction the adapter makes has the token's target and data, in the adapter's document" {
+    // HTML "insert a processing instruction" step 4: "creating a processing
+    // instruction node" given the node document, piTarget and data.
+    @import("interfaces").process_hooks.startHooksForTest();
+    var fixture: Fixture = undefined;
+    try fixture.init();
+    defer fixture.deinit();
+
+    var adapter = DomTreeAdapter.init(testing.allocator, &fixture.ctx_data, fixture.document);
+    defer adapter.deinit();
+
+    const pi_tn = try TreeNode.initProcessingInstruction(testing.allocator, "Target_x-1", "a ?b");
+    defer pi_tn.deinit();
+    try adapter.onNodeCreated(pi_tn);
+    const pi = adapter.getDomNode(pi_tn).?;
+
+    try testing.expectEqual(interfaces.Node.get_PROCESSING_INSTRUCTION_NODE(), try interfaces.Node.get_nodeType(pi));
+    try expectString("Target_x-1", try interfaces.ProcessingInstruction.get_target(pi));
+    try expectString("a ?b", try interfaces.CharacterData.get_data(pi));
+    try testing.expectEqual(fixture.document, (try interfaces.Node.get_ownerDocument(pi)).?);
+}
+
 test "a doctype the adapter makes has the token's name, public ID and system ID, and \"\" for a missing one" {
     // The hooks this test's objects reach (no Browser here: crane.Process is not started).
     @import("interfaces").process_hooks.startHooksForTest();

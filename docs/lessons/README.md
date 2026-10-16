@@ -434,6 +434,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A request whose origin is left "client" is same origin with everything](spec-compliance-a-request-origin-left-client-is-same-origin-with-everything.md) - When a request has no client to resolve "client", set its origin - and test a same-origin request with a URL that must fail, because an unset origin makes every URL pass.
 - [A blob URL's entry is resolved when the URL is parsed, not when it is fetched](spec-compliance-a-blob-url-entry-is-resolved-when-the-url-is-parsed.md) - When a spec parses a URL in one step and fetches it in a later task, the blob URL entry belongs to the parse: capture it there, or a revoke in between turns a valid script into a network error.
 - [Created Blob types do not use constructor normalization](spec-compliance-created-blob-types-do-not-use-constructor-normalization.md) - Follow the creating algorithm's type rules, and name whether each MIME value is a string or header bytes.
+- [A new token kind falls into every `else` branch](spec-compliance-a-new-token-kind-falls-into-every-else-branch.md) - When a union gains a kind, the compiler finds the exhaustive switches; the `else` branches are yours to find - map every spec rule for the new kind to its switch before trusting a green build.
 
 ### Codegen
 

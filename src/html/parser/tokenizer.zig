@@ -18,6 +18,7 @@ const Token = @import("tokens.zig").Token;
 const TagToken = @import("tokens.zig").TagToken;
 const DoctypeToken = @import("tokens.zig").DoctypeToken;
 const CommentToken = @import("tokens.zig").CommentToken;
+const ProcessingInstructionToken = @import("tokens.zig").ProcessingInstructionToken;
 const InputStream = @import("input_stream.zig").InputStream;
 const InputCharacter = @import("input_stream.zig").InputCharacter;
 const ParseErrorCode = @import("parse_errors.zig").ParseErrorCode;
@@ -492,6 +493,11 @@ pub const Tokenizer = struct {
         handlers[@intFromEnum(State.cdata_section)] = cdataSectionState;
         handlers[@intFromEnum(State.cdata_section_bracket)] = cdataSectionBracketState;
         handlers[@intFromEnum(State.cdata_section_end)] = cdataSectionEndState;
+        handlers[@intFromEnum(State.processing_instruction_open)] = processingInstructionOpenState;
+        handlers[@intFromEnum(State.processing_instruction_target)] = processingInstructionTargetState;
+        handlers[@intFromEnum(State.after_processing_instruction_target)] = afterProcessingInstructionTargetState;
+        handlers[@intFromEnum(State.processing_instruction_data)] = processingInstructionDataState;
+        handlers[@intFromEnum(State.processing_instruction_questionable)] = processingInstructionQuestionableState;
         handlers[@intFromEnum(State.character_reference)] = characterReferenceState;
         handlers[@intFromEnum(State.named_character_reference)] = namedCharacterReferenceState;
         handlers[@intFromEnum(State.ambiguous_ampersand)] = ambiguousAmpersandState;
@@ -704,10 +710,16 @@ pub const Tokenizer = struct {
             self.state = .tag_name;
             return null;
         } else if (char.is('?')) {
-            self.reportError(.unexpected_question_mark_instead_of_tag_name);
-            self.current_token = Token{ .comment = CommentToken.init(self.allocator) };
-            self.reconsume = true;
-            self.state = .bogus_comment;
+            // "Set the temporary buffer to the empty string. Switch to the
+            // processing instruction open state." (whatwg/html#12118, merged
+            // 2026-06-25.) Chrome ships it from M150 (Blink's
+            // HTMLProcessingInstruction; 123/123 on each wpt.fyi variant of
+            // html5lib_*.html?file=processing-instructions). Firefox 158 and
+            // Safari 27 still make the old bogus comment (40/123), with the
+            // feature not implemented rather than rejected (Gecko bug
+            // 2046367, WebKit bug 317651), so they do not count against it.
+            self.temporary_buffer.clear();
+            self.state = .processing_instruction_open;
             return null;
         } else if (char.isEof()) {
             self.reportError(.eof_before_tag_name);
@@ -2425,7 +2437,177 @@ pub const Tokenizer = struct {
         }
     }
 
-    /// §13.2.5.72 Character reference state
+    /// §13.2.5.72 Processing instruction open state
+    ///
+    /// Reached from the tag open state's "?", with the temporary buffer
+    /// empty. Every branch consumes; none emits a token but the end of file.
+    fn processingInstructionOpenState(self: *Tokenizer) !?Token {
+        const char = self.current_char;
+
+        if (char.isAsciiAlpha() or char.is('_')) {
+            // "Reconsume in the processing instruction target state."
+            self.reconsume = true;
+            self.state = .processing_instruction_target;
+            return null;
+        } else if (char.isEof()) {
+            // "This is an eof-in-processing-instruction parse error. Emit an
+            // end-of-file token." Nothing was emitted for "<?".
+            self.reportError(.eof_in_processing_instruction);
+            return Token.eof;
+        } else {
+            // "This is an invalid-first-character-of-processing-instruction-
+            // target parse error. Convert the temporary buffer to a comment.
+            // Reconsume in the bogus comment state."
+            self.reportError(.invalid_first_character_of_processing_instruction_target);
+            try self.convertTemporaryBufferToComment();
+            self.reconsume = true;
+            self.state = .bogus_comment;
+            return null;
+        }
+    }
+
+    /// §13.2.5.73 Processing instruction target state
+    fn processingInstructionTargetState(self: *Tokenizer) !?Token {
+        const char = self.current_char;
+        const cp = char.getCodepoint() orelse {
+            // EOF: "This is an eof-in-processing-instruction parse error.
+            // Emit an end-of-file token."
+            self.reportError(.eof_in_processing_instruction);
+            return Token.eof;
+        };
+
+        switch (cp) {
+            '\t', '\n', 0x0C, ' ', '?', '>' => {
+                // "Let target be the concatenation of the code points in the
+                // temporary buffer."
+                const target = self.temporary_buffer.toSlice();
+                // "If target is an ASCII case-insensitive match for "xml" or
+                // "xml-stylesheet"": a disallowed-processing-instruction-target
+                // parse error; convert the temporary buffer to a comment and
+                // reconsume in the bogus comment state.
+                if (std.ascii.eqlIgnoreCase(target, "xml") or std.ascii.eqlIgnoreCase(target, "xml-stylesheet")) {
+                    self.reportError(.disallowed_processing_instruction_target);
+                    try self.convertTemporaryBufferToComment();
+                    self.reconsume = true;
+                    self.state = .bogus_comment;
+                    return null;
+                }
+                // "Otherwise: Create a processing instruction token whose
+                // target is target and data is the empty string. Reconsume in
+                // the after processing instruction target state."
+                self.current_token = Token{ .processing_instruction = try ProcessingInstructionToken.init(self.allocator, target) };
+                self.reconsume = true;
+                self.state = .after_processing_instruction_target;
+                return null;
+            },
+            'a'...'z', 'A'...'Z', '0'...'9', '-', '_' => {
+                // "Append the current input character to the temporary buffer."
+                try self.temporary_buffer.append(@intCast(cp));
+                return null;
+            },
+            else => {
+                // "This is an invalid-processing-instruction-target parse
+                // error. Convert the temporary buffer to a comment. Reconsume
+                // in the bogus comment state."
+                self.reportError(.invalid_processing_instruction_target);
+                try self.convertTemporaryBufferToComment();
+                self.reconsume = true;
+                self.state = .bogus_comment;
+                return null;
+            },
+        }
+    }
+
+    /// §13.2.5.74 After processing instruction target state
+    fn afterProcessingInstructionTargetState(self: *Tokenizer) !?Token {
+        // "U+0009 CHARACTER TABULATION (tab), U+000A LINE FEED (LF), U+000C
+        // FORM FEED (FF), U+0020 SPACE: Ignore the character."
+        if (self.current_char.isHtmlWhitespace()) return null;
+        // "Anything else: Reconsume in the processing instruction data state"
+        // - EOF included, which that state reports.
+        self.reconsume = true;
+        self.state = .processing_instruction_data;
+        return null;
+    }
+
+    /// §13.2.5.75 Processing instruction data state
+    fn processingInstructionDataState(self: *Tokenizer) !?Token {
+        const char = self.current_char;
+        const cp = char.getCodepoint() orelse return self.eofInProcessingInstruction();
+        switch (cp) {
+            '?' => {
+                self.state = .processing_instruction_questionable;
+                return null;
+            },
+            '>' => {
+                // "Switch to the data state. Emit the current processing
+                // instruction token."
+                self.state = .data;
+                return self.emitCurrentProcessingInstruction();
+            },
+            else => {
+                // "Append the current input character to the current
+                // processing instruction token's data."
+                try self.appendToCurrentProcessingInstructionData(cp);
+                return null;
+            },
+        }
+    }
+
+    /// §13.2.5.76 Processing instruction questionable state
+    fn processingInstructionQuestionableState(self: *Tokenizer) !?Token {
+        const char = self.current_char;
+        if (char.is('>')) {
+            // "Switch to the data state. Emit the current processing
+            // instruction token."
+            self.state = .data;
+            return self.emitCurrentProcessingInstruction();
+        }
+        if (char.isEof()) return self.eofInProcessingInstruction();
+        // "Append U+003F (?) to the current processing instruction token's
+        // data. Reconsume in the processing instruction data state."
+        try self.appendToCurrentProcessingInstructionData('?');
+        self.reconsume = true;
+        self.state = .processing_instruction_data;
+        return null;
+    }
+
+    /// EOF in the processing instruction data and questionable states: "This
+    /// is an eof-in-processing-instruction parse error. Emit an end-of-file
+    /// token." The current processing instruction token is never emitted
+    /// ("Such processing instructions are ignored").
+    fn eofInProcessingInstruction(self: *Tokenizer) Token {
+        self.reportError(.eof_in_processing_instruction);
+        if (self.current_token) |*token| token.deinit();
+        self.current_token = null;
+        return Token.eof;
+    }
+
+    /// "Convert the temporary buffer to a comment": create a comment token
+    /// whose data is "?" followed by the code points in the temporary buffer.
+    /// The bogus comment state, which the caller reconsumes in, continues it.
+    fn convertTemporaryBufferToComment(self: *Tokenizer) !void {
+        var comment = CommentToken.init(self.allocator);
+        errdefer comment.deinit();
+        try comment.appendToData('?');
+        for (self.temporary_buffer.toSlice()) |byte| try comment.appendToData(byte);
+        self.current_token = Token{ .comment = comment };
+    }
+
+    fn appendToCurrentProcessingInstructionData(self: *Tokenizer, cp: u21) !void {
+        if (self.current_token) |*token| switch (token.*) {
+            .processing_instruction => |*pi| try pi.appendCodepointToData(cp),
+            else => {},
+        };
+    }
+
+    fn emitCurrentProcessingInstruction(self: *Tokenizer) ?Token {
+        const token = self.current_token orelse return null;
+        self.current_token = null;
+        return token;
+    }
+
+    /// §13.2.5.77 Character reference state
     fn characterReferenceState(self: *Tokenizer) !?Token {
         self.temporary_buffer.clear();
         try self.temporary_buffer.append('&');
@@ -2448,7 +2630,7 @@ pub const Tokenizer = struct {
         }
     }
 
-    /// §13.2.5.73 Named character reference state
+    /// §13.2.5.78 Named character reference state
     ///
     /// "Consume the maximum number of characters possible, where the consumed
     /// characters are one of the identifiers in the named character references
@@ -2557,7 +2739,7 @@ pub const Tokenizer = struct {
         return null;
     }
 
-    /// §13.2.5.74 Ambiguous ampersand state
+    /// §13.2.5.79 Ambiguous ampersand state
     fn ambiguousAmpersandState(self: *Tokenizer) !?Token {
         const char = self.current_char;
 
@@ -2580,7 +2762,7 @@ pub const Tokenizer = struct {
         }
     }
 
-    /// §13.2.5.75 Numeric character reference state
+    /// §13.2.5.80 Numeric character reference state
     fn numericCharacterReferenceState(self: *Tokenizer) !?Token {
         self.character_reference_code = 0;
 
@@ -2597,7 +2779,7 @@ pub const Tokenizer = struct {
         }
     }
 
-    /// §13.2.5.76 Hexadecimal character reference start state
+    /// §13.2.5.81 Hexadecimal character reference start state
     fn hexadecimalCharacterReferenceStartState(self: *Tokenizer) !?Token {
         const char = self.current_char;
 
@@ -2614,7 +2796,9 @@ pub const Tokenizer = struct {
         }
     }
 
-    /// §13.2.5.77 Decimal character reference start state
+    /// Decimal character reference start state - Crane's own: the ASCII digit
+    /// and "anything else" branches of the numeric character reference state
+    /// (13.2.5.80).
     fn decimalCharacterReferenceStartState(self: *Tokenizer) !?Token {
         const char = self.current_char;
 
@@ -2631,7 +2815,7 @@ pub const Tokenizer = struct {
         }
     }
 
-    /// §13.2.5.78 Hexadecimal character reference state
+    /// §13.2.5.82 Hexadecimal character reference state
     fn hexadecimalCharacterReferenceState(self: *Tokenizer) !?Token {
         const char = self.current_char;
 
@@ -2661,7 +2845,7 @@ pub const Tokenizer = struct {
         }
     }
 
-    /// §13.2.5.79 Decimal character reference state
+    /// §13.2.5.83 Decimal character reference state
     fn decimalCharacterReferenceState(self: *Tokenizer) !?Token {
         const char = self.current_char;
 
@@ -2683,7 +2867,7 @@ pub const Tokenizer = struct {
         }
     }
 
-    /// §13.2.5.80 Numeric character reference end state
+    /// §13.2.5.84 Numeric character reference end state
     ///
     /// The state consumes no input character: the states that switch to it run
     /// its steps directly (`numericCharacterReferenceEnd`), so the character

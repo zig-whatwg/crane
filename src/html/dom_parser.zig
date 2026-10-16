@@ -7,7 +7,7 @@
 //! and the DOM layer, converting parsed TreeNodes into proper DOM nodes.
 //!
 //! The parsing uses:
-//! - Full 80-state tokenizer (HTML Standard §13.2.5)
+//! - Full 84-state tokenizer (HTML Standard §13.2.5)
 //! - Full 24-mode tree builder (HTML Standard §13.2.6)
 //! - Proper DOM node creation for all node types
 //!
@@ -162,7 +162,7 @@ pub const Namespace = enum {
 /// This is the main entry point for parsing complete HTML documents.
 /// Implements the HTML parsing algorithm from WHATWG HTML Standard §13.2.
 ///
-/// Uses the full tokenizer (80 states) and tree builder (24 insertion modes)
+/// Uses the full tokenizer (84 states) and tree builder (24 insertion modes)
 /// to construct a TreeNode tree, then converts it to DOM nodes.
 ///
 /// @param allocator Memory allocator for DOM nodes
@@ -815,6 +815,7 @@ fn createDomNodeFromTreeNode(
         .element => try createElementNode(allocator, ctx, tree_node, owner_document, conversion),
         .text => try createTextNode(allocator, ctx, tree_node, owner_document),
         .comment => try createCommentNode(allocator, ctx, tree_node, owner_document),
+        .processing_instruction => try createProcessingInstructionNode(tree_node, owner_document),
         .doctype => try createDoctypeNode(allocator, ctx, tree_node, owner_document),
         .document => error.InvalidStateError, // Document should not appear as child
     };
@@ -951,6 +952,25 @@ fn createCommentNode(
     }
 
     return comment;
+}
+
+/// HTML "insert a processing instruction" step 4: "creating a processing
+/// instruction node given targetParent's node document, piTarget, and data"
+/// - Document's createProcessingInstruction, whose steps are exactly that
+/// (DOM 4.5). The parser's target always matches the Name production and its
+/// data never contains "?>", so initialize's checks pass.
+fn createProcessingInstructionNode(tree_node: *TreeNode, owner_document: ?*runtime.Instance) ParseError!*runtime.Instance {
+    // Every parse that can make one has a document: a document parse makes
+    // its own, and a fragment parse takes its context element's.
+    const document = owner_document orelse return error.InvalidStateError;
+    return interfaces.Document.call_createProcessingInstruction(
+        document,
+        runtime.DOMString.initInterned(tree_node.pi_target orelse ""),
+        runtime.DOMString.initInterned(tree_node.text_content.toSlice()),
+    ) catch |err| switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        else => error.InvalidStateError,
+    };
 }
 
 /// Create a DocumentType DOM node from a TreeNode

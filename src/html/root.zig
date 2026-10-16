@@ -27,7 +27,7 @@
 //! │   ├── timers.zig       # setTimeout/setInterval
 //! │   └── root.zig         # Module exports
 //! ├── parser/              # HTML parser (§13)
-//! │   ├── tokenizer.zig    # Tokenization state machine (80 states)
+//! │   ├── tokenizer.zig    # Tokenization state machine (84 states)
 //! │   ├── tokens.zig       # Token types (DOCTYPE, Tag, Comment, etc.)
 //! │   ├── tokenizer_states.zig  # State enum and helpers
 //! │   ├── parse_errors.zig # Parse error codes and handling

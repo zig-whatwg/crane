@@ -4,7 +4,8 @@
 //! HTML Standard §13.2.5 "Tokenization"
 //!
 //! The output of the tokenization step is a series of zero or more of the
-//! following tokens: DOCTYPE, start tag, end tag, comment, character, end-of-file.
+//! following tokens: DOCTYPE, start tag, end tag, comment, processing
+//! instruction, character, end-of-file.
 //!
 //! ## Performance Optimization: SmallString
 //!
@@ -737,6 +738,54 @@ pub const CommentToken = struct {
     }
 };
 
+/// Processing instruction token.
+///
+/// HTML Standard §13.2.5.73, processing instruction target state: "Create a
+/// processing instruction token whose target is target and data is the empty
+/// string." (13.2.5's list of token kinds does not name this one yet; the
+/// states that make and fill it are its definition.)
+pub const ProcessingInstructionToken = struct {
+    /// The target: ASCII alphanumerics, "-" and "_", as the input had them.
+    target: SmallString,
+    /// The data (uses SmallString - 31 bytes inline, heap for longer).
+    data: SmallString,
+
+    /// A token whose target is `target` and whose data is the empty string.
+    pub fn init(allocator: Allocator, target: []const u8) !ProcessingInstructionToken {
+        var token = ProcessingInstructionToken{
+            .target = SmallString.init(allocator),
+            .data = SmallString.init(allocator),
+        };
+        errdefer token.deinit();
+        try token.target.appendSlice(target);
+        return token;
+    }
+
+    /// Free all resources.
+    pub fn deinit(self: *ProcessingInstructionToken) void {
+        self.target.deinit();
+        self.data.deinit();
+    }
+
+    /// Append a Unicode codepoint to the data (UTF-8 encoded).
+    pub fn appendCodepointToData(self: *ProcessingInstructionToken, codepoint: u21) !void {
+        var buf: [4]u8 = undefined;
+        const length = std.unicode.utf8Encode(codepoint, &buf) catch {
+            try self.data.appendSlice(&[_]u8{ 0xEF, 0xBF, 0xBD });
+            return;
+        };
+        try self.data.appendSlice(buf[0..length]);
+    }
+
+    pub fn getTarget(self: *const ProcessingInstructionToken) []const u8 {
+        return self.target.toSlice();
+    }
+
+    pub fn getData(self: *const ProcessingInstructionToken) []const u8 {
+        return self.data.toSlice();
+    }
+};
+
 /// A token emitted by the tokenizer.
 pub const Token = union(enum) {
     /// DOCTYPE token.
@@ -750,6 +799,9 @@ pub const Token = union(enum) {
 
     /// Comment token.
     comment: CommentToken,
+
+    /// Processing instruction token.
+    processing_instruction: ProcessingInstructionToken,
 
     /// Character token.
     character: u21,
@@ -769,6 +821,7 @@ pub const Token = union(enum) {
             .doctype => |*d| d.deinit(),
             .start_tag, .end_tag => |*t| t.deinit(),
             .comment => |*c| c.deinit(),
+            .processing_instruction => |*p| p.deinit(),
             .character, .eof, .text_run => {},
         }
     }

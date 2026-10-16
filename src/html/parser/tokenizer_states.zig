@@ -3,7 +3,8 @@
 //! Spec: https://html.spec.whatwg.org/multipage/parsing.html#tokenization
 //! HTML Standard §13.2.5 "Tokenization"
 //!
-//! The tokenizer state machine has 80 states as defined in the specification.
+//! The tokenizer state machine has the specification's 84 states (13.2.5.1-84),
+//! and one of its own: decimal_character_reference_start.
 
 /// Tokenizer states as defined in HTML Standard §13.2.5.
 ///
@@ -96,6 +97,13 @@ pub const State = enum {
     cdata_section_bracket,
     cdata_section_end,
 
+    // Processing instruction states (13.2.5.72-76)
+    processing_instruction_open,
+    processing_instruction_target,
+    after_processing_instruction_target,
+    processing_instruction_data,
+    processing_instruction_questionable,
+
     // Character reference states
     character_reference,
     named_character_reference,
@@ -182,6 +190,11 @@ pub fn getStateName(state: State) []const u8 {
         .cdata_section => "CDATA section state",
         .cdata_section_bracket => "CDATA section bracket state",
         .cdata_section_end => "CDATA section end state",
+        .processing_instruction_open => "Processing instruction open state",
+        .processing_instruction_target => "Processing instruction target state",
+        .after_processing_instruction_target => "After processing instruction target state",
+        .processing_instruction_data => "Processing instruction data state",
+        .processing_instruction_questionable => "Processing instruction questionable state",
         .character_reference => "Character reference state",
         .named_character_reference => "Named character reference state",
         .ambiguous_ampersand => "Ambiguous ampersand state",

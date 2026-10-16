@@ -1,5 +1,5 @@
 //! Named Character References Table
-//! Per HTML Standard §13.2.5.73: Named character reference state
+//! Per HTML Standard §13.2.5.78: Named character reference state
 //! https://html.spec.whatwg.org/multipage/parsing.html#named-character-reference-state
 //!
 //! This module provides a lookup table for all HTML named character references.
@@ -2264,7 +2264,7 @@ pub const entities = [_]Entity{
 pub const entity_count = entities.len;
 
 /// Look up a named character reference by prefix.
-/// This implements the "longest match" algorithm required by §13.2.5.73.
+/// This implements the "longest match" algorithm required by §13.2.5.78.
 /// Returns the longest matching entity and the number of characters consumed.
 /// The input should NOT include the leading '&'.
 pub fn lookup(input: []const u8) LookupResult {
