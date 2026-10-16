@@ -109,8 +109,7 @@ pub fn get_serial(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// Getter for permissions
 pub fn get_permissions(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return interfaces.Permissions.init(instance.ctx.allocator, instance.ctx);
 }
 
 /// Getter for smartCard

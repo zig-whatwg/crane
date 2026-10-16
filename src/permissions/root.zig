@@ -2,16 +2,16 @@
 //!
 //! Spec: https://www.w3.org/TR/permissions/
 //!
-//! This module provides Zig implementation of the W3C Permissions API,
-//! which allows web applications to query and request permission states
-//! for powerful features like geolocation, camera, microphone, etc.
+//! Native permission types and pure query rules. The live Permissions API
+//! is implemented by the WebIDL Permissions and PermissionStatus interfaces;
+//! it uses `query` and these value types, not the legacy storage or registry.
 //!
 //! ## Overview
 //!
-//! The Permissions API provides a consistent way to:
-//! - Query the current state of a permission (`query`)
-//! - Request permission from the user (`request`)
-//! - Revoke a previously granted permission (`revoke`)
+//! The standard API queries powerful-feature permissions. The legacy native
+//! `Permissions`, `PermissionStorage` and `PermissionStatusRegistry` below
+//! are standalone helpers, not a per-Browser store or change notification
+//! implementation. Their request/revoke methods are not standard API methods.
 //!
 //! ## Permission States
 //!
@@ -20,7 +20,7 @@
 //! - `denied`: User has explicitly denied permission
 //! - `prompt`: User has not yet made a decision (default)
 //!
-//! ## Usage
+//! ## Legacy native helper usage
 //!
 //! ```zig
 //! const allocator = std.heap.page_allocator;
@@ -54,6 +54,9 @@ pub const PermissionDescriptor = types.PermissionDescriptor;
 pub const PermissionExtra = types.PermissionExtra;
 pub const Origin = types.Origin;
 
+// Rules used by the live WebIDL query implementation (no native registry).
+pub const query = @import("query.zig");
+
 // Storage
 pub const storage = @import("storage.zig");
 pub const PermissionStorage = storage.PermissionStorage;
@@ -78,4 +81,5 @@ test {
     _ = storage;
     _ = status;
     _ = permissions;
+    _ = query;
 }
