@@ -112,6 +112,10 @@ pub const RealmSteps = runtime.RealmSteps;
 /// - `ExceptionReported`: script threw, the exception was reported through
 ///   the operation's Reporter, and nothing is pending.
 /// - `OperationFailed`: the engine failed (no context, out of handles).
+/// - `MutedScriptError`: a script run with rethrow errors whose errors are
+///   muted threw; the engine cleared the exception and nothing is pending -
+///   the host throws a "NetworkError" DOMException (HTML "run a classic
+///   script" step 8.2; runClassicScriptRethrowingErrors).
 pub const Error = error{
     OperationFailed,
     ExceptionReported,
@@ -120,6 +124,7 @@ pub const Error = error{
     ExceptionPending,
     DataCloneError,
     NotSupported,
+    MutedScriptError,
 };
 
 /// A value the caller owns: every operation whose result must be released
@@ -1019,6 +1024,24 @@ pub inline fn defineBuiltinFunction(realm: Context, function_name: []const u8, l
 /// can run - pending `import()`s included; null for none.
 pub inline fn runClassicScript(realm: Context, source: ScriptSource, url: []const u8, host_defined: ?*anyopaque, reporter: Reporter) Error!void {
     return impl.runClassicScript(realm, source, url, host_defined, reporter);
+}
+
+/// HTML "run a classic script" with rethrow errors true - what
+/// importScripts() runs each script with ("import scripts into worker global
+/// scope" step 6.2), from inside a call from script. Nothing is reported;
+/// "clean up after running script" runs before it returns either way. Step 8:
+/// - muted errors false (8.1): "Rethrow evaluationStatus.[[Value]]" - the
+///   call fails with ExceptionPending, and the ORIGINAL exception is pending,
+///   a parse error included, with the location it was thrown at: when the
+///   calling script leaves it uncaught, it is reported in the script that
+///   threw it, not at the call (V8: TryCatch::ReThrow, as Blink's
+///   V8ScriptRunner does; Isolate::ThrowException would locate it anew);
+/// - muted errors true (8.2): "Throw a "NetworkError" DOMException" - the
+///   engine clears the exception and the call fails with MutedScriptError;
+///   the host throws the NetworkError.
+/// `host_defined` is as runClassicScript's.
+pub inline fn runClassicScriptRethrowingErrors(realm: Context, source: ScriptSource, url: []const u8, host_defined: ?*anyopaque, muted_errors: bool) Error!void {
+    return impl.runClassicScriptRethrowingErrors(realm, source, url, host_defined, muted_errors);
 }
 
 /// A classic script's completion value - for host scripts (the harness,

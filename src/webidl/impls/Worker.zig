@@ -146,11 +146,30 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return state.own._internal;
 }
 
-/// `script_url` encoding-parsed relative to `api_base_url` and serialized:
-/// the Worker constructor's steps 3-4, given the outside settings' API base
-/// URL. OWNED (`allocator`). SyntaxError when it does not parse - a relative
-/// URL with no base among them.
-/// Deviation, stated (encoding-parse-utf8): the query is encoded as UTF-8, not with the document's encoding - queued.
+/// HTML "encoding-parsing a URL" given `script_url`, relative to the outside
+/// settings, serialized (the constructor's "Let urlRecord/workerURL be the
+/// result of encoding-parsing a URL given compliantScriptURL, relative to
+/// outsideSettings"): a window's settings parse against its document's base
+/// URL and encode the query with its document's character encoding - the
+/// one helper every document URL goes through, dom.encoding_parse - and a
+/// worker's against its API base URL, in UTF-8. OWNED (`allocator`).
+/// SyntaxError for failure.
+fn encodingParseScriptURL(instance: *runtime.Instance, allocator: std.mem.Allocator, script_url: []const u8, api_base_url: ?[]const u8) error{ SyntaxError, OutOfMemory }![]const u8 {
+    if (relevantWindow(instance)) |window| {
+        if (interfaces.Window.get_document(window) catch null) |document| {
+            const serialized = (try @import("dom").encoding_parse.encodingParseAndSerialize(document, script_url)) orelse
+                return error.SyntaxError;
+            defer document.ctx.allocator.free(serialized);
+            return allocator.dupe(u8, serialized);
+        }
+    }
+    return resolveScriptURL(allocator, script_url, api_base_url);
+}
+
+/// `script_url` parsed relative to `api_base_url` and serialized, its query
+/// encoded as UTF-8: encoding-parsing relative to a worker's settings, whose
+/// API URL character encoding is UTF-8. OWNED (`allocator`). SyntaxError
+/// when it does not parse - a relative URL with no base among them.
 pub fn resolveScriptURL(allocator: std.mem.Allocator, script_url: []const u8, api_base_url: ?[]const u8) error{ SyntaxError, OutOfMemory }![]const u8 {
     var base_record: ?@import("url_record").URLRecord = null;
     defer if (base_record) |*b| b.deinit();
@@ -159,6 +178,24 @@ pub fn resolveScriptURL(allocator: std.mem.Allocator, script_url: []const u8, ap
         return error.SyntaxError;
     defer record.deinit();
     return url_serializer.serialize(allocator, &record, false) catch error.OutOfMemory;
+}
+
+/// The outside settings' origin, serialized - "this's relevant settings
+/// object"'s, as its global's kind answers it (dom.global_settings): a
+/// sandboxed or otherwise opaque-origin document's is "null", whatever its
+/// URL. The origin of `api_base_url` only where the global's kind answers
+/// nothing. OWNED (`allocator`).
+fn outsideSettingsOrigin(instance: *runtime.Instance, allocator: std.mem.Allocator, api_base_url: ?[]const u8) ![]u8 {
+    if (instance.ctx.getRealm()) |record| if (record.global_object) |object| {
+        const global: *runtime.Instance = @ptrCast(@alignCast(object));
+        if (@import("dom").global_settings.of(global)) |settings| {
+            if (settings.origin(global)) |origin| {
+                defer global.ctx.allocator.free(origin);
+                return allocator.dupe(u8, origin);
+            } else |err| if (err == error.OutOfMemory) return error.OutOfMemory;
+        }
+    };
+    return serializedOriginOf(allocator, api_base_url);
 }
 
 /// The outside settings' origin, serialized: the origin of `api_base_url`,
@@ -243,10 +280,11 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     // base URL - a window's document's URL, a worker's script URL.
     const base_url = apiBaseURL(instance);
     defer if (base_url) |b| ctx.allocator.free(b);
-    const worker_url = try resolveScriptURL(ctx.allocator, compliant_script_url, base_url);
+    const worker_url = try encodingParseScriptURL(instance, ctx.allocator, compliant_script_url, base_url);
     defer ctx.allocator.free(worker_url);
-    // Its origin, for the blob-URL store's same-origin check.
-    const requesting_origin = try serializedOriginOf(ctx.allocator, base_url);
+    // The outside settings' origin: the script request's (its fetch is
+    // same-origin with it) and the blob-URL store's same-origin check's.
+    const requesting_origin = try outsideSettingsOrigin(instance, ctx.allocator, base_url);
     defer ctx.allocator.free(requesting_origin);
 
     const internal = try ctx.allocator.create(InternalState);

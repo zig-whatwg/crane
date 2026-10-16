@@ -1,0 +1,12 @@
+# Debugging: Throwing a caught exception again relocates it - only ReThrow keeps where it was thrown
+
+**Date**: 2026-10-16
+**Lesson**: An exception caught and thrown again with `Isolate::ThrowException` is reported where it was thrown the second time. V8's Isolate::Throw computes a new message at the top JavaScript frame whenever one exists (isolate.cc, "If no location was specified we try to use a computed one"). Only `TryCatch::ReThrow` keeps the original message (`rethrowing_message_`).
+
+**Why**: HTML "run a classic script" with rethrow errors true (importScripts()) hands the imported script's exception to the caller as it was thrown. Crane's worker host kept the thrown value from the engine's reporter and threw it again with `engine.throwValue` (the [importScripts lesson](spec-compliance-importscripts-rethrows-and-fetches-no-cors.md)'s fix). The value arrived intact, but its location became the importScripts() call. V8's own fallbacks, which read the location off the error object (`ComputeLocationFromException`, the SyntaxError's error_start_pos symbols), never run while a frame is on the stack.
+
+**What Happened**: `workers/Worker-nested-importScripts-error.html` failed in Crane while all three browsers pass it. The ErrorEvent's filename named the worker's own script, never invalidScript.js. A Crane test (crane/wk4-nested-import-error.html) showed this was not about parse errors: a plain `throw new Error()` in an imported script was also reported at the outer script, at one import level as at three. JSC and QuickJS error objects carry their own location, so the defect was V8's semantics, not the spec's.
+
+**Fix**: A protocol operation named after the spec concept, `engine.runClassicScriptRethrowingErrors(realm, source, url, host_defined, muted_errors)`. On V8 the script is compiled and run under a TryCatch that `ReThrow()`s, as Blink's V8ScriptRunner does for importScripts(). With muted errors the exception is cleared and the call fails with `error.MutedScriptError`, for the host's NetworkError. tests/v8/wk4_rethrow_errors_test.zig pins the parse error, the throw, two levels of import, a catch in the caller, the muted case and a normal completion.
+
+**Takeaway**: **A value is not an exception: to pass an exception on with its location, rethrow it where it was caught (TryCatch::ReThrow) - catching it as a value and throwing that again moves it to the line that threw it again.**

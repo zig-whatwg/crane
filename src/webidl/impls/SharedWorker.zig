@@ -128,7 +128,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     // "SyntaxError" DOMException.
     const base_url = apiBaseURL(instance);
     defer if (base_url) |b| allocator.free(b);
-    const url_record = resolveScriptURL(allocator, compliant_script_url, base_url) catch |err| switch (err) {
+    const url_record = encodingParseScriptURL(instance, allocator, compliant_script_url, base_url) catch |err| switch (err) {
         error.SyntaxError => return error.SyntaxError,
         else => |e| return e,
     };
@@ -151,13 +151,31 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     // 9. outsideStorageKey: obtain a storage key for non-storage purposes,
     // given outsideSettings - its origin, here, serialized (Crane has no
     // storage partitioning, so the key is the origin).
-    const origin = try serializedOriginOf(allocator, base_url);
+    const origin = try outsideSettingsOrigin(instance, allocator, base_url);
     defer allocator.free(origin);
+
+    // 5, the URL parser's blob step: "If url's scheme is "blob", set url's
+    // blob URL entry to the result of resolving the blob URL url" - now,
+    // while the constructor runs. The manager's steps fetch the script after
+    // it has returned, and script may revoke the URL first
+    // (`new SharedWorker(url); URL.revokeObjectURL(url)` still runs the blob,
+    // in every browser: workers/shared-worker-from-blob-url.window.js).
+    var blob_entry = try workers.script_fetch.captureBlobScript(
+        allocator,
+        url_record,
+        origin,
+        @ptrCast(@import("dom").browser_state.blobURLStoreOf(ctx)),
+        worker_options.worker_type,
+    );
+    errdefer if (blob_entry) |*entry| entry.deinit();
 
     // 8, 10-11. Enqueue the manager's steps: they find a running
     // SharedWorkerGlobalScope for (origin, urlRecord, name) or run a new
-    // worker, and fire `connect` - or `error` at this object.
+    // worker, and fire `connect` - or `error` at this object. They take the
+    // inside end and the blob URL entry whatever happens.
     inside_end_owned = false;
+    const entry_for_steps = blob_entry;
+    blob_entry = null;
     try worker_host.connectSharedWorker(.{
         .worker = instance,
         .steps = &owner_steps,
@@ -172,6 +190,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
         // "Run a worker" step 3, should the steps run one: the unsafe worker
         // creation time.
         .creation_time_ns = @intCast(@import("hr_time").MonotonicClock.unsafeCurrentTime()),
+        .blob_entry = entry_for_steps,
     });
 
     return instance;
@@ -289,9 +308,30 @@ fn memberString(ctx: runtime.Context, object: runtime.JSValue, member: []const u
     return try engine.convertToDOMString(ctx, got.value, ctx.allocator);
 }
 
-/// `script_url` encoding-parsed relative to `api_base_url` and serialized.
-/// OWNED (`allocator`). SyntaxError when it does not parse.
-/// Deviation, stated (encoding-parse-utf8): the query is encoded as UTF-8, not with the document's encoding - queued.
+/// HTML "encoding-parsing a URL" given `script_url`, relative to the outside
+/// settings, serialized (the constructor's "Let urlRecord/workerURL be the
+/// result of encoding-parsing a URL given compliantScriptURL, relative to
+/// outsideSettings"): a window's settings parse against its document's base
+/// URL and encode the query with its document's character encoding - the
+/// one helper every document URL goes through, dom.encoding_parse - and a
+/// worker's against its API base URL, in UTF-8. OWNED (`allocator`).
+/// SyntaxError for failure.
+fn encodingParseScriptURL(instance: *runtime.Instance, allocator: std.mem.Allocator, script_url: []const u8, api_base_url: ?[]const u8) error{ SyntaxError, OutOfMemory }![]const u8 {
+    if (relevantWindow(instance)) |window| {
+        if (interfaces.Window.get_document(window) catch null) |document| {
+            const serialized = (try @import("dom").encoding_parse.encodingParseAndSerialize(document, script_url)) orelse
+                return error.SyntaxError;
+            defer document.ctx.allocator.free(serialized);
+            return allocator.dupe(u8, serialized);
+        }
+    }
+    return resolveScriptURL(allocator, script_url, api_base_url);
+}
+
+/// `script_url` parsed relative to `api_base_url` and serialized, its query
+/// encoded as UTF-8: encoding-parsing relative to a worker's settings, whose
+/// API URL character encoding is UTF-8. OWNED (`allocator`). SyntaxError
+/// when it does not parse.
 fn resolveScriptURL(allocator: std.mem.Allocator, script_url: []const u8, api_base_url: ?[]const u8) error{ SyntaxError, OutOfMemory }![]const u8 {
     var base_record: ?@import("url_record").URLRecord = null;
     defer if (base_record) |*b| b.deinit();
@@ -300,6 +340,24 @@ fn resolveScriptURL(allocator: std.mem.Allocator, script_url: []const u8, api_ba
         return error.SyntaxError;
     defer record.deinit();
     return url_serializer.serialize(allocator, &record, false) catch error.OutOfMemory;
+}
+
+/// The outside settings' origin, serialized - "this's relevant settings
+/// object"'s, as its global's kind answers it (dom.global_settings): a
+/// sandboxed or otherwise opaque-origin document's is "null", whatever its
+/// URL. The origin of `api_base_url` only where the global's kind answers
+/// nothing. OWNED (`allocator`).
+fn outsideSettingsOrigin(instance: *runtime.Instance, allocator: std.mem.Allocator, api_base_url: ?[]const u8) ![]u8 {
+    if (instance.ctx.getRealm()) |record| if (record.global_object) |object| {
+        const global: *runtime.Instance = @ptrCast(@alignCast(object));
+        if (@import("dom").global_settings.of(global)) |settings| {
+            if (settings.origin(global)) |origin| {
+                defer global.ctx.allocator.free(origin);
+                return allocator.dupe(u8, origin);
+            } else |err| if (err == error.OutOfMemory) return error.OutOfMemory;
+        }
+    };
+    return serializedOriginOf(allocator, api_base_url);
 }
 
 /// The outside settings' origin, serialized: the origin of `api_base_url`,

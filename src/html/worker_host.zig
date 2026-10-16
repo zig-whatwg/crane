@@ -148,7 +148,7 @@ fn engineError(err: engine.Error) runtime.EngineError {
         error.OutOfMemory => error.OutOfMemory,
         error.DataCloneError => error.DataCloneError,
         error.NotSupported => error.NotSupported,
-        error.OperationFailed, error.ExceptionReported => error.OperationFailed,
+        error.OperationFailed, error.ExceptionReported, error.MutedScriptError => error.OperationFailed,
     };
 }
 
@@ -411,9 +411,12 @@ pub fn fetchClassicWorkerImportedScript(ctx: runtime.Context, url: []const u8) e
 ///  settings. Rethrow evaluationStatus.[[Value]]. If rethrow errors is true
 ///  and script's muted errors is true: Clean up after running script with
 ///  settings. Throw a "NetworkError" DOMException." So what the script throws
-/// - a parse error included - reaches importScripts()'s caller, and is not
-/// reported: the engine's report hands the value here, and it is thrown
-/// again once the engine has cleaned up (ExceptionPending).
+/// - a parse error included - reaches importScripts()'s caller as it was
+/// thrown, and is not reported: the engine leaves the original exception
+/// pending (ExceptionPending), with the location it was thrown at - an
+/// uncaught one is reported at the imported script, however many
+/// importScripts() calls it crossed (workers/Worker-nested-importScripts-error.html).
+/// Throwing the value again from here located it at the importScripts() call.
 ///
 /// importScripts() is called from script: the execution context stack is not
 /// empty, so "clean up after running script" performs no microtask
@@ -427,42 +430,14 @@ pub fn runImportedScript(ctx: runtime.Context, script: *const ImportedScript) an
     // an import() in it included.
     const record = try wctx.classicScript(if (script.muted) "about:blank" else script.url);
 
-    var rethrow: Rethrow = .{ .realm = realm };
-    defer if (rethrow.value) |value| value.release();
     wctx.entered += 1;
     defer wctx.entered -= 1;
-    engine.runClassicScript(realm, .{ .utf8 = script.source }, script.url, record, rethrow.reporter()) catch |err| switch (err) {
-        error.ExceptionReported => {},
+    engine.runClassicScriptRethrowingErrors(realm, .{ .utf8 = script.source }, script.url, record, script.muted) catch |err| switch (err) {
+        // 8.2: a muted script's error is a NetworkError.
+        error.MutedScriptError => return error.NetworkError,
         else => return err,
     };
-
-    if (rethrow.thrown) {
-        if (script.muted) return error.NetworkError;
-        const value = rethrow.value orelse return error.NetworkError;
-        try engine.throwValue(realm, value.value);
-        return error.ExceptionPending;
-    }
 }
-
-/// The engine's "report an exception" for a script run with rethrow errors
-/// true: nothing is reported; the thrown value is kept for the caller.
-const Rethrow = struct {
-    realm: runtime.Context,
-    thrown: bool = false,
-    /// OWNED.
-    value: ?engine.Owned = null,
-
-    fn reporter(self: *Rethrow) engine.Reporter {
-        return .{ .report = keep, .host = self };
-    }
-
-    fn keep(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
-        const self: *Rethrow = @ptrCast(@alignCast(host orelse return));
-        self.thrown = true;
-        if (self.value) |old| old.release();
-        self.value = engine.retainValue(self.realm, info.error_value) catch null;
-    }
-};
 
 fn forScope(ctx: runtime.Context) ?*WorkerHost {
     for (live_contexts.items) |live| {
@@ -1817,6 +1792,11 @@ pub const SharedWorkerRequest = struct {
     /// Worker's is: a worker these steps run takes it as its global scope's
     /// time origin.
     creation_time_ns: ?i64 = null,
+    /// urlRecord's blob URL entry, resolved when the constructor parsed it
+    /// (workers.script_fetch.captureBlobScript): the script a worker these
+    /// steps run fetches, even if the URL was revoked since. OWNED: the
+    /// manager takes it whatever happens. Null for any other URL.
+    blob_entry: ?workers.FetchedScript = null,
 };
 
 /// The SharedWorker constructor's step 11: "enqueue the following steps to
@@ -1827,6 +1807,10 @@ pub const SharedWorkerRequest = struct {
 /// loop.
 pub fn connectSharedWorker(request: SharedWorkerRequest) !void {
     errdefer message_ports.discard(request.inside_end);
+    errdefer if (request.blob_entry) |entry| {
+        var owned = entry;
+        owned.deinit();
+    };
     const loop = request.owner_realm.getOptionalEventLoop() orelse return error.NoEventLoop;
     const allocator = request.owner_realm.allocator;
     const task = try allocator.create(SharedConnect);
@@ -1850,6 +1834,7 @@ pub fn connectSharedWorker(request: SharedWorkerRequest) !void {
         .extended_lifetime = request.extended_lifetime,
         .inside_end = request.inside_end,
         .creation_time_ns = request.creation_time_ns,
+        .blob_entry = request.blob_entry,
         .allocator = allocator,
     };
     // Pending activity until the steps end: whatever script holds, the
@@ -1939,6 +1924,8 @@ const SharedConnect = struct {
     /// Null once a worker's loop has taken it.
     inside_end: ?*anyopaque,
     creation_time_ns: ?i64,
+    /// urlRecord's blob URL entry (SharedWorkerRequest.blob_entry). OWNED.
+    blob_entry: ?workers.FetchedScript,
     /// The SharedWorker's pending activity has passed to an `error` task, or
     /// to the start of the worker these steps ran.
     hold_passed: bool = false,
@@ -1965,6 +1952,7 @@ const SharedConnect = struct {
         if (!self.hold_passed and runtime.SlabAllocator.generationOf(self.worker) == self.generation) {
             engine.releasePlatformObject(self.worker);
         }
+        if (self.blob_entry) |*entry| entry.deinit();
         self.allocator.free(self.url);
         self.allocator.free(self.origin);
         self.allocator.free(self.name);
@@ -2037,6 +2025,9 @@ const SharedConnect = struct {
             .policy_container = creatorPolicyContainer(self.owner_realm),
             // Its violations are reported to the outside settings' global.
             .csp_violation_reporter = @import("dom").csp_violations.reporterForRealm(self.owner_realm),
+            // A blob: script is urlRecord's blob URL entry's blob, resolved
+            // when the constructor parsed it - revoked since or not.
+            .blob_entry = if (self.blob_entry) |*entry| entry else null,
         }) catch return self.fireError();
         defer fetched.deinit();
 

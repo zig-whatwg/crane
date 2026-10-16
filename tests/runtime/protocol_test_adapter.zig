@@ -132,6 +132,18 @@ pub fn runClassicScript(realm: Context, source: engine.ScriptSource, url: []cons
     reporter.report(reporter.host, &info);
     return error.ExceptionReported;
 }
+/// The test adapter parses no script, and has no engine to leave an
+/// exception pending in: an empty script completes; a muted one "throws"
+/// (the host's NetworkError path); any other cannot be run.
+pub fn runClassicScriptRethrowingErrors(_: Context, source: engine.ScriptSource, _: []const u8, _: ?*anyopaque, muted_errors: bool) Error!void {
+    const text = switch (source) {
+        .utf8 => |bytes| bytes,
+        .string => return error.NotSupported,
+    };
+    if (text.len == 0) return;
+    if (muted_errors) return error.MutedScriptError;
+    return error.NotSupported;
+}
 pub fn evaluateClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, _: ?*anyopaque, _: engine.Reporter) Error!Owned {
     return error.NotSupported;
 }

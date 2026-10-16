@@ -76,6 +76,10 @@ pub const GlobalType = enum {
     shadowrealm_in_audioworklet,
     /// ShadowRealm in ServiceWorker
     shadowrealm_in_serviceworker,
+    /// A module script in a window (`.any.window-module.html`).
+    window_module,
+    /// A JavaScript shell with no web platform (`.any.js` itself).
+    jsshell,
 
     /// Parse a global type from a string
     pub fn fromString(str: []const u8) ?GlobalType {
@@ -85,8 +89,13 @@ pub const GlobalType = enum {
         if (std.mem.eql(u8, str, "sharedworker")) return .sharedworker;
         if (std.mem.eql(u8, str, "serviceworker")) return .serviceworker;
         if (std.mem.eql(u8, str, "dedicatedworker-module")) return .worker_module;
+        // No longhand upstream, and the same URL as dedicatedworker-module:
+        // `.any.worker-module.html`.
+        if (std.mem.eql(u8, str, "worker-module")) return .worker_module;
         if (std.mem.eql(u8, str, "sharedworker-module")) return .sharedworker_module;
         if (std.mem.eql(u8, str, "serviceworker-module")) return .serviceworker_module;
+        if (std.mem.eql(u8, str, "window-module")) return .window_module;
+        if (std.mem.eql(u8, str, "jsshell")) return .jsshell;
         // ShadowRealm variants (WPT uses hyphens, we use underscores in enum)
         if (std.mem.eql(u8, str, "shadowrealm")) return .shadowrealm;
         if (std.mem.eql(u8, str, "shadowrealm-in-window")) return .shadowrealm_in_window;
@@ -115,7 +124,35 @@ pub const GlobalType = enum {
             .shadowrealm_in_shadowrealm => "shadowrealm-in-shadowrealm",
             .shadowrealm_in_audioworklet => "shadowrealm-in-audioworklet",
             .shadowrealm_in_serviceworker => "shadowrealm-in-serviceworker",
+            .window_module => "window-module",
+            .jsshell => "jsshell",
         };
+    }
+
+    /// The globals one name in a `// META: global=` list stands for, as
+    /// upstream's manifest expands it (tools/manifest/sourcefile.py,
+    /// `_any_variants` and `get_any_variants`): "worker" is the dedicated,
+    /// shared and service worker, "shadowrealm" its six variants, any other
+    /// name WPT knows itself. Null for a name WPT does not know, which
+    /// declares nothing.
+    pub fn expand(name: []const u8) ?[]const GlobalType {
+        if (std.mem.eql(u8, name, "worker")) return &.{ .worker, .sharedworker, .serviceworker };
+        if (std.mem.eql(u8, name, "shadowrealm")) return &.{
+            .shadowrealm_in_window,
+            .shadowrealm_in_shadowrealm,
+            .shadowrealm_in_dedicatedworker,
+            .shadowrealm_in_sharedworker,
+            .shadowrealm_in_serviceworker,
+            .shadowrealm_in_audioworklet,
+        };
+        inline for (comptime std.enums.values(GlobalType)) |g| {
+            // `.shadowrealm` names the longhand above, never a global of its
+            // own.
+            if (g != .shadowrealm and std.mem.eql(u8, name, comptime g.toString())) return &.{g};
+        }
+        if (std.mem.eql(u8, name, "dedicatedworker")) return &.{.worker};
+        if (std.mem.eql(u8, name, "worker-module")) return &.{.worker_module};
+        return null;
     }
 
     /// Whether a test declaring this global should actually be run.
@@ -159,6 +196,9 @@ pub const GlobalType = enum {
             .shadowrealm_in_audioworklet,
             .shadowrealm_in_serviceworker,
             => false,
+            // A module script in a window has no wrapper the runner drives
+            // yet, and a JavaScript shell is not a web platform.
+            .window_module, .jsshell => false,
         };
     }
 
@@ -214,6 +254,9 @@ pub const TestMetadata = struct {
     scripts: std.ArrayList(ScriptRef),
     /// Global contexts to run in (for .any.js)
     globals: std.ArrayList(GlobalType),
+    /// A `// META: global=` line with a value was read: `globals` is what it
+    /// declares - possibly nothing - and the `.any.js` defaults do not apply.
+    globals_declared: bool = false,
     /// Spec reference links (from link rel="help")
     spec_links: std.ArrayList([]const u8),
 
@@ -387,54 +430,83 @@ pub const ParsedTest = struct {
     }
 };
 
+/// One `// META: key=value` line, as upstream's `js_meta_re` matches it:
+/// `//\s*META:\s*(\w*)=(.*)$`, from the line's first byte. Null when the
+/// line is no META line.
+const MetaLine = struct {
+    key: []const u8,
+    value: []const u8,
+
+    fn match(line: []const u8) ?MetaLine {
+        if (!std.mem.startsWith(u8, line, "//")) return null;
+        var i: usize = 2;
+        while (i < line.len and isRegexSpace(line[i])) i += 1;
+        if (!std.mem.startsWith(u8, line[i..], "META:")) return null;
+        i += "META:".len;
+        while (i < line.len and isRegexSpace(line[i])) i += 1;
+        const key_start = i;
+        while (i < line.len and (std.ascii.isAlphanumeric(line[i]) or line[i] == '_')) i += 1;
+        if (i >= line.len or line[i] != '=') return null;
+        // A CRLF file's lines end in '\r', which is no part of the value.
+        return .{ .key = line[key_start..i], .value = std.mem.trimEnd(u8, line[i + 1 ..], "\r") };
+    }
+
+    /// Python's `\s` in a bytes pattern.
+    fn isRegexSpace(c: u8) bool {
+        return switch (c) {
+            ' ', '\t', '\n', '\r', 0x0b, 0x0c => true,
+            else => false,
+        };
+    }
+};
+
 /// Parse META comments from a JavaScript test file
 /// Note: This does NOT add default globals - callers should set defaults based on file type
+///
+/// As upstream reads them (tools/manifest/sourcefile.py,
+/// `read_script_metadata`): the file's lines from the first, each a META
+/// line, until the first that is not - a blank line or a plain comment ends
+/// the metadata, and what follows it is none. MANIFEST.json and `wpt serve`'s
+/// wrappers are built from exactly that, so the runner reads no more and no
+/// less.
 pub fn parseMetaComments(allocator: std.mem.Allocator, content: []const u8) !TestMetadata {
     var metadata = TestMetadata.init(allocator);
     errdefer metadata.deinit();
 
     var lines = std.mem.splitScalar(u8, content, '\n');
     while (lines.next()) |line| {
-        const trimmed = std.mem.trim(u8, line, &std.ascii.whitespace);
+        const meta = MetaLine.match(line) orelse break;
+        const key = meta.key;
+        const value = meta.value;
 
-        // Stop at first non-comment, non-empty line
-        if (trimmed.len == 0) continue;
-        if (!std.mem.startsWith(u8, trimmed, "//")) break;
-
-        // Check for META comment
-        const meta_prefix = "// META:";
-        if (!std.mem.startsWith(u8, trimmed, meta_prefix)) continue;
-
-        const meta_content = std.mem.trim(u8, trimmed[meta_prefix.len..], &std.ascii.whitespace);
-
-        // Parse META key=value
-        if (std.mem.indexOf(u8, meta_content, "=")) |eq_pos| {
-            const key = std.mem.trim(u8, meta_content[0..eq_pos], &std.ascii.whitespace);
-            const value = std.mem.trim(u8, meta_content[eq_pos + 1 ..], &std.ascii.whitespace);
-
-            if (std.mem.eql(u8, key, "title")) {
-                if (metadata.title) |t| allocator.free(t);
-                metadata.title = try allocator.dupe(u8, value);
-            } else if (std.mem.eql(u8, key, "script")) {
-                try metadata.addScript(value);
-            } else if (std.mem.eql(u8, key, "timeout")) {
-                if (std.mem.eql(u8, value, "long")) {
-                    metadata.timeout = .long;
-                }
-            } else if (std.mem.eql(u8, key, "variant")) {
-                try metadata.addVariant(value);
-            } else if (std.mem.eql(u8, key, "global")) {
-                // Parse comma-separated globals (e.g., "window,worker,sharedworker")
-                var globals = std.mem.splitScalar(u8, value, ',');
-                while (globals.next()) |g| {
-                    const gtrim = std.mem.trim(u8, g, &std.ascii.whitespace);
-                    if (GlobalType.fromString(gtrim)) |global| {
-                        try metadata.addGlobal(global);
-                    }
+        if (std.mem.eql(u8, key, "title")) {
+            if (metadata.title) |t| allocator.free(t);
+            metadata.title = try allocator.dupe(u8, value);
+        } else if (std.mem.eql(u8, key, "script")) {
+            try metadata.addScript(value);
+        } else if (std.mem.eql(u8, key, "timeout")) {
+            if (std.mem.eql(u8, value, "long")) {
+                metadata.timeout = .long;
+            }
+        } else if (std.mem.eql(u8, key, "variant")) {
+            try metadata.addVariant(value);
+        } else if (std.mem.eql(u8, key, "global")) {
+            // Only the first `global` line counts, and an empty one is the
+            // defaults (`parse_variants("")`).
+            if (metadata.globals_declared or value.len == 0) continue;
+            metadata.globals_declared = true;
+            // Comma-separated names (e.g. "window,worker,sharedworker"),
+            // each expanded as upstream does; a name WPT does not know
+            // declares nothing.
+            var globals = std.mem.splitScalar(u8, value, ',');
+            while (globals.next()) |g| {
+                const gtrim = std.mem.trim(u8, g, &std.ascii.whitespace);
+                for (GlobalType.expand(gtrim) orelse continue) |global| {
+                    try metadata.addGlobal(global);
                 }
             }
-            // Other META keys (like "quic") are ignored for now
         }
+        // Other META keys (like "quic") are ignored for now
     }
 
     return metadata;
@@ -447,8 +519,10 @@ pub fn parseAnyJs(allocator: std.mem.Allocator, path: []const u8, content: []con
     var metadata = try parseMetaComments(allocator, content);
     errdefer metadata.deinit();
 
-    // Default globals for .any.js: window + worker
-    if (metadata.globals.items.len == 0) {
+    // Default globals for .any.js: window + worker - only when the file
+    // declares none (`get_default_any_variants`). A declaration of names WPT
+    // does not know declares nothing, and nothing runs.
+    if (!metadata.globals_declared) {
         try metadata.addGlobal(.window);
         try metadata.addGlobal(.worker);
     }
@@ -921,10 +995,13 @@ test "parseMetaComments global" {
     var metadata = try parseMetaComments(allocator, content);
     defer metadata.deinit();
 
-    try testing.expectEqual(@as(usize, 3), metadata.globals.items.len);
+    // "worker" is the dedicated, shared and service worker (upstream's
+    // longhand); the sharedworker it names again is not named twice.
+    try testing.expectEqual(@as(usize, 4), metadata.globals.items.len);
     try testing.expectEqual(GlobalType.window, metadata.globals.items[0]);
     try testing.expectEqual(GlobalType.worker, metadata.globals.items[1]);
     try testing.expectEqual(GlobalType.sharedworker, metadata.globals.items[2]);
+    try testing.expectEqual(GlobalType.serviceworker, metadata.globals.items[3]);
 }
 
 test "resolveScriptPath" {
@@ -1329,10 +1406,12 @@ test "parseMetaComments - shadowrealm global" {
     var metadata = try parseMetaComments(allocator, content);
     defer metadata.deinit();
 
-    try testing.expectEqual(@as(usize, 3), metadata.globals.items.len);
+    // "shadowrealm" is its six variants (upstream's longhand), and the
+    // shadowrealm-in-window it names again is not named twice.
+    try testing.expectEqual(@as(usize, 7), metadata.globals.items.len);
     try testing.expectEqual(GlobalType.window, metadata.globals.items[0]);
-    try testing.expectEqual(GlobalType.shadowrealm, metadata.globals.items[1]);
-    try testing.expectEqual(GlobalType.shadowrealm_in_window, metadata.globals.items[2]);
+    try testing.expectEqual(GlobalType.shadowrealm_in_window, metadata.globals.items[1]);
+    try testing.expectEqual(GlobalType.shadowrealm_in_audioworklet, metadata.globals.items[6]);
 }
 
 // =============================================================================
@@ -1350,7 +1429,8 @@ test "multi-context: parseTestFile extracts multiple globals" {
     var parsed = try parseTestFile(allocator, "test.any.js", content);
     defer parsed.deinit();
 
-    try std.testing.expectEqual(@as(usize, 2), parsed.metadata.globals.items.len);
+    // window, and "worker"'s dedicated, shared and service worker.
+    try std.testing.expectEqual(@as(usize, 4), parsed.metadata.globals.items.len);
     try std.testing.expectEqual(GlobalType.window, parsed.metadata.globals.items[0]);
     try std.testing.expectEqual(GlobalType.worker, parsed.metadata.globals.items[1]);
 }
@@ -1470,8 +1550,8 @@ test "multi-context: counting implemented vs unimplemented contexts" {
     var parsed = try parseTestFile(allocator, "test.any.js", content);
     defer parsed.deinit();
 
-    // Should have 5 globals parsed
-    try std.testing.expectEqual(@as(usize, 5), parsed.metadata.globals.items.len);
+    // window; worker's three (shared and service named again); shadowrealm's six.
+    try std.testing.expectEqual(@as(usize, 10), parsed.metadata.globals.items.len);
 
     // Count implemented contexts
     var implemented: usize = 0;
@@ -1484,9 +1564,9 @@ test "multi-context: counting implemented vs unimplemented contexts" {
         }
     }
 
-    // window and worker run; sharedworker, serviceworker and shadowrealm do not.
+    // window and worker run; sharedworker, serviceworker and shadowrealm's six do not.
     try std.testing.expectEqual(@as(usize, 2), implemented);
-    try std.testing.expectEqual(@as(usize, 3), unimplemented);
+    try std.testing.expectEqual(@as(usize, 8), unimplemented);
 }
 
 test "GlobalType.isImplemented - the dedicated worker runs" {
@@ -1531,8 +1611,10 @@ test "multi-context: effective test count with variants and globals" {
     var parsed = try parseTestFile(allocator, "test.any.js", content);
     defer parsed.deinit();
 
-    // 2 contexts * 3 variants = 6 effective tests
-    try std.testing.expectEqual(@as(usize, 6), parsed.metadata.getEffectiveTestCount());
+    // MANIFEST.json's URLs: 4 globals (window; worker's dedicated, shared
+    // and service worker) * 3 variants. The runner runs 2 * 3 of them.
+    try std.testing.expectEqual(@as(usize, 12), parsed.metadata.getEffectiveTestCount());
+    try std.testing.expectEqual(@as(usize, 6), parsed.metadata.runCount());
 }
 
 test "variantsOrDefault: a file with no variants still runs exactly once" {
@@ -1686,4 +1768,152 @@ test "runLabel: counts declared globals, not implemented ones" {
     const label = (try runLabel(allocator, .window, 2, "")).?;
     defer allocator.free(label);
     try std.testing.expectEqualStrings("window", label);
+}
+
+// -----------------------------------------------------------------------------
+// The global set a `.any.js` file declares, as upstream's manifest builds it
+// (tests/wpt/tools/manifest/sourcefile.py: read_script_metadata, the first
+// `global` key, parse_variants and _any_variants). MANIFEST.json lists one URL
+// per global this yields, so the runner must run exactly these - the ones it
+// implements - and no others.
+// -----------------------------------------------------------------------------
+
+/// The globals `content` declares for an `.any.js` file, by name, in order.
+fn expectAnyGlobals(content: []const u8, expected: []const []const u8) !void {
+    var parsed = try parseAnyJs(std.testing.allocator, "a/b.any.js", content);
+    defer parsed.deinit();
+    var names: std.ArrayListUnmanaged([]const u8) = .empty;
+    defer names.deinit(std.testing.allocator);
+    for (parsed.metadata.globals.items) |g| try names.append(std.testing.allocator, g.toString());
+    std.testing.expectEqual(expected.len, names.items.len) catch |err| {
+        for (names.items) |n| std.debug.print("declared: {s}\n", .{n});
+        return err;
+    };
+    for (expected, names.items) |want, got| try std.testing.expectEqualStrings(want, got);
+}
+
+/// The globals of `content` the runner runs - the declared ones it implements.
+fn expectAnyRuns(content: []const u8, expected: []const []const u8) !void {
+    var parsed = try parseAnyJs(std.testing.allocator, "a/b.any.js", content);
+    defer parsed.deinit();
+    var names: std.ArrayListUnmanaged([]const u8) = .empty;
+    defer names.deinit(std.testing.allocator);
+    for (parsed.metadata.globals.items) |g| if (g.isImplemented()) try names.append(std.testing.allocator, g.toString());
+    std.testing.expectEqual(expected.len, names.items.len) catch |err| {
+        for (names.items) |n| std.debug.print("runs: {s}\n", .{n});
+        return err;
+    };
+    for (expected, names.items) |want, got| try std.testing.expectEqualStrings(want, got);
+}
+
+test "META global: `//META:` with no space is a META line (Worker-constructor-proto.any.js)" {
+    // upstream js_meta_re: //\s*META:\s*(\w*)=(.*)$
+    const content =
+        \\//META: global=worker
+        \\test(() => {});
+    ;
+    try expectAnyGlobals(content, &.{ "worker", "sharedworker", "serviceworker" });
+    // Only the dedicated worker runs: no window run the file never asked for.
+    try expectAnyRuns(content, &.{"worker"});
+    // And it is labelled: MANIFEST.json lists three URLs for the file, and an
+    // unlabelled run took the first of them, `.any.serviceworker.html`
+    // (wpt_test_ids.pickManifestUrl).
+    var parsed = try parseAnyJs(std.testing.allocator, "workers/Worker-constructor-proto.any.js", content);
+    defer parsed.deinit();
+    const label = (try runLabel(std.testing.allocator, .worker, parsed.metadata.globals.items.len, "")).?;
+    defer std.testing.allocator.free(label);
+    try std.testing.expectEqualStrings("worker", label);
+}
+
+test "META global: whitespace around META: is optional, around = it is not" {
+    try expectAnyGlobals("//   META:global=window\ntest(() => {});", &.{"window"});
+    // `(\w*)=`: a space before `=` is no META line, so metadata ends there -
+    // and a file whose metadata ends before any `global` gets the defaults.
+    try expectAnyGlobals("// META: global = window\ntest(() => {});", &.{ "window", "worker" });
+}
+
+test "META global: worker is the dedicated, shared and service worker" {
+    try expectAnyGlobals("// META: global=worker\n", &.{ "worker", "sharedworker", "serviceworker" });
+    try expectAnyRuns("// META: global=worker\n", &.{"worker"});
+    try expectAnyGlobals("// META: global=window,worker\n", &.{ "window", "worker", "sharedworker", "serviceworker" });
+    try expectAnyRuns("// META: global=window,worker\n", &.{ "window", "worker" });
+    // Named once each, however often the longhand repeats them.
+    try expectAnyGlobals("// META: global=dedicatedworker,worker,sharedworker\n", &.{ "worker", "sharedworker", "serviceworker" });
+}
+
+test "META global: each single global" {
+    try expectAnyGlobals("// META: global=window\n", &.{"window"});
+    try expectAnyGlobals("// META: global=dedicatedworker\n", &.{"worker"});
+    try expectAnyGlobals("// META: global=sharedworker\n", &.{"sharedworker"});
+    try expectAnyRuns("// META: global=sharedworker\n", &.{});
+    try expectAnyGlobals("// META: global=serviceworker\n", &.{"serviceworker"});
+    try expectAnyRuns("// META: global=serviceworker\n", &.{});
+    try expectAnyGlobals("// META: global=dedicatedworker-module\n", &.{"dedicatedworker-module"});
+    try expectAnyRuns("// META: global=dedicatedworker-module\n", &.{"dedicatedworker-module"});
+    try expectAnyGlobals("// META: global=sharedworker-module\n", &.{"sharedworker-module"});
+    try expectAnyRuns("// META: global=sharedworker-module\n", &.{"sharedworker-module"});
+    try expectAnyGlobals("// META: global=serviceworker-module\n", &.{"serviceworker-module"});
+    try expectAnyRuns("// META: global=serviceworker-module\n", &.{});
+    // worker-module has no longhand; its URL is the dedicated module
+    // worker's (.any.worker-module.html).
+    try expectAnyGlobals("// META: global=worker-module\n", &.{"dedicatedworker-module"});
+    // window-module and jsshell are WPT globals Crane does not run: declared,
+    // never run - not dropped (an empty list would be the defaults).
+    try expectAnyGlobals("// META: global=window-module\n", &.{"window-module"});
+    try expectAnyRuns("// META: global=window-module\n", &.{});
+    try expectAnyGlobals("// META: global=window,dedicatedworker,jsshell\n", &.{ "window", "worker", "jsshell" });
+    try expectAnyRuns("// META: global=window,dedicatedworker,jsshell\n", &.{ "window", "worker" });
+}
+
+test "META global: shadowrealm is its six variants, none of them run" {
+    try expectAnyGlobals("// META: global=shadowrealm\n", &.{
+        "shadowrealm-in-window",
+        "shadowrealm-in-shadowrealm",
+        "shadowrealm-in-dedicatedworker",
+        "shadowrealm-in-sharedworker",
+        "shadowrealm-in-serviceworker",
+        "shadowrealm-in-audioworklet",
+    });
+    try expectAnyRuns("// META: global=shadowrealm\n", &.{});
+    try expectAnyGlobals("// META: global=window,shadowrealm-in-window\n", &.{ "window", "shadowrealm-in-window" });
+    try expectAnyRuns("// META: global=window,shadowrealm-in-window\n", &.{"window"});
+}
+
+test "META global: the defaults only when no global is declared, or it is empty" {
+    try expectAnyGlobals("test(() => {});", &.{ "window", "worker" });
+    try expectAnyGlobals("// META: global=\n", &.{ "window", "worker" });
+    // Names WPT does not know make an empty set: nothing to run, and never
+    // the defaults (docs/lessons/testing-an-unknown-meta-global-is-dropped-not-skipped.md).
+    try expectAnyGlobals("// META: global=nonsense\n", &.{});
+    try expectAnyRuns("// META: global=nonsense\n", &.{});
+}
+
+test "META global: only the first global line counts" {
+    try expectAnyGlobals("// META: global=window\n// META: global=dedicatedworker\n", &.{"window"});
+}
+
+test "META: metadata ends at the first line that is not a META line" {
+    // A blank line or a plain comment ends it (read_script_metadata breaks
+    // on the first non-matching line): what follows is not metadata.
+    try expectAnyGlobals("// A comment.\n// META: global=window\n", &.{ "window", "worker" });
+    try expectAnyGlobals("\n// META: global=window\n", &.{ "window", "worker" });
+    try expectAnyGlobals(" // META: global=window\n", &.{ "window", "worker" });
+    var metadata = try parseMetaComments(std.testing.allocator,
+        \\// META: script=/a.js
+        \\
+        \\// META: timeout=long
+        \\// META: variant=?x
+    );
+    defer metadata.deinit();
+    try std.testing.expectEqual(@as(usize, 1), metadata.scripts.items.len);
+    try std.testing.expectEqual(config.Timeout.normal, metadata.timeout);
+    try std.testing.expectEqual(@as(usize, 0), metadata.variants.items.len);
+}
+
+test "META: a CRLF line's value has no carriage return" {
+    var metadata = try parseMetaComments(std.testing.allocator, "// META: variant=?a\r\n// META: timeout=long\r\n// META: global=window\r\n");
+    defer metadata.deinit();
+    try std.testing.expectEqualStrings("?a", metadata.variants.items[0]);
+    try std.testing.expectEqual(config.Timeout.long, metadata.timeout);
+    try std.testing.expectEqual(@as(usize, 1), metadata.globals.items.len);
 }

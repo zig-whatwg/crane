@@ -254,6 +254,10 @@ pub fn runClassicScript(realm: Context, source: engine.ScriptSource, url: []cons
     return protocol_scripts.runClassicScript(realm, source, url, host_defined, reporter);
 }
 
+pub fn runClassicScriptRethrowingErrors(realm: Context, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque, muted_errors: bool) Error!void {
+    return protocol_scripts.runClassicScriptRethrowingErrors(realm, source, url, host_defined, muted_errors);
+}
+
 pub fn evaluateClassicScript(realm: Context, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque, reporter: engine.Reporter) Error!Owned {
     return protocol_scripts.evaluateClassicScript(realm, source, url, host_defined, reporter);
 }
