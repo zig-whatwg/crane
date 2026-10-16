@@ -62,3 +62,9 @@ pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anye
 pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
     return interfaces.HTMLCollection.getSupportedPropertyNames(instance, allocator);
 }
+
+/// Whether `name` is a supported property name: the list above is
+/// HTMLCollection's, and so is the answer for one name.
+pub fn isSupportedPropertyName(instance: *runtime.Instance, name: runtime.DOMString) anyerror!bool {
+    return interfaces.HTMLCollection.isSupportedPropertyName(instance, name);
+}

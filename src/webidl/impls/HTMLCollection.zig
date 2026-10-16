@@ -164,8 +164,15 @@ fn matchesDocumentFilter(element: *runtime.Instance, filter: live_collections.Do
 fn makeFormControls(collection: *runtime.Instance, root: *runtime.Instance, fieldset: bool) void {
     const internal = getInternal(collection) orelse return;
     internal.fieldset_controls = fieldset;
-    // Form owner association is not covered by a document tree version.
-    internal.cacheable = false;
+    // Which elements are listed and which form owns each is read from the
+    // tree (form_associated.formOwner: ancestors, the form attribute and
+    // the IDs it names, input types), all of which move the tree version,
+    // and from the two association changes that are not mutations - a
+    // parser association recorded, a form-associated custom element's
+    // upgrade - which move it too (dom.refcount.formAssociationChanged).
+    // So the version keys these collections like any other (formnamed;
+    // form.elements.namedItem refilled once per item before).
+    internal.cacheable = true;
     makeLive(collection, root, &refillFormControls);
 }
 
@@ -694,6 +701,18 @@ pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anye
     }
 
     return null;
+}
+
+/// Whether `name` is one of the collection's supported property names
+/// (WebIDL 3.9.7 step 1 for one name): its non-empty ids and names, which
+/// are exactly the strings namedItem finds an element for - read through
+/// the same attribute reads as `getSupportedPropertyNames`, so the two
+/// answers cannot differ. WebKit's HTMLCollection::isSupportedPropertyName
+/// asks its named-element cache the same way; the list is built only for
+/// enumeration.
+pub fn isSupportedPropertyName(instance: *runtime.Instance, name: runtime.DOMString) anyerror!bool {
+    if (name.asSlice().len == 0) return false;
+    return (try call_namedItem(instance, name)) != null;
 }
 
 // ============================================================================

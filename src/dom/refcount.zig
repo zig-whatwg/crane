@@ -439,8 +439,10 @@ pub const DocumentCounts = struct {
     /// `Document::m_domTreeVersion`): it moves on every mutation of a node of
     /// this document, its detached trees included - every insert, remove,
     /// replace and move, adoption into and out of it, every attribute set or
-    /// removal, every character data change - and on nothing else. A free is
-    /// not a mutation: a node is freed only once nothing can reach its tree -
+    /// removal, every character data change - and on two changes of form
+    /// association that are not mutations (`formAssociationChanged`: a
+    /// parser association recorded, a form-associated custom element's
+    /// upgrade), and on nothing else. A free is not a mutation: a node is freed only once nothing can reach its tree -
     /// after the removal that moved the version, in a garbage detached tree,
     /// or in its document's teardown, which takes these counts first. A live
     /// collection caches its walk under it and walks again once it has moved
@@ -476,6 +478,20 @@ pub fn attributeChanged(element: *runtime.Instance) void {
 pub fn characterDataChanged(node: *runtime.Instance) void {
     const accessor = hooks.node_document_counts orelse return;
     if (accessor(node)) |counts| bumpTreeVersion(counts);
+}
+
+/// Which form owns `element`, or whether it is listed at all, changed without
+/// a tree mutation: the parser recorded its form association (HTML "create
+/// an element for a token" step 15 - after insertion when the inert parser
+/// converts a whole tree), or a form-associated custom element's upgrade
+/// made it listed (HTML "upgrade an element" steps 11-12). Its node
+/// document's tree version moves, so a cache of form membership keyed on the
+/// version - a form's elements collection, its named properties - reads the
+/// tree again. Blink's HTMLFormElement::Associate and Disassociate invalidate
+/// the form's listed elements and collections the same way.
+pub fn formAssociationChanged(element: *runtime.Instance) void {
+    const accessor = hooks.node_document_counts orelse return;
+    if (accessor(element)) |counts| bumpTreeVersion(counts);
 }
 
 /// What the owners supply: the Document impl its counts, the Node impl the

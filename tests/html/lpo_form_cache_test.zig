@@ -55,22 +55,26 @@ fn exercise(comptime scenario: Scenario) !void {
         const image = try append(document, root, "img");
         try attribute(image, "name", "parsedImage");
         try names(form, &.{"field"});
-        const before_association = dom.live_collections.treeVersion(document);
+        // Recording the association moves the tree version (formnamed):
+        // every cache of form membership keyed on it reads again.
+        const before_association = dom.live_collections.treeVersion(document).?;
         try forms.parserAssociate(image, form, root);
-        try testing.expectEqual(before_association, dom.live_collections.treeVersion(document));
+        try testing.expect(dom.live_collections.treeVersion(document).? != before_association);
         try names(form, &.{ "field", "parsedImage" });
         return;
     }
 
     if (scenario == .allocation_failure) {
-        // Fail either string copy or the array growth of a replacement cache.
-        // A failed rebuild must not publish a partial result at this version.
+        // The list is the caller's (formnamed): a failure at any of its
+        // allocations - a string copy or the array's growth - frees what it
+        // made (the testing allocator's leak check) and publishes nothing.
+        // A failed rebuild of the form's own cache is
+        // tests/html/fn_form_named_cache_test.zig's.
         try attribute(input, "id", "identifier");
         for ([_][]const u8{ "replacement", "again", "last" }, 0..) |replacement, failure_offset| {
             try attribute(input, "name", replacement);
-            realm_allocations.fail_index = realm_allocations.alloc_index + failure_offset;
-            const attempt = interfaces.HTMLFormElement.getSupportedPropertyNames(form, testing.allocator);
-            realm_allocations.fail_index = std.math.maxInt(usize);
+            var failing = testing.FailingAllocator.init(testing.allocator, .{ .fail_index = failure_offset });
+            const attempt = interfaces.HTMLFormElement.getSupportedPropertyNames(form, failing.allocator());
             if (attempt) |result| {
                 for (result) |*name| name.deinit(testing.allocator);
                 testing.allocator.free(result);
@@ -82,14 +86,16 @@ fn exercise(comptime scenario: Scenario) !void {
     }
 
     if (scenario == .cached_read) {
-        // An unchanged read may allocate the caller-owned return value, but
-        // must not copy attributes or allocate traversal data in the realm.
-        // The elements retain this allocator from construction, so blocking
-        // it also catches getAttribute copies using their own stored allocator.
+        // A read allocates the caller-owned return value - the array and,
+        // since formnamed (review-codex-lpo-m1 S2), its strings - but must
+        // not copy attributes or allocate traversal data in the realm. The
+        // elements retain this allocator from construction, so blocking it
+        // also catches getAttribute copies using their own stored allocator.
+        // The per-name question every property read asks allocates nothing
+        // at all (tests/html/fn_form_named_cache_test.zig).
         realm_allocations.fail_index = realm_allocations.alloc_index;
         defer realm_allocations.fail_index = std.math.maxInt(usize);
-        var returned_array_only = testing.FailingAllocator.init(testing.allocator, .{ .fail_index = 1 });
-        const output_allocator = returned_array_only.allocator();
+        const output_allocator = testing.allocator;
         const result = try interfaces.HTMLFormElement.getSupportedPropertyNames(form, output_allocator);
         defer {
             for (result) |*name| name.deinit(output_allocator);
@@ -151,7 +157,7 @@ fn onThread(comptime scenario: Scenario) !void {
     if (result) |err| return err;
 }
 
-test "unchanged form supported names allocate only the returned array" {
+test "form supported names allocate only the returned list" {
     try onThread(.cached_read);
 }
 

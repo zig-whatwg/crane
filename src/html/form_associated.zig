@@ -234,6 +234,11 @@ pub fn parserAssociate(element: *Instance, form: *Instance, intended_parent: *In
         .form = form,
         .form_generation = runtime.SlabAllocator.generationOf(form),
     });
+    // No node moved, yet `element` may have another owner now - the inert
+    // parser associates once the tree is built: what is cached under the
+    // tree version reads again, and a past name of it may go.
+    @import("dom").refcount.formAssociationChanged(element);
+    @import("form_past_names.zig").associationRecorded(element);
 }
 
 /// The form the parser associated `element` with, while that association

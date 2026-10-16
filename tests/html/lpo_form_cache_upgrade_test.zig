@@ -35,11 +35,9 @@ fn upgrade() !void {
     try testing.expectEqualStrings("defined", result);
     try names(form, &.{"face"});
     try testing.expectEqual(@as(u32, 1), try interfaces.HTMLFormElement.get_length(form));
-    // Q14: the red test established that upgrade does not move the version.
-    // Mutation-path work belongs to formnamed. Keep the collection uncached;
-    // remove this skip guard to reproduce its outstanding invalidation gap.
-    // The assertions above still exercise the name cache after an upgrade.
-    if (dom.live_collections.treeVersion(document).? == version) return error.SkipZigTest;
+    // Q14, closed by formnamed: the upgrade made a listed element, which
+    // moves the tree version (refcount.formAssociationChanged), so every
+    // cache of form membership keyed on it reads again.
     try testing.expectEqual(false, dom.live_collections.treeVersion(document).? == version);
 }
 
