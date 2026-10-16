@@ -464,7 +464,21 @@ pub fn parseFragmentWith(
             if (std.mem.eql(u8, ns.asSlice(), "http://www.w3.org/1998/Math/MathML")) context_namespace = .mathml;
         }
     }
-    const context_tag: ?[]const u8 = if (local_name) |name| name.asSlice() else null;
+    // A context element in any other namespace (null included) is no HTML
+    // element, so none of the steps keyed on HTML element names applies to
+    // it - an `html` element there is not the html element (the tokenizer
+    // state, step 12; the template mode, step 18; the reset, step 20; the
+    // tree builder's fragment-case name checks). The parser's nodes have
+    // only the HTML, SVG and MathML namespaces, so it stands in as an HTML
+    // element with no name. Deviation, stated: the spec's adjusted current
+    // node is then the context element in its own namespace, whose foreign
+    // content rules make a non-breakout start tag an element in that
+    // namespace; here it is an HTML element. Every break-out tag parses as
+    // the spec says (domparsing/createContextualFragment.html, "<html> in a
+    // different namespace shouldn't be special").
+    const unknown_namespace = context_element != null and context_namespace == .html and
+        !(if (namespace) |ns| std.mem.eql(u8, ns.asSlice(), "http://www.w3.org/1999/xhtml") else false);
+    const context_tag: ?[]const u8 = if (local_name) |name| (if (unknown_namespace) "" else name.asSlice()) else null;
     const context_encoding: ?[]const u8 = if (encoding_owned) |value| value.asSlice() else null;
 
     // Step 1: Create tokenizer with input
