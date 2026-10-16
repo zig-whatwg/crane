@@ -92,3 +92,18 @@ test "a same-origin frame stays reachable" {
     try expectAnswer(browser, access_location, "about:srcdoc");
     try expectAnswer(browser, "String(frames[0].origin)", "http://web-platform.test:8000");
 }
+
+test "an object's and an iframe's about:blank documents keep their container's origin" {
+    const browser = try Browser.init(testing.allocator, .{});
+    defer browser.deinit();
+    const page = browser.current_context orelse return error.NoPage;
+    const html =
+        \\<!doctype html><body>
+        \\<iframe id="f"></iframe>
+        \\<object name="o" type="text/html" data="about:blank"></object>
+    ;
+    try page.loadHTML(html, .{ .base_url = "http://web-platform.test:8000/a.html" });
+    _ = try browser.runEventLoopBlocking(200);
+    try expectAnswer(browser, "String(frames[0].origin)", "http://web-platform.test:8000");
+    try expectAnswer(browser, "(function () { try { return String(window.o.origin); } catch (e) { return e.name; } })()", "http://web-platform.test:8000");
+}
