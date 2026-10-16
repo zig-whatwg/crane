@@ -135,6 +135,13 @@ pub fn processFetchResult(
     response.applyFilter();
     state.setResponse(response);
 
+    // Step 11.9.2: handle the in-band network error before reporting a
+    // successful upload. The error steps dispatch upload errors themselves.
+    if (state.isNetworkError()) {
+        processor.handleNetworkError();
+        return null;
+    }
+
     // Steps 11.7-11.8: the request body is fully transmitted by now.
     if (upload_tracker) |tracker| {
         if (body) |b| _ = tracker.onChunk(b.len);
@@ -146,15 +153,6 @@ pub fn processFetchResult(
         if (state.upload_listener_flag) tracker.fireComplete();
     } else {
         state.upload_complete_flag = true;
-    }
-
-    // Step 11.9.2: Handle errors for this. A network error comes back as a
-    // successful return carrying an error-typed response, so this predicate -
-    // not the `catch` above - is what catches DNS failures, refused
-    // connections and TLS errors.
-    if (state.isNetworkError()) {
-        processor.handleNetworkError();
-        return null;
     }
 
     // Step 12, a synchronous request: processResponseConsumeBody appends the
@@ -256,6 +254,13 @@ pub fn createRequest(
     // credentials mode: "include" if this's cross-origin credentials is true,
     // otherwise "same-origin".
     request.credentials_mode = if (state.cross_origin_credentials) .include else .same_origin;
+
+    // Step 6: use-URL-credentials is set when the parsed request URL has
+    // credentials. Fetch waits for a challenge before sending them.
+    if (std.Uri.parse(url)) |uri| {
+        request.use_url_credentials = (if (uri.user) |user| !user.isEmpty() else false) or
+            (if (uri.password) |password| !password.isEmpty() else false);
+    } else |_| {}
 
     // initiator type: "xmlhttprequest".
     request.initiator_type = .xmlhttprequest;

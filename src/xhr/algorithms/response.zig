@@ -98,6 +98,17 @@ pub const ResponseProcessor = struct {
         return std.fmt.parseInt(usize, trimmed, 10) catch null;
     }
 
+    fn responseProgress(self: *const ResponseProcessor) ProgressEventData {
+        const loaded = self.state.received_bytes.items.len;
+        const length = self.contentLength() orelse 0;
+        // Browser deviation from XHR fire-a-progress-event step 2 (Q6):
+        // Blink XMLHttpRequest::DispatchProgressEvent and WebKit
+        // XMLHttpRequest::didReceiveData count decoded bytes but discard an
+        // encoded total once decoded bytes exceed it (wpt.fyi cc74d2669f).
+        const computable = length > 0 and loaded <= length;
+        return .{ .lengthComputable = computable, .loaded = loaded, .total = if (computable) length else 0 };
+    }
+
     /// `processBodyChunk`, given bytes.
     ///
     /// Spec: https://xhr.spec.whatwg.org/#the-send()-method step 11.9.10
@@ -124,12 +135,7 @@ pub const ResponseProcessor = struct {
 
         // Step 5: Fire a progress event named progress at this with this's
         // received bytes's length and length.
-        const progress_info = self.progress_tracker.getProgress();
-        event_support.fireProgressEvent(self.state.event_sink, .progress, .{
-            .lengthComputable = progress_info.length_computable,
-            .loaded = self.state.received_bytes.items.len,
-            .total = progress_info.total orelse 0,
-        });
+        event_support.fireProgressEvent(self.state.event_sink, .progress, self.responseProgress());
     }
 
     /// Handle response end-of-body.
@@ -141,25 +147,21 @@ pub const ResponseProcessor = struct {
         // reaching here with one means only that there is nothing to report.
         if (self.state.isNetworkError()) return;
 
-        // Step 3: Let transmitted be this's received bytes's length.
-        const transmitted = self.state.received_bytes.items.len;
-
-        // Steps 4-5: Let length be the extracted length, 0 if not an integer.
-        const length = self.contentLength() orelse 0;
-        const computable = length > 0;
-
-        const progress = event_support.ProgressEventData{
-            .lengthComputable = computable,
-            .loaded = transmitted,
-            .total = length,
-        };
+        // Steps 3-5: received bytes and the extracted response length.
+        const progress = self.responseProgress();
 
         // Step 6: If this's synchronous flag is unset, fire progress.
         //
         // A sync request fires NO progress event here - it fires only load and
         // loadend below. Firing it unconditionally, as this used to, gives a
         // sync XHR one event too many.
-        if (!self.state.synchronous_flag) {
+        // Browser deviation (D1, codex-xhr): Blink 154's progress throttle
+        // flushes only deferred bytes at DONE. An already delivered count
+        // must not be delivered again (xhr/send-response-event-order.htm).
+        if (!self.state.synchronous_flag and
+            (self.progress_tracker.total_bytes == 0 or self.progress_tracker.bytes_since_last_event > 0))
+        {
+            self.progress_tracker.forceFire();
             event_support.fireProgressEvent(self.state.event_sink, .progress, progress);
         }
 
