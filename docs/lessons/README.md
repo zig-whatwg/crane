@@ -439,6 +439,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A request whose origin is left "client" is same origin with everything](spec-compliance-a-request-origin-left-client-is-same-origin-with-everything.md) - When a request has no client to resolve "client", set its origin - and test a same-origin request with a URL that must fail, because an unset origin makes every URL pass.
 - [A blob URL's entry is resolved when the URL is parsed, not when it is fetched](spec-compliance-a-blob-url-entry-is-resolved-when-the-url-is-parsed.md) - When a spec parses a URL in one step and fetches it in a later task, the blob URL entry belongs to the parse: capture it there, or a revoke in between turns a valid script into a network error.
 - [Created Blob types do not use constructor normalization](spec-compliance-created-blob-types-do-not-use-constructor-normalization.md) - Follow the creating algorithm's type rules, and name whether each MIME value is a string or header bytes.
+- [Nonce hiding changes the security reader](spec-compliance-nonce-hiding-changes-the-security-reader.md) - The content attribute is not the authorization value; audit every nonce consumer when moving the value into a private slot.
+- [A report endpoint belongs to the policy's delivery URL](spec-compliance-a-report-endpoint-belongs-to-the-policy-delivery-url.md) - A violation's document URL, its blocked resource URL, and its report endpoint base are separate inputs. Preserve each input through inheritance instead of deriving one from another.
 
 ### Codegen
 
