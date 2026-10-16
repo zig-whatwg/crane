@@ -1233,8 +1233,10 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     }
     // Step 4's initiatorOriginSnapshot, for a javascript: URL, whose
     // navigation compares it (step 4 of "navigate to a javascript: URL") and
-    // gives it to its document (step 8): the source document's origin, held.
-    if (navigate_steps.isJavascript(url)) {
+    // gives it to its document (step 8), and for about:blank, whose document
+    // takes it ("determining the origin" step 2): the source document's
+    // origin, held.
+    if (navigate_steps.isJavascript(url) or (options.srcdoc == null and navigate_steps.matchesAboutBlank(url))) {
         if (options.source_document) |source| {
             if (dom_module.document_origin.shareable(source) catch null) |origin| record.initiator_origin = origin.retain();
         }
@@ -2492,8 +2494,19 @@ fn navigationParamsOriginRecord(
 ) ?*OriginRecord {
     const allocator = integration.allocator;
     if (response.is_network_error) return OriginRecord.create(allocator, "null") catch null;
+    // HTML "navigate" step 23's final sandboxing flag set is the target's
+    // sandboxing flags united with the response's CSP-derived ones (CSP 4.3
+    // "sandbox"); "determining the origin" step 1 gives a set with the
+    // sandboxed origin browsing context flag a new opaque origin.
+    if (responseSandboxesOrigin(allocator, response, url)) return OriginRecord.create(allocator, "null") catch null;
     const bc = integration.browsing_context orelse return null;
     const sandboxed = if (bc.sandbox_flags) |flags| flags.sandboxesSameOrigin() else false;
+    if (!sandboxed and record.srcdoc == null and navigate_steps.matchesAboutBlank(url)) {
+        // "Determining the origin" step 2: about:blank's origin is the
+        // initiator's - the source document's, which for a popup the opener
+        // navigates is the opener's, not the popup's active document's.
+        if (record.initiator_origin) |initiator| return initiator.retain();
+    }
     if (!sandboxed and (record.srcdoc != null or navigate_steps.matchesAboutBlank(url) or navigate_steps.matchesAboutSrcdoc(url))) {
         const container_document: ?*runtime.Instance = if (integration.iframe_element) |element|
             (interfaces.Node.get_ownerDocument(@ptrCast(@alignCast(element))) catch null)
@@ -2504,6 +2517,19 @@ fn navigationParamsOriginRecord(
         return shared.retain();
     }
     return OriginRecord.create(allocator, serialized) catch null;
+}
+
+/// Whether the response's enforced Content-Security-Policy has a sandbox
+/// directive without allow-same-origin: its document's CSP-derived sandboxing
+/// flags set the sandboxed origin browsing context flag (CSP 4.3.1).
+fn responseSandboxesOrigin(allocator: std.mem.Allocator, response: *const navigation_fetch.NavigationFetchResult, url: []const u8) bool {
+    const headers = response.headers orelse return false;
+    const csp_value = headers.get("content-security-policy") orelse return false;
+    const response_url = if (response.final_url.len > 0) response.final_url else url;
+    var container = fetch_mod.internal.PolicyContainer.fromResponseHeaders(allocator, .{ .url = response_url, .csp = csp_value }) catch return false;
+    defer container.deinit();
+    const flags = @import("csp").directives.sandbox.getCombinedSandboxFlags(&container.csp_list) orelse return false;
+    return !flags.allow_same_origin;
 }
 
 /// `window`'s origin, serialized ("null" without one). Owned.

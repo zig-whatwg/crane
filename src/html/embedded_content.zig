@@ -651,6 +651,11 @@ fn destroyNavigable(content: *Content) void {
 const Fetch = struct {
     content: *Content,
     id: u64,
+    /// The URL fetched (owned): the response's URL when the response has no
+    /// URL list of its own - Fetch main fetch "if internalResponse's URL list
+    /// is empty, then set it to a clone of request's URL list", which a
+    /// scheme fetch of about:blank answers with.
+    url: []u8,
     /// The fetch, until it answers or is terminated.
     async_fetch: ?*AsyncFetch = null,
 
@@ -685,7 +690,7 @@ const Fetch = struct {
         var result = outcome catch null;
         defer if (result) |*r| r.deinit();
         if (!content.elementIsLive() or self.id != content.current) return;
-        var summary = summarize(content.allocator, if (result) |*r| r else null) catch return;
+        var summary = summarize(content.allocator, if (result) |*r| r else null, self.url) catch return;
         queueTask(content, .response, self.id, summary);
         summary = undefined;
     }
@@ -693,6 +698,7 @@ const Fetch = struct {
     fn finish(self: *Fetch) void {
         const content = self.content;
         if (content.fetch == self) content.fetch = null;
+        content.allocator.free(self.url);
         content.allocator.destroy(self);
         endPending(content);
         content.unref();
@@ -725,9 +731,14 @@ fn startFetch(content: *Content, id: u64, url: []const u8) !void {
     }
 
     const record = try allocator.create(Fetch);
-    record.* = .{ .content = content, .id = id };
+    const url_copy = allocator.dupe(u8, url) catch |err| {
+        allocator.destroy(record);
+        return err;
+    };
+    record.* = .{ .content = content, .id = id, .url = url_copy };
     content.ref();
     beginPending(content) catch |err| {
+        allocator.free(url_copy);
         allocator.destroy(record);
         content.unref();
         return err;
@@ -739,6 +750,7 @@ fn startFetch(content: *Content, id: u64, url: []const u8) !void {
     request_owned = false;
     record.async_fetch = AsyncFetch.start(allocator, request, .{}, dom.agent_fetches.of(element.ctx), record.client()) catch |err| {
         content.fetch = null;
+        allocator.free(record.url);
         allocator.destroy(record);
         endPending(content);
         content.unref();
@@ -763,7 +775,7 @@ fn terminateFetch(content: *Content) void {
 
 /// What the response task needs of a fetch's result: null is a network
 /// error.
-fn summarize(allocator: std.mem.Allocator, result: ?*fetch.algorithms.FetchResult) !ResponseSummary {
+fn summarize(allocator: std.mem.Allocator, result: ?*fetch.algorithms.FetchResult, request_url: []const u8) !ResponseSummary {
     const r = result orelse return .{ .network_error = true, .ok = false };
     const response = r.response;
     if (response.response_type == .@"error") return .{ .network_error = true, .ok = false };
@@ -772,7 +784,11 @@ fn summarize(allocator: std.mem.Allocator, result: ?*fetch.algorithms.FetchResul
     summary.content_type = fetch.internal.mime.extractMimeEssence(allocator, &response.header_list) catch null;
     const body: []const u8 = if (response.body) |b| b.getBytes() else "";
     summary.head = try allocator.dupe(u8, body[0..@min(body.len, 1445)]);
-    summary.url = try allocator.dupe(u8, response.url() orelse "");
+    // A response with an empty URL list takes the request's (Fetch main
+    // fetch step 22): about:blank's scheme fetch answers with none, and the
+    // object then navigated its child navigable to "".
+    const response_url = response.url() orelse "";
+    summary.url = try allocator.dupe(u8, if (response_url.len > 0) response_url else request_url);
     return summary;
 }
 

@@ -426,6 +426,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Convert unions before running WebSocket steps](spec-compliance-convert-unions-before-running-websocket-steps.md) - Test conversion exceptions and side effects before testing the API's state or validation steps; JSValue is a representation, not proof that WebIDL conversion already happened.
 - [Permission descriptors have observable conversion shapes](spec-compliance-permission-descriptors-have-observable-conversion-shapes.md) - A dictionary conversion is observable script execution; implement the conversion shape the supporting browsers agree on.
 - [Sanitizing a tree does not undo parser side effects](spec-compliance-sanitizing-a-tree-does-not-undo-parser-side-effects.md) - Test parser side effects as well as the sanitized DOM: a clean tree does not establish safe parsing (the mechanism is the Architecture lesson "A fragment that will be filtered must be built where nothing runs").
+- [A secure context is the document's own URL and every ancestor's](spec-compliance-a-secure-context-is-the-documents-own-url-and-every-ancestor.md) - An environment fact with a stored default and no writer is a bug waiting for its first reader - derive it from the state that decides it, at the moment it is asked.
 
 ### Codegen
 
