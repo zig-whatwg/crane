@@ -2665,19 +2665,15 @@ pub fn toV8Sequence(
 
     for (slice, 0..) |item, i| {
         const v8_value = try toV8Value(T, isolate, context, item);
-        // Released once the array has it, when it was made here (a string,
-        // a number, a nested dictionary or sequence - the rule a dictionary
-        // member's value follows); kept, a Global per element. A union
-        // element's active member decides, as for a union an operation
-        // returns (unionValueIsOwned: a string or dictionary made here goes,
-        // a wrapper or an impl's handle stays) - by type alone every union
-        // was kept, and URLPattern exec()'s inputs, a
-        // sequence<URLPatternInput>, leaked its String every call.
-        defer if (comptime dictionaryMemberValueIsOwned(T)) {
-            v8.v8_Value_Dispose(v8_value);
-        } else if (comptime @typeInfo(T) == .@"union") {
-            if (unionValueIsOwned(T, item)) v8.v8_Value_Dispose(v8_value);
-        };
+        // Released once the array has it, when it was made here
+        // (`memberValueIsOwned`, the rule every value put into an object
+        // follows: a string, a number, a nested dictionary or sequence; a
+        // union element by its active member - URLPattern exec()'s inputs, a
+        // sequence<URLPatternInput>, leaked its String every call; an `any`
+        // element by its arm); kept - a wrapper, an impl's handle - otherwise.
+        // Asked of the type alone, runtime.JSValue read as a union of its arms
+        // and released a sequence<any> element's handle, the impl's.
+        defer if (memberValueIsOwned(T, item)) v8.v8_Value_Dispose(v8_value);
         _ = v8.v8_Array_Set(array, context, @intCast(i), v8_value);
     }
 
@@ -2732,12 +2728,13 @@ fn isDictionaryValue(comptime T: type) bool {
     return true;
 }
 
-/// Whether toV8Value(T, ...) of a dictionary MEMBER of type `T` is a Global
-/// made for the call, released once the dictionary's object has it: what
-/// `interface.getterValueIsOwned` allows (numbers, booleans, strings,
-/// enums, their nullable forms), a nested dictionary (an object made here)
-/// and a sequence or record (an array or object made here). Anything else -
-/// a platform object's wrapper, an `any` - may be borrowed and is kept.
+/// Whether toV8Value(T, ...) of EVERY value of type `T` is a Global made for
+/// the call: what `interface.getterValueIsOwned` allows (numbers, booleans,
+/// strings, enums, their nullable forms), a nested dictionary (an object made
+/// here) and a sequence or record (an array or object made here). The type
+/// half of `memberValueIsOwned`, which the converters ask: a type whose
+/// values convert differently - a union, a webidl.Opt, an `any` - answers
+/// false here and is decided there, by its value.
 fn dictionaryMemberValueIsOwned(comptime T: type) bool {
     @setEvalBranchQuota(100_000);
     if (interface_mod.getterValueIsOwned(T)) return true;
@@ -2766,12 +2763,79 @@ pub fn jsValueConversionIsFresh(value: runtime.JSValue) bool {
     };
 }
 
-/// RED: today's answer for a value put into an object or array toV8Value
-/// builds - the TYPE's (`dictionaryMemberValueIsOwned`), which keeps every
-/// union, webidl.Opt and runtime.JSValue value. Replaced by the fix.
+/// Whether toV8Value treats `T` as a webidl.Opt - the test its Opt branch
+/// makes, so that this answers for exactly the values that branch converts.
+fn isOptValue(comptime T: type) bool {
+    return @typeInfo(T) == .@"struct" and @hasDecl(T, "notPassed") and
+        @hasDecl(T, "wasPassed") and @hasDecl(T, "getValue");
+}
+
+/// Whether toV8Value converts a `T` by its generic union branch - the active
+/// member as a value of its own type. The unions it converts by a branch of
+/// their own (both JSValues and OptionalJSValues, a DOMString, an
+/// ArrayBufferView) are not: their arms are representations, and read as
+/// members, runtime.JSValue's `.handle` (a plain struct) looked like a
+/// dictionary made for the call.
+fn convertsByActiveMember(comptime T: type) bool {
+    if (@typeInfo(T) != .@"union") return false;
+    inline for (.{ JSValue, OptionalJSValue, runtime.JSValue, runtime.OptionalJSValue, runtime.DOMString, typedefs.ArrayBufferView }) |Own| {
+        if (T == Own) return false;
+    }
+    return true;
+}
+
+/// Whether toV8Value(T, ..., value) of a value it puts INTO an object or array
+/// it is building - a dictionary member, a sequence element, a record's key or
+/// value - is a Global made for this conversion, which the converter releases
+/// once CreateDataProperty (v8_Object_CreateDataProperty, v8_Array_Set) has
+/// defined the property: V8 copies the value into the object, so the Global
+/// made only to pass it is the converter's, and kept it is one per member per
+/// call for the agent's life.
+///
+/// An ALLOWLIST read off the VALUE, because a type cannot answer for a union,
+/// a webidl.Opt or an `any` (docs/lessons/architecture-a-jsvalue-s-type-
+/// cannot-say-whether-its-conversion-is-fresh.md). Each arm is toV8Value's
+/// own branch for the value:
+///
+/// - a runtime.JSValue: its arm (`jsValueConversionIsFresh`): undefined, null,
+///   a boolean, number or string are made here; a `.handle` is the impl's and
+///   an `.instance` the wrapper cache's wrapper - kept. A
+///   runtime.OptionalJSValue not passed is a fresh undefined (toV8Undefined),
+///   passed it is its JSValue. The V8 adapter's own JSValue types stay kept.
+/// - a type every value of which is made here (`dictionaryMemberValueIsOwned`:
+///   a number, boolean, string or enum, a dictionary, a sequence or record).
+/// - a webidl.Opt: not passed, the undefined toV8Undefined makes; passed, its
+///   inner value's answer. (A dictionary member not passed is no property at
+///   all, so nothing is made for it there.)
+/// - an optional: null is the Null toV8Null makes; otherwise its child's
+///   answer - a ?(DOMString or object) member by its active member.
+/// - a union toV8Value converts by its active member (`unionValueIsOwned`).
+///
+/// Anything else - a platform object's wrapper, an `*anyopaque`, a member type
+/// not named - answers false: the handle is kept, the safe default
+/// (tests/v8/dictionary_member_ownership_test.zig pins it). Codex row 41 Q21:
+/// by type alone every union, Opt and `any` member was kept, and
+/// Sanitizer.get() leaked 5,687 Globals on sanitizer-config.html.
 pub fn memberValueIsOwned(comptime T: type, value: T) bool {
-    _ = value;
-    return dictionaryMemberValueIsOwned(T);
+    @setEvalBranchQuota(100_000);
+    if (comptime T == JSValue or T == OptionalJSValue) return false;
+    if (comptime T == runtime.JSValue) return jsValueConversionIsFresh(value);
+    if (comptime T == runtime.OptionalJSValue) return switch (value) {
+        .not_passed => true,
+        .passed => |passed| jsValueConversionIsFresh(passed),
+    };
+    if (comptime dictionaryMemberValueIsOwned(T)) return true;
+    if (comptime isOptValue(T)) {
+        if (!value.wasPassed()) return true;
+        return memberValueIsOwned(@TypeOf(value.getValue()), value.getValue());
+    }
+    const info = @typeInfo(T);
+    if (comptime info == .optional) {
+        const child = value orelse return true;
+        return memberValueIsOwned(info.optional.child, child);
+    }
+    if (comptime convertsByActiveMember(T)) return unionValueIsOwned(T, value);
+    return false;
 }
 
 /// Whether toV8Value's result for a `T` returned by an operation is the
@@ -2782,22 +2846,26 @@ pub fn dictionaryValueIsOwned(comptime T: type) bool {
 
 /// Whether toV8Value(T, ..., value) of a union `T` is a Global made for the
 /// call: toV8Value converts the ACTIVE member as a value of its own type, so
-/// the member decides - by the rule a dictionary member's value follows
-/// (`dictionaryMemberValueIsOwned`: a string, number, boolean or enum, a
-/// dictionary, a sequence), a nested union by its own active member. Anything
-/// else - an interface member's wrapper (the wrapper cache's), an `any` or
-/// `object` member's handle, an `*anyopaque` member - stays kept, the
-/// conservative answer.
+/// the member decides, by the rule any value put into an object follows
+/// (`memberValueIsOwned`: a string, number, boolean or enum, a dictionary, a
+/// sequence; an `object` member by its JSValue arm; a nested union by its own
+/// active member). Anything else - an interface member's wrapper (the wrapper
+/// cache's), an `object` member's handle, an `*anyopaque` member (converted to
+/// its instance's wrapper) - stays kept, the conservative answer. A union
+/// toV8Value converts by a branch of its own (a JSValue, a DOMString, an
+/// ArrayBufferView) is answered as that value, never as a union of its arms.
 pub fn unionValueIsOwned(comptime T: type, value: T) bool {
-    const info = @typeInfo(T).@"union";
-    if (comptime info.tag_type == null) return false;
-    switch (value) {
-        inline else => |payload| {
-            const Member = @TypeOf(payload);
-            if (comptime Member == runtime.JSValue or Member == runtime.DOMString) return dictionaryMemberValueIsOwned(Member);
-            if (comptime @typeInfo(Member) == .@"union") return unionValueIsOwned(Member, payload);
-            return dictionaryMemberValueIsOwned(Member);
-        },
+    if (comptime !convertsByActiveMember(T)) return memberValueIsOwned(T, value);
+    if (comptime @typeInfo(T).@"union".tag_type == null) {
+        return false;
+    } else {
+        switch (value) {
+            inline else => |payload| {
+                const Member = @TypeOf(payload);
+                if (comptime Member == *const anyopaque or Member == *anyopaque) return false;
+                return memberValueIsOwned(Member, payload);
+            },
+        }
     }
 }
 
@@ -2956,7 +3024,7 @@ pub fn toV8Value(
                 const ValueType = std.meta.fieldInfo(ElemType, .value).type;
                 for (value) |entry| {
                     const key_v8 = try toV8Value(KeyType, isolate, context, entry.key);
-                    defer if (comptime dictionaryMemberValueIsOwned(KeyType)) v8.v8_Value_Dispose(key_v8);
+                    defer if (memberValueIsOwned(KeyType, entry.key)) v8.v8_Value_Dispose(key_v8);
                     // Get value - handle anyopaque as string pointer
                     const is_string_pointer = comptime (ValueType == *const anyopaque or ValueType == *anyopaque);
                     const val_v8 = blk: {
@@ -2968,14 +3036,12 @@ pub fn toV8Value(
                             break :blk try toV8Value(ValueType, isolate, context, entry.value);
                         }
                     };
-                    defer if (comptime is_string_pointer or dictionaryMemberValueIsOwned(ValueType)) {
-                        v8.v8_Value_Dispose(val_v8);
-                    } else if (comptime ValueType == runtime.JSValue) {
-                        // A JSValue's arm decides (jsValueConversionIsFresh):
-                        // a string or primitive made for this entry goes once
-                        // CreateDataProperty has copied it into the object.
-                        if (jsValueConversionIsFresh(entry.value)) v8.v8_Value_Dispose(val_v8);
-                    };
+                    // The string made from a string pointer, and a value
+                    // `memberValueIsOwned` says was made for this entry (a
+                    // JSValue by its arm - jsValueConversionIsFresh - a union
+                    // by its active member), go once CreateDataProperty has
+                    // copied them into the object.
+                    defer if (is_string_pointer or memberValueIsOwned(ValueType, entry.value)) v8.v8_Value_Dispose(val_v8);
                     _ = v8.v8_Object_CreateDataProperty(obj, context, @ptrCast(key_v8), val_v8);
                 }
                 return @ptrCast(obj);
@@ -3034,8 +3100,20 @@ pub fn toV8Value(
         const keep_null = comptime @hasDecl(T, "default_to_json");
         inline for (std.meta.fields(T)) |field| {
             const field_value = @field(value, field.name);
-            const present = if (comptime @typeInfo(field.type) == .optional) field_value != null else true;
-            if (keep_null and !present) {
+            // A webidl.Opt member (a nullable member whose absence and null
+            // differ - codegen's presence-keeping members) exists only when
+            // it was passed: WebIDL 3.2.18 step 4.2, "If dictionary[key]
+            // exists", converts only the members that do. Not passed, it is
+            // no property, as an absent (null) optional member is none -
+            // converted, it was a property whose value was undefined.
+            const is_opt = comptime isOptValue(field.type);
+            const present = if (comptime is_opt)
+                field_value.wasPassed()
+            else if (comptime @typeInfo(field.type) == .optional)
+                field_value != null
+            else
+                true;
+            if (keep_null and !present and !is_opt) {
                 const field_name_str = v8.v8_String_NewFromUtf8(isolate, field.name.ptr, @intCast(field.name.len)) orelse
                     return ConversionError.OutOfMemory;
                 defer v8.v8_String_Dispose(field_name_str);
@@ -3048,7 +3126,10 @@ pub fn toV8Value(
                     return ConversionError.OutOfMemory;
                 defer v8.v8_String_Dispose(field_name_str);
                 const field_v8 = try toV8Value(field.type, isolate, context, field_value);
-                defer if (comptime dictionaryMemberValueIsOwned(field.type)) v8.v8_Value_Dispose(field_v8);
+                // Released once defined when it was made here
+                // (`memberValueIsOwned`: a union member by its active member,
+                // an Opt by its inner value, an `any` by its arm).
+                defer if (memberValueIsOwned(field.type, field_value)) v8.v8_Value_Dispose(field_v8);
                 _ = v8.v8_Object_CreateDataProperty(obj, context, field_name_str, field_v8);
             }
         }

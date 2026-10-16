@@ -65,6 +65,7 @@ const Config = struct {
     elements: ?[]const Element = null,
     namespace: webidl.Opt(?runtime.DOMString) = .notPassed(),
     detail: ?runtime.JSValue = null,
+    values: ?[]const runtime.JSValue = null,
     nested: ?Inner = null,
 };
 
@@ -309,6 +310,31 @@ test "an Opt member is a property only when passed (WebIDL 3.2.18: if it exists)
             const elements = [_]Element{.{ .namespaced = .{ .name = str("a") } }};
             try env.bind(Config, .{ .elements = &elements });
             try testing.expectEqual(@as(i32, 1), try env.evalInt("result.elements[0].name === 'a' && !('namespace' in result.elements[0]) ? 1 : 0"));
+        }
+    }.body);
+}
+
+test "a sequence<any> member's strings and numbers are released" {
+    try withEnv(struct {
+        fn body(env: Env) !void {
+            const values = [_]runtime.JSValue{ runtime.JSValue.fromStringRef("s"), .{ .number = 3 }, .{ .null = {} } };
+            try expectFlat(env, Config, .{ .values = &values }, "sequence<any> member");
+        }
+    }.body);
+}
+
+test "a sequence<any> element's handle is kept: the impl's, alive after the conversions" {
+    // Read as a union of its arms, a JSValue's `.handle` answered "owned" and
+    // toV8Sequence disposed the impl's handle at the first conversion.
+    try withEnv(struct {
+        fn body(env: Env) !void {
+            const object = try env.eval("({ tag: 9 })");
+            defer ffi.v8_Value_Dispose(object);
+            const values = [_]runtime.JSValue{ .{ .handle = .{ .ptr = @ptrCast(object) } }, runtime.JSValue.fromStringRef("s") };
+            const value: Config = .{ .values = &values };
+            _ = try env.bytesLeftBy(Config, value, 64);
+            try env.bind(Config, value);
+            try testing.expectEqual(@as(i32, 1), try env.evalInt("result.values[0].tag === 9 && result.values[1] === 's' ? 1 : 0"));
         }
     }.body);
 }

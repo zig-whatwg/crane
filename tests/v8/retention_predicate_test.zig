@@ -556,10 +556,21 @@ test "unionValueIsOwned - a nested union answers by its own active member" {
     try std.testing.expect(!unionOwned(Outer, .{ .inner = .{ .node = @ptrCast(@alignCast(&dummy)) } }));
 }
 
-test "unionValueIsOwned - an any, object or unknown member defaults to KEPT" {
+test "unionValueIsOwned - an any or object member's handle or wrapper, or an unknown member, is KEPT" {
     var dummy: u64 = 0;
     const Shape = union(enum) { value: runtime.JSValue, opaque_member: *anyopaque };
-    try std.testing.expect(!unionOwned(Shape, .{ .value = runtime.JSValue.jsNull }));
     try std.testing.expect(!unionOwned(Shape, .{ .value = .{ .handle = .{ .ptr = @ptrCast(&dummy) } } }));
+    try std.testing.expect(!unionOwned(Shape, .{ .value = .{ .instance = @ptrCast(&dummy) } }));
     try std.testing.expect(!unionOwned(Shape, .{ .opaque_member = @ptrCast(&dummy) }));
+}
+
+test "unionValueIsOwned - an any or object member answers by its arm: a primitive is made for the call" {
+    // The member is converted as the runtime.JSValue it is, and
+    // jsValueConversionIsFresh is that conversion's allowlist: toV8Null,
+    // newStringFromWtf8 and the rest each make a Global
+    // (record_value_ownership_test.zig). Kept by type, it was a leak, never a
+    // safety boundary - the handle and instance arms above are that.
+    const Shape = union(enum) { value: runtime.JSValue, opaque_member: *anyopaque };
+    try std.testing.expect(unionOwned(Shape, .{ .value = runtime.JSValue.jsNull }));
+    try std.testing.expect(unionOwned(Shape, .{ .value = runtime.JSValue.fromStringRef("x") }));
 }
