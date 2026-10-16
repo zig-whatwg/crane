@@ -1299,6 +1299,7 @@ pub fn build(b: *std.Build) void {
         "csp",
         "permissions",
         "html",
+        "service_worker",
         "intl",
         "platform",
         "websocket",
@@ -1824,6 +1825,29 @@ pub fn build(b: *std.Build) void {
         };
         addTestFilesFromDir(b, test_step, "tests/html", target, &html_imports, true, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add html test files: {}\n", .{err});
+        };
+    }
+
+    // Service Workers: the service_worker module's tests (a dependency of
+    // itself through impls, as html is, so its src/ test blocks do not run -
+    // its tests live in tests/service_worker, V8-linked like tests/html).
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "service_worker")) {
+        const service_worker_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "service_worker", .module = testing_graph.service_worker },
+            .{ .name = "html", .module = testing_graph.html },
+            .{ .name = "html_core", .module = testing_graph.html_core },
+            .{ .name = "runtime", .module = testing_graph.runtime },
+            .{ .name = "engine", .module = testing_graph.engine },
+            .{ .name = "platform", .module = testing_graph.platform },
+            .{ .name = "interfaces", .module = testing_graph.interfaces },
+            .{ .name = "dom", .module = testing_graph.dom },
+            .{ .name = "fetch", .module = testing_graph.fetch },
+            .{ .name = "browser", .module = testing_graph.browser },
+        };
+        addTestFilesFromDir(b, test_step, "tests/service_worker", target, &service_worker_imports, true, test_selection) catch |err| {
+            std.debug.print("Warning: Failed to add service_worker test files: {}\n", .{err});
         };
     }
 
@@ -4450,6 +4474,7 @@ const CraneModules = struct {
     platform: *std.Build.Module,
     html_core: *std.Build.Module,
     html: *std.Build.Module,
+    service_worker: *std.Build.Module,
     xml: *std.Build.Module,
     permissions: *std.Build.Module,
     browser: *std.Build.Module,
@@ -5708,6 +5733,33 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // module initialization. The imports are lazy (evaluated when used).
     impls_mod.addImport("html", html_mod);
 
+    // Service Workers (W3C): a Browser's registrations, jobs and service
+    // worker records (a BrowserScope supplement), the job thread, and what a
+    // realm keeps of them. Its threads are html's worker threads; the impls
+    // reach it for navigator.serviceWorker and the service worker globals.
+    const service_worker_mod = graphModule(b, public, "service_worker", .{
+        .root_source_file = b.path("src/service_worker/root.zig"),
+        .target = target,
+    });
+    service_worker_mod.addImport("runtime", runtime_mod);
+    service_worker_mod.addImport("engine", engine_mod);
+    service_worker_mod.addImport("platform", platform_mod);
+    service_worker_mod.addImport("html", html_mod);
+    service_worker_mod.addImport("html_core", html_core_mod);
+    service_worker_mod.addImport("fetch", fetch_mod);
+    service_worker_mod.addImport("dom", dom_mod);
+    service_worker_mod.addImport("webidl", webidl_mod);
+    service_worker_mod.addImport("interfaces", interfaces_mod);
+    service_worker_mod.addImport("dictionaries", dictionaries_mod);
+    service_worker_mod.addImport("enums", enums_mod);
+    // The URL Standard's parser, serializer and origins (scope and script URL
+    // checks, registration matching).
+    service_worker_mod.addImport("basic_parser", url_basic_parser_mod);
+    service_worker_mod.addImport("url_serializer", url_serializer_mod);
+    service_worker_mod.addImport("url_record", url_internal_url_record_mod);
+    service_worker_mod.addImport("origin", url_origin_mod_internal);
+    impls_mod.addImport("service_worker", service_worker_mod);
+
     // Permissions module (W3C Permissions API)
     const permissions_mod = graphModule(b, public, "permissions", .{
         .root_source_file = b.path("src/permissions/root.zig"),
@@ -5848,6 +5900,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .platform_options = platform_options_mod,
         .html_core = html_core_mod,
         .html = html_mod,
+        .service_worker = service_worker_mod,
         .xml = xml_mod,
         .permissions = permissions_mod,
         .browser = browser_mod,

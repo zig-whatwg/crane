@@ -464,15 +464,8 @@ src/runtime/logger.zig clock.wallSeconds 1
 src/runtime/native_timer.zig clock.@import 1
 src/runtime/native_timer.zig clock.monotonicNanos 3
 src/runtime/native_timer.zig clock.sleep 1
-src/service_worker/algorithms/soft_update.zig clock.@import 1
 src/service_worker/cache/types.zig clock.@import 1
 src/service_worker/cache/types.zig clock.wallSeconds 1
-src/service_worker/integration/timing.zig clock.@import 1
-src/service_worker/integration/timing.zig clock.wallSeconds 1
-src/service_worker/registration.zig clock.@import 1
-src/service_worker/registration.zig clock.wallSeconds 2
-src/service_worker/timing.zig clock.@import 1
-src/service_worker/timing.zig clock.monotonicNanos 1
 src/storage/backend.zig builtin.os.tag 2
 src/storage/backends/leveldb.zig extern.leveldb_approximate_sizes 1
 src/storage/backends/leveldb.zig extern.leveldb_close 1
