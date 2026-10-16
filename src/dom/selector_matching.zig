@@ -67,7 +67,10 @@ pub fn querySelector(scope: *runtime.Instance, selectors: []const u8) Error!?*ru
     // DOM "scope-match a selectors string" steps 1-2.
     var list = try parse(scope.ctx.getAllocator(), selectors);
     defer list.deinit();
-    const matcher = Matcher.init(scope_node, scope);
+    var nth_cache = NthIndexCache{ .allocator = scope.ctx.getAllocator() };
+    defer nth_cache.deinit();
+    var matcher = Matcher.init(scope_node, scope);
+    matcher.nth_cache = &nth_cache;
     var walk = Walk.init(scope_node);
     while (walk.next()) |node| {
         if (matcher.matchesForQuery(node, &list)) return instanceOf(node);
@@ -82,7 +85,10 @@ pub fn querySelectorAll(allocator: std.mem.Allocator, scope: *runtime.Instance, 
     const scope_node = instance_bridge.getNodeBase(scope) orelse return;
     var list = try parse(scope.ctx.getAllocator(), selectors);
     defer list.deinit();
-    const matcher = Matcher.init(scope_node, scope);
+    var nth_cache = NthIndexCache{ .allocator = allocator };
+    defer nth_cache.deinit();
+    var matcher = Matcher.init(scope_node, scope);
+    matcher.nth_cache = &nth_cache;
     var walk = Walk.init(scope_node);
     while (walk.next()) |node| {
         if (matcher.matchesForQuery(node, &list)) try out.append(allocator, node);
@@ -253,6 +259,9 @@ const Matcher = struct {
     shadow_host: ?*NodeBase = null,
     /// :has(): the element relative selectors are anchored at.
     anchor: ?*NodeBase = null,
+    /// The query's child indices (querySelector and querySelectorAll; null
+    /// for matches() and closest(), which look at one element).
+    nth_cache: ?*NthIndexCache = null,
 
     fn init(scope: *NodeBase, scope_instance: *runtime.Instance) Matcher {
         const document: ?*runtime.Instance = if (scope.node_type == DOCUMENT_NODE)
@@ -488,13 +497,13 @@ const Matcher = struct {
             .FirstChild => previousElementSibling(node) == null,
             .LastChild => nextElementSibling(node) == null,
             .OnlyChild => previousElementSibling(node) == null and nextElementSibling(node) == null,
-            .FirstOfType => typeIndex(node, data, false) == 1,
-            .LastOfType => typeIndex(node, data, true) == 1,
-            .OnlyOfType => typeIndex(node, data, false) == 1 and typeIndex(node, data, true) == 1,
+            .FirstOfType => self.typeIndex(node, data, false) == 1,
+            .LastOfType => self.typeIndex(node, data, true) == 1,
+            .OnlyOfType => self.typeIndex(node, data, false) == 1 and self.typeIndex(node, data, true) == 1,
             .NthChild => |pattern| self.matchesNthChild(node, pattern, false),
             .NthLastChild => |pattern| self.matchesNthChild(node, pattern, true),
-            .NthOfType => |pattern| matchesNth(typeIndex(node, data, false), pattern),
-            .NthLastOfType => |pattern| matchesNth(typeIndex(node, data, true), pattern),
+            .NthOfType => |pattern| matchesNth(self.typeIndex(node, data, false), pattern),
+            .NthLastOfType => |pattern| matchesNth(self.typeIndex(node, data, true), pattern),
 
             .Not => |list| !self.matchesList(.{ .node = node }, list),
             .Is, .Where => |list| self.matchesList(.{ .node = node }, list),
@@ -631,10 +640,31 @@ const Matcher = struct {
             }
             return matchesNth(index, pattern);
         }
+        if (self.cachedIndices(node)) |indices| return matchesNth(if (from_end) indices.last_child else indices.child, pattern);
         var index: i64 = 1;
         var sibling = if (from_end) nextElementSibling(node) else previousElementSibling(node);
         while (sibling) |s| : (sibling = if (from_end) nextElementSibling(s) else previousElementSibling(s)) index += 1;
         return matchesNth(index, pattern);
+    }
+
+    /// The element's index among its inclusive siblings, and of its type,
+    /// from either end - O(1) through the query's cache once its parent has
+    /// many children. Null to count directly: a short sibling list, no
+    /// cache (matches(), closest()), or no memory for one.
+    fn cachedIndices(self: *const Matcher, node: *NodeBase) ?NthIndexCache.Indices {
+        const cache = self.nth_cache orelse return null;
+        if (cache.map.get(node)) |indices| return indices;
+        const parent = node.parent_node orelse return null;
+        if (!hasManyElementChildren(parent)) return null;
+        cache.fill(parent) catch return null;
+        return cache.map.get(node);
+    }
+
+    /// 13.4: the element's 1-based index among its inclusive siblings of the
+    /// same type, from the first (or the last).
+    fn typeIndex(self: *const Matcher, node: *NodeBase, data: *const ElementData, from_end: bool) i64 {
+        if (self.cachedIndices(node)) |indices| return if (from_end) indices.last_of_type else indices.of_type;
+        return countTypeIndex(node, data, from_end);
     }
 
     /// Selectors 4 7.2 :lang(): the element's content language matches one
@@ -721,8 +751,8 @@ fn isEmpty(node: *NodeBase) bool {
 }
 
 /// The element's 1-based index among its inclusive siblings of the same
-/// type, from the first (or the last).
-fn typeIndex(node: *NodeBase, data: *const ElementData, from_end: bool) i64 {
+/// type, from the first (or the last), counted.
+fn countTypeIndex(node: *NodeBase, data: *const ElementData, from_end: bool) i64 {
     var index: i64 = 1;
     var sibling = if (from_end) nextElementSibling(node) else previousElementSibling(node);
     while (sibling) |s| : (sibling = if (from_end) nextElementSibling(s) else previousElementSibling(s)) {
@@ -730,6 +760,89 @@ fn typeIndex(node: *NodeBase, data: *const ElementData, from_end: bool) i64 {
         if (sameType(data, other)) index += 1;
     }
     return index;
+}
+
+/// One query's child indices (Stylo's NthIndexCache, Blink's
+/// NthIndexCache): counting an element's earlier siblings for each element
+/// of a long sibling list is quadratic in its length, so the first element
+/// asked about in such a list fills the indices of all its siblings in one
+/// pass. The tree does not change during a query.
+const NthIndexCache = struct {
+    allocator: std.mem.Allocator,
+    map: std.AutoHashMapUnmanaged(*NodeBase, Indices) = .empty,
+
+    const Indices = struct {
+        child: i64,
+        last_child: i64,
+        of_type: i64,
+        last_of_type: i64,
+    };
+
+    fn deinit(self: *NthIndexCache) void {
+        self.map.deinit(self.allocator);
+    }
+
+    /// Every element child of `parent`, indexed: forward for the positions
+    /// and the running per-type counts, then backward from the totals.
+    fn fill(self: *NthIndexCache, parent: *NodeBase) std.mem.Allocator.Error!void {
+        var types: std.HashMapUnmanaged(TypeKey, i64, TypeKey.Context, std.hash_map.default_max_load_percentage) = .empty;
+        defer types.deinit(self.allocator);
+        var total: i64 = 0;
+        var child = parent.first_child;
+        while (child) |c| : (child = c.next_sibling) {
+            if (c.node_type != ELEMENT_NODE) continue;
+            const key = TypeKey.of(c);
+            const seen = try types.getOrPut(self.allocator, key);
+            if (!seen.found_existing) seen.value_ptr.* = 0;
+            seen.value_ptr.* += 1;
+            total += 1;
+            try self.map.put(self.allocator, c, .{ .child = total, .last_child = 0, .of_type = seen.value_ptr.*, .last_of_type = 0 });
+        }
+        child = parent.first_child;
+        while (child) |c| : (child = c.next_sibling) {
+            if (c.node_type != ELEMENT_NODE) continue;
+            const indices = self.map.getPtr(c).?;
+            indices.last_child = total - indices.child + 1;
+            indices.last_of_type = types.get(TypeKey.of(c)).? - indices.of_type + 1;
+        }
+    }
+
+    /// An element's type: its local name and namespace (13.4).
+    const TypeKey = struct {
+        local: []const u8,
+        namespace: []const u8,
+
+        fn of(node: *NodeBase) TypeKey {
+            const data = dataOf(node) orelse return .{ .local = "", .namespace = "" };
+            return .{ .local = data.local_name.asSlice(), .namespace = data.namespaceSlice() orelse "" };
+        }
+
+        const Context = struct {
+            pub fn hash(_: Context, key: TypeKey) u64 {
+                var hasher = std.hash.Wyhash.init(0);
+                hasher.update(key.local);
+                hasher.update("\x00");
+                hasher.update(key.namespace);
+                return hasher.final();
+            }
+            pub fn eql(_: Context, a: TypeKey, b: TypeKey) bool {
+                return std.mem.eql(u8, a.local, b.local) and std.mem.eql(u8, a.namespace, b.namespace);
+            }
+        };
+    };
+};
+
+/// Whether `parent` has enough element children for the cache to pay: below
+/// that, counting siblings directly costs less than filling it.
+fn hasManyElementChildren(parent: *NodeBase) bool {
+    var count: usize = 0;
+    var child = parent.first_child;
+    while (child) |c| : (child = c.next_sibling) {
+        if (c.node_type != ELEMENT_NODE) continue;
+        count += 1;
+        if (count >= 32) return true;
+    }
+    return false;
 }
 
 /// CSS Syntax 3 6: the index is An+B for some integer n >= 0.
