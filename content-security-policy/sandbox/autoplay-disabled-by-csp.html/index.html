@@ -21,22 +21,25 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../content-security-policy/"><code>content-<wbr>security-<wbr>policy/</code></a></li><li><a href="../../../content-security-policy/sandbox/"><code>sandbox/</code></a></li><li aria-current="page"><code>autoplay-<wbr>disabled-<wbr>by-<wbr>csp.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>autoplay-<wbr>disabled-<wbr>by-<wbr>csp.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="content-security-policy/sandbox/autoplay-disabled-by-csp.html">
-<p class="figures-main"><span class="fg-pass">2</span><span class="fg-of"> / 2</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">1</span><span class="fg-of"> / 2</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>1</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-b7f38474b0</code>, <span class="nowrap">16 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/b7f38474b0"><code>b7f38474b0</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-error g-block">ERROR</span> <span class="quiet">runner status <code>ERROR</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-b3f75e7404</code>, <span class="nowrap">16 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/b3f75e7404"><code>b3f75e7404</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/sandbox/autoplay-disabled-by-csp.html"><code>content-<wbr>security-<wbr>policy/<wbr>sandbox/<wbr>autoplay-<wbr>disabled-<wbr>by-<wbr>csp.<wbr>html</code></a></dd></div>
 </dl>
+<div class="harness"><p class="harness-label">Harness message</p><pre class="msg">SecurityError: SecurityError</pre></div>
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
+<h3 class="run-head"><code>/content-security-policy/sandbox/autoplay-disabled-by-csp.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>1</b> / 2</span></h3>
+<pre class="msg harness-msg">SecurityError: SecurityError</pre>
 <ol class="subtests">
 <li class="sub s-pass" id="s-e9bf4c24"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Expecting logs: [&quot;Loaded iframe&quot;]</span></div><a class="self" href="#s-e9bf4c24" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-f5b17e07"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">csp-derived sandboxing flags prevent autoplay.</span></div><a class="self" href="#s-f5b17e07" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-timeout" id="s-f5b17e07"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">csp-derived sandboxing flags prevent autoplay.</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-f5b17e07" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
