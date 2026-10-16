@@ -295,6 +295,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A release predicate must dispatch as its converter does](architecture-a-release-predicate-must-dispatch-as-its-converter-does.md) - Write a release predicate as a mirror of the converter's dispatch: a type the converter handles specially must be handled specially, and first, in the predicate too.
 
 ### Spec Compliance
+- [Parse selectors over CSS tokens, not characters](spec-compliance-parse-selectors-over-css-tokens.md) - A selector is a CSS grammar over CSS tokens: tokenize per CSS Syntax 3 first, and validity questions answer themselves.
+- [:hover and :active follow the engines' observable rules](spec-compliance-user-action-pseudo-classes-follow-the-engines.md) - For user-action state, read each subtest's browser result before applying the prose: the engines' narrower rules are what WPT checks.
 - [A form's past names go at the change of owner, and insertBefore is one](spec-compliance-past-names-go-at-the-owner-change.md) - A rule keyed on a change of a computed value needs the change, not a later comparison - and a remove-then-insert is two changes even when the value ends where it began.
 - [A reflection failure can come from an own accessor](spec-compliance-a-reflection-failure-can-come-from-an-own-accessor.md) - Trace generated dispatch and the member's complete algorithm before changing a shared reflector.
 - [Cookie normalization precedes validation](spec-compliance-cookie-normalization-precedes-validation.md) - Normalize before validation and distinguish empty names from omitted filters.
@@ -459,6 +461,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Dictionary input tests do not verify return shapes](codegen-dictionary-input-tests-do-not-verify-return-shapes.md) - Test dictionary round trips in JavaScript, including present null and inherited members; native values and input-only tests cannot establish the return shape.
 
 ### Testing
+- [Crane tests are not in the wptreport stream](testing-crane-tests-are-not-in-the-wptreport-stream.md) - A wptreport query proves nothing about crane/ files: check their journal records.
+- [A key pressed by one Actions source is not released by another](testing-a-key-pressed-by-one-actions-source-is-not-released-by-another.md) - Press and release a key from the same named source; an unnamed Actions() never releases what another pressed.
 - [A named interceptor changes ordinary property reads](testing-a-named-interceptor-changes-ordinary-property-reads.md) - The cost of registering an interceptor includes ordinary operations that fall through it. Exercise those operations explicitly.
 - [A failed assertion can hide a later operation](testing-a-failed-assertion-can-hide-a-later-operation.md) - Coverage follows executed operations, not assertions written below an earlier failure.
 - [A passing parent test may omit the popup assertion](testing-a-passing-parent-test-may-omit-the-popup-assertion.md) - A browser result proves only the assertions it actually reports.
