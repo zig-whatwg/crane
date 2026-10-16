@@ -327,6 +327,8 @@ pub const InternalState = struct {
     /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#import-map
     /// Key: bare specifier, Value: resolved URL
     import_map_imports: std.StringHashMap([]const u8),
+    /// HTML import map's integrity: owned serialized URLs and metadata.
+    import_map_integrity: std.StringHashMap([]const u8),
 
     /// Import map scopes
     /// Key: scope prefix URL, Value: map of specifier -> resolved URL
@@ -470,6 +472,7 @@ pub const InternalState = struct {
             // Module map and import map
             .module_map = std.StringHashMap(*anyopaque).init(allocator),
             .import_map_imports = std.StringHashMap([]const u8).init(allocator),
+            .import_map_integrity = std.StringHashMap([]const u8).init(allocator),
             .import_map_scopes = std.StringHashMap(std.StringHashMap([]const u8)).init(allocator),
             .import_map_acquired = false,
             // Module disposal (set when engine is configured)
@@ -581,6 +584,15 @@ pub const InternalState = struct {
                 self.allocator.free(entry.value_ptr.*);
             }
             self.import_map_imports.deinit();
+        }
+
+        {
+            var integrity_it = self.import_map_integrity.iterator();
+            while (integrity_it.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+                self.allocator.free(entry.value_ptr.*);
+            }
+            self.import_map_integrity.deinit();
         }
 
         // Import map scopes
@@ -5167,6 +5179,8 @@ fn installScriptHooks() void {
         .add_import_mapping = &addImportMappingStep,
         .add_scoped_import_mapping = &addScopedImportMappingStep,
         .resolve_import_specifier = &resolveImportSpecifier,
+        .add_integrity_mapping = &addIntegrityMappingStep,
+        .resolve_module_integrity = &resolveModuleIntegrityStep,
         .get_loader = &moduleLoaderOf,
         .set_loader = &setModuleLoader,
         .visit_realm_loaders = &visitRealmModuleLoaders,
@@ -5223,6 +5237,23 @@ fn visitRealmModuleLoaders(realm: runtime.Context, visit: dom_document_modules.V
 
 fn addImportMappingStep(instance: *runtime.Instance, specifier: []const u8, resolved_url: []const u8) dom_document_modules.Error!void {
     return addImportMapping(instance, specifier, resolved_url);
+}
+
+/// HTML merge existing and new import maps step 5. A later map never
+/// replaces an entry, including one whose integrity is the empty string.
+fn addIntegrityMappingStep(instance: *runtime.Instance, url: []const u8, integrity: []const u8) dom_document_modules.Error!void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.import_map_integrity.contains(url)) return;
+    const owned_url = try internal.allocator.dupe(u8, url);
+    errdefer internal.allocator.free(owned_url);
+    const owned_integrity = try internal.allocator.dupe(u8, integrity);
+    errdefer internal.allocator.free(owned_integrity);
+    try internal.import_map_integrity.put(owned_url, owned_integrity);
+}
+
+fn resolveModuleIntegrityStep(instance: *runtime.Instance, url: []const u8) ?[]const u8 {
+    const internal = getInternal(instance) orelse return null;
+    return internal.import_map_integrity.get(url);
 }
 
 fn addScopedImportMappingStep(instance: *runtime.Instance, scope_prefix: []const u8, specifier: []const u8, resolved_url: []const u8) dom_document_modules.Error!void {

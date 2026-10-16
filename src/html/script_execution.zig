@@ -1798,6 +1798,11 @@ fn documentResolveImport(context: *anyopaque, specifier: []const u8, base_url: [
     return document_modules.resolveImportSpecifier(document, specifier, base_url);
 }
 
+fn documentResolveIntegrity(context: *anyopaque, url: []const u8) ?[]const u8 {
+    const document: *runtime.Instance = @ptrCast(@alignCast(context));
+    return document_modules.resolveModuleIntegrity(document, url);
+}
+
 /// The module loading environment for a script element's node document.
 fn moduleEnvironment(script_element: *runtime.Instance, document: *runtime.Instance) ?module_script.Environment {
     const module_allocator = document_modules.allocator(document) orelse return null;
@@ -1806,6 +1811,7 @@ fn moduleEnvironment(script_element: *runtime.Instance, document: *runtime.Insta
         .context_instance = script_element,
         .map = documentModuleMap(document),
         .resolveImportFn = &documentResolveImport,
+        .resolveIntegrityFn = &documentResolveIntegrity,
         // The element's script fetch options, for its graph's requests.
         .fetch_options = moduleFetchOptions(script_element),
     };
@@ -1819,6 +1825,7 @@ fn moduleEnvironmentForWindow(window: *runtime.Instance, document: *runtime.Inst
         .context_instance = window,
         .map = documentModuleMap(document),
         .resolveImportFn = &documentResolveImport,
+        .resolveIntegrityFn = &documentResolveIntegrity,
     };
 }
 
@@ -1851,6 +1858,7 @@ fn importEnvironment(
     shadow_realm_map.* = .{ .document = document, .realm = realm };
     env.map = shadow_realm_map.moduleMap();
     env.resolveImportFn = null;
+    env.resolveIntegrityFn = null;
     env.realm_override = realm;
     return env;
 }
@@ -2065,7 +2073,10 @@ fn loadImport(realm: runtime.Context, base: ImportBase, specifier: []const u8, t
             task.destroy();
             return finishImportWithTypeError(realm, request, "Out of memory loading module");
         };
-        loader.start(task.url, task.module_type, null, options, .{
+        // HostLoadImportedModule: each imported URL takes its own map entry.
+        var import_options = options;
+        import_options.integrity = env.resolveIntegrity(url);
+        loader.start(task.url, task.module_type, null, import_options, .{
             .context = task,
             .done = dynamicModuleGraphDone,
             .gone = dynamicModuleGraphGone,
@@ -2186,7 +2197,11 @@ fn dynamicModuleGraphGone(data: *anyopaque) void {
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-module-script-tree
 fn prepareExternalModuleScript(script_element: *runtime.Instance, document: *runtime.Instance, url: []const u8) bool {
     setResult(script_element, .null);
-    const env = moduleEnvironment(script_element, document) orelse return false;
+    var env = moduleEnvironment(script_element, document) orelse return false;
+    // Prepare the script element step 33.11: only an ABSENT attribute
+    // falls back to the import map. An explicit empty attribute wins.
+    if (getAttribute(script_element, "integrity") == null)
+        env.fetch_options.integrity = env.resolveIntegrity(url);
     if (script_element.ctx.getOptionalEventLoop() != null) {
         const loader = documentModuleLoader(document, env) orelse return false;
         return startModuleElementGraph(loader, script_element, document, url, null, env.fetch_options);
@@ -3451,6 +3466,7 @@ fn finishFetch(self: *ClassicScriptFetch, ending: FetchEnding) void {
 const ImportMapParseResult = struct {
     /// Imports mapping: bare specifier -> resolved URL
     imports: std.StringHashMap([]const u8),
+    integrity: std.StringHashMap([]const u8),
 
     /// Scopes mapping: scope prefix -> (specifier -> URL)
     scopes: std.StringHashMap(std.StringHashMap([]const u8)),
@@ -3464,6 +3480,7 @@ const ImportMapParseResult = struct {
     pub fn init(alloc: std.mem.Allocator) ImportMapParseResult {
         return .{
             .imports = std.StringHashMap([]const u8).init(alloc),
+            .integrity = std.StringHashMap([]const u8).init(alloc),
             .scopes = std.StringHashMap(std.StringHashMap([]const u8)).init(alloc),
             .error_message = null,
             .allocator = null,
@@ -3478,6 +3495,13 @@ const ImportMapParseResult = struct {
             alloc.free(entry.value_ptr.*);
         }
         self.imports.deinit();
+
+        var integrity_it = self.integrity.iterator();
+        while (integrity_it.next()) |entry| {
+            alloc.free(entry.key_ptr.*);
+            alloc.free(entry.value_ptr.*);
+        }
+        self.integrity.deinit();
 
         // Free scopes
         var scope_it = self.scopes.iterator();
@@ -3606,6 +3630,47 @@ fn parseImportMap(
         }
     }
 
+    // Parse an import map string step 8; normalize a module integrity map
+    // steps 2.1-2.4. Keys are URL-like specifiers, never bare specifiers.
+    if (root_obj.get("integrity")) |value| {
+        if (value != .object) {
+            result.error_message = "Import map integrity must be a JSON object";
+            return result;
+        }
+        var it = value.object.iterator();
+        while (it.next()) |entry| {
+            if (entry.value_ptr.* != .string) continue;
+            const key = entry.key_ptr.*;
+            const relative = std.mem.startsWith(u8, key, "/") or
+                std.mem.startsWith(u8, key, "./") or std.mem.startsWith(u8, key, "../");
+            const resolved = (@import("api_parser").encodingParseAndSerialize(
+                allocator,
+                key,
+                if (relative) base_url else null,
+                html_core.parser.encoding_sniffing.utf_8,
+            ) catch {
+                result.error_message = "Out of memory parsing import-map integrity";
+                return result;
+            }) orelse continue;
+            const metadata = allocator.dupe(u8, entry.value_ptr.string) catch {
+                allocator.free(resolved);
+                result.error_message = "Out of memory parsing import-map integrity";
+                return result;
+            };
+            const slot = result.integrity.getOrPut(resolved) catch {
+                allocator.free(resolved);
+                allocator.free(metadata);
+                result.error_message = "Out of memory parsing import-map integrity";
+                return result;
+            };
+            if (slot.found_existing) {
+                allocator.free(resolved);
+                allocator.free(slot.value_ptr.*);
+            }
+            slot.value_ptr.* = metadata;
+        }
+    }
+
     return result;
 }
 
@@ -3615,6 +3680,13 @@ fn registerImportMap(
     doc: *runtime.Instance,
     import_map: ImportMapParseResult,
 ) !void {
+    // Merge existing and new import maps step 5: existing URLs keep their
+    // integrity; the owning Document's hook enforces that rule.
+    var integrity_it = import_map.integrity.iterator();
+    while (integrity_it.next()) |entry| {
+        try document_modules.addIntegrityMapping(doc, entry.key_ptr.*, entry.value_ptr.*);
+    }
+
     // Register all top-level imports
     var imp_it = import_map.imports.iterator();
     while (imp_it.next()) |entry| {

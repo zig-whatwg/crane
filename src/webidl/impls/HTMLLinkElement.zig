@@ -181,7 +181,15 @@ fn fetchAndProcess(element: *runtime.Instance) void {
             // Step 2: "Let destination be the current state of el's as
             // attribute (a destination), or "script" if it is in no state."
             const destination = asDestination(attribute(element, "as")) orelse .script;
-            internal.load = style_sheet_loading.startModulePreload(element, options, destination) orelse 0;
+            // Modulepreload steps 9-10: only an absent integrity attribute
+            // takes the import map's metadata for the resolved URL.
+            var module_options = options;
+            if (attribute(element, "integrity") == null) {
+                const url = HTMLLinkElement.get_href(element) catch return;
+                defer element.ctx.allocator.free(url);
+                module_options.integrity = dom_module.document_modules.resolveModuleIntegrity(document, url) orelse "";
+            }
+            internal.load = style_sheet_loading.startModulePreload(element, module_options, destination) orelse 0;
         },
         .preload => {
             // Steps 3-4: "Let destination be the result of translating the
