@@ -118,8 +118,10 @@ fn exercise(comptime scenario: Scenario) !void {
             try testing.expectEqual(input, (try named(form, "field")).?);
             try testing.expectEqual(image, (try named(form, "picture")).?);
             try testing.expectEqual(input, try interfaces.HTMLFormElement.call_getter(form, 0));
+            const elements = try interfaces.HTMLFormElement.get_elements(form);
             // Nothing changed: no allocation in the realm, hit or miss,
-            // named or indexed (the elements collection is cached too).
+            // named or indexed (the elements collection is cached too, and
+            // its named lookup reads ids and names in place).
             realm_allocations.fail_index = realm_allocations.alloc_index;
             defer realm_allocations.fail_index = std.math.maxInt(usize);
             for (0..3) |_| {
@@ -130,6 +132,11 @@ fn exercise(comptime scenario: Scenario) !void {
                 try testing.expectEqual(input, (try named(form, "fieldId")).?);
                 try testing.expectEqual(input, try interfaces.HTMLFormElement.call_getter(form, 0));
                 try testing.expectEqual(@as(u32, 1), try length(form));
+                try testing.expect(try interfaces.HTMLFormControlsCollection.isSupportedPropertyName(elements, runtime.DOMString.initInterned("field")));
+                try testing.expect(try interfaces.HTMLFormControlsCollection.isSupportedPropertyName(elements, runtime.DOMString.initInterned("fieldId")));
+                try testing.expect(!(try interfaces.HTMLFormControlsCollection.isSupportedPropertyName(elements, runtime.DOMString.initInterned("picture"))));
+                const found = (try interfaces.HTMLFormControlsCollection.call_namedItem(elements, runtime.DOMString.initInterned("field"))).?;
+                try testing.expectEqual(input, found.instance);
             }
         },
         .failed_rebuild => {

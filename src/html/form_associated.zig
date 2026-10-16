@@ -89,10 +89,13 @@ pub fn hasAttribute(element: *Instance, comptime name: []const u8) bool {
 
 /// HTML 2.6.4.2: an id or name match contributes the element only once.
 pub fn hasControlName(element: *Instance, name: []const u8) bool {
+    // getAttribute's match - the first attribute with that qualified name -
+    // read in place: no copy per element per lookup (review-codex-lpo N3).
+    const data = @import("dom").element_data.of(element) orelse return false;
     for ([_][]const u8{ "id", "name" }) |attribute| {
-        var value = (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned(attribute)) catch null) orelse continue;
-        defer value.deinit(element.ctx.allocator);
-        if (std.mem.eql(u8, value.asSlice(), name)) return true;
+        const index = data.indexOfQualifiedName(attribute) orelse continue;
+        const entry = data.attributeAt(index) orelse continue;
+        if (std.mem.eql(u8, entry.value, name)) return true;
     }
     return false;
 }

@@ -418,8 +418,28 @@ fn single(instance: *runtime.Instance, internal: *InternalState, name: []const u
 /// (html.form_past_names.registryOf). The form joins the agent's list
 /// before the entry is made, so no entry is ever unwatched.
 fn recordPastName(instance: *runtime.Instance, internal: *InternalState, name: []const u8, element: *runtime.Instance) !void {
-    const registry = @import("html").form_past_names.registryOf(instance.ctx) orelse return;
     const past = &internal.past_names;
+    for (past.entries.items) |*existing| {
+        if (!std.mem.eql(u8, existing.name, name)) continue;
+        // Replaced: a new entry, the newest. A form with an entry is in the
+        // agent's list already. The same element again, already the newest,
+        // changes nothing - the common case, a page reading form.x in a loop.
+        if (existing.element.get() == element) {
+            if (existing.age + 1 != past.next_age) {
+                existing.age = past.next_age;
+                past.next_age += 1;
+            }
+            return;
+        }
+        const base = dom.instance_bridge.getNodeBase(@ptrCast(element)) orelse return;
+        existing.element = Link.to(element);
+        existing.base = base;
+        existing.age = past.next_age;
+        existing.form_attribute = hasAttribute(element, "form");
+        past.next_age += 1;
+        return;
+    }
+    const registry = @import("html").form_past_names.registryOf(instance.ctx) orelse return;
     const base = dom.instance_bridge.getNodeBase(@ptrCast(element)) orelse return;
     if (!past.registered) {
         try registry.add(instance);
@@ -427,30 +447,16 @@ fn recordPastName(instance: *runtime.Instance, internal: *InternalState, name: [
     }
     const allocator = past.allocator orelse instance.ctx.allocator;
     past.allocator = allocator;
-    const age = past.next_age;
-    past.next_age += 1;
-    const entry: PastEntry = .{
-        .name = undefined,
-        .element = Link.to(element),
-        .base = base,
-        .age = age,
-        .form_attribute = hasAttribute(element, "form"),
-    };
-    for (past.entries.items, 0..) |*existing, index| {
-        if (!std.mem.eql(u8, existing.name, name)) continue;
-        // Replaced: a new entry, at the end of the age order.
-        const kept_name = existing.name;
-        _ = past.entries.orderedRemove(index);
-        var replacement = entry;
-        replacement.name = kept_name;
-        past.entries.appendAssumeCapacity(replacement);
-        return;
-    }
     const owned = try allocator.dupe(u8, name);
     errdefer allocator.free(owned);
-    var added = entry;
-    added.name = owned;
-    try past.entries.append(allocator, added);
+    try past.entries.append(allocator, .{
+        .name = owned,
+        .element = Link.to(element),
+        .base = base,
+        .age = past.next_age,
+        .form_attribute = hasAttribute(element, "form"),
+    });
+    past.next_age += 1;
 }
 
 /// dom.form_submission's past_names_owner_change: remove each entry whose
