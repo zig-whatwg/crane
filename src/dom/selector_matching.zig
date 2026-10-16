@@ -302,10 +302,25 @@ const Matcher = struct {
     fn matchesForQuery(self: *const Matcher, node: *NodeBase, list: *const SelectorList, fast: FastPath) bool {
         return switch (fast) {
             .none => self.matchesList(.{ .node = node }, list),
+            .filtered => |filter| self.passesFilter(node, filter) and self.matchesList(.{ .node = node }, list),
             .all => true,
             .tag => |tag| if (dataOf(node)) |data| self.matchesType(data, tag.name, tag.lower_name, .any) else false,
             .class => |name| if (dataOf(node)) |data| self.hasClass(data, name) else false,
             .id => |id| if (dataOf(node)) |data| self.idIs(data, id) else false,
+            .attribute => |attribute| if (dataOf(node)) |data| self.matchesAttribute(data, attribute) else false,
+        };
+    }
+
+    /// A one-selector list's subject compound starts with this type, class or
+    /// ID selector: an element failing it fails the selector, so it is
+    /// rejected without the full matcher (WebKit's SelectorDataList does the
+    /// same with the rightmost compound).
+    fn passesFilter(self: *const Matcher, node: *NodeBase, filter: SubjectFilter) bool {
+        const data = dataOf(node) orelse return false;
+        return switch (filter) {
+            .tag => |tag| self.matchesType(data, tag.name, tag.lower_name, .any),
+            .class => |name| self.hasClass(data, name),
+            .id => |id| self.idIs(data, id),
         };
     }
 
@@ -797,27 +812,55 @@ fn isAsciiWhitespace(c: u8) bool {
     return c == ' ' or c == '\t' or c == '\n' or c == '\r' or c == 0x0C;
 }
 
-/// A selector of exactly one simple selector that querySelector can test
-/// directly: a type selector in any namespace, a class, an ID, or `*`.
+/// How querySelector tests each candidate: a selector of exactly one simple
+/// selector directly (a type selector in any namespace, a class, an ID, an
+/// attribute selector, or `*`); a one-selector list through a filter on its
+/// subject's first simple selector, then the full matcher; anything else
+/// through the full matcher.
 const FastPath = union(enum) {
     none,
+    filtered: SubjectFilter,
     all,
-    tag: struct { name: []const u8, lower_name: []const u8 },
+    tag: SubjectFilter.Tag,
     class: []const u8,
     id: []const u8,
+    attribute: *const AttributeSelector,
 
     fn of(list: *const SelectorList) FastPath {
         if (list.selectors.len != 1) return .none;
         const complex = &list.selectors[0];
-        if (complex.combinators.len != 0 or complex.is_relative) return .none;
+        if (complex.is_relative) return .none;
         const compound = &complex.compound;
-        if (compound.simple_selectors.len != 1 or compound.active_hover_quirk) return .none;
+        if (complex.combinators.len == 0 and compound.simple_selectors.len == 1 and !compound.active_hover_quirk) {
+            switch (compound.simple_selectors[0]) {
+                .Universal => |universal| if (universal.namespace == .any) return .all,
+                .Type => |t| if (t.namespace == .any) return .{ .tag = .{ .name = t.tag_name, .lower_name = t.lower_name } },
+                .Class => |c| return .{ .class = c.class_name },
+                .Id => |id| return .{ .id = id.id },
+                .Attribute => |*attribute| return .{ .attribute = attribute },
+                else => {},
+            }
+        }
+        return if (SubjectFilter.of(compound)) |filter| .{ .filtered = filter } else .none;
+    }
+};
+
+/// The first simple selector of a subject compound, when it is one an
+/// element can be rejected by cheaply.
+const SubjectFilter = union(enum) {
+    tag: Tag,
+    class: []const u8,
+    id: []const u8,
+
+    const Tag = struct { name: []const u8, lower_name: []const u8 };
+
+    fn of(compound: *const CompoundSelector) ?SubjectFilter {
+        if (compound.simple_selectors.len == 0) return null;
         return switch (compound.simple_selectors[0]) {
-            .Universal => |universal| if (universal.namespace == .any) .all else .none,
-            .Type => |t| if (t.namespace == .any) .{ .tag = .{ .name = t.tag_name, .lower_name = t.lower_name } } else .none,
+            .Type => |t| if (t.namespace == .any) .{ .tag = .{ .name = t.tag_name, .lower_name = t.lower_name } } else null,
             .Class => |c| .{ .class = c.class_name },
             .Id => |id| .{ .id = id.id },
-            else => .none,
+            else => null,
         };
     }
 };
