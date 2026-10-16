@@ -54,8 +54,8 @@ test "the default is kept: every arm not named answers false" {
 // A sequence's union elements (URLPattern exec()'s `inputs`,
 // sequence<URLPatternInput>) are released by the rule a returned union
 // follows: the active member decides, and only a member made for the call -
-// a string, a dictionary - is released; an interface member's wrapper and a
-// JSValue (possibly the impl's handle) are kept.
+// a string, a dictionary, a JSValue's primitive or string arm - is released;
+// an interface member's wrapper and a JSValue's handle (the impl's) are kept.
 const union_owned = v8.conversions.unionValueIsOwned;
 
 test "a union element made for the call is released; a wrapper or handle is kept" {
@@ -68,6 +68,7 @@ test "a union element made for the call is released; a wrapper or handle is kept
     var slot: u64 align(8) = 0;
     try std.testing.expect(union_owned(Element, .{ .text = "https://example.com/" }));
     try std.testing.expect(union_owned(Element, .{ .number = 1 }));
-    try std.testing.expect(!union_owned(Element, .{ .value = runtime.JSValue.fromStringRef("kept") }));
+    try std.testing.expect(union_owned(Element, .{ .value = runtime.JSValue.fromStringRef("made") }));
+    try std.testing.expect(!union_owned(Element, .{ .value = .{ .handle = .{ .ptr = @ptrCast(&slot) } } }));
     try std.testing.expect(!union_owned(Element, .{ .object = @ptrCast(&slot) }));
 }
