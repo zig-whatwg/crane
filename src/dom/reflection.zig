@@ -13,25 +13,26 @@
 //! [ReflectPositive], [ReflectPositiveWithFallback], [ReflectDefault] and
 //! [ReflectRange] modifiers.
 //!
-//! The element's attributes are reached through its interface, never an impl
-//! (AGENTS.md "The impls boundary"). "Get the content attribute" is "get an
-//! attribute by namespace and local name" with a null namespace, so it is
-//! `getAttributeNS(null, name)` - not `getAttribute(name)`, which matches on
-//! qualified name and would find a namespaced attribute whose qualified name
-//! happens to be `name`. Setting and deleting are `setAttributeNS(null, ...)`
-//! and `removeAttributeNS(null, ...)` for the same reason.
+//! Reads use ElementData; writes use the DOM attribute algorithms, which
+//! run attribute change steps and queue mutations and custom element
+//! reactions. The generated accessor owns the CEReactions scope.
+//! "Get the content attribute" matches namespace and local name, with a
+//! null namespace, never a qualified name that could name an attribute in
+//! another namespace. Setting and deleting use that same null namespace.
 //!
 //! Not here: an ElementInternals reflected target (its element's internal
 //! content attribute map - codegen reflects nothing on it), `Element?` and
-//! `FrozenArray<Element>?` (they hold explicitly set attr-elements), and
-//! "limited to only known values" (no [Reflect*] attribute in the IDL is an
-//! enumerated one; those are written out by hand).
+//! `FrozenArray<Element>?` (they hold explicitly set attr-elements).
+//! Enumerated members call `getEnumerated` with their canonical keywords
+//! and defaults; the current generated [Reflect*] defaults are not enums.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const dom = @import("dom");
-const html = @import("html");
+const element_data = @import("element_data.zig");
+const element_attributes = @import("element_attributes.zig");
+const encoding_parse = @import("encoding_parse.zig");
+const token_lists = @import("token_lists.zig");
 
 const DOMString = runtime.DOMString;
 const USVString = runtime.USVString;
@@ -62,6 +63,48 @@ pub const Spec = struct {
     /// [ReflectRange] (unsigned long): "clamped to the range [min, max]".
     range: ?[2]u32 = null,
 };
+
+/// The canonical keywords and getter results for a limited-to-known-values
+/// attribute. Defaults describe the resulting state: "" for a nonnullable
+/// attribute with no keyword, null for a nullable attribute with no keyword.
+pub const EnumeratedSpec = struct {
+    name: []const u8,
+    keywords: []const []const u8,
+    missing: ?[]const u8 = "",
+    invalid: ?[]const u8 = "",
+};
+
+/// Referrer Policy section 3, including the empty-string policy.
+pub const referrer_policy_keywords: []const []const u8 = &.{
+    "",
+    "no-referrer",
+    "no-referrer-when-downgrade",
+    "same-origin",
+    "origin",
+    "strict-origin",
+    "origin-when-cross-origin",
+    "strict-origin-when-cross-origin",
+    "unsafe-url",
+};
+
+/// HTML 2.6.1 DOMString/DOMString? getter steps 1-4: resolve the enumerated
+/// state, then return its canonical keyword. These bytes are comptime
+/// constants, so the returned DOMString does not borrow attribute storage.
+pub fn getEnumerated(comptime T: type, instance: *runtime.Instance, comptime spec: EnumeratedSpec) !T {
+    if (T != DOMString and T != ?DOMString) @compileError("An enumerated reflector returns DOMString or DOMString?");
+    if (T == DOMString and (spec.missing == null or spec.invalid == null)) @compileError("A nonnullable enumerated reflector needs string defaults");
+    const attribute = try getContentAttribute(instance, spec.name);
+    const keyword: ?[]const u8 = if (attribute) |value| blk: {
+        // HTML 2.3.2: keywords match ASCII case-insensitively, without
+        // trimming whitespace. An unknown keyword selects the invalid state.
+        for (spec.keywords) |known| {
+            if (std.ascii.eqlIgnoreCase(value.asSlice(), known)) break :blk known;
+        }
+        break :blk spec.invalid;
+    } else spec.missing;
+    if (T == ?DOMString) return if (keyword) |text| DOMString.initInterned(text) else null;
+    return DOMString.initInterned(keyword.?);
+}
 
 /// The getter steps of a reflected IDL attribute of Zig type `T`.
 ///
@@ -100,30 +143,31 @@ pub fn set(comptime T: type, instance: *runtime.Instance, comptime spec: Spec, v
 // ---------------------------------------------------------------------------
 
 /// "Get the content attribute": the value of the attribute whose namespace is
-/// null and local name is `name`, or null. The returned DOMString is released
-/// with `instance.ctx.allocator` (a no-op for the borrowed view the DOM hands
-/// out today; correct should it ever hand out a copy).
+/// null and local name is `name`, or null. Borrows the attribute's bytes;
+/// string getters copy them for their caller before returning.
 fn getContentAttribute(instance: *runtime.Instance, comptime name: []const u8) !?DOMString {
-    return interfaces.Element.call_getAttributeNS(instance, null, DOMString.initInterned(name));
+    const data = element_data.of(instance) orelse return error.InvalidStateError;
+    const attribute = element_data.getAttributeByNamespaceAndLocalName(data, null, name) orelse return null;
+    return DOMString.initInterned(attribute.value);
 }
 
 /// "Set the content attribute" with `value`: set an attribute value given
 /// the element, `name` and `value`. The DOM copies `value`.
 fn setContentAttribute(instance: *runtime.Instance, comptime name: []const u8, value: []const u8) !void {
-    try interfaces.Element.call_setAttributeNS(instance, null, DOMString.initInterned(name), .{ .domstring = DOMString.initInterned(value) });
+    try element_attributes.set(instance, name, value, .{});
 }
 
 /// "Delete the content attribute".
 fn deleteContentAttribute(instance: *runtime.Instance, comptime name: []const u8) !void {
-    try interfaces.Element.call_removeAttributeNS(instance, null, DOMString.initInterned(name));
+    element_attributes.remove(instance, null, name);
 }
 
 // ---------------------------------------------------------------------------
 // DOMString, DOMString?, USVString
 // ---------------------------------------------------------------------------
 
-/// DOMString getter. Steps 3-4 (enumerated, limited to only known values) do
-/// not apply: see the module comment.
+/// DOMString getter for a generated [Reflect*] default. Enumerated members
+/// use getEnumerated for steps 3-4.
 fn getString(instance: *runtime.Instance, comptime spec: Spec) !DOMString {
     const allocator = instance.ctx.allocator;
     // [ReflectURL] on a DOMString (HTMLObjectElement.codeBase, which the IDL
@@ -199,11 +243,11 @@ fn urlString(instance: *runtime.Instance, comptime spec: Spec) ![]const u8 {
 }
 
 /// HTML "encoding-parsing-and-serializing a URL" given `input`, relative to
-/// `element`'s node document - html.encoding_parse, with the document's base
+/// `element`'s node document - encoding_parse, with the document's base
 /// URL and character encoding - or null for failure. Owned by
 /// `element.ctx.allocator`.
 fn encodingParseAndSerialize(element: *runtime.Instance, input: []const u8) !?[]const u8 {
-    return html.encoding_parse.encodingParseAndSerialize(element, input);
+    return encoding_parse.encodingParseAndSerialize(element, input);
 }
 
 /// Infra "convert to a scalar value string": every lone surrogate - WTF-8 in
@@ -225,7 +269,7 @@ fn scalarValueString(allocator: std.mem.Allocator, value: []const u8) ![]const u
 /// boolean getter: "If contentAttributeValue is null, then return false.
 /// Return true." Presence is all that counts - `disabled="false"` is true.
 fn getBoolean(instance: *runtime.Instance, comptime spec: Spec) !bool {
-    return interfaces.Element.call_hasAttributeNS(instance, null, DOMString.initInterned(spec.name));
+    return (try getContentAttribute(instance, spec.name)) != null;
 }
 
 /// boolean setter.
@@ -404,7 +448,7 @@ fn getTokenList(instance: *runtime.Instance, comptime spec: Spec) !*runtime.Inst
     const list = try interfaces.DOMTokenList.init(instance.ctx.allocator, instance.ctx);
     errdefer interfaces.DOMTokenList.deinit(list);
     // DOMTokenList.init installed the association this needs.
-    try dom.token_lists.associate(list, instance, spec.name);
+    try token_lists.associate(list, instance, spec.name);
     return list;
 }
 

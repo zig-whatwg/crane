@@ -218,15 +218,10 @@ pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for src
-/// Spec: [CEReactions, ReflectURL] attribute USVString src;
-/// Reflects the src content attribute (URL-valued).
+/// HTML 2.6.1 URL getter. The Trusted Types binding override calls this
+/// accessor directly rather than emitting a ReflectURL fallback.
 pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
-    // For ReflectURL, we should return the resolved URL, but for now return raw value
-    // IMPORTANT: Clone the value - the interface layer will free the returned slice
-    if (getContentAttribute(instance, "src")) |attr| {
-        return try instance.ctx.allocator.dupe(u8, attr.asSlice());
-    }
-    return "";
+    return dom_module.reflection.get(runtime.USVString, instance, .{ .name = "src", .url = true });
 }
 
 /// Getter for noModule
@@ -264,15 +259,22 @@ pub fn get_defer(instance: *runtime.Instance) anyerror!bool {
 /// Spec: [CEReactions] attribute DOMString? crossOrigin;
 /// Reflects the crossorigin content attribute (limited to known values).
 pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    // Per spec, crossOrigin returns null if attribute is absent
-    return getContentAttribute(instance, "crossorigin");
+    return dom_module.reflection.getEnumerated(?runtime.DOMString, instance, .{
+        .name = "crossorigin",
+        .keywords = &.{ "anonymous", "use-credentials" },
+        .missing = null,
+        .invalid = "anonymous",
+    });
 }
 
 /// Getter for referrerPolicy
 /// Spec: [CEReactions] attribute DOMString referrerPolicy;
 /// Reflects the referrerpolicy content attribute.
 pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return getContentAttribute(instance, "referrerpolicy") orelse runtime.DOMString.initEmpty();
+    return dom_module.reflection.getEnumerated(runtime.DOMString, instance, .{
+        .name = "referrerpolicy",
+        .keywords = dom_module.reflection.referrer_policy_keywords,
+    });
 }
 
 /// Getter for integrity
@@ -286,7 +288,12 @@ pub fn get_integrity(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Spec: [CEReactions] attribute DOMString fetchPriority;
 /// Reflects the fetchpriority content attribute.
 pub fn get_fetchPriority(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return getContentAttribute(instance, "fetchpriority") orelse runtime.DOMString.initEmpty();
+    return dom_module.reflection.getEnumerated(runtime.DOMString, instance, .{
+        .name = "fetchpriority",
+        .keywords = &.{ "high", "low", "auto" },
+        .missing = "auto",
+        .invalid = "auto",
+    });
 }
 
 /// Getter for text

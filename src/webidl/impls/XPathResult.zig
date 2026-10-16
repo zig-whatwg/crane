@@ -1,197 +1,111 @@
-//! Implementation for XPathResult interface
-//!
-//! XPath 1.0 result object - holds the result of evaluating an XPath expression.
-//! Per DOM Level 3 XPath: https://www.w3.org/TR/DOM-Level-3-XPath/
-//!
-//! NOTE: This is a stub implementation. The XPath core is implemented in
-//! src/dom/xpath/ but needs module wiring to be connected to this WebIDL interface.
-
+//! DOM Level 3 XPath §1.4: typed results, snapshots and mutation-sensitive iterators.
+//! Native node holds keep result nodes alive, including detached trees. The
+//! iterator also holds its document, whose existing version invalidates iteration.
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const XPathResult = interfaces.XPathResult;
+const dom = @import("dom");
+const engine = @import("engine");
+const Node = runtime.Instance;
+const document_slot: engine.TracedSlot = .{ .name = "xpath:document" };
 
-pub const State = XPathResult.State;
-
-pub const ImplError = error{
-    TypeError,
-    InvalidState,
-    NotSupported,
-};
-
-/// Result type constants (matching WebIDL constants)
-pub const ResultType = struct {
-    pub const ANY_TYPE: u16 = 0;
-    pub const NUMBER_TYPE: u16 = 1;
-    pub const STRING_TYPE: u16 = 2;
-    pub const BOOLEAN_TYPE: u16 = 3;
-    pub const UNORDERED_NODE_ITERATOR_TYPE: u16 = 4;
-    pub const ORDERED_NODE_ITERATOR_TYPE: u16 = 5;
-    pub const UNORDERED_NODE_SNAPSHOT_TYPE: u16 = 6;
-    pub const ORDERED_NODE_SNAPSHOT_TYPE: u16 = 7;
-    pub const ANY_UNORDERED_NODE_TYPE: u16 = 8;
-    pub const FIRST_ORDERED_NODE_TYPE: u16 = 9;
-};
-
-/// Internal state for XPathResult
+pub const State = interfaces.XPathResult.State;
+pub const ImplError = error{ TypeError, InvalidStateError, OutOfMemory };
+pub const construction_args = .{ "result_type", "number_value", "string_value", "boolean_value", "nodes", "document" };
 pub const InternalState = struct {
-    /// The result type
-    result_type: u16,
-    /// Number value (for NUMBER_TYPE)
-    number_value: f64,
-    /// String value (for STRING_TYPE)
-    string_value: []const u8,
-    /// Boolean value (for BOOLEAN_TYPE)
-    boolean_value: bool,
-    /// Snapshot length (for snapshot types)
-    snapshot_length: u32,
-    /// Iterator position (for iterator types)
-    iterator_position: usize,
-    /// Whether the iterator is invalid (document modified)
-    invalid_iterator_state: bool,
-    /// Allocator used for this result
     allocator: std.mem.Allocator,
-
-    pub fn deinit(self: *InternalState) void {
-        self.allocator.destroy(self);
-    }
+    result_type: u16 = 0,
+    number_value: f64 = 0,
+    string_value: []const u8 = &.{},
+    boolean_value: bool = false,
+    nodes: dom.node_holds.Holder,
+    document: dom.node_holds.MemberHold = .{},
+    version: ?u64 = null,
+    position: usize = 0,
 };
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    return instance;
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        internal.deinit();
-        state.own._internal = null;
+pub fn initOwn(instance: *Node, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
+    internal.* = .{ .allocator = allocator, .nodes = dom.node_holds.Holder.init(allocator, instance) };
+    errdefer internal.nodes.release();
+    errdefer internal.document.release(instance, document_slot);
+    if (comptime @hasField(@TypeOf(args), "result_type")) internal.result_type = args.result_type;
+    if (comptime @hasField(@TypeOf(args), "number_value")) internal.number_value = args.number_value;
+    if (comptime @hasField(@TypeOf(args), "boolean_value")) internal.boolean_value = args.boolean_value;
+    if (comptime @hasField(@TypeOf(args), "string_value")) internal.string_value = try allocator.dupe(u8, args.string_value);
+    errdefer allocator.free(internal.string_value);
+    if (comptime @hasField(@TypeOf(args), "nodes")) try internal.nodes.hold(*Node, args.nodes, null);
+    if (internal.result_type == 4 or internal.result_type == 5) {
+        if (comptime @hasField(@TypeOf(args), "document")) {
+            if (args.document) |document| {
+                internal.document.take(instance, document, document_slot);
+                internal.version = dom.live_collections.treeVersion(document);
+            }
+        }
     }
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
+    instance.getState(StateType).own._internal = internal;
 }
 
-/// Getter for resultType
-pub fn get_resultType(instance: *runtime.Instance) anyerror!u16 {
+pub fn deinitOwn(instance: *Node) void {
     const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    return internal.result_type;
+    const internal = state.own._internal orelse return;
+    internal.nodes.release();
+    internal.document.release(instance, document_slot);
+    internal.allocator.free(internal.string_value);
+    internal.allocator.destroy(internal);
+    state.own._internal = null;
 }
 
-/// Getter for numberValue
-pub fn get_numberValue(instance: *runtime.Instance) anyerror!f64 {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    if (internal.result_type != ResultType.NUMBER_TYPE) {
-        return error.TypeError;
-    }
+fn data(instance: *Node) !*InternalState {
+    return instance.getState(State).own._internal orelse error.InvalidStateError;
+}
+fn invalid(internal: *const InternalState) bool {
+    if (internal.result_type != 4 and internal.result_type != 5) return false;
+    const document = internal.document.get() orelse return internal.version != null;
+    return internal.version != dom.live_collections.treeVersion(document);
+}
+pub fn get_resultType(instance: *Node) anyerror!u16 {
+    return (try data(instance)).result_type;
+}
+pub fn get_numberValue(instance: *Node) anyerror!f64 {
+    const internal = try data(instance);
+    if (internal.result_type != 1) return error.TypeError;
     return internal.number_value;
 }
-
-/// Getter for stringValue
-/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
-pub fn get_stringValue(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    if (internal.result_type != ResultType.STRING_TYPE) {
-        return error.TypeError;
-    }
-    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.string_value);
+pub fn get_stringValue(instance: *Node) anyerror!runtime.DOMString {
+    const internal = try data(instance);
+    if (internal.result_type != 2) return error.TypeError;
+    return runtime.DOMString.initDupe(instance.ctx.allocator, internal.string_value);
 }
-
-/// Getter for booleanValue
-pub fn get_booleanValue(instance: *runtime.Instance) anyerror!bool {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    if (internal.result_type != ResultType.BOOLEAN_TYPE) {
-        return error.TypeError;
-    }
+pub fn get_booleanValue(instance: *Node) anyerror!bool {
+    const internal = try data(instance);
+    if (internal.result_type != 3) return error.TypeError;
     return internal.boolean_value;
 }
-
-/// Getter for singleNodeValue
-pub fn get_singleNodeValue(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-
-    // Valid for ANY_UNORDERED_NODE_TYPE and FIRST_ORDERED_NODE_TYPE
-    if (internal.result_type != ResultType.ANY_UNORDERED_NODE_TYPE and
-        internal.result_type != ResultType.FIRST_ORDERED_NODE_TYPE)
-    {
-        return error.TypeError;
-    }
-
-    // TODO: Return actual node when XPath core is wired up
-    return null;
+pub fn get_singleNodeValue(instance: *Node) anyerror!?*Node {
+    const internal = try data(instance);
+    if (internal.result_type != 8 and internal.result_type != 9) return error.TypeError;
+    return internal.nodes.get(0);
 }
-
-/// Getter for invalidIteratorState
-pub fn get_invalidIteratorState(instance: *runtime.Instance) anyerror!bool {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    return internal.invalid_iterator_state;
+pub fn get_invalidIteratorState(instance: *Node) anyerror!bool {
+    return invalid(try data(instance));
 }
-
-/// Getter for snapshotLength
-pub fn get_snapshotLength(instance: *runtime.Instance) anyerror!u32 {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-
-    // Valid for snapshot types
-    if (internal.result_type != ResultType.UNORDERED_NODE_SNAPSHOT_TYPE and
-        internal.result_type != ResultType.ORDERED_NODE_SNAPSHOT_TYPE)
-    {
-        return error.TypeError;
-    }
-
-    return internal.snapshot_length;
+pub fn get_snapshotLength(instance: *Node) anyerror!u32 {
+    const internal = try data(instance);
+    if (internal.result_type != 6 and internal.result_type != 7) return error.TypeError;
+    return @intCast(internal.nodes.holds.len);
 }
-
-/// Operation: snapshotItem
-pub fn call_snapshotItem(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    _ = index;
-
-    // Valid for snapshot types only
-    if (internal.result_type != ResultType.UNORDERED_NODE_SNAPSHOT_TYPE and
-        internal.result_type != ResultType.ORDERED_NODE_SNAPSHOT_TYPE)
-    {
-        return error.TypeError;
-    }
-
-    // TODO: Return actual node when XPath core is wired up
-    return null;
+pub fn call_snapshotItem(instance: *Node, index: u32) anyerror!?*Node {
+    const internal = try data(instance);
+    if (internal.result_type != 6 and internal.result_type != 7) return error.TypeError;
+    return internal.nodes.get(index);
 }
-
-/// Operation: iterateNext
-pub fn call_iterateNext(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-
-    // Valid for iterator types only
-    if (internal.result_type != ResultType.UNORDERED_NODE_ITERATOR_TYPE and
-        internal.result_type != ResultType.ORDERED_NODE_ITERATOR_TYPE)
-    {
-        return error.TypeError;
-    }
-
-    // Check for invalid state
-    if (internal.invalid_iterator_state) {
-        return error.InvalidState;
-    }
-
-    // TODO: Return actual node when XPath core is wired up
-    return null;
+pub fn call_iterateNext(instance: *Node) anyerror!?*Node {
+    const internal = try data(instance);
+    if (internal.result_type != 4 and internal.result_type != 5) return error.TypeError;
+    if (invalid(internal)) return error.InvalidStateError;
+    const node = internal.nodes.get(internal.position) orelse return null;
+    internal.position += 1;
+    return node;
 }

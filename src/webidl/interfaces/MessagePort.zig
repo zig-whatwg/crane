@@ -201,28 +201,36 @@ pub const MessagePort = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onclose(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MessagePortImpl.get_onclose(instance);
+        if (comptime @hasDecl(MessagePortImpl, "get_onclose")) return try MessagePortImpl.get_onclose(instance);
+        return event_handlers.value(EventHandler, instance, "onclose");
     }
 
     pub fn set_onclose(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MessagePortImpl.set_onclose(instance, value);
+        if (comptime @hasDecl(MessagePortImpl, "set_onclose")) return try MessagePortImpl.set_onclose(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onclose", value);
     }
 
     pub fn get_onmessage(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MessagePortImpl.get_onmessage(instance);
+        if (comptime @hasDecl(MessagePortImpl, "get_onmessage")) return try MessagePortImpl.get_onmessage(instance);
+        return event_handlers.value(EventHandler, instance, "onmessage");
     }
 
     pub fn set_onmessage(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MessagePortImpl.set_onmessage(instance, value);
+        if (comptime @hasDecl(MessagePortImpl, "set_onmessage")) return try MessagePortImpl.set_onmessage(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmessage", value);
     }
 
     pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MessagePortImpl.get_onmessageerror(instance);
+        if (comptime @hasDecl(MessagePortImpl, "get_onmessageerror")) return try MessagePortImpl.get_onmessageerror(instance);
+        return event_handlers.value(EventHandler, instance, "onmessageerror");
     }
 
     pub fn set_onmessageerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MessagePortImpl.set_onmessageerror(instance, value);
+        if (comptime @hasDecl(MessagePortImpl, "set_onmessageerror")) return try MessagePortImpl.set_onmessageerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmessageerror", value);
     }
 
     pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {

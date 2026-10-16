@@ -126,14 +126,9 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.base.own.composed = composed;
 
     // Initialize other Event attributes to defaults
-    state.base.own.target = null;
-    state.base.own.srcElement = null;
-    state.base.own.currentTarget = null;
-    state.base.own.eventPhase = Event.get_NONE(); // NONE = 0
     state.base.own.cancelBubble = false;
     state.base.own.returnValue = true; // !canceled_flag
     state.base.own.defaultPrevented = false;
-    state.base.own.isTrusted = false;
     state.base.own.timeStamp = @as(f64, @floatFromInt(clock.monotonicMillis()));
 
     // Create the INHERITED Event internal state and set the initialized flag.

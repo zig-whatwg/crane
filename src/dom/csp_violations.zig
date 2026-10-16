@@ -74,13 +74,33 @@ pub fn shouldBlockInline(
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
     const container = policy_containers.of(document) orelse return false;
     if (container.csp_list.policies.items.len == 0) return false;
+    var eligible = matching;
+    // §6.7.3.1 steps 1-2, reached by §6.7.3.3 step 2: a supplied nonce
+    // cannot authorize a script with dangling markup in an attribute. Read
+    // the native attribute list, without creating Attr wrappers. Blink's
+    // ContentSecurityPolicy::IsNonceableElement uses the same scan; Chrome
+    // and Firefox pass non-nonceable-elements.html (10/10, cc74d2669f).
+    // Step 3's duplicate-attribute parse flag is not supplied by HTML yet.
+    if (inline_type == .script and eligible.nonce != null) {
+        const attributes = @import("element_attributes.zig");
+        for (0..attributes.count(element)) |index| {
+            const attribute = attributes.at(element, index) orelse continue;
+            if (containsDanglingMarkup(attribute.local_name) or
+                containsDanglingMarkup(attribute.value) or
+                (if (attribute.prefix) |prefix| containsDanglingMarkup(prefix) else false))
+            {
+                eligible.nonce = null;
+                break;
+            }
+        }
+    }
     const window: ?*runtime.Instance = interfaces.Document.get_defaultView(document) catch null;
     // 2. Let result be "Allowed".
     var blocked = false;
     // 3. For each policy of the CSP list:
     for (container.csp_list.policies.items) |*policy| {
         // 3.1.1. A directive whose inline check allows it is skipped.
-        const directive = csp.inline_check.blockingDirective(policy, matching, inline_type, source) orelse continue;
+        const directive = csp.inline_check.blockingDirective(policy, eligible, inline_type, source) orelse continue;
         // 3.1.2-3.1.7. A violation of the effective directive for inline
         // checks, its resource "inline", its element the element, a sample
         // when the directive asks for one - reported.
@@ -97,6 +117,13 @@ pub fn shouldBlockInline(
     }
     // 4. Return result.
     return blocked;
+}
+
+fn containsDanglingMarkup(value: []const u8) bool {
+    for ([_][]const u8{ "<script", "<style", "<link" }) |signal| {
+        if (std.ascii.indexOfIgnoreCase(value, signal) != null) return true;
+    }
+    return false;
 }
 
 /// CSP 4.2.4 "Should navigation request of type be blocked by Content

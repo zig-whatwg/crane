@@ -284,20 +284,26 @@ pub const MediaStreamTrack = struct {
         return try MediaStreamTrackImpl.get_muted(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onmute(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaStreamTrackImpl.get_onmute(instance);
+        if (comptime @hasDecl(MediaStreamTrackImpl, "get_onmute")) return try MediaStreamTrackImpl.get_onmute(instance);
+        return event_handlers.value(EventHandler, instance, "onmute");
     }
 
     pub fn set_onmute(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaStreamTrackImpl.set_onmute(instance, value);
+        if (comptime @hasDecl(MediaStreamTrackImpl, "set_onmute")) return try MediaStreamTrackImpl.set_onmute(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmute", value);
     }
 
     pub fn get_onunmute(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaStreamTrackImpl.get_onunmute(instance);
+        if (comptime @hasDecl(MediaStreamTrackImpl, "get_onunmute")) return try MediaStreamTrackImpl.get_onunmute(instance);
+        return event_handlers.value(EventHandler, instance, "onunmute");
     }
 
     pub fn set_onunmute(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaStreamTrackImpl.set_onunmute(instance, value);
+        if (comptime @hasDecl(MediaStreamTrackImpl, "set_onunmute")) return try MediaStreamTrackImpl.set_onunmute(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onunmute", value);
     }
 
     pub fn get_readyState(instance: *runtime.Instance) anyerror!MediaStreamTrackState {
@@ -305,19 +311,23 @@ pub const MediaStreamTrack = struct {
     }
 
     pub fn get_onended(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaStreamTrackImpl.get_onended(instance);
+        if (comptime @hasDecl(MediaStreamTrackImpl, "get_onended")) return try MediaStreamTrackImpl.get_onended(instance);
+        return event_handlers.value(EventHandler, instance, "onended");
     }
 
     pub fn set_onended(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaStreamTrackImpl.set_onended(instance, value);
+        if (comptime @hasDecl(MediaStreamTrackImpl, "set_onended")) return try MediaStreamTrackImpl.set_onended(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onended", value);
     }
 
     pub fn get_oncapturehandlechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaStreamTrackImpl.get_oncapturehandlechange(instance);
+        if (comptime @hasDecl(MediaStreamTrackImpl, "get_oncapturehandlechange")) return try MediaStreamTrackImpl.get_oncapturehandlechange(instance);
+        return event_handlers.value(EventHandler, instance, "oncapturehandlechange");
     }
 
     pub fn set_oncapturehandlechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaStreamTrackImpl.set_oncapturehandlechange(instance, value);
+        if (comptime @hasDecl(MediaStreamTrackImpl, "set_oncapturehandlechange")) return try MediaStreamTrackImpl.set_oncapturehandlechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oncapturehandlechange", value);
     }
 
     pub fn get_contentHint(instance: *runtime.Instance) anyerror!DOMString {
@@ -333,11 +343,13 @@ pub const MediaStreamTrack = struct {
     }
 
     pub fn get_onisolationchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaStreamTrackImpl.get_onisolationchange(instance);
+        if (comptime @hasDecl(MediaStreamTrackImpl, "get_onisolationchange")) return try MediaStreamTrackImpl.get_onisolationchange(instance);
+        return event_handlers.value(EventHandler, instance, "onisolationchange");
     }
 
     pub fn set_onisolationchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaStreamTrackImpl.set_onisolationchange(instance, value);
+        if (comptime @hasDecl(MediaStreamTrackImpl, "set_onisolationchange")) return try MediaStreamTrackImpl.set_onisolationchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onisolationchange", value);
     }
 
     pub fn call_sendCaptureAction(instance: *runtime.Instance, action: CaptureAction) anyerror!runtime.JSValue {

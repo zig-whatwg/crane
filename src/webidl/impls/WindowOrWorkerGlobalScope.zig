@@ -110,11 +110,39 @@ pub fn get_crypto(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return crypto(instance);
 }
 
-/// Operation: reportError
+/// HTML 8.1.4.6 reportError(e): report an exception e for this global.
+/// https://html.spec.whatwg.org/multipage/webappapis.html#dom-reporterror
+/// As WebKit's WindowOrWorkerGlobalScope::reportError
+/// (Source/WebCore/page/WindowOrWorkerGlobalScope.cpp) does, pass the value
+/// to the existing exception reporter for the receiver's relevant global.
 pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = e;
-    return error.NotImplemented;
+    // Report an exception, step 2: extract error information. The strings
+    // belong to this call; error_value stays borrowed from e.
+    // reportError never throws: an engine that cannot extract the
+    // information (error.NotSupported on JSC/QuickJS) or a failed
+    // allocation still reports e, with empty details.
+    const allocator = instance.ctx.allocator;
+    const info = engine.extractErrorInformation(instance.ctx, e, allocator) catch null;
+    defer if (info) |i| {
+        allocator.free(i.message);
+        allocator.free(i.filename);
+    };
+    const extracted: runtime.ErrorInfo = if (info) |i| .{
+        .message = i.message,
+        .filename = i.filename,
+        .lineno = i.lineno,
+        .colno = i.colno,
+        .error_value = i.error_value,
+    } else .{
+        .message = "",
+        .filename = "",
+        .lineno = 0,
+        .colno = 0,
+        .error_value = e,
+    };
+    // Steps 4–7: the host reporter applies the reporting-mode guard, fires
+    // the ErrorEvent, and forwards unhandled worker errors to their owner.
+    _ = @import("html").report_exception.reportErrorInfo(instance, &extracted, .{});
 }
 
 /// Operation: setInterval

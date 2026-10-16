@@ -23,6 +23,7 @@
 //! popovers and dialogs, and constructed by script.
 
 const std = @import("std");
+const event_construction = @import("dom").event_construction;
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -31,7 +32,6 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const engine = @import("engine");
-const EventImpl = @import("Event.zig");
 const KeptInstance = @import("dom").custom_elements.KeptInstance;
 const ToggleEvent = interfaces.ToggleEvent;
 
@@ -110,7 +110,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     const instance = try init(ctx.allocator, State, &ToggleEvent.vtable, ctx);
     errdefer deinit(instance);
     const dict: dictionaries.ToggleEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{} };
-    try EventImpl.innerEventCreationSteps(instance, @"type", dict.base);
+    try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(dict.base));
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const allocator = internal.allocator;
     const old_state = try allocator.dupe(u8, if (dict.oldState) |v| v.asSlice() else "");

@@ -225,12 +225,16 @@ pub const NetworkInformation = struct {
         return try NetworkInformationImpl.get_rtt(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try NetworkInformationImpl.get_onchange(instance);
+        if (comptime @hasDecl(NetworkInformationImpl, "get_onchange")) return try NetworkInformationImpl.get_onchange(instance);
+        return event_handlers.value(EventHandler, instance, "onchange");
     }
 
     pub fn set_onchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try NetworkInformationImpl.set_onchange(instance, value);
+        if (comptime @hasDecl(NetworkInformationImpl, "set_onchange")) return try NetworkInformationImpl.set_onchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onchange", value);
     }
 
     /// Extended attributes: [SameObject]

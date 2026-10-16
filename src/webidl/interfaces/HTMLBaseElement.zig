@@ -331,7 +331,7 @@ pub const HTMLBaseElement = struct {
         return try HTMLBaseElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {

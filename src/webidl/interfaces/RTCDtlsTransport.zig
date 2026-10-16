@@ -208,20 +208,26 @@ pub const RTCDtlsTransport = struct {
         return try RTCDtlsTransportImpl.get_state(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onstatechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCDtlsTransportImpl.get_onstatechange(instance);
+        if (comptime @hasDecl(RTCDtlsTransportImpl, "get_onstatechange")) return try RTCDtlsTransportImpl.get_onstatechange(instance);
+        return event_handlers.value(EventHandler, instance, "onstatechange");
     }
 
     pub fn set_onstatechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCDtlsTransportImpl.set_onstatechange(instance, value);
+        if (comptime @hasDecl(RTCDtlsTransportImpl, "set_onstatechange")) return try RTCDtlsTransportImpl.set_onstatechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onstatechange", value);
     }
 
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCDtlsTransportImpl.get_onerror(instance);
+        if (comptime @hasDecl(RTCDtlsTransportImpl, "get_onerror")) return try RTCDtlsTransportImpl.get_onerror(instance);
+        return event_handlers.value(EventHandler, instance, "onerror");
     }
 
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCDtlsTransportImpl.set_onerror(instance, value);
+        if (comptime @hasDecl(RTCDtlsTransportImpl, "set_onerror")) return try RTCDtlsTransportImpl.set_onerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
 
     pub fn call_getRemoteCertificates(instance: *runtime.Instance) anyerror!runtime.JSValue {

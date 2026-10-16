@@ -187,12 +187,16 @@ pub const DocumentPictureInPicture = struct {
         return try DocumentPictureInPictureImpl.get_window(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onenter(instance: *runtime.Instance) anyerror!EventHandler {
-        return try DocumentPictureInPictureImpl.get_onenter(instance);
+        if (comptime @hasDecl(DocumentPictureInPictureImpl, "get_onenter")) return try DocumentPictureInPictureImpl.get_onenter(instance);
+        return event_handlers.value(EventHandler, instance, "onenter");
     }
 
     pub fn set_onenter(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try DocumentPictureInPictureImpl.set_onenter(instance, value);
+        if (comptime @hasDecl(DocumentPictureInPictureImpl, "set_onenter")) return try DocumentPictureInPictureImpl.set_onenter(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onenter", value);
     }
 
     /// Extended attributes: [NewObject]

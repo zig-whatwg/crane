@@ -77,21 +77,3 @@ pub fn call_getTrackById(instance: *runtime.Instance, id: runtime.DOMString) any
     }
     return null;
 }
-pub fn get_onchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "change");
-}
-pub fn get_onaddtrack(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "addtrack");
-}
-pub fn get_onremovetrack(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "removetrack");
-}
-pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "change", value);
-}
-pub fn set_onaddtrack(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "addtrack", value);
-}
-pub fn set_onremovetrack(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "removetrack", value);
-}

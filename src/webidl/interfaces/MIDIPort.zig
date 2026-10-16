@@ -242,12 +242,16 @@ pub const MIDIPort = struct {
         return try MIDIPortImpl.get_connection(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onstatechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MIDIPortImpl.get_onstatechange(instance);
+        if (comptime @hasDecl(MIDIPortImpl, "get_onstatechange")) return try MIDIPortImpl.get_onstatechange(instance);
+        return event_handlers.value(EventHandler, instance, "onstatechange");
     }
 
     pub fn set_onstatechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MIDIPortImpl.set_onstatechange(instance, value);
+        if (comptime @hasDecl(MIDIPortImpl, "set_onstatechange")) return try MIDIPortImpl.set_onstatechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onstatechange", value);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {

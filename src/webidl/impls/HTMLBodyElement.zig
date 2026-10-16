@@ -32,16 +32,3 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 
     return instance;
 }
-
-/// Getter for onorientationchange
-pub fn get_onorientationchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for onorientationchange
-pub fn set_onorientationchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}

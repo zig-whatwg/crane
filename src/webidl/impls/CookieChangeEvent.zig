@@ -18,7 +18,6 @@ const CookieChangeEvent = interfaces.CookieChangeEvent;
 const CookieListItem = cookiestore.CookieListItem;
 /// CookieChangeEvent is an Event: its Event state is reached through Event's
 /// impl (AGENTS.md "The impls boundary", rule 1).
-const EventImpl = @import("Event.zig");
 
 // The FrozenArray<CookieListItem> attributes are made through the engine
 // protocol (cookie_values.zig).
@@ -139,14 +138,14 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 
     const internal = getInternalState(instance) orelse return error.NotImplemented;
 
-    // DOM "inner event creation steps" and the constructor's step 2, through
-    // Event's impl (CookieChangeEvent is an Event): the initialized flag -
+    // DOM "inner event creation steps" and the constructor's step 2, the
+    // steps Event installs (dom.event_construction): the initialized flag -
     // without which dispatchEvent throws InvalidStateError - the timeStamp,
     // EventInit's members, then the type. (The type was dropped, and the flag
     // never set.) Step 5, the event constructing steps, is this
     // constructor's own: changed and deleted, below.
     const event_init = if (eventInitDict.was_passed) eventInitDict.value.base else dictionaries.EventInit{};
-    try EventImpl.innerEventCreationSteps(instance, @"type", event_init);
+    try @import("dom").event_construction.innerEventCreationSteps(instance, @"type", @import("dom").event_construction.eventInitFrom(event_init));
 
     // Process eventInitDict if provided
     if (eventInitDict.was_passed) {

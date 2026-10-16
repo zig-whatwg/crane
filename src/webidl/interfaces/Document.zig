@@ -1336,20 +1336,26 @@ pub const Document = struct {
         _ = value;
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onfullscreenchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try DocumentImpl.get_onfullscreenchange(instance);
+        if (comptime @hasDecl(DocumentImpl, "get_onfullscreenchange")) return try DocumentImpl.get_onfullscreenchange(instance);
+        return event_handlers.value(EventHandler, instance, "onfullscreenchange");
     }
 
     pub fn set_onfullscreenchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try DocumentImpl.set_onfullscreenchange(instance, value);
+        if (comptime @hasDecl(DocumentImpl, "set_onfullscreenchange")) return try DocumentImpl.set_onfullscreenchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onfullscreenchange", value);
     }
 
     pub fn get_onfullscreenerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try DocumentImpl.get_onfullscreenerror(instance);
+        if (comptime @hasDecl(DocumentImpl, "get_onfullscreenerror")) return try DocumentImpl.get_onfullscreenerror(instance);
+        return event_handlers.value(EventHandler, instance, "onfullscreenerror");
     }
 
     pub fn set_onfullscreenerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try DocumentImpl.set_onfullscreenerror(instance, value);
+        if (comptime @hasDecl(DocumentImpl, "set_onfullscreenerror")) return try DocumentImpl.set_onfullscreenerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onfullscreenerror", value);
     }
 
     /// Extended attributes: [PutForwards=href], [LegacyUnforgeable]
@@ -1548,20 +1554,24 @@ pub const Document = struct {
 
     /// Extended attributes: [LegacyLenientThis]
     pub fn get_onreadystatechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try DocumentImpl.get_onreadystatechange(instance);
+        if (comptime @hasDecl(DocumentImpl, "get_onreadystatechange")) return try DocumentImpl.get_onreadystatechange(instance);
+        return event_handlers.value(EventHandler, instance, "onreadystatechange");
     }
 
     /// Extended attributes: [LegacyLenientThis]
     pub fn set_onreadystatechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try DocumentImpl.set_onreadystatechange(instance, value);
+        if (comptime @hasDecl(DocumentImpl, "set_onreadystatechange")) return try DocumentImpl.set_onreadystatechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onreadystatechange", value);
     }
 
     pub fn get_onvisibilitychange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try DocumentImpl.get_onvisibilitychange(instance);
+        if (comptime @hasDecl(DocumentImpl, "get_onvisibilitychange")) return try DocumentImpl.get_onvisibilitychange(instance);
+        return event_handlers.value(EventHandler, instance, "onvisibilitychange");
     }
 
     pub fn set_onvisibilitychange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try DocumentImpl.set_onvisibilitychange(instance, value);
+        if (comptime @hasDecl(DocumentImpl, "set_onvisibilitychange")) return try DocumentImpl.set_onvisibilitychange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onvisibilitychange", value);
     }
 
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
@@ -1671,19 +1681,23 @@ pub const Document = struct {
     }
 
     pub fn get_onfreeze(instance: *runtime.Instance) anyerror!EventHandler {
-        return try DocumentImpl.get_onfreeze(instance);
+        if (comptime @hasDecl(DocumentImpl, "get_onfreeze")) return try DocumentImpl.get_onfreeze(instance);
+        return event_handlers.value(EventHandler, instance, "onfreeze");
     }
 
     pub fn set_onfreeze(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try DocumentImpl.set_onfreeze(instance, value);
+        if (comptime @hasDecl(DocumentImpl, "set_onfreeze")) return try DocumentImpl.set_onfreeze(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onfreeze", value);
     }
 
     pub fn get_onresume(instance: *runtime.Instance) anyerror!EventHandler {
-        return try DocumentImpl.get_onresume(instance);
+        if (comptime @hasDecl(DocumentImpl, "get_onresume")) return try DocumentImpl.get_onresume(instance);
+        return event_handlers.value(EventHandler, instance, "onresume");
     }
 
     pub fn set_onresume(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try DocumentImpl.set_onresume(instance, value);
+        if (comptime @hasDecl(DocumentImpl, "set_onresume")) return try DocumentImpl.set_onresume(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onresume", value);
     }
 
     pub fn get_wasDiscarded(instance: *runtime.Instance) anyerror!bool {
@@ -1707,19 +1721,23 @@ pub const Document = struct {
     }
 
     pub fn get_onpointerlockchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try DocumentImpl.get_onpointerlockchange(instance);
+        if (comptime @hasDecl(DocumentImpl, "get_onpointerlockchange")) return try DocumentImpl.get_onpointerlockchange(instance);
+        return event_handlers.value(EventHandler, instance, "onpointerlockchange");
     }
 
     pub fn set_onpointerlockchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try DocumentImpl.set_onpointerlockchange(instance, value);
+        if (comptime @hasDecl(DocumentImpl, "set_onpointerlockchange")) return try DocumentImpl.set_onpointerlockchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onpointerlockchange", value);
     }
 
     pub fn get_onpointerlockerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try DocumentImpl.get_onpointerlockerror(instance);
+        if (comptime @hasDecl(DocumentImpl, "get_onpointerlockerror")) return try DocumentImpl.get_onpointerlockerror(instance);
+        return event_handlers.value(EventHandler, instance, "onpointerlockerror");
     }
 
     pub fn set_onpointerlockerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try DocumentImpl.set_onpointerlockerror(instance, value);
+        if (comptime @hasDecl(DocumentImpl, "set_onpointerlockerror")) return try DocumentImpl.set_onpointerlockerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onpointerlockerror", value);
     }
 
     pub fn get_prerendering(instance: *runtime.Instance) anyerror!bool {
@@ -1727,11 +1745,13 @@ pub const Document = struct {
     }
 
     pub fn get_onprerenderingchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try DocumentImpl.get_onprerenderingchange(instance);
+        if (comptime @hasDecl(DocumentImpl, "get_onprerenderingchange")) return try DocumentImpl.get_onprerenderingchange(instance);
+        return event_handlers.value(EventHandler, instance, "onprerenderingchange");
     }
 
     pub fn set_onprerenderingchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try DocumentImpl.set_onprerenderingchange(instance, value);
+        if (comptime @hasDecl(DocumentImpl, "set_onprerenderingchange")) return try DocumentImpl.set_onprerenderingchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onprerenderingchange", value);
     }
 
     /// Extended attributes: [SameObject]

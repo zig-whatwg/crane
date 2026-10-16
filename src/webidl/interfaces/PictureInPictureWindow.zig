@@ -186,11 +186,15 @@ pub const PictureInPictureWindow = struct {
         return try PictureInPictureWindowImpl.get_height(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onresize(instance: *runtime.Instance) anyerror!EventHandler {
-        return try PictureInPictureWindowImpl.get_onresize(instance);
+        if (comptime @hasDecl(PictureInPictureWindowImpl, "get_onresize")) return try PictureInPictureWindowImpl.get_onresize(instance);
+        return event_handlers.value(EventHandler, instance, "onresize");
     }
 
     pub fn set_onresize(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try PictureInPictureWindowImpl.set_onresize(instance, value);
+        if (comptime @hasDecl(PictureInPictureWindowImpl, "set_onresize")) return try PictureInPictureWindowImpl.set_onresize(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onresize", value);
     }
 };

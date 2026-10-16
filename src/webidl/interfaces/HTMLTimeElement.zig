@@ -326,7 +326,7 @@ pub const HTMLTimeElement = struct {
         return try HTMLTimeElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_dateTime(instance: *runtime.Instance) anyerror!DOMString {

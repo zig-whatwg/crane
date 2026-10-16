@@ -36,7 +36,6 @@ const Registry = runtime.InstanceRegistry(.document, InternalState);
 
 // Import impls ONLY for internal initialization methods not exposed via interfaces
 const NodeImpl = @import("Node.zig");
-const EventImpl = @import("Event.zig");
 const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
 const RangeImpl = @import("Range.zig");
 const same_object = @import("same_object.zig");
@@ -236,13 +235,6 @@ pub const InternalState = struct {
     /// Whether document is hidden
     hidden: bool,
 
-    // === Legacy color properties (deprecated but still supported) ===
-    fg_color: runtime.DOMString,
-    link_color: runtime.DOMString,
-    vlink_color: runtime.DOMString,
-    alink_color: runtime.DOMString,
-    bg_color: runtime.DOMString,
-
     // === Fullscreen state ===
     fullscreen_enabled: bool,
     fullscreen_element: ?*runtime.Instance,
@@ -357,7 +349,7 @@ pub const InternalState = struct {
 
     /// Optional module dispose function - set when engine is configured
     /// Used to dispose V8/JSC module handles without compile-time dependency
-    dispose_module_fn: ?*const fn (*anyopaque) void,
+    dispose_module_fn: ?dom_document_modules.ModuleDisposeFn,
 
     // === Stylesheet Blocking (HTML Standard §14.3.3) ===
 
@@ -444,12 +436,6 @@ pub const InternalState = struct {
             .design_mode = runtime.DOMString.initInterned("off"),
             .visibility_state = ._visible_,
             .hidden = false,
-            // Legacy colors (empty = not set)
-            .fg_color = runtime.DOMString.initEmpty(),
-            .link_color = runtime.DOMString.initEmpty(),
-            .vlink_color = runtime.DOMString.initEmpty(),
-            .alink_color = runtime.DOMString.initEmpty(),
-            .bg_color = runtime.DOMString.initEmpty(),
             // Fullscreen
             // Per Fullscreen spec, fullscreenEnabled returns true only if fullscreen is supported
             // and the document's fullscreen flag is set. For a new Document, default to false.
@@ -557,11 +543,6 @@ pub const InternalState = struct {
         self.content_type.deinit(self.allocator);
         self.encoding.deinit(self.allocator);
         self.design_mode.deinit(self.allocator);
-        self.fg_color.deinit(self.allocator);
-        self.link_color.deinit(self.allocator);
-        self.vlink_color.deinit(self.allocator);
-        self.alink_color.deinit(self.allocator);
-        self.bg_color.deinit(self.allocator);
 
         // Event handlers
 
@@ -578,7 +559,7 @@ pub const InternalState = struct {
                 // Dispose module handle using stored function pointer
                 // (null if no JS engine configured, e.g., in stub test mode)
                 if (self.dispose_module_fn) |dispose_fn| {
-                    dispose_fn(entry.value_ptr.*);
+                    dispose_fn(entry.key_ptr.*, entry.value_ptr.*);
                 }
                 // Free the key (URL string)
                 self.allocator.free(entry.key_ptr.*);
@@ -1234,12 +1215,6 @@ pub fn get_prerendering(instance: *runtime.Instance) anyerror!bool {
     return false;
 }
 
-/// Getter for onprerenderingchange
-/// Returns the event handler for prerenderingchange events.
-pub fn get_onprerenderingchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "prerenderingchange");
-}
-
 /// Getter for fullscreenEnabled
 /// Fullscreen API - Returns whether fullscreen is enabled
 /// Spec: https://fullscreen.spec.whatwg.org/#dom-document-fullscreenenabled
@@ -1256,16 +1231,6 @@ pub fn get_fullscreen(instance: *runtime.Instance) anyerror!bool {
     return internal.fullscreen_element != null;
 }
 
-/// Getter for onfullscreenchange
-pub fn get_onfullscreenchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "fullscreenchange");
-}
-
-/// Getter for onfullscreenerror
-pub fn get_onfullscreenerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "fullscreenerror");
-}
-
 /// Getter for timeline
 pub fn get_timeline(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
@@ -1278,26 +1243,6 @@ pub fn get_timeline(instance: *runtime.Instance) anyerror!*runtime.Instance {
 pub fn get_pictureInPictureEnabled(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return false;
-}
-
-/// Getter for onpointerlockchange
-pub fn get_onpointerlockchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "pointerlockchange");
-}
-
-/// Getter for onpointerlockerror
-pub fn get_onpointerlockerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "pointerlockerror");
-}
-
-/// Getter for onfreeze
-pub fn get_onfreeze(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "freeze");
-}
-
-/// Getter for onresume
-pub fn get_onresume(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "resume");
 }
 
 /// Getter for wasDiscarded
@@ -1927,54 +1872,68 @@ pub fn get_visibilityState(instance: *runtime.Instance) anyerror!enums.DocumentV
     return internal.visibility_state;
 }
 
-/// Getter for onreadystatechange
-pub fn get_onreadystatechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "readystatechange");
-}
-
-/// Getter for onvisibilitychange
-pub fn get_onvisibilitychange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "visibilitychange");
-}
-
 /// Getter for fgColor
 /// HTML §14.3.11 (obsolete) - Returns document's text color
 pub fn get_fgColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Clone to transfer ownership to caller (interface layer will free)
-    return try internal.fg_color.clone(instance.ctx.allocator);
+    const dom = @import("dom");
+    // HTML's obsolete Document colors: only the current HTML body reflects;
+    // no body or a frameset returns "". Then DOMString getter steps 1-6.
+    const body = (try interfaces.Document.get_body(instance)) orelse return runtime.DOMString.initEmpty();
+    const data = dom.element_data.of(body) orelse return error.InvalidStateError;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return runtime.DOMString.initEmpty();
+    var value = try dom.reflection.get(runtime.DOMString, body, .{ .name = "text" });
+    defer value.deinit(body.ctx.allocator);
+    // An adopted body's realm can differ; this getter's caller frees with
+    // the Document's allocator, not the body's.
+    return value.clone(instance.ctx.allocator);
 }
 
 /// Getter for linkColor
 /// HTML §14.3.11 (obsolete) - Returns document's link color
 pub fn get_linkColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Clone to transfer ownership to caller (interface layer will free)
-    return try internal.link_color.clone(instance.ctx.allocator);
+    const dom = @import("dom");
+    const body = (try interfaces.Document.get_body(instance)) orelse return runtime.DOMString.initEmpty();
+    const data = dom.element_data.of(body) orelse return error.InvalidStateError;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return runtime.DOMString.initEmpty();
+    var value = try dom.reflection.get(runtime.DOMString, body, .{ .name = "link" });
+    defer value.deinit(body.ctx.allocator);
+    return value.clone(instance.ctx.allocator);
 }
 
 /// Getter for vlinkColor
 /// HTML §14.3.11 (obsolete) - Returns document's visited link color
 pub fn get_vlinkColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Clone to transfer ownership to caller (interface layer will free)
-    return try internal.vlink_color.clone(instance.ctx.allocator);
+    const dom = @import("dom");
+    const body = (try interfaces.Document.get_body(instance)) orelse return runtime.DOMString.initEmpty();
+    const data = dom.element_data.of(body) orelse return error.InvalidStateError;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return runtime.DOMString.initEmpty();
+    var value = try dom.reflection.get(runtime.DOMString, body, .{ .name = "vlink" });
+    defer value.deinit(body.ctx.allocator);
+    return value.clone(instance.ctx.allocator);
 }
 
 /// Getter for alinkColor
 /// HTML §14.3.11 (obsolete) - Returns document's active link color
 pub fn get_alinkColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Clone to transfer ownership to caller (interface layer will free)
-    return try internal.alink_color.clone(instance.ctx.allocator);
+    const dom = @import("dom");
+    const body = (try interfaces.Document.get_body(instance)) orelse return runtime.DOMString.initEmpty();
+    const data = dom.element_data.of(body) orelse return error.InvalidStateError;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return runtime.DOMString.initEmpty();
+    var value = try dom.reflection.get(runtime.DOMString, body, .{ .name = "alink" });
+    defer value.deinit(body.ctx.allocator);
+    return value.clone(instance.ctx.allocator);
 }
 
 /// Getter for bgColor
 /// HTML §14.3.11 (obsolete) - Returns document's background color
 pub fn get_bgColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Clone to transfer ownership to caller (interface layer will free)
-    return try internal.bg_color.clone(instance.ctx.allocator);
+    const dom = @import("dom");
+    const body = (try interfaces.Document.get_body(instance)) orelse return runtime.DOMString.initEmpty();
+    const data = dom.element_data.of(body) orelse return error.InvalidStateError;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return runtime.DOMString.initEmpty();
+    var value = try dom.reflection.get(runtime.DOMString, body, .{ .name = "bgcolor" });
+    defer value.deinit(body.ctx.allocator);
+    return value.clone(instance.ctx.allocator);
 }
 
 /// Getter for anchors
@@ -2181,67 +2140,9 @@ pub fn setActiveElement(instance: *runtime.Instance, element: ?*runtime.Instance
     internal.active_element = element;
 }
 
-// =============================================================================
-// Event Handler Helpers
-// =============================================================================
-
-/// Document's own event handler IDL attributes (onreadystatechange,
-/// onvisibilitychange, ...): the document is their target, and they live in
-/// its event handler map on EventTarget with every other handler. The
-/// GlobalEventHandlers members are inherited (impls/GlobalEventHandlers.zig).
-fn getEventHandler(instance: *runtime.Instance, name: []const u8) typedefs.EventHandler {
-    return @import("EventTarget.zig").eventHandler(typedefs.EventHandler, instance, name);
-}
-
-fn setEventHandler(instance: *runtime.Instance, name: []const u8, handler: typedefs.EventHandler) ImplError!void {
-    @import("EventTarget.zig").setEventHandler(typedefs.EventHandler, instance, name, handler) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => return error.InvalidStateError,
-    };
-}
-
-// =============================================================================
-// Event Handler Getters
-// =============================================================================
-
-// =============================================================================
-// Event Handler Setters
-// =============================================================================
-
-/// Setter for onprerenderingchange
-pub fn set_onprerenderingchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "prerenderingchange", value);
-}
-
-/// Setter for onfullscreenchange
-pub fn set_onfullscreenchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "fullscreenchange", value);
-}
-
-/// Setter for onfullscreenerror
-pub fn set_onfullscreenerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "fullscreenerror", value);
-}
-
-/// Setter for onpointerlockchange
-pub fn set_onpointerlockchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "pointerlockchange", value);
-}
-
-/// Setter for onpointerlockerror
-pub fn set_onpointerlockerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "pointerlockerror", value);
-}
-
-/// Setter for onfreeze
-pub fn set_onfreeze(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "freeze", value);
-}
-
-/// Setter for onresume
-pub fn set_onresume(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "resume", value);
-}
+// Document's own event handler IDL attributes (onreadystatechange,
+// onvisibilitychange, ...) are the generated interface's: HTML's getter and
+// setter, through dom.event_handlers (HTML 8.1.8.1).
 
 /// HTML document.domain's setter.
 /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#dom-document-domain
@@ -2460,54 +2361,56 @@ pub fn set_designMode(instance: *runtime.Instance, value: runtime.DOMString) any
     // Invalid values are ignored per spec
 }
 
-/// Setter for onreadystatechange
-pub fn set_onreadystatechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "readystatechange", value);
-}
-
-/// Setter for onvisibilitychange
-pub fn set_onvisibilitychange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "visibilitychange", value);
-}
-
 /// Setter for fgColor
 /// HTML §14.3.11 (obsolete) - Sets document's text color
 pub fn set_fgColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.fg_color.deinit(internal.allocator);
-    internal.fg_color = value.clone(internal.allocator) catch return error.OutOfMemory;
+    const dom = @import("dom");
+    // No body or a frameset is a no-op. Otherwise run the DOMString
+    // reflection setter: set the corresponding content attribute on body.
+    const body = (try interfaces.Document.get_body(instance)) orelse return;
+    const data = dom.element_data.of(body) orelse return error.InvalidStateError;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return;
+    try dom.reflection.set(runtime.DOMString, body, .{ .name = "text" }, value);
 }
 
 /// Setter for linkColor
 /// HTML §14.3.11 (obsolete) - Sets document's link color
 pub fn set_linkColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.link_color.deinit(internal.allocator);
-    internal.link_color = value.clone(internal.allocator) catch return error.OutOfMemory;
+    const dom = @import("dom");
+    const body = (try interfaces.Document.get_body(instance)) orelse return;
+    const data = dom.element_data.of(body) orelse return error.InvalidStateError;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return;
+    try dom.reflection.set(runtime.DOMString, body, .{ .name = "link" }, value);
 }
 
 /// Setter for vlinkColor
 /// HTML §14.3.11 (obsolete) - Sets document's visited link color
 pub fn set_vlinkColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.vlink_color.deinit(internal.allocator);
-    internal.vlink_color = value.clone(internal.allocator) catch return error.OutOfMemory;
+    const dom = @import("dom");
+    const body = (try interfaces.Document.get_body(instance)) orelse return;
+    const data = dom.element_data.of(body) orelse return error.InvalidStateError;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return;
+    try dom.reflection.set(runtime.DOMString, body, .{ .name = "vlink" }, value);
 }
 
 /// Setter for alinkColor
 /// HTML §14.3.11 (obsolete) - Sets document's active link color
 pub fn set_alinkColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.alink_color.deinit(internal.allocator);
-    internal.alink_color = value.clone(internal.allocator) catch return error.OutOfMemory;
+    const dom = @import("dom");
+    const body = (try interfaces.Document.get_body(instance)) orelse return;
+    const data = dom.element_data.of(body) orelse return error.InvalidStateError;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return;
+    try dom.reflection.set(runtime.DOMString, body, .{ .name = "alink" }, value);
 }
 
 /// Setter for bgColor
 /// HTML §14.3.11 (obsolete) - Sets document's background color
 pub fn set_bgColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.bg_color.deinit(internal.allocator);
-    internal.bg_color = value.clone(internal.allocator) catch return error.OutOfMemory;
+    const dom = @import("dom");
+    const body = (try interfaces.Document.get_body(instance)) orelse return;
+    const data = dom.element_data.of(body) orelse return error.InvalidStateError;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return;
+    try dom.reflection.set(runtime.DOMString, body, .{ .name = "bgcolor" }, value);
 }
 
 /// Setter for adoptedStyleSheets
@@ -2581,10 +2484,11 @@ pub fn call_exitPictureInPicture(instance: *runtime.Instance) anyerror!runtime.J
 
 /// Operation: createExpression
 pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = expression;
-    _ = resolver;
-    return error.NotImplemented;
+    // DOM XPath: compile once; namespace callbacks run during construction.
+    return interfaces.XPathExpression.initWith(instance.ctx.allocator, instance.ctx, .{
+        .expression = expression,
+        .resolver = resolver,
+    });
 }
 
 /// Operation: elementFromPoint
@@ -3356,7 +3260,7 @@ pub fn call_createEvent(instance: *runtime.Instance, interface: runtime.DOMStrin
     // dispatchEvent never throws - which is exactly what "If the event's
     // initialized flag is not set, an InvalidStateError must be thrown"
     // checks. initEvent() sets it again.
-    EventImpl.setInitializedFlag(event, false);
+    if (@import("dom").event_dispatch.of(event)) |state| state.initialized_flag = false;
 
     // Step 10.
     return event;
@@ -3512,13 +3416,14 @@ pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: run
 
 /// Operation: evaluate
 pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(??*runtime.CallbackWrapper), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = expression;
-    _ = contextNode;
-    _ = resolver;
-    _ = @"type";
-    _ = result;
-    return error.NotImplemented;
+    // DOM Level 3 XPath §1.4: compile, evaluate and convert to the requested type.
+    const compiled = try interfaces.XPathExpression.initWith(instance.ctx.allocator, instance.ctx, .{
+        .expression = expression,
+        .resolver = resolver,
+    });
+    // This private, unwrapped temporary owns both its grammar and instance storage.
+    defer runtime.Instance.deinit(compiled);
+    return interfaces.XPathExpression.call_evaluate(compiled, contextNode, @"type", result);
 }
 
 /// Operation: hasStorageAccess
@@ -4496,7 +4401,7 @@ fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
     const generation = runtime.SlabAllocator.generationOf(event);
     defer event.releaseIfUnwrapped(generation);
     interfaces.Event.call_initEvent(event, runtime.DOMString.initInterned("beforeunload"), webidl.Opt(bool).passed(false), webidl.Opt(bool).passed(true)) catch return .{};
-    const not_canceled = @import("EventTarget.zig").dispatchTrusted(window, event) catch true;
+    const not_canceled = @import("dom").fire_event.dispatchTrusted(window, event) catch true;
     // Step 6's condition, less sticky activation: "eventFiringResult is
     // false, or the returnValue attribute of event is not the empty string".
     const return_value = interfaces.BeforeUnloadEvent.get_returnValue(event) catch runtime.DOMString.initEmpty();
@@ -4992,7 +4897,7 @@ fn fireEventWith(realm_of: *runtime.Instance, target: *runtime.Instance, event_t
         webidl.Opt(dictionaries.EventInit).passed(init_dict),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = @import("EventTarget.zig").dispatchTrusted(target, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrusted(target, event) catch {};
     // A listener that kept the event keeps it alive; otherwise it is done.
     event.releaseIfUnwrapped(generation);
 }
@@ -5012,7 +4917,7 @@ fn firePageTransition(document: *runtime.Instance, window: *runtime.Instance, ev
         webidl.Opt(dictionaries.PageTransitionEventInit).passed(.{ .base = .{}, .persisted = persisted }),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = @import("EventTarget.zig").dispatchTrusted(window, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrusted(window, event) catch {};
     event.releaseIfUnwrapped(generation);
 }
 
@@ -5088,8 +4993,8 @@ pub fn call_browsingTopics(instance: *runtime.Instance, options: webidl.Opt(dict
 /// Operation: createNSResolver
 pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
-    _ = nodeResolver;
-    return error.NotImplemented;
+    // DOM §8.3: return nodeResolver (the legacy method is an identity).
+    return nodeResolver;
 }
 
 /// Operation: createNodeIterator
@@ -5387,7 +5292,7 @@ pub fn setModule(instance: *runtime.Instance, url: []const u8, module: *anyopaqu
         // Dispose the old module handle using stored function pointer
         // (null if no JS engine configured, e.g., in stub test mode)
         if (internal.dispose_module_fn) |dispose_fn| {
-            dispose_fn(old_module);
+            dispose_fn(url, old_module);
         }
         // Remove old entry (key is already allocated)
         _ = internal.module_map.remove(url);
@@ -5409,7 +5314,7 @@ pub fn hasModule(instance: *runtime.Instance, url: []const u8) bool {
 /// Set the module disposal function for this document
 /// Called when a JS engine is configured to enable proper module cleanup.
 /// Without this, modules won't be disposed (acceptable in stub test mode).
-pub fn setModuleDisposeFunction(instance: *runtime.Instance, dispose_fn: ?*const fn (*anyopaque) void) void {
+pub fn setModuleDisposeFunction(instance: *runtime.Instance, dispose_fn: ?dom_document_modules.ModuleDisposeFn) void {
     if (getInternal(instance)) |internal| {
         internal.dispose_module_fn = dispose_fn;
     }
@@ -5596,30 +5501,13 @@ pub fn isInlineScriptAllowedByCSP(
     parser_inserted: bool,
 ) bool {
     const internal = getInternal(instance) orelse return true; // No document = allow
-    // The violation's global: the current settings object's - the
-    // document's window, for a script its parser or its script inserted.
-    const window: ?*runtime.Instance = get_defaultView(instance) catch null;
-    // 2. Let result be "Allowed".
-    var allowed = true;
-    // 3. For each policy of the CSP list:
-    for (internal.policy_container.csp_list.policies.items) |*policy| {
-        // 3.1.1. A directive whose inline check allows it is skipped.
-        const directive = csp.inline_check.blockingDirective(policy, .{ .nonce = nonce, .parser_inserted = parser_inserted }, .script, source) orelse continue;
-        // 3.1.2-3.1.7. A violation of the effective directive for inline
-        // checks, resource "inline", the element, and a sample when the
-        // directive asks for one, reported.
-        if (window) |w| @import("dom").csp_violations.reportViolation(w, &.{
-            .policy = policy,
-            .effective_directive = csp.inline_check.effectiveDirectiveForInlineCheck(.script),
-            .resource = .@"inline",
-            .element = element,
-            .sample = csp.violation_events.sampleFor(directive, source),
-        });
-        // 3.1.8. An enforced policy blocks.
-        if (policy.disposition == .enforce) allowed = false;
-    }
-    // 4. Return result.
-    return allowed;
+    if (internal.policy_container.csp_list.policies.items.len == 0) return true;
+    // CSP §4.2.3 uses the same nonce eligibility and violation-reporting
+    // algorithm for inline scripts as for the other inline behaviors.
+    return !@import("dom").csp_violations.shouldBlockInline(element, .script, source, .{
+        .nonce = nonce,
+        .parser_inserted = parser_inserted,
+    });
 }
 
 // =============================================================================

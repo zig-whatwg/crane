@@ -193,19 +193,25 @@ pub const ScreenDetails = struct {
         return try ScreenDetailsImpl.get_currentScreen(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onscreenschange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ScreenDetailsImpl.get_onscreenschange(instance);
+        if (comptime @hasDecl(ScreenDetailsImpl, "get_onscreenschange")) return try ScreenDetailsImpl.get_onscreenschange(instance);
+        return event_handlers.value(EventHandler, instance, "onscreenschange");
     }
 
     pub fn set_onscreenschange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ScreenDetailsImpl.set_onscreenschange(instance, value);
+        if (comptime @hasDecl(ScreenDetailsImpl, "set_onscreenschange")) return try ScreenDetailsImpl.set_onscreenschange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onscreenschange", value);
     }
 
     pub fn get_oncurrentscreenchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ScreenDetailsImpl.get_oncurrentscreenchange(instance);
+        if (comptime @hasDecl(ScreenDetailsImpl, "get_oncurrentscreenchange")) return try ScreenDetailsImpl.get_oncurrentscreenchange(instance);
+        return event_handlers.value(EventHandler, instance, "oncurrentscreenchange");
     }
 
     pub fn set_oncurrentscreenchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ScreenDetailsImpl.set_oncurrentscreenchange(instance, value);
+        if (comptime @hasDecl(ScreenDetailsImpl, "set_oncurrentscreenchange")) return try ScreenDetailsImpl.set_oncurrentscreenchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oncurrentscreenchange", value);
     }
 };

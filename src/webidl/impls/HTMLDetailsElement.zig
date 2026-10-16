@@ -22,7 +22,6 @@ const HTMLDetailsElement = interfaces.HTMLDetailsElement;
 
 // Ancestors: a details element IS an HTMLElement, an Element, a Node and an
 // EventTarget, and reaches their state through their impls.
-const EventTargetImpl = @import("EventTarget.zig");
 
 // The hooks the element installs its steps into: the attribute change steps
 // (DOM 4.9) and the insertion steps (DOM 4.2.3).
@@ -316,7 +315,7 @@ fn fireToggleEvent(element: *runtime.Instance, old_state: []const u8, new_state:
     // then, and only an event nothing wrapped is freed here.
     const generation = runtime.SlabAllocator.generationOf(event);
     defer event.releaseIfUnwrapped(generation);
-    _ = try EventTargetImpl.dispatchTrusted(element, event);
+    _ = try @import("dom").fire_event.dispatchTrusted(element, event);
 }
 
 /// HTML "queue a details toggle event task" given element, oldState and

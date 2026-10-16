@@ -229,20 +229,26 @@ pub const MediaKeySession = struct {
         return try MediaKeySessionImpl.get_keyStatuses(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onkeystatuseschange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaKeySessionImpl.get_onkeystatuseschange(instance);
+        if (comptime @hasDecl(MediaKeySessionImpl, "get_onkeystatuseschange")) return try MediaKeySessionImpl.get_onkeystatuseschange(instance);
+        return event_handlers.value(EventHandler, instance, "onkeystatuseschange");
     }
 
     pub fn set_onkeystatuseschange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaKeySessionImpl.set_onkeystatuseschange(instance, value);
+        if (comptime @hasDecl(MediaKeySessionImpl, "set_onkeystatuseschange")) return try MediaKeySessionImpl.set_onkeystatuseschange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onkeystatuseschange", value);
     }
 
     pub fn get_onmessage(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaKeySessionImpl.get_onmessage(instance);
+        if (comptime @hasDecl(MediaKeySessionImpl, "get_onmessage")) return try MediaKeySessionImpl.get_onmessage(instance);
+        return event_handlers.value(EventHandler, instance, "onmessage");
     }
 
     pub fn set_onmessage(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaKeySessionImpl.set_onmessage(instance, value);
+        if (comptime @hasDecl(MediaKeySessionImpl, "set_onmessage")) return try MediaKeySessionImpl.set_onmessage(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmessage", value);
     }
 
     pub fn call_update(instance: *runtime.Instance, response: BufferSource) anyerror!runtime.JSValue {

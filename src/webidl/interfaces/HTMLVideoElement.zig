@@ -404,7 +404,7 @@ pub const HTMLVideoElement = struct {
         return try HTMLVideoElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_width(instance: *runtime.Instance) anyerror!u32 {
@@ -478,20 +478,26 @@ pub const HTMLVideoElement = struct {
         try reflection.set(bool, instance, .{ .name = "playsinline" }, value);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onenterpictureinpicture(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLVideoElementImpl.get_onenterpictureinpicture(instance);
+        if (comptime @hasDecl(HTMLVideoElementImpl, "get_onenterpictureinpicture")) return try HTMLVideoElementImpl.get_onenterpictureinpicture(instance);
+        return event_handlers.value(EventHandler, instance, "onenterpictureinpicture");
     }
 
     pub fn set_onenterpictureinpicture(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLVideoElementImpl.set_onenterpictureinpicture(instance, value);
+        if (comptime @hasDecl(HTMLVideoElementImpl, "set_onenterpictureinpicture")) return try HTMLVideoElementImpl.set_onenterpictureinpicture(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onenterpictureinpicture", value);
     }
 
     pub fn get_onleavepictureinpicture(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLVideoElementImpl.get_onleavepictureinpicture(instance);
+        if (comptime @hasDecl(HTMLVideoElementImpl, "get_onleavepictureinpicture")) return try HTMLVideoElementImpl.get_onleavepictureinpicture(instance);
+        return event_handlers.value(EventHandler, instance, "onleavepictureinpicture");
     }
 
     pub fn set_onleavepictureinpicture(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLVideoElementImpl.set_onleavepictureinpicture(instance, value);
+        if (comptime @hasDecl(HTMLVideoElementImpl, "set_onleavepictureinpicture")) return try HTMLVideoElementImpl.set_onleavepictureinpicture(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onleavepictureinpicture", value);
     }
 
     /// Extended attributes: [CEReactions]

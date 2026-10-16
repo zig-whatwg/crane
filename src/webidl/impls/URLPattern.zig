@@ -77,63 +77,31 @@ pub fn call_constructor(ctx: runtime.Context, args: interfaces.URLPattern.Constr
 
     const state = instance.getState(State);
 
-    // Extract input and options based on constructor overload
-    var input_init: URLPatternInit = .{};
+    // Create steps 1-3 preserve the input kind: a string is parsed by the
+    // constructor-string algorithm; a dictionary cannot take a separate base.
+    var core_input = urlpattern.constructor.Input{ .init = .{} };
     var base_url: ?[]const u8 = null;
-    var ignore_case: bool = false;
-
+    var ignore_case = false;
     switch (args) {
         .URLPatternInput_USVString_URLPatternOptions => |variant| {
-            // constructor(input, baseURL, options)
             base_url = variant.baseURL;
-            if (variant.options.was_passed) {
-                if (variant.options.value.ignoreCase) |ic| {
-                    ignore_case = ic;
-                }
-            }
-            // Convert WebIDL URLPatternInput to internal URLPatternInit
-            switch (variant.input) {
-                .usvstring => |s| {
-                    // Parse URL string pattern - treat as full URL pattern string
-                    // The constructor_string_parser will handle this
-                    input_init = urlpattern.parseConstructorString(ctx.allocator, s) catch {
-                        return error.TypeError;
-                    };
-                },
-                .urlpattern_init => |webidl_init| {
-                    input_init = convertURLPatternInit(webidl_init, base_url);
-                },
-            }
+            if (variant.options.was_passed) ignore_case = variant.options.value.ignoreCase orelse false;
+            core_input = switch (variant.input) {
+                .usvstring => |value| .{ .string = value },
+                .urlpattern_init => return error.TypeError,
+            };
         },
         .URLPatternInput_URLPatternOptions => |variant| {
-            // constructor(input, options)
-            if (variant.options.was_passed) {
-                if (variant.options.value.ignoreCase) |ic| {
-                    ignore_case = ic;
-                }
-            }
-            if (variant.input.was_passed) {
-                switch (variant.input.value) {
-                    .usvstring => |s| {
-                        input_init = urlpattern.parseConstructorString(ctx.allocator, s) catch {
-                            return error.TypeError;
-                        };
-                    },
-                    .urlpattern_init => |webidl_init| {
-                        input_init = convertURLPatternInit(webidl_init, null);
-                    },
-                }
-            }
-            // If input was not passed, use empty init (default wildcards)
+            if (variant.options.was_passed) ignore_case = variant.options.value.ignoreCase orelse false;
+            if (variant.input.was_passed) core_input = switch (variant.input.value) {
+                .usvstring => |value| .{ .string = value },
+                .urlpattern_init => |value| .{ .init = convertURLPatternInit(value) },
+            };
         },
     }
-
-    // Create the core URLPattern
-    var pattern = URLPatternCore.create(ctx.allocator, .{ .init = input_init }, .{
+    var pattern = URLPatternCore.createWithBase(ctx.allocator, core_input, base_url, .{
         .ignore_case = ignore_case,
-    }) catch {
-        return error.TypeError;
-    };
+    }) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else error.TypeError;
     errdefer pattern.deinit(ctx.allocator);
 
     // Create InternalState
@@ -152,7 +120,7 @@ pub fn call_constructor(ctx: runtime.Context, args: interfaces.URLPattern.Constr
 }
 
 /// Convert WebIDL URLPatternInit to internal URLPatternInit
-fn convertURLPatternInit(webidl_init: dictionaries.URLPatternInit, base_url: ?[]const u8) URLPatternInit {
+fn convertURLPatternInit(webidl_init: dictionaries.URLPatternInit) URLPatternInit {
     return URLPatternInit{
         .protocol = webidl_init.protocol,
         .username = webidl_init.username,
@@ -162,7 +130,7 @@ fn convertURLPatternInit(webidl_init: dictionaries.URLPatternInit, base_url: ?[]
         .pathname = webidl_init.pathname,
         .search = webidl_init.search,
         .hash = webidl_init.hash,
-        .base_url = webidl_init.baseURL orelse base_url,
+        .base_url = webidl_init.baseURL,
     };
 }
 
@@ -245,36 +213,30 @@ pub fn call_test(instance: *runtime.Instance, input: webidl.Opt(typedefs.URLPatt
     const internal = state.own._internal orelse return error.InvalidState;
     const allocator = instance.ctx.allocator;
 
-    // Convert WebIDL input to internal input format
     const base_url_str: ?[]const u8 = if (baseURL.was_passed) baseURL.value else null;
+    const core_input = convertMatchInput(input);
+    // URL matching step 12.1 throws only for this argument combination.
+    if (core_input == .init and base_url_str != null) return error.TypeError;
+    return urlpattern.testMatchInput(allocator, &internal.pattern, core_input, base_url_str);
+}
 
-    if (!input.was_passed) {
-        // No input - use empty string
-        return urlpattern.testMatch(allocator, &internal.pattern, "", base_url_str);
-    }
-
-    switch (input.value) {
-        .usvstring => |s| {
-            return urlpattern.testMatch(allocator, &internal.pattern, s, base_url_str);
-        },
-        .urlpattern_init => |webidl_init| {
-            // Convert to internal URLPatternInput format
-            const internal_input = urlpattern.URLPatternInput{
-                .init = .{
-                    .protocol = webidl_init.protocol,
-                    .username = webidl_init.username,
-                    .password = webidl_init.password,
-                    .hostname = webidl_init.hostname,
-                    .port = webidl_init.port,
-                    .pathname = webidl_init.pathname,
-                    .search = webidl_init.search,
-                    .hash = webidl_init.hash,
-                    .baseURL = webidl_init.baseURL,
-                },
-            };
-            return urlpattern.testMatchInput(allocator, &internal.pattern, internal_input, base_url_str);
-        },
-    }
+fn convertMatchInput(input: webidl.Opt(typedefs.URLPatternInput)) urlpattern.URLPatternInput {
+    // WebIDL defaults omitted input to an empty dictionary.
+    if (!input.was_passed) return .{ .init = .{} };
+    return switch (input.value) {
+        .usvstring => |value| .{ .string = value },
+        .urlpattern_init => |value| .{ .init = .{
+            .protocol = value.protocol,
+            .username = value.username,
+            .password = value.password,
+            .hostname = value.hostname,
+            .port = value.port,
+            .pathname = value.pathname,
+            .search = value.search,
+            .hash = value.hash,
+            .baseURL = value.baseURL,
+        } },
+    };
 }
 
 /// Operation: exec
@@ -284,38 +246,10 @@ pub fn call_exec(instance: *runtime.Instance, input: webidl.Opt(typedefs.URLPatt
     const internal = state.own._internal orelse return error.InvalidState;
     const allocator = instance.ctx.allocator;
 
-    // Convert WebIDL input to internal input format
     const base_url_str: ?[]const u8 = if (baseURL.was_passed) baseURL.value else null;
-
-    var core_result: ?urlpattern.URLPatternResult = null;
-
-    if (!input.was_passed) {
-        // No input - use empty string
-        core_result = urlpattern.exec(allocator, &internal.pattern, "", base_url_str) catch return null;
-    } else {
-        switch (input.value) {
-            .usvstring => |s| {
-                core_result = urlpattern.exec(allocator, &internal.pattern, s, base_url_str) catch return null;
-            },
-            .urlpattern_init => |webidl_init| {
-                // Convert to internal URLPatternInput format
-                const internal_input = urlpattern.URLPatternInput{
-                    .init = .{
-                        .protocol = webidl_init.protocol,
-                        .username = webidl_init.username,
-                        .password = webidl_init.password,
-                        .hostname = webidl_init.hostname,
-                        .port = webidl_init.port,
-                        .pathname = webidl_init.pathname,
-                        .search = webidl_init.search,
-                        .hash = webidl_init.hash,
-                        .baseURL = webidl_init.baseURL,
-                    },
-                };
-                core_result = urlpattern.execInput(allocator, &internal.pattern, internal_input, base_url_str) catch return null;
-            },
-        }
-    }
+    const core_input = convertMatchInput(input);
+    if (core_input == .init and base_url_str != null) return error.TypeError;
+    const core_result = try urlpattern.execInput(allocator, &internal.pattern, core_input, base_url_str);
 
     // If no match, return null
     if (core_result == null) {
@@ -335,7 +269,7 @@ pub fn call_exec(instance: *runtime.Instance, input: webidl.Opt(typedefs.URLPatt
     // the argument is released before this result is converted.
     var inputs: std.ArrayListUnmanaged(typedefs.URLPatternInput) = .empty;
     if (!input.was_passed) {
-        try inputs.append(scratch, .{ .usvstring = "" });
+        try inputs.append(scratch, .{ .urlpattern_init = .{} });
     } else switch (input.value) {
         .usvstring => |s| {
             try inputs.append(scratch, .{ .usvstring = try scratch.dupe(u8, s) });

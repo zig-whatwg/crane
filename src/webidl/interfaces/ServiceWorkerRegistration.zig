@@ -293,12 +293,16 @@ pub const ServiceWorkerRegistration = struct {
         return try ServiceWorkerRegistrationImpl.get_updateViaCache(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onupdatefound(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerRegistrationImpl.get_onupdatefound(instance);
+        if (comptime @hasDecl(ServiceWorkerRegistrationImpl, "get_onupdatefound")) return try ServiceWorkerRegistrationImpl.get_onupdatefound(instance);
+        return event_handlers.value(EventHandler, instance, "onupdatefound");
     }
 
     pub fn set_onupdatefound(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerRegistrationImpl.set_onupdatefound(instance, value);
+        if (comptime @hasDecl(ServiceWorkerRegistrationImpl, "set_onupdatefound")) return try ServiceWorkerRegistrationImpl.set_onupdatefound(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onupdatefound", value);
     }
 
     pub fn get_backgroundFetch(instance: *runtime.Instance) anyerror!*runtime.Instance {

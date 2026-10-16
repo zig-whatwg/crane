@@ -341,7 +341,7 @@ pub const HTMLOListElement = struct {
         return try HTMLOListElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_reversed(instance: *runtime.Instance) anyerror!bool {

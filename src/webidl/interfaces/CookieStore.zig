@@ -195,14 +195,18 @@ pub const CookieStore = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     /// Extended attributes: [Exposed=Window]
     pub fn get_onchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try CookieStoreImpl.get_onchange(instance);
+        if (comptime @hasDecl(CookieStoreImpl, "get_onchange")) return try CookieStoreImpl.get_onchange(instance);
+        return event_handlers.value(EventHandler, instance, "onchange");
     }
 
     /// Extended attributes: [Exposed=Window]
     pub fn set_onchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try CookieStoreImpl.set_onchange(instance, value);
+        if (comptime @hasDecl(CookieStoreImpl, "set_onchange")) return try CookieStoreImpl.set_onchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onchange", value);
     }
 
     pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!runtime.JSValue {

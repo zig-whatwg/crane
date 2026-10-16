@@ -444,15 +444,19 @@ pub const HTMLBodyElement = struct {
         return try HTMLBodyElementImpl.call_constructor(ctx);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onorientationchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLBodyElementImpl.get_onorientationchange(instance);
+        if (comptime @hasDecl(HTMLBodyElementImpl, "get_onorientationchange")) return try HTMLBodyElementImpl.get_onorientationchange(instance);
+        return event_handlers.value(EventHandler, instance, "onorientationchange");
     }
 
     pub fn set_onorientationchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLBodyElementImpl.set_onorientationchange(instance, value);
+        if (comptime @hasDecl(HTMLBodyElementImpl, "set_onorientationchange")) return try HTMLBodyElementImpl.set_onorientationchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onorientationchange", value);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn get_text(instance: *runtime.Instance) anyerror!DOMString {

@@ -182,11 +182,15 @@ pub const DevicePosture = struct {
         return try DevicePostureImpl.get_type(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try DevicePostureImpl.get_onchange(instance);
+        if (comptime @hasDecl(DevicePostureImpl, "get_onchange")) return try DevicePostureImpl.get_onchange(instance);
+        return event_handlers.value(EventHandler, instance, "onchange");
     }
 
     pub fn set_onchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try DevicePostureImpl.set_onchange(instance, value);
+        if (comptime @hasDecl(DevicePostureImpl, "set_onchange")) return try DevicePostureImpl.set_onchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onchange", value);
     }
 };

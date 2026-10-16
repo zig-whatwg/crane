@@ -71,35 +71,9 @@ pub fn get_videoHeight(instance: *runtime.Instance) anyerror!u32 {
     return dom.media_elements.videoSize(instance).height;
 }
 
-/// Getter for onenterpictureinpicture
-pub fn get_onenterpictureinpicture(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onleavepictureinpicture
-pub fn get_onleavepictureinpicture(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for disablePictureInPicture
 pub fn get_disablePictureInPicture(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for onenterpictureinpicture
-pub fn set_onenterpictureinpicture(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onleavepictureinpicture
-pub fn set_onleavepictureinpicture(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
     return error.NotImplemented;
 }
 

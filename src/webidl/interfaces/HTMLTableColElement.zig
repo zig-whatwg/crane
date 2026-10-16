@@ -351,7 +351,7 @@ pub const HTMLTableColElement = struct {
         return try HTMLTableColElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect], [ReflectDefault=1], [ReflectRange=(1,1000)]
     pub fn get_span(instance: *runtime.Instance) anyerror!u32 {

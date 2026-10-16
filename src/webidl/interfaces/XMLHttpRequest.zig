@@ -311,12 +311,16 @@ pub const XMLHttpRequest = struct {
         return try XMLHttpRequestImpl.call_constructor(ctx);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onreadystatechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try XMLHttpRequestImpl.get_onreadystatechange(instance);
+        if (comptime @hasDecl(XMLHttpRequestImpl, "get_onreadystatechange")) return try XMLHttpRequestImpl.get_onreadystatechange(instance);
+        return event_handlers.value(EventHandler, instance, "onreadystatechange");
     }
 
     pub fn set_onreadystatechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try XMLHttpRequestImpl.set_onreadystatechange(instance, value);
+        if (comptime @hasDecl(XMLHttpRequestImpl, "set_onreadystatechange")) return try XMLHttpRequestImpl.set_onreadystatechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onreadystatechange", value);
     }
 
     pub fn get_readyState(instance: *runtime.Instance) anyerror!u16 {

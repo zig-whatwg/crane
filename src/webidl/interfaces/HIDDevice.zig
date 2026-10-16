@@ -218,12 +218,16 @@ pub const HIDDevice = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_oninputreport(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HIDDeviceImpl.get_oninputreport(instance);
+        if (comptime @hasDecl(HIDDeviceImpl, "get_oninputreport")) return try HIDDeviceImpl.get_oninputreport(instance);
+        return event_handlers.value(EventHandler, instance, "oninputreport");
     }
 
     pub fn set_oninputreport(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HIDDeviceImpl.set_oninputreport(instance, value);
+        if (comptime @hasDecl(HIDDeviceImpl, "set_oninputreport")) return try HIDDeviceImpl.set_oninputreport(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oninputreport", value);
     }
 
     pub fn get_opened(instance: *runtime.Instance) anyerror!bool {

@@ -267,52 +267,66 @@ pub const MediaRecorder = struct {
         return try MediaRecorderImpl.get_state(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onstart(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaRecorderImpl.get_onstart(instance);
+        if (comptime @hasDecl(MediaRecorderImpl, "get_onstart")) return try MediaRecorderImpl.get_onstart(instance);
+        return event_handlers.value(EventHandler, instance, "onstart");
     }
 
     pub fn set_onstart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaRecorderImpl.set_onstart(instance, value);
+        if (comptime @hasDecl(MediaRecorderImpl, "set_onstart")) return try MediaRecorderImpl.set_onstart(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onstart", value);
     }
 
     pub fn get_onstop(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaRecorderImpl.get_onstop(instance);
+        if (comptime @hasDecl(MediaRecorderImpl, "get_onstop")) return try MediaRecorderImpl.get_onstop(instance);
+        return event_handlers.value(EventHandler, instance, "onstop");
     }
 
     pub fn set_onstop(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaRecorderImpl.set_onstop(instance, value);
+        if (comptime @hasDecl(MediaRecorderImpl, "set_onstop")) return try MediaRecorderImpl.set_onstop(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onstop", value);
     }
 
     pub fn get_ondataavailable(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaRecorderImpl.get_ondataavailable(instance);
+        if (comptime @hasDecl(MediaRecorderImpl, "get_ondataavailable")) return try MediaRecorderImpl.get_ondataavailable(instance);
+        return event_handlers.value(EventHandler, instance, "ondataavailable");
     }
 
     pub fn set_ondataavailable(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaRecorderImpl.set_ondataavailable(instance, value);
+        if (comptime @hasDecl(MediaRecorderImpl, "set_ondataavailable")) return try MediaRecorderImpl.set_ondataavailable(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ondataavailable", value);
     }
 
     pub fn get_onpause(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaRecorderImpl.get_onpause(instance);
+        if (comptime @hasDecl(MediaRecorderImpl, "get_onpause")) return try MediaRecorderImpl.get_onpause(instance);
+        return event_handlers.value(EventHandler, instance, "onpause");
     }
 
     pub fn set_onpause(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaRecorderImpl.set_onpause(instance, value);
+        if (comptime @hasDecl(MediaRecorderImpl, "set_onpause")) return try MediaRecorderImpl.set_onpause(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onpause", value);
     }
 
     pub fn get_onresume(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaRecorderImpl.get_onresume(instance);
+        if (comptime @hasDecl(MediaRecorderImpl, "get_onresume")) return try MediaRecorderImpl.get_onresume(instance);
+        return event_handlers.value(EventHandler, instance, "onresume");
     }
 
     pub fn set_onresume(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaRecorderImpl.set_onresume(instance, value);
+        if (comptime @hasDecl(MediaRecorderImpl, "set_onresume")) return try MediaRecorderImpl.set_onresume(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onresume", value);
     }
 
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaRecorderImpl.get_onerror(instance);
+        if (comptime @hasDecl(MediaRecorderImpl, "get_onerror")) return try MediaRecorderImpl.get_onerror(instance);
+        return event_handlers.value(EventHandler, instance, "onerror");
     }
 
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaRecorderImpl.set_onerror(instance, value);
+        if (comptime @hasDecl(MediaRecorderImpl, "set_onerror")) return try MediaRecorderImpl.set_onerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
 
     pub fn get_videoBitsPerSecond(instance: *runtime.Instance) anyerror!u32 {

@@ -52,19 +52,11 @@ test "canonicalizeProtocol - lowercase conversion" {
     }
 }
 
-test "canonicalizeProtocol - strips trailing colon" {
-    const allocator = testing.allocator;
-
-    {
-        const result = try canonicalizeProtocol(allocator, "https:");
-        defer allocator.free(result);
-        try testing.expectEqualStrings("https", result);
-    }
-    {
-        const result = try canonicalizeProtocol(allocator, "HTTP:");
-        defer allocator.free(result);
-        try testing.expectEqualStrings("http", result);
-    }
+test "canonicalizeProtocol - rejects a protocol fragment with a delimiter" {
+    // Canonicalize-protocol steps 2-3 parse the fragment unchanged;
+    // process-protocol-for-init step 1 removes a dictionary's trailing colon.
+    try testing.expectError(error.InvalidProtocol, canonicalizeProtocol(testing.allocator, "https:"));
+    try testing.expectError(error.InvalidProtocol, canonicalizeProtocol(testing.allocator, "HTTP:"));
 }
 
 test "canonicalizeProtocol - already canonical" {
@@ -396,7 +388,10 @@ test "canonicalizePort - invalid: non-numeric" {
     const allocator = testing.allocator;
 
     try testing.expectError(CanonicalizationError.InvalidPort, canonicalizePort(allocator, "abc", null));
-    try testing.expectError(CanonicalizationError.InvalidPort, canonicalizePort(allocator, "80a", null));
+    // URL port state step 2.1.5 consumes leading digits (WPT vector 171).
+    const leading_digits = try canonicalizePort(allocator, "80a", null);
+    defer allocator.free(leading_digits);
+    try testing.expectEqualStrings("80", leading_digits);
     try testing.expectError(CanonicalizationError.InvalidPort, canonicalizePort(allocator, "a80", null));
 }
 
@@ -502,11 +497,12 @@ test "canonicalizeSearch - empty string returns empty" {
     try testing.expectEqualStrings("", result);
 }
 
-test "canonicalizeSearch - strips leading question mark" {
+test "canonicalizeSearch - preserves leading question mark" {
     const allocator = testing.allocator;
     const result = try canonicalizeSearch(allocator, "?foo=bar");
     defer allocator.free(result);
-    try testing.expectEqualStrings("foo=bar", result);
+    // URLPattern 3.1 keeps delimiters; process-init 3.2 strips them.
+    try testing.expectEqualStrings("?foo=bar", result);
 }
 
 test "canonicalizeSearch - without leading question mark unchanged" {
@@ -537,11 +533,12 @@ test "canonicalizeSearch - preserves equals and ampersand" {
     try testing.expectEqualStrings("a=b&c=d", result);
 }
 
-test "canonicalizeSearch - just question mark becomes empty" {
+test "canonicalizeSearch - preserves a question mark" {
     const allocator = testing.allocator;
     const result = try canonicalizeSearch(allocator, "?");
     defer allocator.free(result);
-    try testing.expectEqualStrings("", result);
+    // URLPattern 3.1 keeps delimiters; process-init 3.2 strips them.
+    try testing.expectEqualStrings("?", result);
 }
 
 // ============================================================================
@@ -555,11 +552,12 @@ test "canonicalizeHash - empty string returns empty" {
     try testing.expectEqualStrings("", result);
 }
 
-test "canonicalizeHash - strips leading hash" {
+test "canonicalizeHash - preserves leading hash" {
     const allocator = testing.allocator;
     const result = try canonicalizeHash(allocator, "#section");
     defer allocator.free(result);
-    try testing.expectEqualStrings("section", result);
+    // URLPattern 3.1 keeps delimiters; process-init 3.2 strips them.
+    try testing.expectEqualStrings("#section", result);
 }
 
 test "canonicalizeHash - without leading hash unchanged" {
@@ -576,11 +574,12 @@ test "canonicalizeHash - percent-encodes spaces" {
     try testing.expectEqualStrings("section%20one", result);
 }
 
-test "canonicalizeHash - just hash becomes empty" {
+test "canonicalizeHash - preserves a hash" {
     const allocator = testing.allocator;
     const result = try canonicalizeHash(allocator, "#");
     defer allocator.free(result);
-    try testing.expectEqualStrings("", result);
+    // URLPattern 3.1 keeps delimiters; process-init 3.2 strips them.
+    try testing.expectEqualStrings("#", result);
 }
 
 test "canonicalizeHash - preserves alphanumeric and allowed chars" {
@@ -605,8 +604,8 @@ test "canonicalizeHash - preserves alphanumeric and allowed chars" {
 test "canonicalization - full URL components workflow" {
     const allocator = testing.allocator;
 
-    // Simulate canonicalizing all parts of a URL
-    const protocol = try canonicalizeProtocol(allocator, "HTTPS:");
+    // Process-protocol-for-init removes the delimiter before this callback.
+    const protocol = try canonicalizeProtocol(allocator, "HTTPS");
     defer allocator.free(protocol);
     try testing.expectEqualStrings("https", protocol);
 
@@ -632,9 +631,11 @@ test "canonicalization - full URL components workflow" {
 
     const search = try canonicalizeSearch(allocator, "?query=test value");
     defer allocator.free(search);
-    try testing.expectEqualStrings("query=test%20value", search);
+    // URLPattern 3.1: the callback encodes the complete fragment.
+    try testing.expectEqualStrings("?query=test%20value", search);
 
     const hash = try canonicalizeHash(allocator, "#section");
     defer allocator.free(hash);
-    try testing.expectEqualStrings("section", hash);
+    // URLPattern 3.1: delimiter removal belongs to process-init.
+    try testing.expectEqualStrings("#section", hash);
 }

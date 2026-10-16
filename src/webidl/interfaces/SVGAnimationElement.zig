@@ -363,28 +363,36 @@ pub const SVGAnimationElement = struct {
         return try SVGAnimationElementImpl.get_targetElement(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onbegin(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SVGAnimationElementImpl.get_onbegin(instance);
+        if (comptime @hasDecl(SVGAnimationElementImpl, "get_onbegin")) return try SVGAnimationElementImpl.get_onbegin(instance);
+        return event_handlers.value(EventHandler, instance, "onbegin");
     }
 
     pub fn set_onbegin(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SVGAnimationElementImpl.set_onbegin(instance, value);
+        if (comptime @hasDecl(SVGAnimationElementImpl, "set_onbegin")) return try SVGAnimationElementImpl.set_onbegin(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onbegin", value);
     }
 
     pub fn get_onend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SVGAnimationElementImpl.get_onend(instance);
+        if (comptime @hasDecl(SVGAnimationElementImpl, "get_onend")) return try SVGAnimationElementImpl.get_onend(instance);
+        return event_handlers.value(EventHandler, instance, "onend");
     }
 
     pub fn set_onend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SVGAnimationElementImpl.set_onend(instance, value);
+        if (comptime @hasDecl(SVGAnimationElementImpl, "set_onend")) return try SVGAnimationElementImpl.set_onend(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onend", value);
     }
 
     pub fn get_onrepeat(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SVGAnimationElementImpl.get_onrepeat(instance);
+        if (comptime @hasDecl(SVGAnimationElementImpl, "get_onrepeat")) return try SVGAnimationElementImpl.get_onrepeat(instance);
+        return event_handlers.value(EventHandler, instance, "onrepeat");
     }
 
     pub fn set_onrepeat(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SVGAnimationElementImpl.set_onrepeat(instance, value);
+        if (comptime @hasDecl(SVGAnimationElementImpl, "set_onrepeat")) return try SVGAnimationElementImpl.set_onrepeat(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onrepeat", value);
     }
 
     /// Extended attributes: [SameObject]

@@ -23,7 +23,6 @@ const encoding = @import("encoding");
 const mimesniff = @import("mimesniff");
 const infra = @import("infra");
 const FileReader = interfaces.FileReader;
-const EventTargetImpl = @import("EventTarget.zig");
 const same_object = @import("same_object.zig");
 const blob_bytes = @import("dom").blob_bytes;
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
@@ -171,57 +170,8 @@ pub fn get_error(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return internal.error_instance;
 }
 
-// ============================================================================
-// Event Handlers - in EventTarget's map (this impl's ancestor)
-// ============================================================================
-
-pub fn get_onloadstart(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "loadstart");
-}
-
-pub fn set_onloadstart(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "loadstart", value);
-}
-
-pub fn get_onprogress(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "progress");
-}
-
-pub fn set_onprogress(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "progress", value);
-}
-
-pub fn get_onload(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "load");
-}
-
-pub fn set_onload(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "load", value);
-}
-
-pub fn get_onabort(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "abort");
-}
-
-pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "abort", value);
-}
-
-pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "error");
-}
-
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "error", value);
-}
-
-pub fn get_onloadend(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "loadend");
-}
-
-pub fn set_onloadend(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "loadend", value);
-}
+// The event handler IDL attributes (onload, onprogress, ...) are the
+// generated interface's: HTML's getter and setter, in EventTarget's map.
 
 // ============================================================================
 // Read methods (§6.2.3)
@@ -605,6 +555,6 @@ fn fireProgressEvent(reader: *runtime.Instance, comptime name: []const u8) void 
         webidl.Opt(dictionaries.ProgressEventInit).notPassed(),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = EventTargetImpl.dispatchTrusted(reader, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrusted(reader, event) catch {};
     event.releaseIfUnwrapped(generation);
 }

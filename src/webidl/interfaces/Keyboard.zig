@@ -184,12 +184,16 @@ pub const Keyboard = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onlayoutchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try KeyboardImpl.get_onlayoutchange(instance);
+        if (comptime @hasDecl(KeyboardImpl, "get_onlayoutchange")) return try KeyboardImpl.get_onlayoutchange(instance);
+        return event_handlers.value(EventHandler, instance, "onlayoutchange");
     }
 
     pub fn set_onlayoutchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try KeyboardImpl.set_onlayoutchange(instance, value);
+        if (comptime @hasDecl(KeyboardImpl, "set_onlayoutchange")) return try KeyboardImpl.set_onlayoutchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onlayoutchange", value);
     }
 
     pub fn call_unlock(instance: *runtime.Instance) anyerror!void {

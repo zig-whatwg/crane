@@ -247,28 +247,36 @@ pub const PaymentRequest = struct {
         return try PaymentRequestImpl.get_shippingType(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onshippingaddresschange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try PaymentRequestImpl.get_onshippingaddresschange(instance);
+        if (comptime @hasDecl(PaymentRequestImpl, "get_onshippingaddresschange")) return try PaymentRequestImpl.get_onshippingaddresschange(instance);
+        return event_handlers.value(EventHandler, instance, "onshippingaddresschange");
     }
 
     pub fn set_onshippingaddresschange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try PaymentRequestImpl.set_onshippingaddresschange(instance, value);
+        if (comptime @hasDecl(PaymentRequestImpl, "set_onshippingaddresschange")) return try PaymentRequestImpl.set_onshippingaddresschange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onshippingaddresschange", value);
     }
 
     pub fn get_onshippingoptionchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try PaymentRequestImpl.get_onshippingoptionchange(instance);
+        if (comptime @hasDecl(PaymentRequestImpl, "get_onshippingoptionchange")) return try PaymentRequestImpl.get_onshippingoptionchange(instance);
+        return event_handlers.value(EventHandler, instance, "onshippingoptionchange");
     }
 
     pub fn set_onshippingoptionchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try PaymentRequestImpl.set_onshippingoptionchange(instance, value);
+        if (comptime @hasDecl(PaymentRequestImpl, "set_onshippingoptionchange")) return try PaymentRequestImpl.set_onshippingoptionchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onshippingoptionchange", value);
     }
 
     pub fn get_onpaymentmethodchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try PaymentRequestImpl.get_onpaymentmethodchange(instance);
+        if (comptime @hasDecl(PaymentRequestImpl, "get_onpaymentmethodchange")) return try PaymentRequestImpl.get_onpaymentmethodchange(instance);
+        return event_handlers.value(EventHandler, instance, "onpaymentmethodchange");
     }
 
     pub fn set_onpaymentmethodchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try PaymentRequestImpl.set_onpaymentmethodchange(instance, value);
+        if (comptime @hasDecl(PaymentRequestImpl, "set_onpaymentmethodchange")) return try PaymentRequestImpl.set_onpaymentmethodchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onpaymentmethodchange", value);
     }
 
     /// Extended attributes: [NewObject]

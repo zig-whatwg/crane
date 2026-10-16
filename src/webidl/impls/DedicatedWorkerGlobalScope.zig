@@ -19,7 +19,6 @@ const DedicatedWorkerGlobalScope = interfaces.DedicatedWorkerGlobalScope;
 
 // Ancestors: a DedicatedWorkerGlobalScope IS a WorkerGlobalScope and an
 // EventTarget, and reaches their state through their impls.
-const EventTargetImpl = @import("EventTarget.zig");
 
 /// The worker host: the side of "run a worker" that owns this scope's agent.
 const worker_host = @import("html").worker_host;
@@ -93,36 +92,6 @@ pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
 // Event handler IDL attributes (HTML §8.1.8.1): their values live in
 // EventTarget's event handler map, where dispatching a MessageEvent at this
 // scope finds them.
-
-/// Getter for onrtctransform
-pub fn get_onrtctransform(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "rtctransform");
-}
-
-/// Getter for onmessage
-pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "message");
-}
-
-/// Getter for onmessageerror
-pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "messageerror");
-}
-
-/// Setter for onrtctransform
-pub fn set_onrtctransform(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "rtctransform", value);
-}
-
-/// Setter for onmessage
-pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "message", value);
-}
-
-/// Setter for onmessageerror
-pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "messageerror", value);
-}
 
 /// Operation: requestAnimationFrame
 ///

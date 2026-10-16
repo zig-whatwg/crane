@@ -155,7 +155,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     event_state.cancelBubble = false;
     event_state.returnValue = true;
     event_state.defaultPrevented = false;
-    event_state.isTrusted = false;
     event_state.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
 
     // Process eventInitDict if provided
@@ -265,7 +264,6 @@ pub fn createFromChanges(
     event_state.type = try runtime.DOMString.initDupe(allocator, "cookiechange");
     event_state.bubbles = false;
     event_state.cancelable = false;
-    event_state.isTrusted = true;
     event_state.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
 
     // Separate changed and deleted

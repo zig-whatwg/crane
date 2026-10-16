@@ -380,20 +380,26 @@ pub const HTMLPortalElement = struct {
         try HTMLPortalElementImpl.set_referrerPolicy(instance, value);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onmessage(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLPortalElementImpl.get_onmessage(instance);
+        if (comptime @hasDecl(HTMLPortalElementImpl, "get_onmessage")) return try HTMLPortalElementImpl.get_onmessage(instance);
+        return event_handlers.value(EventHandler, instance, "onmessage");
     }
 
     pub fn set_onmessage(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLPortalElementImpl.set_onmessage(instance, value);
+        if (comptime @hasDecl(HTMLPortalElementImpl, "set_onmessage")) return try HTMLPortalElementImpl.set_onmessage(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmessage", value);
     }
 
     pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLPortalElementImpl.get_onmessageerror(instance);
+        if (comptime @hasDecl(HTMLPortalElementImpl, "get_onmessageerror")) return try HTMLPortalElementImpl.get_onmessageerror(instance);
+        return event_handlers.value(EventHandler, instance, "onmessageerror");
     }
 
     pub fn set_onmessageerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLPortalElementImpl.set_onmessageerror(instance, value);
+        if (comptime @hasDecl(HTMLPortalElementImpl, "set_onmessageerror")) return try HTMLPortalElementImpl.set_onmessageerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmessageerror", value);
     }
 
     pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(PostMessageOptions)) anyerror!void {

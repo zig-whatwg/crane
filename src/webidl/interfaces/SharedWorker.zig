@@ -192,11 +192,15 @@ pub const SharedWorker = struct {
         return try SharedWorkerImpl.get_port(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SharedWorkerImpl.get_onerror(instance);
+        if (comptime @hasDecl(SharedWorkerImpl, "get_onerror")) return try SharedWorkerImpl.get_onerror(instance);
+        return event_handlers.value(EventHandler, instance, "onerror");
     }
 
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SharedWorkerImpl.set_onerror(instance, value);
+        if (comptime @hasDecl(SharedWorkerImpl, "set_onerror")) return try SharedWorkerImpl.set_onerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
 };

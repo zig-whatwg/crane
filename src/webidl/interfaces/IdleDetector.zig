@@ -214,12 +214,16 @@ pub const IdleDetector = struct {
         return try IdleDetectorImpl.get_screenState(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try IdleDetectorImpl.get_onchange(instance);
+        if (comptime @hasDecl(IdleDetectorImpl, "get_onchange")) return try IdleDetectorImpl.get_onchange(instance);
+        return event_handlers.value(EventHandler, instance, "onchange");
     }
 
     pub fn set_onchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try IdleDetectorImpl.set_onchange(instance, value);
+        if (comptime @hasDecl(IdleDetectorImpl, "set_onchange")) return try IdleDetectorImpl.set_onchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onchange", value);
     }
 
     pub fn call_start(instance: *runtime.Instance, options: webidl.Opt(IdleOptions)) anyerror!runtime.JSValue {

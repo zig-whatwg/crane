@@ -28,8 +28,8 @@ const TokenType = tokenizer.TokenType;
 const Tokenizer = tokenizer.Tokenizer;
 const TokenizePolicy = tokenizer.TokenizePolicy;
 
-// Import canonicalization functions (needed for protocol matching)
-const canonicalize = @import("canonicalize.zig");
+// The protocol component uses the same compiler as full construction.
+const constructor = @import("constructor.zig");
 
 /// Parser states as defined in the URLPattern spec
 pub const State = enum {
@@ -207,70 +207,23 @@ pub const ConstructorStringParser = struct {
             // State-specific handling
             switch (self.state) {
                 .init => {
-                    if (self.isProtocolSuffix()) {
-                        // Found a ':' char - this is a protocol
-                        self.rewindAndSetState(.protocol);
-                    } else if (self.isNameTokenWithColonPrefix()) {
-                        // Handle case like "data:text/plain" where tokenizer absorbed
-                        // ":text" as a name token. We need to treat the colon as a
-                        // protocol suffix. But only if we haven't seen a pathname/search/hash
-                        // indicator yet (checked by the fact we're still in .init state
-                        // and haven't transitioned out).
-                        self.rewindAndSetState(.protocol);
-                    } else if (self.isPathnameStart() or self.isSearchPrefix() or self.isHashPrefix()) {
-                        // This isn't a protocol - it's a relative URL
-                        // Transition directly to the appropriate state
-                        self.rewind();
-                        if (self.isHashPrefix()) {
-                            self.changeState(.hash, 1);
-                        } else if (self.isSearchPrefix()) {
-                            self.changeState(.search, 1);
-                        } else {
-                            self.changeState(.pathname, 0);
-                        }
-                    }
+                    // Constructor string parser, step 2.5: scan the whole
+                    // token list for a literal protocol suffix. A name token's
+                    // leading colon is pattern syntax, not a URL separator.
+                    if (self.isProtocolSuffix()) self.rewindAndSetState(.protocol);
                 },
                 .protocol => {
                     if (self.isProtocolSuffix()) {
-                        self.computeProtocolMatchesSpecialScheme();
-
+                        try self.computeProtocolMatchesSpecialScheme();
                         var next_state: State = .pathname;
                         var skip: usize = 1;
-
                         if (self.nextIsAuthoritySlashes()) {
                             next_state = .authority;
                             skip = 3;
                         } else if (self.protocol_matches_special_scheme) {
                             next_state = .authority;
                         }
-
                         self.changeState(next_state, skip);
-                    } else if (self.isNameTokenWithColonPrefix()) {
-                        // Handle "data:text/plain,hello" case - the tokenizer created
-                        // a name token for ":text", but this is actually a non-special
-                        // scheme URL where everything after the colon is the pathname.
-                        self.computeProtocolMatchesSpecialScheme();
-
-                        // Save protocol as everything before this token (the colon)
-                        self.result.protocol = self.makeComponentString();
-
-                        if (self.protocol_matches_special_scheme) {
-                            // Special scheme - treat as authority
-                            self.state = .authority;
-                            self.component_start = self.token_index;
-                            self.token_increment = 0;
-                        } else {
-                            // Non-special scheme (data:, javascript:, etc.)
-                            // Everything after the colon is the pathname
-                            // Get the position after the colon in the input
-                            const pathname_start = self.getNameTokenValuePosition();
-                            self.result.pathname = self.input[pathname_start..];
-
-                            // We're done - skip to the end
-                            self.state = .done;
-                            self.token_index = self.token_list.len;
-                            return;
-                        }
                     }
                 },
                 .authority => {
@@ -525,23 +478,6 @@ pub const ConstructorStringParser = struct {
         return self.isNonSpecialPatternChar(self.token_index, "]");
     }
 
-    /// Check if current token is a name token (which starts with ':')
-    /// This handles cases like "data:text" where ":text" becomes a name token
-    fn isNameTokenWithColonPrefix(self: *Self) bool {
-        const token = self.getSafeToken(self.token_index);
-        return token.type == .name;
-    }
-
-    /// Get the byte position in input where the name token's value starts
-    /// (after the leading colon). Used for non-special scheme handling.
-    fn getNameTokenValuePosition(self: *Self) usize {
-        const token = self.getSafeToken(self.token_index);
-        // The token's .index points to the ':' character
-        // The token's .value is the name part (after the ':')
-        // So we need token.index + 1 to skip the ':'
-        return token.index + 1;
-    }
-
     // ========================================================================
     // Component string helpers
     // ========================================================================
@@ -564,25 +500,11 @@ pub const ConstructorStringParser = struct {
         return self.input[start_index..end_index];
     }
 
-    fn computeProtocolMatchesSpecialScheme(self: *Self) void {
-        const protocol_string = self.makeComponentString();
-
-        // Try to canonicalize and check if it's a special scheme
-        const canon_result = canonicalize.canonicalizeProtocol(self.allocator, protocol_string) catch {
-            self.protocol_matches_special_scheme = false;
-            return;
-        };
-        defer self.allocator.free(canon_result);
-
-        // Check against special schemes
-        const special_schemes = [_][]const u8{ "http", "https", "ws", "wss", "ftp", "file" };
-        for (special_schemes) |scheme| {
-            if (std.mem.eql(u8, canon_result, scheme)) {
-                self.protocol_matches_special_scheme = true;
-                return;
-            }
-        }
-        self.protocol_matches_special_scheme = false;
+    fn computeProtocolMatchesSpecialScheme(self: *Self) constructor.ConstructorError!void {
+        // Compute-protocol-matches-a-special-scheme-flag, steps 1-3.
+        var component = try constructor.compileProtocol(self.allocator, self.makeComponentString());
+        defer component.deinit();
+        self.protocol_matches_special_scheme = try constructor.protocolMatchesSpecialScheme(&component);
     }
 };
 
@@ -724,7 +646,10 @@ test "parse - IPv6 hostname" {
 test "parse - non-special scheme (opaque URL)" {
     const allocator = std.testing.allocator;
 
-    const result = try parse(allocator, "data:text/plain,hello");
+    // A delimiter must be literal: WPT 234-235 and parser step 2.5.
+    const result = try parse(allocator, "data\\:text/plain,hello");
+    const unescaped = try parse(allocator, "data:text/plain,hello");
+    try std.testing.expect(unescaped.protocol == null);
 
     try std.testing.expectEqualStrings("data", result.protocol.?);
     // Non-special schemes go directly to pathname

@@ -192,12 +192,16 @@ pub const AudioScheduledSourceNode = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onended(instance: *runtime.Instance) anyerror!EventHandler {
-        return try AudioScheduledSourceNodeImpl.get_onended(instance);
+        if (comptime @hasDecl(AudioScheduledSourceNodeImpl, "get_onended")) return try AudioScheduledSourceNodeImpl.get_onended(instance);
+        return event_handlers.value(EventHandler, instance, "onended");
     }
 
     pub fn set_onended(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try AudioScheduledSourceNodeImpl.set_onended(instance, value);
+        if (comptime @hasDecl(AudioScheduledSourceNodeImpl, "set_onended")) return try AudioScheduledSourceNodeImpl.set_onended(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onended", value);
     }
 
     pub fn call_start(instance: *runtime.Instance, when: webidl.Opt(f64)) anyerror!void {

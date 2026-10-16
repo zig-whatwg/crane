@@ -387,6 +387,12 @@ fn replaceDataInternal(instance: *runtime.Instance, internal: *InternalState, of
     if (data.len > std.math.maxInt(u32)) return error.OutOfMemory;
     const data_units: u32 = @intCast(infra.wtf8.codeUnitLength(data));
     try internal.replaceDataUnits(offset, count, data, data_units);
+    // The node document's DOM tree version moves with the data, parent or
+    // none (Blink CharacterData::SetDataAndUpdate, WebKit
+    // CharacterData::notifyParentAfterChange): an XPath iterator over the
+    // document is invalid from here on, as DOM Level 3 XPath says of any
+    // mutation of the document.
+    dom.refcount.characterDataChanged(instance);
 
     // Steps 8-11: the live ranges whose boundary points are in node, moved
     // by data's length in code units.
