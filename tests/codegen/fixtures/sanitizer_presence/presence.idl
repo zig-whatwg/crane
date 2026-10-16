@@ -1,0 +1,17 @@
+dictionary PresenceRule {
+  DOMString? withDefault = "default";
+  DOMString? withoutDefault;
+  DOMString? nullDefault = null;
+  DOMString nonnullableDefault = "default";
+  required DOMString? requiredNullable;
+};
+
+dictionary NoPresence {
+  DOMString? withoutDefault;
+  DOMString? nullDefault = null;
+  boolean nonnullableDefault = true;
+};
+
+dictionary ShadowRootInit {
+  object? customElementRegistry;
+};

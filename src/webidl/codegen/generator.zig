@@ -2800,6 +2800,13 @@ fn writeDictionaryMemberType(allocator: std.mem.Allocator, w: anytype, idl_type:
     try writeTypeSimple(w, idl_type, type_registry);
 }
 
+/// Preserve null independently of omission when the IDL default is non-null.
+fn dictionaryMemberKeepsPresence(dictionary_name: []const u8, member: types.DictionaryMember) bool {
+    if (member.required or !member.idlType.nullable) return false;
+    if (std.mem.eql(u8, dictionary_name, "ShadowRootInit") and std.mem.eql(u8, member.name, "customElementRegistry")) return true;
+    return if (member.default) |value| value != .null else false;
+}
+
 /// Generate a dictionary Zig struct
 pub fn generateDictionary(
     allocator: std.mem.Allocator,
@@ -2857,10 +2864,13 @@ pub fn generateDictionary(
     // Write imports
     // NOTE: v8 import removed - use runtime.JSValue instead of v8.JSValue
     try w.writeAll("const runtime = @import(\"runtime\");\n");
-    // Staged presence conversion: this nullable member's owner distinguishes
-    // absent from null (DOM attachShadow steps 1–2). Opt's existing converter
-    // reads each member once and preserves both cases without an adapter fork.
-    if (std.mem.eql(u8, dictionary.name, "ShadowRootInit")) {
+    // Nullable members with a non-null default must distinguish omission
+    // (apply the default) from a present null. Keep the existing registry
+    // exception too: attachShadow distinguishes them without an IDL default.
+    const needs_presence = for (dictionary.members) |member| {
+        if (dictionaryMemberKeepsPresence(dictionary.name, member)) break true;
+    } else false;
+    if (needs_presence) {
         try w.writeAll("const webidl = @import(\"webidl\");\n");
     }
     if (needs_typedefs) {
@@ -2909,8 +2919,7 @@ pub fn generateDictionary(
 
         // Dictionary members are optional by default unless required
         const is_required = member.required;
-        const keep_presence = !is_required and member.idlType.nullable and
-            std.mem.eql(u8, dictionary.name, "ShadowRootInit") and std.mem.eql(u8, member.name, "customElementRegistry");
+        const keep_presence = dictionaryMemberKeepsPresence(dictionary.name, member);
         if (keep_presence) {
             try w.writeAll("webidl.Opt(?");
         } else if (!is_required) {
