@@ -859,6 +859,10 @@ pub fn addResourceTimingEntry(timeline: *Timeline, entry: *Instance) !void {
         state.current_size += 1;
         return;
     }
+    // Performance Timeline's dropped entries count is observed in the
+    // already-queued observer task. Count primary-buffer overflow now,
+    // as Blink's AddResourceTiming does, not in the later buffer-full task.
+    timeline.buffers.getPtr(.resource).dropped_entries_count += 1;
     // 2. Otherwise the buffer full event is pending, its task queued once.
     if (!state.full_event_pending) {
         state.full_event_pending = true;
@@ -912,12 +916,10 @@ fn fireBufferFullEvent(timeline: *Timeline) void {
         // 1.3-1.4.
         copySecondaryBuffer(timeline);
         const after = state.secondary_buffer.items.len;
-        // 1.5. No room was made: the rest are dropped - counted as the
-        // resource buffer's dropped entries (Performance Timeline's dropped
-        // entries count, which observers requiring it hear).
+        // 1.5. No room was made: discard the remaining secondary entries.
+        // Their primary-buffer overflow was already counted when added.
         if (before <= after) {
             for (state.secondary_buffer.items) |entry| releaseEntry(timeline.owner, entry);
-            timeline.buffers.getPtr(.resource).dropped_entries_count += state.secondary_buffer.items.len;
             state.secondary_buffer.clearRetainingCapacity();
             break;
         }
