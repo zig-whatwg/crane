@@ -427,6 +427,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Permission descriptors have observable conversion shapes](spec-compliance-permission-descriptors-have-observable-conversion-shapes.md) - A dictionary conversion is observable script execution; implement the conversion shape the supporting browsers agree on.
 - [Sanitizing a tree does not undo parser side effects](spec-compliance-sanitizing-a-tree-does-not-undo-parser-side-effects.md) - Test parser side effects as well as the sanitized DOM: a clean tree does not establish safe parsing (the mechanism is the Architecture lesson "A fragment that will be filtered must be built where nothing runs").
 - [A secure context is the document's own URL and every ancestor's](spec-compliance-a-secure-context-is-the-documents-own-url-and-every-ancestor.md) - An environment fact with a stored default and no writer is a bug waiting for its first reader - derive it from the state that decides it, at the moment it is asked.
+- [A request whose origin is left "client" is same origin with everything](spec-compliance-a-request-origin-left-client-is-same-origin-with-everything.md) - When a request has no client to resolve "client", set its origin - and test a same-origin request with a URL that must fail, because an unset origin makes every URL pass.
+- [A blob URL's entry is resolved when the URL is parsed, not when it is fetched](spec-compliance-a-blob-url-entry-is-resolved-when-the-url-is-parsed.md) - When a spec parses a URL in one step and fetches it in a later task, the blob URL entry belongs to the parse: capture it there, or a revoke in between turns a valid script into a network error.
 
 ### Codegen
 
@@ -571,6 +573,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A shared test allocator makes two Browsers take turns](testing-a-shared-test-allocator-makes-two-browsers-take-turns.md) - A race test's threads must not share a lock the code under test does not take - std.testing.allocator is one, so give each Browser its own allocator.
 - [The test allocator costs more than a fast native operation](testing-the-test-allocator-costs-more-than-a-fast-native-operation.md) - A per-call timing through `std.testing.allocator` measures stack-trace capture, not the code under test - time with the C allocator and check for leaks in a separate test.
 - [refAllDecls on a module that imports the engine needs V8 linked](testing-refalldecls-on-a-module-that-imports-engine-needs-v8-linked.md) - Once a module imports `engine`, its native tests must not reference anything that reaches the protocol - scope refAllDecls, and run the rest in tests/v8.
+- [Read a test's META lines with upstream's regex, and stop where upstream stops](testing-read-wpt-metadata-with-upstreams-regex.md) - The runner's variant set must be upstream's manifest, not an approximation of it: port the regex and the expansion table, and before changing the parser, diff its run set against MANIFEST.json for the whole worklist.
 
 ### Debugging
 
