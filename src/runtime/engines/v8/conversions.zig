@@ -2766,6 +2766,14 @@ pub fn jsValueConversionIsFresh(value: runtime.JSValue) bool {
     };
 }
 
+/// RED: today's answer for a value put into an object or array toV8Value
+/// builds - the TYPE's (`dictionaryMemberValueIsOwned`), which keeps every
+/// union, webidl.Opt and runtime.JSValue value. Replaced by the fix.
+pub fn memberValueIsOwned(comptime T: type, value: T) bool {
+    _ = value;
+    return dictionaryMemberValueIsOwned(T);
+}
+
 /// Whether toV8Value's result for a `T` returned by an operation is the
 /// binding's to release: a dictionary's object is made for the call.
 pub fn dictionaryValueIsOwned(comptime T: type) bool {
