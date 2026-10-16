@@ -1533,41 +1533,10 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
         if (candidate.once) expired = detachListener(internal, candidate);
         defer if (expired) |value| value.release();
 
-        // Steps 2.6-2.8:
-        // "Let targetGlobal be event's currentTarget's node document's
-        // relevant global object if event's currentTarget is a node;
-        // otherwise event's currentTarget's relevant global object." ...
-        // "If targetGlobal or listenerGlobal is a Window object whose
-        // associated Document is not fully active, then continue." Asked per
-        // listener: an earlier listener can remove the frame, or adopt the
-        // target into another document (event-listener-not-fully-active-
-        // target.html, -adopted-node.html). listenerGlobal's half is the
-        // engine's: it runs no callback of such a Window
-        // (engine.callUserObjectOperation, invokeCallbackFunction).
-        // dom.document_activity answers a Window for its associated Document:
-        // false for one a navigation replaced or whose navigable is gone, and
-        // for one whose realm has ended. A Window of a realm no Browser made
-        // (no `browser_scope` of its own - engine and DOM tests make them,
-        // and their realms fall back to the process's standalone scope) has
-        // no navigable to lose, and is fully active, as document_activity
-        // holds every live document of a context built for tests.
-        {
-            const holder = if (current_target.stateAs(interfaces.Node.State) != null)
-                (interfaces.Node.get_ownerDocument(current_target) catch null) orelse current_target
-            else
-                current_target;
-            if (!holder.ctx.hasEngine()) continue;
-            if (windowOfRealm(holder.ctx)) |target_global| {
-                const made_by_browser = target_global.ctx.browser_scope != null;
-                if (made_by_browser and !dom_module.document_activity.fullyActive(target_global, runtime.SlabAllocator.generationOf(target_global))) continue;
-            }
-        }
-
-        // Step 2.11 (steps 2.9-2.10 and 2.15, the current event, are
-        // callListener's; step 2.12's timing record is not kept).
+        // Step 2.9
         if (candidate.passive) state.in_passive_listener_flag = true;
 
-        // Step 2.13 - an exception is reported, never propagated. An event
+        // Step 2.11 - an exception is reported, never propagated. An event
         // handler's listener runs the event handler processing algorithm.
         if (candidate.listener_id != 0) {
             if (expired orelse callback) |value| callListener(value, event, current_target, did_throw);
@@ -1575,10 +1544,10 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
             invokeIdlEventHandler(current_target, event, did_throw);
         }
 
-        // Step 2.14
+        // Step 2.12
         if (candidate.passive) state.in_passive_listener_flag = false;
 
-        // Step 2.16
+        // Step 2.14
         if (state.stop_immediate_propagation_flag) break;
     }
 
