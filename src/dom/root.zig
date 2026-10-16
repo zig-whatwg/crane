@@ -114,6 +114,7 @@ pub const navigation_history_entries = @import("navigation_history_entries.zig")
 pub const history_traversal = @import("history_traversal.zig");
 pub const auxiliary_navigables = @import("auxiliary_navigables.zig");
 pub const global_settings = @import("global_settings.zig");
+pub const extract_origin = @import("extract_origin.zig");
 /// Origin-Agent-Cluster and each browsing context group's historical agent
 /// cluster key map: whether a window's agent cluster is origin-keyed.
 pub const agent_cluster_keys = @import("agent_cluster_keys.zig");
@@ -143,6 +144,7 @@ pub const names = @import("names.zig");
 /// HTML's document-relative URL parsing with its character encoding.
 pub const encoding_parse = @import("encoding_parse.zig");
 pub const element_attributes = @import("element_attributes.zig");
+pub const reflected_with_fallback = @import("reflected_with_fallback.zig");
 /// An element's attribute list, ID, classes and qualified name, read in
 /// place by the tree's own algorithms (WebKit's ElementData).
 pub const element_data = @import("element_data.zig");

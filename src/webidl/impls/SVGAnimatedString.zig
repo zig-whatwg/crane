@@ -67,15 +67,8 @@ fn internalOf(instance: *runtime.Instance) !*InternalState {
 pub fn get_baseVal(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = try internalOf(instance);
     const element = internal.element.get() orelse return error.InvalidStateError;
-    const data = dom.element_data.of(element) orelse return error.InvalidStateError;
-    const primary = dom.element_data.getAttributeByNamespaceAndLocalName(data, null, internal.attribute);
-    if (primary) |attribute| return runtime.DOMString.initDupe(instance.ctx.allocator, attribute.value);
-    if (internal.deprecated_namespace) |ns| {
-        if (dom.element_data.getAttributeByNamespaceAndLocalName(data, ns, internal.attribute)) |attribute| {
-            return runtime.DOMString.initDupe(instance.ctx.allocator, attribute.value);
-        }
-    }
-    return runtime.DOMString.initEmpty();
+    const value = (try dom.reflected_with_fallback.value(element, internal.attribute, internal.deprecated_namespace)) orelse return runtime.DOMString.initEmpty();
+    return runtime.DOMString.initDupe(instance.ctx.allocator, value);
 }
 
 /// SVG 2 4.6.7 gives animVal the same non-animated value as baseVal.

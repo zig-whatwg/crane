@@ -37,6 +37,9 @@ pub const ImplError = error{
 
 /// Internal state for MessageEvent implementation
 pub const InternalState = struct {
+    /// The user agent's origin, when supplied as a record. This event owns
+    /// one reference on its own thread; script's origin string supplies none.
+    origin_record: ?*@import("dom").origin_record.OriginRecord = null,
     /// Whether we own the origin string (should free on deinit)
     owns_origin: bool = false,
     /// The event's own hold on `data` when it is a script value: `data` is a
@@ -53,6 +56,27 @@ pub const InternalState = struct {
     /// given one: the event may be all that refers to it. Released on deinit.
     source_hold: ?engine.Owned = null,
 };
+
+pub fn installHooks() void {
+    @import("dom").extract_origin.install(.message_event, .{ .owns = &ownsOriginExtraction, .extract = &extractOrigin });
+}
+
+fn ownsOriginExtraction(instance: *runtime.Instance) bool {
+    return instance.stateAs(State) != null;
+}
+
+/// MessageEvent extract-an-origin steps 1-2: only an origin record can be
+/// extracted. A string, including "null", does not identify an origin.
+fn extractOrigin(instance: *runtime.Instance) !?*@import("dom").origin_record.OriginRecord {
+    const internal = instance.getState(State).own._internal orelse return null;
+    const record = internal.origin_record orelse return null;
+    return record.retain();
+}
+
+fn releaseOriginRecord(internal: *InternalState) void {
+    if (internal.origin_record) |record| record.release();
+    internal.origin_record = null;
+}
 
 /// Let go of the event's hold on `data`, if it has one: `data` is undefined
 /// after.
@@ -89,6 +113,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     // The handles this event owns: a deserialized postMessage payload, and
     // the frozen ports array.
     if (state.own._internal) |internal| {
+        releaseOriginRecord(internal);
         releaseData(state, internal);
         if (internal.ports_hold) |held| {
             held.release();
@@ -263,6 +288,10 @@ pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
 /// For WebSocket, this is the URL of the WebSocket server.
 pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
+    // Getter step 2: serialize an origin. Step 3 below returns a string.
+    if (state.own._internal) |internal| {
+        if (internal.origin_record) |record| return instance.ctx.allocator.dupe(u8, record.serialized orelse "null");
+    }
     log.debug("[MessageEvent.get_origin] value=\"{s}\"\n", .{state.own.origin});
     // The binding frees a returned USVString, so it gets a copy. Returning the
     // field itself freed it on the first read of `e.origin`; the second read
@@ -361,6 +390,7 @@ pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": runtime.DOMSt
 
     // This interface's attributes. What the event held before is let go.
     if (state.own._internal) |internal| {
+        releaseOriginRecord(internal);
         releaseData(state, internal);
         if (internal.owns_origin and state.own.origin.len > 0) allocator.free(state.own.origin);
         internal.owns_origin = false;
