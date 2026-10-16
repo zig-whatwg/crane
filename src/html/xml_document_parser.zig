@@ -316,7 +316,44 @@ pub fn parseFragment(context: *runtime.Instance, input: []const u8) !*runtime.In
     while (try interfaces.Node.get_firstChild(root)) |child| {
         _ = try interfaces.Node.call_appendChild(fragment, child);
     }
+    // The elements take the context's custom element registry, as the HTML
+    // fragment parser's create-for-token step 6 gives them the intended
+    // parent's. Browser behaviour where the XML text is silent: WebKit's
+    // XMLDocumentParser parses straight into the context's fragment, and
+    // Chrome 154 and Safari 27 pass
+    // custom-elements/registries/scoped-registry-initialize.html 27/27
+    // (wpt.fyi). Building in a document of our own and adopting would leave a
+    // scoped registry's elements with none (DOM adopt sets the effective
+    // global registry, null for a scoped one).
+    if (try interfaces.Element.get_customElementRegistry(context)) |registry| {
+        try assignRegistry(fragment, registry);
+    }
     return fragment;
+}
+
+/// Give every element under `root` (not template contents, which are inert
+/// and look up no registry) `registry`. Iterative preorder: a deeply nested
+/// fragment costs no native stack.
+fn assignRegistry(root: *runtime.Instance, registry: *runtime.Instance) !void {
+    var cursor = try interfaces.Node.get_firstChild(root);
+    while (cursor) |current| {
+        if (current.stateAs(interfaces.Element.State) != null) {
+            try dom.custom_elements.setElementRegistry(current, registry);
+        }
+        if (try interfaces.Node.get_firstChild(current)) |first| {
+            cursor = first;
+            continue;
+        }
+        var node = current;
+        cursor = null;
+        while (node != root) {
+            if (try interfaces.Node.get_nextSibling(node)) |next| {
+                cursor = next;
+                break;
+            }
+            node = (try interfaces.Node.get_parentNode(node)) orelse break;
+        }
+    }
 }
 
 const ScopeBinding = struct { prefix: ?[]const u8, uri: ?[]const u8 };
