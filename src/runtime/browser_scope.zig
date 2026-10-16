@@ -95,6 +95,18 @@ pub const BrowserScope = struct {
         html_script_element,
         svg_script_element,
         html_slot_element,
+        // dom.orphan_states (lane orphanleak): the states of these node
+        // types, so an orphan's has an exit at its Browser's end.
+        attr,
+        html_button_element,
+        html_field_set_element,
+        html_iframe_element,
+        html_media_element,
+        html_object_element,
+        html_output_element,
+        html_select_element,
+        html_source_element,
+        html_track_element,
         html_template_element,
         canvas_rendering_context_2d,
         css_style_declaration,

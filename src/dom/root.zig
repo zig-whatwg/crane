@@ -97,6 +97,9 @@ pub const node_lists = @import("node_lists.zig");
 /// per node, and the removing steps that rescue a held tree's root.
 pub const node_holds = @import("node_holds.zig");
 pub const teardown_sweeps = @import("teardown_sweeps.zig");
+/// A node type's own state block with both of its exits: its deinit's, and
+/// its type's sweep for an orphan no deinit reaches.
+pub const orphan_states = @import("orphan_states.zig");
 pub const unloading_cleanup = @import("unloading_cleanup.zig");
 pub const idle_periods = @import("idle_periods.zig");
 pub const document_activity = @import("document_activity.zig");
