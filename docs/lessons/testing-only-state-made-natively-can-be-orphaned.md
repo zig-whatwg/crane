@@ -1,0 +1,15 @@
+# Testing: Only state made natively can be orphaned - a wrap reaches up to the root
+
+**Date**: 2026-10-16
+**Lesson**: A node becomes an orphan, which no deinit reaches, only when nothing in its removed subtree was ever wrapped. So an orphan leak reproduces only with state the engine makes without script, and the plainest case is state made with the element at parse time. State script makes, and collecting the wrappers of nodes in a document, never reproduce one.
+
+**Why**: Wrapping a node wraps every ancestor it has, top down, and draws edges both ways between parent and child wrappers (the wrapper cache's `drawTreeEdges`; "wrapped nodes are upward-closed"). A document with a window holds its wrapper strongly, so no wrapped node in it is collected while it stays in the tree. Once a subtree script has touched is removed, its root is wrapped, and that wrapper's collection tears the whole subtree down through each node's deinit. An orphan is therefore a subtree script never touched, and only state made without script can be inside one.
+
+**What Happened**: Lane orphanleak wrote reproducers for twenty node types whose state had no exit. The first draft of each made the state from script (`table.rows`, `button.setCustomValidity`, `object.setCustomValidity`), let the wrappers go (`TestUtils.gc()`) and then dropped the tree with `innerHTML = ''`. All of them leaked nothing on the frozen base, although every one of those states was a block outside any registry. The leaks were reproduced only where the state is made with the element: a parsed `fieldset`, `canvas`, `audio`, `video` and `source` (crane/cl-orphan-*, tests/html/orphan_*_test.zig), 9 blocks and 2 URLs. Two other paths that make state without script, matching `:valid`/`:invalid` (form_associated.validationState, which makes a button's and a select's state) and a declarative shadow root from setHTMLUnsafe, also left nothing behind on the base. For the types with no path that leaked (tables, output, form, input, Attr, the iframe's cached strings, the shadow root), the red was the new lint's finding (`state-heap-block` / `state-no-sweep`, tools/lint_refcount.zig), not a reproducer.
+
+**Fix**: Write each reproducer around the type's NATIVE path to its state:
+1. State made at init: parse the element into a container with `innerHTML`, then `innerHTML = ''`, and never read the parsed nodes.
+2. State made lazily: find a path that runs no script on the node: selector matching, the parser's steps, cloning steps, a declarative shadow root. Do not reach the node to check it; check the container (`host.innerHTML`, `childNodes.length`).
+3. Where no path leaks today, give the state its exit anyway, and let a lint rule that fails on the missing exit be the red.
+
+**Takeaway**: **An orphan is a subtree script never touched. Reproduce an orphan leak with state the engine makes on its own, and first with state made at parse time. A test that reads the node from script has already wrapped it, along with every ancestor.**
