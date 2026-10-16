@@ -355,9 +355,15 @@ test "compiling once per agent: first and repeat call cost" {
     const first_ns = timer.read();
     const rounds = 2000;
     timer.reset();
+    // The captures in the C allocator: std.testing.allocator records a
+    // stack trace per allocation, which costs more than the match.
+    const C = std.heap.c_allocator;
     for (0..rounds) |i| {
-        const captures = try page.exec("^(?:\\/([^\\/]+?))$", false, if (i % 2 == 0) "/abc" else "/a/b");
-        defer free(captures);
+        const captures = try protocol.regExpBuiltinExecCaptures(page.realm, "^(?:\\/([^\\/]+?))$", false, if (i % 2 == 0) "/abc" else "/a/b", C);
+        defer if (captures) |list| {
+            for (list) |capture| if (capture) |bytes| C.free(bytes);
+            C.free(list);
+        };
         try std.testing.expectEqual(i % 2 == 0, captures != null);
     }
     const repeat_ns = timer.read() / rounds;

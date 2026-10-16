@@ -433,14 +433,110 @@ pub fn matchesPatternAttribute(realm: Context, pattern: []const u8, value: []con
     };
 }
 
-/// TODO(regexop): implement.
-pub fn regExpCreateCheck(_: Context, _: []const u8, _: bool) error{ InvalidPattern, NotSupported, OutOfMemory }!void {
-    return error.NotSupported;
+/// `realm`'s agent, entered for the regexp operations until `leave`: they
+/// make and match their regexps in the agent's utility context
+/// (protocol_agents.patternMatcherOf), so the realm's own context is not
+/// entered - a realm retired since (a detached frame's: hasEngine() false)
+/// still names its agent, and answers.
+const RegExpAgent = struct {
+    isolate: *ffi.Isolate,
+    entered: bool,
+    matcher: ?*ffi.PatternMatcher,
+
+    fn enter(realm: Context) error{NotSupported}!RegExpAgent {
+        const isolate = realm_entry.agentOf(realm) orelse return error.NotSupported;
+        const entered = ffi.v8_Isolate_GetCurrent() != isolate;
+        if (entered) ffi.v8_Isolate_Enter(isolate);
+        return .{ .isolate = isolate, .entered = entered, .matcher = protocol_agents.patternMatcherOf(isolate) };
+    }
+
+    fn leave(self: RegExpAgent) void {
+        if (self.entered) ffi.v8_Isolate_Exit(self.isolate);
+    }
+};
+
+/// ECMAScript RegExpCreate(pattern, "v" or "vi"), for its completion: in the
+/// agent's utility context with its intrinsic %RegExp% (v8_wrapper.cpp,
+/// v8_RegExpCreateCheck), the compiled regexp kept in the agent's bounded
+/// cache for regExpBuiltinExecCaptures (Blink's ScriptRegexp context; a
+/// URLPattern component keeps its ScriptRegexp). Nothing the page can reach
+/// is made, no script runs, and it is a native step - no kAuto microtask
+/// checkpoint. A terminating agent cannot answer: NotSupported.
+pub fn regExpCreateCheck(realm: Context, pattern: []const u8, ignore_case: bool) error{ InvalidPattern, NotSupported, OutOfMemory }!void {
+    const agent = try RegExpAgent.enter(realm);
+    defer agent.leave();
+    // WTF-8 to UTF-16: never more code units than bytes.
+    var fallback = std.heap.stackFallback(1024, std.heap.c_allocator);
+    const allocator = fallback.get();
+    const units = try allocator.alloc(u16, pattern.len);
+    defer allocator.free(units);
+    const pattern_units = units[0..value_operations.wtf8ToUtf16(pattern, units)];
+    if (pattern_units.len > std.math.maxInt(c_int)) return error.OutOfMemory;
+    return switch (ffi.v8_RegExpCreateCheck(agent.isolate, agent.matcher, pattern_units.ptr, @intCast(pattern_units.len), ignore_case)) {
+        1 => {},
+        -1 => error.InvalidPattern,
+        -3 => error.NotSupported,
+        else => error.OutOfMemory,
+    };
 }
 
-/// TODO(regexop): implement.
-pub fn regExpBuiltinExecCaptures(_: Context, _: []const u8, _: bool, _: []const u8, _: std.mem.Allocator) error{ InvalidPattern, NotSupported, OutOfMemory }!?[]?[]u8 {
-    return error.NotSupported;
+/// ECMAScript RegExpBuiltinExec(RegExpCreate(pattern, "v" or "vi"), input)
+/// with lastIndex 0, in the agent's utility context (v8_wrapper.cpp,
+/// v8_RegExpBuiltinExecCaptures, says why RegExp::Exec in the page's realm
+/// would not do): null for no match - a match stopped at Blink's backtrack
+/// limit included - else the result's elements 0..n, OWNED (`allocator`),
+/// null for an undefined group. WTF-8 in and out. A terminating agent
+/// matches nothing.
+pub fn regExpBuiltinExecCaptures(realm: Context, pattern: []const u8, ignore_case: bool, input: []const u8, allocator: std.mem.Allocator) error{ InvalidPattern, NotSupported, OutOfMemory }!?[]?[]u8 {
+    var buffer: ?[*]u8 = null;
+    var size: usize = 0;
+    {
+        const agent = try RegExpAgent.enter(realm);
+        defer agent.leave();
+        var fallback = std.heap.stackFallback(2048, std.heap.c_allocator);
+        const scratch = fallback.get();
+        // WTF-8 to UTF-16: never more code units than bytes.
+        const units = try scratch.alloc(u16, pattern.len + input.len);
+        defer scratch.free(units);
+        const pattern_units = units[0..value_operations.wtf8ToUtf16(pattern, units[0..pattern.len])];
+        const input_units = units[pattern.len..][0..value_operations.wtf8ToUtf16(input, units[pattern.len..])];
+        if (pattern_units.len > std.math.maxInt(c_int) or input_units.len > std.math.maxInt(c_int)) return error.OutOfMemory;
+        switch (ffi.v8_RegExpBuiltinExecCaptures(agent.isolate, agent.matcher, pattern_units.ptr, @intCast(pattern_units.len), ignore_case, input_units.ptr, @intCast(input_units.len), &buffer, &size)) {
+            1 => {},
+            0, -3 => return null,
+            -1 => return error.InvalidPattern,
+            else => return error.OutOfMemory,
+        }
+    }
+    const bytes = buffer.?[0..size];
+    defer std.c.free(bytes.ptr);
+    return try readCaptures(bytes, allocator);
+}
+
+/// v8_RegExpBuiltinExecCaptures' buffer as owned captures: a u32 count, then
+/// per element an i32 length (-1: undefined) and its bytes, unaligned.
+fn readCaptures(bytes: []const u8, allocator: std.mem.Allocator) error{OutOfMemory}![]?[]u8 {
+    var at: usize = 0;
+    const count = std.mem.readInt(u32, bytes[at..][0..4], .native);
+    at += 4;
+    const captures = try allocator.alloc(?[]u8, count);
+    var made: usize = 0;
+    errdefer {
+        for (captures[0..made]) |capture| if (capture) |value| allocator.free(value);
+        allocator.free(captures);
+    }
+    while (made < count) : (made += 1) {
+        const length = std.mem.readInt(i32, bytes[at..][0..4], .native);
+        at += 4;
+        if (length < 0) {
+            captures[made] = null;
+            continue;
+        }
+        const end = at + @as(usize, @intCast(length));
+        captures[made] = try allocator.dupe(u8, bytes[at..end]);
+        at = end;
+    }
+    return captures;
 }
 
 /// WebIDL "create a simple exception" of type SyntaxError: Construct(`realm`'s

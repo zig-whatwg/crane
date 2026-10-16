@@ -3271,8 +3271,10 @@ pub extern fn v8_WebAssembly_InstallAddressDescriptors(isolate: *Isolate, contex
 pub extern fn v8_Isolate_RunningScriptLocation(isolate: *Isolate, url: *?[*]u8, url_len: *usize, line: *c_int, column: *c_int) bool;
 // ---- end lane: csp2 ----
 // ---- lane: cxsupport ----
-/// engine.matchesPatternAttribute's per-agent state (v8_wrapper.cpp): one
-/// utility context and a small cache of compiled patterns. Owned by the
+/// The regexp operations' per-agent state (v8_wrapper.cpp):
+/// engine.matchesPatternAttribute's, regExpCreateCheck's and
+/// regExpBuiltinExecCaptures' one utility context and bounded cache of
+/// compiled regexps. Owned by the
 /// agent's AgentRecord; deleted at the agent's end, before its isolate is
 /// disposed. Used only on the agent's own thread.
 pub const PatternMatcher = opaque {};
@@ -3287,3 +3289,18 @@ pub extern fn v8_PatternMatcher_Delete(matcher: ?*PatternMatcher) void;
 /// kAuto microtask checkpoint.
 pub extern fn v8_MatchesPatternAttribute(isolate: *Isolate, matcher: ?*PatternMatcher, pattern: [*]const u16, pattern_len: c_int, value: [*]const u16, value_len: c_int) c_int;
 // ---- end lane: cxsupport ----
+// ---- lane: regexop ----
+/// engine.regExpCreateCheck: RegExpCreate(pattern, "v" or "vi") in
+/// `matcher`'s utility context (a new context for the call when null), the
+/// regexp cached for v8_RegExpBuiltinExecCaptures. 1 compiled, -1 it threw
+/// (a SyntaxError), -2 no context or string could be made, -3 terminating.
+/// `pattern` is UTF-16 code units, lone surrogates kept. A native step.
+pub extern fn v8_RegExpCreateCheck(isolate: *Isolate, matcher: ?*PatternMatcher, pattern: [*]const u16, pattern_len: c_int, ignore_case: bool) c_int;
+/// engine.regExpBuiltinExecCaptures: RegExpBuiltinExec on that regexp. 1
+/// matched: `out` is a malloc'd buffer of `out_len` bytes (free with
+/// std.c.free) holding a u32 element count, then per element an i32 byte
+/// length (-1: undefined) and its WTF-8 bytes, unaligned, native byte order.
+/// 0 no match (or past the backtrack limit), -1 the pattern is invalid, -2
+/// out of memory, -3 terminating. A native step.
+pub extern fn v8_RegExpBuiltinExecCaptures(isolate: *Isolate, matcher: ?*PatternMatcher, pattern: [*]const u16, pattern_len: c_int, ignore_case: bool, input: [*]const u16, input_len: c_int, out: *?[*]u8, out_len: *usize) c_int;
+// ---- end lane: regexop ----

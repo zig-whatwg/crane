@@ -12820,38 +12820,58 @@ bool v8_Isolate_RunningScriptLocation(Isolate* isolate, char** url, size_t* url_
 
 // ---- lane: cxsupport ----
 
-/// What engine.matchesPatternAttribute keeps per agent (per isolate): one
-/// utility context, made on first use, and the anchored regexps compiled in
-/// it, by pattern. Blink's design: V8PerIsolateData::EnsureScriptRegexpContext
-/// keeps one ScriptRegexp context per isolate, and HTMLInputElement keeps its
-/// compiled ScriptRegexp. The adapter's AgentRecord owns it; the agent's end
-/// deletes it (v8_PatternMatcher_Delete), before the isolate is disposed.
-/// Used only on the agent's own thread.
+/// What the adapter's regexp operations keep per agent (per isolate): one
+/// utility context, made on first use, and the regexps compiled in it, by
+/// kind and pattern - engine.matchesPatternAttribute's anchored regexps and
+/// engine.regExpCreateCheck / regExpBuiltinExecCaptures' RegExpCreate ones
+/// (URLPattern's). Blink's design: V8PerIsolateData::EnsureScriptRegexpContext
+/// keeps one ScriptRegexp context per isolate, HTMLInputElement keeps its
+/// compiled ScriptRegexp, and URLPattern's components keep theirs. The
+/// adapter's AgentRecord owns it; the agent's end deletes it
+/// (v8_PatternMatcher_Delete), before the isolate is disposed. Used only on
+/// the agent's own thread.
 struct PatternMatcher {
-    /// At most this many compiled patterns, most recently used first.
-    static constexpr size_t kCapacity = 16;
+    /// At most this many compiled regexps, most recently used first. A
+    /// URLPattern compiles eight (one per component), many of them shared
+    /// between patterns ("^(.*)$" for every wildcard component), so this
+    /// holds a page's routing table of several patterns without recompiling
+    /// on every test() (lane regexop; the pattern attribute alone had 16).
+    static constexpr size_t kCapacity = 64;
+    /// Which compile an entry is: the same pattern string is a different
+    /// regexp as a pattern attribute (anchored as a group) and under "v" or
+    /// "vi".
+    enum Kind : uint8_t {
+        kPatternAttribute = 0,
+        kRegExpCreateV = 1,
+        kRegExpCreateVI = 2,
+    };
     struct Entry {
+        Kind kind;
         std::u16string pattern;
-        /// The anchored regexp; empty for a pattern that is invalid
-        /// standalone (cached too: a page re-validating one bad pattern does
-        /// not recompile it every time).
+        /// The compiled regexp; empty for a pattern that is invalid (cached
+        /// too: a page re-validating one bad pattern does not recompile it
+        /// every time).
         Global<RegExp> regexp;
     };
     Global<Context> context;
     std::vector<Entry> entries;
 };
 
-/// The most backtracks one match of a pattern attribute's regexp may do; past
-/// it the match fails. Blink's value: ScriptRegexp compiles every regexp,
-/// the pattern attribute's included, with RegExp::NewWithBacktrackLimit and
-/// kBacktrackLimit = 1'000'000
-/// (third_party/blink/renderer/platform/bindings/script_regexp.cc). A page
-/// writes the pattern, and without a limit a catastrophic one - `(\d+)*$`
-/// against a long run of digits ending in a letter, ~2^n backtracks - holds
-/// the agent's thread for as long as it runs: the page freezes
+/// The most backtracks one match of a regexp the adapter compiles for the
+/// platform (not for script) may do; past it the match fails. Blink's
+/// value: ScriptRegexp compiles every regexp - the pattern attribute's and
+/// URLPattern's components' included - with RegExp::NewWithBacktrackLimit
+/// and kBacktrackLimit = 1'000'000
+/// (third_party/blink/renderer/platform/bindings/script_regexp.cc;
+/// core/url_pattern/url_pattern_component.cc makes a ScriptRegexp per
+/// component). A page writes the pattern, and without a limit a
+/// catastrophic one - `(\d+)*$` against a long run of digits ending in a
+/// letter, ~2^n backtracks - holds the agent's thread for as long as it
+/// runs: the page freezes
 /// (html/semantics/forms/constraints/infinite_backtracking.tentative.html ran
 /// into the WPT runner's timeout).
-static constexpr uint32_t kPatternAttributeBacktrackLimit = 1'000'000;
+static constexpr uint32_t kScriptRegExpBacktrackLimit = 1'000'000;
+static constexpr uint32_t kPatternAttributeBacktrackLimit = kScriptRegExpBacktrackLimit;
 
 /// Compile `source` as HTML 4.10.5.3.6's steps 3-6 do, in `context` (entered,
 /// under `try_catch`): 1 with the anchored regexp in `*regexp`; -1 when
@@ -12894,6 +12914,86 @@ static int CompilePatternAttribute(Isolate* isolate, Local<Context> context, Try
         return -1;
     }
     return 1;
+}
+
+/// ECMAScript RegExpCreate(source, "v" or "vi") in `context` (entered, under
+/// `try_catch`): 1 with the regexp in `*regexp`; -1 when it threw (a
+/// SyntaxError); 0 when the isolate is terminating (rethrown). RegExp::New
+/// is RegExpCreate with the intrinsic %RegExp% of `context` - RegExpAlloc
+/// then RegExpInitialize - never a global `RegExp` lookup. Compiled with
+/// Blink's backtrack limit (kScriptRegExpBacktrackLimit), which the spec does
+/// not have: a match past it fails, and URLPattern reads that as no match,
+/// as Blink's URLPattern does (its ScriptRegexp::Match answers -1).
+static int CompileRegExpCreate(Local<Context> context, TryCatch& try_catch, Local<String> source, bool ignore_case, Local<RegExp>* regexp) {
+    int flags = RegExp::kUnicodeSets;
+    if (ignore_case) flags |= RegExp::kIgnoreCase;
+    if (!RegExp::NewWithBacktrackLimit(context, source, static_cast<RegExp::Flags>(flags), kScriptRegExpBacktrackLimit).ToLocal(regexp)) {
+        if (try_catch.HasTerminated()) {
+            try_catch.ReThrow();
+            return 0;
+        }
+        try_catch.Reset();
+        return -1;
+    }
+    return 1;
+}
+
+/// The context the regexps are made and matched in: `matcher`'s utility
+/// context, made on first use - or, for an isolate the adapter's createAgent
+/// did not make (no matcher), a context made for the call. Empty when no
+/// context could be made (the heap is exhausted).
+static Local<Context> RegExpContext(Isolate* isolate, PatternMatcher* matcher) {
+    if (!matcher) return NewPlainGlobalContext(isolate);
+    if (matcher->context.IsEmpty()) {
+        // A plain global, never a bare Context::New: that crashed in a
+        // snapshot agent (NewPlainGlobalContext; lesson architecture-a-
+        // bare-context-new-in-a-snapshot-agent-deserializes-crane-s-
+        // window-context).
+        Local<Context> made = NewPlainGlobalContext(isolate);
+        if (made.IsEmpty()) return made;
+        matcher->context.Reset(isolate, made);
+    }
+    return matcher->context.Get(isolate);
+}
+
+/// The regexp of `kind` for `pattern` (UTF-16 code units), in `context` (the
+/// RegExpContext, entered, under `try_catch`): from `matcher`'s cache, else
+/// compiled and cached. 1 with it in `*regexp`; -1 the pattern is invalid;
+/// 0 the isolate is terminating (rethrown); -2 no string could be made.
+static int CachedRegExp(Isolate* isolate, PatternMatcher* matcher, Local<Context> context, TryCatch& try_catch, PatternMatcher::Kind kind, const uint16_t* pattern, int pattern_len, Local<RegExp>* regexp) {
+    if (matcher) {
+        const char16_t* units = reinterpret_cast<const char16_t*>(pattern);
+        auto& entries = matcher->entries;
+        for (size_t i = 0; i < entries.size(); ++i) {
+            if (entries[i].kind != kind) continue;
+            if (entries[i].pattern.size() != static_cast<size_t>(pattern_len)) continue;
+            if (pattern_len > 0 && entries[i].pattern.compare(0, std::u16string::npos, units, static_cast<size_t>(pattern_len)) != 0) continue;
+            // Most recently used first.
+            if (i > 0) std::rotate(entries.begin(), entries.begin() + static_cast<std::ptrdiff_t>(i), entries.begin() + static_cast<std::ptrdiff_t>(i) + 1);
+            if (entries[0].regexp.IsEmpty()) return -1;
+            *regexp = entries[0].regexp.Get(isolate);
+            return 1;
+        }
+    }
+    Local<String> source = String::Empty(isolate);
+    if (pattern_len > 0 && !String::NewFromTwoByte(isolate, pattern, NewStringType::kNormal, pattern_len).ToLocal(&source)) return -2;
+    const int compiled = kind == PatternMatcher::kPatternAttribute
+        ? CompilePatternAttribute(isolate, context, try_catch, source, regexp)
+        : CompileRegExpCreate(context, try_catch, source, kind == PatternMatcher::kRegExpCreateVI, regexp);
+    if (compiled == 0) return 0;
+    if (matcher) {
+        auto& entries = matcher->entries;
+        if (entries.size() >= PatternMatcher::kCapacity) {
+            entries.back().regexp.Reset();
+            entries.pop_back();
+        }
+        PatternMatcher::Entry entry;
+        entry.kind = kind;
+        if (pattern_len > 0) entry.pattern.assign(reinterpret_cast<const char16_t*>(pattern), static_cast<size_t>(pattern_len));
+        if (compiled == 1) entry.regexp.Reset(isolate, *regexp);
+        entries.insert(entries.begin(), std::move(entry));
+    }
+    return compiled;
 }
 
 extern "C" {
@@ -12941,59 +13041,14 @@ void v8_PatternMatcher_Delete(PatternMatcher* matcher) {
 int v8_MatchesPatternAttribute(Isolate* isolate, PatternMatcher* matcher, const uint16_t* pattern, int pattern_len, const uint16_t* value, int value_len) {
     NativeStepScope native_step(isolate);
     HandleScope handle_scope(isolate);
-    Local<Context> context;
-    if (matcher) {
-        if (matcher->context.IsEmpty()) {
-            // A plain global, never a bare Context::New: that crashed in a
-            // snapshot agent (NewPlainGlobalContext; lesson architecture-a-
-            // bare-context-new-in-a-snapshot-agent-deserializes-crane-s-
-            // window-context).
-            Local<Context> made = NewPlainGlobalContext(isolate);
-            if (made.IsEmpty()) return -2;
-            matcher->context.Reset(isolate, made);
-        }
-        context = matcher->context.Get(isolate);
-    } else {
-        context = NewPlainGlobalContext(isolate);
-        if (context.IsEmpty()) return -2;
-    }
+    Local<Context> context = RegExpContext(isolate, matcher);
+    if (context.IsEmpty()) return -2;
     Context::Scope context_scope(context);
     TryCatch try_catch(isolate);
 
     Local<RegExp> regexp;
-    bool cached = false;
-    if (matcher) {
-        const char16_t* units = reinterpret_cast<const char16_t*>(pattern);
-        auto& entries = matcher->entries;
-        for (size_t i = 0; i < entries.size(); ++i) {
-            if (entries[i].pattern.size() != static_cast<size_t>(pattern_len)) continue;
-            if (pattern_len > 0 && entries[i].pattern.compare(0, std::u16string::npos, units, static_cast<size_t>(pattern_len)) != 0) continue;
-            // Most recently used first.
-            if (i > 0) std::rotate(entries.begin(), entries.begin() + static_cast<std::ptrdiff_t>(i), entries.begin() + static_cast<std::ptrdiff_t>(i) + 1);
-            if (entries[0].regexp.IsEmpty()) return -1;
-            regexp = entries[0].regexp.Get(isolate);
-            cached = true;
-            break;
-        }
-    }
-    if (!cached) {
-        Local<String> source = String::Empty(isolate);
-        if (pattern_len > 0 && !String::NewFromTwoByte(isolate, pattern, NewStringType::kNormal, pattern_len).ToLocal(&source)) return -2;
-        const int compiled = CompilePatternAttribute(isolate, context, try_catch, source, &regexp);
-        if (compiled == 0) return 0;
-        if (matcher) {
-            auto& entries = matcher->entries;
-            if (entries.size() >= PatternMatcher::kCapacity) {
-                entries.back().regexp.Reset();
-                entries.pop_back();
-            }
-            PatternMatcher::Entry entry;
-            if (pattern_len > 0) entry.pattern.assign(reinterpret_cast<const char16_t*>(pattern), static_cast<size_t>(pattern_len));
-            if (compiled == 1) entry.regexp.Reset(isolate, regexp);
-            entries.insert(entries.begin(), std::move(entry));
-        }
-        if (compiled == -1) return -1;
-    }
+    const int found = CachedRegExp(isolate, matcher, context, try_catch, PatternMatcher::kPatternAttribute, pattern, pattern_len, &regexp);
+    if (found != 1) return found;
 
     Local<String> subject = String::Empty(isolate);
     if (value_len > 0 && !String::NewFromTwoByte(isolate, value, NewStringType::kNormal, value_len).ToLocal(&subject)) return -2;
@@ -13013,3 +13068,123 @@ int v8_MatchesPatternAttribute(Isolate* isolate, PatternMatcher* matcher, const 
 
 } // extern "C"
 // ---- end lane: cxsupport ----
+
+// ---- lane: regexop ----
+
+extern "C" {
+
+/// engine.regExpCreateCheck: ECMAScript RegExpCreate(`pattern`, "v", or "vi"
+/// when `ignore_case`), `pattern` as UTF-16 code units (a lone surrogate
+/// kept), in the agent's utility context (v8_MatchesPatternAttribute says why
+/// not in the page's realm), the compiled regexp cached for
+/// v8_RegExpBuiltinExecCaptures. 1: it compiled; -1: it threw (a
+/// SyntaxError); -2: no context or string could be made (the heap is
+/// exhausted); -3: the isolate is terminating (rethrown). A native step: no
+/// kAuto microtask checkpoint.
+int v8_RegExpCreateCheck(Isolate* isolate, PatternMatcher* matcher, const uint16_t* pattern, int pattern_len, bool ignore_case) {
+    NativeStepScope native_step(isolate);
+    HandleScope handle_scope(isolate);
+    Local<Context> context = RegExpContext(isolate, matcher);
+    if (context.IsEmpty()) return -2;
+    Context::Scope context_scope(context);
+    TryCatch try_catch(isolate);
+    Local<RegExp> regexp;
+    const int found = CachedRegExp(isolate, matcher, context, try_catch, ignore_case ? PatternMatcher::kRegExpCreateVI : PatternMatcher::kRegExpCreateV, pattern, pattern_len, &regexp);
+    return found == 0 ? -3 : found;
+}
+
+/// engine.regExpBuiltinExecCaptures: ECMAScript RegExpBuiltinExec(R,
+/// `input`) for R = RegExpCreate(`pattern`, "v" or "vi") - from the agent's
+/// cache, or compiled and cached - both as UTF-16 code units, in the agent's
+/// utility context. R has neither "g" nor "y", so its lastIndex is 0 for
+/// every call (RegExpBuiltinExec steps 4-5 read it and ignore it; nothing in
+/// that context writes it), and Exec - RegExpExec, which looks `exec` up on
+/// R - finds that context's %RegExp.prototype.exec%, the built-in, whose
+/// steps are RegExpBuiltinExec (v8_MatchesPatternAttribute says why the
+/// page's realm would not do). 1: it matched, and `*out` is a malloc'd buffer
+/// of `*out_len` bytes the caller frees with free(): a uint32 count n + 1,
+/// then for each element 0..n of the result an int32 byte length - -1 for
+/// undefined, a group that did not participate - and that many bytes of the
+/// element as UTF-8 with a lone surrogate in its three-byte form (WTF-8:
+/// String::WriteUtf8 without REPLACE_INVALID_UTF8), all unaligned and in the
+/// host's byte order. 0: no match - null, or a match stopped at the
+/// backtrack limit (kScriptRegExpBacktrackLimit). -1: RegExpCreate threw.
+/// -2: no context, string or buffer could be made. -3: the isolate is
+/// terminating (rethrown). A native step: no kAuto microtask checkpoint.
+int v8_RegExpBuiltinExecCaptures(Isolate* isolate, PatternMatcher* matcher, const uint16_t* pattern, int pattern_len, bool ignore_case, const uint16_t* input, int input_len, char** out, size_t* out_len) {
+    *out = nullptr;
+    *out_len = 0;
+    NativeStepScope native_step(isolate);
+    HandleScope handle_scope(isolate);
+    Local<Context> context = RegExpContext(isolate, matcher);
+    if (context.IsEmpty()) return -2;
+    Context::Scope context_scope(context);
+    TryCatch try_catch(isolate);
+    Local<RegExp> regexp;
+    const int found = CachedRegExp(isolate, matcher, context, try_catch, ignore_case ? PatternMatcher::kRegExpCreateVI : PatternMatcher::kRegExpCreateV, pattern, pattern_len, &regexp);
+    if (found != 1) return found == 0 ? -3 : found;
+
+    Local<String> subject = String::Empty(isolate);
+    if (input_len > 0 && !String::NewFromTwoByte(isolate, input, NewStringType::kNormal, input_len).ToLocal(&subject)) return -2;
+    Local<Object> result;
+    if (!regexp->Exec(context, subject).ToLocal(&result)) {
+        if (try_catch.HasTerminated()) {
+            try_catch.ReThrow();
+            return -3;
+        }
+        // A throw RegExpBuiltinExec's "!"s rule out - an engine limit hit
+        // while matching - is no match, as in Blink (ScriptRegexp::Match
+        // answers -1).
+        try_catch.Reset();
+        return 0;
+    }
+    // Null: no match - also past the backtrack limit (v8-regexp.h).
+    if (!result->IsArray()) return 0;
+    Local<Array> array = result.As<Array>();
+    const uint32_t count = array->Length();
+    // The elements are the result's own data properties, made by
+    // RegExpBuiltinExec's CreateDataPropertyOrThrow (steps 22, 33): reading
+    // them runs nothing.
+    std::vector<Local<Value>> elements;
+    elements.reserve(count);
+    size_t size = sizeof(uint32_t);
+    for (uint32_t i = 0; i < count; ++i) {
+        Local<Value> element;
+        if (!array->Get(context, i).ToLocal(&element)) {
+            if (try_catch.HasTerminated()) {
+                try_catch.ReThrow();
+                return -3;
+            }
+            try_catch.Reset();
+            return -2;
+        }
+        size += sizeof(int32_t);
+        if (element->IsString()) size += static_cast<size_t>(element.As<String>()->Utf8Length(isolate));
+        elements.push_back(element);
+    }
+    char* buffer = static_cast<char*>(malloc(size));
+    if (!buffer) return -2;
+    char* at = buffer;
+    std::memcpy(at, &count, sizeof(count));
+    at += sizeof(count);
+    for (const Local<Value>& element : elements) {
+        int32_t length = -1;
+        if (element->IsString()) {
+            Local<String> string = element.As<String>();
+            length = string->Utf8Length(isolate);
+            std::memcpy(at, &length, sizeof(length));
+            at += sizeof(length);
+            if (length > 0) string->WriteUtf8(isolate, at, length, nullptr, String::NO_NULL_TERMINATION);
+            at += length;
+        } else {
+            std::memcpy(at, &length, sizeof(length));
+            at += sizeof(length);
+        }
+    }
+    *out = buffer;
+    *out_len = size;
+    return 1;
+}
+
+} // extern "C"
+// ---- end lane: regexop ----
