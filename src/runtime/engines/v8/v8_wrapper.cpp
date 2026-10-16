@@ -11341,11 +11341,17 @@ Global<Context>* v8_Context_NewWithGlobalTemplateAndProxy(Isolate* isolate, Glob
 
 /// Whether JavaScript frames are on `isolate`'s stack: whether HTML's
 /// JavaScript execution context stack still holds more than the realm
-/// execution contexts the host pushed itself.
+/// execution contexts the host pushed itself. Every realm's frames count:
+/// without kExposeFramesAcrossSecurityOrigins V8 leaves out the frames whose
+/// realm has another security token than the current one (isolate.cc,
+/// VisitStack), and every Window realm has its own token
+/// [cross_origin_objects] - a page's script calling into its frame's realm
+/// read as an empty stack, and "clean up after running script" there ran a
+/// microtask checkpoint in the middle of it.
 bool v8_Isolate_HasJavaScriptOnStack(Isolate* isolate) {
     if (!isolate) return false;
     HandleScope handle_scope(isolate);
-    return StackTrace::CurrentStackTrace(isolate, 1)->GetFrameCount() > 0;
+    return StackTrace::CurrentStackTrace(isolate, 1, StackTrace::kExposeFramesAcrossSecurityOrigins)->GetFrameCount() > 0;
 }
 
 /// An event handler content attribute's function (HTML "getting the current
@@ -12853,13 +12859,18 @@ extern "C" {
 /// when the frame names none), `*line` and `*column` its 1-based position
 /// (Message::kNoLineNumberInfo / kNoColumnInfo, 0, when unknown). False
 /// when the stack has no frame. `isolate` must be the current isolate.
+/// The frame is the agent's topmost, whichever realm it is in: V8 hides the
+/// frames of realms with another security token unless asked
+/// (kExposeFramesAcrossSecurityOrigins), and every Window realm has its own
+/// [cross_origin_objects].
 bool v8_Isolate_RunningScriptLocation(Isolate* isolate, char** url, size_t* url_len, int* line, int* column) {
     *url = nullptr;
     *url_len = 0;
     *line = 0;
     *column = 0;
     HandleScope handle_scope(isolate);
-    Local<StackTrace> trace = StackTrace::CurrentStackTrace(isolate, 1);
+    Local<StackTrace> trace = StackTrace::CurrentStackTrace(
+        isolate, 1, static_cast<StackTrace::StackTraceOptions>(StackTrace::kDetailed | StackTrace::kExposeFramesAcrossSecurityOrigins));
     if (trace.IsEmpty() || trace->GetFrameCount() < 1) return false;
     Local<StackFrame> frame = trace->GetFrame(isolate, 0);
     if (frame.IsEmpty()) return false;

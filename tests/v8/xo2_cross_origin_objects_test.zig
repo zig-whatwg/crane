@@ -20,6 +20,7 @@ const protocol = @import("engine");
 const interfaces = @import("interfaces");
 const cross_origin = @import("v8").cross_origin;
 const v8_engine = @import("v8").engine;
+const v8_ffi = @import("v8").ffi;
 
 /// The test's IsPlatformObjectSameOrigin: one answer for every pair, and a
 /// count of the times the adapter asked.
@@ -68,8 +69,13 @@ const Pair = struct {
     host: *Host,
 
     fn open(host: *Host) !Pair {
+        return openWithHooks(host, &no_hooks, null);
+    }
+
+    /// A pair whose agent has `hooks`, called with `hooks_host`.
+    fn openWithHooks(host: *Host, hooks: *const protocol.HostHooks, hooks_host: ?*anyopaque) !Pair {
         try setup();
-        const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
+        const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = hooks, .host = hooks_host });
         errdefer protocol.destroyAgent(agent);
         const page = try protocol.createWindowRealm(&.{
             .agent = agent,
@@ -320,6 +326,56 @@ test "the natively bound window operations run WebIDL's security check for a cro
     // Same origin-domain, the operation runs on its own window.
     host.same_origin = true;
     try pair.inPage(outcome ++ "outcome(() => clearTimeout.call(w, 1))", "undefined");
+}
+
+/// What the agent's code generation hook saw of the stack while the frame's
+/// eval, called by the page's script, compiled a string.
+const StackSeen = struct {
+    calls: usize = 0,
+    javascript_on_stack: bool = false,
+    location_found: bool = false,
+    location_line: u32 = 0,
+    agent: ?*protocol.Agent = null,
+
+    const hooks: protocol.HostHooks = .{ .ensureCanCompileStrings = ensure };
+
+    fn ensure(host: ?*anyopaque, realm: runtime.Context, compilation: *const protocol.StringCompilation) protocol.StringCompilationVerdict {
+        _ = realm;
+        _ = compilation;
+        const self: *StackSeen = @ptrCast(@alignCast(host.?));
+        self.calls += 1;
+        const isolate: *v8_ffi.Isolate = @ptrCast(@alignCast(self.agent.?));
+        self.javascript_on_stack = v8_ffi.v8_Isolate_HasJavaScriptOnStack(isolate);
+        const location = protocol.runningScriptLocation(self.agent.?, testing.allocator) catch null;
+        if (location) |l| {
+            defer l.deinit(testing.allocator);
+            self.location_found = true;
+            self.location_line = l.line;
+        }
+        return .allowed;
+    }
+};
+
+test "a script frame of another realm is on the agent's stack, whatever the current realm's security token" {
+    // Every Window realm has its own V8 security token, and V8's stack trace
+    // leaves out the frames of other tokens unless told to expose them. The
+    // agent's execution context stack is every realm's (hasRunningScript,
+    // runningScriptLocation): the page's script calling the frame's eval is
+    // on it while the frame's realm is current. Hidden, "clean up after
+    // running script" in the frame's realm saw an empty stack and ran a
+    // microtask checkpoint in the middle of the page's script
+    // (html/webappapis/dynamic-markup-insertion/opening-the-input-stream/
+    // abort-while-navigating.window.js, "(fetch())").
+    var host: Host = .{};
+    var seen: StackSeen = .{};
+    const pair = try Pair.openWithHooks(&host, &StackSeen.hooks, &seen);
+    defer pair.close();
+    seen.agent = pair.agent;
+    try pair.inPage("String(w.eval('1 + 1'))", "2");
+    try testing.expectEqual(@as(usize, 1), seen.calls);
+    try testing.expect(seen.javascript_on_stack);
+    try testing.expect(seen.location_found);
+    try testing.expectEqual(@as(u32, 1), seen.location_line);
 }
 
 test "a cross-origin Location exposes only href's setter and replace" {
