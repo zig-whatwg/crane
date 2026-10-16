@@ -525,6 +525,7 @@ pub fn installHooks() void {
     // "update the image data" - however the attribute is set: the IDL
     // setters reflect into the content attributes, and setAttribute.
     @import("dom").attribute_change_steps.install("img", &attributeChangeSteps);
+    @import("dom").adopting_steps.install(&adoptingSteps);
     @import("dom").document_fetches.install(.{ .discard = discardRealm, .prepare_abort = prepareDocumentAbort, .abort = abortDocument });
     // HTML 4.12.5.1.9: an img is an image source for a 2D context.
     dom.image_sources.installImageElement(imageUsability, replacedFacts);
@@ -681,7 +682,7 @@ fn discardRealm(realm: runtime.Context) void {
 ///
 /// Not modelled, stated: the other relevant mutations - the img or a source
 /// sibling inserted, removed or moved, a picture parent's source changing,
-/// the adopting steps, auto-sizes.
+/// auto-sizes. The adopting steps are `adoptingSteps`.
 fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, old_value: ?[]const u8, value: ?[]const u8, namespace: ?[]const u8) void {
     if (namespace != null) return;
     const always = [_][]const u8{ "src", "srcset", "width", "sizes" };
@@ -715,6 +716,21 @@ fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, old_
 /// ended early or was corrupt after its dimensions, it is a partial image,
 /// completely available).
 fn updateTheImageData(instance: *runtime.Instance) void {
+    // Step 1: "If element's node document is not fully active", the rest
+    // waits until it is - for a document with no browsing context (a
+    // template's contents, the inert document of a sanitizing fragment
+    // parse, DOMParser's and createHTMLDocument's documents), forever: no
+    // request, no fetch, no event. Adopting the img into a document with
+    // one is a relevant mutation (`adoptingSteps`), which starts a new
+    // update there. Blink, Gecko and WebKit load nothing in such a
+    // document either (no frame; Gecko's data documents).
+    //
+    // Not modelled, stated: a document that has a browsing context but is
+    // not fully active (an inactive history entry's, a removed iframe's)
+    // still loads, as before - nothing here resumes an update when its
+    // document becomes fully active again.
+    if (!hasBrowsingContext(instance)) return waitForFullyActive(instance);
+
     // Step 5: the src attribute, when it is not the empty string.
     const src = attributeValue(instance, "src");
     const selected = if (src) |value| (if (value.len > 0) value else null) else null;
@@ -732,6 +748,36 @@ fn updateTheImageData(instance: *runtime.Instance) void {
     };
     defer instance.ctx.allocator.free(url);
     startLoad(instance, .fetch, url) catch |err| log.debug("img: the load did not start: {s}", .{@errorName(err)});
+}
+
+/// Whether `element`'s node document has a browsing context: a window, as
+/// `defaultView` answers. One without never becomes fully active.
+fn hasBrowsingContext(element: *runtime.Instance) bool {
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
+    return (interfaces.Document.get_defaultView(document) catch null) != null;
+}
+
+/// Step 1.1-1.3 for a node document that will never be fully active: this
+/// update supersedes every older one ("if another instance of this algorithm
+/// for this img element was started after this instance ... return"), so an
+/// update in flight is cancelled - its fetch, its event and its keep - and
+/// this one goes no further. The requests are left as they are.
+fn waitForFullyActive(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    internal.cancelFetch();
+    internal.load_generation += 1;
+    internal.event_pending = false;
+    internal.complete = true;
+    internal.releaseLoad(instance);
+}
+
+/// The img's adopting steps (HTML 4.8.4.3.2: "The element's adopting steps
+/// are run" is a relevant mutation): update the image data in its new
+/// document. An img parsed into an inert document loads once it is adopted
+/// into one that has a browsing context.
+fn adoptingSteps(node: *runtime.Instance, _: ?*runtime.Instance) void {
+    if (node.stateAs(State) == null) return;
+    updateTheImageData(node);
 }
 
 /// `url` parsed against `element`'s base URL (its node document's), and

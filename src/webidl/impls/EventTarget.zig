@@ -71,6 +71,15 @@ pub const EventListenerRecord = struct {
     /// compare: a deactivated and re-activated handler is a NEW listener, and
     /// a dispatch already under way must not mistake one for the other.
     handler_serial: u32 = 0,
+
+    /// This event handler's value is an "internal raw uncompiled handler"
+    /// (HTML 8.1.8.1): its content attribute was set while the element's
+    /// document had no browsing context, and the event handler map has no
+    /// value for it until "getting the current value of the event handler"
+    /// compiles it (`currentHandlerValue`). Its body is the element's content
+    /// attribute - any change to which reruns the attribute change steps - so
+    /// the record holds no copy of it.
+    raw_uncompiled: bool = false,
 };
 
 /// Internal state for EventTarget implementation
@@ -218,6 +227,7 @@ pub fn installHooks() void {
     dom_module.event_handlers.install(.{
         .get = getHandlerAddress,
         .set = setHandlerAddress,
+        .set_raw = setRawEventHandler,
         .erase = eraseAllEventListenersAndHandlers,
         .has_listeners = hasListeners,
     });
@@ -718,10 +728,15 @@ pub fn activateEventHandler(instance: *runtime.Instance, event_type: []const u8)
     const internal = getInternalFromRegistry(instance) orelse return;
     const list = try internal.ensureEventListenerList();
 
-    // Step 3: If eventHandler's listener is not null, then return.
-    for (list.toSlice()) |existing| {
+    // Step 3: If eventHandler's listener is not null, then return. Its
+    // value was just set, so it is no longer a raw uncompiled handler.
+    for (list.toSliceMut()) |*existing| {
         if (existing.event_handler and !existing.removed and
-            std.mem.eql(u8, existing.type.asSlice(), event_type)) return;
+            std.mem.eql(u8, existing.type.asSlice(), event_type))
+        {
+            existing.raw_uncompiled = false;
+            return;
+        }
     }
 
     // Steps 4-6: a listener whose type is the event handler event type and
@@ -790,11 +805,13 @@ pub fn eraseAllEventListenersAndHandlers(target: *runtime.Instance) void {
 }
 
 /// "Getting the current value of the event handler" (HTML §8.1.8.1) for
-/// `target`'s handler for `event_type`: its value, or null. Handlers are
-/// compiled when their content attribute is set (Element's event handler
-/// content attribute steps), so there is no uncompiled value to compile here.
+/// `target`'s handler for `event_type`: its value, or null. A handler whose
+/// content attribute was set in a document with a browsing context was
+/// compiled then (Element's event handler content attribute steps); one set
+/// in a document with none is a raw uncompiled handler, compiled here
+/// (`currentHandlerValue`).
 pub fn eventHandler(comptime Handler: type, target: *runtime.Instance, event_type: []const u8) Handler {
-    const address = (eventHandlerValue(target, event_type) orelse return null).address;
+    const address = (currentHandlerValue(target, event_type) orelse return null).address;
     // The address is the function's Global (conversions.zig stores it
     // untagged, aligned as a function pointer must be). No pointer cast turns
     // it into the callback type, so it is copied byte for byte, as
@@ -846,7 +863,66 @@ pub fn setEventHandler(comptime Handler: type, target: *runtime.Instance, event_
 }
 
 fn getHandlerAddress(target: *runtime.Instance, event_type: []const u8) ?usize {
-    return (eventHandlerValue(target, event_type) orelse return null).address;
+    return (currentHandlerValue(target, event_type) orelse return null).address;
+}
+
+/// The event handler content attribute change steps 5.2-5.6 (HTML 8.1.8.1)
+/// for an element whose node document has no browsing context: "Set
+/// eventHandler's value to the internal raw uncompiled handler" - the value
+/// the map held is released, the listener marked raw - then "activate an
+/// event handler given eventTarget and name". Nothing is compiled: scripting
+/// is disabled for that document, and the handler is compiled the first
+/// time its value is needed in a document where it is not.
+fn setRawEventHandler(target: *runtime.Instance, event_type: []const u8) anyerror!void {
+    const internal = getInternalFromRegistry(target) orelse return error.InvalidStateError;
+    if (internal.event_handler_map) |map| {
+        if (map.fetchRemove(event_type)) |old| old.value.release();
+    }
+    try activateEventHandler(target, event_type);
+    if (handlerListener(internal, event_type)) |record| record.raw_uncompiled = true;
+}
+
+/// `internal`'s event handler listener for `event_type`, if activated.
+fn handlerListener(internal: *InternalState, event_type: []const u8) ?*EventListenerRecord {
+    const list = internal.event_listener_list orelse return null;
+    for (list.toSliceMut()) |*record| {
+        if (record.event_handler and !record.removed and std.mem.eql(u8, record.type.asSlice(), event_type)) return record;
+    }
+    return null;
+}
+
+/// "Getting the current value of the event handler" (HTML 8.1.8.1) given
+/// `target` and `event_type`: the map's value - or, for an internal raw
+/// uncompiled handler, step 1: compile it now (`dom.event_handlers.compileRaw`,
+/// which the content attribute's owner installs), which sets the value to the
+/// function or - for a body that does not parse - reports the syntax error
+/// and leaves it null ("This does not deactivate the event handler"). A
+/// handler whose document still has no browsing context stays raw and is
+/// null for now (step 1.2: "If scripting is disabled for document, then
+/// return null").
+///
+/// The handler stops being raw BEFORE it is compiled: compiling reports
+/// errors and sets the value through the IDL attribute, either of which can
+/// run script that reads this handler again, and that read must find it
+/// settled rather than compile it a second time.
+fn currentHandlerValue(target: *runtime.Instance, event_type: []const u8) ?HandlerValue {
+    if (eventHandlerValue(target, event_type)) |value| return value;
+    const internal = getInternalFromRegistry(target) orelse return null;
+    const record = handlerListener(internal, event_type) orelse return null;
+    if (!record.raw_uncompiled) return null;
+    record.raw_uncompiled = false;
+    switch (dom_module.event_handlers.compileRaw(target, event_type)) {
+        .settled => {},
+        .scripting_disabled => {
+            // Still raw. The list may have changed under the call: find the
+            // listener again.
+            if (getInternalFromRegistry(target)) |now| {
+                if (handlerListener(now, event_type)) |again| again.raw_uncompiled = true;
+            }
+            return null;
+        },
+    }
+    return eventHandlerValue(target, event_type);
 }
 
 fn setHandlerAddress(target: *runtime.Instance, event_type: []const u8, address: ?usize) anyerror!void {
@@ -1571,7 +1647,7 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance, 
     // event handler given eventTarget and name." Run a value of our own: the
     // handler can replace or clear its own attribute, which releases the
     // map's.
-    const value = eventHandlerValue(instance, event_type_str.asSlice()) orelse return;
+    const value = currentHandlerValue(instance, event_type_str.asSlice()) orelse return;
     const function = engine.retainValue(realm, value.callback.function.value) catch return;
     const callback: engine.CallbackFunction = .{ .function = function, .context = value.callback.context };
     defer callback.release();

@@ -57,6 +57,20 @@ pub fn isMedia(instance: *runtime.Instance) bool {
 pub fn documentOf(instance: *runtime.Instance) ?*runtime.Instance {
     return interfaces.Node.get_ownerDocument(instance) catch null;
 }
+/// Whether `instance`'s node document has a browsing context (a window, as
+/// `defaultView` answers). A media or track element in one that has none - a
+/// template's contents, the inert document of a sanitizing fragment parse,
+/// DOMParser's - fetches nothing: its load fails instead. The HTML text sets
+/// no such condition; it is every engine's - Blink's
+/// HTMLMediaElement::LoadResource fails with "Resource load failure:
+/// document has no frame" before it fetches, Gecko's media loads refuse a
+/// document that is loaded as data, and WebKit's loaders need a frame - and
+/// "set and filter HTML" relies on it: a media element the sanitizer removes
+/// must have requested nothing.
+pub fn hasBrowsingContext(instance: *runtime.Instance) bool {
+    const document = documentOf(instance) orelse return false;
+    return (interfaces.Document.get_defaultView(document) catch null) != null;
+}
 pub fn queueTask(instance: *runtime.Instance, callback: *const fn (?*anyopaque) void, context: *anyopaque, drop: *const fn (?*anyopaque) void) !void {
     const loop = instance.ctx.getOptionalEventLoop() orelse return error.NotSupported;
     var task: runtime.EventLoopTask = .{ .callback = callback, .context = context, .drop = drop };

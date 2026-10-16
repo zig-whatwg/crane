@@ -36,7 +36,11 @@
 //! HTMLInputElement's sweep retired with the vtable dispatch: an input in a
 //! document is deinit'd by its tree, and none was left at the end (0 of 0).
 //!
-//! lint-impls: hook for EventTarget, HTMLScriptElement, HTMLElement, Element, HTMLTextAreaElement, HTMLOptionElement, ProcessingInstruction, HTMLSlotElement, HTMLImageElement, Text, Comment, DocumentType, DocumentFragment, CharacterData, Node, Document
+//! - SVGScriptElement (with HTMLScriptElement's): an orphaned SVG script's
+//!   script text (lane fraginert: one per `<svg><script>` dropped by
+//!   innerHTML = '' while unwrapped, crane/san-svg-detach-*).
+//!
+//! lint-impls: hook for EventTarget, HTMLScriptElement, SVGScriptElement, HTMLElement, Element, HTMLTextAreaElement, HTMLOptionElement, ProcessingInstruction, HTMLSlotElement, HTMLImageElement, Text, Comment, DocumentType, DocumentFragment, CharacterData, Node, Document
 
 const std = @import("std");
 const runtime = @import("runtime");

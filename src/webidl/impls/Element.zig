@@ -218,6 +218,9 @@ pub fn installHooks() void {
     // The parsers' "create an element" sets names through `dom.node_creation`.
     dom.node_creation.installElement(.{ .set_names = &setNamesHook, .is_value = &isValueHook, .names = &namesHook });
     dom.shadow_hosts.install(.{ .root_for_host = &shadowRootOf });
+    // An event handler content attribute's raw uncompiled handler, compiled
+    // when its value is first needed (HTML 8.1.8.1).
+    dom.event_handlers.installRawCompiler(&compileRawEventHandler);
     // The slot algorithms read an element's slottable state through
     // `dom.slot_helpers`.
     dom.slot_helpers.install(.{ .element_slottable = &slottableOf });
@@ -2526,14 +2529,22 @@ pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
 ///
 /// Deviation, stated: the spec keeps the value as an internal raw uncompiled
 /// handler and compiles it the first time the handler's current value is
-/// needed. This compiles it here, at attribute-change time. Crane's handler
-/// maps hold a compiled function under a pointer tag, and all four tag values
-/// are taken, so an uncompiled value has nowhere to live yet. What that
+/// needed. For an element whose document has a browsing context this compiles
+/// it here, at attribute-change time: Crane's handler maps hold a compiled
+/// function under a pointer tag, and all four tag values are taken. What that
 /// changes: a syntax error surfaces when the attribute is set rather than when
 /// the event first fires, and the scope chain captures the element's document
 /// at set time. The function is otherwise the spec's: same name, same
 /// parameters, same object environments, and it is assigned through the event
 /// handler IDL attribute, so getters, dispatch and removal all see one handler.
+///
+/// An element whose document has NO browsing context - a template's
+/// contents, the inert document of a sanitizing fragment parse, DOMParser's -
+/// gets the spec's raw uncompiled handler (`rawEventHandlerSteps`): scripting
+/// is disabled there, so its current value is null, and once the element is
+/// adopted into a document with a browsing context the first read or dispatch
+/// compiles it there (`compileRawEventHandler`). Compiling at adoption would
+/// run script (error reports, the IDL setter) in the middle of insertion.
 fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []const u8, value: ?[]const u8) void {
     // Step 1: only unnamespaced "on..." attributes of HTML elements. Whether
     // the name really is an event handler of the target is checked below,
@@ -2549,12 +2560,30 @@ fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []c
     const forwards_to_window = (std.mem.eql(u8, element_name, "body") or std.mem.eql(u8, element_name, "frameset")) and
         dom.event_handlers.isWindowReflecting(local_name);
 
-    // A document with no browsing context has no active global to run in,
-    // and "getting the current value" would never compile the handler there
-    // (scripting is disabled for it) - so there is nothing to do.
-    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return;
+    // A document with no browsing context: a window-reflecting handler has
+    // no target (determining the target, step 3: its document is not an
+    // active document), and the element's own is a raw uncompiled handler.
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse {
+        if (!forwards_to_window) rawEventHandlerSteps(instance, local_name, value);
+        return;
+    };
     const target: *runtime.Instance = if (forwards_to_window) window else instance;
+    _ = compileEventHandlerAttribute(instance, document, target, forwards_to_window, local_name, value);
+}
 
+/// Steps 1-5 of the attribute change steps with the handler compiled now
+/// (see the deviation above), for `instance`'s attribute `local_name` whose
+/// handler's target is `target` - the element, or its document's window for
+/// a body's window-reflecting handler. False when the name is not an event
+/// handler of the target's, or no engine stands behind the realm.
+fn compileEventHandlerAttribute(
+    instance: *runtime.Instance,
+    document: *runtime.Instance,
+    target: *runtime.Instance,
+    forwards_to_window: bool,
+    local_name: []const u8,
+    value: ?[]const u8,
+) bool {
     // The settings object is the document's (step 3.5), and the handler is
     // compiled and set in its realm. A realm with no engine behind it (a DOM
     // unit test) runs no script, so there is no handler to compile: every
@@ -2564,19 +2593,19 @@ fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []c
 
     // "localName is the name of an event handler content attribute on
     // element": the target exposes an event handler IDL attribute of that name.
-    if (!(engine.hasProperty(realm, target_value, local_name) catch return)) return;
+    if (!(engine.hasProperty(realm, target_value, local_name) catch return false)) return false;
 
     // Step 3: deactivate. The IDL attribute set to null clears the handler.
     const body = value orelse {
         engine.setProperty(realm, target_value, local_name, runtime.JSValue.jsNull) catch {};
-        return;
+        return true;
     };
 
     // Step 5.1: "If the Should element's inline behavior be blocked by
     // Content Security Policy? algorithm returns "Blocked" when executed upon
     // element, "script attribute", and value, then return." The handler is
     // not compiled, and its value stays what it was.
-    if (dom.csp_violations.shouldBlockInline(instance, .script_attribute, body, .{})) return;
+    if (dom.csp_violations.shouldBlockInline(instance, .script_attribute, body, .{})) return true;
 
     // Getting the current value of the event handler, step 3: the function,
     // compiled in the settings object's realm. Its scope (3.9) is the global
@@ -2584,7 +2613,7 @@ fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []c
     // element itself; a Window's handler (a body's onload) gets neither.
     // TODO: the form owner's object environment between the two.
     // The script's URL is the document's (OWNED: the getter's copy).
-    const url = interfaces.Document.get_URL(document) catch return;
+    const url = interfaces.Document.get_URL(document) catch return true;
     defer document.ctx.allocator.free(url);
     const source: engine.EventHandlerSource = .{
         .body = body,
@@ -2599,16 +2628,90 @@ fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []c
     };
     // Step 3.7: a body that does not parse is reported for the settings
     // object's global (the reporter), and leaves the handler null.
-    const compiled = engine.compileEventHandler(realm, &source, .{ .report = reportException, .host = realm }) catch return;
+    const compiled = engine.compileEventHandler(realm, &source, .{ .report = reportException, .host = realm }) catch return true;
     const function = compiled orelse {
         engine.setProperty(realm, target_value, local_name, runtime.JSValue.jsNull) catch {};
-        return;
+        return true;
     };
     defer function.release();
 
     // Step 3.12: the handler's value is the function - through the IDL
     // attribute, which stores it exactly as `element.onload = fn` would.
     engine.setProperty(realm, target_value, local_name, function.value) catch {};
+    return true;
+}
+
+/// The names of the event handler content attributes every HTML element
+/// has: GlobalEventHandlers' attribute members, which HTMLElement includes
+/// (HTML 8.1.8.2). A body's or frameset's WindowEventHandlers are its
+/// window's, and with no browsing context they have no target.
+const global_event_handler_names = blk: {
+    @setEvalBranchQuota(20_000);
+    const decls = @typeInfo(mixins.GlobalEventHandlers).@"struct".decls;
+    var names: [decls.len]struct { []const u8 } = undefined;
+    var count: usize = 0;
+    for (decls) |decl| {
+        if (!std.mem.startsWith(u8, decl.name, "get_on")) continue;
+        names[count] = .{decl.name["get_".len..]};
+        count += 1;
+    }
+    break :blk std.StaticStringMap(void).initComptime(names[0..count]);
+};
+
+/// Steps 1-5 of the attribute change steps for an element whose document
+/// has no browsing context: step 3's deactivation for a removed attribute,
+/// else step 5 - the CSP check against that document, then the handler's
+/// value is "the internal raw uncompiled handler", activated
+/// (dom.event_handlers.setRaw). Nothing is compiled, and no script can run:
+/// the name is checked against the attribute list natively, not through the
+/// element's IDL attributes, which would wrap the element.
+fn rawEventHandlerSteps(instance: *runtime.Instance, local_name: []const u8, value: ?[]const u8) void {
+    if (!global_event_handler_names.has(local_name)) return;
+    const event_type = dom.event_handlers.eventTypeOf(local_name);
+    const body = value orelse {
+        // Step 3: deactivate - the map's value and the listener go.
+        dom.event_handlers.set(typedefs.EventHandler, instance, event_type, null) catch {};
+        return;
+    };
+    // Step 5.1, against the element's document's policies.
+    if (dom.csp_violations.shouldBlockInline(instance, .script_attribute, body, .{})) return;
+    dom.event_handlers.setRaw(instance, event_type) catch {};
+}
+
+/// "Getting the current value of the event handler" step 1 for a raw
+/// uncompiled handler of `target`'s (dom.event_handlers.compileRaw): step 1.2,
+/// "if scripting is disabled for document, then return null" - with no
+/// browsing context it stays raw - then the body, which is the content
+/// attribute (any change to it reruns the attribute change steps), compiled
+/// in the element's current document and set as the value.
+///
+/// Deviation, stated: the CSP check (attribute change step 5.1) runs again
+/// here, against the document the element is in now. The spec runs it only
+/// when the attribute is set - against a document with no browsing context,
+/// whose policies are empty - so an element parsed into a template or an
+/// inert fragment and adopted into a page whose policy forbids inline
+/// handlers would run its handler. Blink checks the window's policy for a
+/// template document's element (its execution context is the window's,
+/// Document::AllowInlineEventHandler), which this matches.
+fn compileRawEventHandler(target: *runtime.Instance, event_type: []const u8) dom.event_handlers.RawCompile {
+    // The content attribute: "on" and the event type, lowercased (the four
+    // legacy WebKit types are mixed-case; every handler name is lowercase).
+    var name_buffer: [64]u8 = undefined;
+    if (event_type.len + 2 > name_buffer.len) return .settled;
+    @memcpy(name_buffer[0..2], "on");
+    const local_name = name_buffer[0 .. event_type.len + 2];
+    _ = std.ascii.lowerString(local_name[2..], event_type);
+
+    const document = (interfaces.Node.get_ownerDocument(target) catch null) orelse return .scripting_disabled;
+    if ((interfaces.Document.get_defaultView(document) catch null) == null) return .scripting_disabled;
+    const internal = getInternal(target) orelse return .settled;
+    // The body, copied: compiling reports errors, and the script that runs
+    // can change the attribute under a borrowed slice.
+    const attribute = dom.element_data.getAttributeByNamespaceAndLocalName(&internal.data, null, local_name) orelse return .settled;
+    const body = target.ctx.allocator.dupe(u8, attribute.value) catch return .settled;
+    defer target.ctx.allocator.free(body);
+    _ = compileEventHandlerAttribute(target, document, target, false, local_name, body);
+    return .settled;
 }
 
 /// HTML 3.2.6.5, the style attribute, when it "is added or has its value

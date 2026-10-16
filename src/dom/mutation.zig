@@ -2687,6 +2687,21 @@ pub fn adopt(
                 };
             }
         }
+
+        // DOM adopt, step 3.4: "Run the adopting steps with
+        // inclusiveDescendant and oldDocument" - the other types' (an img's
+        // is a relevant mutation that updates its image data), once every
+        // node document has changed. They schedule work; none runs script.
+        const old_document_instance: ?*runtime.Instance = if (oldDocument) |old_document|
+            if (instance_bridge.getInstance(@ptrCast(@alignCast(old_document)))) |old_opaque| @ptrCast(@alignCast(old_opaque)) else null
+        else
+            null;
+        for (descendants.toSlice()) |desc| {
+            if (desc.node_type != ELEMENT_NODE) continue;
+            if (instance_bridge.getInstance(desc)) |opaque_instance| {
+                @import("adopting_steps.zig").run(@ptrCast(@alignCast(opaque_instance)), old_document_instance);
+            }
+        }
     }
 
     if (refcount.treeChecksOn()) refcount.checkAround(@ptrCast(node));

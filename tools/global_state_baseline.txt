@@ -20,6 +20,8 @@ src/dom/abort_algorithms.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/activation.zig behaviors 1 G H decl:70b5864b5bb1ab05
 src/dom/activation.zig count 1 G H decl:3796f88280404836
 src/dom/activation.zig test_runs 1 G X decl:3796f88280404836
+src/dom/adopting_steps.zig count 1 G P-res decl:3796f88280404836
+src/dom/adopting_steps.zig entries 1 G P-res decl:ac43cb60187b8e4d
 src/dom/attr_nodes.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/attribute_change_steps.zig count 1 G H decl:3796f88280404836
 src/dom/attribute_change_steps.zig entries 1 G H decl:b8a83a581032bd02
@@ -55,6 +57,7 @@ src/dom/event_construction.zig mouse_event_steps 1 G P-res decl:740de6cb9ae7b885
 src/dom/event_construction.zig ui_event_steps 1 G H decl:c0a9c4ee7c8461cf
 src/dom/event_dispatch.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/event_handlers.zig implementation 1 G P-res decl:9c737e7125e9c3d4
+src/dom/event_handlers.zig raw_compiler 1 G P-res decl:34154a44d1298a5b
 src/dom/fetch_objects.zig request_steps 1 G H decl:30978182fd939a7b
 src/dom/fetch_objects.zig response_steps 1 G H decl:fb5cd971a78a8840
 src/dom/file_lists.zig implementation 1 G P-res decl:9c737e7125e9c3d4

@@ -25,6 +25,8 @@ pub const activeRegistry = driver.activeRegistry;
 pub const hasDefinitions = driver.hasDefinitions;
 pub const parseFragment = @import("custom_elements/fragment.zig").parse;
 pub const parseFragmentUnsafe = @import("custom_elements/fragment.zig").parseUnsafe;
+pub const parseFragmentUnsafeIn = @import("custom_elements/fragment.zig").parseUnsafeIn;
+pub const parseFragmentToFilter = @import("custom_elements/fragment.zig").parseToFilter;
 pub const States = @import("custom_elements/states.zig").States;
 
 /// Form owner and disabled-state resets for form-associated custom elements,

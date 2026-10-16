@@ -1487,11 +1487,13 @@ pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!*runtime
     return error.NotImplemented;
 }
 
-/// DOM Parsing - Range.createContextualFragment(string)
-/// Parses the given string as HTML and returns a DocumentFragment
-/// Note: Requires HTML parser integration
+/// HTML 8.5.7 - Range.createContextualFragment(string): `string` parsed as a
+/// fragment in the context of this range's start node, with the Fragment
+/// scripting mode - its scripts run when the fragment is inserted.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-range-createcontextualfragment
 pub fn call_createContextualFragment(instance: *runtime.Instance, string: typedefs.TrustedHTMLOrDOMString) anyerror!*runtime.Instance {
-    _ = getInternal(instance) orelse return error.InvalidStateError;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
     // Step 1: "Let compliantString be the result of invoking the get trusted
     // type compliant string algorithm with TrustedHTML, this's relevant
     // global object, string, "Range createContextualFragment", and
@@ -1500,9 +1502,49 @@ pub fn call_createContextualFragment(instance: *runtime.Instance, string: typede
     const compliant = try dom.trusted_types.compliantStringFor(allocator, .html, instance, string, "Range createContextualFragment");
     defer allocator.free(compliant);
 
-    // NOTE: Full implementation requires HTML parser
-    // For now, return an empty DocumentFragment (use interface per Golden Rule #13)
-    return interfaces.DocumentFragment.call_constructor(instance.ctx) catch return error.OutOfMemory;
+    // Step 2: "Let node be this's start node."
+    const node = internal.start_container orelse return error.InvalidStateError;
+
+    // Steps 3-5: "Let element be null. If node implements Element, set
+    // element to node. Otherwise, if node implements Text or Comment, set
+    // element to node's parent element."
+    var element: ?*runtime.Instance = null;
+    if (node.stateAs(interfaces.Element.State) != null) {
+        element = node;
+    } else if (node.stateAs(interfaces.Text.State) != null or node.stateAs(interfaces.Comment.State) != null) {
+        element = try interfaces.Node.get_parentElement(node);
+    }
+
+    // Step 6: "If element is null or all of the following are true -
+    // element's node document is an HTML document, element's local name is
+    // "html", and element's namespace is the HTML namespace - then set
+    // element to the result of creating an element given this's node
+    // document, "body", and the HTML namespace." A range has no node
+    // document of its own: its start node's is the one it lives in (Blink's
+    // Range::owner_document_).
+    const html_namespace = "http://www.w3.org/1999/xhtml";
+    const replace = if (element) |value| blk: {
+        const document = (try interfaces.Node.get_ownerDocument(value)) orelse break :blk false;
+        if (document_internals.getDocumentType(document) != .html) break :blk false;
+        const names = dom.node_creation.elementNames(value) orelse break :blk false;
+        const namespace = names.namespace orelse break :blk false;
+        break :blk std.mem.eql(u8, names.local_name, "html") and std.mem.eql(u8, namespace, html_namespace);
+    } else true;
+    var created: ?*runtime.Instance = null;
+    defer if (created) |body| dom.node_creation.destroyUninserted(body);
+    if (replace) {
+        const document = if (node.stateAs(interfaces.Document.State) != null)
+            node
+        else
+            (try interfaces.Node.get_ownerDocument(node)) orelse return error.InvalidStateError;
+        created = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned(html_namespace), runtime.DOMString.initInterned("body"), .notPassed());
+        element = created;
+    }
+
+    // Step 7: "Return the result of invoking the fragment parsing algorithm
+    // steps with element, compliantString, and Fragment." The body made in
+    // step 6 is only the context: nothing keeps it.
+    return @import("html").dom_parser.parseFragmentIn(allocator, instance.ctx, compliant, element.?, .fragment);
 }
 
 /// DOM §5.7 - Range stringifier (toString)

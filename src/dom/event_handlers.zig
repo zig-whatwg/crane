@@ -13,9 +13,15 @@
 //! The map itself is EventTarget's state, reached through the steps it
 //! installs once, at process start (its installHooks).
 //!
+//! An event handler content attribute set while its element's document has
+//! no browsing context makes an "internal raw uncompiled handler" (`setRaw`),
+//! which "getting the current value of the event handler" compiles once its
+//! document has one (`compileRaw`). Element owns content attributes and the
+//! compiling, so it installs that step (`installRawCompiler`).
+//!
 //! Spec: https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-idl-attributes
 //!
-//! lint-impls: hook for EventTarget
+//! lint-impls: hook for EventTarget, Element
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
@@ -24,6 +30,9 @@ const process_start = @import("process_start.zig");
 pub const Implementation = struct {
     get: *const fn (*runtime.Instance, []const u8) ?usize,
     set: *const fn (*runtime.Instance, []const u8, ?usize) anyerror!void,
+    /// Make the handler for the event type an internal raw uncompiled
+    /// handler, and activate it.
+    set_raw: ?*const fn (*runtime.Instance, []const u8) anyerror!void = null,
     erase: *const fn (*runtime.Instance) void,
     /// Whether the target's event listener list holds a listener that is not
     /// removed - an activated event handler's included.
@@ -33,10 +42,63 @@ pub const Implementation = struct {
 // process-wide: hook table written once at process start by EventTarget.installHooks (B0); comptime in B9
 var implementation: ?Implementation = null;
 
+/// What compiling a raw uncompiled handler came to.
+pub const RawCompile = enum {
+    /// Scripting is disabled for the element's document (it still has no
+    /// browsing context): the handler stays raw, and its value is null.
+    scripting_disabled,
+    /// Compiled: the value is now the function - or null, with the syntax
+    /// error reported - and no longer raw.
+    settled,
+};
+
+/// Element's "getting the current value of the event handler" step 1 for a
+/// raw uncompiled handler of `target` for an event type: compile the body (the
+/// content attribute) in the element's document and set the handler's value.
+pub const RawCompiler = *const fn (target: *runtime.Instance, event_type: []const u8) RawCompile;
+
+// process-wide: a function pointer Element's installHooks writes once at process start, the same for every Browser
+var raw_compiler: ?RawCompiler = null;
+
 /// Install the owner's steps before any Browser exists.
 pub fn install(steps: Implementation) void {
     process_start.assertInstalling();
     implementation = steps;
+}
+
+/// Install Element's raw-handler compiling step before any Browser exists.
+pub fn installRawCompiler(compiler: RawCompiler) void {
+    process_start.assertInstalling();
+    raw_compiler = compiler;
+}
+
+/// The event handler content attribute change steps 5.2-5.6 for an element
+/// whose document has no browsing context: `target`'s handler for
+/// `event_type` becomes an internal raw uncompiled handler, activated.
+pub fn setRaw(target: *runtime.Instance, event_type: []const u8) !void {
+    const steps = implementation orelse return error.NotSupported;
+    const set_raw = steps.set_raw orelse return error.NotSupported;
+    return set_raw(target, event_type);
+}
+
+/// Compile `target`'s raw uncompiled handler for `event_type`
+/// (EventTarget's "getting the current value"). With no compiler installed
+/// the handler stays raw: nothing can compile it.
+pub fn compileRaw(target: *runtime.Instance, event_type: []const u8) RawCompile {
+    const compiler = raw_compiler orelse return .scripting_disabled;
+    return compiler(target, event_type);
+}
+
+/// The event handler event type for the event handler content attribute
+/// `name` ("onclick" -> "click"): HTML 8.1.8.2's table, whose four legacy
+/// WebKit-prefixed attributes have mixed-case event types. BORROWED from
+/// `name`, or static.
+pub fn eventTypeOf(name: []const u8) []const u8 {
+    std.debug.assert(name.len > 2);
+    inline for (.{ "onwebkitanimationend", "onwebkitanimationiteration", "onwebkitanimationstart", "onwebkittransitionend" }) |legacy| {
+        if (std.mem.eql(u8, name, legacy)) return comptime eventType(legacy);
+    }
+    return name[2..];
 }
 
 /// The event handler IDL attribute getter steps, for the attribute `name`
@@ -199,6 +261,22 @@ test "the window-reflecting set is WindowEventHandlers plus six, and orientation
     try std.testing.expect(!isWindowReflecting("load"));
     // Decided at compile time for a generated accessor's name.
     try std.testing.expect(comptime !isWindowReflecting("onreadystatechange"));
+}
+
+test "a content attribute's event type matches its IDL attribute's" {
+    try std.testing.expectEqualStrings("click", eventTypeOf("onclick"));
+    try std.testing.expectEqualStrings("beforeunload", eventTypeOf("onbeforeunload"));
+    try std.testing.expectEqualStrings("webkitAnimationEnd", eventTypeOf("onwebkitanimationend"));
+    try std.testing.expectEqualStrings("webkitTransitionEnd", eventTypeOf("onwebkittransitionend"));
+}
+
+test "without a compiler a raw handler stays raw" {
+    const saved = raw_compiler;
+    defer raw_compiler = saved;
+    raw_compiler = null;
+    // Never dereferenced: nothing is installed to read it.
+    var target: runtime.Instance = undefined;
+    try std.testing.expectEqual(RawCompile.scripting_disabled, compileRaw(&target, "click"));
 }
 
 test "an event handler's event type is its name without on" {
