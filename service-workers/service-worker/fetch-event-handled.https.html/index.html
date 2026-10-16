@@ -25,20 +25,18 @@
 <dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>1</dd></div><div><dt>Not run</dt><dd>6</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-error g-block">ERROR</span> <span class="quiet">runner status <code>ERROR</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-7c10b132ee</code>, <span class="nowrap">16 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/7c10b132ee"><code>7c10b132ee</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-6e25660ace</code>, <span class="nowrap">16 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/6e25660ace"><code>6e25660ace</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/service-workers/service-worker/fetch-event-handled.https.html"><code>service-<wbr>workers/<wbr>service-<wbr>worker/<wbr>fetch-<wbr>event-<wbr>handled.<wbr>https.<wbr>html</code></a></dd></div>
 </dl>
-<div class="harness"><p class="harness-label">Harness message</p><pre class="msg">Unhandled rejection: Cannot read properties of null (reading &#39;appendChild&#39;)</pre></div>
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/service-workers/service-worker/fetch-event-handled.https.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>0</b> / 8</span></h3>
-<pre class="msg harness-msg">Unhandled rejection: Cannot read properties of null (reading &#39;appendChild&#39;)</pre>
+<h3 class="run-head"><code>/service-workers/service-worker/fetch-event-handled.https.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>0</b> / 8</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-67ff88fe"><details><summary><span class="mark">FAIL</span><span class="sub-name">global setup</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;getRegistration&#39;)&quot;</pre></details><a class="self" href="#s-67ff88fe" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-67ff88fe"><details><summary><span class="mark">FAIL</span><span class="sub-name">global setup</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-67ff88fe" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-timeout" id="s-5d1a4821"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">FetchEvent.handled should resolve when respondWith() is not called for a navigation request</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-5d1a4821" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-notrun" id="s-8a753beb"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">FetchEvent.handled should resolve when respondWith() is not called for a sub-resource request</span></div><a class="self" href="#s-8a753beb" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-notrun" id="s-542cb4b6"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">FetchEvent.handled should reject when respondWith() is not called and the event is canceled</span></div><a class="self" href="#s-542cb4b6" aria-label="Link to this subtest">&para;</a></li>

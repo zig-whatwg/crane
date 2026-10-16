@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../service-workers/"><code>service-<wbr>workers/</code></a></li><li><a href="../../../service-workers/service-worker/"><code>service-<wbr>worker/</code></a></li><li aria-current="page"><code>xhr-<wbr>content-<wbr>length.<wbr>https.<wbr>window.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>xhr-<wbr>content-<wbr>length.<wbr>https.<wbr>window.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="service-workers/service-worker/xhr-content-length.https.window.js">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 5</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>5</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">1</span><span class="fg-of"> / 5</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>4</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-7c10b132ee</code>, <span class="nowrap">16 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/7c10b132ee"><code>7c10b132ee</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-6e25660ace</code>, <span class="nowrap">16 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/6e25660ace"><code>6e25660ace</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/service-workers/service-worker/xhr-content-length.https.window.js"><code>service-<wbr>workers/<wbr>service-<wbr>worker/<wbr>xhr-<wbr>content-<wbr>length.<wbr>https.<wbr>window.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -35,11 +35,11 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-27501d1d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setup</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;getRegistration&#39;)&quot;</pre></details><a class="self" href="#s-27501d1d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f523fc95"><details><summary><span class="mark">FAIL</span><span class="sub-name">Synthetic response without Content-Length header</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;contentWindow&#39;)&quot;</pre></details><a class="self" href="#s-f523fc95" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d23ef647"><details><summary><span class="mark">FAIL</span><span class="sub-name">Synthetic response with Content-Length header with value larger than response body length</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;contentWindow&#39;)&quot;</pre></details><a class="self" href="#s-d23ef647" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3a2c0e61"><details><summary><span class="mark">FAIL</span><span class="sub-name">Synthetic response with two Content-Length headers value larger than response body length</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;contentWindow&#39;)&quot;</pre></details><a class="self" href="#s-3a2c0e61" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e613c6a0"><details><summary><span class="mark">FAIL</span><span class="sub-name">Synthetic response with bogus Content-Length header</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;contentWindow&#39;)&quot;</pre></details><a class="self" href="#s-e613c6a0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-27501d1d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Setup</span></div><a class="self" href="#s-27501d1d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f523fc95"><details><summary><span class="mark">FAIL</span><span class="sub-name">Synthetic response without Content-Length header</span></summary><pre class="msg">assert_equals: expected (object) null but got (string) &quot;42&quot;</pre></details><a class="self" href="#s-f523fc95" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d23ef647"><details><summary><span class="mark">FAIL</span><span class="sub-name">Synthetic response with Content-Length header with value larger than response body length</span></summary><pre class="msg">assert_equals: expected &quot;10000&quot; but got &quot;42&quot;</pre></details><a class="self" href="#s-d23ef647" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3a2c0e61"><details><summary><span class="mark">FAIL</span><span class="sub-name">Synthetic response with two Content-Length headers value larger than response body length</span></summary><pre class="msg">assert_equals: expected &quot;10000, 10000&quot; but got &quot;42&quot;</pre></details><a class="self" href="#s-3a2c0e61" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e613c6a0"><details><summary><span class="mark">FAIL</span><span class="sub-name">Synthetic response with bogus Content-Length header</span></summary><pre class="msg">assert_equals: expected &quot;test&quot; but got &quot;42&quot;</pre></details><a class="self" href="#s-e613c6a0" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
