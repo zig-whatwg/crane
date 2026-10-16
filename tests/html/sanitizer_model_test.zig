@@ -147,3 +147,23 @@ test "Sanitizer remove-list modifiers distinguish namespaces and reject local ru
     try std.testing.expect(try config.apply(.{ .allow_attribute = .{ .local = "title" } }));
     try std.testing.expect(!try config.apply(.{ .data_attributes = false }));
 }
+
+test "setDataAttributes(true) may leave data-* names in an element's removeAttributes (row 41 review M1: no panic)" {
+    // The spec's setDataAttributes steps 3-7 do not remove a data-* name from
+    // an element's removeAttributes, so the result fails the constructor's
+    // validity check - which a modifier must not assert (Gecko asserts it
+    // only in debug builds; a script-reachable panic in Crane).
+    var global = [_]model.Name{.{ .local = "data-x" }};
+    var removed = [_]model.Name{.{ .local = "data-x" }};
+    var elements = [_]model.Element{.{ .name = htmlName("div"), .remove_attributes = &removed }};
+    var config = try model.Config.fromData(std.testing.allocator, .{
+        .elements = &elements,
+        .attributes = &global,
+        .data_attributes = false,
+    }, false);
+    defer config.deinit();
+    try std.testing.expect(try config.apply(.{ .data_attributes = true }));
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectEqual(@as(?bool, true), (try config.toData(arena.allocator())).data_attributes);
+}

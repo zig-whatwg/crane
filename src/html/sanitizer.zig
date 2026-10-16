@@ -180,7 +180,7 @@ pub const Config = struct {
 
     /// Only the immediate, synchronous copy of Sanitizer.get() below uses
     /// this bridge. No callback runs while its borrowed result is copied.
-    fn fromDictionary(allocator: Allocator, input: anytype, permissive: bool) !Config {
+    fn fromDictionary(allocator: Allocator, input: anytype) !Config {
         comptime {
             const fields = .{ "elements", "removeElements", "replaceWithChildrenElements", "attributes", "removeAttributes", "comments", "dataAttributes", "processingInstructions", "removeProcessingInstructions", "javascriptURLs" };
             if (std.meta.fields(@TypeOf(input)).len != fields.len) @compileError("Update the SanitizerConfig native copy for its changed members");
@@ -204,8 +204,8 @@ pub const Config = struct {
             result.data.elements = try a.alloc(Element, elements.len);
             for (elements, result.data.elements.?) |element, *copy| copy.* = try typedElement(a, element);
         }
-        result.data.canonicalize(permissive);
-        if (!result.data.valid()) return error.TypeError;
+        // The only input is an existing Sanitizer's get(): already canonical,
+        // and possibly in a state a modifier legitimately left (see apply).
         return result;
     }
 
@@ -233,7 +233,7 @@ pub const Config = struct {
                 // the Sanitizer's configuration. Copy the borrowed get() result
                 // immediately, with no callback between reading and copying.
                 const instance = engine.convertToPlatformObject(realm, value) orelse return error.TypeError;
-                break :blk fromDictionary(allocator, try interfaces.Sanitizer.call_get(instance), permissive);
+                break :blk fromDictionary(allocator, try interfaces.Sanitizer.call_get(instance));
             },
         };
     }
@@ -268,7 +268,10 @@ pub const Config = struct {
             next.deinit();
             return false;
         }
-        std.debug.assert(next.data.valid());
+        // No validity check here: the spec's modifiers can leave a
+        // configuration the constructor would reject (setDataAttributes(true)
+        // keeps data-* names in an element's removeAttributes), and Gecko
+        // checks it only in debug builds. Row 41 review M1.
         self.deinit();
         self.* = next;
         return true;
@@ -972,25 +975,41 @@ const default_svg_elements =
     \\tspan dx dy lengthAdjust rotate textLength x y
 ;
 
-/// HTML "set and filter HTML", steps 1–9. Only this API calls the filter.
-/// The existing parser marks scripts already-started but still schedules
-/// resources and custom-element work before filtering. An inert-document
-/// parser is required before these safe entry points can ship (row 41 Q12).
-pub fn setHTML(receiver: *runtime.Instance, target: *runtime.Instance, source: []const u8, converted: *const Converted, safe: bool) !void {
+/// HTML "set and filter HTML", steps 1–9. `filtered` is true for setHTML
+/// and for setHTMLUnsafe given a sanitizer: the fragment is then built in an
+/// inert document (lane fraginert's parseFragmentToFilter: nothing fetches,
+/// compiles a handler or constructs a custom element before the filter
+/// runs), and the survivors are adopted on insertion (row 41 Q4/Q12, review
+/// M2). setHTMLUnsafe without a sanitizer parses live and skips the
+/// configuration and the filter, as Blink and Gecko do.
+pub fn setHTML(receiver: *runtime.Instance, target: *runtime.Instance, source: []const u8, converted: *const Converted, safe: bool, filtered: bool) !void {
     const context = if (receiver.stateAs(interfaces.ShadowRoot.State) != null) try interfaces.ShadowRoot.get_host(receiver) else receiver;
     if (safe) {
         const name = dom.node_creation.elementNames(context) orelse return error.InvalidStateError;
         if (std.mem.eql(u8, name.local_name, "script") and
             (optionalStringEqual(name.namespace, html_namespace) or optionalStringEqual(name.namespace, svg_namespace))) return;
     }
-    var config = try Config.fromConverted(receiver.ctx.allocator, receiver.ctx, converted, !safe);
-    defer config.deinit();
-    const fragment = try @import("custom_elements.zig").parseFragmentUnsafe(receiver, source);
+    std.debug.assert(!safe or filtered);
+    const custom_elements = @import("custom_elements.zig");
+    // A parser failure other than OOM is a NotSupportedError, as
+    // setHTMLUnsafe mapped it before the Sanitizer (row 41 review N5).
+    const parsed = if (filtered)
+        custom_elements.parseFragmentToFilter(receiver, source, .inert)
+    else
+        custom_elements.parseFragmentUnsafe(receiver, source);
+    const fragment = parsed catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.NotSupportedError,
+    };
     defer dom.node_creation.destroyUninserted(fragment);
-    // Steps 7–8 parse the complete fragment before filtering. Chrome 154's
-    // streaming sanitizer and Firefox 157 split on adoption-agency cases
-    // 6, 12 and 13; the tie follows the spec's tree, also Firefox's result.
-    try sanitize(fragment, &config, safe);
+    if (filtered) {
+        var config = try Config.fromConverted(receiver.ctx.allocator, receiver.ctx, converted, !safe);
+        defer config.deinit();
+        // Steps 7–8 parse the complete fragment before filtering. Chrome 154's
+        // streaming sanitizer and Firefox 157 split on adoption-agency cases
+        // 6, 12 and 13; the tie follows the spec's tree, also Firefox's result.
+        try sanitize(fragment, &config, safe);
+    }
     const parent = dom.instance_bridge.getNodeBase(target) orelse return error.InvalidStateError;
     const contents = dom.instance_bridge.getNodeBase(fragment) orelse return error.InvalidStateError;
     try dom.mutation.replaceAll(@as(?*dom.NodeBase, contents), parent);
@@ -1122,10 +1141,16 @@ fn isNavigatingAttribute(element: Name, attribute: Name) bool {
             (attribute.namespace == null or optionalStringEqual(attribute.namespace, xlink_namespace));
     }
     if (!optionalStringEqual(element.namespace, html_namespace) or attribute.namespace != null) return false;
+    // HTML's navigating URL attributes: a/area href, button/input formaction,
+    // form action. base href is NOT added: only Blink strips it - a tie, so
+    // the spec wins (row 41 review M3).
     if (std.mem.eql(u8, attribute.local, "href")) {
-        return std.mem.eql(u8, element.local, "a") or std.mem.eql(u8, element.local, "area") or std.mem.eql(u8, element.local, "base");
+        return std.mem.eql(u8, element.local, "a") or std.mem.eql(u8, element.local, "area");
     }
     if (std.mem.eql(u8, attribute.local, "formaction")) return std.mem.eql(u8, element.local, "button") or std.mem.eql(u8, element.local, "input");
+    // Deviation from HTML's list: iframe src is also stripped, as Blink
+    // (SanitizerBuiltins kNavigatingURLAttributes) and Gecko both do - the
+    // browser majority (golden rule 2; row 41 review M3).
     return (std.mem.eql(u8, attribute.local, "action") and std.mem.eql(u8, element.local, "form")) or
         (std.mem.eql(u8, attribute.local, "src") and std.mem.eql(u8, element.local, "iframe"));
 }

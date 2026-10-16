@@ -2350,7 +2350,7 @@ pub fn call_setHTML(instance: *runtime.Instance, html: runtime.DOMString, option
     var converted = try @import("html").sanitizer.convertOptions(instance.ctx, options.getOrDefault(.{}).sanitizer, true);
     defer converted.deinit();
     const target = try dom.template_contents.insertionTarget(instance);
-    try @import("html").sanitizer.setHTML(instance, target, html.asSlice(), &converted, true);
+    try @import("html").sanitizer.setHTML(instance, target, html.asSlice(), &converted, true, true);
 }
 
 /// HTML 8.5.2 setHTMLUnsafe, steps 1–3.
@@ -2367,7 +2367,7 @@ pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTM
     // element; otherwise this."
     const target = try dom.template_contents.insertionTarget(instance);
     // Step 3: configure, parse, sanitize, and replace children.
-    try @import("html").sanitizer.setHTML(instance, target, compliant, &converted, false);
+    try @import("html").sanitizer.setHTML(instance, target, compliant, &converted, false, options.getOrDefault(.{}).sanitizer != null);
 }
 
 /// Operation: scrollIntoView

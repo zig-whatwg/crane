@@ -441,7 +441,7 @@ pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(dictionarie
 pub fn call_setHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(dictionaries.SetHTMLOptions)) anyerror!void {
     var converted = try @import("html").sanitizer.convertOptions(instance.ctx, options.getOrDefault(.{}).sanitizer, true);
     defer converted.deinit();
-    try @import("html").sanitizer.setHTML(instance, instance, html.asSlice(), &converted, true);
+    try @import("html").sanitizer.setHTML(instance, instance, html.asSlice(), &converted, true, true);
 }
 
 /// HTML 8.5.2 setHTMLUnsafe, steps 1–2.
@@ -455,7 +455,7 @@ pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTM
     const compliant = try @import("dom").trusted_types.compliantStringFor(allocator, .html, instance, html, "ShadowRoot setHTMLUnsafe");
     defer allocator.free(compliant);
     // Step 2: configure, parse, sanitize, and replace the shadow children.
-    try @import("html").sanitizer.setHTML(instance, instance, compliant, &converted, false);
+    try @import("html").sanitizer.setHTML(instance, instance, compliant, &converted, false, options.getOrDefault(.{}).sanitizer != null);
 }
 
 /// getAnimations() - Get all animations in shadow tree

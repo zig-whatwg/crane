@@ -2490,8 +2490,10 @@ pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: typedefs.T
     const document_internals = @import("dom").document_internals;
     errdefer @import("dom").node_creation.destroyUninserted(document);
     try document_internals.setContentType(document, "text/html");
-    // Steps 5–6: configure the sanitizer and filter the parsed document.
-    try @import("html").sanitizer.filterDocument(document, &converted, false);
+    // Steps 5–6: configure the sanitizer and filter the parsed document -
+    // only when a sanitizer was given (row 41 review M2/S2: an absent one
+    // filters nothing, so skip the tree walk).
+    if (options.getOrDefault(.{}).sanitizer != null) try @import("html").sanitizer.filterDocument(document, &converted, false);
     return document;
 }
 
