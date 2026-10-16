@@ -209,6 +209,7 @@ progress = [
   "79a43f2163 (merged 5669503a7b) - Mixed Content: upgrade, request and response blocking per the Editor's Draft, inherited prohibition, per-hop redirect checks, WebSocket handshakes with UIR (Codex)",
   "f2784456a0..2fdc14d98b - Origin-Agent-Cluster: the header parsed as a structured item, each browsing context group's historical agent cluster key map (dom.agent_cluster_keys), window.originAgentCluster, document.domain's origin-keyed bail-out, origin-keyed window agent clusters for WebAssembly.Module (oac lane)",
   "95610b9d24 - HTML 7.2.1 cross-origin objects on V8 [cross_origin_objects]: a security token per realm, access checks asking the host's IsPlatformObjectSameOrigin on every access, cross-origin interceptors for the WindowProxy and Location, WebIDL's security check, Location's members as [LegacyUnforgeable] own properties (xorigin2 lane)",
+  "1e42de4053, 09849c83d7 - the natively bound timers and animation frames run WebIDL's security check; the agent's stack reads (hasRunningScript, runningScriptLocation) expose every realm's frames across security tokens (xorigin2 lane)",
 ]
 
   [[infra.items]]
