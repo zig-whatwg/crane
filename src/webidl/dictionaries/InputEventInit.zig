@@ -15,4 +15,8 @@ pub const InputEventInit = struct {
     inputType: ?runtime.DOMString = null,
     dataTransfer: ?*runtime.Instance = null,
     targetRanges: ?[]const *runtime.Instance = null,
+
+    /// Optional members whose IDL type is nullable: a present null is the
+    /// value null. Any other member's present null converts by its type.
+    pub const nullable_members = .{ "data", "dataTransfer" };
 };

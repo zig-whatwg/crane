@@ -13,4 +13,8 @@ pub const ShadowRootInit = struct {
     clonable: ?bool = null,
     serializable: ?bool = null,
     customElementRegistry: webidl.Opt(?*runtime.Instance) = .notPassed(),
+
+    /// Optional members whose IDL type is nullable: a present null is the
+    /// value null. Any other member's present null converts by its type.
+    pub const nullable_members = .{"customElementRegistry"};
 };

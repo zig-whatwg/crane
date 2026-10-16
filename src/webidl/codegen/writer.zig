@@ -3745,6 +3745,63 @@ pub fn writeRestrictedMembers(writer: anytype, members: []const types.Dictionary
     try writer.writeAll(" };\n");
 }
 
+/// A dictionary's optional members whose type is nullable, for the
+/// dictionary converter:
+///
+///     pub const nullable_members = .{ "body", "signal" };
+///
+/// WebIDL 3.2.18: a member is present unless its value is undefined, and a
+/// present member converts by its type - a present null to null for a
+/// nullable type, and through the type otherwise: ToString(null) is "null",
+/// an enumeration's "null" or an interface's null a TypeError
+/// (web-locks/acquire.https.any.js, `{mode: null}`). Every optional member is
+/// `?T = null` - Zig's null for "not present" - whatever its IDL type, so the
+/// converter needs to be told which members' null is a value. A nullable
+/// type is `T?`, a typedef of one, or a union that includes one (WebIDL
+/// 2.13.29 "includes a nullable type"). `any` members have their own table
+/// (any_members). Written inside the dictionary's struct; nothing when it has
+/// none.
+pub fn writeNullableMembers(writer: anytype, members: []const types.DictionaryMember, model: ?*const ir.IR) !void {
+    var any = false;
+    for (members) |member| {
+        if (isNullableMember(member, model)) any = true;
+    }
+    if (!any) return;
+    try writer.writeAll("\n    /// Optional members whose IDL type is nullable: a present null is the\n");
+    try writer.writeAll("    /// value null. Any other member's present null converts by its type.\n");
+    try writer.writeAll("    pub const nullable_members = .{");
+    var first = true;
+    for (members) |member| {
+        if (!isNullableMember(member, model)) continue;
+        try writer.print("{s}\"{s}\"", .{ if (first) " " else ", ", member.name });
+        first = false;
+    }
+    try writer.writeAll(" };\n");
+}
+
+/// Whether an optional dictionary member's type is nullable (see
+/// writeNullableMembers). A required member is never listed: it converts a
+/// present null by its type already.
+pub fn isNullableMember(member: types.DictionaryMember, model: ?*const ir.IR) bool {
+    if (member.required) return false;
+    return isNullableIDLType(member.idlType, model, 0);
+}
+
+fn isNullableIDLType(t: types.IDLType, model: ?*const ir.IR, depth: usize) bool {
+    if (t.nullable) return true;
+    if (depth >= 8) return false;
+    if (t.unionTypes) |union_members| {
+        for (union_members) |union_member| {
+            if (isNullableIDLType(union_member, model, depth + 1)) return true;
+        }
+        return false;
+    }
+    if (t.generic != null or t.sequence != null or t.record != null) return false;
+    const m = model orelse return false;
+    const typedef = m.typedefs.get(t.type) orelse return false;
+    return isNullableIDLType(typedef.idlType, model, depth + 1);
+}
+
 /// A dictionary's `any` members, for the dictionary converter:
 ///
 ///     pub const any_members = .{ "detail" };

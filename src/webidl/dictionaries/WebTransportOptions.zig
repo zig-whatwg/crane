@@ -17,6 +17,10 @@ pub const WebTransportOptions = struct {
     protocols: ?[]const runtime.DOMString = null,
     datagramsReadableType: ?enums.ReadableStreamType = null,
 
+    /// Optional members whose IDL type is nullable: a present null is the
+    /// value null. Any other member's present null converts by its type.
+    pub const nullable_members = .{ "anticipatedConcurrentIncomingUnidirectionalStreams", "anticipatedConcurrentIncomingBidirectionalStreams" };
+
     /// [EnforceRange] members: converted with that branch of ConvertToInt.
     pub const enforce_range_members = .{ "anticipatedConcurrentIncomingUnidirectionalStreams", "anticipatedConcurrentIncomingBidirectionalStreams" };
 };

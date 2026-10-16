@@ -9,6 +9,10 @@ pub const WebTransportErrorOptions = struct {
     source: ?enums.WebTransportErrorSource = null,
     streamErrorCode: ?u32 = null,
 
+    /// Optional members whose IDL type is nullable: a present null is the
+    /// value null. Any other member's present null converts by its type.
+    pub const nullable_members = .{"streamErrorCode"};
+
     /// [Clamp] members: converted with that branch of ConvertToInt.
     pub const clamp_members = .{"streamErrorCode"};
 };

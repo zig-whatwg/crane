@@ -19,4 +19,8 @@ pub const CookieInit = struct {
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{"expires"};
+
+    /// Optional members whose IDL type is nullable: a present null is the
+    /// value null. Any other member's present null converts by its type.
+    pub const nullable_members = .{ "expires", "domain", "maxAge" };
 };

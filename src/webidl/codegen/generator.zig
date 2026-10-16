@@ -2947,6 +2947,8 @@ pub fn generateDictionary(
     try writer.writeByteStringMembers(w, dictionary.members, ir);
     // Which members keep a present null as `.null` (the converter reads it).
     try writer.writeAnyMembers(w, dictionary.members);
+    // Which optional members' present null is the value null.
+    try writer.writeNullableMembers(w, dictionary.members, ir);
     // Which integer members take [EnforceRange]'s or [Clamp]'s conversion.
     try writer.writeIntegerMembers(w, dictionary.members);
 
