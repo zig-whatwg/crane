@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../domxpath/"><code>domxpath/</code></a></li><li aria-current="page"><code>resolver-<wbr>callback-<wbr>interface.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>resolver-<wbr>callback-<wbr>interface.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="domxpath/resolver-callback-interface.html">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 10</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>10</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">10</span><span class="fg-of"> / 10</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-969e8dc964</code>, <span class="nowrap">13 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/969e8dc964"><code>969e8dc964</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-4aa554bec7</code>, <span class="nowrap">16 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/4aa554bec7"><code>4aa554bec7</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/domxpath/resolver-callback-interface.html"><code>domxpath/<wbr>resolver-<wbr>callback-<wbr>interface.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,24 +35,16 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-9f6f8e5c"><details><summary><span class="mark">FAIL</span><span class="sub-name">callable resolver</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-9f6f8e5c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-fc085054"><details><summary><span class="mark">FAIL</span><span class="sub-name">callable resolver: result is not cached</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-fc085054" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-0e2a86dc"><details><summary><span class="mark">FAIL</span><span class="sub-name">callable resolver: abrupt completion from Call</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
-    document.evaluate(&quot;/foo:bar&quot;, document.documentElement, resolver);
-  }&quot; threw object &quot;NotSupportedError: This feature is not yet implemented&quot; that is not a DOMException NAMESPACE_ERR: property &quot;code&quot; is equal to 9, expected 14</pre></details><a class="self" href="#s-0e2a86dc" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-01425758"><details><summary><span class="mark">FAIL</span><span class="sub-name">callable resolver: no &#39;lookupNamespaceURI&#39; lookups</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-01425758" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-49d2a836"><details><summary><span class="mark">FAIL</span><span class="sub-name">object resolver</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-49d2a836" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b5a21075"><details><summary><span class="mark">FAIL</span><span class="sub-name">object resolver: this value and `prefix` argument</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-b5a21075" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f35351e6"><details><summary><span class="mark">FAIL</span><span class="sub-name">object resolver: &#39;lookupNamespaceURI&#39; is not cached</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-f35351e6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-120368db"><details><summary><span class="mark">FAIL</span><span class="sub-name">object resolver: abrupt completion from Get</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
-    document.evaluate(&quot;/foo:bar&quot;, document.documentElement, resolver);
-  }&quot; threw object &quot;NotSupportedError: This feature is not yet implemented&quot; that is not a DOMException NAMESPACE_ERR: property &quot;code&quot; is equal to 9, expected 14</pre></details><a class="self" href="#s-120368db" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-764db0b0"><details><summary><span class="mark">FAIL</span><span class="sub-name">object resolver: &#39;lookupNamespaceURI&#39; is thruthy and not callable</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
-    document.evaluate(&quot;/foo:bar&quot;, document.documentElement, resolver);
-  }&quot; threw object &quot;NotSupportedError: This feature is not yet implemented&quot; that is not a DOMException NAMESPACE_ERR: property &quot;code&quot; is equal to 9, expected 14</pre></details><a class="self" href="#s-764db0b0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-cac5c441"><details><summary><span class="mark">FAIL</span><span class="sub-name">object resolver: &#39;lookupNamespaceURI&#39; is falsy and not callable</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
-    document.evaluate(&quot;/foo:bar&quot;, document.documentElement, resolver);
-  }&quot; threw object &quot;NotSupportedError: This feature is not yet implemented&quot; that is not a DOMException NAMESPACE_ERR: property &quot;code&quot; is equal to 9, expected 14</pre></details><a class="self" href="#s-cac5c441" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9f6f8e5c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">callable resolver</span></div><a class="self" href="#s-9f6f8e5c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fc085054"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">callable resolver: result is not cached</span></div><a class="self" href="#s-fc085054" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0e2a86dc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">callable resolver: abrupt completion from Call</span></div><a class="self" href="#s-0e2a86dc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-01425758"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">callable resolver: no &#39;lookupNamespaceURI&#39; lookups</span></div><a class="self" href="#s-01425758" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-49d2a836"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">object resolver</span></div><a class="self" href="#s-49d2a836" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b5a21075"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">object resolver: this value and `prefix` argument</span></div><a class="self" href="#s-b5a21075" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f35351e6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">object resolver: &#39;lookupNamespaceURI&#39; is not cached</span></div><a class="self" href="#s-f35351e6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-120368db"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">object resolver: abrupt completion from Get</span></div><a class="self" href="#s-120368db" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-764db0b0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">object resolver: &#39;lookupNamespaceURI&#39; is thruthy and not callable</span></div><a class="self" href="#s-764db0b0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cac5c441"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">object resolver: &#39;lookupNamespaceURI&#39; is falsy and not callable</span></div><a class="self" href="#s-cac5c441" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
