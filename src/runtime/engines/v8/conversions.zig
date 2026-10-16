@@ -593,7 +593,7 @@ pub fn fromV8Sequence(
     // Kept, every sequence argument that failed part-way leaked them
     // (docs/lessons/architecture-a-conversion-that-fails-part-way-converted-the-rest.md).
     var converted: usize = 0;
-    errdefer for (slice[0..converted]) |element| interface_mod.freeConvertedArg(T, allocator, element);
+    errdefer for (slice[0..converted]) |element| interface_mod.freeSequenceElement(T, allocator, element);
 
     for (0..length) |i| {
         // Use v8_Object_Get with integer key instead of v8_Array_Get to properly
@@ -624,9 +624,9 @@ pub fn fromV8Sequence(
 /// any more: always for a conversion that copies (`argHandleIsCopied`), and
 /// for a type whose value says (`argumentHandleIsKeptInValue`: an `any`, an
 /// `object` arm, a buffer source) unless the value still refers to it
-/// (`keptArgumentHandle`). A buffer source element keeps it until the
-/// sequence is freed (`freeConvertedArg`). Any other type keeps it - the
-/// conservative answer, as for an argument.
+/// (`keptArgumentHandle`). An element that refers to it keeps it until the
+/// sequence is freed (`interface.freeSequenceElement`). Any other type keeps
+/// it - the conservative answer, as for an argument.
 fn releaseElementHandle(comptime T: type, element: T, handle: *v8.Value) void {
     if (comptime interface_mod.argHandleIsCopied(T)) {
         v8.v8_Value_Dispose(handle);
@@ -801,7 +801,7 @@ fn sequenceFromIterable(
 ) ConversionError![]T {
     var items: std.ArrayListUnmanaged(T) = .empty;
     errdefer {
-        for (items.items) |item| interface_mod.freeConvertedArg(T, allocator, item);
+        for (items.items) |item| interface_mod.freeSequenceElement(T, allocator, item);
         items.deinit(allocator);
     }
     var failure: ?ConversionError = null;
@@ -823,7 +823,7 @@ fn sequenceFromIterable(
             };
             releaseElementHandle(T, converted, next);
             self.items.append(self.allocator, converted) catch {
-                interface_mod.freeConvertedArg(T, self.allocator, converted);
+                interface_mod.freeSequenceElement(T, self.allocator, converted);
                 self.failure.* = ConversionError.OutOfMemory;
                 return error.OutOfMemory;
             };

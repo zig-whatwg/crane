@@ -950,11 +950,11 @@ pub fn anyArgumentHandle(comptime T: type, value: T) ?*anyopaque {
 /// (2026-10-02): AlgorithmIdentifier's, which SubtleCrypto reads during the
 /// call (normalize an algorithm) and never keeps.
 ///
-/// Arguments only. An attribute setter's `any` value is released by its
-/// binding once the setter returns (`setterValueIsBorrowed`, whose keepers
-/// were read the same way); a dictionary's `any` member and a sequence's
-/// element keep today's conservative answer (kept) until theirs are. A
-/// buffer source is released with the value instead, by `freeConvertedArg`.
+/// An attribute setter's `any` value is released by its binding once the
+/// setter returns (`setterValueIsBorrowed`, whose keepers were read the same
+/// way); a dictionary's `any` member with its dictionary (`freeConvertedArg`)
+/// and a sequence's `any` element with its sequence (`freeSequenceElement`).
+/// A buffer source is released with the value instead, by `freeConvertedArg`.
 pub fn releaseAnyArgument(comptime T: type, value: T) void {
     if (comptime !anyHandleIsKeptOnlyAsHandle(T)) return;
     if (anyArgumentHandle(T, value)) |handle| v8.v8_Value_Dispose(@ptrCast(@alignCast(handle)));
@@ -1422,10 +1422,8 @@ pub fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) 
         // Generic slice types (sequences) - allocated by fromV8Sequence
         // First free each element if needed, then free the slice itself
         const ElemType = @typeInfo(T).pointer.child;
-        if (comptime needsArgCleanup(ElemType)) {
-            for (arg) |elem| {
-                freeConvertedArg(ElemType, allocator, elem);
-            }
+        if (comptime needsArgCleanup(ElemType) or anyHandleIsKeptOnlyAsHandle(ElemType)) {
+            for (arg) |elem| freeSequenceElement(ElemType, allocator, elem);
         }
         // Free the slice itself (cast away const for freeing)
         if (arg.len > 0) {
@@ -1480,9 +1478,8 @@ pub fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) 
         // serializes, PopStateEvent now holds its state. Kept, an
         // object `detail` held its realm for the process's life
         // (realms3: a removed frame kept alive by a dropped
-        // CustomEvent). A sequence<any> element inside a dictionary
-        // keeps the conservative answer (kept): its keepers are not
-        // read yet.
+        // CustomEvent). A sequence<any> member's elements go with
+        // the sequence (`freeSequenceElement`).
         inline for (std.meta.fields(T)) |field| {
             if (comptime needsArgCleanup(field.type)) {
                 freeConvertedArg(field.type, allocator, @field(arg, field.name));
@@ -1507,6 +1504,29 @@ pub fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) 
         }
         // Untagged unions cannot be safely freed (we don't know which variant is active)
     }
+}
+
+/// A sequence's element, once its sequence is freed - by `freeConvertedArg`
+/// with the sequence, or by a sequence conversion that failed part-way: what
+/// its conversion allocated, and, for an `any` element (or an `object` arm),
+/// the Get handle it still refers to (`releaseAnyArgument`).
+///
+/// The element is BORROWED for the call, as an `any` argument is (engine
+/// protocol rule 3): an impl that keeps one takes a hold of its own. Every
+/// impl that reads a sequence<any> or sequence<object> was read for that
+/// (binding3, 2026-10-16). Variadic `any...` arguments were already released
+/// one by one (`freeArgument`); the rest are dictionary members, and only
+/// StructuredSerializeOptions.transfer has readers - structuredClone and the
+/// postMessage steps of Window, MessagePort, Worker and
+/// DedicatedWorkerGlobalScope - which hand it to
+/// `engine.structuredSerializeWithTransfer`, whose walk takes Globals of its
+/// own. The other 25 dictionaries with such a member (WebGPU, WebNN, the
+/// WebCodecs inits, Bluetooth, Protected Audience, MediaTrackCapabilities)
+/// have no impl that reads it. Kept, each transferred object's handle was
+/// a 16 B Global per call, rooting the object for the agent's life.
+pub fn freeSequenceElement(comptime T: type, allocator: std.mem.Allocator, element: T) void {
+    freeConvertedArg(T, allocator, element);
+    releaseAnyArgument(T, element);
 }
 
 /// An operation's or constructor's argument, once the call is over:
