@@ -3,9 +3,13 @@
 **Date**: 2026-10-16
 **Lesson**: A generated SameObject fast path can skip the getter's required lifecycle checks.
 
-**Why**: Location.ancestorOrigins returns the active document's list, but a
-different, stable empty list after the relevant document becomes null. Keeping
-the same object within each state does not make the first value valid forever.
+**Why**: The cause is IDL drift, not a rule about [SameObject]. Current HTML
+has no [SameObject] on Location.ancestorOrigins (webref ed/idl/html.idl:1921;
+specs/whatwg/html.md:134929): it returns the active document's list, and a
+different, stable empty list once the relevant document is null. Only Crane's
+pinned specs/idl/html.idl:1907 (webref 08fb1a31) still carries [SameObject], so
+the generated getter caches the first value forever (corrected by the row 45
+review, S1).
 
 **What Happened**: While implementing Origin and ancestorOrigins in row 45,
 the generated Location getter returned cached_ancestorOrigins before calling
@@ -34,4 +38,4 @@ The relevant algorithms are [HTML's ancestorOrigins getter](https://html.spec.wh
 Existing engine designs can be read in [Blink's Location implementation](https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/frame/location.cc)
 and [WebKit's Location implementation](https://github.com/WebKit/WebKit/blob/main/Source/WebCore/page/Location.cpp).
 
-**Takeaway**: **SameObject caching must preserve the getter's state transitions and checks.**
+**Takeaway**: **When a generated [SameObject] contradicts a WPT file every browser passes, check the current IDL first: the pinned snapshot can lag the standard (ancestorOrigins lost [SameObject] upstream). The fix is the webref IDL update, not a codegen opt-out.**

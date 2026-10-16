@@ -58,6 +58,7 @@ src/dom/event_construction.zig ui_event_steps 1 G H decl:c0a9c4ee7c8461cf
 src/dom/event_dispatch.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/event_handlers.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/event_handlers.zig raw_compiler 1 G P-res decl:34154a44d1298a5b
+src/dom/extract_origin.zig implementations 1 G P-res decl:5e1afa18440dd7e0
 src/dom/fetch_objects.zig request_steps 1 G H decl:30978182fd939a7b
 src/dom/fetch_objects.zig response_steps 1 G H decl:fb5cd971a78a8840
 src/dom/file_lists.zig implementation 1 G P-res decl:9c737e7125e9c3d4

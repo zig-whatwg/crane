@@ -465,6 +465,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A mangled identifier cannot be unmangled](codegen-a-mangled-identifier-cannot-be-unmangled.md) - Keep the source string beside a generated identifier; never derive one from the other.
 - [Event-handler fallbacks need ancestor state](codegen-event-handler-fallbacks-need-ancestor-state.md) - Check legacy construction/destruction before enabling generated fallbacks.
 - [Dictionary input tests do not verify return shapes](codegen-dictionary-input-tests-do-not-verify-return-shapes.md) - Test dictionary round trips in JavaScript, including present null and inherited members; native values and input-only tests cannot establish the return shape.
+- [SameObject caching must not bypass lifecycle checks](codegen-sameobject-caching-must-not-bypass-lifecycle-checks.md) - When a generated [SameObject] contradicts a WPT file every browser passes, check the current IDL first: the pinned snapshot can lag the standard (ancestorOrigins lost [SameObject] upstream).
+- [Native SameObject getters can leak unwrapped instances](codegen-native-sameobject-getters-can-leak-unwrapped-instances.md) - Share scalar reads before acquiring wrapper objects; measure Zig and C++ allocations separately.
 
 ### Testing
 - [Only state made natively can be orphaned - a wrap reaches up to the root](testing-only-state-made-natively-can-be-orphaned.md) - An orphan is a subtree script never touched: reproduce an orphan leak with state the engine makes on its own, first with state made at parse time; reading the node from script wraps it and every ancestor.
