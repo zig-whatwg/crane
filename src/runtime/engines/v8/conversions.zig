@@ -2739,6 +2739,24 @@ fn dictionaryMemberValueIsOwned(comptime T: type) bool {
     return false;
 }
 
+/// Whether toV8Value(runtime.JSValue, ...) of `value` makes a Global for the
+/// call, which the converter releases once the object it is put in has it:
+/// an ALLOWLIST of the arms converted by making one - undefined, null, a
+/// boolean, a number, a string (toV8Undefined, toV8Null, toV8Boolean,
+/// v8_Number_New and newStringFromWtf8 each make a Global). A `.handle` is
+/// the impl's own handle and an `.instance` converts to its wrapper, the
+/// wrapper cache's: releasing either is a use-after-free, so they are kept,
+/// and so is any arm not named here (tests/v8/record_value_ownership_test.zig
+/// pins the default). A JSValue's TYPE cannot answer this, which is why
+/// `dictionaryMemberValueIsOwned(runtime.JSValue)` keeps them all: a record
+/// of them - URLPattern exec()'s groups - leaked one Global per entry.
+pub fn jsValueConversionIsFresh(value: runtime.JSValue) bool {
+    return switch (value) {
+        .undefined, .null, .boolean, .number, .string => true,
+        .handle, .instance => false,
+    };
+}
+
 /// Whether toV8Value's result for a `T` returned by an operation is the
 /// binding's to release: a dictionary's object is made for the call.
 pub fn dictionaryValueIsOwned(comptime T: type) bool {
@@ -2933,7 +2951,14 @@ pub fn toV8Value(
                             break :blk try toV8Value(ValueType, isolate, context, entry.value);
                         }
                     };
-                    defer if (comptime is_string_pointer or dictionaryMemberValueIsOwned(ValueType)) v8.v8_Value_Dispose(val_v8);
+                    defer if (comptime is_string_pointer or dictionaryMemberValueIsOwned(ValueType)) {
+                        v8.v8_Value_Dispose(val_v8);
+                    } else if (comptime ValueType == runtime.JSValue) {
+                        // A JSValue's arm decides (jsValueConversionIsFresh):
+                        // a string or primitive made for this entry goes once
+                        // CreateDataProperty has copied it into the object.
+                        if (jsValueConversionIsFresh(entry.value)) v8.v8_Value_Dispose(val_v8);
+                    };
                     _ = v8.v8_Object_CreateDataProperty(obj, context, @ptrCast(key_v8), val_v8);
                 }
                 return @ptrCast(obj);
