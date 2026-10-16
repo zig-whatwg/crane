@@ -154,10 +154,28 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     const origin = try outsideSettingsOrigin(instance, allocator, base_url);
     defer allocator.free(origin);
 
+    // 5, the URL parser's blob step: "If url's scheme is "blob", set url's
+    // blob URL entry to the result of resolving the blob URL url" - now,
+    // while the constructor runs. The manager's steps fetch the script after
+    // it has returned, and script may revoke the URL first
+    // (`new SharedWorker(url); URL.revokeObjectURL(url)` still runs the blob,
+    // in every browser: workers/shared-worker-from-blob-url.window.js).
+    var blob_entry = try workers.script_fetch.captureBlobScript(
+        allocator,
+        url_record,
+        origin,
+        @ptrCast(@import("dom").browser_state.blobURLStoreOf(ctx)),
+        worker_options.worker_type,
+    );
+    errdefer if (blob_entry) |*entry| entry.deinit();
+
     // 8, 10-11. Enqueue the manager's steps: they find a running
     // SharedWorkerGlobalScope for (origin, urlRecord, name) or run a new
-    // worker, and fire `connect` - or `error` at this object.
+    // worker, and fire `connect` - or `error` at this object. They take the
+    // inside end and the blob URL entry whatever happens.
     inside_end_owned = false;
+    const entry_for_steps = blob_entry;
+    blob_entry = null;
     try worker_host.connectSharedWorker(.{
         .worker = instance,
         .steps = &owner_steps,
@@ -172,6 +190,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
         // "Run a worker" step 3, should the steps run one: the unsafe worker
         // creation time.
         .creation_time_ns = @intCast(@import("hr_time").MonotonicClock.unsafeCurrentTime()),
+        .blob_entry = entry_for_steps,
     });
 
     return instance;

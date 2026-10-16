@@ -91,6 +91,12 @@ pub const WorkerScriptFetchOptions = struct {
     /// Where the fetch client's global hears of the CSP violations the
     /// request causes (CSP 2.4.2). BORROWED; null: nobody hears them.
     csp_violation_reporter: ?fetch.internal.CspViolationReporter = null,
+    /// A blob: URL's blob URL entry, as the URL parser resolved it when the
+    /// URL was parsed (`captureBlobScript`): scheme fetch "blob" reads the
+    /// request's URL's entry, not the store's current answer, so the script
+    /// is this blob even once the URL has been revoked. BORROWED; null: the
+    /// store is asked now.
+    blob_entry: ?*const FetchedScript = null,
 
     pub const CredentialsMode = enum {
         omit,
@@ -200,6 +206,9 @@ pub fn fetchWorkerScript(
     }
 
     if (std.mem.startsWith(u8, url, "blob:")) {
+        if (options.blob_entry) |entry| {
+            return FetchedScript.init(allocator, entry.source, entry.final_url, entry.content_type, true) catch WorkerScriptError.OutOfMemory;
+        }
         return handleBlobUrl(allocator, url, options.requesting_origin, options.blob_url_store, options.worker_type);
     }
 
@@ -285,6 +294,23 @@ fn handleDataUrl(allocator: Allocator, url: []const u8) WorkerScriptError!Fetche
     allocator.free(source);
 
     return result;
+}
+
+/// A blob: worker script URL's blob URL entry, captured when the URL is
+/// parsed - the URL parser: "If url's scheme is "blob", set url's blob URL
+/// entry to the result of resolving the blob URL url" - for a fetch that
+/// happens later (`WorkerScriptFetchOptions.blob_entry`): the SharedWorker
+/// constructor's urlRecord, which the shared worker manager's steps fetch
+/// after the constructor has returned, by when script may have revoked the
+/// URL. Obtained for `requesting_origin` from `blob_url_store`, as the fetch
+/// would. Null for a URL that is not blob:, or one that resolves to no blob
+/// (the fetch then fails as it would have). OWNED.
+pub fn captureBlobScript(allocator: Allocator, url: []const u8, requesting_origin: []const u8, blob_url_store: ?*anyopaque, worker_type: WorkerType) error{OutOfMemory}!?FetchedScript {
+    if (!std.mem.startsWith(u8, url, "blob:")) return null;
+    return handleBlobUrl(allocator, url, requesting_origin, blob_url_store, worker_type) catch |err| switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        else => null,
+    };
 }
 
 /// Handle blob: URL for worker scripts

@@ -1817,6 +1817,11 @@ pub const SharedWorkerRequest = struct {
     /// Worker's is: a worker these steps run takes it as its global scope's
     /// time origin.
     creation_time_ns: ?i64 = null,
+    /// urlRecord's blob URL entry, resolved when the constructor parsed it
+    /// (workers.script_fetch.captureBlobScript): the script a worker these
+    /// steps run fetches, even if the URL was revoked since. OWNED: the
+    /// manager takes it whatever happens. Null for any other URL.
+    blob_entry: ?workers.FetchedScript = null,
 };
 
 /// The SharedWorker constructor's step 11: "enqueue the following steps to
@@ -1827,6 +1832,10 @@ pub const SharedWorkerRequest = struct {
 /// loop.
 pub fn connectSharedWorker(request: SharedWorkerRequest) !void {
     errdefer message_ports.discard(request.inside_end);
+    errdefer if (request.blob_entry) |entry| {
+        var owned = entry;
+        owned.deinit();
+    };
     const loop = request.owner_realm.getOptionalEventLoop() orelse return error.NoEventLoop;
     const allocator = request.owner_realm.allocator;
     const task = try allocator.create(SharedConnect);
@@ -1850,6 +1859,7 @@ pub fn connectSharedWorker(request: SharedWorkerRequest) !void {
         .extended_lifetime = request.extended_lifetime,
         .inside_end = request.inside_end,
         .creation_time_ns = request.creation_time_ns,
+        .blob_entry = request.blob_entry,
         .allocator = allocator,
     };
     // Pending activity until the steps end: whatever script holds, the
@@ -1939,6 +1949,8 @@ const SharedConnect = struct {
     /// Null once a worker's loop has taken it.
     inside_end: ?*anyopaque,
     creation_time_ns: ?i64,
+    /// urlRecord's blob URL entry (SharedWorkerRequest.blob_entry). OWNED.
+    blob_entry: ?workers.FetchedScript,
     /// The SharedWorker's pending activity has passed to an `error` task, or
     /// to the start of the worker these steps ran.
     hold_passed: bool = false,
@@ -1965,6 +1977,7 @@ const SharedConnect = struct {
         if (!self.hold_passed and runtime.SlabAllocator.generationOf(self.worker) == self.generation) {
             engine.releasePlatformObject(self.worker);
         }
+        if (self.blob_entry) |*entry| entry.deinit();
         self.allocator.free(self.url);
         self.allocator.free(self.origin);
         self.allocator.free(self.name);
@@ -2037,6 +2050,9 @@ const SharedConnect = struct {
             .policy_container = creatorPolicyContainer(self.owner_realm),
             // Its violations are reported to the outside settings' global.
             .csp_violation_reporter = @import("dom").csp_violations.reporterForRealm(self.owner_realm),
+            // A blob: script is urlRecord's blob URL entry's blob, resolved
+            // when the constructor parsed it - revoked since or not.
+            .blob_entry = if (self.blob_entry) |*entry| entry else null,
         }) catch return self.fireError();
         defer fetched.deinit();
 

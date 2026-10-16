@@ -63,3 +63,34 @@ test "an opaque outside origin is same origin with no URL" {
     defer request.deinit();
     try testing.expect(!try request.currentUrlIsSameOrigin());
 }
+
+// A blob URL's entry is resolved when the URL is parsed (the URL parser:
+// "If url's scheme is "blob", set url's blob URL entry to the result of
+// resolving the blob URL url"), and scheme fetch "blob" reads the request's
+// URL's entry - so a SharedWorker made from a blob URL runs its blob even
+// when the URL is revoked before the shared worker manager's steps fetch it
+// (workers/shared-worker-from-blob-url.window.js).
+
+const blob_url = "blob:http://web-platform.test:8000/0f0f0f0f-0000-4000-8000-000000000000";
+
+test "a blob: script with its captured entry is the entry's blob, whatever the store says" {
+    var entry = try script_fetch.scriptFromBlob(testing.allocator, blob_url, .classic, "onconnect = () => {};", "text/javascript");
+    defer entry.deinit();
+    // No store at all: the entry alone answers.
+    var fetched = try script_fetch.fetchWorkerScript(testing.allocator, blob_url, .{
+        .requesting_origin = page_origin,
+        .shared = true,
+        .blob_entry = &entry,
+    });
+    defer fetched.deinit();
+    try testing.expectEqualStrings("onconnect = () => {};", fetched.source);
+    try testing.expectEqualStrings(blob_url, fetched.final_url);
+    try testing.expectEqualStrings("text/javascript", fetched.content_type);
+}
+
+test "a blob: script with no captured entry asks the store, and none is a failure" {
+    try testing.expectError(error.FetchFailed, script_fetch.fetchWorkerScript(testing.allocator, blob_url, .{
+        .requesting_origin = page_origin,
+        .shared = true,
+    }));
+}
