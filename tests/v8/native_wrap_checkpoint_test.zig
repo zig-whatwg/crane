@@ -120,6 +120,21 @@ fn expectWrapRunsNoCheckpoint(page: Page, object: *runtime.Instance) !void {
     try std.testing.expect(marker.ran);
 }
 
+/// Read `root`'s [SameObject] collection from native code, with a microtask
+/// queued. The generated getter makes the collection and traces it from its
+/// owner (dom.same_object_cache, binding3 item 9h) - a wrap from native code,
+/// inside the read: it must run no checkpoint, so the microtask is still
+/// queued after the read, and runs at the next real checkpoint.
+fn expectNativeReadWrapsWithoutCheckpoint(page: Page, root: *runtime.Instance, comptime read: fn (*runtime.Instance) anyerror!*runtime.Instance) !void {
+    var marker: Marker = .{};
+    try protocol.queueMicrotask(page.agent, Marker.steps, &marker);
+    const collection = try read(root);
+    try std.testing.expect(protocol.hasWrapper(collection));
+    try std.testing.expect(!marker.ran);
+    try protocol.performMicrotaskCheckpoint(page.agent);
+    try std.testing.expect(marker.ran);
+}
+
 /// An element whose collections script has never touched, and whose last
 /// child - a Text node `append` made from a string - script has never seen.
 const element_source =
@@ -137,28 +152,28 @@ test "wrapping a NodeList from native code runs no microtask checkpoint" {
     const page = try Page.open();
     defer page.close();
     const root = try page.instance(element_source);
-    try expectWrapRunsNoCheckpoint(page, try interfaces.Node.get_childNodes(root));
+    try expectNativeReadWrapsWithoutCheckpoint(page, root, interfaces.Node.get_childNodes);
 }
 
 test "wrapping a DOMTokenList from native code runs no microtask checkpoint" {
     const page = try Page.open();
     defer page.close();
     const root = try page.instance(element_source);
-    try expectWrapRunsNoCheckpoint(page, try interfaces.Element.get_classList(root));
+    try expectNativeReadWrapsWithoutCheckpoint(page, root, interfaces.Element.get_classList);
 }
 
 test "wrapping an HTMLCollection from native code runs no microtask checkpoint" {
     const page = try Page.open();
     defer page.close();
     const root = try page.instance(element_source);
-    try expectWrapRunsNoCheckpoint(page, try interfaces.Element.get_children(root));
+    try expectNativeReadWrapsWithoutCheckpoint(page, root, interfaces.Element.get_children);
 }
 
 test "wrapping a NamedNodeMap from native code runs no microtask checkpoint" {
     const page = try Page.open();
     defer page.close();
     const root = try page.instance(element_source);
-    try expectWrapRunsNoCheckpoint(page, try interfaces.Element.get_attributes(root));
+    try expectNativeReadWrapsWithoutCheckpoint(page, root, interfaces.Element.get_attributes);
 }
 
 test "wrapping a node from native code runs no microtask checkpoint" {
