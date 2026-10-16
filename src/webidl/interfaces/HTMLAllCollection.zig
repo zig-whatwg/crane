@@ -66,6 +66,7 @@ pub const HTMLAllCollection = struct {
         pub const special_operations: webidl.SpecialOperations = .{
             .indexed_getter = .{ .function = "call_getter", .implemented = @hasDecl(HTMLAllCollectionImpl, "call_getter") },
             .named_getter = .{ .function = "call_namedItem" },
+            .supported_property_name = .{ .function = "isSupportedPropertyName", .implemented = @hasDecl(HTMLAllCollectionImpl, "isSupportedPropertyName") },
             .legacy_unenumerable_named_properties = true,
         };
     };
@@ -197,5 +198,18 @@ pub const HTMLAllCollection = struct {
     /// Per WebIDL spec §3.9.3, returns names in list order for proper enumeration
     pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
         return HTMLAllCollectionImpl.getSupportedPropertyNames(instance, allocator);
+    }
+
+    /// Whether `name` is one of the supported property names (WebIDL 3.9.7
+    /// step 1, asked for one name), answered without building the list. Gated:
+    /// error.NotImplemented until the impl declares it, and
+    /// Meta.special_operations.supported_property_name says whether it does -
+    /// without it the binding searches getSupportedPropertyNames' list.
+    pub fn isSupportedPropertyName(instance: *runtime.Instance, name: runtime.DOMString) anyerror!bool {
+        if (comptime @hasDecl(HTMLAllCollectionImpl, "isSupportedPropertyName")) {
+            return try HTMLAllCollectionImpl.isSupportedPropertyName(instance, name);
+        } else {
+            return error.NotImplemented;
+        }
     }
 };

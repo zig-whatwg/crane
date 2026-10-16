@@ -90,6 +90,7 @@ pub const script_elements = @import("script_elements.zig");
 pub const activation = @import("activation.zig");
 pub const form_controls = @import("form_controls.zig");
 pub const form_submission = @import("form_submission.zig");
+pub const form_past_names = @import("form_past_names.zig");
 pub const node_lists = @import("node_lists.zig");
 /// Node holds: native references that keep nodes alive without a wrapper
 /// per node, and the removing steps that rescue a held tree's root.

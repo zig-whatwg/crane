@@ -41,6 +41,7 @@ const interfaces = @import("interfaces");
 const dom = @import("dom");
 const ce = dom.custom_elements;
 const form_associated = @import("../form_associated.zig");
+const past_names = @import("../form_past_names.zig");
 const driver = @import("driver.zig");
 
 const Instance = runtime.Instance;
@@ -68,6 +69,9 @@ pub fn subtreeMoved(node: *Instance, old_parent: ?*Instance, new_parent: ?*Insta
     // removal that separates a control from its form resets it (an empty
     // list check when the document has none).
     form_associated.parserAssociationsAfterMutation(node, new_parent);
+    // A form's past names whose element now has another owner go now, not
+    // at the next read (one length check while no form has any).
+    past_names.subtreeMoved(node);
     const state = activeState(node.ctx) orelse return;
     const base = dom.instance_bridge.getNodeBase(node) orelse return;
     resetShadowIncludingSubtree(base);
@@ -81,6 +85,7 @@ pub fn subtreeMoved(node: *Instance, old_parent: ?*Instance, new_parent: ?*Insta
 pub fn attributeChanged(element: *Instance, local_name: []const u8, old_value: ?[]const u8, new_value: ?[]const u8) void {
     // A form attribute set, changed or removed resets a parser association.
     form_associated.parserAssociationAttributeChanged(element, local_name);
+    past_names.attributeChanged(element, local_name);
     const state = activeState(element.ctx) orelse return;
     if (std.mem.eql(u8, local_name, "id")) {
         if (state.form_id_observers.count() == 0) return;

@@ -1,12 +1,15 @@
-//! A form's algorithms that other element types invoke (HTML § 4.10.22 -
-//! § 4.10.23): "submit" a form from a submitter, "reset" a form, and
-//! "construct the entry list". A submit button's activation behaviour
-//! submits its form owner; a reset button's resets it; FormData's
-//! constructor constructs a form's entry list. None of them is an IDL member
-//! (requestSubmit() and reset() add steps of their own), and the state they
-//! run on - the form's constructing-entry-list and firing-submission-events
-//! flags, its planned navigation - is the form's. HTMLFormElement installs
-//! them here when a form is made, which is before anyone can hold one.
+//! A form's algorithms that other code invokes (HTML § 4.10.22 -
+//! § 4.10.23, § 4.10.3): "submit" a form from a submitter, "reset" a form,
+//! "construct the entry list", and the past names map's removal rule. A
+//! submit button's activation behaviour submits its form owner; a reset
+//! button's resets it; FormData's constructor constructs a form's entry
+//! list; a mutation anywhere in a tree can give an element of a form's past
+//! names map another form owner (html.form_past_names). None of them is an
+//! IDL member (requestSubmit() and reset() add steps of their own), and the
+//! state they run on - the form's constructing-entry-list and
+//! firing-submission-events flags, its planned navigation, its past names
+//! map - is the form's. HTMLFormElement installs them here when a form is
+//! made, which is before anyone can hold one.
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#concept-form-submit
 //!
@@ -18,6 +21,21 @@ const runtime = @import("runtime");
 
 /// HTML "user navigation involvement" of a submission.
 pub const UserInvolvement = enum { none, activation, browser_ui };
+
+/// A change that may have given an element another form owner (HTML
+/// "reset the form owner" triggers, § 4.10.18.3), as html.form_past_names
+/// reports it to a form whose past names map has entries.
+pub const OwnerChange = union(enum) {
+    /// `node` was inserted, removed or moved; the tree is in its new shape.
+    subtree: *runtime.Instance,
+    /// `element`'s `form` attribute was set, changed or removed.
+    form_attribute: *runtime.Instance,
+    /// An `id` attribute changed: the first element with an ID a form
+    /// attribute names may be another.
+    id_attribute,
+    /// The parser recorded `element`'s form association.
+    association: *runtime.Instance,
+};
 
 /// What the HTMLFormElement impl supplies.
 pub const Implementation = struct {
@@ -32,6 +50,11 @@ pub const Implementation = struct {
     /// for one whose form owner is not `form`, InvalidStateError while `form`
     /// is already constructing its entry list.
     construct_entry_list: *const fn (form: *runtime.Instance, submitter: ?*runtime.Instance, form_data: *runtime.Instance) anyerror!void,
+    /// HTML "the form element": "If an element listed in a form element's
+    /// past names map changes form owner, then its entries must be removed
+    /// from that map." Remove each entry of `form` whose element `change`
+    /// gave another owner; answer whether `form` still has entries.
+    past_names_owner_change: *const fn (form: *runtime.Instance, change: OwnerChange) bool,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -55,6 +78,13 @@ pub fn reset(form: *runtime.Instance) !void {
     try impl.reset(form);
 }
 
+/// Remove `form`'s past names whose element `change` gave another form
+/// owner; whether `form` still has some. None without an implementation.
+pub fn pastNamesOwnerChange(form: *runtime.Instance, change: OwnerChange) bool {
+    const impl = implementation orelse return false;
+    return impl.past_names_owner_change(form, change);
+}
+
 /// Construct `form`'s entry list with `submitter` into `form_data`.
 pub fn constructEntryList(form: *runtime.Instance, submitter: ?*runtime.Instance, form_data: *runtime.Instance) !void {
     const impl = implementation orelse return error.NotSupported;
@@ -70,4 +100,6 @@ test "without an installed implementation every algorithm reports NotSupported" 
     try std.testing.expectError(error.NotSupported, submit(&object, &object, .none));
     try std.testing.expectError(error.NotSupported, reset(&object));
     try std.testing.expectError(error.NotSupported, constructEntryList(&object, null, &object));
+    // The default: no form keeps past names.
+    try std.testing.expect(!pastNamesOwnerChange(&object, .id_attribute));
 }

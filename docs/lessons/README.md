@@ -11,6 +11,7 @@ A lane brief now carries the lessons chosen for its batch.
 ### Architecture
 - [A helper move must follow the production module graph](architecture-a-helper-move-must-follow-the-production-module-graph.md) - Check the destination module's actual dependency table; a matching import elsewhere does not make a move compile.
 - [A tree version does not cover custom-element upgrades](architecture-a-tree-version-does-not-cover-custom-element-upgrades.md) - Cache validity follows every input to the answer, including classification changes that do not mutate the tree.
+- [Ask "is P a supported property name?" for one P](architecture-ask-a-supported-name-for-one-name.md) - A per-name question never builds the whole answer set: give the impl a per-name query whose default is the old list, and make the per-name answer agree with the list by construction.
 - [A free is not a mutation - a version script can observe must not move with the collector](architecture-a-free-is-not-a-mutation.md) - A counter that script can observe through an API counts only what the spec calls a mutation - not a free, not a creation; never let the collector move it. A cache that needs to hear about frees proves from ownership that nothing it remembers is freed, and checks each entry cheaply.
 - [A live list needs a native owner for its backing object](architecture-a-live-list-needs-a-native-owner-for-its-backing-object.md) - An engine edge and a generation check do not replace a native owner for a non-node backing object.
 - [An IDL string getter copies; a tree read borrows](architecture-an-idl-string-getter-copies-a-tree-read-borrows.md) - Before moving a call onto the generated interface, read the generated member and the impl member side by side: a link getter forwards, a string getter copies, a setter runs the IDL algorithm.
@@ -291,6 +292,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A JSValue's type cannot say whether its conversion is fresh](architecture-a-jsvalue-s-type-cannot-say-whether-its-conversion-is-fresh.md) - A type-level "is it fresh?" answer must be "kept" for JSValue and unions, so it leaks every fresh value: ask the value (its arm) with an allowlist, and keep borrowed arms as the default.
 
 ### Spec Compliance
+- [A form's past names go at the change of owner, and insertBefore is one](spec-compliance-past-names-go-at-the-owner-change.md) - A rule keyed on a change of a computed value needs the change, not a later comparison - and a remove-then-insert is two changes even when the value ends where it began.
 - [A reflection failure can come from an own accessor](spec-compliance-a-reflection-failure-can-come-from-an-own-accessor.md) - Trace generated dispatch and the member's complete algorithm before changing a shared reflector.
 - [Cookie normalization precedes validation](spec-compliance-cookie-normalization-precedes-validation.md) - Normalize before validation and distinguish empty names from omitted filters.
 - [Capture cookie changes before queueing](spec-compliance-capture-cookie-changes-before-queueing.md) - Capture each notification's records before queueing and free them on execution or drop.

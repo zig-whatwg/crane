@@ -50,6 +50,19 @@ pub const SpecialOperations = struct {
     named_setter: ?Operation = null,
     /// `deleter undefined (DOMString name)` (2.5.6.2).
     named_deleter: ?Operation = null,
+    /// Whether ONE name is a supported property name (2.5.6.2), for the named
+    /// property visibility algorithm's step 1 (3.9.7) and the other places
+    /// 3.9 asks it of a single P: the generated `isSupportedPropertyName`
+    /// delegate, written beside `getSupportedPropertyNames` for every named
+    /// getter's declarer (an heir takes its parent's). Gated like an
+    /// anonymous operation: `implemented` is the impl's `@hasDecl`, and
+    /// without it the binding searches the supported property names' list.
+    /// An impl that declares it answers exactly what the list would, without
+    /// building it - every property read on a [LegacyOverrideBuiltIns]
+    /// object asks first (WebKit's `isSupportedPropertyName`, Blink's
+    /// `NamedPropertyQuery`). Null without a named getter, and for Crane's
+    /// CSS declaration names.
+    supported_property_name: ?Operation = null,
     /// [LegacyOverrideBuiltIns] (3.4.7) on the interface or an ancestor:
     /// named properties shadow the prototype chain.
     legacy_override_built_ins: bool = false,

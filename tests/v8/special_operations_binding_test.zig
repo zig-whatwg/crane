@@ -96,6 +96,25 @@ comptime {
     std.debug.assert(specialBinding(interfaces.HTMLOptionsCollection).named_properties_in_own_keys);
     std.debug.assert(specialBinding(interfaces.Document).named_properties_in_own_keys);
     std.debug.assert(!interfaces.HTMLFormElement.Meta.special_operations.named_properties_in_own_keys);
+    // Named property visibility step 1 (3.9.7) for ONE name P: the default -
+    // in the table and in the binding - is no per-name query, so the binding
+    // searches the generated getSupportedPropertyNames' list, as it always
+    // has. An impl opts in by declaring `isSupportedPropertyName`: the form,
+    // whose list is a walk of its tree (codex-lpo review M1), and the
+    // collections, whose answer is namedItem's (WebKit
+    // HTMLCollection::isSupportedPropertyName, Blink NamedPropertyQuery).
+    std.debug.assert((webidl.SpecialOperations{}).supported_property_name == null);
+    std.debug.assert((SpecialBinding{}).supported_property_name == null);
+    std.debug.assert(specialBinding(interfaces.Node).supported_property_name == null);
+    std.debug.assert(specialBinding(interfaces.Storage).supported_property_name == null);
+    std.debug.assert(specialBinding(interfaces.NamedNodeMap).supported_property_name == null);
+    std.debug.assert(specialBinding(interfaces.DOMStringMap).supported_property_name == null);
+    std.debug.assert(specialBinding(interfaces.Document).supported_property_name == null);
+    std.debug.assert(specialBinding(interfaces.CSSStyleDeclaration).supported_property_name == null);
+    std.debug.assert(eqlOpt(specialBinding(interfaces.HTMLFormElement).supported_property_name, "isSupportedPropertyName"));
+    std.debug.assert(eqlOpt(specialBinding(interfaces.HTMLCollection).supported_property_name, "isSupportedPropertyName"));
+    std.debug.assert(eqlOpt(specialBinding(interfaces.HTMLFormControlsCollection).supported_property_name, "isSupportedPropertyName"));
+    std.debug.assert(eqlOpt(specialBinding(interfaces.HTMLOptionsCollection).supported_property_name, "isSupportedPropertyName"));
 }
 
 const WindowHost = struct {

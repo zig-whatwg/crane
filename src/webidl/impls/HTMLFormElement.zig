@@ -42,7 +42,10 @@ const Registry = runtime.InstanceRegistry(.html_form_element, InternalState);
 
 /// Internal state for HTMLFormElement implementation
 pub const InternalState = struct {
-    names: SupportedNames = .{},
+    /// What the tree names now: each name's candidates (`NamedElements`).
+    named: NamedElements = .{},
+    /// HTML's past names map (`PastNames`).
+    past_names: PastNames = .{},
     elements: ?*runtime.Instance = null,
     elements_generation: u64 = 0,
     elements_traced: bool = false,
@@ -63,29 +66,113 @@ pub const InternalState = struct {
     locked_for_reset: bool = false,
 
     pub fn deinit(self: *InternalState) void {
-        self.names.deinit();
+        self.named.deinit();
+        self.past_names.deinit();
         if (self.pending_allocator) |allocator| self.pending_navigations.deinit(allocator);
         self.pending_navigations = .empty;
     }
 };
 
-/// Strings only: a lookup never keeps a control alive through a raw pointer.
-/// Document identity is compared numerically and is never dereferenced later.
-const SupportedNames = struct {
-    values: std.ArrayListUnmanaged(runtime.DOMString) = .empty,
-    allocator: ?std.mem.Allocator = null,
-    document_address: usize = 0,
-    document_generation: u64 = 0,
-    version: ?u64 = null,
-    parser_association_count: usize = 0,
+const Link = dom.live_collections.Link;
 
-    fn deinit(self: *SupportedNames) void {
+/// HTML "the form element": every name the form's tree gives it now - the
+/// candidates of "determining the value of a named property" steps 1-2, by
+/// name, which are also the names of the supported property names' steps 2,
+/// 3 and 6 - read in one walk and kept while the node document's tree
+/// version stands. Every mutation and adoption moves the version, and so do
+/// the two changes of form association that are not mutations
+/// (dom.refcount.formAssociationChanged), so a form owner read under the
+/// version is still the owner. A property read on a form asks "is P a
+/// supported property name?" for one P first ([LegacyOverrideBuiltIns]:
+/// `form.submit` too): one hash lookup here, no walk (codex-lpo review M1).
+/// WebKit's HTMLFormElement keeps its listed elements and its collection's
+/// named-element cache, Blink its listed_elements_, rebuilt when dirtied;
+/// Crane computes form owners, so the version is the dirty bit.
+const NamedElements = struct {
+    /// The names and the map, rebuilt whole; null until the first read.
+    arena: ?std.heap.ArenaAllocator = null,
+    map: std.StringHashMapUnmanaged(Candidates) = .empty,
+    /// The node document and version the map was read under (the same keys
+    /// and freshness check as a live collection's).
+    key: dom.live_collections.IndexCache = .{},
+
+    fn deinit(self: *NamedElements) void {
+        if (self.arena) |*arena| arena.deinit();
+        self.* = .{};
+    }
+};
+
+/// A name's candidates in tree order: the first listed element (step 1)
+/// and whether there are more, the first img (step 2) and whether there are
+/// more. Weak links, as a live collection's cache holds its elements
+/// (live_collections.IndexCache.fresh): while the version stands no
+/// candidate has left the form's tree - a removal moves it before a node can
+/// be freed - and the tree lives while the form does (the tree is the unit
+/// of lifetime, refcount design D1). Each is still read through Link.get,
+/// the teardown net.
+const Candidates = struct {
+    control: ?Link = null,
+    more_controls: bool = false,
+    image: ?Link = null,
+    more_images: bool = false,
+};
+
+/// HTML "the form element": the past names map - "a mapping of names to
+/// elements ... used to persist names of controls even when they change
+/// names" - with each entry's age, its order of addition (supported
+/// property names step 5). An entry's element has this form as its owner:
+/// "if an element listed in a form element's past names map changes form
+/// owner, then its entries must be removed from that map", which
+/// `ownerChanged` does at the change, told by dom.form_past_names (the
+/// agent's forms with entries). So the element is in the form's tree for as
+/// long as its entry stands, and is held as the tree holds it: a weak link,
+/// never a counted reference from node state to another node (refcount
+/// design D1: "node relations outside the tree ... are WeakRef or raw
+/// pointers"; WebKit's m_pastNamesMap holds WeakPtrs). Link.get is the
+/// teardown net. The entries are freed with the form, and at its realm's
+/// end with it.
+const PastNames = struct {
+    allocator: ?std.mem.Allocator = null,
+    entries: std.ArrayListUnmanaged(PastEntry) = .empty,
+    /// The next entry's age.
+    next_age: u64 = 0,
+    /// Whether the agent's registry lists this form (it drops a form left
+    /// with no entries, and the form adds itself again with its next one).
+    registered: bool = false,
+
+    fn deinit(self: *PastNames) void {
         if (self.allocator) |allocator| {
-            for (self.values.items) |*name| name.deinit(allocator);
-            self.values.deinit(allocator);
+            for (self.entries.items) |entry| allocator.free(entry.name);
+            self.entries.deinit(allocator);
         }
         self.* = .{};
     }
+
+    /// The element `name` maps to, if its entry stands.
+    fn get(self: *const PastNames, name: []const u8) ?*runtime.Instance {
+        for (self.entries.items) |entry| {
+            if (std.mem.eql(u8, entry.name, name)) return entry.element.get();
+        }
+        return null;
+    }
+
+    fn remove(self: *PastNames, index: usize) void {
+        const entry = self.entries.orderedRemove(index);
+        if (self.allocator) |allocator| allocator.free(entry.name);
+    }
+};
+
+const PastEntry = struct {
+    /// Owned by PastNames.allocator.
+    name: []u8,
+    element: Link,
+    /// The element's tree node, read through `element` first.
+    base: *dom.NodeBase,
+    age: u64,
+    /// Whether the element has a form attribute (kept current by
+    /// `ownerChanged`): then an ID entering, leaving or changing in its tree
+    /// can give it another owner, wherever the change is.
+    form_attribute: bool,
 };
 
 /// A planned navigation of a form whose task has not run yet.
@@ -275,73 +362,205 @@ pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.In
     return (try interfaces.HTMLCollection.call_item(try get_elements(instance), index)) orelse error.IndexSizeError;
 }
 
-/// HTML "the form element", determining the value of a named property.
+/// HTML "the form element", determining the value of a named property:
+///   1. candidates: the listed elements whose form owner is the form with an
+///      id or name of `name`, except image buttons, in tree order;
+///   2. if none, the img elements whose form owner is the form with one;
+///   3. if none, and `name` is in the past names map, its element;
+///   4. more than one: candidates, a live RadioNodeList;
+///   5. exactly one: map `name` to it in the past names map, replacing the
+///      entry of that name;
+///   6. return it.
 /// Like WebKit HTMLFormElement::namedItem, current controls precede images.
 pub fn call_getter__1(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
-    if (name.asSlice().len == 0) return runtime.JSValue.jsUndefined;
-    const supported = try supportedNames(instance);
-    var present = false;
-    for (supported) |candidate| {
-        if (std.mem.eql(u8, candidate.asSlice(), name.asSlice())) {
-            present = true;
-            break;
+    const key = name.asSlice();
+    if (key.len == 0) return runtime.JSValue.jsUndefined;
+    const internal = Registry.get(instance) orelse return runtime.JSValue.jsUndefined;
+    const named = try namedElements(instance, internal);
+    if (named.map.get(key)) |candidates| {
+        if (candidates.control) |first| {
+            // Step 4: the live control list holds the form's elements.
+            if (candidates.more_controls) {
+                const list = try interfaces.RadioNodeList.init(instance.ctx.allocator, instance.ctx);
+                errdefer runtime.Instance.deinit(list);
+                try dom.node_lists.namedControls(list, try get_elements(instance), key);
+                return .{ .instance = list };
+            }
+            if (first.get()) |element| return single(instance, internal, key, element);
+        }
+        if (candidates.image) |first| {
+            // Step 4: the live image list holds the form (codex-lpo Q6).
+            if (candidates.more_images) {
+                const list = try interfaces.RadioNodeList.init(instance.ctx.allocator, instance.ctx);
+                errdefer runtime.Instance.deinit(list);
+                try dom.node_lists.namedFormImages(list, instance, key);
+                return .{ .instance = list };
+            }
+            if (first.get()) |element| return single(instance, internal, key, element);
         }
     }
-    if (!present) return runtime.JSValue.jsUndefined;
-
-    // Steps 1–2: resolve current candidates in one walk. The collection's
-    // namedItem currently refills once per item (Q14's upgrade-version gap).
-    // Cache strings, then resolve elements on a named hit; never cache nodes.
-    const root = form_associated.rootOf(instance);
-    var node: ?*runtime.Instance = root;
-    var first_control: ?*runtime.Instance = null;
-    var first_image: ?*runtime.Instance = null;
-    var multiple_images = false;
-    while (node) |element| : (node = nextInTree(element, root, false)) {
-        const data = dom.element_data.of(element) orelse continue;
-        if (!std.mem.eql(u8, dom.element_data.getAttributeValue(data, "id", null), name.asSlice()) and
-            !std.mem.eql(u8, dom.element_data.getAttributeValue(data, "name", null), name.asSlice())) continue;
-        const image = element.stateAs(interfaces.HTMLImageElement.State) != null;
-        if (!image and !isNamedControl(element)) continue;
-        if (form_associated.formOwner(element) != instance) continue;
-        if (image) {
-            if (first_image == null) first_image = element else multiple_images = true;
-            continue;
-        }
-        if (first_control == null) {
-            first_control = element;
-            continue;
-        }
-        // Step 4: the existing live control list holds the form's owned
-        // collection; controls take precedence even if images came first.
-        const list = try interfaces.RadioNodeList.init(instance.ctx.allocator, instance.ctx);
-        errdefer runtime.Instance.deinit(list);
-        try dom.node_lists.namedControls(list, try get_elements(instance), name.asSlice());
-        return .{ .instance = list };
-    }
-    if (first_control) |element| {
-        // Steps 5–6: record the single candidate, then return it.
-        // TODO(past names map): routed to a Claude lane, codex-lpo Q2
-        return .{ .instance = element };
-    }
-    if (multiple_images) {
-        // Step 4: the live image list holds the form (codex-lpo Q6).
-        const list = try interfaces.RadioNodeList.init(instance.ctx.allocator, instance.ctx);
-        errdefer runtime.Instance.deinit(list);
-        try dom.node_lists.namedFormImages(list, instance, name.asSlice());
-        return .{ .instance = list };
-    }
-    if (first_image) |element| {
-        // Steps 5–6: record the single candidate, then return it.
-        // TODO(past names map): routed to a Claude lane, codex-lpo Q2
-        return .{ .instance = element };
-    }
-    // Step 3: consult historical names only when no current candidate exists.
-    // TODO(past names map): routed to a Claude lane, codex-lpo Q2
+    // Step 3: no candidate, and the past names map has the name.
+    if (internal.past_names.get(key)) |element| return .{ .instance = element };
     return runtime.JSValue.jsUndefined;
 }
 
-/// HTML "the form element", supported property names, steps 1–8.
+/// Steps 5-6 for the one candidate `element`.
+fn single(instance: *runtime.Instance, internal: *InternalState, name: []const u8, element: *runtime.Instance) runtime.JSValue {
+    // Out of memory, the map keeps what it had: the value is still the
+    // candidate, and no entry is half made.
+    recordPastName(instance, internal, name, element) catch {};
+    return .{ .instance = element };
+}
+
+/// Step 5: map `name` to `element`, replacing the entry of that name (a new
+/// entry: its age starts again). Only where the agent can say when an
+/// element changes owner - a realm with no agent host keeps no past names
+/// (html.form_past_names.registryOf). The form joins the agent's list
+/// before the entry is made, so no entry is ever unwatched.
+fn recordPastName(instance: *runtime.Instance, internal: *InternalState, name: []const u8, element: *runtime.Instance) !void {
+    const past = &internal.past_names;
+    for (past.entries.items) |*existing| {
+        if (!std.mem.eql(u8, existing.name, name)) continue;
+        // Replaced: a new entry, the newest. A form with an entry is in the
+        // agent's list already. The same element again, already the newest,
+        // changes nothing - the common case, a page reading form.x in a loop.
+        if (existing.element.get() == element) {
+            if (existing.age + 1 != past.next_age) {
+                existing.age = past.next_age;
+                past.next_age += 1;
+            }
+            return;
+        }
+        const base = dom.instance_bridge.getNodeBase(@ptrCast(element)) orelse return;
+        existing.element = Link.to(element);
+        existing.base = base;
+        existing.age = past.next_age;
+        existing.form_attribute = hasAttribute(element, "form");
+        past.next_age += 1;
+        return;
+    }
+    const registry = @import("html").form_past_names.registryOf(instance.ctx) orelse return;
+    const base = dom.instance_bridge.getNodeBase(@ptrCast(element)) orelse return;
+    if (!past.registered) {
+        try registry.add(instance);
+        past.registered = true;
+    }
+    const allocator = past.allocator orelse instance.ctx.allocator;
+    past.allocator = allocator;
+    const owned = try allocator.dupe(u8, name);
+    errdefer allocator.free(owned);
+    try past.entries.append(allocator, .{
+        .name = owned,
+        .element = Link.to(element),
+        .base = base,
+        .age = past.next_age,
+        .form_attribute = hasAttribute(element, "form"),
+    });
+    past.next_age += 1;
+}
+
+/// dom.form_submission's past_names_owner_change: remove each entry whose
+/// element `change` gave an owner other than `form` - checked only for the
+/// entries the change can reach (form_associated.formOwner's inputs: the
+/// element's ancestors and connectedness, the form's tree, the element's
+/// parser association and form attribute, the IDs of its tree). Answers
+/// whether entries remain.
+fn ownerChanged(form: *runtime.Instance, change: @import("dom").form_submission.OwnerChange) bool {
+    const internal = Registry.get(form) orelse return false;
+    const past = &internal.past_names;
+    // A moved subtree reaches an entry when its element or the form is in
+    // it (their ancestors, connectedness, parser association), or when the
+    // element has a form attribute and the subtree an ID. The common moved
+    // node is a childless element - a parser append, an appendChild of a
+    // new node - which reaches only an entry for itself: a comparison per
+    // entry, no walk.
+    var moved: ?*dom.NodeBase = null;
+    var leaf = false;
+    var form_moved = false;
+    var moved_has_id: ?bool = null;
+    if (change == .subtree) {
+        moved = dom.instance_bridge.getNodeBase(@ptrCast(change.subtree));
+        if (moved) |node| {
+            leaf = node.first_child == null and dom.custom_elements.shadowRootOf(change.subtree) == null;
+            if (!leaf) if (dom.instance_bridge.getNodeBase(@ptrCast(form))) |form_base| {
+                form_moved = dom.node_holds.isUnderRoot(form_base, node, null);
+            };
+            // A childless node is the form itself or not an ancestor of it.
+            if (leaf) form_moved = change.subtree == form;
+        }
+    }
+    var index: usize = 0;
+    while (index < past.entries.items.len) {
+        const entry = &past.entries.items[index];
+        const reached = switch (change) {
+            .subtree => |node_instance| reached: {
+                const node = moved orelse break :reached true;
+                if (form_moved or entry.element.instance == node_instance) break :reached true;
+                if (!leaf) {
+                    _ = entry.element.get() orelse break :reached true;
+                    if (dom.node_holds.isUnderRoot(entry.base, node, null)) break :reached true;
+                }
+                if (!entry.form_attribute) break :reached false;
+                if (moved_has_id == null) moved_has_id = subtreeHasId(node);
+                break :reached moved_has_id.?;
+            },
+            .form_attribute => |changed| reached: {
+                if (entry.element.instance != changed) break :reached false;
+                if (entry.element.get() != null) entry.form_attribute = hasAttribute(changed, "form");
+                break :reached true;
+            },
+            .id_attribute => entry.form_attribute,
+            .association => |associated| entry.element.instance == associated,
+        };
+        if (reached) {
+            const element = entry.element.get() orelse {
+                past.remove(index);
+                continue;
+            };
+            if (form_associated.formOwner(element) != form) {
+                past.remove(index);
+                continue;
+            }
+        }
+        index += 1;
+    }
+    if (past.entries.items.len == 0) {
+        past.registered = false;
+        return false;
+    }
+    return true;
+}
+
+/// Whether `root` or one of its descendants is an element with a non-empty
+/// ID. Shadow trees are other trees: an ID there is first in no light-tree
+/// element's tree, and an element of that tree is under `root` itself.
+fn subtreeHasId(root: *dom.NodeBase) bool {
+    var current: ?*dom.NodeBase = root;
+    while (current) |node| : (current = nextInSubtree(node, root)) {
+        if (node.node_type != dom.NodeBase.ELEMENT_NODE) continue;
+        const element: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse continue));
+        const data = dom.element_data.of(element) orelse continue;
+        if (dom.element_data.getAttributeValue(data, "id", null).len != 0) return true;
+    }
+    return false;
+}
+
+/// The node after `node` in tree order within `root`'s subtree.
+fn nextInSubtree(node: *dom.NodeBase, root: *dom.NodeBase) ?*dom.NodeBase {
+    if (node.first_child) |child| return child;
+    var current = node;
+    while (current != root) {
+        if (current.next_sibling) |sibling| return sibling;
+        current = current.parent_node orelse return null;
+    }
+    return null;
+}
+
+/// HTML "the form element", supported property names, steps 1-8, past names
+/// included (step 4), as owned strings: the caller's array, the caller's
+/// strings (review-codex-lpo-m1 S2). A fresh walk: only enumeration builds
+/// the list, and a form's names are left out of its own keys (below); every
+/// question about one name is `isSupportedPropertyName`'s.
 /// Browser deviation (codex-lpo Q7): WebKit's
 /// HTMLFormElement::supportedPropertyNames and Gecko's GetSupportedNames are
 /// empty; Blink has NamedPropertyQuery but no enumerator. See
@@ -350,13 +569,73 @@ pub fn call_getter__1(instance: *runtime.Instance, name: runtime.DOMString) anye
 /// this full list supports named lookup. [LegacyUnenumerableNamedProperties]
 /// also makes each named property's descriptor non-enumerable.
 pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
-    const cached = try supportedNames(instance);
-    // The caller owns the array. Like Element.getAttribute, its strings
-    // borrow owned storage: valid until the next invalidation/rebuild or
-    // teardown. The binding consumes them synchronously, without script.
-    const result = try allocator.alloc(runtime.DOMString, cached.len);
-    for (result, cached) |*out, name| out.* = runtime.DOMString.initInterned(name.asSlice());
-    return result;
+    const internal = Registry.get(instance) orelse return error.InvalidState;
+    var names: std.ArrayListUnmanaged(runtime.DOMString) = .empty;
+    errdefer {
+        for (names.items) |*name| name.deinit(allocator);
+        names.deinit(allocator);
+    }
+    const past = internal.past_names.entries.items;
+    const root = form_associated.rootOf(instance);
+    var node: ?*runtime.Instance = root;
+    // Steps 1-5: the walk is tree order; for each element, id, then name,
+    // then its past names oldest first. An element with past names is this
+    // form's (they go when it changes owner).
+    while (node) |element| : (node = nextInTree(element, root, false)) {
+        const data = dom.element_data.of(element) orelse continue;
+        const image = element.stateAs(interfaces.HTMLImageElement.State) != null;
+        const has_past = for (past) |entry| {
+            if (entry.element.get() == element) break true;
+        } else false;
+        if (!image and !has_past and !isNamedControl(element)) continue;
+        if (form_associated.formOwner(element) != instance) continue;
+        if (image or isNamedControl(element)) {
+            for ([_][]const u8{ "id", "name" }) |attribute| {
+                try appendName(&names, allocator, dom.element_data.getAttributeValue(data, attribute, null));
+            }
+        }
+        if (!has_past) continue;
+        // Its entries by age, oldest first.
+        var last_age: ?u64 = null;
+        while (true) {
+            var next: ?*const PastEntry = null;
+            for (past) |*entry| {
+                if (entry.element.get() != element) continue;
+                if (last_age) |age| if (entry.age <= age) continue;
+                if (next == null or entry.age < next.?.age) next = entry;
+            }
+            const entry = next orelse break;
+            last_age = entry.age;
+            try appendName(&names, allocator, entry.name);
+        }
+    }
+    return names.toOwnedSlice(allocator);
+}
+
+/// Steps 6-8 for one sourced name: none for the empty string or a repeat.
+fn appendName(names: *std.ArrayListUnmanaged(runtime.DOMString), allocator: std.mem.Allocator, value: []const u8) !void {
+    if (value.len == 0) return;
+    for (names.items) |previous| {
+        if (std.mem.eql(u8, previous.asSlice(), value)) return;
+    }
+    var copy = try runtime.DOMString.initDupe(allocator, value);
+    errdefer copy.deinit(allocator);
+    try names.append(allocator, copy);
+}
+
+/// WebIDL 3.9.7 step 1 for one name: whether `name` is one of the supported
+/// property names - a current candidate's id or name, or a past name -
+/// without building the list (WebKit's HTMLFormElement::
+/// isSupportedPropertyName, Blink's HasNamedElements). The binding asks it
+/// on every property read of a form.
+pub fn isSupportedPropertyName(instance: *runtime.Instance, name: runtime.DOMString) anyerror!bool {
+    const key = name.asSlice();
+    // Step 6: no empty name.
+    if (key.len == 0) return false;
+    const internal = Registry.get(instance) orelse return false;
+    const named = try namedElements(instance, internal);
+    if (named.map.contains(key)) return true;
+    return internal.past_names.get(key) != null;
 }
 
 fn isNamedControl(element: *runtime.Instance) bool {
@@ -368,74 +647,56 @@ fn isNamedControl(element: *runtime.Instance) bool {
     return true;
 }
 
-/// HTML's supported names, rebuilt only after an observable invalidation.
-/// WebKit's HTMLFormElement::isSupportedPropertyName and Blink's
-/// HTMLFormElement::HasNamedElements likewise query cached collection data.
-fn supportedNames(instance: *runtime.Instance) ![]const runtime.DOMString {
-    const internal = Registry.get(instance) orelse return error.InvalidState;
-    const document = dom.live_collections.nodeDocument(instance);
-    const address = if (document) |doc| @intFromPtr(doc) else 0;
-    const generation = if (document) |doc| runtime.SlabAllocator.generationOf(doc) else 0;
-    const version = if (document) |doc| dom.live_collections.treeVersion(doc) else null;
-    // The inert parser records associations after insertion. Appending one
-    // does not move treeVersion; removals accompany a versioned mutation.
-    const association_count = if (document) |doc| count: {
-        const associations = dom.document_internals.parserFormAssociations(doc) orelse break :count 0;
-        break :count associations.items.len;
-    } else 0;
-    const cache = &internal.names;
-    if (version != null and version == cache.version and address == cache.document_address and
-        generation == cache.document_generation and association_count == cache.parser_association_count) return cache.values.items;
+/// The form's `NamedElements`, read again when the tree version moved: one
+/// walk of the form's tree, under the version it read.
+fn namedElements(instance: *runtime.Instance, internal: *InternalState) !*const NamedElements {
+    const named = &internal.named;
+    const base = dom.instance_bridge.getNodeBase(@ptrCast(instance));
+    if (named.arena != null) if (base) |node| if (named.key.fresh(node)) return named;
 
-    // Step 1: build a replacement before discarding the old allocation, so
-    // a failed allocation never publishes a partial list under a fresh key.
-    const allocator = instance.ctx.allocator;
-    var replacement: SupportedNames = .{
-        .allocator = allocator,
-        .document_address = address,
-        .document_generation = generation,
-        .version = version,
-        .parser_association_count = association_count,
-    };
-    errdefer replacement.deinit();
+    named.deinit();
+    const document = dom.live_collections.nodeDocument(instance);
+    const version = if (document) |doc| dom.live_collections.treeVersion(doc) else null;
+    var arena = std.heap.ArenaAllocator.init(instance.ctx.allocator);
+    errdefer arena.deinit();
+    const allocator = arena.allocator();
+    var map: std.StringHashMapUnmanaged(Candidates) = .empty;
     const root = form_associated.rootOf(instance);
     var node: ?*runtime.Instance = root;
-    // Steps 2–3, 5: walk both kinds together in tree order, id before name.
     while (node) |element| : (node = nextInTree(element, root, false)) {
         const data = dom.element_data.of(element) orelse continue;
-        // Q14: upgrade can add a listed FACE without moving treeVersion.
-        // Do not cache while a future upgrade could change this tree's list.
-        // Once the elements are custom/failed, ordinary mutations cover it.
-        if (dom.custom_elements.get(element)) |custom| {
-            if ((custom.state == .undefined or custom.state == .precustomized) and
-                (custom.is_value != null or dom.names.isValidCustomElementName(data.local_name.asSlice()))) replacement.version = null;
-        }
         const image = element.stateAs(interfaces.HTMLImageElement.State) != null;
         if (!image and !isNamedControl(element)) continue;
         if (form_associated.formOwner(element) != instance) continue;
-        for ([_][]const u8{ "id", "name" }) |attribute| {
-            const value = dom.element_data.getAttributeValue(data, attribute, null);
-            // Steps 6–7: omit empty strings and later duplicates.
-            if (value.len == 0) continue;
-            var seen = false;
-            for (replacement.values.items) |previous| {
-                if (std.mem.eql(u8, previous.asSlice(), value)) {
-                    seen = true;
-                    break;
-                }
-            }
-            if (seen) continue;
-            var copy = try runtime.DOMString.initDupe(allocator, value);
-            errdefer copy.deinit(allocator);
-            try replacement.values.append(allocator, copy);
-        }
+        const id = dom.element_data.getAttributeValue(data, "id", null);
+        const name = dom.element_data.getAttributeValue(data, "name", null);
+        try addCandidate(&map, allocator, id, element, image);
+        // An element is one candidate, whichever of its names matches.
+        if (!std.mem.eql(u8, name, id)) try addCandidate(&map, allocator, name, element, image);
     }
-    // Step 4: merge past names at their element's tree position and age.
-    // TODO(past names map): routed to a Claude lane, codex-lpo Q2
-    // Step 8: retain strings, never elements, under the completed version.
-    cache.deinit();
-    cache.* = replacement;
-    return cache.values.items;
+    named.arena = arena;
+    named.map = map;
+    // The version the walk read; none - no document version, the document
+    // tearing down - keeps the map for this read only.
+    _ = named.key.begin(Link.to(instance), document, version);
+    if (base) |node_base| named.key.keyDocument(node_base);
+    return named;
+}
+
+fn addCandidate(map: *std.StringHashMapUnmanaged(Candidates), allocator: std.mem.Allocator, value: []const u8, element: *runtime.Instance, image: bool) !void {
+    if (value.len == 0) return;
+    const slot = try map.getOrPut(allocator, value);
+    if (!slot.found_existing) {
+        // The arena's copy; a failure frees the whole arena, map included.
+        slot.key_ptr.* = try allocator.dupe(u8, value);
+        slot.value_ptr.* = .{};
+    }
+    const candidates = slot.value_ptr;
+    if (image) {
+        if (candidates.image == null) candidates.image = Link.to(element) else candidates.more_images = true;
+    } else {
+        if (candidates.control == null) candidates.control = Link.to(element) else candidates.more_controls = true;
+    }
 }
 
 /// Setter for autocomplete
@@ -571,6 +832,7 @@ const submission_algorithms: @import("dom").form_submission.Implementation = .{
     .submit = &submitFromHook,
     .reset = &resetForm,
     .construct_entry_list = &constructEntryListInto,
+    .past_names_owner_change = &ownerChanged,
 };
 
 fn submitFromHook(form: *runtime.Instance, submitter: *runtime.Instance, user_involvement: @import("dom").form_submission.UserInvolvement) anyerror!void {

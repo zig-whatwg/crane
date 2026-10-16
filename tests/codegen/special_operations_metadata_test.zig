@@ -105,6 +105,7 @@ test "named getter, setter and deleter declared with identifiers (Storage)" {
         ".named_getter = .{ .function = \"call_getItem\" },",
         ".named_setter = .{ .function = \"call_setItem\" },",
         ".named_deleter = .{ .function = \"call_removeItem\" },",
+        ".supported_property_name = .{ .function = \"isSupportedPropertyName\", .implemented = @hasDecl(KeyStoreImpl, \"isSupportedPropertyName\") },",
     });
     try expectInMeta(store);
     // The supported property names, through the generated interface.
@@ -135,6 +136,7 @@ test "anonymous named getter, setter and deleter are gated, with [LegacyOverride
         ".named_getter = .{ .function = \"call_getter\", .implemented = @hasDecl(StringMapImpl, \"call_getter\") },",
         ".named_setter = .{ .function = \"call_setter\", .implemented = @hasDecl(StringMapImpl, \"call_setter\") },",
         ".named_deleter = .{ .function = \"call_deleter\", .implemented = @hasDecl(StringMapImpl, \"call_deleter\") },",
+        ".supported_property_name = .{ .function = \"isSupportedPropertyName\", .implemented = @hasDecl(StringMapImpl, \"isSupportedPropertyName\") },",
         ".legacy_override_built_ins = true,",
     });
     try testing.expect(contains(map, "if (comptime @hasDecl(StringMapImpl, \"call_getter\")) {"));
@@ -149,6 +151,7 @@ test "an anonymous indexed getter and an anonymous named getter get one delegate
     try expectTable(form, &.{
         ".indexed_getter = .{ .function = \"call_getter\", .implemented = @hasDecl(FormImpl, \"call_getter\") },",
         ".named_getter = .{ .function = \"call_getter__1\", .implemented = @hasDecl(FormImpl, \"call_getter__1\") },",
+        ".supported_property_name = .{ .function = \"isSupportedPropertyName\", .implemented = @hasDecl(FormImpl, \"isSupportedPropertyName\") },",
         ".legacy_override_built_ins = true,",
         ".legacy_unenumerable_named_properties = true,",
     });
@@ -169,6 +172,7 @@ test "an heir inherits the derived-most special operations and its ancestor's ex
         ".indexed_getter = .{ .function = \"call_item\" },",
         ".indexed_setter = .{ .function = \"call_setter\", .implemented = @hasDecl(OptionsCollectionImpl, \"call_setter\") },",
         ".named_getter = .{ .function = \"call_namedItem\" },",
+        ".supported_property_name = .{ .function = \"isSupportedPropertyName\", .implemented = Collection.Meta.special_operations.supported_property_name.?.implemented },",
         ".legacy_unenumerable_named_properties = true,",
     });
     // The inherited functions are the heir's to name: its parent's.
@@ -187,6 +191,7 @@ test "an inherited anonymous operation is implemented when its declarer's is" {
         ".indexed_getter = .{ .function = \"call_item\" },",
         ".indexed_setter = .{ .function = \"call_setter\", .implemented = OptionsCollection.Meta.special_operations.indexed_setter.?.implemented },",
         ".named_getter = .{ .function = \"call_namedItem\" },",
+        ".supported_property_name = .{ .function = \"isSupportedPropertyName\", .implemented = OptionsCollection.Meta.special_operations.supported_property_name.?.implemented },",
         ".legacy_unenumerable_named_properties = true,",
     });
     try testing.expect(contains(heir, "pub const call_setter = OptionsCollection.call_setter;"));
@@ -201,6 +206,7 @@ test "an heir that redeclares the named getter has its own (HTMLFormControlsColl
     try expectTable(controls, &.{
         ".indexed_getter = .{ .function = \"call_item\" },",
         ".named_getter = .{ .function = \"call_namedItem\" },",
+        ".supported_property_name = .{ .function = \"isSupportedPropertyName\", .implemented = @hasDecl(ControlsCollectionImpl, \"isSupportedPropertyName\") },",
         ".legacy_unenumerable_named_properties = true,",
     });
     try testing.expect(contains(controls, "return ControlsCollectionImpl.getSupportedPropertyNames(instance, allocator);"));
@@ -224,6 +230,7 @@ test "Document's named getter, and an XMLDocument without it, as in every browse
     defer testing.allocator.free(document);
     try expectTable(document, &.{
         ".named_getter = .{ .function = \"call_getter\", .implemented = @hasDecl(DocumentImpl, \"call_getter\") },",
+        ".supported_property_name = .{ .function = \"isSupportedPropertyName\", .implemented = @hasDecl(DocumentImpl, \"isSupportedPropertyName\") },",
         ".legacy_override_built_ins = true,",
     });
     const xml = try out.file("XMLDocument");
@@ -241,6 +248,7 @@ test "HTMLFormElement's named properties are left out of [[OwnPropertyKeys]], as
     try expectTable(form, &.{
         ".indexed_getter = .{ .function = \"call_getter\", .implemented = @hasDecl(HTMLFormElementImpl, \"call_getter\") },",
         ".named_getter = .{ .function = \"call_getter__1\", .implemented = @hasDecl(HTMLFormElementImpl, \"call_getter__1\") },",
+        ".supported_property_name = .{ .function = \"isSupportedPropertyName\", .implemented = @hasDecl(HTMLFormElementImpl, \"isSupportedPropertyName\") },",
         ".legacy_override_built_ins = true,",
         ".legacy_unenumerable_named_properties = true,",
         ".named_properties_in_own_keys = false,",
@@ -268,4 +276,32 @@ test "a CSS declaration interface's named properties are Crane's camel-cased att
         ".named_setter = .{ .function = \"call_setNamedItem\" },",
         ".crane_css_properties = true,",
     });
+}
+
+test "a named getter comes with a per-name query, gated on its impl; an heir takes its parent's; Crane's CSS names have none" {
+    var out = try Generated.init();
+    defer out.deinit();
+    // WebIDL 3.9.7 step 1 asks about ONE name: the impl may answer without
+    // building the list (WebKit's isSupportedPropertyName, Blink's
+    // NamedPropertyQuery). Until it declares the function, the delegate
+    // answers error.NotImplemented and the table says it is not implemented,
+    // so the binding searches getSupportedPropertyNames' list.
+    const form = try out.file("HTMLFormElement");
+    defer testing.allocator.free(form);
+    try testing.expect(contains(form, "pub fn isSupportedPropertyName(instance: *runtime.Instance, name: runtime.DOMString) anyerror!bool {"));
+    try testing.expect(contains(form, "if (comptime @hasDecl(HTMLFormElementImpl, \"isSupportedPropertyName\")) {"));
+    try testing.expect(contains(form, "return try HTMLFormElementImpl.isSupportedPropertyName(instance, name);"));
+    const options = try out.file("OptionsCollection");
+    defer testing.allocator.free(options);
+    try testing.expect(contains(options, "pub const isSupportedPropertyName = Collection.isSupportedPropertyName;"));
+    const heir = try out.file("OptionsHeir");
+    defer testing.allocator.free(heir);
+    try testing.expect(contains(heir, "pub const isSupportedPropertyName = OptionsCollection.isSupportedPropertyName;"));
+    // No named getter, no query.
+    for ([_][]const u8{ "Plain", "NumberList", "TouchEvent", "XMLDocument", "CSSStyleDeclaration" }) |name| {
+        const source = try out.file(name);
+        defer testing.allocator.free(source);
+        try testing.expect(!contains(source, "isSupportedPropertyName"));
+        try testing.expect(!contains(source, "supported_property_name"));
+    }
 }

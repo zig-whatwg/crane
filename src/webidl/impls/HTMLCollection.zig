@@ -164,8 +164,15 @@ fn matchesDocumentFilter(element: *runtime.Instance, filter: live_collections.Do
 fn makeFormControls(collection: *runtime.Instance, root: *runtime.Instance, fieldset: bool) void {
     const internal = getInternal(collection) orelse return;
     internal.fieldset_controls = fieldset;
-    // Form owner association is not covered by a document tree version.
-    internal.cacheable = false;
+    // Which elements are listed and which form owns each is read from the
+    // tree (form_associated.formOwner: ancestors, the form attribute and
+    // the IDs it names, input types), all of which move the tree version,
+    // and from the two association changes that are not mutations - a
+    // parser association recorded, a form-associated custom element's
+    // upgrade - which move it too (dom.refcount.formAssociationChanged).
+    // So the version keys these collections like any other (formnamed;
+    // form.elements.namedItem refilled once per item before).
+    internal.cacheable = true;
     makeLive(collection, root, &refillFormControls);
 }
 
@@ -669,31 +676,42 @@ pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anye
     // Empty name returns null
     if (name_slice.len == 0) return null;
 
-    // Iterate through elements looking for matching id or name attribute
-    const elements = internal.elements.toSlice();
-    const Element = interfaces.Element;
-
-    for (elements) |link| {
+    for (internal.elements.toSlice()) |link| {
         const element = link.get() orelse continue;
-        // Check id attribute first
-        var id = try Element.get_id(element);
-        defer id.deinit(internal.allocator);
-        if (std.mem.eql(u8, id.asSlice(), name_slice)) {
-            return element;
-        }
-
-        // Check name attribute for HTML namespace elements
-        // Per spec: "it is in the HTML namespace and has a name attribute whose value is name"
-        var name_attr = Element.call_getAttribute(element, runtime.DOMString.initInterned("name")) catch null;
-        if (name_attr) |*attr| {
-            defer attr.deinit(internal.allocator);
-            if (std.mem.eql(u8, attr.asSlice(), name_slice)) {
-                return element;
-            }
-        }
+        const names = namesOf(element) orelse continue;
+        if (std.mem.eql(u8, names.id, name_slice)) return element;
+        if (names.name) |value| if (std.mem.eql(u8, value, name_slice)) return element;
     }
 
     return null;
+}
+
+/// The two strings an element of the collection is named by, read in place:
+/// its ID (Element.id) and its `name` attribute as getAttribute("name")
+/// finds it. namedItem and the supported property names read both here, so
+/// they cannot disagree, and neither copies a string per element (a named
+/// read of form.elements made four copies per control).
+const ElementNames = struct { id: []const u8, name: ?[]const u8 };
+
+fn namesOf(element: *runtime.Instance) ?ElementNames {
+    const data = dom.element_data.of(element) orelse return null;
+    const name: ?[]const u8 = if (data.indexOfQualifiedName("name")) |index|
+        (if (data.attributeAt(index)) |entry| entry.value else null)
+    else
+        null;
+    return .{ .id = data.id.asSlice(), .name = name };
+}
+
+/// Whether `name` is one of the collection's supported property names
+/// (WebIDL 3.9.7 step 1 for one name): its non-empty ids and names, which
+/// are exactly the strings namedItem finds an element for - read through
+/// the same attribute reads as `getSupportedPropertyNames`, so the two
+/// answers cannot differ. WebKit's HTMLCollection::isSupportedPropertyName
+/// asks its named-element cache the same way; the list is built only for
+/// enumeration.
+pub fn isSupportedPropertyName(instance: *runtime.Instance, name: runtime.DOMString) anyerror!bool {
+    if (name.asSlice().len == 0) return false;
+    return (try call_namedItem(instance, name)) != null;
 }
 
 // ============================================================================
@@ -734,59 +752,30 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
     const elements = internal.elements.toSlice();
     if (elements.len == 0) return &[_]runtime.DOMString{};
 
-    const Element = interfaces.Element;
-
-    // Use ArrayList to collect unique names
     var names: std.ArrayListUnmanaged(runtime.DOMString) = .empty;
     errdefer {
         for (names.items) |*n| n.deinit(allocator);
         names.deinit(allocator);
     }
 
-    // Collect id and name attributes from elements in tree order
+    // Each element's id, then its name, in tree order; empty strings and
+    // later duplicates left out.
     for (elements) |link| {
         const element = link.get() orelse continue;
-        // Check id attribute
-        var id = Element.get_id(element) catch continue;
-        const id_slice = id.asSlice();
-        if (id_slice.len > 0) {
-            // Check if already in list
-            var found = false;
-            for (names.items) |existing| {
-                if (std.mem.eql(u8, existing.asSlice(), id_slice)) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                // Clone the id for our list
-                const cloned = try runtime.DOMString.initDupe(allocator, id_slice);
-                try names.append(allocator, cloned);
-            }
-        }
-        id.deinit(internal.allocator);
-
-        // Check name attribute for HTML namespace elements
-        var name_attr = Element.call_getAttribute(element, runtime.DOMString.initInterned("name")) catch null;
-        if (name_attr) |*attr| {
-            defer attr.deinit(internal.allocator);
-            const attr_slice = attr.asSlice();
-            if (attr_slice.len > 0) {
-                // Check if already in list
-                var found = false;
-                for (names.items) |existing| {
-                    if (std.mem.eql(u8, existing.asSlice(), attr_slice)) {
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) {
-                    const cloned = try runtime.DOMString.initDupe(allocator, attr_slice);
-                    try names.append(allocator, cloned);
-                }
-            }
-        }
+        const element_names = namesOf(element) orelse continue;
+        try appendUniqueName(&names, allocator, element_names.id);
+        if (element_names.name) |value| try appendUniqueName(&names, allocator, value);
     }
 
     return names.toOwnedSlice(allocator);
+}
+
+fn appendUniqueName(names: *std.ArrayListUnmanaged(runtime.DOMString), allocator: std.mem.Allocator, value: []const u8) !void {
+    if (value.len == 0) return;
+    for (names.items) |existing| {
+        if (std.mem.eql(u8, existing.asSlice(), value)) return;
+    }
+    var cloned = try runtime.DOMString.initDupe(allocator, value);
+    errdefer cloned.deinit(allocator);
+    try names.append(allocator, cloned);
 }

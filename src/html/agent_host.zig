@@ -41,6 +41,11 @@ pub const AgentHost = struct {
     /// referrer is looked up in before it is read. Linked and unlinked only
     /// on the agent's thread.
     classic_scripts: ClassicScripts = .{},
+    /// The agent's forms whose past names map has entries
+    /// (dom.form_past_names): told of every change that can give one of
+    /// their elements another form owner. Read and written only on the
+    /// agent's thread.
+    form_past_names: dom.form_past_names.Registry,
 
     pub fn init(allocator: std.mem.Allocator) AgentHost {
         return .{
@@ -52,6 +57,7 @@ pub const AgentHost = struct {
             .embedded_contents = @import("eventsource").Registry(*anyopaque, *anyopaque).init(allocator),
             .hyperlink_pings = @import("eventsource").Registry(*anyopaque, *anyopaque).init(allocator),
             .deferred_teardown = dom.tree_teardown.DeferredTeardown.init(allocator),
+            .form_past_names = dom.form_past_names.Registry.init(allocator),
         };
     }
     /// After the agent's end, which emptied and closed the queue.
@@ -59,6 +65,7 @@ pub const AgentHost = struct {
         // Released while the agent lived: its promises were its handles.
         std.debug.assert(self.rejections.items.len == 0);
         self.classic_scripts.deinit();
+        self.form_past_names.deinit();
         self.deferred_teardown.deinit();
         self.indexeddb_cleanup.deinit();
         self.event_sources.deinit();

@@ -84,6 +84,10 @@ pub fn upgradeElement(element: *runtime.Instance, definition: *ce.Definition) !?
     if (definition.form_associated) ce.refreshFormAfterUpgrade(element);
     // Step 12: only a successful construction makes the element custom.
     ce.setState(element, .custom);
+    // A form-associated one is a listed element from now on, with no tree
+    // mutation: what is cached under the tree version (a form's elements
+    // and named properties, a fieldset's elements) reads again.
+    if (definition.form_associated) dom.refcount.formAssociationChanged(element);
     return null;
 }
 

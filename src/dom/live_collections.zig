@@ -16,7 +16,9 @@ const runtime = @import("runtime");
 const NodeBase = @import("node_base.zig").NodeBase;
 
 /// A document version covers tree, attribute and character data mutations,
-/// adoption included, and nothing else (a free is not a mutation). The
+/// adoption included, and the form association changes that are not
+/// mutations (refcount.formAssociationChanged), and nothing else (a free is
+/// not a mutation). The
 /// refcount owner updates it at those mutation boundaries. Null means no live
 /// document version is available - none, or a document whose teardown has
 /// begun: always recompute.
