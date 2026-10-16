@@ -342,22 +342,31 @@ pub fn scriptFromBlob(allocator: Allocator, url: []const u8, worker_type: Worker
     return FetchedScript.init(allocator, bytes, url, content_type, true) catch WorkerScriptError.OutOfMemory;
 }
 
-/// Fetch an HTTP(S) worker script using the fetch module.
+/// The request a worker's top-level script - or, `is_import_scripts`, the
+/// legacy import path's - is fetched with. The caller owns it (`deinit`).
 ///
-/// HTML Standard §10.2.5 "Run a worker" step 9:
-/// Creates an internal request with destination=worker and executes fetch.
-fn fetchHttpWorkerScript(
+/// HTML "fetch a classic worker script" step 1: "a new request whose URL is
+/// url, client is fetchClient, destination is destination, initiator type is
+/// "other", mode is "same-origin", credentials mode is "same-origin", parser
+/// metadata is "not parser-inserted", and whose use-URL-credentials flag is
+/// set." "Fetch a single module script" steps 8-10 make a top-level module
+/// worker script's mode "same-origin" too. fetchClient is the outside
+/// settings: the request's origin is theirs (`requesting_origin`), and main
+/// fetch compares it with the URL of every hop - so a cross-origin script,
+/// directly or through a redirect, is a network error. Left "client" with no
+/// client, the origin was same origin with any URL
+/// (InternalRequest.currentUrlIsSameOrigin), and every cross-origin worker
+/// script loaded (workers/same-origin-check.sub.html).
+pub fn workerScriptRequest(
     allocator: Allocator,
     url: []const u8,
     options: WorkerScriptFetchOptions,
-) WorkerScriptError!FetchedScript {
-    // Step 1: Create an internal request
+) WorkerScriptError!*fetch.internal.InternalRequest {
     const internal_request = fetch.internal.InternalRequest.init(allocator, url) catch {
         return WorkerScriptError.OutOfMemory;
     };
-    defer internal_request.deinit();
+    errdefer internal_request.deinit();
 
-    // Step 2: Set request properties per HTML Standard §10.2.5
     // Set destination based on worker type
     internal_request.destination = if (options.is_import_scripts)
         .script // importScripts uses script destination
@@ -365,6 +374,8 @@ fn fetchHttpWorkerScript(
         .classic => .worker,
         .module => .worker,
     };
+    internal_request.initiator_type = .other;
+    internal_request.use_url_credentials = true;
     // The client's policy container, for main fetch step 7 (and 8).
     if (options.policy_container) |container| {
         internal_request.setPolicyContainer(container.clone(allocator) catch return WorkerScriptError.OutOfMemory);
@@ -381,13 +392,33 @@ fn fetchHttpWorkerScript(
         .include => .include,
     };
 
-    // Set mode - workers use same-origin by default
+    // Mode "same-origin": a worker's top-level script, classic or module.
     internal_request.mode = .same_origin;
 
-    // Set origin if provided
-    if (options.origin) |org| {
+    // The request's origin: the outside settings' origin for a worker's
+    // script; the legacy import path names its worker's URL instead.
+    if (!options.is_import_scripts) {
+        if (options.requesting_origin) |requesting| {
+            internal_request.setOrigin(requesting) catch return WorkerScriptError.OutOfMemory;
+        }
+    } else if (options.origin) |org| {
         internal_request.origin = .{ .origin = org };
     }
+    return internal_request;
+}
+
+/// Fetch an HTTP(S) worker script using the fetch module.
+///
+/// HTML Standard §10.2.5 "Run a worker" step 9:
+/// Creates an internal request with destination=worker and executes fetch.
+fn fetchHttpWorkerScript(
+    allocator: Allocator,
+    url: []const u8,
+    options: WorkerScriptFetchOptions,
+) WorkerScriptError!FetchedScript {
+    // Steps 1-2: the request (workerScriptRequest).
+    const internal_request = try workerScriptRequest(allocator, url, options);
+    defer internal_request.deinit();
 
     // Step 3: Execute fetch
     var fetch_result = fetch.algorithms.fetch(allocator, internal_request, .{}) catch |err| {

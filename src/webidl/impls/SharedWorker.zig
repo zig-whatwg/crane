@@ -151,7 +151,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     // 9. outsideStorageKey: obtain a storage key for non-storage purposes,
     // given outsideSettings - its origin, here, serialized (Crane has no
     // storage partitioning, so the key is the origin).
-    const origin = try serializedOriginOf(allocator, base_url);
+    const origin = try outsideSettingsOrigin(instance, allocator, base_url);
     defer allocator.free(origin);
 
     // 8, 10-11. Enqueue the manager's steps: they find a running
@@ -300,6 +300,24 @@ fn resolveScriptURL(allocator: std.mem.Allocator, script_url: []const u8, api_ba
         return error.SyntaxError;
     defer record.deinit();
     return url_serializer.serialize(allocator, &record, false) catch error.OutOfMemory;
+}
+
+/// The outside settings' origin, serialized - "this's relevant settings
+/// object"'s, as its global's kind answers it (dom.global_settings): a
+/// sandboxed or otherwise opaque-origin document's is "null", whatever its
+/// URL. The origin of `api_base_url` only where the global's kind answers
+/// nothing. OWNED (`allocator`).
+fn outsideSettingsOrigin(instance: *runtime.Instance, allocator: std.mem.Allocator, api_base_url: ?[]const u8) ![]u8 {
+    if (instance.ctx.getRealm()) |record| if (record.global_object) |object| {
+        const global: *runtime.Instance = @ptrCast(@alignCast(object));
+        if (@import("dom").global_settings.of(global)) |settings| {
+            if (settings.origin(global)) |origin| {
+                defer global.ctx.allocator.free(origin);
+                return allocator.dupe(u8, origin);
+            } else |err| if (err == error.OutOfMemory) return error.OutOfMemory;
+        }
+    };
+    return serializedOriginOf(allocator, api_base_url);
 }
 
 /// The outside settings' origin, serialized: the origin of `api_base_url`,

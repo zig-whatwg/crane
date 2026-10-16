@@ -161,6 +161,24 @@ pub fn resolveScriptURL(allocator: std.mem.Allocator, script_url: []const u8, ap
     return url_serializer.serialize(allocator, &record, false) catch error.OutOfMemory;
 }
 
+/// The outside settings' origin, serialized - "this's relevant settings
+/// object"'s, as its global's kind answers it (dom.global_settings): a
+/// sandboxed or otherwise opaque-origin document's is "null", whatever its
+/// URL. The origin of `api_base_url` only where the global's kind answers
+/// nothing. OWNED (`allocator`).
+fn outsideSettingsOrigin(instance: *runtime.Instance, allocator: std.mem.Allocator, api_base_url: ?[]const u8) ![]u8 {
+    if (instance.ctx.getRealm()) |record| if (record.global_object) |object| {
+        const global: *runtime.Instance = @ptrCast(@alignCast(object));
+        if (@import("dom").global_settings.of(global)) |settings| {
+            if (settings.origin(global)) |origin| {
+                defer global.ctx.allocator.free(origin);
+                return allocator.dupe(u8, origin);
+            } else |err| if (err == error.OutOfMemory) return error.OutOfMemory;
+        }
+    };
+    return serializedOriginOf(allocator, api_base_url);
+}
+
 /// The outside settings' origin, serialized: the origin of `api_base_url`,
 /// or "null" (an opaque origin) without one. OWNED (`allocator`).
 fn serializedOriginOf(allocator: std.mem.Allocator, api_base_url: ?[]const u8) ![]u8 {
@@ -245,8 +263,9 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     defer if (base_url) |b| ctx.allocator.free(b);
     const worker_url = try resolveScriptURL(ctx.allocator, compliant_script_url, base_url);
     defer ctx.allocator.free(worker_url);
-    // Its origin, for the blob-URL store's same-origin check.
-    const requesting_origin = try serializedOriginOf(ctx.allocator, base_url);
+    // The outside settings' origin: the script request's (its fetch is
+    // same-origin with it) and the blob-URL store's same-origin check's.
+    const requesting_origin = try outsideSettingsOrigin(instance, ctx.allocator, base_url);
     defer ctx.allocator.free(requesting_origin);
 
     const internal = try ctx.allocator.create(InternalState);
