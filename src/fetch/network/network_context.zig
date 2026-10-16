@@ -67,6 +67,8 @@ pub const NetworkContext = struct {
     user_agent: ?[]u8 = null,
     /// Where the Browser's requests go (`configure`; OWNED strings).
     proxy: Proxy = .system,
+    /// Browser-owned Fetch permission entries, independently locked.
+    preflight_cache: @import("../cors/preflight_cache.zig").PreflightCache,
 
     /// The options a Browser gives its network (BrowserConfig).
     pub const Options = struct {
@@ -108,7 +110,7 @@ pub const NetworkContext = struct {
     };
 
     pub fn init(allocator: Allocator) NetworkContext {
-        return .{ .allocator = allocator };
+        return .{ .allocator = allocator, .preflight_cache = .init(allocator) };
     }
 
     /// The end, with the Browser's scope - after every transfer of the
@@ -117,6 +119,7 @@ pub const NetworkContext = struct {
     /// connection closed only by the process exiting ends with a bare FIN,
     /// and WPT's h2 server (:9000) spins a thread forever on each of those.
     pub fn deinit(self: *NetworkContext) void {
+        self.preflight_cache.deinit();
         if (self.share) |share| share.destroy();
         self.share = null;
         self.share_tried = false;

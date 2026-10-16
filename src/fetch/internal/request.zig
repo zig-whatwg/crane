@@ -394,6 +394,9 @@ pub const InternalRequest = struct {
 
     /// Top-level navigation initiator origin
     top_level_navigation_initiator_origin: ?[]const u8 = null,
+    /// OWNED serialized top-level site. Fetch's network partition key is
+    /// (top-level site, second key); Crane's second key is always null.
+    network_partition_key: ?[]u8 = null,
 
     /// Policy container ("client" or one the request owns): set it with
     /// `setPolicyContainer`, which releases one being replaced.
@@ -508,6 +511,7 @@ pub const InternalRequest = struct {
 
     /// Deinitialize the request.
     pub fn deinit(self: *Self) void {
+        if (self.network_partition_key) |key| self.allocator.free(key);
         self.allocator.free(self.method);
         self.header_list.deinit();
 
@@ -728,6 +732,8 @@ pub const InternalRequest = struct {
     ///    of cloning request's body.
     /// 3. Return newRequest.
     pub fn clone(self: *Self) !*Self {
+        const partition = if (self.network_partition_key) |key| try self.allocator.dupe(u8, key) else null;
+        errdefer if (partition) |key| self.allocator.free(key);
         const new_request = try self.allocator.create(Self);
         errdefer self.allocator.destroy(new_request);
 
@@ -752,6 +758,7 @@ pub const InternalRequest = struct {
             // Copied below when it is owned.
             .origin = if (self.origin_owned) .client else self.origin,
             .top_level_navigation_initiator_origin = self.top_level_navigation_initiator_origin,
+            .network_partition_key = partition,
             .cookie_jar = self.cookie_jar,
             .blob_url_store = self.blob_url_store,
             .network = self.network,

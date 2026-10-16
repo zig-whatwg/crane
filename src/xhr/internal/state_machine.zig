@@ -260,6 +260,8 @@ pub const XMLHttpRequestState = struct {
         errdefer if (origin) |o| self.allocator.free(o);
         const referrer_source: ?[]const u8 = if (client.referrer_source) |r| try self.allocator.dupe(u8, r) else null;
         errdefer if (referrer_source) |r| self.allocator.free(r);
+        const top_level_site = if (client.top_level_site) |site| try self.allocator.dupe(u8, site) else null;
+        errdefer if (top_level_site) |site| self.allocator.free(site);
         // The policy container is the settings object's, which may be gone by
         // the time the request is made: keep a clone.
         const policy_container: ?*fetch.internal.PolicyContainer = if (client.policy_container) |container| blk: {
@@ -272,6 +274,7 @@ pub const XMLHttpRequestState = struct {
         self.client = .{
             .origin = origin,
             .referrer_source = referrer_source,
+            .top_level_site = top_level_site,
             .traversable = client.traversable,
             .cookie_jar = client.cookie_jar,
             // Borrowed, as the jar: the client's Browser's blob URL store.
@@ -289,6 +292,7 @@ pub const XMLHttpRequestState = struct {
     }
 
     fn freeClient(self: *XMLHttpRequestState) void {
+        if (self.client.top_level_site) |site| self.allocator.free(site);
         if (self.client.origin) |o| self.allocator.free(o);
         if (self.client.referrer_source) |r| self.allocator.free(r);
         if (self.client.policy_container) |container| {

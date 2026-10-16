@@ -355,6 +355,28 @@ pub const FetchJob = struct {
     /// `response`: the rest of it, and of every HTTP-redirect fetch and HTTP
     /// fetch waiting on it, out to fetch itself.
     fn mainFetchFetched(self: *FetchJob, response: *InternalResponse) FetchError!Step {
+        // Main fetch 12, CORS-with-preflight branch, step 3: every network
+        // error clears these entries, including the actual request's failure.
+        // Success never computes the branch predicate or touches the store.
+        if ((response.response_type == .@"error" or response.status == 0) and self.request.response_tainting == .cors) {
+            const request = self.request;
+            const with_preflight = request.use_cors_preflight or (request.unsafe_request and blk: {
+                if (!main_fetch.isCorsSafelistedMethod(request.method)) break :blk true;
+                const names = @import("../internal/validation.zig").getCORSUnsafeRequestHeaderNames(self.allocator, &request.header_list) catch {
+                    response.deinit();
+                    return FetchError.OutOfMemory;
+                };
+                defer {
+                    for (names) |name| self.allocator.free(name);
+                    self.allocator.free(names);
+                }
+                break :blk names.len > 0;
+            });
+            if (with_preflight) http_fetch.clearPreflightEntries(self.allocator, request) catch {
+                response.deinit();
+                return FetchError.OutOfMemory;
+            };
+        }
         var r = response;
         while (self.depth > 0) {
             // A recursive main fetch returns its response to the HTTP-redirect

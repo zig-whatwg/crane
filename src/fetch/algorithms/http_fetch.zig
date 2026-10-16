@@ -991,15 +991,28 @@ pub fn getCurrentTimeMs() f64 {
 // =============================================================================
 
 /// HTTP fetch step 4.1's condition, given makeCORSPreflight: does `request`
-/// need a CORS-preflight fetch first? With no CORS-preflight cache there is
-/// never a cache entry match, so: its method is not CORS-safelisted or its
-/// use-CORS-preflight flag is set, or it has a CORS-unsafe request-header
-/// name.
+/// need a CORS-preflight fetch first? Each required method/header needs an
+/// unexpired entry for this partition, requesting origin and URL.
 pub fn corsPreflightNeeded(allocator: Allocator, request: *const InternalRequest) !bool {
-    if (request.use_cors_preflight or !isCorsSafelistedMethod(request.method)) return true;
+    const method: ?[]const u8 = if (request.use_cors_preflight or !isCorsSafelistedMethod(request.method)) request.method else null;
     const unsafe_names = try validation.getCORSUnsafeRequestHeaderNames(allocator, &request.header_list);
     defer freeNames(allocator, unsafe_names);
-    return unsafe_names.len > 0;
+    if (method == null and unsafe_names.len == 0) return false;
+    const context = request.network orelse return true;
+    // No captured top-level site: never share a stand-in partition (D3).
+    const partition = request.network_partition_key orelse return true;
+    if (context.preflight_cache.count() == 0) return true;
+    const origin = try request.serializeOrigin(allocator);
+    defer allocator.free(origin);
+    return !context.preflight_cache.allows(.{
+        .network_partition_key = partition,
+        .origin = origin,
+        .url = withoutFragment(request.currentUrl()),
+    }, @intFromFloat(getCurrentTimeMs()), request.credentials_mode == .include, method, unsafe_names);
+}
+
+fn withoutFragment(url: []const u8) []const u8 {
+    return url[0 .. std.mem.indexOfScalar(u8, url, '#') orelse url.len];
 }
 
 /// CORS-preflight fetch, steps 1-6 up to the network: the preflight request,
@@ -1079,11 +1092,19 @@ fn buildPreflightRequest(allocator: Allocator, request: *InternalRequest) !Netwo
 
 /// CORS-preflight fetch step 7, once the network answered the preflight
 /// with `network_response`: whether it lets `request` go - false is step 8's
-/// network error. With no CORS-preflight cache, steps 8-15 have nothing to
-/// store.
+/// network error. Main fetch clears the cache for any failed CORS preflight.
 pub fn corsPreflightFetchFinish(allocator: Allocator, request: *InternalRequest, network_response: *const NetworkResponse) HttpFetchError!bool {
-    // Every error on the way is an allocation failing.
     return preflightAllows(allocator, request, network_response) catch HttpFetchError.OutOfMemory;
+}
+
+/// Main fetch 12's CORS-with-preflight branch: clear this request's entries.
+pub fn clearPreflightEntries(allocator: Allocator, request: *const InternalRequest) !void {
+    const context = request.network orelse return;
+    const partition = request.network_partition_key orelse return;
+    if (context.preflight_cache.count() == 0) return;
+    const origin = try request.serializeOrigin(allocator);
+    defer allocator.free(origin);
+    context.preflight_cache.clear(.{ .network_partition_key = partition, .origin = origin, .url = withoutFragment(request.currentUrl()) });
 }
 
 fn preflightAllows(allocator: Allocator, request: *InternalRequest, network_response: *const NetworkResponse) !bool {
@@ -1138,9 +1159,32 @@ fn preflightAllows(allocator: Allocator, request: *InternalRequest, network_resp
         if (!header_names.containsIgnoreCase(name) and (include or !header_names.containsExact("*"))) return false;
     }
 
-    // 8-16. max-age and the cache: there is no CORS-preflight cache ("If
-    //       the user agent does not provide for a cache, then return
-    //       response").
+    // 8-15. Cache the permissions, each with its own monotonic expiry.
+    if (request.network) |context| if (request.network_partition_key) |partition| {
+        const origin = try request.serializeOrigin(allocator);
+        defer allocator.free(origin);
+        const age_value = try response.header_list.get(allocator, "Access-Control-Max-Age");
+        defer if (age_value) |value| allocator.free(value);
+        const age: ?u64 = if (age_value) |value| blk: {
+            // Chrome 154 and WebKit accept signed i64, expire negative
+            // values, and fall back to 5 s for invalid/overflowing values
+            // (codex-xhr D12; Gecko rejects signs).
+            if (value.len == 0) break :blk null;
+            const digits = if (value[0] == '+' or value[0] == '-') value[1..] else value;
+            if (digits.len == 0) break :blk null;
+            for (digits) |c| if (!std.ascii.isDigit(c)) break :blk null;
+            const parsed = std.fmt.parseInt(i64, value, 10) catch break :blk null;
+            break :blk if (parsed < 0) 0 else @intCast(parsed);
+        } else null;
+        const fallback = [_][]const u8{request.method};
+        const cache_methods = if (methods_null and request.use_cors_preflight) &fallback else methods.items.items;
+        // Cache allocation failure can only cause another preflight.
+        context.preflight_cache.store(.{
+            .network_partition_key = partition,
+            .origin = origin,
+            .url = withoutFragment(request.currentUrl()),
+        }, @intFromFloat(getCurrentTimeMs()), age, cache_methods, header_names.items.items, include) catch {};
+    };
     return true;
 }
 
