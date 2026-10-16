@@ -543,13 +543,10 @@ pub fn get_nodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         NodeType.ATTRIBUTE_NODE => interfaces.Attr.get_name(instance) catch runtime.DOMString.initEmpty(),
         NodeType.TEXT_NODE => runtime.DOMString.initInterned("#text"),
         NodeType.CDATA_SECTION_NODE => runtime.DOMString.initInterned("#cdata-section"),
-        NodeType.PROCESSING_INSTRUCTION_NODE => blk: {
-            // For ProcessingInstruction: its target
-            if (internal.local_name) |name| {
-                break :blk name;
-            }
-            break :blk runtime.DOMString.initEmpty();
-        },
+        // ProcessingInstruction: its target - ProcessingInstruction's, read
+        // through its IDL member as Element's tagName is above (Node's
+        // local_name is never set for one, so nodeName came back "").
+        NodeType.PROCESSING_INSTRUCTION_NODE => interfaces.ProcessingInstruction.get_target(instance) catch runtime.DOMString.initEmpty(),
         NodeType.COMMENT_NODE => runtime.DOMString.initInterned("#comment"),
         NodeType.DOCUMENT_NODE => runtime.DOMString.initInterned("#document"),
         NodeType.DOCUMENT_TYPE_NODE => blk: {
@@ -877,8 +874,11 @@ pub fn get_nodeValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         // Attr: this's value - the Attr impl's, which reads its element's
         // list while it has one. Cloned for the caller, who frees it.
         NodeType.ATTRIBUTE_NODE => interfaces.Attr.get_value(instance) catch runtime.DOMString.initEmpty(),
-        // For Element, Document, DocumentType, DocumentFragment: null
-        else => runtime.DOMString.initEmpty(),
+        // DOM 4.4 nodeValue: "Otherwise: Null" - an Element, Document,
+        // DocumentType or DocumentFragment has none (it returned "", which
+        // every createElementNS and createDocument case asserting
+        // `element.nodeValue === null` failed on).
+        else => null,
     };
 }
 
@@ -1518,7 +1518,12 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
             // them, so they keep Document.init's defaults - a stated deviation.
             // TODO(dom-clone): a codegen-generated `cloneInternalsFrom` delegate
             // is the boundary-clean way to copy them.
-            const copy = try interfaces.Document.init(allocator, node.ctx);
+            // "Let copy be a node that implements the same interfaces as
+            // node": an XMLDocument's copy is an XMLDocument.
+            const copy = if (node.stateAs(interfaces.XMLDocument.State) != null)
+                try interfaces.XMLDocument.init(allocator, node.ctx)
+            else
+                try interfaces.Document.init(allocator, node.ctx);
             errdefer runtime.Instance.deinit(copy);
             if (try interfaces.Document.get_customElementRegistry(node)) |registry| {
                 if (dom_module.custom_elements.isScoped(registry)) try dom_module.custom_elements.setDocumentRegistry(copy, registry);

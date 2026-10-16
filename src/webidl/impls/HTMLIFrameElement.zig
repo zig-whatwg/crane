@@ -412,30 +412,7 @@ fn parseHtmlForIframe(
     // parsing finished left those scripts on the frame's initial about:blank
     // document: their getElementsByTagName, createElement and body were that
     // document's.
-    // Step 4's origin: navigationParams's, which the navigable was given
-    // for it (takeNextOrigin) - shared with its container document for
-    // srcdoc, its initiator's for a javascript: URL's String.
-    const origin = takeNextOrigin(browsing_ctx_ptr);
-    defer if (origin) |record| record.release();
-    const document_instance = interfaces.Document.initWith(allocator, runtime_ctx, .{ .origin = origin }) catch return null;
-    document_internals.setDocumentType(document_instance, .html) catch {};
-    document_internals.setContentType(document_instance, "text/html") catch {};
-    giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
-    givePolicyContainer(document_instance, browsing_ctx_ptr);
-    giveReferrer(document_instance, browsing_ctx_ptr);
-
-    const DocumentImpl = @import("Document.zig");
-    if (window_instance) |window_inst| {
-        browsing_ctx_ptr.setActiveDocument(document_instance, window_inst);
-        const WindowImpl = @import("Window.zig");
-        WindowImpl.setDocument(window_inst, document_instance);
-        DocumentImpl.setDefaultView(document_instance, window_inst);
-    } else {
-        log.debug("[parseHtmlForIframe] BC={*} WARNING: No active window, document {*} will NOT be linked!", .{ browsing_ctx_ptr, document_instance });
-    }
-    // Step 17, once the document is its window's - its URL, which the
-    // header's URL is parsed against, is the navigation's from then on.
-    giveRefresh(document_instance, browsing_ctx_ptr);
+    const document_instance = createNavigationDocument(allocator, runtime_ctx, browsing_ctx_ptr, window_instance, .html, "text/html") orelse return null;
 
     // The encoding sniffing algorithm's step 6: the container document's
     // encoding, when it is same origin with the new document.
@@ -444,10 +421,6 @@ fn parseHtmlForIframe(
         (if (stream.parent_same_origin) containerDocumentEncoding(browsing_ctx_ptr, &parent_encoding_buf) else null)
     else
         null;
-
-    // Make the wrapper in its relevant realm before a parse can suspend or
-    // run lifecycle callbacks. The navigable already owns this document.
-    wrapInOwnRealm(document_instance);
 
     // The scripted parser builds the tree incrementally through the
     // DomTreeAdapter, so scripts can reach nodes already parsed.
@@ -480,6 +453,112 @@ fn parseHtmlForIframe(
     // runs "the end" only after actual EOF, including srcdoc and popups.
 
     return document_instance;
+}
+
+/// HTML "create and initialize a Document object" for a navigation of
+/// `browsing_ctx_ptr`, given `kind` ("html" or "xml") and `content_type`:
+/// step 9's new Document with its type and content type, about base URL,
+/// policy container and referrer; step 10, the window's associated Document
+/// becomes it; step 17, its refresh. Both happen before the parser exists,
+/// so the page's own scripts - run BY the parser - see the document they are
+/// in. Associating it only once parsing finished left those scripts on the
+/// frame's initial about:blank document: their getElementsByTagName,
+/// createElement and body were that document's. Its wrapper is made in its
+/// relevant realm before a parse can suspend or run lifecycle callbacks.
+fn createNavigationDocument(
+    allocator: std.mem.Allocator,
+    runtime_ctx: runtime.Context,
+    browsing_ctx_ptr: *html_core.BrowsingContext,
+    window_instance: ?*runtime.Instance,
+    kind: document_internals.DocType,
+    content_type: []const u8,
+) ?*runtime.Instance {
+    // An XML document is an XMLDocument, as browsers make one (Blink's
+    // DocumentInit::CreateDocument for an XML MIME type), where step 9
+    // says Document of type "xml".
+    // Step 4's origin: navigationParams's, which the navigable was given
+    // for it (takeNextOrigin) - shared with its container document for
+    // srcdoc, its initiator's for a javascript: URL's String.
+    const origin = takeNextOrigin(browsing_ctx_ptr);
+    defer if (origin) |record| record.release();
+    const document_instance = (if (kind == .xml)
+        interfaces.XMLDocument.initWith(allocator, runtime_ctx, .{ .origin = origin })
+    else
+        interfaces.Document.initWith(allocator, runtime_ctx, .{ .origin = origin })) catch return null;
+    document_internals.setDocumentType(document_instance, kind) catch {};
+    document_internals.setContentType(document_instance, content_type) catch {};
+    giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
+    givePolicyContainer(document_instance, browsing_ctx_ptr);
+    giveReferrer(document_instance, browsing_ctx_ptr);
+
+    const DocumentImpl = @import("Document.zig");
+    if (window_instance) |window_inst| {
+        browsing_ctx_ptr.setActiveDocument(document_instance, window_inst);
+        const WindowImpl = @import("Window.zig");
+        WindowImpl.setDocument(window_inst, document_instance);
+        DocumentImpl.setDefaultView(document_instance, window_inst);
+    } else {
+        log.debug("[createNavigationDocument] BC={*} WARNING: No active window, document {*} will NOT be linked!", .{ browsing_ctx_ptr, document_instance });
+    }
+    // Step 17, once the document is its window's - its URL, which the
+    // header's URL is parsed against, is the navigation's from then on.
+    giveRefresh(document_instance, browsing_ctx_ptr);
+    // The navigable already owns this document.
+    wrapInOwnRealm(document_instance);
+    return document_instance;
+}
+
+/// HTML §7.5.3 "load an XML document" for iframe navigation: "create and
+/// initialize a Document object" given "xml" and the response's computed
+/// type, and an XML parser for it. Its encoding is the one the response's
+/// bytes and Content-Type determine (xml_document_parser.decodeBytes). XML
+/// scripting support is enabled unless the navigable's sandbox blocks
+/// scripts. Errors are "reported inline by mutating the Document": the tree
+/// up to the first error stays and Chrome's and Safari's message block goes
+/// in (xml_document_parser.insertErrorMessageBlock says why that shape). Its
+/// "the end" runs once the commit returns (finishParserlessNavigation).
+fn parseXmlForIframe(
+    runtime_ctx_ptr: ?*anyopaque,
+    browsing_ctx_ptr: *html_core.BrowsingContext,
+    bytes: []const u8,
+    response: html_core.window.iframe_integration.XmlResponse,
+) ?*anyopaque {
+    const runtime_ctx: runtime.Context = @ptrCast(@alignCast(runtime_ctx_ptr orelse return null));
+    const allocator = runtime_ctx.allocator;
+    const window_instance: ?*runtime.Instance = if (browsing_ctx_ptr.getActiveWindow()) |window_ptr|
+        @ptrCast(@alignCast(window_ptr))
+    else
+        null;
+    const document = createNavigationDocument(allocator, runtime_ctx, browsing_ctx_ptr, window_instance, .xml, response.type) orelse return null;
+    const xml_parser = html_module.xml_document_parser;
+    const sniffing = html_core.parser.encoding_sniffing;
+    const transport = if (response.content_type) |content_type| sniffing.transportEncoding(allocator, content_type) else null;
+    const decoded = (xml_parser.decodeBytes(allocator, bytes, transport) catch return document) orelse {
+        // An encoding the declaration names that there is none of: libxml2's
+        // fatal error at the declaration.
+        var failure: xml_parser.Failure = .{ .line = 1, .column = 1 };
+        const message = "Unsupported encoding";
+        @memcpy(failure.message_buffer[0..message.len], message);
+        failure.message_len = message.len;
+        xml_parser.insertErrorMessageBlock(document, failure) catch {};
+        return document;
+    };
+    defer allocator.free(decoded.text);
+    document_internals.setEncoding(document, sniffing.canonicalName(decoded.encoding)) catch {};
+    const loader: ?html_module.script_execution.ParserScriptLoader = if (html_module.embedder_scripts.forRealm(runtime_ctx)) |embedder| .{
+        .context = embedder.context,
+        .load = embedder.loadScript,
+        .allocator = allocator,
+    } else null;
+    const failure = xml_parser.parseInto(document, decoded.text, .{
+        .scripting = browsing_ctx_ptr.allowsScripts(),
+        .script_loader = loader,
+    }) catch |err| {
+        log.warn("[parseXmlForIframe] parsing stopped: {}", .{err});
+        return document;
+    };
+    if (failure) |found| xml_parser.insertErrorMessageBlock(document, found) catch {};
+    return document;
 }
 
 /// The name of the encoding of the frame's container document - the
@@ -3788,6 +3867,7 @@ fn attachRealm(
         iframeContextCleanup,
         parseHtmlForIframe,
     );
+    integration.parse_xml_callback = &parseXmlForIframe;
 
     // Set script execution callbacks (for script execution in iframe documents)
     integration.execute_script_callback = &executeIframeScript;

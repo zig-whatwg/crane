@@ -192,15 +192,16 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
     const allocator = internal.allocator;
     const ctx = instance.ctx;
 
-    // Step 1: Create new XMLDocument (use interface per Golden Rule #13).
-    // Step 6, "document's origin is this's associated document's origin", is
-    // a construction fact here: the two share one origin record.
-    const document = try interfaces.Document.initWith(
+    // Step 1: "Let document be a new XMLDocument" - its generated
+    // construction chain makes its Document and Node parts. Step 6,
+    // "document's origin is this's associated document's origin", is a
+    // construction fact here: the two share one origin record.
+    const document = try interfaces.XMLDocument.initWith(
         allocator,
         ctx,
         .{ .origin = try associatedOrigin(internal) },
     );
-    errdefer interfaces.Document.deinit(document);
+    errdefer interfaces.XMLDocument.deinit(document);
 
     // HTML §3.1: DOMImplementation-created documents are ready immediately.
     dom.document_lifecycle.markReadyForPostLoadTasks(document);

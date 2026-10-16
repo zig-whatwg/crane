@@ -145,6 +145,9 @@ pub fn call_parseFromString(instance: *runtime.Instance, string: typedefs.Truste
     // Track whether we allocated the URL so we can free it later
     var allocated_url: ?[]const u8 = null;
     defer if (allocated_url) |url| internal.allocator.free(url);
+    // Step 2: relevantDocument, this's relevant global object's associated
+    // Document - null with no Window (a test's bare context).
+    var relevant_document: ?*runtime.Instance = null;
 
     const realm_url: []const u8 = blk: {
         // Get the realm from the context (instance.ctx is already ContextData pointer)
@@ -157,6 +160,7 @@ pub fn call_parseFromString(instance: *runtime.Instance, string: typedefs.Truste
         // Get the Window's document
         const Window = interfaces.Window;
         const doc = Window.get_document(window_instance) catch break :blk "about:blank";
+        relevant_document = doc;
 
         // Get the document's URL (returns allocated []const u8)
         const url = interfaces.Document.get_URL(doc) catch break :blk "about:blank";
@@ -190,12 +194,50 @@ pub fn call_parseFromString(instance: *runtime.Instance, string: typedefs.Truste
         ._application_xml_,
         ._application_xhtml_xml_,
         ._image_svg_xml_,
-        => {
-            // XML parsing not yet implemented
-            // TODO: Implement XML parser integration
-            return error.NotImplemented;
-        },
+        => parseXml(internal.allocator, instance.ctx, html_string, @"type", realm_url, relevant_document),
     };
+}
+
+/// Step 3 and step 4's "Otherwise" for an XML type: a new XML document
+/// whose content type is `type`, origin relevantDocument's and URL
+/// `url`, the string parsed into it by an XML parser with XML scripting
+/// support disabled - and, where that found a well-formedness error, the
+/// error message block Chrome and Safari insert (xml_document_parser.zig,
+/// insertErrorMessageBlock, says why their shape and not step 4.3's).
+///
+/// Browsers make the document an XMLDocument, where step 3 says Document:
+/// Chrome, Firefox and Safari all fail the "XMLDocument interface for ...
+/// parsed document" subtests of domparsing/DOMParser-parseFromString-xml.html
+/// (wpt.fyi cc74d2669f), which assert it is not one. Golden rule 2.
+fn parseXml(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    string: []const u8,
+    @"type": enums.DOMParserSupportedType,
+    url: []const u8,
+    relevant_document: ?*runtime.Instance,
+) anyerror!*runtime.Instance {
+    // Its origin is the relevant global's associated Document's, a
+    // construction fact (shared record, borrowed for the call).
+    const origin: ?*dom.origin_record.OriginRecord = if (relevant_document) |relevant| try dom.document_origin.shareable(relevant) else null;
+    const document = try interfaces.XMLDocument.initWith(allocator, ctx, .{ .origin = origin });
+    errdefer dom.node_creation.destroyUninserted(document);
+    // A document no navigation loads is ready at once (as createDocument's).
+    dom.document_lifecycle.markReadyForPostLoadTasks(document);
+    try document_internals.setDocumentType(document, .xml);
+    try document_internals.setContentType(document, switch (@"type") {
+        ._text_xml_ => "text/xml",
+        ._application_xml_ => "application/xml",
+        ._application_xhtml_xml_ => "application/xhtml+xml",
+        ._image_svg_xml_ => "image/svg+xml",
+        ._text_html_ => unreachable,
+    });
+    try document_internals.setURL(document, url);
+    const xml_parser = @import("html").xml_document_parser;
+    if (try xml_parser.parseInto(document, string, .{ .scripting = false })) |failure| {
+        try xml_parser.insertErrorMessageBlock(document, failure);
+    }
+    return document;
 }
 
 // =============================================================================

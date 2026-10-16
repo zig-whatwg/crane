@@ -61,6 +61,9 @@ pub const ParseError = error{
     TokenizerError,
     TreeBuilderError,
     InvalidInput,
+    /// The XML fragment parsing algorithm met a well-formedness error
+    /// (HTML §14.4 step 7).
+    SyntaxError,
 };
 
 /// Options for HTML parsing
@@ -326,7 +329,29 @@ pub fn parseFragment(
     html: []const u8,
     target: ?*runtime.Instance,
 ) ParseError!*runtime.Instance {
+    // HTML §8.5 "the fragment parsing algorithm steps" step 2: "If
+    // context's node document is an XML document, then set algorithm to the
+    // XML fragment parsing algorithm."
+    if (target) |value| if (xmlFragmentContext(value)) |context| {
+        return @import("xml_document_parser.zig").parseFragment(context, html) catch |err| switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            error.SyntaxError => error.SyntaxError,
+            else => error.InvalidStateError,
+        };
+    };
     return parseFragmentWith(allocator, ctx, html, target, .{});
+}
+
+/// The element a fragment parse into `target` takes as its context - a
+/// shadow root's host - when its node document is an XML document; null
+/// for an HTML document's.
+fn xmlFragmentContext(target: *runtime.Instance) ?*runtime.Instance {
+    const context = if (target.stateAs(interfaces.ShadowRoot.State) != null)
+        interfaces.ShadowRoot.get_host(target) catch return null
+    else
+        target;
+    const document = (interfaces.Node.get_ownerDocument(context) catch return null) orelse return null;
+    return if (document_internals.getDocumentType(document) == .xml) context else null;
 }
 
 /// The HTML fragment parsing algorithm with its optional arguments.

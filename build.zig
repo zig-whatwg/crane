@@ -1304,6 +1304,7 @@ pub fn build(b: *std.Build) void {
         "websocket",
         "browser",
         "xhr",
+        "xml",
     };
     if (spec_filter) |spec| {
         var is_valid = false;
@@ -1494,6 +1495,7 @@ pub fn build(b: *std.Build) void {
     const test_mimesniff = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "mimesniff"));
     const test_quirks = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "quirks"));
     const test_css = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "css"));
+    const test_xml = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "xml"));
 
     if (test_infra) {
         const infra_tests = b.addTest(.{ .root_module = testing_graph.infra });
@@ -1697,6 +1699,22 @@ pub fn build(b: *std.Build) void {
         };
         addTestFilesFromDir(b, test_step, "tests/mimesniff", target, &mimesniff_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add mimesniff test files: {}\n", .{err});
+        };
+    }
+
+    if (test_xml) {
+        const xml_tests = b.addTest(.{ .root_module = testing_graph.xml });
+        const run_xml_tests = b.addRunArtifact(xml_tests);
+        test_step.dependOn(&run_xml_tests.step);
+
+        // Add dedicated test files from tests/xml/
+        const xml_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "xml", .module = testing_graph.xml },
+        };
+        addTestFilesFromDir(b, test_step, "tests/xml", target, &xml_imports, false, test_selection) catch |err| {
+            std.debug.print("Warning: Failed to add xml test files: {}\n", .{err});
         };
     }
 
@@ -4428,6 +4446,7 @@ const CraneModules = struct {
     platform: *std.Build.Module,
     html_core: *std.Build.Module,
     html: *std.Build.Module,
+    xml: *std.Build.Module,
     permissions: *std.Build.Module,
     browser: *std.Build.Module,
     webdriver: *std.Build.Module,
@@ -5651,6 +5670,15 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // A style sheet's @import rules, for style_sheet_loading.zig.
     html_mod.addImport("css", css_mod);
 
+    // The XML parser (XML 1.0 + Namespaces in XML): engine- and DOM-free, no
+    // imports. HTML's XML tree builder (src/html/xml_document_parser.zig)
+    // turns its events into a Document.
+    const xml_mod = graphModule(b, public, "xml", .{
+        .root_source_file = b.path("src/xml/root.zig"),
+        .target = target,
+    });
+    html_mod.addImport("xml", xml_mod);
+
     // Add html_core to impls for DOMParser, innerHTML, document.write, Window implementations
     // Using html_core (not html) to avoid cycle: impls → html → interfaces → impls
     impls_mod.addImport("html_core", html_core_mod);
@@ -5813,6 +5841,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .platform_options = platform_options_mod,
         .html_core = html_core_mod,
         .html = html_mod,
+        .xml = xml_mod,
         .permissions = permissions_mod,
         .browser = browser_mod,
         .webdriver = webdriver_mod,

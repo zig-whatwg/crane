@@ -15,26 +15,11 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+/// XMLDocument has no state of its own (DOM 4.5: "an XMLDocument" is a
+/// Document whose interface is XMLDocument).
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
+// No construction or destruction steps of its own: XMLDocument adds no
+// state to Document's, so the generated chain (interfaces.XMLDocument.init
+// -> Document -> Node -> EventTarget) makes and tears down all of it. A hand
+// init here made an instance with no Node or Document part at all.

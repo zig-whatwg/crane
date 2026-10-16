@@ -1611,6 +1611,21 @@ fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Insta
     const document = getNodeDocument(element) orelse return;
     if (!scriptingEnabled(document)) return;
 
+    // Step 21: "If el does not have a src content attribute" - an SVG
+    // script's is href - "and the Should element's inline behavior be blocked
+    // by Content Security Policy? algorithm returns "Blocked" when given el,
+    // "script", and source text, then return." As HTML's (prepareScript);
+    // an SVG document a navigation loads with a script-src policy runs none
+    // of its inline scripts (content-security-policy/svg/svg-policy-with-
+    // resource.html).
+    if (href == null) {
+        const nonce = getNonceAttribute(element);
+        if (!document_scripts.inlineScriptAllowedByCsp(document, element, source, if (nonce.len > 0) nonce else null, parser_inserted)) {
+            log.debug("CSP blocked inline SVG script", .{});
+            return;
+        }
+    }
+
     if (href) |raw| {
         // Step 33.3: an empty URL queues an element task to fire error at the
         // element - and fetches nothing: resolved, "" is the document's own
