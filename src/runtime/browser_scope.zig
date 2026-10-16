@@ -87,6 +87,7 @@ pub const BrowserScope = struct {
         shadow_root,
         element,
         html_element,
+        svg_element,
         html_anchor_element,
         html_area_element,
         html_form_element,
