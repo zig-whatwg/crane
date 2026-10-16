@@ -50,8 +50,6 @@ src/fetch/cache/memory_backend.zig clock.wallSeconds 2
 src/fetch/cache/root.zig clock.@import 1
 src/fetch/cors/preflight.zig clock.@import 1
 src/fetch/cors/preflight.zig clock.wallSeconds 1
-src/fetch/cors/preflight_cache.zig clock.@import 1
-src/fetch/cors/preflight_cache.zig clock.wallSeconds 3
 src/fetch/internal/body_extraction.zig clock.@import 1
 src/fetch/internal/body_extraction.zig clock.wallMillis 1
 src/fetch/internal/user_agent.zig builtin.os.tag 1
