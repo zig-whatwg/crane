@@ -568,6 +568,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A shared test allocator makes two Browsers take turns](testing-a-shared-test-allocator-makes-two-browsers-take-turns.md) - A race test's threads must not share a lock the code under test does not take - std.testing.allocator is one, so give each Browser its own allocator.
 - [The test allocator costs more than a fast native operation](testing-the-test-allocator-costs-more-than-a-fast-native-operation.md) - A per-call timing through `std.testing.allocator` measures stack-trace capture, not the code under test - time with the C allocator and check for leaks in a separate test.
 - [refAllDecls on a module that imports the engine needs V8 linked](testing-refalldecls-on-a-module-that-imports-engine-needs-v8-linked.md) - Once a module imports `engine`, its native tests must not reference anything that reaches the protocol - scope refAllDecls, and run the rest in tests/v8.
+- [A file that times out leaves state the next file inherits](testing-a-file-that-times-out-leaves-state-the-next-file-inherits.md) - When a runner shares one browser across files, a file that times out is the one most likely to leave state behind. Restart after it, as wptrunner does, and test that the browser's end copes with whatever a stuck file can leave.
 
 ### Debugging
 
