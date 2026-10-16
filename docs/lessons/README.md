@@ -422,6 +422,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A reflection cache is separate from the last assignment](spec-compliance-reflection-cache-is-separate-from-the-last-assignment.md) - Keep the spec's explicit value and observation cache separate, and validate before replacing either.
 - [Convert unions before running WebSocket steps](spec-compliance-convert-unions-before-running-websocket-steps.md) - Test conversion exceptions and side effects before testing the API's state or validation steps; JSValue is a representation, not proof that WebIDL conversion already happened.
 - [Permission descriptors have observable conversion shapes](spec-compliance-permission-descriptors-have-observable-conversion-shapes.md) - A dictionary conversion is observable script execution; implement the conversion shape the supporting browsers agree on.
+- [Sanitizing a tree does not undo parser side effects](spec-compliance-sanitizing-a-tree-does-not-undo-parser-side-effects.md) - Test parser side effects as well as the sanitized DOM: a clean tree does not establish safe parsing (the mechanism is the Architecture lesson "A fragment that will be filtered must be built where nothing runs").
 
 ### Codegen
 
@@ -455,6 +456,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A typedef registered without its type is no type at all](codegen-a-typedef-registered-without-its-type-is-no-type.md) - When a generated table classifies types, grep it for the fallback category (`.other`) after every change: each hit is a type the classifier could not see.
 - [A mangled identifier cannot be unmangled](codegen-a-mangled-identifier-cannot-be-unmangled.md) - Keep the source string beside a generated identifier; never derive one from the other.
 - [Event-handler fallbacks need ancestor state](codegen-event-handler-fallbacks-need-ancestor-state.md) - Check legacy construction/destruction before enabling generated fallbacks.
+- [Dictionary input tests do not verify return shapes](codegen-dictionary-input-tests-do-not-verify-return-shapes.md) - Test dictionary round trips in JavaScript, including present null and inherited members; native values and input-only tests cannot establish the return shape.
 
 ### Testing
 - [A named interceptor changes ordinary property reads](testing-a-named-interceptor-changes-ordinary-property-reads.md) - The cost of registering an interceptor includes ordinary operations that fall through it. Exercise those operations explicitly.
