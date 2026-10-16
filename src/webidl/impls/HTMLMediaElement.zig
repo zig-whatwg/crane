@@ -270,6 +270,12 @@ pub const InternalState = struct {
     }
     fn fetchCurrent(self: *InternalState) !void {
         const instance = self.activity.instance orelse return;
+        // The resource fetch algorithm's fetch needs a browsing context:
+        // with none the candidate fails, unfetched (common.hasBrowsingContext).
+        if (!common.hasBrowsingContext(instance)) {
+            self.fail();
+            return;
+        }
         var cors = try get_crossOrigin(instance);
         defer if (cors) |*value| value.deinit(instance.ctx.allocator);
         const setting = html.script_request.corsSettingFromAttribute(if (cors) |value| value.asSlice() else null);

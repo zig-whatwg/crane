@@ -304,7 +304,9 @@ fn startFetch(instance: *runtime.Instance) !void {
     const selected = try self.activity.allocator.dupe(u8, self.url orelse "");
     if (self.selected_url) |old| self.activity.allocator.free(old);
     self.selected_url = selected;
-    if (selected.len == 0) {
+    // An empty URL fails (step 8) - and so does one in a document with no
+    // browsing context, unfetched (common.hasBrowsingContext).
+    if (selected.len == 0 or !common.hasBrowsingContext(instance)) {
         try self.queue(.failure);
         return;
     }
