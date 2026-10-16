@@ -217,7 +217,10 @@ fn parseXml(
     url: []const u8,
     relevant_document: ?*runtime.Instance,
 ) anyerror!*runtime.Instance {
-    const document = try interfaces.XMLDocument.init(allocator, ctx);
+    // Its origin is the relevant global's associated Document's, a
+    // construction fact (shared record, borrowed for the call).
+    const origin: ?*dom.origin_record.OriginRecord = if (relevant_document) |relevant| try dom.document_origin.shareable(relevant) else null;
+    const document = try interfaces.XMLDocument.initWith(allocator, ctx, .{ .origin = origin });
     errdefer dom.node_creation.destroyUninserted(document);
     // A document no navigation loads is ready at once (as createDocument's).
     dom.document_lifecycle.markReadyForPostLoadTasks(document);
@@ -230,7 +233,6 @@ fn parseXml(
         ._text_html_ => unreachable,
     });
     try document_internals.setURL(document, url);
-    if (relevant_document) |relevant| try document_internals.copyOrigin(document, relevant);
     const xml_parser = @import("html").xml_document_parser;
     if (try xml_parser.parseInto(document, string, .{ .scripting = false })) |failure| {
         try xml_parser.insertErrorMessageBlock(document, failure);

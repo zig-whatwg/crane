@@ -499,6 +499,9 @@ fn setDocumentResponse(instance: *runtime.Instance) !void {
     defer if (label) |l| allocator.free(l);
     const final_encoding = if (label) |l| sniffing.lookup(l) else null;
     var charset: sniffing.Encoding = undefined;
+    // 11. Its origin: xhr's relevant settings object's origin - a
+    // construction fact, so it is given to the document as it is made.
+    const origin: ?*dom_mod.origin_record.OriginRecord = if (relevantDocument(instance)) |relevant| try dom_mod.document_origin.shareable(relevant) else null;
     const document = switch (kind) {
         .html => html: {
             // 5.1-5.3: the final encoding, else the prescan's, else UTF-8.
@@ -510,7 +513,7 @@ fn setDocumentResponse(instance: *runtime.Instance) !void {
             defer allocator.free(text);
             // 5.4-5.5: the HTML parser with scripting disabled, its document
             // an HTML document.
-            break :html try @import("html").dom_parser.parseHTML(allocator, instance.ctx, text, .{});
+            break :html try @import("html").dom_parser.parseHTML(allocator, instance.ctx, text, .{ .origin = origin });
         },
         .xml => xml: {
             // 6. "If that fails (unsupported character encoding, namespace
@@ -521,7 +524,7 @@ fn setDocumentResponse(instance: *runtime.Instance) !void {
             // An XMLDocument, as browsers make (Blink's
             // XMLHttpRequest::InitResponseDocument: XMLDocument::Create
             // unless HTML), where step 6 says only "a document".
-            const doc = try interfaces.XMLDocument.init(allocator, instance.ctx);
+            const doc = try interfaces.XMLDocument.initWith(allocator, instance.ctx, .{ .origin = origin });
             errdefer dom_mod.node_creation.destroyUninserted(doc);
             try dom_mod.document_internals.setDocumentType(doc, .xml);
             if (try @import("html").xml_document_parser.parseInto(doc, decoded.text, .{ .scripting = false }) != null) {
@@ -538,8 +541,6 @@ fn setDocumentResponse(instance: *runtime.Instance) !void {
     try dom_mod.document_internals.setContentType(document, final_mime);
     // 10. Its URL: xhr's response's URL.
     if (xhr_state.response) |response| if (response.url()) |url| try dom_mod.document_internals.setURL(document, url);
-    // 11. Its origin: xhr's relevant settings object's origin.
-    if (relevantDocument(instance)) |relevant| try dom_mod.document_internals.copyOrigin(document, relevant);
     // A document no navigation loads is ready at once.
     dom_mod.document_lifecycle.markReadyForPostLoadTasks(document);
     // 12. Set xhr's response object to document - kept by an edge from the
