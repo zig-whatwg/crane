@@ -2667,8 +2667,17 @@ pub fn toV8Sequence(
         const v8_value = try toV8Value(T, isolate, context, item);
         // Released once the array has it, when it was made here (a string,
         // a number, a nested dictionary or sequence - the rule a dictionary
-        // member's value follows); kept, a Global per element.
-        defer if (comptime dictionaryMemberValueIsOwned(T)) v8.v8_Value_Dispose(v8_value);
+        // member's value follows); kept, a Global per element. A union
+        // element's active member decides, as for a union an operation
+        // returns (unionValueIsOwned: a string or dictionary made here goes,
+        // a wrapper or an impl's handle stays) - by type alone every union
+        // was kept, and URLPattern exec()'s inputs, a
+        // sequence<URLPatternInput>, leaked its String every call.
+        defer if (comptime dictionaryMemberValueIsOwned(T)) {
+            v8.v8_Value_Dispose(v8_value);
+        } else if (comptime @typeInfo(T) == .@"union") {
+            if (unionValueIsOwned(T, item)) v8.v8_Value_Dispose(v8_value);
+        };
         _ = v8.v8_Array_Set(array, context, @intCast(i), v8_value);
     }
 
