@@ -894,8 +894,10 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     // leave readyState at OPEN before the caller had a chance to see
     // CONNECTING - which several tests in `websockets/` assert directly.
     //
-    // A worker realm is pumped the same way: its timer is the page's, and
-    // `pumpInScope` runs each turn as a task of the worker's realm.
+    // A worker realm is pumped the same way, on its own loop's timer (which
+    // ends with the worker, a turn possibly still scheduled: the turn is an
+    // owned timer, websocket.pump_token), and `pumpInScope` runs each turn as
+    // a task of the worker's realm.
     const timer = ctx.getOptionalTimer() orelse {
         // No timer means no event loop, so nothing could ever deliver an event.
         // Leave the socket in CONNECTING rather than pretending otherwise.
