@@ -531,12 +531,15 @@ fn bindWindowToGlobal(
         } else |err| log.debug("the realm record was not made: {}", .{err});
     }
 
-    // WebIDL 3.8, [Global]: the interface's attributes and operations - and
-    // EventTarget's, which Window inherits - are own properties of the global,
-    // since its immutable prototype cannot be relied on to provide them.
+    // WebIDL 3.7.6/3.7.7, [Global]: Window's regular attributes and
+    // operations - its mixins' included - are own properties of the global
+    // object, and Window.prototype has none (members_on_global_object in
+    // interface.zig). EventTarget's are NOT the global's: Window only
+    // inherits them, from EventTarget.prototype up the chain (global ->
+    // Window.prototype -> WindowProperties -> EventTarget.prototype), so
+    // `self.addEventListener === EventTarget.prototype.addEventListener`.
     interface_bindings.Window.registerPropertiesAsOwnOnObject(isolate, context, global);
     interface_bindings.Window.registerMethodsAsOwnOnObject(isolate, context, global);
-    interface_bindings.EventTarget.registerMethodsAsOwnOnObject(isolate, context, global);
 
     // HTML 7.3.3, named access on the Window: WindowProperties on the chain.
     _ = window_properties.insertIntoPrototypeChain(isolate, context, window);
@@ -547,7 +550,7 @@ fn bindWindowToGlobal(
     // (docs/lessons/architecture-engine-code-defines-a-realm-s-properties-it-
     // never-assigns-them.md). They keep `self === globalThis`, which
     // testharness.js's `(function (global_scope) { ... })(self)` needs.
-    // (`window` is served by its accessor.)
+    // (`window` is an own accessor, registered above.)
     inline for (.{ "self", "frames" }) |name| {
         if (ffi.v8_String_NewFromUtf8(isolate, name.ptr, name.len)) |key| {
             defer ffi.v8_String_Dispose(key);

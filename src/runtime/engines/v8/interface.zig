@@ -1751,6 +1751,21 @@ pub fn V8Interface(comptime Interface: type) type {
 
     const is_global_interface = comptime isGlobalInterface(Meta);
 
+    // WebIDL 3.7.6/3.7.7, [Global]: a [Global] interface's regular attributes
+    // and operations - its mixins' included - are properties of the global
+    // object, not of the interface prototype object. The globals this engine
+    // gives them as own properties are Window's (protocol_realms
+    // bindWindowToGlobal, context_manager hydrateWindowContext) and the
+    // worker scopes' (worker_realm bindGlobalScope); their prototypes hold
+    // none. Other [Global] interfaces (the worklets', ShadowRealmGlobalScope)
+    // keep them on the prototype until their globals do the same.
+    // IndexedDB/idlharness: "Window.prototype must not have indexedDB".
+    const members_on_global_object = comptime is_global_interface and
+        (std.mem.eql(u8, interface_name, "Window") or
+            std.mem.eql(u8, interface_name, "DedicatedWorkerGlobalScope") or
+            std.mem.eql(u8, interface_name, "SharedWorkerGlobalScope") or
+            std.mem.eql(u8, interface_name, "ServiceWorkerGlobalScope"));
+
     return struct {
         const Self = @This();
 
@@ -2464,14 +2479,14 @@ pub fn V8Interface(comptime Interface: type) type {
                 const getter_name: []const u8 = prop[1];
                 const setter_name: ?[]const u8 = prop[2];
 
-                // CRITICAL: Skip self, window, frames - these MUST be data properties
-                // equal to globalThis for testharness.js compatibility.
-                // If we register them as accessors here, they return WindowProxy
-                // which is !== globalThis, breaking testharness.js expose() function.
-                // These are set as data properties in hydrateWindowContext() instead.
-                if (comptime std.mem.eql(u8, prop_name, "self") or
-                    std.mem.eql(u8, prop_name, "window") or
-                    std.mem.eql(u8, prop_name, "frames"))
+                // `self` and `frames` are [Replaceable]: the realm defines them
+                // as own data properties whose value is the global itself
+                // (protocol_realms bindWindowToGlobal), which testharness.js's
+                // `(function (global_scope) { ... })(self)` needs. `window` is
+                // an accessor like any other member, the global's own: its
+                // getter answers the global (answerWindowGetter).
+                if (comptime is_global_interface and (std.mem.eql(u8, prop_name, "self") or
+                    std.mem.eql(u8, prop_name, "frames")))
                 {
                     continue;
                 }
@@ -2915,6 +2930,9 @@ pub fn V8Interface(comptime Interface: type) type {
             // eager_properties is tuple array: .{ "propName", "get_propName", "set_propName" or null }
             // IMPORTANT: Use callbacks from EagerCallbackStore - SAME callbacks registered in registerExternalReferences()
             inline for (eager_properties, 0..) |prop, prop_idx| {
+                // A [Global] interface's are the global object's own instead
+                // (members_on_global_object).
+                if (comptime members_on_global_object) continue;
                 const prop_name: []const u8 = prop[0];
 
                 const prop_name_str = v8.v8_String_NewFromUtf8(
@@ -3139,8 +3157,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 const is_async_iterable_values = comptime (@hasDecl(Meta, "async_iterable") and
                     std.mem.eql(u8, method_name, "values"));
 
-                // If we have own_methods, check membership; otherwise register all
-                const should_register = comptime (!is_async_iterable_values and
+                // If we have own_methods, check membership; otherwise register all.
+                // A [Global] interface's are the global object's own instead
+                // (members_on_global_object).
+                const should_register = comptime (!members_on_global_object and !is_async_iterable_values and
                     (own_method_names.len == 0 or own_method_set.has(method_name)));
 
                 if (should_register) {

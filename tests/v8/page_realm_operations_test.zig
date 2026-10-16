@@ -888,11 +888,16 @@ test "protocol: a Window realm made afresh has the host's Window as its global o
     // HTML "create a new realm": the host made the Window, once, for this realm.
     try std.testing.expectEqual(@as(usize, 1), host.made);
     try std.testing.expectEqual(w, host.realm.?);
-    // WebIDL 3.8: the global is a Window, with Window's and EventTarget's
-    // members as its own; self and frames are the global, window reaches it.
+    // WebIDL [Global] (3.7.6/3.7.7): the global is a Window, with Window's
+    // members as its own and none on Window.prototype; EventTarget's it
+    // inherits, from EventTarget.prototype. self and frames are the global,
+    // window reaches it.
     try expectEval(w, "globalThis instanceof Window && globalThis instanceof EventTarget", "true");
     try expectEval(w, "[self === globalThis, frames === globalThis, window === globalThis].join()", "true,true,true");
-    try expectEval(w, "Object.getOwnPropertyDescriptor(globalThis, 'addEventListener') !== undefined", "true");
+    try expectEval(w, "typeof Object.getOwnPropertyDescriptor(globalThis, 'setTimeout').value", "function");
+    try expectEval(w, "typeof Object.getOwnPropertyDescriptor(globalThis, 'window').get", "function");
+    try expectEval(w, "Object.getOwnPropertyNames(Window.prototype).join()", "constructor");
+    try expectEval(w, "[Object.getOwnPropertyDescriptor(globalThis, 'addEventListener') === undefined, addEventListener === EventTarget.prototype.addEventListener].join()", "true,true");
     try expectEval(w, "typeof console.log", "function");
     // The realm record, with its intrinsics, is made with the realm.
     try std.testing.expect(w.realm != null);
