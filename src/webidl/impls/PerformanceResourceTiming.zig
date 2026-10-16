@@ -28,7 +28,10 @@ pub const ImplError = error{
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     timing: performance_timeline.ResourceTiming,
+    has_server_timing_array: bool = false,
 };
+
+const server_timing_slot: engine.TracedSlot = .{ .name = "serverTiming" };
 
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
@@ -50,6 +53,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        if (internal.has_server_timing_array) engine.forgetTracedChild(instance, server_timing_slot);
         internal.timing.deinit();
         internal.allocator.destroy(internal);
         state.own._internal = null;
@@ -82,6 +86,8 @@ fn setupEntry(entry: *runtime.Instance, timing: *const performance_timeline.Reso
     const allocator = entry.ctx.allocator;
     const copy = try timing.clone(allocator);
     if (state.own._internal) |existing| {
+        if (existing.has_server_timing_array) engine.forgetTracedChild(entry, server_timing_slot);
+        existing.has_server_timing_array = false;
         existing.timing.deinit();
         existing.timing = copy;
         return;
@@ -240,13 +246,37 @@ pub fn get_contentEncoding(instance: *runtime.Instance) anyerror!runtime.DOMStri
     return runtime.DOMString.initInterned((try timingOf(instance)).content_encoding);
 }
 
-/// Getter for serverTiming (Server Timing): a sequence of
-/// PerformanceServerTiming. Fetch does not parse `Server-Timing` yet, so
-/// the list is empty - an Array of the current realm, never undefined.
+/// Server Timing §3.3: the parsed metrics, as a FrozenArray in the entry's
+/// realm. The entry traces the array, which holds each metric's wrapper.
+/// As in Blink, metrics have copied scalar data, not a back-pointer to the
+/// timing entry. The getter transfers only its returned handle to the binding.
 pub fn get_serverTiming(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const realm = engine.currentRealm() orelse instance.ctx;
-    const empty = try engine.createSequenceOfPlatformObjects(realm, &.{});
-    return empty.take();
+    const state = instance.stateAs(State) orelse return error.InvalidStateError;
+    const internal = state.own._internal orelse return error.InvalidStateError;
+    if (!instance.ctx.hasEngine()) return error.InvalidStateError;
+    if (internal.has_server_timing_array) {
+        if (engine.tracedValue(instance, server_timing_slot)) |array| return array.take();
+    }
+    const allocator = internal.allocator;
+    const metrics = internal.timing.server_timing;
+    const values = try allocator.alloc(runtime.JSValue, metrics.len);
+    defer allocator.free(values);
+    const generations = try allocator.alloc(u64, metrics.len);
+    defer allocator.free(generations);
+    var initialized: usize = 0;
+    defer for (values[0..initialized], generations[0..initialized]) |value, generation| {
+        value.instance.releaseIfUnwrapped(generation);
+    };
+    for (metrics, values, generations) |metric, *value, *generation| {
+        const object = try interfaces.PerformanceServerTiming.initWith(allocator, instance.ctx, .{ .metric = metric });
+        value.* = .{ .instance = object };
+        generation.* = runtime.SlabAllocator.generationOf(object);
+        initialized += 1;
+    }
+    const array = try engine.createFrozenArray(instance.ctx, values);
+    engine.traceValue(instance, array.value, server_timing_slot);
+    internal.has_server_timing_array = true;
+    return array.take();
 }
 
 /// Getter for workerRouterEvaluationStart: no service worker router ran.
@@ -275,8 +305,11 @@ pub fn get_workerFinalRouterSource(instance: *runtime.Instance) anyerror!runtime
 
 /// Operation: toJSON - WebIDL's default toJSON steps over PerformanceEntry's
 /// and PerformanceResourceTiming's attributes. `serverTiming` is left
-/// undefined (so JSON omits it): a JSValue in this struct would be a handle
-/// nobody releases, and the list is always empty here.
+/// undefined (so JSON omits it). Codex timing3 Q3, integrator 2026-10-16:
+/// even a tracedValue read is Owned, but this generated record's nested
+/// JSValue is borrowed by conversion. Returning it leaks a handle; releasing
+/// it before return leaves a dead handle. The binding owner must add member
+/// ownership before this record can include the array safely.
 pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.PerformanceResourceTiming.PerformanceResourceTimingToJSON {
     const timing = try timingOf(instance);
     const data = performance_timeline.dataOf(instance) orelse return error.InvalidStateError;
