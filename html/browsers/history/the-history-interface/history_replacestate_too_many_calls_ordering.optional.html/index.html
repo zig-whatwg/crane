@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../../">Crane WPT results</a></li><li><a href="../../../../../html/"><code>html/</code></a></li><li><a href="../../../../../html/browsers/"><code>browsers/</code></a></li><li><a href="../../../../../html/browsers/history/"><code>history/</code></a></li><li><a href="../../../../../html/browsers/history/the-history-interface/"><code>the-<wbr>history-<wbr>interface/</code></a></li><li aria-current="page"><code>history_<wbr>replacestate_<wbr>too_<wbr>many_<wbr>calls_<wbr>ordering.<wbr>optional.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>history_<wbr>replacestate_<wbr>too_<wbr>many_<wbr>calls_<wbr>ordering.<wbr>optional.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="html/browsers/history/the-history-interface/history_replacestate_too_many_calls_ordering.optional.html">
-<p class="figures-main"><span class="fg-pass">1</span><span class="fg-of"> / 4</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>3</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">3</span><span class="fg-of"> / 4</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-4aa554bec7</code>, <span class="nowrap">16 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/4aa554bec7"><code>4aa554bec7</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-1657700e78</code>, <span class="nowrap">16 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/1657700e78"><code>1657700e78</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/browsers/history/the-history-interface/history_replacestate_too_many_calls_ordering.optional.html"><code>html/<wbr>browsers/<wbr>history/<wbr>the-<wbr>history-<wbr>interface/<wbr>history_<wbr>replacestate_<wbr>too_<wbr>many_<wbr>calls_<wbr>ordering.<wbr>optional.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -36,12 +36,8 @@
 <div class="run">
 <ol class="subtests">
 <li class="sub s-pass" id="s-ebc0aee1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">replaceState serializes state before checking the rate limit</span></div><a class="self" href="#s-ebc0aee1" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-98537b31"><details><summary><span class="mark">FAIL</span><span class="sub-name">replaceState parses the URL before checking the rate limit</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
-    iframeWindow.history.replaceState(null, &quot;&quot;, &quot;http://[&quot;);
-  }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-98537b31" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3edcf3a2"><details><summary><span class="mark">FAIL</span><span class="sub-name">replaceState checks whether the URL can be rewritten before checking the rate limit</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
-    iframeWindow.history.replaceState(null, &quot;&quot;, &quot;https://example.com/&quot;);
-  }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-3edcf3a2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-98537b31"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">replaceState parses the URL before checking the rate limit</span></div><a class="self" href="#s-98537b31" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3edcf3a2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">replaceState checks whether the URL can be rewritten before checking the rate limit</span></div><a class="self" href="#s-3edcf3a2" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-0932fd26"><details><summary><span class="mark">FAIL</span><span class="sub-name">replaceState checks fully active before checking the rate limit</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
       iframeHistory.replaceState(null, &quot;&quot;, `#inactive-${i}`);
     }&quot; did not throw</pre></details><a class="self" href="#s-0932fd26" aria-label="Link to this subtest">&para;</a></li>

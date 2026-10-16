@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../../">Crane WPT results</a></li><li><a href="../../../../../html/"><code>html/</code></a></li><li><a href="../../../../../html/browsers/"><code>browsers/</code></a></li><li><a href="../../../../../html/browsers/origin/"><code>origin/</code></a></li><li><a href="../../../../../html/browsers/origin/cross-origin-objects/"><code>cross-<wbr>origin-<wbr>objects/</code></a></li><li aria-current="page"><code>location-<wbr>properties-<wbr>smoke-<wbr>test.<wbr>window.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>location-<wbr>properties-<wbr>smoke-<wbr>test.<wbr>window.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.js">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 12</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>12</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">12</span><span class="fg-of"> / 12</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-4aa554bec7</code>, <span class="nowrap">16 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/4aa554bec7"><code>4aa554bec7</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-1657700e78</code>, <span class="nowrap">16 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/1657700e78"><code>1657700e78</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.js"><code>html/<wbr>browsers/<wbr>origin/<wbr>cross-<wbr>origin-<wbr>objects/<wbr>location-<wbr>properties-<wbr>smoke-<wbr>test.<wbr>window.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -34,106 +34,75 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?assign</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?assign</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-95084d57"><details><summary><span class="mark">FAIL</span><span class="sub-name">Verifying that cross-origin access of &#39;assign&#39; is restricted</span></summary><pre class="msg">assert_throws_dom: Cross origin get of a location property should throw a security error function &quot;() =&gt; {
-    const unused = iframe.contentWindow.location[property];
-  }&quot; did not throw</pre></details><a class="self" href="#s-95084d57" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-95084d57"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Verifying that cross-origin access of &#39;assign&#39; is restricted</span></div><a class="self" href="#s-95084d57" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?customproperty</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?customproperty</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-26c82431"><details><summary><span class="mark">FAIL</span><span class="sub-name">Verifying that cross-origin access of &#39;customproperty&#39; is restricted</span></summary><pre class="msg">assert_throws_dom: Cross origin get of a location property should throw a security error function &quot;() =&gt; {
-    const unused = iframe.contentWindow.location[property];
-  }&quot; did not throw</pre></details><a class="self" href="#s-26c82431" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-26c82431"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Verifying that cross-origin access of &#39;customproperty&#39; is restricted</span></div><a class="self" href="#s-26c82431" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?hash</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?hash</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-943fa467"><details><summary><span class="mark">FAIL</span><span class="sub-name">Verifying that cross-origin access of &#39;hash&#39; is restricted</span></summary><pre class="msg">assert_throws_dom: Cross origin get of descriptors should throw a security error function &quot;() =&gt; {
-    const unused = Object.getOwnPropertyDescriptor(
-      iframe.contentWindow.location, property);
-  }&quot; did not throw</pre></details><a class="self" href="#s-943fa467" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-943fa467"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Verifying that cross-origin access of &#39;hash&#39; is restricted</span></div><a class="self" href="#s-943fa467" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?host</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?host</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-4528b688"><details><summary><span class="mark">FAIL</span><span class="sub-name">Verifying that cross-origin access of &#39;host&#39; is restricted</span></summary><pre class="msg">assert_throws_dom: Cross origin get of descriptors should throw a security error function &quot;() =&gt; {
-    const unused = Object.getOwnPropertyDescriptor(
-      iframe.contentWindow.location, property);
-  }&quot; did not throw</pre></details><a class="self" href="#s-4528b688" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4528b688"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Verifying that cross-origin access of &#39;host&#39; is restricted</span></div><a class="self" href="#s-4528b688" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?hostname</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?hostname</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-2ca78fbd"><details><summary><span class="mark">FAIL</span><span class="sub-name">Verifying that cross-origin access of &#39;hostname&#39; is restricted</span></summary><pre class="msg">assert_throws_dom: Cross origin get of descriptors should throw a security error function &quot;() =&gt; {
-    const unused = Object.getOwnPropertyDescriptor(
-      iframe.contentWindow.location, property);
-  }&quot; did not throw</pre></details><a class="self" href="#s-2ca78fbd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2ca78fbd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Verifying that cross-origin access of &#39;hostname&#39; is restricted</span></div><a class="self" href="#s-2ca78fbd" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?pathname</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?pathname</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-9c386ce1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Verifying that cross-origin access of &#39;pathname&#39; is restricted</span></summary><pre class="msg">assert_throws_dom: Cross origin get of descriptors should throw a security error function &quot;() =&gt; {
-    const unused = Object.getOwnPropertyDescriptor(
-      iframe.contentWindow.location, property);
-  }&quot; did not throw</pre></details><a class="self" href="#s-9c386ce1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9c386ce1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Verifying that cross-origin access of &#39;pathname&#39; is restricted</span></div><a class="self" href="#s-9c386ce1" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?port</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?port</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-197a79a5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Verifying that cross-origin access of &#39;port&#39; is restricted</span></summary><pre class="msg">assert_throws_dom: Cross origin get of descriptors should throw a security error function &quot;() =&gt; {
-    const unused = Object.getOwnPropertyDescriptor(
-      iframe.contentWindow.location, property);
-  }&quot; did not throw</pre></details><a class="self" href="#s-197a79a5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-197a79a5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Verifying that cross-origin access of &#39;port&#39; is restricted</span></div><a class="self" href="#s-197a79a5" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?protocol</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?protocol</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-7eefa468"><details><summary><span class="mark">FAIL</span><span class="sub-name">Verifying that cross-origin access of &#39;protocol&#39; is restricted</span></summary><pre class="msg">assert_throws_dom: Cross origin get of descriptors should throw a security error function &quot;() =&gt; {
-    const unused = Object.getOwnPropertyDescriptor(
-      iframe.contentWindow.location, property);
-  }&quot; did not throw</pre></details><a class="self" href="#s-7eefa468" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7eefa468"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Verifying that cross-origin access of &#39;protocol&#39; is restricted</span></div><a class="self" href="#s-7eefa468" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?reload</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?reload</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-748a4587"><details><summary><span class="mark">FAIL</span><span class="sub-name">Verifying that cross-origin access of &#39;reload&#39; is restricted</span></summary><pre class="msg">assert_throws_dom: Cross origin get of a location property should throw a security error function &quot;() =&gt; {
-    const unused = iframe.contentWindow.location[property];
-  }&quot; did not throw</pre></details><a class="self" href="#s-748a4587" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-748a4587"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Verifying that cross-origin access of &#39;reload&#39; is restricted</span></div><a class="self" href="#s-748a4587" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?search</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?search</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-a91e076e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Verifying that cross-origin access of &#39;search&#39; is restricted</span></summary><pre class="msg">assert_throws_dom: Cross origin get of descriptors should throw a security error function &quot;() =&gt; {
-    const unused = Object.getOwnPropertyDescriptor(
-      iframe.contentWindow.location, property);
-  }&quot; did not throw</pre></details><a class="self" href="#s-a91e076e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a91e076e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Verifying that cross-origin access of &#39;search&#39; is restricted</span></div><a class="self" href="#s-a91e076e" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?toString</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?toString</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-2400f05b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Verifying that cross-origin access of &#39;toString&#39; is restricted</span></summary><pre class="msg">assert_throws_dom: Cross origin get of a location property should throw a security error function &quot;() =&gt; {
-    const unused = iframe.contentWindow.location[property];
-  }&quot; did not throw</pre></details><a class="self" href="#s-2400f05b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2400f05b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Verifying that cross-origin access of &#39;toString&#39; is restricted</span></div><a class="self" href="#s-2400f05b" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?valueOf</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<h3 class="run-head"><code>/html/browsers/origin/cross-origin-objects/location-properties-smoke-test.window.html?valueOf</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-2ce90346"><details><summary><span class="mark">FAIL</span><span class="sub-name">Verifying that cross-origin access of &#39;valueOf&#39; is restricted</span></summary><pre class="msg">assert_throws_dom: Cross origin get of a location property should throw a security error function &quot;() =&gt; {
-    const unused = iframe.contentWindow.location[property];
-  }&quot; did not throw</pre></details><a class="self" href="#s-2ce90346" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2ce90346"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Verifying that cross-origin access of &#39;valueOf&#39; is restricted</span></div><a class="self" href="#s-2ce90346" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
