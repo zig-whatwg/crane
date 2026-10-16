@@ -3,10 +3,10 @@
 //! Spec: Service Workers 4.3 Clients
 //! https://w3c.github.io/ServiceWorker/#clients-interface
 //!
-//! A service worker global's `clients`. claim() is the service_worker
-//! module's (src/service_worker/realm.zig: its steps run on the Browser's
-//! service worker job thread); get(), matchAll() and openWindow() are the
-//! next batch's (the Client objects).
+//! A service worker global's `clients`. Its members are the service_worker
+//! module's (src/service_worker/realm.zig): get() and matchAll() ask the
+//! Browser's manager, which gathers each window client's data on that
+//! window's own event loop; claim() runs on the manager's job thread.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -28,25 +28,31 @@ pub const ImplError = error{
 /// No state of its own: its realm's environment is the module's.
 pub const InternalState = struct {};
 
-/// Operation: get
+/// Operation: get(id) (4.3.1).
 pub fn call_get(instance: *runtime.Instance, id: runtime.DOMString) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = id;
-    return error.NotImplemented;
+    return service_worker.realm.getClient(instance, id.asSlice());
 }
 
-/// Operation: matchAll
+/// Operation: matchAll(options) (4.3.2): ClientQueryOptions'
+/// includeUncontrolled (false) and type ("window").
 pub fn call_matchAll(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ClientQueryOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
-    return error.NotImplemented;
+    var include_uncontrolled = false;
+    var client_type: service_worker.Manager.ClientType = .window;
+    if (options.was_passed) {
+        include_uncontrolled = options.value.includeUncontrolled orelse false;
+        if (options.value.type) |given| client_type = switch (given) {
+            ._window_ => .window,
+            ._worker_ => .worker,
+            ._sharedworker_ => .sharedworker,
+            ._all_ => .all,
+        };
+    }
+    return service_worker.realm.matchAll(instance, include_uncontrolled, client_type);
 }
 
-/// Operation: openWindow
+/// Operation: openWindow(url) (4.3.3).
 pub fn call_openWindow(instance: *runtime.Instance, url: runtime.USVString) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = url;
-    return error.NotImplemented;
+    return service_worker.realm.openWindow(instance, url);
 }
 
 /// Operation: claim (4.3.4).

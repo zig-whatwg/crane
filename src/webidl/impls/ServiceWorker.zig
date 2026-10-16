@@ -8,8 +8,10 @@
 //! (src/service_worker/realm.zig, "get the service worker object") makes it
 //! with the worker's state as a construction argument - its script url and
 //! the state it was last set to, which the environment sets as Update Worker
-//! State's tasks run - and this impl owns that state. onstatechange and
-//! onerror are the generated event handlers (dom.event_handlers).
+//! State's tasks run - and this impl owns that state. postMessage() hands
+//! the message to the worker's thread (src/service_worker/realm.zig, whose
+//! manager runs the worker first). onstatechange and onerror are the
+//! generated event handlers (dom.event_handlers).
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -19,6 +21,8 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const service_worker = @import("service_worker");
+const engine = @import("engine");
+const webidl = @import("webidl");
 const ServiceWorker = interfaces.ServiceWorker;
 
 pub const State = ServiceWorker.State;
@@ -79,11 +83,23 @@ pub fn get_state(instance: *runtime.Instance) anyerror!enums.ServiceWorkerState 
     };
 }
 
-/// Operation: postMessage (3.1.4-3.1.5) - service worker messaging is the
-/// next batch (Clients, ExtendableMessageEvent).
+/// Operation: postMessage(message, transfer) (3.1.4): postMessage(message,
+/// options) with options["transfer"] = transfer.
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = message;
-    _ = transfer;
-    return error.NotImplemented;
+    const allocator = instance.ctx.allocator;
+    const objects = try engine.convertToSequenceOfObjects(instance.ctx, transfer, allocator);
+    defer {
+        for (objects) |object| object.release();
+        allocator.free(objects);
+    }
+    const list = try allocator.alloc(runtime.JSValue, objects.len);
+    defer allocator.free(list);
+    for (objects, list) |object, *item| item.* = object.value;
+    return service_worker.realm.postMessageToWorker(instance, try workerOf(instance), message, list);
+}
+
+/// Operation: postMessage(message, options) (3.1.5).
+pub fn call_postMessage__1(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!void {
+    const transfer: []const runtime.JSValue = if (options.wasPassed()) (options.getValue().transfer orelse &.{}) else &.{};
+    return service_worker.realm.postMessageToWorker(instance, try workerOf(instance), message, transfer);
 }

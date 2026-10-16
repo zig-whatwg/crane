@@ -4800,6 +4800,10 @@ fn lifecycleTaskSteps(data: ?*anyopaque) void {
             if (has_window) @import("dom").performance_timeline.recordLoadTiming(task.target.ctx, .dom_content_loaded_event_start);
             fireEvent(task.target, task.target, "DOMContentLoaded", true);
             if (has_window) @import("dom").performance_timeline.recordLoadTiming(task.target.ctx, .dom_content_loaded_event_end);
+            // Step 6.4: enable the client message queue of the
+            // ServiceWorkerContainer whose client is the document's relevant
+            // settings object.
+            if (has_window) @import("dom").client_message_queues.domContentLoaded(task.target.ctx);
         },
         .load => {
             if (getInternal(task.target)) |internal| {

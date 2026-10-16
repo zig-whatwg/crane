@@ -2,7 +2,7 @@
 //! extraction gives its caller an OWNED OriginRecord on the current thread.
 //! The caller releases it, or passes a borrowed view to a retaining holder.
 //!
-//! lint-impls: hook for Origin, URL, HTMLHyperlinkElementUtils, SVGAElement, WindowOrWorkerGlobalScope, MessageEvent
+//! lint-impls: hook for Origin, URL, HTMLHyperlinkElementUtils, SVGAElement, WindowOrWorkerGlobalScope, MessageEvent, ExtendableMessageEvent
 const std = @import("std");
 const runtime = @import("runtime");
 const process_start = @import("process_start.zig");
@@ -10,7 +10,7 @@ const OriginRecord = @import("origin_record.zig").OriginRecord;
 const api_parser = @import("api_parser");
 const origins = @import("fetch").internal.origins;
 
-pub const Owner = enum { origin, url, hyperlink, svg_anchor, global, message_event };
+pub const Owner = enum { origin, url, hyperlink, svg_anchor, global, message_event, extendable_message_event };
 pub const Implementation = struct {
     owns: *const fn (*runtime.Instance) bool,
     extract: *const fn (*runtime.Instance) anyerror!?*OriginRecord,

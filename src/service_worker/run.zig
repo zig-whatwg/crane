@@ -20,6 +20,8 @@ const registry_mod = @import("registry.zig");
 const manager_mod = @import("manager.zig");
 const scope_mod = @import("scope.zig");
 const update_fetch = @import("update_fetch.zig");
+const realm_mod = @import("realm.zig");
+const objects = @import("objects.zig");
 const ExtendLifetime = @import("extend_lifetime.zig").ExtendLifetime;
 
 const Manager = manager_mod.Manager;
@@ -32,6 +34,7 @@ pub const host: manager_mod.Host = .{
     .fetch = fetchForUpdate,
     .start = start,
     .dispatch = dispatch,
+    .post_message = postMessage,
 };
 
 // ============================================================================
@@ -382,5 +385,168 @@ fn fire(manager: *Manager, realm: runtime.Context, global_scope: *runtime.Instan
     _ = dom.fire_event.dispatchTrusted(global_scope, instance) catch {};
     // WaitForAsynchronousExtensions: reported now if nothing extends it, or
     // when its last extend lifetime promise settles.
+    lifetime.dispatchEnded();
+}
+
+// ============================================================================
+// The message event (ServiceWorker.postMessage step 6.2)
+// ============================================================================
+
+fn postMessage(manager: *Manager, started: manager_mod.Started, message: *manager_mod.WorkerMessage, worker_id: u64, generation: u64) void {
+    const link = started.link orelse return messageLost(manager, message, worker_id, generation);
+    const handle = started.handle orelse return messageLost(manager, message, worker_id, generation);
+    const task = manager.allocator.create(MessageTask) catch return messageLost(manager, message, worker_id, generation);
+    task.* = .{ .manager = manager, .message = message, .worker_id = worker_id, .generation = generation };
+    worker_host.postServiceTask(manager.allocator, link, handle, .{ .run = MessageTask.run, .drop = MessageTask.drop, .data = task });
+}
+
+/// A message that never reaches its worker: dropped with its ports, and its
+/// event reported done.
+fn messageLost(manager: *Manager, message: *manager_mod.WorkerMessage, worker_id: u64, generation: u64) void {
+    message.destroy();
+    manager.report(.{ .message_done = .{ .worker = worker_id, .generation = generation } });
+}
+
+/// The task queued on the worker's event loop, using the DOM manipulation
+/// task source.
+const MessageTask = struct {
+    manager: *Manager,
+    message: *manager_mod.WorkerMessage,
+    worker_id: u64,
+    generation: u64,
+
+    /// On the worker's thread, in its realm.
+    fn run(data: ?*anyopaque, realm: runtime.Context, global_scope: *runtime.Instance) void {
+        const self: *MessageTask = @ptrCast(@alignCast(data.?));
+        const manager = self.manager;
+        const message = self.message;
+        const done: MessageDone = .{ .manager = manager, .worker_id = self.worker_id, .generation = self.generation };
+        manager.allocator.destroy(self);
+        defer message.destroy();
+        fireMessage(manager, realm, global_scope, message, done) catch |err| {
+            log.debug("a message event was not fired: {s}", .{@errorName(err)});
+            done.report();
+        };
+    }
+
+    /// Discarded (the worker is ending). Any thread.
+    fn drop(data: ?*anyopaque) void {
+        const self: *MessageTask = @ptrCast(@alignCast(data.?));
+        const manager = self.manager;
+        const done: MessageDone = .{ .manager = manager, .worker_id = self.worker_id, .generation = self.generation };
+        self.message.destroy();
+        manager.allocator.destroy(self);
+        done.report();
+    }
+};
+
+/// What a message event's end reports.
+const MessageDone = struct {
+    manager: *Manager,
+    worker_id: u64,
+    generation: u64,
+
+    fn report(self: MessageDone) void {
+        self.manager.report(.{ .message_done = .{ .worker = self.worker_id, .generation = self.generation } });
+    }
+};
+
+/// The extended lifetime's settled callback: the event is done.
+const MessageSettled = struct {
+    done: MessageDone,
+
+    fn run(ctx: *anyopaque, _: bool) void {
+        const self: *MessageSettled = @ptrCast(@alignCast(ctx));
+        const done = self.done;
+        done.manager.allocator.destroy(self);
+        done.report();
+    }
+
+    fn drop(ctx: *anyopaque) void {
+        const self: *MessageSettled = @ptrCast(@alignCast(ctx));
+        const done = self.done;
+        done.manager.allocator.destroy(self);
+        // The event never settles here (its realm ended): the worker's end
+        // tells the manager.
+        done.report();
+    }
+};
+
+/// ServiceWorker.postMessage steps 6.2.1-6.2.7 on the worker's thread:
+/// source, origin, the deserialization, the event (message, or messageerror)
+/// dispatched at the global, and Update Service Worker Extended Events Set -
+/// the event's end is reported once it is not active.
+fn fireMessage(manager: *Manager, realm: runtime.Context, global_scope: *runtime.Instance, message: *manager_mod.WorkerMessage, done: MessageDone) !void {
+    const environment = realm_mod.environmentOf(realm, true) orelse return error.InvalidStateError;
+    // 6.2.1. source: a service worker's own global posted it - the
+    // ServiceWorker object of its worker here; a client - a new WindowClient
+    // or Client representing it.
+    const source = switch (message.source) {
+        .service_worker => |info| try environment.workerObject(info),
+        .client => |*info| try environment.clientObject(info),
+    };
+    // A new Client is the event's to hold; one the event never took goes.
+    const source_generation = runtime.SlabAllocator.generationOf(source);
+    defer if (message.source == .client) source.releaseIfUnwrapped(source_generation);
+    // 6.2.3. destination: the worker's global.
+    // 6.2.4. StructuredDeserializeWithTransfer, its transferred ports
+    // received here first.
+    var ports: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    defer ports.deinit(manager.allocator);
+    var event_type: []const u8 = "message";
+    var data_hold: ?engine.Owned = null;
+    defer if (data_hold) |hold| hold.release();
+    if (message.message) |port_message| {
+        message.message = null;
+        defer port_message.destroy();
+        const ends = port_message.takeEnds();
+        defer port_message.allocator.free(ends);
+        for (ends) |end| {
+            const port = dom.message_ports.receive(realm, @ptrCast(end)) catch continue;
+            ports.append(manager.allocator, port) catch continue;
+        }
+        data_hold = engine.structuredDeserializeWithTransfer(realm, port_message.serialized, port_message.array_buffers, ports.items) catch blk: {
+            // "If this throws an exception, let e be ... messageerror".
+            event_type = "messageerror";
+            ports.clearRetainingCapacity();
+            break :blk null;
+        };
+    }
+    const settled = try manager.allocator.create(MessageSettled);
+    settled.* = .{ .done = done };
+    const lifetime = ExtendLifetime.create(realm.allocator, .{ .ctx = settled, .run = MessageSettled.run, .drop = MessageSettled.drop }) catch |err| {
+        manager.allocator.destroy(settled);
+        return err;
+    };
+    // The dispatcher's reference. From here the lifetime reports the end -
+    // so nothing below returns an error, which would report it again.
+    defer lifetime.release();
+    // 6.2.5.3: an ExtendableMessageEvent with its origin, source, data and
+    // ports.
+    const instance = interfaces.ExtendableMessageEvent.initWith(realm.allocator, realm, .{
+        .lifetime = lifetime,
+        .message = objects.ExtendableMessageInit{
+            .data = if (data_hold) |hold| hold.value else runtime.JSValue.jsNull,
+            .origin = message.origin,
+            .source = source,
+            .ports = ports.items,
+        },
+    }) catch |err| {
+        log.debug("no message event: {s}", .{@errorName(err)});
+        lifetime.dispatchEnded();
+        return;
+    };
+    const generation = runtime.SlabAllocator.generationOf(instance);
+    defer instance.releaseIfUnwrapped(generation);
+    dom.event_construction.innerEventCreationSteps(instance, runtime.DOMString.initInterned(event_type), dom.event_construction.eventInitFrom(@import("dictionaries").EventInit{})) catch |err| {
+        log.debug("no message event: {s}", .{@errorName(err)});
+        lifetime.dispatchEnded();
+        return;
+    };
+    lifetime.dispatching = true;
+    // 6.2.6. Dispatch e at destination.
+    _ = dom.fire_event.dispatchTrusted(global_scope, instance) catch {};
+    // 6.2.7. Update Service Worker Extended Events Set: the event stays in
+    // flight while it is active, and reports its end once it is not.
     lifetime.dispatchEnded();
 }

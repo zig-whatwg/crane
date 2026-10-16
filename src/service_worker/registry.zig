@@ -64,7 +64,7 @@ pub const EnvironmentKind = enum {
 pub const FrameType = enum { auxiliary, @"top-level", nested, none };
 
 /// The exceptions an algorithm rejects a job promise with.
-pub const ErrorKind = enum { type_error, security_error, invalid_state_error };
+pub const ErrorKind = enum { type_error, security_error, invalid_state_error, invalid_access_error, not_supported_error };
 
 /// One response a service worker keeps in its script resource map: what
 /// importScripts() is answered from once installed, and what the Update
@@ -116,6 +116,15 @@ pub const Worker = struct {
     /// The extended events still active (the owner counts what the worker's
     /// thread reports): Service Worker Has No Pending Events.
     active_extended_events: u32 = 0,
+    /// Functional events (a postMessage's message event) handed to the
+    /// running worker and not yet done - dispatched and no longer active.
+    /// They are pending events too, as Chromium's in-flight requests are: an
+    /// active worker handling one is not replaced (Try Activate), cleared or
+    /// idle.
+    events_in_flight: u32 = 0,
+    /// Bumped at every start: a functional event's end from an earlier run
+    /// is not this run's.
+    run_generation: u64 = 0,
     /// What waits for Run Service Worker's answer.
     start_waiters: std.ArrayListUnmanaged(Waiter) = .empty,
     /// Its global object's force bypass cache for import scripts flag (Run
@@ -148,7 +157,10 @@ pub const Waiter = union(enum) {
     /// Activate step 10.1.
     activate: *ActivateOp,
     /// Something outside the algorithms here (a postMessage, a functional
-    /// event): the owner's, told through Effects.startAnswered.
+    /// event): the owner's, told through Effects.startAnswered. An answer
+    /// that the worker started counts a functional event in flight
+    /// (`Worker.events_in_flight`) until the owner reports it done
+    /// (`functionalEventDone`, with the worker's `run_generation`).
     other: u64,
 };
 
@@ -1222,6 +1234,7 @@ pub const Registry = struct {
         if (worker.state == .redundant) return self.answer(worker, waiter, false);
         try worker.start_waiters.append(self.allocator, waiter);
         worker.run = .starting;
+        worker.run_generation +%= 1;
         // 9.1. The global's force bypass cache for import scripts flag.
         worker.force_bypass_cache_for_imports = force_bypass_cache;
         // 7-9. Setup ServiceWorkerGlobalScope and run the script, on the
@@ -1271,6 +1284,9 @@ pub const Registry = struct {
         const was = worker.run;
         worker.run = .stopped;
         worker.active_extended_events = 0;
+        // Its functional events ended with it; their late reports carry this
+        // run's generation and find a newer one, or none.
+        worker.events_in_flight = 0;
         worker.refs += 1;
         defer self.releaseWorker(worker);
         if (was == .starting) try self.answerWaiters(worker, false);
@@ -1299,8 +1315,28 @@ pub const Registry = struct {
             .update => |job| try self.updateRan(job, worker, ok),
             .install => |op| try self.installStarted(op, ok),
             .activate => |op| self.activateStarted(op, ok),
-            .other => |id| self.effects.start_answered(self.effects.ctx, worker, id, ok),
+            .other => |id| {
+                // The owner hands its event to the running worker now: it is
+                // in flight until `functionalEventDone`.
+                if (ok) worker.events_in_flight += 1;
+                self.effects.start_answered(self.effects.ctx, worker, id, ok);
+            },
         }
+    }
+
+    /// A functional event the owner handed to `worker_id` (an `other` waiter
+    /// answered with its start) is done: dispatched, and no longer active -
+    /// or its task was discarded. `generation` is the worker's
+    /// `run_generation` when it was handed over: an end from an earlier run
+    /// does nothing. When the worker has no pending events left, waitUntil
+    /// step 5.2's Try Clear Registration and Try Activate run, as for an
+    /// extended event that settles.
+    pub fn functionalEventDone(self: *Registry, worker_id: u64, generation: u64) Allocator.Error!void {
+        const worker = self.findWorker(worker_id) orelse return;
+        if (worker.run_generation != generation or worker.events_in_flight == 0) return;
+        worker.events_in_flight -= 1;
+        if (!serviceWorkerHasNoPendingEvents(worker)) return;
+        try self.pendingEventsEnded(worker);
     }
 
     /// Update steps 16-17.
@@ -1708,7 +1744,12 @@ pub const Registry = struct {
     pub fn extendedEventsChanged(self: *Registry, worker_id: u64, active: u32) Allocator.Error!void {
         const worker = self.findWorker(worker_id) orelse return;
         worker.active_extended_events = active;
-        if (active > 0) return;
+        if (!serviceWorkerHasNoPendingEvents(worker)) return;
+        try self.pendingEventsEnded(worker);
+    }
+
+    /// `worker` has no pending events left.
+    fn pendingEventsEnded(self: *Registry, worker: *Worker) Allocator.Error!void {
         worker.refs += 1;
         defer {
             self.noteIfIdle(worker);
@@ -1751,6 +1792,51 @@ pub const Registry = struct {
             // 3.1.6.3. Notify Controller Change.
             self.notifyControllerChange(environment);
         }
+    }
+
+    /// Clients' matchAll() step 2.2, for the associated service worker
+    /// `worker`: targetClients - each service worker client whose storage key
+    /// is the worker's registration's, execution ready and not discarded, a
+    /// secure context, and controlled by `worker` unless
+    /// `include_uncontrolled` - in creation order (step 2.5 sorts by it). The
+    /// caller owns the slice, not the environments (valid while the lock is
+    /// held).
+    pub fn matchAllClients(self: *const Registry, allocator: Allocator, worker: *const Worker, include_uncontrolled: bool) Allocator.Error![]*Environment {
+        var list: std.ArrayListUnmanaged(*Environment) = .empty;
+        errdefer list.deinit(allocator);
+        const storage_key = worker.registration.storage_key;
+        for (self.environments.items) |environment| {
+            if (!environment.kind.isClient()) continue;
+            if (!std.mem.eql(u8, environment.origin, storage_key)) continue;
+            // 2.2.1. Execution ready, not discarded.
+            if (!environment.execution_ready or environment.discarded) continue;
+            // 2.2.2. A secure context.
+            if (!environment.secure_context) continue;
+            // 2.2.3. Controlled by the worker, unless includeUncontrolled.
+            if (!include_uncontrolled and environment.active_worker != worker) continue;
+            try list.append(allocator, environment);
+        }
+        // Environment ids are given in creation order; the list's own order
+        // is not kept (an environment's end swaps the last one in).
+        std.mem.sort(*Environment, list.items, {}, struct {
+            fn lessThan(_: void, a: *Environment, b: *Environment) bool {
+                return a.id < b.id;
+            }
+        }.lessThan);
+        return list.toOwnedSlice(allocator);
+    }
+
+    /// Clients' get(id) step 2.1, for the associated service worker
+    /// `worker`: the service worker client whose storage key is the worker's
+    /// registration's and whose id is `id`, or null.
+    pub fn getClient(self: *const Registry, worker: *const Worker, id: []const u8) ?*Environment {
+        const storage_key = worker.registration.storage_key;
+        for (self.environments.items) |environment| {
+            if (!environment.kind.isClient()) continue;
+            if (!std.mem.eql(u8, environment.origin, storage_key)) continue;
+            if (std.mem.eql(u8, &environment.client_id, id)) return environment;
+        }
+        return null;
     }
 
     /// What importScripts()'s fetch hook in a service worker (6.3.2) does
@@ -1831,9 +1917,11 @@ pub const Registry = struct {
     }
 };
 
-/// Service Worker Has No Pending Events.
+/// Service Worker Has No Pending Events: no extended event is active - and,
+/// as Chromium counts its in-flight requests, no functional event handed to
+/// the worker is still being handled (`events_in_flight`).
 pub fn serviceWorkerHasNoPendingEvents(worker: *const Worker) bool {
-    return worker.active_extended_events == 0;
+    return worker.active_extended_events == 0 and worker.events_in_flight == 0;
 }
 
 /// Potentially trustworthy origin, for a serialized URL.

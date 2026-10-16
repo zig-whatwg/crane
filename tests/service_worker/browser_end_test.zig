@@ -23,6 +23,7 @@ const test_host: sw.manager.Host = .{
     .fetch = tableFetch,
     .start = sw.run.host.start,
     .dispatch = sw.run.host.dispatch,
+    .post_message = sw.run.host.post_message,
 };
 
 fn tableFetch(manager: *sw.Manager, plan: *const registry.FetchPlan) registry.FetchOutcome {
