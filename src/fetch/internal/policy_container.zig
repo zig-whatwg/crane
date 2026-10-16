@@ -132,6 +132,7 @@ pub const PolicyContainer = struct {
         var policy_owned = true;
         defer if (policy_owned) policy.deinit();
         policy.self_origin = try selfOriginOf(self.allocator, response_url);
+        policy.delivery_url = try self.allocator.dupe(u8, response_url);
         if (blanket or !(csp.embedded_enforcement.subsumes(self.allocator, &policy, &self.csp_list) catch return error.OutOfMemory)) {
             try self.csp_list.append(policy);
             policy_owned = false;
@@ -275,6 +276,7 @@ fn parseResponseCsp(allocator: Allocator, list: *csp.CSPList, response: Response
     list.self_origin = origin;
     for (list.policies.items[first..]) |*policy| {
         policy.self_origin = try csp.Origin.create(allocator, origin.scheme, origin.host, origin.port);
+        policy.delivery_url = try allocator.dupe(u8, response.url);
     }
 }
 

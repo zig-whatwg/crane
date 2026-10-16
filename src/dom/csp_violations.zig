@@ -674,7 +674,12 @@ fn queueViolationTask(global: *runtime.Instance, violation: *const Violation) !v
                 try endpoints.append(allocator, endpoint);
             }
             task.report_uris = try endpoints.toOwnedSlice(allocator);
-            task.report_base_url = try allocator.dupe(u8, global.ctx.documentUrl() orelse "");
+            // Deviation from CSP 5.5's violation-URL base: inherited blob
+            // workers keep the policy's delivery base. Chromium's
+            // ParseReportDirective resolves endpoints at delivery; WebKit
+            // uses m_protectedURL. Chrome and Firefox pass the blob-worker
+            // report assertions with root-relative report-uri (row 46 Q11).
+            task.report_base_url = try allocator.dupe(u8, violation.policy.delivery_url orelse global.ctx.documentUrl() orelse "");
         }
     }
 

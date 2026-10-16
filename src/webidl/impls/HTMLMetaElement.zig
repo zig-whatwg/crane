@@ -127,6 +127,10 @@ fn contentSecurityPolicyState(meta: *runtime.Instance, node: *NodeBase) void {
         @import("csp").Origin.create(allocator, origin.scheme, origin.host, origin.port) catch null
     else
         documentSelfOrigin(document, allocator);
+    if (interfaces.Document.get_URL(document)) |delivery_url| {
+        defer document.ctx.allocator.free(delivery_url);
+        policy.delivery_url = allocator.dupe(u8, delivery_url) catch null;
+    } else |_| {}
     // 5. "Enforce the policy policy": it joins the document's CSP list.
     container.csp_list.append(policy) catch policy.deinit();
 }
