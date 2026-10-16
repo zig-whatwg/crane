@@ -291,6 +291,12 @@ pub const Combinator = enum {
 pub const CompoundSelector = struct {
     simple_selectors: []SimpleSelector,
     allocator: Allocator,
+    /// Quirks Mode 4.1, "the :active and :hover quirk": a compound outside
+    /// any functional pseudo-class's argument that uses :active or :hover
+    /// and no type, attribute, ID or class selector, no other pseudo-class
+    /// and no pseudo-element. In quirks mode it matches only elements that
+    /// match :any-link. Decided here, so matching reads one flag.
+    active_hover_quirk: bool = false,
 
     pub fn deinit(self: *CompoundSelector) void {
         for (self.simple_selectors) |*selector| {
@@ -953,9 +959,25 @@ pub const Parser = struct {
 
         if (simples.items.len == 0) return error.InvalidSelector;
         return CompoundSelector{
+            .active_hover_quirk = !ctx.real and usesOnlyActiveOrHover(simples.items),
             .simple_selectors = try simples.toOwnedSlice(self.allocator),
             .allocator = self.allocator,
         };
+    }
+
+    /// Quirks Mode 4.1's conditions on a compound's simple selectors: it uses
+    /// :active or :hover, and nothing else - the universal selector being a
+    /// type selector (Selectors 4 5.2).
+    fn usesOnlyActiveOrHover(simples: []const SimpleSelector) bool {
+        var uses = false;
+        for (simples) |simple| switch (simple) {
+            .PseudoClass => |pseudo| switch (pseudo.kind) {
+                .Active, .Hover => uses = true,
+                else => return false,
+            },
+            else => return false,
+        };
+        return uses;
     }
 
     /// <type-selector> = <wq-name> | <ns-prefix>? '*', where

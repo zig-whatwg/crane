@@ -384,6 +384,12 @@ const Matcher = struct {
         for (compound.simple_selectors) |*simple| {
             if (!self.matchesSimple(subject.node, data, simple)) return false;
         }
+        // Quirks Mode 4.1: in quirks mode such a compound "must not match
+        // elements that would not also match the :any-link selector".
+        if (compound.active_hover_quirk and self.quirks) {
+            const element = instanceOf(subject.node) orelse return false;
+            return html_pseudo_classes.matches(element, .any_link);
+        }
         return true;
     }
 
@@ -503,8 +509,10 @@ const Matcher = struct {
                 .rtl => html_pseudo_classes.matches(element, .dir_rtl),
                 .other => false,
             },
-            // Crane has no pointer hover or pressed state.
-            .Hover, .Active => false,
+            // HTML 4.16.3, through the states the Document keeps
+            // (dom.pointer_states): only selectors using them pay for them.
+            .Hover => html_pseudo_classes.matches(element, .hover),
+            .Active => html_pseudo_classes.matches(element, .active),
             // The focus state of the element's top-level traversable
             // (html.focus), through the hook Document installs.
             .Focus => focus_matching.matchesFocus(element),

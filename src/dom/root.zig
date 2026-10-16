@@ -157,6 +157,8 @@ pub const event_dispatch = @import("event_dispatch.zig");
 pub const selectors = @import("selectors.zig");
 /// querySelector / matches / closest over platform objects.
 pub const selector_matching = @import("selector_matching.zig");
+/// The elements a Document's :hover and :active rest on.
+pub const pointer_states = @import("pointer_states.zig");
 pub const fast_path = @import("fast_path.zig");
 pub const html_mock = @import("html_mock.zig");
 pub const attribute_algorithms = @import("attribute_algorithms.zig");
