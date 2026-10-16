@@ -106,6 +106,11 @@ pub const InternalState = struct {
         };
     }
 
+    /// What the state owns, without its shadow root (dom.orphan_states):
+    /// its hold of the adopted style sheets' value - released while the
+    /// agent lives, at a sweep too (EventTarget's sweep releases listeners
+    /// the same way). The registry association is the root's to end
+    /// (`deinitOwn`).
     pub fn deinit(self: *InternalState) void {
         if (self.adopted_style_sheets) |sheets| sheets.release();
         self.adopted_style_sheets = null;
@@ -147,6 +152,10 @@ pub fn installHooks() void {
     });
     // A host's teardown reaches its shadow root through this hook.
     @import("dom").shadow_hosts.install(.{ .host_destroyed = &hostDestroyed });
+    // A host removed from its tree while script held no wrapper of it is an
+    // orphan nothing deinits, and so is its shadow root: the states no
+    // deinit reached, at their Browser's end (dom.orphan_states).
+    @import("dom").orphan_states.installRegistrySweep(Registry);
     // The HTML parser's declarative shadow roots, and DOM attach-a-shadow-root
     // step 4's reuse of one, read and set flags no IDL member reaches.
     @import("dom").declarative_shadow.install(.{
@@ -172,11 +181,12 @@ fn markDeclarative(instance: *runtime.Instance, keep_registry_null: bool) void {
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
     _ = StateType;
     _ = args;
-    // Initialize ShadowRoot's own internal state and register it
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
+    // Its state: a block of the Browser's arena the registry owns, so the
+    // registry's `remove` returns it and an orphaned root's goes with the
+    // arena. A block of its own (`set`) had no exit for an orphaned host's
+    // root (lane orphanleak).
+    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
-    try Registry.set(instance, internal);
 }
 
 /// ShadowRoot's own teardown: the generated chain runs DocumentFragment's
@@ -188,8 +198,8 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
     if (Registry.get(instance)) |internal| {
         internal.registry_edge.release(instance);
         internal.deinit();
-        internal.allocator.destroy(internal);
     }
+    // Returns the block to the arena.
     Registry.remove(instance);
 }
 
