@@ -150,6 +150,9 @@ pub const reflected_with_fallback = @import("reflected_with_fallback.zig");
 pub const element_data = @import("element_data.zig");
 /// HTML's algorithms for reflecting content attributes in IDL attributes.
 pub const reflection = @import("reflection.zig");
+/// The generated [SameObject] caches' edges: an owner keeps the child it
+/// cached, whoever read it first (binding3 item 9h).
+pub const same_object_cache = @import("same_object_cache.zig");
 pub const observer_registrations = @import("observer_registrations.zig");
 pub const attr_nodes = @import("attr_nodes.zig");
 pub const traversal = @import("traversal.zig");

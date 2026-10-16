@@ -324,6 +324,7 @@ pub const SVGFilterElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGFilterElementImpl, "deinit") and @hasDecl(SVGFilterElementImpl, "deinitOwn")) @compileError("SVGFilterElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGFilterElementImpl, "deinit")) return SVGFilterElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGFilterElementImpl, "deinitOwn")) SVGFilterElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -371,6 +372,7 @@ pub const SVGFilterElement = struct {
         }
         const value = try mixins.SVGURIReference.get_href(instance);
         state.own.cached_href = value;
+        @import("dom").same_object_cache.made(instance, value, "href");
         return value;
     }
 };

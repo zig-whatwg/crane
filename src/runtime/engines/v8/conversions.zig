@@ -466,6 +466,41 @@ fn isAnyMember(comptime T: type, comptime name: []const u8) bool {
     }
 }
 
+/// Whether dictionary `T`'s member `field`, present with the value null,
+/// converts null by its type (WebIDL 3.2.18 step 4.1.4.3: only undefined is
+/// "not present"; a present member's value converts by the member's type) -
+/// true for an optional member the IDL does not type as nullable (codegen
+/// lists the nullable ones in `nullable_members`) whose type converts null
+/// here by its own rule: a string (ToString: "null"), a boolean (false), a
+/// number (ToNumber: 0), an enumeration value ("null": a TypeError unless the
+/// enumeration has it) or an interface (a TypeError). `{mode: null}` for a
+/// LockOptions read as "no mode" (web-locks/acquire.https.any.js).
+///
+/// False by default: a required member (it converts null by its type
+/// already), a nullable member, `any`, a `webidl.Opt` member (its presence
+/// is its own), and a type this converter leaves to the impl - a union, a
+/// sequence, a dictionary, a callback - which keeps reading a present null
+/// as not present.
+pub fn presentNullConvertsByType(comptime T: type, comptime field: std.builtin.Type.StructField) bool {
+    comptime {
+        const info = @typeInfo(field.type);
+        if (info != .optional) return false;
+        if (isAnyMember(T, field.name)) return false;
+        if (@hasDecl(T, "nullable_members")) {
+            for (T.nullable_members) |member| {
+                if (std.mem.eql(u8, member, field.name)) return false;
+            }
+        }
+        const Payload = info.optional.child;
+        if (Payload == runtime.DOMString or Payload == runtime.USVString or Payload == runtime.ByteString) return true;
+        if (Payload == *runtime.Instance) return true;
+        return switch (@typeInfo(Payload)) {
+            .bool, .int, .float, .@"enum" => true,
+            else => false,
+        };
+    }
+}
+
 /// Whether dictionary `T` lists member `name` in `restricted_members`.
 fn isRestrictedMember(comptime T: type, comptime name: []const u8) bool {
     comptime {
@@ -593,7 +628,7 @@ pub fn fromV8Sequence(
     // Kept, every sequence argument that failed part-way leaked them
     // (docs/lessons/architecture-a-conversion-that-fails-part-way-converted-the-rest.md).
     var converted: usize = 0;
-    errdefer for (slice[0..converted]) |element| interface_mod.freeConvertedArg(T, allocator, element);
+    errdefer for (slice[0..converted]) |element| interface_mod.freeSequenceElement(T, allocator, element);
 
     for (0..length) |i| {
         // Use v8_Object_Get with integer key instead of v8_Array_Get to properly
@@ -624,9 +659,9 @@ pub fn fromV8Sequence(
 /// any more: always for a conversion that copies (`argHandleIsCopied`), and
 /// for a type whose value says (`argumentHandleIsKeptInValue`: an `any`, an
 /// `object` arm, a buffer source) unless the value still refers to it
-/// (`keptArgumentHandle`). A buffer source element keeps it until the
-/// sequence is freed (`freeConvertedArg`). Any other type keeps it - the
-/// conservative answer, as for an argument.
+/// (`keptArgumentHandle`). An element that refers to it keeps it until the
+/// sequence is freed (`interface.freeSequenceElement`). Any other type keeps
+/// it - the conservative answer, as for an argument.
 fn releaseElementHandle(comptime T: type, element: T, handle: *v8.Value) void {
     if (comptime interface_mod.argHandleIsCopied(T)) {
         v8.v8_Value_Dispose(handle);
@@ -801,7 +836,7 @@ fn sequenceFromIterable(
 ) ConversionError![]T {
     var items: std.ArrayListUnmanaged(T) = .empty;
     errdefer {
-        for (items.items) |item| interface_mod.freeConvertedArg(T, allocator, item);
+        for (items.items) |item| interface_mod.freeSequenceElement(T, allocator, item);
         items.deinit(allocator);
     }
     var failure: ?ConversionError = null;
@@ -823,7 +858,7 @@ fn sequenceFromIterable(
             };
             releaseElementHandle(T, converted, next);
             self.items.append(self.allocator, converted) catch {
-                interface_mod.freeConvertedArg(T, self.allocator, converted);
+                interface_mod.freeSequenceElement(T, self.allocator, converted);
                 self.failure.* = ConversionError.OutOfMemory;
                 return error.OutOfMemory;
             };
@@ -2257,11 +2292,22 @@ pub fn fromV8Value(
                 // (`any_members`); converted as an optional, it would read as
                 // not present.
                 const is_any_member = comptime isAnyMember(T, field.name);
+                const null_converts_by_type = comptime presentNullConvertsByType(T, field);
                 if (is_any_member and v8.v8_Value_IsNull(field_v8)) {
                     // Nothing keeps the handle Get made (the defer above
                     // releases it only for a copying conversion).
                     if (!member_handle_released) v8.v8_Value_Dispose(field_v8);
                     @field(result, field.name) = runtime.JSValue.jsNull;
+                } else if (null_converts_by_type and v8.v8_Value_IsNull(field_v8)) {
+                    // A present null of a member whose type is not nullable:
+                    // the value null, converted by that type (WebIDL 3.2.18
+                    // step 4.1.4.3). Null is a primitive: nothing keeps the
+                    // handle. An [EnforceRange] or [Clamp] member's null is
+                    // ToNumber's 0 - in range, and clamped to itself.
+                    const Payload = @typeInfo(field.type).optional.child;
+                    const converted_null = fromV8Value(Payload, allocator, isolate, context, field_v8);
+                    if (!member_handle_released) v8.v8_Value_Dispose(field_v8);
+                    @field(result, field.name) = try converted_null;
                 } else if (comptime interface_mod.argumentHandleIsKeptInValue(field.type)) {
                     // An `any` member, an `object` arm or a buffer source:
                     // kept only when the value still refers to it (a `.handle`

@@ -140,6 +140,7 @@ pub const XRSubImage = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRSubImageImpl, "deinit") and @hasDecl(XRSubImageImpl, "deinitOwn")) @compileError("XRSubImageImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRSubImageImpl, "deinit")) return XRSubImageImpl.deinit(instance);
         if (comptime @hasDecl(XRSubImageImpl, "deinitOwn")) XRSubImageImpl.deinitOwn(instance);
     }
@@ -162,6 +163,7 @@ pub const XRSubImage = struct {
         }
         const value = try XRSubImageImpl.get_viewport(instance);
         state.own.cached_viewport = value;
+        @import("dom").same_object_cache.made(instance, value, "viewport");
         return value;
     }
 };

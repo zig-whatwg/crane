@@ -1097,6 +1097,10 @@ pub const WorkerHost = struct {
             .on_realm = recordRealm,
             .data = self,
             .allocator = self.allocator,
+            // HTML 8.1.3.5 for [SecureContext] exposure (WebIDL 3.3.13): the
+            // owner's answer and the worker's own URL, as WorkerGlobalScope's
+            // isSecureContext answers it. Out of memory: not secure.
+            .secure_context = @import("secure_context.zig").ofWorker(self.allocator, self.script_url, self.owner_is_secure_context) catch false,
         });
         self.global_scope = made.global_scope;
 

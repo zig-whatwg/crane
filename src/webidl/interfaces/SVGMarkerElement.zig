@@ -416,6 +416,7 @@ pub const SVGMarkerElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGMarkerElementImpl, "deinit") and @hasDecl(SVGMarkerElementImpl, "deinitOwn")) @compileError("SVGMarkerElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGMarkerElementImpl, "deinit")) return SVGMarkerElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGMarkerElementImpl, "deinitOwn")) SVGMarkerElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -439,6 +440,7 @@ pub const SVGMarkerElement = struct {
         }
         const value = try SVGMarkerElementImpl.get_refX(instance);
         state.own.cached_refX = value;
+        @import("dom").same_object_cache.made(instance, value, "refX");
         return value;
     }
 
@@ -451,6 +453,7 @@ pub const SVGMarkerElement = struct {
         }
         const value = try SVGMarkerElementImpl.get_refY(instance);
         state.own.cached_refY = value;
+        @import("dom").same_object_cache.made(instance, value, "refY");
         return value;
     }
 
@@ -463,6 +466,7 @@ pub const SVGMarkerElement = struct {
         }
         const value = try SVGMarkerElementImpl.get_markerUnits(instance);
         state.own.cached_markerUnits = value;
+        @import("dom").same_object_cache.made(instance, value, "markerUnits");
         return value;
     }
 
@@ -475,6 +479,7 @@ pub const SVGMarkerElement = struct {
         }
         const value = try SVGMarkerElementImpl.get_markerWidth(instance);
         state.own.cached_markerWidth = value;
+        @import("dom").same_object_cache.made(instance, value, "markerWidth");
         return value;
     }
 
@@ -487,6 +492,7 @@ pub const SVGMarkerElement = struct {
         }
         const value = try SVGMarkerElementImpl.get_markerHeight(instance);
         state.own.cached_markerHeight = value;
+        @import("dom").same_object_cache.made(instance, value, "markerHeight");
         return value;
     }
 
@@ -499,6 +505,7 @@ pub const SVGMarkerElement = struct {
         }
         const value = try SVGMarkerElementImpl.get_orientType(instance);
         state.own.cached_orientType = value;
+        @import("dom").same_object_cache.made(instance, value, "orientType");
         return value;
     }
 
@@ -511,6 +518,7 @@ pub const SVGMarkerElement = struct {
         }
         const value = try SVGMarkerElementImpl.get_orientAngle(instance);
         state.own.cached_orientAngle = value;
+        @import("dom").same_object_cache.made(instance, value, "orientAngle");
         return value;
     }
 
@@ -531,6 +539,7 @@ pub const SVGMarkerElement = struct {
         }
         const value = try mixins.SVGFitToViewBox.get_viewBox(instance);
         state.own.cached_viewBox = value;
+        @import("dom").same_object_cache.made(instance, value, "viewBox");
         return value;
     }
 
@@ -543,6 +552,7 @@ pub const SVGMarkerElement = struct {
         }
         const value = try mixins.SVGFitToViewBox.get_preserveAspectRatio(instance);
         state.own.cached_preserveAspectRatio = value;
+        @import("dom").same_object_cache.made(instance, value, "preserveAspectRatio");
         return value;
     }
 

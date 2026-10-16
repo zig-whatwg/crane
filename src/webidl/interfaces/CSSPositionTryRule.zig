@@ -157,6 +157,7 @@ pub const CSSPositionTryRule = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(CSSPositionTryRuleImpl, "deinit") and @hasDecl(CSSPositionTryRuleImpl, "deinitOwn")) @compileError("CSSPositionTryRuleImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(CSSPositionTryRuleImpl, "deinit")) return CSSPositionTryRuleImpl.deinit(instance);
         if (comptime @hasDecl(CSSPositionTryRuleImpl, "deinitOwn")) CSSPositionTryRuleImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -184,6 +185,7 @@ pub const CSSPositionTryRule = struct {
         }
         const value = try CSSPositionTryRuleImpl.get_style(instance);
         state.own.cached_style = value;
+        @import("dom").same_object_cache.made(instance, value, "style");
         return value;
     }
 

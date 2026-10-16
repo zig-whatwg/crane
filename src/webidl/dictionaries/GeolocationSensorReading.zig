@@ -18,4 +18,8 @@ pub const GeolocationSensorReading = struct {
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{ "timestamp", "latitude", "longitude", "altitude", "accuracy", "altitudeAccuracy", "heading", "speed" };
+
+    /// Optional members whose IDL type is nullable: a present null is the
+    /// value null. Any other member's present null converts by its type.
+    pub const nullable_members = .{ "timestamp", "latitude", "longitude", "altitude", "accuracy", "altitudeAccuracy", "heading", "speed" };
 };

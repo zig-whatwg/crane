@@ -121,8 +121,6 @@ pub const Navigator = struct {
         };
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
-            .{ .name = "SecureContext" },
-            .{ .name = "IsolatedContext" },
         };
 
         /// Global contexts where this interface is exposed
@@ -331,6 +329,62 @@ pub const Navigator = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "clipboard",
+            "contacts",
+            "credentials",
+            "devicePosture",
+            "keyboard",
+            "login",
+            "managed",
+            "mediaDevices",
+            "preferences",
+            "presentation",
+            "attribution",
+            "wakeLock",
+            "serial",
+            "serviceWorker",
+            "deprecatedRunAdAuctionEnforcesKAnonymity",
+            "protectedAudience",
+            "virtualKeyboard",
+            "bluetooth",
+            "smartCard",
+            "hid",
+            "usb",
+            "xr",
+            "windowControlsOverlay",
+            "deviceMemory",
+            "storageBuckets",
+            "storage",
+            "userAgentData",
+            "locks",
+            "gpu",
+            "ml",
+            "getBattery",
+            "requestMediaKeySystemAccess",
+            "getInstalledRelatedApps",
+            "queryHandwritingRecognizer",
+            "createHandwritingRecognizer",
+            "joinAdInterestGroup",
+            "leaveAdInterestGroup",
+            "clearOriginJoinedAdInterestGroups",
+            "runAdAuction",
+            "canLoadAdAuctionFencedFrame",
+            "getInterestGroupAdAuctionData",
+            "createAuctionNonce",
+            "updateAdInterestGroups",
+            "share",
+            "canShare",
+            "requestMIDIAccess",
+            "setAppBadge",
+            "clearAppBadge",
+            "registerProtocolHandler",
+            "unregisterProtocolHandler",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -605,6 +659,7 @@ pub const Navigator = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(NavigatorImpl, "deinit") and @hasDecl(NavigatorImpl, "deinitOwn")) @compileError("NavigatorImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(NavigatorImpl, "deinit")) return NavigatorImpl.deinit(instance);
         if (comptime @hasDecl(NavigatorImpl, "deinitOwn")) NavigatorImpl.deinitOwn(instance);
     }
@@ -631,6 +686,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_clipboard(instance);
         state.own.cached_clipboard = value;
+        @import("dom").same_object_cache.made(instance, value, "clipboard");
         return value;
     }
 
@@ -643,6 +699,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_contacts(instance);
         state.own.cached_contacts = value;
+        @import("dom").same_object_cache.made(instance, value, "contacts");
         return value;
     }
 
@@ -655,10 +712,11 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_credentials(instance);
         state.own.cached_credentials = value;
+        @import("dom").same_object_cache.made(instance, value, "credentials");
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_devicePosture(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -667,6 +725,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_devicePosture(instance);
         state.own.cached_devicePosture = value;
+        @import("dom").same_object_cache.made(instance, value, "devicePosture");
         return value;
     }
 
@@ -679,6 +738,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_epubReadingSystem(instance);
         state.own.cached_epubReadingSystem = value;
+        @import("dom").same_object_cache.made(instance, value, "epubReadingSystem");
         return value;
     }
 
@@ -691,6 +751,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_geolocation(instance);
         state.own.cached_geolocation = value;
+        @import("dom").same_object_cache.made(instance, value, "geolocation");
         return value;
     }
 
@@ -703,6 +764,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_userActivation(instance);
         state.own.cached_userActivation = value;
+        @import("dom").same_object_cache.made(instance, value, "userActivation");
         return value;
     }
 
@@ -715,6 +777,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_ink(instance);
         state.own.cached_ink = value;
+        @import("dom").same_object_cache.made(instance, value, "ink");
         return value;
     }
 
@@ -731,6 +794,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_keyboard(instance);
         state.own.cached_keyboard = value;
+        @import("dom").same_object_cache.made(instance, value, "keyboard");
         return value;
     }
 
@@ -748,6 +812,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_managed(instance);
         state.own.cached_managed = value;
+        @import("dom").same_object_cache.made(instance, value, "managed");
         return value;
     }
 
@@ -760,6 +825,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_mediaCapabilities(instance);
         state.own.cached_mediaCapabilities = value;
+        @import("dom").same_object_cache.made(instance, value, "mediaCapabilities");
         return value;
     }
 
@@ -772,10 +838,11 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_mediaDevices(instance);
         state.own.cached_mediaDevices = value;
+        @import("dom").same_object_cache.made(instance, value, "mediaDevices");
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_preferences(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -784,6 +851,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_preferences(instance);
         state.own.cached_preferences = value;
+        @import("dom").same_object_cache.made(instance, value, "preferences");
         return value;
     }
 
@@ -796,6 +864,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_mediaSession(instance);
         state.own.cached_mediaSession = value;
+        @import("dom").same_object_cache.made(instance, value, "mediaSession");
         return value;
     }
 
@@ -808,6 +877,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_permissions(instance);
         state.own.cached_permissions = value;
+        @import("dom").same_object_cache.made(instance, value, "permissions");
         return value;
     }
 
@@ -824,6 +894,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_presentation(instance);
         state.own.cached_presentation = value;
+        @import("dom").same_object_cache.made(instance, value, "presentation");
         return value;
     }
 
@@ -836,10 +907,11 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_attribution(instance);
         state.own.cached_attribution = value;
+        @import("dom").same_object_cache.made(instance, value, "attribution");
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_wakeLock(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -848,10 +920,11 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_wakeLock(instance);
         state.own.cached_wakeLock = value;
+        @import("dom").same_object_cache.made(instance, value, "wakeLock");
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_serial(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -860,6 +933,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_serial(instance);
         state.own.cached_serial = value;
+        @import("dom").same_object_cache.made(instance, value, "serial");
         return value;
     }
 
@@ -872,14 +946,16 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_serviceWorker(instance);
         state.own.cached_serviceWorker = value;
+        @import("dom").same_object_cache.made(instance, value, "serviceWorker");
         return value;
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn get_deprecatedRunAdAuctionEnforcesKAnonymity(instance: *runtime.Instance) anyerror!bool {
         return try NavigatorImpl.get_deprecatedRunAdAuctionEnforcesKAnonymity(instance);
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_protectedAudience(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -888,6 +964,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_protectedAudience(instance);
         state.own.cached_protectedAudience = value;
+        @import("dom").same_object_cache.made(instance, value, "protectedAudience");
         return value;
     }
 
@@ -900,10 +977,11 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_virtualKeyboard(instance);
         state.own.cached_virtualKeyboard = value;
+        @import("dom").same_object_cache.made(instance, value, "virtualKeyboard");
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_bluetooth(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -912,10 +990,11 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_bluetooth(instance);
         state.own.cached_bluetooth = value;
+        @import("dom").same_object_cache.made(instance, value, "bluetooth");
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext], [IsolatedContext]
     pub fn get_smartCard(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -924,10 +1003,11 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_smartCard(instance);
         state.own.cached_smartCard = value;
+        @import("dom").same_object_cache.made(instance, value, "smartCard");
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_hid(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -936,10 +1016,11 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_hid(instance);
         state.own.cached_hid = value;
+        @import("dom").same_object_cache.made(instance, value, "hid");
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_usb(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -948,6 +1029,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_usb(instance);
         state.own.cached_usb = value;
+        @import("dom").same_object_cache.made(instance, value, "usb");
         return value;
     }
 
@@ -960,10 +1042,11 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_xr(instance);
         state.own.cached_xr = value;
+        @import("dom").same_object_cache.made(instance, value, "xr");
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_windowControlsOverlay(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -972,9 +1055,11 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_windowControlsOverlay(instance);
         state.own.cached_windowControlsOverlay = value;
+        @import("dom").same_object_cache.made(instance, value, "windowControlsOverlay");
         return value;
     }
 
+    /// Extended attributes: [SecureContext]
     pub const get_deviceMemory = mixins.NavigatorDeviceMemory.get_deviceMemory;
 
     pub const get_globalPrivacyControl = mixins.GlobalPrivacyControl.get_globalPrivacyControl;
@@ -1048,6 +1133,7 @@ pub const Navigator = struct {
         }
         const value = try mixins.NavigatorPlugins.get_plugins(instance);
         state.own.cached_plugins = value;
+        @import("dom").same_object_cache.made(instance, value, "plugins");
         return value;
     }
 
@@ -1060,6 +1146,7 @@ pub const Navigator = struct {
         }
         const value = try mixins.NavigatorPlugins.get_mimeTypes(instance);
         state.own.cached_mimeTypes = value;
+        @import("dom").same_object_cache.made(instance, value, "mimeTypes");
         return value;
     }
 
@@ -1078,10 +1165,11 @@ pub const Navigator = struct {
         }
         const value = try mixins.NavigatorNetworkInformation.get_connection(instance);
         state.own.cached_connection = value;
+        @import("dom").same_object_cache.made(instance, value, "connection");
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -1090,10 +1178,11 @@ pub const Navigator = struct {
         }
         const value = try mixins.NavigatorStorageBuckets.get_storageBuckets(instance);
         state.own.cached_storageBuckets = value;
+        @import("dom").same_object_cache.made(instance, value, "storageBuckets");
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_storage(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -1102,12 +1191,14 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_storage(instance);
         state.own.cached_storage = value;
+        @import("dom").same_object_cache.made(instance, value, "storage");
         return value;
     }
 
     /// Extended attributes: [SecureContext]
     pub const get_userAgentData = mixins.NavigatorUA.get_userAgentData;
 
+    /// Extended attributes: [SecureContext]
     pub const get_locks = mixins.NavigatorLocks.get_locks;
 
     pub const get_webdriver = mixins.NavigatorAutomationInformation.get_webdriver;
@@ -1121,6 +1212,7 @@ pub const Navigator = struct {
         }
         const value = try mixins.NavigatorGPU.get_gpu(instance);
         state.own.cached_gpu = value;
+        @import("dom").same_object_cache.made(instance, value, "gpu");
         return value;
     }
 
@@ -1133,6 +1225,7 @@ pub const Navigator = struct {
         }
         const value = try mixins.NavigatorML.get_ml(instance);
         state.own.cached_ml = value;
+        @import("dom").same_object_cache.made(instance, value, "ml");
         return value;
     }
 
@@ -1152,10 +1245,12 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_canShare(instance, data);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_createAuctionNonce(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try NavigatorImpl.call_createAuctionNonce(instance);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_queryHandwritingRecognizer(instance: *runtime.Instance, constraint: HandwritingModelConstraint) anyerror!runtime.JSValue {
         return try NavigatorImpl.call_queryHandwritingRecognizer(instance, constraint);
     }
@@ -1165,6 +1260,7 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_requestMIDIAccess(instance, options);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_joinAdInterestGroup(instance: *runtime.Instance, group: AuctionAdInterestGroup) anyerror!runtime.JSValue {
         return try NavigatorImpl.call_joinAdInterestGroup(instance, group);
     }
@@ -1174,6 +1270,7 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_taintEnabled(instance);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_runAdAuction(instance: *runtime.Instance, config: AuctionAdConfig) anyerror!runtime.JSValue {
         return try NavigatorImpl.call_runAdAuction(instance, config);
     }
@@ -1194,10 +1291,12 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_getGamepads(instance);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_createHandwritingRecognizer(instance: *runtime.Instance, constraint: HandwritingModelConstraint) anyerror!runtime.JSValue {
         return try NavigatorImpl.call_createHandwritingRecognizer(instance, constraint);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_canLoadAdAuctionFencedFrame(instance: *runtime.Instance) anyerror!bool {
         return try NavigatorImpl.call_canLoadAdAuctionFencedFrame(instance);
     }
@@ -1206,6 +1305,7 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_deprecatedReplaceInURN(instance, urnOrConfig, replacements);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_getInterestGroupAdAuctionData(instance: *runtime.Instance, config: webidl.Opt(AdAuctionDataConfig)) anyerror!runtime.JSValue {
         return try NavigatorImpl.call_getInterestGroupAdAuctionData(instance, config);
     }
@@ -1214,6 +1314,7 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_adAuctionComponents(instance, numAdComponents);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_updateAdInterestGroups(instance: *runtime.Instance) anyerror!void {
         return try NavigatorImpl.call_updateAdInterestGroups(instance);
     }
@@ -1234,16 +1335,19 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_getInstalledRelatedApps(instance);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_getBattery(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try NavigatorImpl.call_getBattery(instance);
     }
 
     pub const call_unregisterProtocolHandler = mixins.NavigatorContentUtils.call_unregisterProtocolHandler;
 
+    /// Extended attributes: [SecureContext]
     pub fn call_leaveAdInterestGroup(instance: *runtime.Instance, group: webidl.Opt(AuctionAdInterestGroupKey)) anyerror!runtime.JSValue {
         return try NavigatorImpl.call_leaveAdInterestGroup(instance, group);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_clearOriginJoinedAdInterestGroups(instance: *runtime.Instance, owner: runtime.USVString, interestGroupsToKeep: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
         return try NavigatorImpl.call_clearOriginJoinedAdInterestGroups(instance, owner, interestGroupsToKeep);
     }

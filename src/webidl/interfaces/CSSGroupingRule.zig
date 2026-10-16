@@ -154,6 +154,7 @@ pub const CSSGroupingRule = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(CSSGroupingRuleImpl, "deinit") and @hasDecl(CSSGroupingRuleImpl, "deinitOwn")) @compileError("CSSGroupingRuleImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(CSSGroupingRuleImpl, "deinit")) return CSSGroupingRuleImpl.deinit(instance);
         if (comptime @hasDecl(CSSGroupingRuleImpl, "deinitOwn")) CSSGroupingRuleImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -177,6 +178,7 @@ pub const CSSGroupingRule = struct {
         }
         const value = try CSSGroupingRuleImpl.get_cssRules(instance);
         state.own.cached_cssRules = value;
+        @import("dom").same_object_cache.made(instance, value, "cssRules");
         return value;
     }
 

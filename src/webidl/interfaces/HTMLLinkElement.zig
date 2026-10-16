@@ -416,6 +416,7 @@ pub const HTMLLinkElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(HTMLLinkElementImpl, "deinit") and @hasDecl(HTMLLinkElementImpl, "deinitOwn")) @compileError("HTMLLinkElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(HTMLLinkElementImpl, "deinit")) return HTMLLinkElementImpl.deinit(instance);
         if (comptime @hasDecl(HTMLLinkElementImpl, "deinitOwn")) HTMLLinkElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -509,6 +510,7 @@ pub const HTMLLinkElement = struct {
         }
         const value = if (comptime @hasDecl(HTMLLinkElementImpl, "get_relList")) try HTMLLinkElementImpl.get_relList(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "rel" });
         state.own.cached_relList = value;
+        @import("dom").same_object_cache.made(instance, value, "relList");
         return value;
     }
 
@@ -596,6 +598,7 @@ pub const HTMLLinkElement = struct {
         }
         const value = if (comptime @hasDecl(HTMLLinkElementImpl, "get_sizes")) try HTMLLinkElementImpl.get_sizes(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "sizes" });
         state.own.cached_sizes = value;
+        @import("dom").same_object_cache.made(instance, value, "sizes");
         return value;
     }
 
@@ -665,6 +668,7 @@ pub const HTMLLinkElement = struct {
         }
         const value = if (comptime @hasDecl(HTMLLinkElementImpl, "get_blocking")) try HTMLLinkElementImpl.get_blocking(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "blocking" });
         state.own.cached_blocking = value;
+        @import("dom").same_object_cache.made(instance, value, "blocking");
         return value;
     }
 

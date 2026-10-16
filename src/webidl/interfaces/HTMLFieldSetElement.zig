@@ -352,6 +352,7 @@ pub const HTMLFieldSetElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(HTMLFieldSetElementImpl, "deinit") and @hasDecl(HTMLFieldSetElementImpl, "deinitOwn")) @compileError("HTMLFieldSetElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(HTMLFieldSetElementImpl, "deinit")) return HTMLFieldSetElementImpl.deinit(instance);
         if (comptime @hasDecl(HTMLFieldSetElementImpl, "deinitOwn")) HTMLFieldSetElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -425,6 +426,7 @@ pub const HTMLFieldSetElement = struct {
         }
         const value = try HTMLFieldSetElementImpl.get_elements(instance);
         state.own.cached_elements = value;
+        @import("dom").same_object_cache.made(instance, value, "elements");
         return value;
     }
 
@@ -441,6 +443,7 @@ pub const HTMLFieldSetElement = struct {
         }
         const value = try HTMLFieldSetElementImpl.get_validity(instance);
         state.own.cached_validity = value;
+        @import("dom").same_object_cache.made(instance, value, "validity");
         return value;
     }
 

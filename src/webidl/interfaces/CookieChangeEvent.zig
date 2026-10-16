@@ -160,6 +160,7 @@ pub const CookieChangeEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(CookieChangeEventImpl, "deinit") and @hasDecl(CookieChangeEventImpl, "deinitOwn")) @compileError("CookieChangeEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(CookieChangeEventImpl, "deinit")) return CookieChangeEventImpl.deinit(instance);
         if (comptime @hasDecl(CookieChangeEventImpl, "deinitOwn")) CookieChangeEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);

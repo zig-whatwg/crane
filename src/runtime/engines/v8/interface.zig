@@ -950,11 +950,11 @@ pub fn anyArgumentHandle(comptime T: type, value: T) ?*anyopaque {
 /// (2026-10-02): AlgorithmIdentifier's, which SubtleCrypto reads during the
 /// call (normalize an algorithm) and never keeps.
 ///
-/// Arguments only. An attribute setter's `any` value is released by its
-/// binding once the setter returns (`setterValueIsBorrowed`, whose keepers
-/// were read the same way); a dictionary's `any` member and a sequence's
-/// element keep today's conservative answer (kept) until theirs are. A
-/// buffer source is released with the value instead, by `freeConvertedArg`.
+/// An attribute setter's `any` value is released by its binding once the
+/// setter returns (`setterValueIsBorrowed`, whose keepers were read the same
+/// way); a dictionary's `any` member with its dictionary (`freeConvertedArg`)
+/// and a sequence's `any` element with its sequence (`freeSequenceElement`).
+/// A buffer source is released with the value instead, by `freeConvertedArg`.
 pub fn releaseAnyArgument(comptime T: type, value: T) void {
     if (comptime !anyHandleIsKeptOnlyAsHandle(T)) return;
     if (anyArgumentHandle(T, value)) |handle| v8.v8_Value_Dispose(@ptrCast(@alignCast(handle)));
@@ -1422,10 +1422,8 @@ pub fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) 
         // Generic slice types (sequences) - allocated by fromV8Sequence
         // First free each element if needed, then free the slice itself
         const ElemType = @typeInfo(T).pointer.child;
-        if (comptime needsArgCleanup(ElemType)) {
-            for (arg) |elem| {
-                freeConvertedArg(ElemType, allocator, elem);
-            }
+        if (comptime needsArgCleanup(ElemType) or anyHandleIsKeptOnlyAsHandle(ElemType)) {
+            for (arg) |elem| freeSequenceElement(ElemType, allocator, elem);
         }
         // Free the slice itself (cast away const for freeing)
         if (arg.len > 0) {
@@ -1480,9 +1478,8 @@ pub fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) 
         // serializes, PopStateEvent now holds its state. Kept, an
         // object `detail` held its realm for the process's life
         // (realms3: a removed frame kept alive by a dropped
-        // CustomEvent). A sequence<any> element inside a dictionary
-        // keeps the conservative answer (kept): its keepers are not
-        // read yet.
+        // CustomEvent). A sequence<any> member's elements go with
+        // the sequence (`freeSequenceElement`).
         inline for (std.meta.fields(T)) |field| {
             if (comptime needsArgCleanup(field.type)) {
                 freeConvertedArg(field.type, allocator, @field(arg, field.name));
@@ -1509,6 +1506,29 @@ pub fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) 
     }
 }
 
+/// A sequence's element, once its sequence is freed - by `freeConvertedArg`
+/// with the sequence, or by a sequence conversion that failed part-way: what
+/// its conversion allocated, and, for an `any` element (or an `object` arm),
+/// the Get handle it still refers to (`releaseAnyArgument`).
+///
+/// The element is BORROWED for the call, as an `any` argument is (engine
+/// protocol rule 3): an impl that keeps one takes a hold of its own. Every
+/// impl that reads a sequence<any> or sequence<object> was read for that
+/// (binding3, 2026-10-16). Variadic `any...` arguments were already released
+/// one by one (`freeArgument`); the rest are dictionary members, and only
+/// StructuredSerializeOptions.transfer has readers - structuredClone and the
+/// postMessage steps of Window, MessagePort, Worker and
+/// DedicatedWorkerGlobalScope - which hand it to
+/// `engine.structuredSerializeWithTransfer`, whose walk takes Globals of its
+/// own. The other 25 dictionaries with such a member (WebGPU, WebNN, the
+/// WebCodecs inits, Bluetooth, Protected Audience, MediaTrackCapabilities)
+/// have no impl that reads it. Kept, each transferred object's handle was
+/// a 16 B Global per call, rooting the object for the agent's life.
+pub fn freeSequenceElement(comptime T: type, allocator: std.mem.Allocator, element: T) void {
+    freeConvertedArg(T, allocator, element);
+    releaseAnyArgument(T, element);
+}
+
 /// An operation's or constructor's argument, once the call is over:
 /// what its conversion allocated (`freeConvertedArg`) and, for an
 /// `any`, the handle it still refers to (`releaseAnyArgument`).
@@ -1533,6 +1553,26 @@ fn isMaterializedInterfaceObject(constructor: *v8.Function) bool {
 /// whose value is the function itself (an edge to itself, nothing kept).
 fn markMaterializedInterfaceObject(constructor: *v8.Function) void {
     v8.v8_Object_SetPrivateRef(@ptrCast(constructor), materialized_interface_object_key.ptr, materialized_interface_object_key.len, @ptrCast(constructor));
+}
+
+/// Whether `context`'s realm's environment settings object is a secure
+/// context (HTML 8.1.3.5; ContextData.secure_context, from the realm's
+/// options). A context with no realm record answers true: it exposes
+/// everything, as every realm did before the flag.
+pub fn realmIsSecureContext(context: *v8.Context) bool {
+    const realm = @import("context_manager.zig").get(context) orelse return true;
+    return realm.secure_context;
+}
+
+/// Delete each of `names` from `object`: WebIDL 3.3.13, the [SecureContext]
+/// constructs a realm that is not a secure context does not expose.
+pub fn hideNames(isolate: *v8.Isolate, context: *v8.Context, object: *v8.Object, comptime names: anytype) void {
+    inline for (names) |name| {
+        if (v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len))) |key| {
+            defer v8.v8_String_Dispose(key);
+            _ = v8.v8_Object_Delete(object, context, @ptrCast(key));
+        }
+    }
 }
 
 /// Whether `Interface` declares `name` as `fn (*runtime.Instance, u32)`: an
@@ -1730,6 +1770,21 @@ pub fn V8Interface(comptime Interface: type) type {
     const is_html_constructor = comptime @hasDecl(Interface, "html_constructor") and Interface.html_constructor;
 
     const is_global_interface = comptime isGlobalInterface(Meta);
+
+    // WebIDL 3.7.6/3.7.7, [Global]: a [Global] interface's regular attributes
+    // and operations - its mixins' included - are properties of the global
+    // object, not of the interface prototype object. The globals this engine
+    // gives them as own properties are Window's (protocol_realms
+    // bindWindowToGlobal, context_manager hydrateWindowContext) and the
+    // worker scopes' (worker_realm bindGlobalScope); their prototypes hold
+    // none. Other [Global] interfaces (the worklets', ShadowRealmGlobalScope)
+    // keep them on the prototype until their globals do the same.
+    // IndexedDB/idlharness: "Window.prototype must not have indexedDB".
+    const members_on_global_object = comptime is_global_interface and
+        (std.mem.eql(u8, interface_name, "Window") or
+            std.mem.eql(u8, interface_name, "DedicatedWorkerGlobalScope") or
+            std.mem.eql(u8, interface_name, "SharedWorkerGlobalScope") or
+            std.mem.eql(u8, interface_name, "ServiceWorkerGlobalScope"));
 
     return struct {
         const Self = @This();
@@ -2252,6 +2307,29 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             }
 
+            // WebIDL 3.3.13 and "exposed": a [SecureContext] member exists
+            // only in a realm whose settings object is a secure context. The
+            // template carries every member (one template serves every realm
+            // of the isolate, and the snapshot), so a realm that is not one
+            // drops them from its own interface object and prototype as they
+            // are made - lazily or eagerly, restored or afresh.
+            if (comptime @hasDecl(Meta, "secure_context_members") or @hasDecl(Meta, "secure_context_static_members")) {
+                if (!realmIsSecureContext(context)) {
+                    if (comptime @hasDecl(Meta, "secure_context_static_members")) {
+                        hideNames(isolate, context, @ptrCast(constructor), Meta.secure_context_static_members);
+                    }
+                    if (comptime @hasDecl(Meta, "secure_context_members")) {
+                        if (v8.v8_String_NewFromUtf8(isolate, "prototype", 9)) |prototype_key| {
+                            defer v8.v8_String_Dispose(prototype_key);
+                            if (v8.v8_Object_Get(@ptrCast(constructor), context, @ptrCast(prototype_key))) |prototype| {
+                                defer v8.v8_Value_Dispose(prototype);
+                                if (v8.v8_Value_IsObject(prototype)) hideNames(isolate, context, @ptrCast(prototype), Meta.secure_context_members);
+                            }
+                        }
+                    }
+                }
+            }
+
             return constructor;
         }
 
@@ -2420,6 +2498,16 @@ pub fn V8Interface(comptime Interface: type) type {
             }
         }
 
+        /// WebIDL 3.3.13: in a realm that is not a secure context, delete
+        /// this interface's [SecureContext] attributes and operations from
+        /// `object` - for a [Global] interface, the global object that holds
+        /// them as own properties.
+        pub fn hideSecureContextMembers(isolate: *v8.Isolate, context: *v8.Context, object: *v8.Object) void {
+            if (comptime !@hasDecl(Meta, "secure_context_members")) return;
+            if (realmIsSecureContext(context)) return;
+            hideNames(isolate, context, object, Meta.secure_context_members);
+        }
+
         /// Register interface properties as own properties on an existing V8 object
         ///
         /// This is used for [Global] interfaces (like Window) where the properties
@@ -2444,14 +2532,14 @@ pub fn V8Interface(comptime Interface: type) type {
                 const getter_name: []const u8 = prop[1];
                 const setter_name: ?[]const u8 = prop[2];
 
-                // CRITICAL: Skip self, window, frames - these MUST be data properties
-                // equal to globalThis for testharness.js compatibility.
-                // If we register them as accessors here, they return WindowProxy
-                // which is !== globalThis, breaking testharness.js expose() function.
-                // These are set as data properties in hydrateWindowContext() instead.
-                if (comptime std.mem.eql(u8, prop_name, "self") or
-                    std.mem.eql(u8, prop_name, "window") or
-                    std.mem.eql(u8, prop_name, "frames"))
+                // `self` and `frames` are [Replaceable]: the realm defines them
+                // as own data properties whose value is the global itself
+                // (protocol_realms bindWindowToGlobal), which testharness.js's
+                // `(function (global_scope) { ... })(self)` needs. `window` is
+                // an accessor like any other member, the global's own: its
+                // getter answers the global (answerWindowGetter).
+                if (comptime is_global_interface and (std.mem.eql(u8, prop_name, "self") or
+                    std.mem.eql(u8, prop_name, "frames")))
                 {
                     continue;
                 }
@@ -2895,6 +2983,9 @@ pub fn V8Interface(comptime Interface: type) type {
             // eager_properties is tuple array: .{ "propName", "get_propName", "set_propName" or null }
             // IMPORTANT: Use callbacks from EagerCallbackStore - SAME callbacks registered in registerExternalReferences()
             inline for (eager_properties, 0..) |prop, prop_idx| {
+                // A [Global] interface's are the global object's own instead
+                // (members_on_global_object).
+                if (comptime members_on_global_object) continue;
                 const prop_name: []const u8 = prop[0];
 
                 const prop_name_str = v8.v8_String_NewFromUtf8(
@@ -3119,8 +3210,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 const is_async_iterable_values = comptime (@hasDecl(Meta, "async_iterable") and
                     std.mem.eql(u8, method_name, "values"));
 
-                // If we have own_methods, check membership; otherwise register all
-                const should_register = comptime (!is_async_iterable_values and
+                // If we have own_methods, check membership; otherwise register all.
+                // A [Global] interface's are the global object's own instead
+                // (members_on_global_object).
+                const should_register = comptime (!members_on_global_object and !is_async_iterable_values and
                     (own_method_names.len == 0 or own_method_set.has(method_name)));
 
                 if (should_register) {

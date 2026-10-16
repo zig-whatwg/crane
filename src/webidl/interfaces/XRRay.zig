@@ -154,6 +154,7 @@ pub const XRRay = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRRayImpl, "deinit") and @hasDecl(XRRayImpl, "deinitOwn")) @compileError("XRRayImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRRayImpl, "deinit")) return XRRayImpl.deinit(instance);
         if (comptime @hasDecl(XRRayImpl, "deinitOwn")) XRRayImpl.deinitOwn(instance);
     }
@@ -203,6 +204,7 @@ pub const XRRay = struct {
         }
         const value = try XRRayImpl.get_origin(instance);
         state.own.cached_origin = value;
+        @import("dom").same_object_cache.made(instance, value, "origin");
         return value;
     }
 
@@ -215,6 +217,7 @@ pub const XRRay = struct {
         }
         const value = try XRRayImpl.get_direction(instance);
         state.own.cached_direction = value;
+        @import("dom").same_object_cache.made(instance, value, "direction");
         return value;
     }
 

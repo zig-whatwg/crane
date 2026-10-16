@@ -161,6 +161,7 @@ pub const XRReferenceSpaceEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRReferenceSpaceEventImpl, "deinit") and @hasDecl(XRReferenceSpaceEventImpl, "deinitOwn")) @compileError("XRReferenceSpaceEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRReferenceSpaceEventImpl, "deinit")) return XRReferenceSpaceEventImpl.deinit(instance);
         if (comptime @hasDecl(XRReferenceSpaceEventImpl, "deinitOwn")) XRReferenceSpaceEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -192,6 +193,7 @@ pub const XRReferenceSpaceEvent = struct {
         }
         const value = try XRReferenceSpaceEventImpl.get_referenceSpace(instance);
         state.own.cached_referenceSpace = value;
+        @import("dom").same_object_cache.made(instance, value, "referenceSpace");
         return value;
     }
 
@@ -204,6 +206,7 @@ pub const XRReferenceSpaceEvent = struct {
         }
         const value = try XRReferenceSpaceEventImpl.get_transform(instance);
         state.own.cached_transform = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "transform");
         return value;
     }
 };

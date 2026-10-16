@@ -111,6 +111,7 @@ pub const DocumentOrShadowRoot = struct {
         }
         const value = try DocumentOrShadowRootImpl.get_styleSheets(instance);
         state.own.cached_styleSheets = value;
+        @import("dom").same_object_cache.made(instance, value, "styleSheets");
         return value;
     }
 

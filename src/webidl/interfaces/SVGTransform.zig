@@ -227,6 +227,7 @@ pub const SVGTransform = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGTransformImpl, "deinit") and @hasDecl(SVGTransformImpl, "deinitOwn")) @compileError("SVGTransformImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGTransformImpl, "deinit")) return SVGTransformImpl.deinit(instance);
         if (comptime @hasDecl(SVGTransformImpl, "deinitOwn")) SVGTransformImpl.deinitOwn(instance);
     }
@@ -253,6 +254,7 @@ pub const SVGTransform = struct {
         }
         const value = try SVGTransformImpl.get_matrix(instance);
         state.own.cached_matrix = value;
+        @import("dom").same_object_cache.made(instance, value, "matrix");
         return value;
     }
 

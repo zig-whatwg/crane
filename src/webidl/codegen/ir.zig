@@ -339,7 +339,14 @@ pub const IR = struct {
             try rest.append(self.allocator, member);
         }
         var trimmed = partial;
-        trimmed.members = rest.items;
+        // A partial's [SecureContext] (and [IsolatedContext]) is its
+        // members', not the interface's (WebIDL 3.3.13: on a partial
+        // interface it "indicates that ... the members declared on it" are
+        // exposed only in a secure context). Merged into the interface, it
+        // made Window and Navigator [SecureContext] themselves.
+        const arena = self.merged.allocator();
+        trimmed.members = try withMemberScopedExtAttrs(arena, rest.items, partial.extAttrs);
+        trimmed.extAttrs = try withoutMemberScopedExtAttrs(arena, partial.extAttrs);
         try merged.mergePartial(self.allocator, trimmed);
     }
 
@@ -564,8 +571,12 @@ pub const IR = struct {
             try target_iface.?.mixins.append(self.allocator, mixin_name);
 
             // The mixin's members become the interface's own (WebIDL
-            // `includes`), each remembering the mixin it was inherited from.
-            for (mixin_iface.?.members.items) |member| {
+            // `includes`), each remembering the mixin it was inherited from -
+            // and carrying the mixin's [SecureContext]: on an interface mixin
+            // it scopes the members it declares (WebIDL 3.3.13), so
+            // NavigatorLocks' `locks` is a secure-context member of Navigator.
+            const scoped = try withMemberScopedExtAttrs(self.merged.allocator(), mixin_iface.?.members.items, mixin_iface.?.extAttrs.items);
+            for (scoped) |member| {
                 var inherited = member;
                 if (inherited.attribute) |*attr| attr.mixin = mixin_name;
                 if (inherited.operation) |*op| op.mixin = mixin_name;
@@ -602,6 +613,52 @@ pub const IR = struct {
 fn dictionaryMemberNamed(members: []const types.DictionaryMember, name: []const u8) bool {
     for (members) |member| if (std.mem.eql(u8, member.name, name)) return true;
     return false;
+}
+
+/// Extended attributes that, on a partial interface or an interface mixin,
+/// apply to the members it declares rather than to the interface (WebIDL
+/// 3.3.13 [SecureContext]; [IsolatedContext] the same way).
+pub const member_scoped_ext_attrs = [_][]const u8{ "SecureContext", "IsolatedContext" };
+
+fn isMemberScoped(name: []const u8) bool {
+    for (member_scoped_ext_attrs) |scoped| {
+        if (std.mem.eql(u8, scoped, name)) return true;
+    }
+    return false;
+}
+
+/// `ext_attrs` without the member-scoped ones.
+fn withoutMemberScopedExtAttrs(arena: std.mem.Allocator, ext_attrs: []const types.ExtendedAttribute) ![]types.ExtendedAttribute {
+    var kept = std.ArrayList(types.ExtendedAttribute).empty;
+    for (ext_attrs) |ext_attr| {
+        if (!isMemberScoped(ext_attr.name)) try kept.append(arena, ext_attr);
+    }
+    return kept.items;
+}
+
+/// `members`, each attribute, operation and constant given the member-scoped
+/// extended attributes of `container_ext_attrs` it does not have already.
+/// The slice is `members` itself when there are none.
+pub fn withMemberScopedExtAttrs(arena: std.mem.Allocator, members: []const types.Member, container_ext_attrs: []const types.ExtendedAttribute) ![]types.Member {
+    var scoped = std.ArrayList(types.ExtendedAttribute).empty;
+    for (container_ext_attrs) |ext_attr| {
+        if (isMemberScoped(ext_attr.name)) try scoped.append(arena, ext_attr);
+    }
+    if (scoped.items.len == 0) return @constCast(members);
+    const result = try arena.dupe(types.Member, members);
+    for (result) |*member| {
+        if (member.attribute) |*attr| attr.extAttrs = try addMissing(arena, attr.extAttrs, scoped.items);
+        if (member.operation) |*op| op.extAttrs = try addMissing(arena, op.extAttrs, scoped.items);
+        if (member.constant) |*constant| constant.extAttrs = try addMissing(arena, constant.extAttrs, scoped.items);
+    }
+    return result;
+}
+
+fn addMissing(arena: std.mem.Allocator, ext_attrs: []types.ExtendedAttribute, extra: []const types.ExtendedAttribute) ![]types.ExtendedAttribute {
+    var all = std.ArrayList(types.ExtendedAttribute).empty;
+    try all.appendSlice(arena, ext_attrs);
+    try appendMissingExtAttrs(arena, &all, extra);
+    return all.items;
 }
 
 /// Append each of `partial`'s extended attributes `ext_attrs` has none of that name of.

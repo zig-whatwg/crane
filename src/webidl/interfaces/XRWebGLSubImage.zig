@@ -182,6 +182,7 @@ pub const XRWebGLSubImage = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRWebGLSubImageImpl, "deinit") and @hasDecl(XRWebGLSubImageImpl, "deinitOwn")) @compileError("XRWebGLSubImageImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRWebGLSubImageImpl, "deinit")) return XRWebGLSubImageImpl.deinit(instance);
         if (comptime @hasDecl(XRWebGLSubImageImpl, "deinitOwn")) XRWebGLSubImageImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -205,6 +206,7 @@ pub const XRWebGLSubImage = struct {
         }
         const value = try XRWebGLSubImageImpl.get_colorTexture(instance);
         state.own.cached_colorTexture = value;
+        @import("dom").same_object_cache.made(instance, value, "colorTexture");
         return value;
     }
 
@@ -217,6 +219,7 @@ pub const XRWebGLSubImage = struct {
         }
         const value = try XRWebGLSubImageImpl.get_depthStencilTexture(instance);
         state.own.cached_depthStencilTexture = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "depthStencilTexture");
         return value;
     }
 
@@ -229,6 +232,7 @@ pub const XRWebGLSubImage = struct {
         }
         const value = try XRWebGLSubImageImpl.get_motionVectorTexture(instance);
         state.own.cached_motionVectorTexture = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "motionVectorTexture");
         return value;
     }
 

@@ -156,6 +156,7 @@ pub const XRPose = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRPoseImpl, "deinit") and @hasDecl(XRPoseImpl, "deinitOwn")) @compileError("XRPoseImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRPoseImpl, "deinit")) return XRPoseImpl.deinit(instance);
         if (comptime @hasDecl(XRPoseImpl, "deinitOwn")) XRPoseImpl.deinitOwn(instance);
     }
@@ -178,6 +179,7 @@ pub const XRPose = struct {
         }
         const value = try XRPoseImpl.get_transform(instance);
         state.own.cached_transform = value;
+        @import("dom").same_object_cache.made(instance, value, "transform");
         return value;
     }
 
@@ -190,6 +192,7 @@ pub const XRPose = struct {
         }
         const value = try XRPoseImpl.get_linearVelocity(instance);
         state.own.cached_linearVelocity = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "linearVelocity");
         return value;
     }
 
@@ -202,6 +205,7 @@ pub const XRPose = struct {
         }
         const value = try XRPoseImpl.get_angularVelocity(instance);
         state.own.cached_angularVelocity = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "angularVelocity");
         return value;
     }
 

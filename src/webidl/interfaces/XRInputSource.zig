@@ -178,6 +178,7 @@ pub const XRInputSource = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRInputSourceImpl, "deinit") and @hasDecl(XRInputSourceImpl, "deinitOwn")) @compileError("XRInputSourceImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRInputSourceImpl, "deinit")) return XRInputSourceImpl.deinit(instance);
         if (comptime @hasDecl(XRInputSourceImpl, "deinitOwn")) XRInputSourceImpl.deinitOwn(instance);
     }
@@ -208,6 +209,7 @@ pub const XRInputSource = struct {
         }
         const value = try XRInputSourceImpl.get_targetRaySpace(instance);
         state.own.cached_targetRaySpace = value;
+        @import("dom").same_object_cache.made(instance, value, "targetRaySpace");
         return value;
     }
 
@@ -220,6 +222,7 @@ pub const XRInputSource = struct {
         }
         const value = try XRInputSourceImpl.get_gripSpace(instance);
         state.own.cached_gripSpace = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "gripSpace");
         return value;
     }
 
@@ -241,6 +244,7 @@ pub const XRInputSource = struct {
         }
         const value = try XRInputSourceImpl.get_gamepad(instance);
         state.own.cached_gamepad = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "gamepad");
         return value;
     }
 
@@ -253,6 +257,7 @@ pub const XRInputSource = struct {
         }
         const value = try XRInputSourceImpl.get_hand(instance);
         state.own.cached_hand = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "hand");
         return value;
     }
 };

@@ -720,6 +720,13 @@ pub const WindowRealmOptions = struct {
     /// WindowProxy and Location as a same-origin one would.
     is_platform_object_same_origin: ?*const fn (host: ?*anyopaque, current: Context, object: *Instance) bool = null,
     host: ?*anyopaque = null,
+    /// Whether the realm's environment settings object is a secure context
+    /// (HTML 8.1.3.5), as the host decides it for the document the realm is
+    /// made for (html.secure_context.ofDocument). The realm records it
+    /// (ContextData.secure_context); with false it exposes no [SecureContext]
+    /// interface object or member (WebIDL 3.3.13). True, the default, keeps
+    /// every construct exposed, as before.
+    secure_context: bool = true,
 };
 
 /// An agent's heap, for the diagnostics tier.
@@ -1188,6 +1195,13 @@ pub inline fn releaseModuleRecord(record: *ModuleRecord) void {
 /// (prepare to run script there), with the callback's context as the
 /// incumbent (prepare to run a callback), then cleans up. `callback` is
 /// BORROWED.
+///
+/// A callback whose associated realm's global is a Window whose associated
+/// Document is not fully active - a realm destroyWindowRealm detached: a
+/// navigation replaced its document, or its navigable was destroyed - is not
+/// run: OperationFailed, with nothing called, thrown or reported. DOM inner
+/// invoke step 8 skips such a listener; Blink (IsCallbackFunctionRunnable) and
+/// Gecko (CallbackObject::CallSetup) refuse every such callback.
 pub inline fn invokeCallbackFunction(realm: Context, callback: *const CallbackFunction, this_arg: CallbackThis, args: []const JSValue, behavior: ExceptionBehavior) Error!Completion {
     return impl.invokeCallbackFunction(realm, callback, this_arg, args, behavior);
 }
@@ -1216,13 +1230,18 @@ pub inline fn invokeCallbackFunction(realm: Context, callback: *const CallbackFu
 /// a [CEReactions] end can run script, and so a collection.
 /// `keepPlatformObjectAlive` is counted per owner (pending activity), so a
 /// second, independent keep is safe: each owner releases only its own.
+///
+/// A callback of a Window whose associated Document is not fully active is
+/// not run, as for invokeCallbackFunction: OperationFailed.
 pub inline fn constructCallbackFunction(realm: Context, callback: *const CallbackFunction, args: []const JSValue) Error!Completion {
     return impl.constructCallbackFunction(realm, callback, args);
 }
 
 /// WebIDL "call a user object's operation": a callback interface value
 /// called as a function, or through its `operation`. `realm` and the
-/// incumbent as for invokeCallbackFunction; `callback` is BORROWED.
+/// incumbent as for invokeCallbackFunction; `callback` is BORROWED. A
+/// callback of a Window whose associated Document is not fully active is not
+/// run, as for invokeCallbackFunction: OperationFailed.
 pub inline fn callUserObjectOperation(realm: Context, callback: *const CallbackInterface, operation: []const u8, this_arg: CallbackThis, args: []const JSValue, behavior: ExceptionBehavior) Error!Completion {
     return impl.callUserObjectOperation(realm, callback, operation, this_arg, args, behavior);
 }

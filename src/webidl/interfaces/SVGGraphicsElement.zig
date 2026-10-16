@@ -324,6 +324,7 @@ pub const SVGGraphicsElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGGraphicsElementImpl, "deinit") and @hasDecl(SVGGraphicsElementImpl, "deinitOwn")) @compileError("SVGGraphicsElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGGraphicsElementImpl, "deinit")) return SVGGraphicsElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGGraphicsElementImpl, "deinitOwn")) SVGGraphicsElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -347,6 +348,7 @@ pub const SVGGraphicsElement = struct {
         }
         const value = try SVGGraphicsElementImpl.get_transform(instance);
         state.own.cached_transform = value;
+        @import("dom").same_object_cache.made(instance, value, "transform");
         return value;
     }
 
@@ -359,6 +361,7 @@ pub const SVGGraphicsElement = struct {
         }
         const value = try mixins.SVGTests.get_requiredExtensions(instance);
         state.own.cached_requiredExtensions = value;
+        @import("dom").same_object_cache.made(instance, value, "requiredExtensions");
         return value;
     }
 
@@ -371,6 +374,7 @@ pub const SVGGraphicsElement = struct {
         }
         const value = try mixins.SVGTests.get_systemLanguage(instance);
         state.own.cached_systemLanguage = value;
+        @import("dom").same_object_cache.made(instance, value, "systemLanguage");
         return value;
     }
 

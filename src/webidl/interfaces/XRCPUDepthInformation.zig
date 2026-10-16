@@ -149,6 +149,7 @@ pub const XRCPUDepthInformation = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRCPUDepthInformationImpl, "deinit") and @hasDecl(XRCPUDepthInformationImpl, "deinitOwn")) @compileError("XRCPUDepthInformationImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRCPUDepthInformationImpl, "deinit")) return XRCPUDepthInformationImpl.deinit(instance);
         if (comptime @hasDecl(XRCPUDepthInformationImpl, "deinitOwn")) XRCPUDepthInformationImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);

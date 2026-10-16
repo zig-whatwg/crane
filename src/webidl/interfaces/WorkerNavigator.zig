@@ -65,8 +65,6 @@ pub const WorkerNavigator = struct {
         };
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Worker" } },
-            .{ .name = "SecureContext" },
-            .{ .name = "IsolatedContext" },
         };
 
         /// Global contexts where this interface is exposed
@@ -161,6 +159,26 @@ pub const WorkerNavigator = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "serial",
+            "serviceWorker",
+            "smartCard",
+            "hid",
+            "usb",
+            "deviceMemory",
+            "storageBuckets",
+            "storage",
+            "userAgentData",
+            "locks",
+            "gpu",
+            "ml",
+            "setAppBadge",
+            "clearAppBadge",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -324,6 +342,7 @@ pub const WorkerNavigator = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(WorkerNavigatorImpl, "deinit") and @hasDecl(WorkerNavigatorImpl, "deinitOwn")) @compileError("WorkerNavigatorImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(WorkerNavigatorImpl, "deinit")) return WorkerNavigatorImpl.deinit(instance);
         if (comptime @hasDecl(WorkerNavigatorImpl, "deinitOwn")) WorkerNavigatorImpl.deinitOwn(instance);
     }
@@ -346,6 +365,7 @@ pub const WorkerNavigator = struct {
         }
         const value = try WorkerNavigatorImpl.get_mediaCapabilities(instance);
         state.own.cached_mediaCapabilities = value;
+        @import("dom").same_object_cache.made(instance, value, "mediaCapabilities");
         return value;
     }
 
@@ -358,10 +378,11 @@ pub const WorkerNavigator = struct {
         }
         const value = try WorkerNavigatorImpl.get_permissions(instance);
         state.own.cached_permissions = value;
+        @import("dom").same_object_cache.made(instance, value, "permissions");
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_serial(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -370,6 +391,7 @@ pub const WorkerNavigator = struct {
         }
         const value = try WorkerNavigatorImpl.get_serial(instance);
         state.own.cached_serial = value;
+        @import("dom").same_object_cache.made(instance, value, "serial");
         return value;
     }
 
@@ -382,10 +404,11 @@ pub const WorkerNavigator = struct {
         }
         const value = try WorkerNavigatorImpl.get_serviceWorker(instance);
         state.own.cached_serviceWorker = value;
+        @import("dom").same_object_cache.made(instance, value, "serviceWorker");
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext], [IsolatedContext]
     pub fn get_smartCard(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -394,10 +417,11 @@ pub const WorkerNavigator = struct {
         }
         const value = try WorkerNavigatorImpl.get_smartCard(instance);
         state.own.cached_smartCard = value;
+        @import("dom").same_object_cache.made(instance, value, "smartCard");
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_hid(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -406,10 +430,11 @@ pub const WorkerNavigator = struct {
         }
         const value = try WorkerNavigatorImpl.get_hid(instance);
         state.own.cached_hid = value;
+        @import("dom").same_object_cache.made(instance, value, "hid");
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_usb(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -418,9 +443,11 @@ pub const WorkerNavigator = struct {
         }
         const value = try WorkerNavigatorImpl.get_usb(instance);
         state.own.cached_usb = value;
+        @import("dom").same_object_cache.made(instance, value, "usb");
         return value;
     }
 
+    /// Extended attributes: [SecureContext]
     pub const get_deviceMemory = mixins.NavigatorDeviceMemory.get_deviceMemory;
 
     pub const get_globalPrivacyControl = mixins.GlobalPrivacyControl.get_globalPrivacyControl;
@@ -494,10 +521,11 @@ pub const WorkerNavigator = struct {
         }
         const value = try mixins.NavigatorNetworkInformation.get_connection(instance);
         state.own.cached_connection = value;
+        @import("dom").same_object_cache.made(instance, value, "connection");
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -506,10 +534,11 @@ pub const WorkerNavigator = struct {
         }
         const value = try mixins.NavigatorStorageBuckets.get_storageBuckets(instance);
         state.own.cached_storageBuckets = value;
+        @import("dom").same_object_cache.made(instance, value, "storageBuckets");
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_storage(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -518,12 +547,14 @@ pub const WorkerNavigator = struct {
         }
         const value = try WorkerNavigatorImpl.get_storage(instance);
         state.own.cached_storage = value;
+        @import("dom").same_object_cache.made(instance, value, "storage");
         return value;
     }
 
     /// Extended attributes: [SecureContext]
     pub const get_userAgentData = mixins.NavigatorUA.get_userAgentData;
 
+    /// Extended attributes: [SecureContext]
     pub const get_locks = mixins.NavigatorLocks.get_locks;
 
     /// Extended attributes: [SameObject], [SecureContext]
@@ -535,6 +566,7 @@ pub const WorkerNavigator = struct {
         }
         const value = try mixins.NavigatorGPU.get_gpu(instance);
         state.own.cached_gpu = value;
+        @import("dom").same_object_cache.made(instance, value, "gpu");
         return value;
     }
 
@@ -547,6 +579,7 @@ pub const WorkerNavigator = struct {
         }
         const value = try mixins.NavigatorML.get_ml(instance);
         state.own.cached_ml = value;
+        @import("dom").same_object_cache.made(instance, value, "ml");
         return value;
     }
 

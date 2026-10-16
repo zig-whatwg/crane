@@ -3906,7 +3906,10 @@ fn attachNavigableContext(
     creator: ?*runtime.Instance,
     allocator: std.mem.Allocator,
 ) ?runtime.Context {
-    const realm = attachRealm(integration, parent, browsing_context, origin, .new_window_proxy, allocator) orelse return null;
+    // HTML 8.1.3.5 for the initial about:blank document: its creator's
+    // answer - the parent's for a frame, the opener's for a popup (`parent`
+    // is the opener's realm then) - as html.secure_context.ofDocument has it.
+    const realm = attachRealm(integration, parent, browsing_context, origin, .new_window_proxy, parent.secure_context, allocator) orelse return null;
 
     // "Create a new browsing context and document" step 4: "If creator is
     // non-null, then set creatorBaseURL to creator's document base URL" -
@@ -3984,6 +3987,7 @@ fn attachRealm(
     browsing_context: *html_core.BrowsingContext,
     origin: ?[]const u8,
     global_this: engine.GlobalThis,
+    secure_context: bool,
     allocator: std.mem.Allocator,
 ) ?runtime.Context {
     // HTML "create a new realm", made while the parent's script may be
@@ -4006,6 +4010,10 @@ fn attachRealm(
         // host (this one lives only while the realm is made).
         .is_platform_object_same_origin = if (engine.capabilities.cross_origin_objects != .unsupported) dom_module.cross_origin.isPlatformObjectSameOrigin else null,
         .host = &frame_window,
+        // HTML 8.1.3.5, for [SecureContext] exposure (WebIDL 3.3.13): the
+        // caller's answer for the document the realm is made for. A realm
+        // reused for a later same-origin document keeps it.
+        .secure_context = secure_context,
     }) catch |err| {
         log.debug("a frame's realm was not made: {}", .{err});
         return null;
@@ -4098,7 +4106,7 @@ fn realmForNewDocument(integration: *IFrameIntegration, new_origin: html_core.Or
     const old_document = activeDocumentOf(integration) orelse return true;
     const old_origin = if (integration.window_proxy) |proxy| proxy.document_origin else html_core.Origin.createOpaque();
     if (document_lifecycle.isInitialAboutBlank(old_document) and old_origin.isSameOrigin(new_origin)) return true;
-    return replaceRealm(integration);
+    return replaceRealm(integration, new_origin);
 }
 
 /// Give the navigable a new realm and Window, keeping its WindowProxy: the
@@ -4118,7 +4126,7 @@ fn realmForNewDocument(integration: *IFrameIntegration, new_origin: html_core.Or
 /// navigations of one iframe kept 200 realms (crane/td-frame-navigation-
 /// churn.html). Code still running in it sees a detached global (V8 gives
 /// API callbacks a holder with no Window).
-fn replaceRealm(integration: *IFrameIntegration) bool {
+fn replaceRealm(integration: *IFrameIntegration, new_origin: html_core.Origin) bool {
     const old: runtime.Context = @ptrCast(@alignCast(integration.context_cleanup_data orelse return false));
     const browsing_context = integration.browsing_context orelse return false;
     const allocator = integration.allocator;
@@ -4139,8 +4147,9 @@ fn replaceRealm(integration: *IFrameIntegration) bool {
     // The old realm leaves the integration with its Window and documents;
     // the new one is built around its WindowProxy (engine: window_proxy_of
     // detaches it).
+    const secure_context = newDocumentIsSecureContext(browsing_context.parent != null, parent.secure_context, new_origin, allocator);
     const old_data = integration.releaseCurrentRealm() orelse return false;
-    if (attachRealm(integration, parent, browsing_context, origin_copy, .{ .window_proxy_of = old }, allocator) == null) {
+    if (attachRealm(integration, parent, browsing_context, origin_copy, .{ .window_proxy_of = old }, secure_context, allocator) == null) {
         // No new realm: the old one ends with the integration, as every
         // replaced realm once did.
         integration.keepRetiredRealm(old_data) catch engine.destroyWindowRealm(old, .global_detached);
@@ -4150,6 +4159,25 @@ fn replaceRealm(integration: *IFrameIntegration) bool {
     // realm while script reaches it.
     engine.destroyWindowRealm(old, .global_detached);
     return true;
+}
+
+/// HTML 8.1.3.5 for the realm of a document of `new_origin` that replaces a
+/// navigable's (html.secure_context.ofDocument: its own URL potentially
+/// trustworthy, and its parent's answer `upstream` when it has a parent).
+/// The new document's URL is not known here, only its origin, so a tuple
+/// origin is asked Secure Contexts 3.1 ("Is origin potentially
+/// trustworthy?"), and an opaque one - a data: or srcdoc document, a
+/// sandboxed one - takes `upstream`, the parent's (or a popup's opener's)
+/// answer: a data: or about: URL is potentially trustworthy (3.2), and an
+/// insecure sandboxed frame of a secure page is blocked as mixed content
+/// before it commits. Out of memory answers not secure: less is exposed,
+/// never more.
+fn newDocumentIsSecureContext(has_parent: bool, upstream: bool, new_origin: html_core.Origin, allocator: std.mem.Allocator) bool {
+    if (has_parent and !upstream) return false;
+    if (new_origin.is_opaque) return upstream;
+    const serialized = std.fmt.allocPrint(allocator, "{s}://{s}", .{ new_origin.scheme, new_origin.host }) catch return false;
+    defer allocator.free(serialized);
+    return fetch_mod.mixed_content.isOriginAuthenticated(allocator, serialized) catch false;
 }
 
 /// dom.auxiliary_navigables: HTML "definitely close" the top-level

@@ -367,6 +367,7 @@ pub const HTMLOutputElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(HTMLOutputElementImpl, "deinit") and @hasDecl(HTMLOutputElementImpl, "deinitOwn")) @compileError("HTMLOutputElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(HTMLOutputElementImpl, "deinit")) return HTMLOutputElementImpl.deinit(instance);
         if (comptime @hasDecl(HTMLOutputElementImpl, "deinitOwn")) HTMLOutputElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -400,6 +401,7 @@ pub const HTMLOutputElement = struct {
         }
         const value = if (comptime @hasDecl(HTMLOutputElementImpl, "get_htmlFor")) try HTMLOutputElementImpl.get_htmlFor(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "for" });
         state.own.cached_htmlFor = value;
+        @import("dom").same_object_cache.made(instance, value, "htmlFor");
         return value;
     }
 

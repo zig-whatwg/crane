@@ -10,4 +10,8 @@ pub const RTCIceCandidateInit = struct {
     sdpMid: ?runtime.DOMString = null,
     sdpMLineIndex: ?u16 = null,
     usernameFragment: ?runtime.DOMString = null,
+
+    /// Optional members whose IDL type is nullable: a present null is the
+    /// value null. Any other member's present null converts by its type.
+    pub const nullable_members = .{ "sdpMid", "sdpMLineIndex", "usernameFragment" };
 };

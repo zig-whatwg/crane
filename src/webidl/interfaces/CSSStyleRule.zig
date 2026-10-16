@@ -169,6 +169,7 @@ pub const CSSStyleRule = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(CSSStyleRuleImpl, "deinit") and @hasDecl(CSSStyleRuleImpl, "deinitOwn")) @compileError("CSSStyleRuleImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(CSSStyleRuleImpl, "deinit")) return CSSStyleRuleImpl.deinit(instance);
         if (comptime @hasDecl(CSSStyleRuleImpl, "deinitOwn")) CSSStyleRuleImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -200,6 +201,7 @@ pub const CSSStyleRule = struct {
         }
         const value = try CSSStyleRuleImpl.get_style(instance);
         state.own.cached_style = value;
+        @import("dom").same_object_cache.made(instance, value, "style");
         return value;
     }
 
@@ -223,6 +225,7 @@ pub const CSSStyleRule = struct {
         }
         const value = try CSSStyleRuleImpl.get_styleMap(instance);
         state.own.cached_styleMap = value;
+        @import("dom").same_object_cache.made(instance, value, "styleMap");
         return value;
     }
 };

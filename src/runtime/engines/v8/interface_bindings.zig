@@ -28,7 +28,8 @@ const std = @import("std");
 const build_options = @import("build_options");
 const log = std.log.scoped(.v8_bindings);
 const v8 = @import("ffi.zig");
-const V8Interface = @import("interface.zig").V8Interface;
+const interface_mod = @import("interface.zig");
+const V8Interface = interface_mod.V8Interface;
 pub const V8Namespace = @import("namespace.zig").V8Namespace;
 const webidl = @import("webidl");
 const helpers = webidl.helpers;
@@ -489,6 +490,49 @@ fn linkSnapshotWindowInterfaceObject(isolate: *v8.Isolate, context: *v8.Context,
     const event_target = EventTarget.materializeInterfaceObject(isolate, context, "EventTarget") orelse return;
     defer v8.v8_Function_Dispose(event_target);
     _ = v8.v8_Object_SetPrototypeV2(@ptrCast(window_value), context, @ptrCast(event_target));
+}
+
+/// Whether interface `T` is declared [SecureContext] (its own definition's
+/// extended attribute - a partial's scopes its members instead).
+fn isSecureContextInterface(comptime T: type) bool {
+    comptime {
+        if (!@hasDecl(T, "Meta") or !@hasDecl(T.Meta, "extended_attributes")) return false;
+        for (T.Meta.extended_attributes) |attr| {
+            if (std.mem.eql(u8, attr.name, "SecureContext")) return true;
+        }
+        return false;
+    }
+}
+
+/// WebIDL 3.3.13 and "exposed": in a realm whose settings object is not a
+/// secure context (ContextData.secure_context false), a [SecureContext]
+/// interface has no interface object. The interface objects are installed
+/// for every realm alike - by the snapshot, eagerly, or as lazy data
+/// properties - so a realm that is not a secure context deletes the global's
+/// property of every [SecureContext] interface (LockManager, Lock,
+/// SubtleCrypto, CookieStore, ...). Their members on other interfaces go as each interface
+/// object is made (V8Interface.materializeInterfaceObject), and a [Global]
+/// interface's own as its global is bound (hideSecureContextMembers).
+pub fn hideSecureContextInterfaceObjects(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    comptime scope: helpers.GlobalScope,
+) void {
+    @setEvalBranchQuota(400_000);
+    // Every [SecureContext] interface the global may have, exposed in
+    // `scope` or not: a window realm installs some it does not expose.
+    _ = scope;
+    if (interface_mod.realmIsSecureContext(context)) return;
+    const global = v8.v8_Context_Global(context) orelse return;
+    defer v8.v8_Object_Dispose(global);
+    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+    inline for (iface_decls) |decl| {
+        if (comptime shouldSkipInterface(decl.name)) continue;
+        const InterfaceType = @field(interfaces, decl.name);
+        if (comptime @typeInfo(InterfaceType) == .@"struct" and isSecureContextInterface(InterfaceType)) {
+            interface_mod.hideNames(isolate, context, global, .{decl.name});
+        }
+    }
 }
 
 /// Install interfaces filtered by scope exposure

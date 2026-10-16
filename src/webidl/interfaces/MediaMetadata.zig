@@ -163,6 +163,7 @@ pub const MediaMetadata = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(MediaMetadataImpl, "deinit") and @hasDecl(MediaMetadataImpl, "deinitOwn")) @compileError("MediaMetadataImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(MediaMetadataImpl, "deinit")) return MediaMetadataImpl.deinit(instance);
         if (comptime @hasDecl(MediaMetadataImpl, "deinitOwn")) MediaMetadataImpl.deinitOwn(instance);
     }

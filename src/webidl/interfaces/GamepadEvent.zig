@@ -154,6 +154,7 @@ pub const GamepadEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(GamepadEventImpl, "deinit") and @hasDecl(GamepadEventImpl, "deinitOwn")) @compileError("GamepadEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(GamepadEventImpl, "deinit")) return GamepadEventImpl.deinit(instance);
         if (comptime @hasDecl(GamepadEventImpl, "deinitOwn")) GamepadEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -185,6 +186,7 @@ pub const GamepadEvent = struct {
         }
         const value = try GamepadEventImpl.get_gamepad(instance);
         state.own.cached_gamepad = value;
+        @import("dom").same_object_cache.made(instance, value, "gamepad");
         return value;
     }
 };

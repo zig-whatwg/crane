@@ -179,6 +179,7 @@ pub const TreeWalker = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(TreeWalkerImpl, "deinit") and @hasDecl(TreeWalkerImpl, "deinitOwn")) @compileError("TreeWalkerImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(TreeWalkerImpl, "deinit")) return TreeWalkerImpl.deinit(instance);
         if (comptime @hasDecl(TreeWalkerImpl, "deinitOwn")) TreeWalkerImpl.deinitOwn(instance);
     }
@@ -201,6 +202,7 @@ pub const TreeWalker = struct {
         }
         const value = try TreeWalkerImpl.get_root(instance);
         state.own.cached_root = value;
+        @import("dom").same_object_cache.made(instance, value, "root");
         return value;
     }
 

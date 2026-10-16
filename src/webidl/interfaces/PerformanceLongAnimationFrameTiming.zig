@@ -218,6 +218,7 @@ pub const PerformanceLongAnimationFrameTiming = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(PerformanceLongAnimationFrameTimingImpl, "deinit") and @hasDecl(PerformanceLongAnimationFrameTimingImpl, "deinitOwn")) @compileError("PerformanceLongAnimationFrameTimingImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(PerformanceLongAnimationFrameTimingImpl, "deinit")) return PerformanceLongAnimationFrameTimingImpl.deinit(instance);
         if (comptime @hasDecl(PerformanceLongAnimationFrameTimingImpl, "deinitOwn")) PerformanceLongAnimationFrameTimingImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);

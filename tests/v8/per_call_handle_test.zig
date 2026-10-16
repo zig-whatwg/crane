@@ -330,6 +330,42 @@ test "an attribute getter returning a union keeps the handle its interface or an
     try page.run("(() => { for (let k = 0; k < 64; k++) if (image.data !== image.data || image.data.length !== 16) return 'changed'; return 'ok'; })()");
 }
 
+// ---- a dictionary's sequence<object> member (binding3 item 9f) ----
+//
+// StructuredSerializeOptions.transfer is a sequence<object>, typed
+// `?[]const runtime.JSValue`. fromV8Sequence keeps each object element's Get
+// handle as its `.handle` (the IDL value refers to the object), and nothing
+// released it once the call was over: freeConvertedArg freed the slice and
+// any string element, never an element's handle. One 16 B Global per
+// transferred object per call, and the object it rooted (lane serial's
+// leaks --atExit). Every impl that reads such a member borrows it for the
+// call: structuredClone and the postMessage steps (Window, MessagePort,
+// Worker, DedicatedWorkerGlobalScope) hand the list to
+// engine.structuredSerializeWithTransfer, which takes Globals of its own.
+
+test "a dictionary's sequence<object> member releases its elements once the call returns" {
+    const page = try Page.open();
+    defer page.close();
+    try page.expectNoHandleLeftBy("structuredClone(k, { transfer: [new ArrayBuffer(1)] })");
+}
+
+test "a sequence<object> member whose conversion fails part-way releases the elements it converted" {
+    const page = try Page.open();
+    defer page.close();
+    // Reading the second element throws (sequence conversion's "? Get"), after
+    // the first element kept its handle.
+    try page.expectNoHandleLeftBy(
+        \\try {
+        \\  const transfer = [new ArrayBuffer(1)];
+        \\  Object.defineProperty(transfer, 1, { get() { throw "second"; } });
+        \\  structuredClone(k, { transfer });
+        \\  throw new Error("the conversion did not throw");
+        \\} catch (err) {
+        \\  if (err !== "second") throw err;
+        \\}
+    );
+}
+
 // ---- an attribute setter's object value (lane setterleak) ----
 //
 // An `any` setter - runtime.JSValue, nullable or not - converts an object to

@@ -426,6 +426,13 @@ pub const MathMLElement = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "onpointerrawupdate",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -733,6 +740,7 @@ pub const MathMLElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(MathMLElementImpl, "deinit") and @hasDecl(MathMLElementImpl, "deinitOwn")) @compileError("MathMLElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(MathMLElementImpl, "deinit")) return MathMLElementImpl.deinit(instance);
         if (comptime @hasDecl(MathMLElementImpl, "deinitOwn")) MathMLElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -756,6 +764,7 @@ pub const MathMLElement = struct {
         }
         const value = try MathMLElementImpl.get_style(instance);
         state.own.cached_style = value;
+        @import("dom").same_object_cache.made(instance, value, "style");
         return value;
     }
 
@@ -779,6 +788,7 @@ pub const MathMLElement = struct {
         }
         const value = try MathMLElementImpl.get_attributeStyleMap(instance);
         state.own.cached_attributeStyleMap = value;
+        @import("dom").same_object_cache.made(instance, value, "attributeStyleMap");
         return value;
     }
 

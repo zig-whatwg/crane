@@ -145,6 +145,7 @@ pub const SVGAnimatedTransformList = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGAnimatedTransformListImpl, "deinit") and @hasDecl(SVGAnimatedTransformListImpl, "deinitOwn")) @compileError("SVGAnimatedTransformListImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGAnimatedTransformListImpl, "deinit")) return SVGAnimatedTransformListImpl.deinit(instance);
         if (comptime @hasDecl(SVGAnimatedTransformListImpl, "deinitOwn")) SVGAnimatedTransformListImpl.deinitOwn(instance);
     }
@@ -167,6 +168,7 @@ pub const SVGAnimatedTransformList = struct {
         }
         const value = try SVGAnimatedTransformListImpl.get_baseVal(instance);
         state.own.cached_baseVal = value;
+        @import("dom").same_object_cache.made(instance, value, "baseVal");
         return value;
     }
 
@@ -179,6 +181,7 @@ pub const SVGAnimatedTransformList = struct {
         }
         const value = try SVGAnimatedTransformListImpl.get_animVal(instance);
         state.own.cached_animVal = value;
+        @import("dom").same_object_cache.made(instance, value, "animVal");
         return value;
     }
 };

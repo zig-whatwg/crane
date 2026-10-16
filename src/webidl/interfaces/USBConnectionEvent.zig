@@ -158,6 +158,7 @@ pub const USBConnectionEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(USBConnectionEventImpl, "deinit") and @hasDecl(USBConnectionEventImpl, "deinitOwn")) @compileError("USBConnectionEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(USBConnectionEventImpl, "deinit")) return USBConnectionEventImpl.deinit(instance);
         if (comptime @hasDecl(USBConnectionEventImpl, "deinitOwn")) USBConnectionEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -189,6 +190,7 @@ pub const USBConnectionEvent = struct {
         }
         const value = try USBConnectionEventImpl.get_device(instance);
         state.own.cached_device = value;
+        @import("dom").same_object_cache.made(instance, value, "device");
         return value;
     }
 };

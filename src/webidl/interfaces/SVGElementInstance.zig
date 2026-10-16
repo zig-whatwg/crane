@@ -80,6 +80,7 @@ pub const SVGElementInstance = struct {
         }
         const value = try SVGElementInstanceImpl.get_correspondingElement(instance);
         state.own.cached_correspondingElement = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "correspondingElement");
         return value;
     }
 
@@ -92,6 +93,7 @@ pub const SVGElementInstance = struct {
         }
         const value = try SVGElementInstanceImpl.get_correspondingUseElement(instance);
         state.own.cached_correspondingUseElement = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "correspondingUseElement");
         return value;
     }
 };

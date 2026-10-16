@@ -337,6 +337,7 @@ pub const HTMLTableSectionElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(HTMLTableSectionElementImpl, "deinit") and @hasDecl(HTMLTableSectionElementImpl, "deinitOwn")) @compileError("HTMLTableSectionElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(HTMLTableSectionElementImpl, "deinit")) return HTMLTableSectionElementImpl.deinit(instance);
         if (comptime @hasDecl(HTMLTableSectionElementImpl, "deinitOwn")) HTMLTableSectionElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -368,6 +369,7 @@ pub const HTMLTableSectionElement = struct {
         }
         const value = try HTMLTableSectionElementImpl.get_rows(instance);
         state.own.cached_rows = value;
+        @import("dom").same_object_cache.made(instance, value, "rows");
         return value;
     }
 

@@ -127,6 +127,13 @@ pub const XMLHttpRequest = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "setAttributionReporting",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -289,6 +296,7 @@ pub const XMLHttpRequest = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XMLHttpRequestImpl, "deinit") and @hasDecl(XMLHttpRequestImpl, "deinitOwn")) @compileError("XMLHttpRequestImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XMLHttpRequestImpl, "deinit")) return XMLHttpRequestImpl.deinit(instance);
         if (comptime @hasDecl(XMLHttpRequestImpl, "deinitOwn")) XMLHttpRequestImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -352,6 +360,7 @@ pub const XMLHttpRequest = struct {
         }
         const value = try XMLHttpRequestImpl.get_upload(instance);
         state.own.cached_upload = value;
+        @import("dom").same_object_cache.made(instance, value, "upload");
         return value;
     }
 

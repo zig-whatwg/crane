@@ -176,6 +176,7 @@ pub const MutationRecord = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(MutationRecordImpl, "deinit") and @hasDecl(MutationRecordImpl, "deinitOwn")) @compileError("MutationRecordImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(MutationRecordImpl, "deinit")) return MutationRecordImpl.deinit(instance);
         if (comptime @hasDecl(MutationRecordImpl, "deinitOwn")) MutationRecordImpl.deinitOwn(instance);
     }
@@ -202,6 +203,7 @@ pub const MutationRecord = struct {
         }
         const value = try MutationRecordImpl.get_target(instance);
         state.own.cached_target = value;
+        @import("dom").same_object_cache.made(instance, value, "target");
         return value;
     }
 
@@ -214,6 +216,7 @@ pub const MutationRecord = struct {
         }
         const value = try MutationRecordImpl.get_addedNodes(instance);
         state.own.cached_addedNodes = value;
+        @import("dom").same_object_cache.made(instance, value, "addedNodes");
         return value;
     }
 
@@ -226,6 +229,7 @@ pub const MutationRecord = struct {
         }
         const value = try MutationRecordImpl.get_removedNodes(instance);
         state.own.cached_removedNodes = value;
+        @import("dom").same_object_cache.made(instance, value, "removedNodes");
         return value;
     }
 

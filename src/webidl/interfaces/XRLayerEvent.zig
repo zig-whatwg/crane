@@ -155,6 +155,7 @@ pub const XRLayerEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRLayerEventImpl, "deinit") and @hasDecl(XRLayerEventImpl, "deinitOwn")) @compileError("XRLayerEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRLayerEventImpl, "deinit")) return XRLayerEventImpl.deinit(instance);
         if (comptime @hasDecl(XRLayerEventImpl, "deinitOwn")) XRLayerEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -186,6 +187,7 @@ pub const XRLayerEvent = struct {
         }
         const value = try XRLayerEventImpl.get_layer(instance);
         state.own.cached_layer = value;
+        @import("dom").same_object_cache.made(instance, value, "layer");
         return value;
     }
 };

@@ -100,6 +100,19 @@ pub const Bluetooth = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "onadvertisementreceived",
+            "ongattserverdisconnected",
+            "oncharacteristicvaluechanged",
+            "onserviceadded",
+            "onservicechanged",
+            "onserviceremoved",
+            "requestLEScan",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -218,6 +231,7 @@ pub const Bluetooth = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(BluetoothImpl, "deinit") and @hasDecl(BluetoothImpl, "deinitOwn")) @compileError("BluetoothImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(BluetoothImpl, "deinit")) return BluetoothImpl.deinit(instance);
         if (comptime @hasDecl(BluetoothImpl, "deinitOwn")) BluetoothImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -253,24 +267,31 @@ pub const Bluetooth = struct {
         }
         const value = try BluetoothImpl.get_referringDevice(instance);
         state.own.cached_referringDevice = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "referringDevice");
         return value;
     }
 
+    /// Extended attributes: [SecureContext]
     pub const get_onadvertisementreceived = mixins.BluetoothDeviceEventHandlers.get_onadvertisementreceived;
     pub const set_onadvertisementreceived = mixins.BluetoothDeviceEventHandlers.set_onadvertisementreceived;
 
+    /// Extended attributes: [SecureContext]
     pub const get_ongattserverdisconnected = mixins.BluetoothDeviceEventHandlers.get_ongattserverdisconnected;
     pub const set_ongattserverdisconnected = mixins.BluetoothDeviceEventHandlers.set_ongattserverdisconnected;
 
+    /// Extended attributes: [SecureContext]
     pub const get_oncharacteristicvaluechanged = mixins.CharacteristicEventHandlers.get_oncharacteristicvaluechanged;
     pub const set_oncharacteristicvaluechanged = mixins.CharacteristicEventHandlers.set_oncharacteristicvaluechanged;
 
+    /// Extended attributes: [SecureContext]
     pub const get_onserviceadded = mixins.ServiceEventHandlers.get_onserviceadded;
     pub const set_onserviceadded = mixins.ServiceEventHandlers.set_onserviceadded;
 
+    /// Extended attributes: [SecureContext]
     pub const get_onservicechanged = mixins.ServiceEventHandlers.get_onservicechanged;
     pub const set_onservicechanged = mixins.ServiceEventHandlers.set_onservicechanged;
 
+    /// Extended attributes: [SecureContext]
     pub const get_onserviceremoved = mixins.ServiceEventHandlers.get_onserviceremoved;
     pub const set_onserviceremoved = mixins.ServiceEventHandlers.set_onserviceremoved;
 

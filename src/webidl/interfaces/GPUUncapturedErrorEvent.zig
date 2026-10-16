@@ -158,6 +158,7 @@ pub const GPUUncapturedErrorEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(GPUUncapturedErrorEventImpl, "deinit") and @hasDecl(GPUUncapturedErrorEventImpl, "deinitOwn")) @compileError("GPUUncapturedErrorEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(GPUUncapturedErrorEventImpl, "deinit")) return GPUUncapturedErrorEventImpl.deinit(instance);
         if (comptime @hasDecl(GPUUncapturedErrorEventImpl, "deinitOwn")) GPUUncapturedErrorEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -189,6 +190,7 @@ pub const GPUUncapturedErrorEvent = struct {
         }
         const value = try GPUUncapturedErrorEventImpl.get_error(instance);
         state.own.cached_error = value;
+        @import("dom").same_object_cache.made(instance, value, "error");
         return value;
     }
 };

@@ -109,7 +109,6 @@ pub const Window = struct {
             .{ .name = "Global", .value = .{ .identifier = "Window" } },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "LegacyUnenumerableNamedProperties" },
-            .{ .name = "SecureContext" },
         };
 
         /// Global contexts where this interface is exposed
@@ -649,6 +648,28 @@ pub const Window = struct {
             .named_getter = .{ .function = "call_getter", .implemented = @hasDecl(WindowImpl, "call_getter") },
             .supported_property_name = .{ .function = "isSupportedPropertyName", .implemented = @hasDecl(WindowImpl, "isSupportedPropertyName") },
             .legacy_unenumerable_named_properties = true,
+        };
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "cookieStore",
+            "documentPictureInPicture",
+            "ondeviceorientation",
+            "ondeviceorientationabsolute",
+            "ondevicemotion",
+            "sharedStorage",
+            "onpointerrawupdate",
+            "caches",
+            "pushManager",
+            "getDigitalGoodsService",
+            "fetchLater",
+            "showOpenFilePicker",
+            "showSaveFilePicker",
+            "showDirectoryPicker",
+            "queryLocalFonts",
+            "getScreenDetails",
         };
     };
 
@@ -1230,6 +1251,7 @@ pub const Window = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(WindowImpl, "deinit") and @hasDecl(WindowImpl, "deinitOwn")) @compileError("WindowImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(WindowImpl, "deinit")) return WindowImpl.deinit(instance);
         if (comptime @hasDecl(WindowImpl, "deinitOwn")) WindowImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -1499,7 +1521,7 @@ pub const Window = struct {
         try event_handlers.setValue(EventHandler, instance, "onorientationchange", value);
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_cookieStore(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -1508,6 +1530,7 @@ pub const Window = struct {
         }
         const value = try WindowImpl.get_cookieStore(instance);
         state.own.cached_cookieStore = value;
+        @import("dom").same_object_cache.made(instance, value, "cookieStore");
         return value;
     }
 
@@ -1520,6 +1543,7 @@ pub const Window = struct {
         }
         const value = try WindowImpl.get_viewport(instance);
         state.own.cached_viewport = value;
+        @import("dom").same_object_cache.made(instance, value, "viewport");
         return value;
     }
 
@@ -1540,6 +1564,7 @@ pub const Window = struct {
         }
         const value = try WindowImpl.get_screen(instance);
         state.own.cached_screen = value;
+        @import("dom").same_object_cache.made(instance, value, "screen");
         return value;
     }
 
@@ -1560,6 +1585,7 @@ pub const Window = struct {
         }
         const value = try WindowImpl.get_visualViewport(instance);
         state.own.cached_visualViewport = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "visualViewport");
         return value;
     }
 
@@ -1749,6 +1775,7 @@ pub const Window = struct {
         }
         const value = try WindowImpl.get_documentPictureInPicture(instance);
         state.own.cached_documentPictureInPicture = value;
+        @import("dom").same_object_cache.made(instance, value, "documentPictureInPicture");
         return value;
     }
 
@@ -1778,6 +1805,7 @@ pub const Window = struct {
         }
         const value = try WindowImpl.get_external(instance);
         state.own.cached_external = value;
+        @import("dom").same_object_cache.made(instance, value, "external");
         return value;
     }
 
@@ -1863,6 +1891,7 @@ pub const Window = struct {
         }
         const value = try WindowImpl.get_speechSynthesis(instance);
         state.own.cached_speechSynthesis = value;
+        @import("dom").same_object_cache.made(instance, value, "speechSynthesis");
         return value;
     }
 
@@ -2268,6 +2297,7 @@ pub const Window = struct {
         }
         const value = try mixins.WindowOrWorkerGlobalScope.get_indexedDB(instance);
         state.own.cached_indexedDB = value;
+        @import("dom").same_object_cache.made(instance, value, "indexedDB");
         return value;
     }
 
@@ -2288,6 +2318,7 @@ pub const Window = struct {
         }
         const value = try mixins.WindowOrWorkerGlobalScope.get_caches(instance);
         state.own.cached_caches = value;
+        @import("dom").same_object_cache.made(instance, value, "caches");
         return value;
     }
 
@@ -2302,6 +2333,7 @@ pub const Window = struct {
         }
         const value = try mixins.WindowOrWorkerGlobalScope.get_crypto(instance);
         state.own.cached_crypto = value;
+        @import("dom").same_object_cache.made(instance, value, "crypto");
         return value;
     }
 
@@ -2313,6 +2345,7 @@ pub const Window = struct {
         return try WindowImpl.get_localStorage(instance);
     }
 
+    /// Extended attributes: [SecureContext]
     pub const get_pushManager = mixins.PushManagerAttribute.get_pushManager;
 
     pub fn call_getter(instance: *runtime.Instance, name: DOMString) anyerror!runtime.JSValue {
@@ -2337,6 +2370,7 @@ pub const Window = struct {
         return try WindowImpl.call_moveTo(instance, x, y);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_showSaveFilePicker(instance: *runtime.Instance, options: webidl.Opt(SaveFilePickerOptions)) anyerror!runtime.JSValue {
         return try WindowImpl.call_showSaveFilePicker(instance, options);
     }
@@ -2414,6 +2448,7 @@ pub const Window = struct {
         return try WindowImpl.call_moveBy(instance, x, y);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_showDirectoryPicker(instance: *runtime.Instance, options: webidl.Opt(DirectoryPickerOptions)) anyerror!runtime.JSValue {
         return try WindowImpl.call_showDirectoryPicker(instance, options);
     }
@@ -2426,6 +2461,7 @@ pub const Window = struct {
         return try WindowImpl.call_releaseEvents(instance);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_queryLocalFonts(instance: *runtime.Instance, options: webidl.Opt(QueryOptions)) anyerror!runtime.JSValue {
         return try WindowImpl.call_queryLocalFonts(instance, options);
     }
@@ -2448,6 +2484,7 @@ pub const Window = struct {
 
     pub const call_createImageBitmap = mixins.WindowOrWorkerGlobalScope.call_createImageBitmap;
 
+    /// Extended attributes: [SecureContext]
     pub fn call_showOpenFilePicker(instance: *runtime.Instance, options: webidl.Opt(OpenFilePickerOptions)) anyerror!runtime.JSValue {
         return try WindowImpl.call_showOpenFilePicker(instance, options);
     }

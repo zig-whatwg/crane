@@ -238,14 +238,19 @@ fn createWorkerRealmOf(comptime Kind: type, agent: *runtime.Agent, options: runt
     };
     // Tasks the engine runs into this realm from outside it end the host's way.
     realm.end_of_task = options.end_of_task;
+    // HTML 8.1.3.5 for a worker - its owner's answer, as the host passes it:
+    // recorded before the realm's interface objects are made (WebIDL 3.3.13).
+    realm.secure_context = options.secure_context;
     // The worker's script URL is the realm's API base URL.
     realm.setDocumentUrl(options.url) catch {};
     // The host records the realm's settings before its global object exists:
     // the global scope reads them as it is made.
     if (options.on_realm) |hook| hook(options.data, realm);
 
-    // Every interface exposed in the worker's scope, per WebIDL's [Exposed].
+    // Every interface exposed in the worker's scope, per WebIDL's [Exposed] -
+    // and, in a realm that is not a secure context, [SecureContext].
     interface_bindings.installForScope(isolate, context, Kind.scope);
+    interface_bindings.hideSecureContextInterfaceObjects(isolate, context, Kind.scope);
 
     // The platform object behind the global, its prototype chain and its own
     // members - after the interface objects, whose prototypes it links.
@@ -363,6 +368,7 @@ fn bindGlobalScope(comptime Interface: type, isolate: *ffi.Isolate, context: *ff
     const Binding = V8Interface(Interface);
     Binding.registerPropertiesAsOwnOnObject(isolate, context, global_obj);
     Binding.registerMethodsAsOwnOnObject(isolate, context, global_obj);
+    Binding.hideSecureContextMembers(isolate, context, global_obj);
     return instance;
 }
 

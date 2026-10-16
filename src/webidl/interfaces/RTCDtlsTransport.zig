@@ -178,6 +178,7 @@ pub const RTCDtlsTransport = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(RTCDtlsTransportImpl, "deinit") and @hasDecl(RTCDtlsTransportImpl, "deinitOwn")) @compileError("RTCDtlsTransportImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(RTCDtlsTransportImpl, "deinit")) return RTCDtlsTransportImpl.deinit(instance);
         if (comptime @hasDecl(RTCDtlsTransportImpl, "deinitOwn")) RTCDtlsTransportImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -201,6 +202,7 @@ pub const RTCDtlsTransport = struct {
         }
         const value = try RTCDtlsTransportImpl.get_iceTransport(instance);
         state.own.cached_iceTransport = value;
+        @import("dom").same_object_cache.made(instance, value, "iceTransport");
         return value;
     }
 

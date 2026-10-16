@@ -153,6 +153,7 @@ pub const CSSFunctionDeclarations = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(CSSFunctionDeclarationsImpl, "deinit") and @hasDecl(CSSFunctionDeclarationsImpl, "deinitOwn")) @compileError("CSSFunctionDeclarationsImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(CSSFunctionDeclarationsImpl, "deinit")) return CSSFunctionDeclarationsImpl.deinit(instance);
         if (comptime @hasDecl(CSSFunctionDeclarationsImpl, "deinitOwn")) CSSFunctionDeclarationsImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -176,6 +177,7 @@ pub const CSSFunctionDeclarations = struct {
         }
         const value = try CSSFunctionDeclarationsImpl.get_style(instance);
         state.own.cached_style = value;
+        @import("dom").same_object_cache.made(instance, value, "style");
         return value;
     }
 

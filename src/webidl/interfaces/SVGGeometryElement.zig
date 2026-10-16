@@ -319,6 +319,7 @@ pub const SVGGeometryElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGGeometryElementImpl, "deinit") and @hasDecl(SVGGeometryElementImpl, "deinitOwn")) @compileError("SVGGeometryElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGGeometryElementImpl, "deinit")) return SVGGeometryElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGGeometryElementImpl, "deinitOwn")) SVGGeometryElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -342,6 +343,7 @@ pub const SVGGeometryElement = struct {
         }
         const value = try SVGGeometryElementImpl.get_pathLength(instance);
         state.own.cached_pathLength = value;
+        @import("dom").same_object_cache.made(instance, value, "pathLength");
         return value;
     }
 

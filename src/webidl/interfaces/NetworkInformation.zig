@@ -191,6 +191,7 @@ pub const NetworkInformation = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(NetworkInformationImpl, "deinit") and @hasDecl(NetworkInformationImpl, "deinitOwn")) @compileError("NetworkInformationImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(NetworkInformationImpl, "deinit")) return NetworkInformationImpl.deinit(instance);
         if (comptime @hasDecl(NetworkInformationImpl, "deinitOwn")) NetworkInformationImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);

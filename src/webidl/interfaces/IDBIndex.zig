@@ -192,6 +192,7 @@ pub const IDBIndex = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(IDBIndexImpl, "deinit") and @hasDecl(IDBIndexImpl, "deinitOwn")) @compileError("IDBIndexImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(IDBIndexImpl, "deinit")) return IDBIndexImpl.deinit(instance);
         if (comptime @hasDecl(IDBIndexImpl, "deinitOwn")) IDBIndexImpl.deinitOwn(instance);
     }
@@ -222,6 +223,7 @@ pub const IDBIndex = struct {
         }
         const value = try IDBIndexImpl.get_objectStore(instance);
         state.own.cached_objectStore = value;
+        @import("dom").same_object_cache.made(instance, value, "objectStore");
         return value;
     }
 

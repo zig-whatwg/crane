@@ -317,6 +317,7 @@ pub const SVGPolylineElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGPolylineElementImpl, "deinit") and @hasDecl(SVGPolylineElementImpl, "deinitOwn")) @compileError("SVGPolylineElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGPolylineElementImpl, "deinit")) return SVGPolylineElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGPolylineElementImpl, "deinitOwn")) SVGPolylineElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -340,6 +341,7 @@ pub const SVGPolylineElement = struct {
         }
         const value = try mixins.SVGAnimatedPoints.get_points(instance);
         state.own.cached_points = value;
+        @import("dom").same_object_cache.made(instance, value, "points");
         return value;
     }
 
@@ -352,6 +354,7 @@ pub const SVGPolylineElement = struct {
         }
         const value = try mixins.SVGAnimatedPoints.get_animatedPoints(instance);
         state.own.cached_animatedPoints = value;
+        @import("dom").same_object_cache.made(instance, value, "animatedPoints");
         return value;
     }
 };

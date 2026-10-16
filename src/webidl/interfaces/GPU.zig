@@ -156,6 +156,7 @@ pub const GPU = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(GPUImpl, "deinit") and @hasDecl(GPUImpl, "deinitOwn")) @compileError("GPUImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(GPUImpl, "deinit")) return GPUImpl.deinit(instance);
         if (comptime @hasDecl(GPUImpl, "deinitOwn")) GPUImpl.deinitOwn(instance);
     }
@@ -178,6 +179,7 @@ pub const GPU = struct {
         }
         const value = try GPUImpl.get_wgslLanguageFeatures(instance);
         state.own.cached_wgslLanguageFeatures = value;
+        @import("dom").same_object_cache.made(instance, value, "wgslLanguageFeatures");
         return value;
     }
 

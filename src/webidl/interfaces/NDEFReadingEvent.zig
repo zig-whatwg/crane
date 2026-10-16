@@ -159,6 +159,7 @@ pub const NDEFReadingEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(NDEFReadingEventImpl, "deinit") and @hasDecl(NDEFReadingEventImpl, "deinitOwn")) @compileError("NDEFReadingEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(NDEFReadingEventImpl, "deinit")) return NDEFReadingEventImpl.deinit(instance);
         if (comptime @hasDecl(NDEFReadingEventImpl, "deinitOwn")) NDEFReadingEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -194,6 +195,7 @@ pub const NDEFReadingEvent = struct {
         }
         const value = try NDEFReadingEventImpl.get_message(instance);
         state.own.cached_message = value;
+        @import("dom").same_object_cache.made(instance, value, "message");
         return value;
     }
 };

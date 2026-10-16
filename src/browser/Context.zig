@@ -1296,6 +1296,13 @@ pub const Context = struct {
             // checks (Window.get_document).
             .is_platform_object_same_origin = if (engine.capabilities.cross_origin_objects != .unsupported) dom_mod.cross_origin.isPlatformObjectSameOrigin else null,
             .host = self,
+            // HTML 8.1.3.5, for [SecureContext] exposure (WebIDL 3.3.13):
+            // the page's document is this URL's, with no parent or creator
+            // (html.secure_context.ofDocument). Out of memory answers not
+            // secure - the realm then exposes less, never more. The realm
+            // keeps this creation answer across in-page loads; the Window's
+            // isSecureContext asks its document each time.
+            .secure_context = html_mod.secure_context.ofDocument(self.allocator, .{ .url = self.url, .parent = null, .creator = null }) catch false,
         }) catch |err| {
             log.debug("the page's realm was not made: {}", .{err});
             return error.ContextCreateFailed;

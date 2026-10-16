@@ -159,6 +159,7 @@ pub const HIDConnectionEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(HIDConnectionEventImpl, "deinit") and @hasDecl(HIDConnectionEventImpl, "deinitOwn")) @compileError("HIDConnectionEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(HIDConnectionEventImpl, "deinit")) return HIDConnectionEventImpl.deinit(instance);
         if (comptime @hasDecl(HIDConnectionEventImpl, "deinitOwn")) HIDConnectionEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -190,6 +191,7 @@ pub const HIDConnectionEvent = struct {
         }
         const value = try HIDConnectionEventImpl.get_device(instance);
         state.own.cached_device = value;
+        @import("dom").same_object_cache.made(instance, value, "device");
         return value;
     }
 };

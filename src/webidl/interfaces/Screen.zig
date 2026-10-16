@@ -67,6 +67,14 @@ pub const Screen = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "isExtended",
+            "onchange",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -175,6 +183,7 @@ pub const Screen = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(ScreenImpl, "deinit") and @hasDecl(ScreenImpl, "deinitOwn")) @compileError("ScreenImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(ScreenImpl, "deinit")) return ScreenImpl.deinit(instance);
         if (comptime @hasDecl(ScreenImpl, "deinitOwn")) ScreenImpl.deinitOwn(instance);
     }
@@ -221,6 +230,7 @@ pub const Screen = struct {
         }
         const value = try ScreenImpl.get_orientation(instance);
         state.own.cached_orientation = value;
+        @import("dom").same_object_cache.made(instance, value, "orientation");
         return value;
     }
 

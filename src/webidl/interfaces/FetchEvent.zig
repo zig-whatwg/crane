@@ -183,6 +183,7 @@ pub const FetchEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(FetchEventImpl, "deinit") and @hasDecl(FetchEventImpl, "deinitOwn")) @compileError("FetchEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(FetchEventImpl, "deinit")) return FetchEventImpl.deinit(instance);
         if (comptime @hasDecl(FetchEventImpl, "deinitOwn")) FetchEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -214,6 +215,7 @@ pub const FetchEvent = struct {
         }
         const value = try FetchEventImpl.get_request(instance);
         state.own.cached_request = value;
+        @import("dom").same_object_cache.made(instance, value, "request");
         return value;
     }
 

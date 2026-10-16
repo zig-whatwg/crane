@@ -147,6 +147,7 @@ pub const PushSubscriptionOptions = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(PushSubscriptionOptionsImpl, "deinit") and @hasDecl(PushSubscriptionOptionsImpl, "deinitOwn")) @compileError("PushSubscriptionOptionsImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(PushSubscriptionOptionsImpl, "deinit")) return PushSubscriptionOptionsImpl.deinit(instance);
         if (comptime @hasDecl(PushSubscriptionOptionsImpl, "deinitOwn")) PushSubscriptionOptionsImpl.deinitOwn(instance);
     }

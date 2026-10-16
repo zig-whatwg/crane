@@ -97,6 +97,16 @@ pub const BluetoothRemoteGATTService = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "oncharacteristicvaluechanged",
+            "onserviceadded",
+            "onservicechanged",
+            "onserviceremoved",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -210,6 +220,7 @@ pub const BluetoothRemoteGATTService = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(BluetoothRemoteGATTServiceImpl, "deinit") and @hasDecl(BluetoothRemoteGATTServiceImpl, "deinitOwn")) @compileError("BluetoothRemoteGATTServiceImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(BluetoothRemoteGATTServiceImpl, "deinit")) return BluetoothRemoteGATTServiceImpl.deinit(instance);
         if (comptime @hasDecl(BluetoothRemoteGATTServiceImpl, "deinitOwn")) BluetoothRemoteGATTServiceImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -233,6 +244,7 @@ pub const BluetoothRemoteGATTService = struct {
         }
         const value = try BluetoothRemoteGATTServiceImpl.get_device(instance);
         state.own.cached_device = value;
+        @import("dom").same_object_cache.made(instance, value, "device");
         return value;
     }
 
@@ -244,15 +256,19 @@ pub const BluetoothRemoteGATTService = struct {
         return try BluetoothRemoteGATTServiceImpl.get_isPrimary(instance);
     }
 
+    /// Extended attributes: [SecureContext]
     pub const get_oncharacteristicvaluechanged = mixins.CharacteristicEventHandlers.get_oncharacteristicvaluechanged;
     pub const set_oncharacteristicvaluechanged = mixins.CharacteristicEventHandlers.set_oncharacteristicvaluechanged;
 
+    /// Extended attributes: [SecureContext]
     pub const get_onserviceadded = mixins.ServiceEventHandlers.get_onserviceadded;
     pub const set_onserviceadded = mixins.ServiceEventHandlers.set_onserviceadded;
 
+    /// Extended attributes: [SecureContext]
     pub const get_onservicechanged = mixins.ServiceEventHandlers.get_onservicechanged;
     pub const set_onservicechanged = mixins.ServiceEventHandlers.set_onservicechanged;
 
+    /// Extended attributes: [SecureContext]
     pub const get_onserviceremoved = mixins.ServiceEventHandlers.get_onserviceremoved;
     pub const set_onserviceremoved = mixins.ServiceEventHandlers.set_onserviceremoved;
 

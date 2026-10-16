@@ -813,6 +813,7 @@ pub const Element = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(ElementImpl, "deinit") and @hasDecl(ElementImpl, "deinitOwn")) @compileError("ElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(ElementImpl, "deinit")) return ElementImpl.deinit(instance);
         if (comptime @hasDecl(ElementImpl, "deinitOwn")) ElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -880,6 +881,7 @@ pub const Element = struct {
         }
         const value = try ElementImpl.get_classList(instance);
         state.own.cached_classList = value;
+        @import("dom").same_object_cache.made(instance, value, "classList");
         return value;
     }
 
@@ -917,6 +919,7 @@ pub const Element = struct {
         }
         const value = try ElementImpl.get_attributes(instance);
         state.own.cached_attributes = value;
+        @import("dom").same_object_cache.made(instance, value, "attributes");
         return value;
     }
 
@@ -937,6 +940,7 @@ pub const Element = struct {
         }
         const value = try ElementImpl.get_part(instance);
         state.own.cached_part = value;
+        @import("dom").same_object_cache.made(instance, value, "part");
         return value;
     }
 
@@ -1080,6 +1084,7 @@ pub const Element = struct {
         }
         const value = try mixins.ParentNode.get_children(instance);
         state.own.cached_children = value;
+        @import("dom").same_object_cache.made(instance, value, "children");
         return value;
     }
 

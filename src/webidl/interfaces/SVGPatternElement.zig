@@ -350,6 +350,7 @@ pub const SVGPatternElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGPatternElementImpl, "deinit") and @hasDecl(SVGPatternElementImpl, "deinitOwn")) @compileError("SVGPatternElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGPatternElementImpl, "deinit")) return SVGPatternElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGPatternElementImpl, "deinitOwn")) SVGPatternElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -373,6 +374,7 @@ pub const SVGPatternElement = struct {
         }
         const value = try SVGPatternElementImpl.get_patternUnits(instance);
         state.own.cached_patternUnits = value;
+        @import("dom").same_object_cache.made(instance, value, "patternUnits");
         return value;
     }
 
@@ -385,6 +387,7 @@ pub const SVGPatternElement = struct {
         }
         const value = try SVGPatternElementImpl.get_patternContentUnits(instance);
         state.own.cached_patternContentUnits = value;
+        @import("dom").same_object_cache.made(instance, value, "patternContentUnits");
         return value;
     }
 
@@ -397,6 +400,7 @@ pub const SVGPatternElement = struct {
         }
         const value = try SVGPatternElementImpl.get_patternTransform(instance);
         state.own.cached_patternTransform = value;
+        @import("dom").same_object_cache.made(instance, value, "patternTransform");
         return value;
     }
 
@@ -409,6 +413,7 @@ pub const SVGPatternElement = struct {
         }
         const value = try SVGPatternElementImpl.get_x(instance);
         state.own.cached_x = value;
+        @import("dom").same_object_cache.made(instance, value, "x");
         return value;
     }
 
@@ -421,6 +426,7 @@ pub const SVGPatternElement = struct {
         }
         const value = try SVGPatternElementImpl.get_y(instance);
         state.own.cached_y = value;
+        @import("dom").same_object_cache.made(instance, value, "y");
         return value;
     }
 
@@ -433,6 +439,7 @@ pub const SVGPatternElement = struct {
         }
         const value = try SVGPatternElementImpl.get_width(instance);
         state.own.cached_width = value;
+        @import("dom").same_object_cache.made(instance, value, "width");
         return value;
     }
 
@@ -445,6 +452,7 @@ pub const SVGPatternElement = struct {
         }
         const value = try SVGPatternElementImpl.get_height(instance);
         state.own.cached_height = value;
+        @import("dom").same_object_cache.made(instance, value, "height");
         return value;
     }
 
@@ -457,6 +465,7 @@ pub const SVGPatternElement = struct {
         }
         const value = try mixins.SVGFitToViewBox.get_viewBox(instance);
         state.own.cached_viewBox = value;
+        @import("dom").same_object_cache.made(instance, value, "viewBox");
         return value;
     }
 
@@ -469,6 +478,7 @@ pub const SVGPatternElement = struct {
         }
         const value = try mixins.SVGFitToViewBox.get_preserveAspectRatio(instance);
         state.own.cached_preserveAspectRatio = value;
+        @import("dom").same_object_cache.made(instance, value, "preserveAspectRatio");
         return value;
     }
 
@@ -481,6 +491,7 @@ pub const SVGPatternElement = struct {
         }
         const value = try mixins.SVGURIReference.get_href(instance);
         state.own.cached_href = value;
+        @import("dom").same_object_cache.made(instance, value, "href");
         return value;
     }
 };

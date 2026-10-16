@@ -158,6 +158,7 @@ pub const BlobEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(BlobEventImpl, "deinit") and @hasDecl(BlobEventImpl, "deinitOwn")) @compileError("BlobEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(BlobEventImpl, "deinit")) return BlobEventImpl.deinit(instance);
         if (comptime @hasDecl(BlobEventImpl, "deinitOwn")) BlobEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -189,6 +190,7 @@ pub const BlobEvent = struct {
         }
         const value = try BlobEventImpl.get_data(instance);
         state.own.cached_data = value;
+        @import("dom").same_object_cache.made(instance, value, "data");
         return value;
     }
 

@@ -33,6 +33,28 @@ test "an adapter with no engine answers NotSupported, never a guess" {
     try std.testing.expect(!engine.isCallable(realm, runtime.JSValue.jsUndefined));
 }
 
+test "a realm that is not a secure context is refused, never made exposing every construct" {
+    // WindowRealmOptions.secure_context = false asks for a realm that hides
+    // every [SecureContext] construct (WebIDL 3.3.13). An adapter that cannot
+    // honour it yet must not make a realm that exposes them: these make none
+    // (TODO in the JavaScriptCore and QuickJS adapters: honour the field once
+    // linked, as the V8 adapter does - tests/v8/secure_context_exposure_test).
+    var agent_slot: u8 = 0;
+    const NoWindow = struct {
+        fn create(_: engine.Context, _: runtime.JSValue, _: ?*anyopaque) ?*engine.Instance {
+            return null;
+        }
+    };
+    try std.testing.expectError(error.NotSupported, engine.createWindowRealm(&.{
+        .agent = @ptrCast(&agent_slot),
+        .allocator = std.testing.allocator,
+        .from_snapshot = false,
+        .timer = null,
+        .create_global_object = NoWindow.create,
+        .secure_context = false,
+    }));
+}
+
 test "an Owned value is released through the adapter, or taken by whoever takes ownership" {
     const owned: engine.Owned = .{ .value = runtime.JSValue.fromNumber(7) };
     // take() hands the value on as it is - to the binding, which takes an

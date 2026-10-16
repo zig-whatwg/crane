@@ -12,4 +12,8 @@ pub const RTCLocalIceCandidateInit = struct {
 
     relayProtocol: ?enums.RTCIceServerTransportProtocol = null,
     url: ?runtime.USVString = null,
+
+    /// Optional members whose IDL type is nullable: a present null is the
+    /// value null. Any other member's present null converts by its type.
+    pub const nullable_members = .{ "relayProtocol", "url" };
 };

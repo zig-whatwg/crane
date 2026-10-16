@@ -27,4 +27,8 @@ pub const NotificationOptions = struct {
     /// `any` members: one present with the value null converts to `.null`,
     /// not to "not present".
     pub const any_members = .{"data"};
+
+    /// Optional members whose IDL type is nullable: a present null is the
+    /// value null. Any other member's present null converts by its type.
+    pub const nullable_members = .{"silent"};
 };

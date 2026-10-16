@@ -306,6 +306,7 @@ pub const HTMLDataListElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(HTMLDataListElementImpl, "deinit") and @hasDecl(HTMLDataListElementImpl, "deinitOwn")) @compileError("HTMLDataListElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(HTMLDataListElementImpl, "deinit")) return HTMLDataListElementImpl.deinit(instance);
         if (comptime @hasDecl(HTMLDataListElementImpl, "deinitOwn")) HTMLDataListElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -337,6 +338,7 @@ pub const HTMLDataListElement = struct {
         }
         const value = try HTMLDataListElementImpl.get_options(instance);
         state.own.cached_options = value;
+        @import("dom").same_object_cache.made(instance, value, "options");
         return value;
     }
 };

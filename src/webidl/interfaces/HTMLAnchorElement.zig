@@ -279,6 +279,13 @@ pub const HTMLAnchorElement = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "attributionSrc",
+        };
     };
 
     /// HTML 3.2.3 [HTMLConstructor]: the constructor's steps are HTML's "HTML
@@ -457,6 +464,7 @@ pub const HTMLAnchorElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(HTMLAnchorElementImpl, "deinit") and @hasDecl(HTMLAnchorElementImpl, "deinitOwn")) @compileError("HTMLAnchorElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(HTMLAnchorElementImpl, "deinit")) return HTMLAnchorElementImpl.deinit(instance);
         if (comptime @hasDecl(HTMLAnchorElementImpl, "deinitOwn")) HTMLAnchorElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -554,6 +562,7 @@ pub const HTMLAnchorElement = struct {
         }
         const value = if (comptime @hasDecl(HTMLAnchorElementImpl, "get_relList")) try HTMLAnchorElementImpl.get_relList(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "rel" });
         state.own.cached_relList = value;
+        @import("dom").same_object_cache.made(instance, value, "relList");
         return value;
     }
 

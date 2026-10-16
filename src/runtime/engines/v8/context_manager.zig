@@ -2181,9 +2181,10 @@ pub fn hydrateWindowContext(comptime namespaces_module: type, options: Hydration
     // 14. Register Window properties as own properties on global
     interface_bindings.Window.registerPropertiesAsOwnOnObject(isolate, v8_ctx, global);
 
-    // 15. Register methods as own properties (Window + EventTarget methods)
+    // 15. Register methods as own properties (Window's; EventTarget's are
+    //     inherited from EventTarget.prototype - see protocol_realms
+    //     bindWindowToGlobal)
     interface_bindings.Window.registerMethodsAsOwnOnObject(isolate, v8_ctx, global);
-    interface_bindings.EventTarget.registerMethodsAsOwnOnObject(isolate, v8_ctx, global);
 
     // 16. Set self/window/frames as data properties equal to global
     // This is critical for testharness.js compatibility: (function(global_scope){...})(self)

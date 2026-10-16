@@ -337,6 +337,7 @@ pub const HTMLStyleElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(HTMLStyleElementImpl, "deinit") and @hasDecl(HTMLStyleElementImpl, "deinitOwn")) @compileError("HTMLStyleElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(HTMLStyleElementImpl, "deinit")) return HTMLStyleElementImpl.deinit(instance);
         if (comptime @hasDecl(HTMLStyleElementImpl, "deinitOwn")) HTMLStyleElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -394,6 +395,7 @@ pub const HTMLStyleElement = struct {
         }
         const value = if (comptime @hasDecl(HTMLStyleElementImpl, "get_blocking")) try HTMLStyleElementImpl.get_blocking(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "blocking" });
         state.own.cached_blocking = value;
+        @import("dom").same_object_cache.made(instance, value, "blocking");
         return value;
     }
 

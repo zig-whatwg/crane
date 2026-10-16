@@ -1,0 +1,11 @@
+interface Part {
+  readonly attribute DOMString name;
+};
+interface Owner {
+  [SameObject] readonly attribute Part part;
+  [SameObject] readonly attribute Part? maybePart;
+  [SameObject] readonly attribute any value;
+};
+interface Plain {
+  readonly attribute Part part;
+};

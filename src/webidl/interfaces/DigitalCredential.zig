@@ -179,6 +179,7 @@ pub const DigitalCredential = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(DigitalCredentialImpl, "deinit") and @hasDecl(DigitalCredentialImpl, "deinitOwn")) @compileError("DigitalCredentialImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(DigitalCredentialImpl, "deinit")) return DigitalCredentialImpl.deinit(instance);
         if (comptime @hasDecl(DigitalCredentialImpl, "deinitOwn")) DigitalCredentialImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);

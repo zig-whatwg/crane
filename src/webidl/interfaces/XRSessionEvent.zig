@@ -155,6 +155,7 @@ pub const XRSessionEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRSessionEventImpl, "deinit") and @hasDecl(XRSessionEventImpl, "deinitOwn")) @compileError("XRSessionEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRSessionEventImpl, "deinit")) return XRSessionEventImpl.deinit(instance);
         if (comptime @hasDecl(XRSessionEventImpl, "deinitOwn")) XRSessionEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -186,6 +187,7 @@ pub const XRSessionEvent = struct {
         }
         const value = try XRSessionEventImpl.get_session(instance);
         state.own.cached_session = value;
+        @import("dom").same_object_cache.made(instance, value, "session");
         return value;
     }
 };

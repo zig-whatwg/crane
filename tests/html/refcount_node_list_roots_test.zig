@@ -50,13 +50,18 @@ fn childNodesCacheLetsAFreedListGo() !void {
     const parent = engine.convertToPlatformObject(realm, held.borrow()) orelse return error.NotAPlatformObject;
     const base = dom.instance_bridge.getNodeBase(@ptrCast(parent)) orelse return error.NotANode;
 
-    // A list native code read and never handed to script: no wrapper owns it.
+    // A list native code read and never handed to script. Its owner keeps
+    // it as a script read would (binding3 item 9h: the generated [SameObject]
+    // getter traces the child it caches, dom.same_object_cache): its wrapper
+    // owns it, kept by an edge from the owner's. With that edge gone, the
+    // collector frees it.
     const interfaces = @import("interfaces");
     const list = try interfaces.Node.get_childNodes(parent);
     try testing.expectEqual(list, try interfaces.Node.get_childNodes(parent));
     try expectCount(3, base, "the owner of a childNodes list");
     const generation = runtime.SlabAllocator.generationOf(list);
-    list.releaseIfUnwrapped(generation);
+    engine.forgetTracedChild(parent, .{ .name = "SameObject:childNodes" });
+    try page.collect();
     try testing.expect(runtime.SlabAllocator.generationOf(list) != generation);
     try expectCount(2, base, "the owner, after its list was freed");
 

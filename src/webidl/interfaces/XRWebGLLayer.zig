@@ -195,6 +195,7 @@ pub const XRWebGLLayer = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRWebGLLayerImpl, "deinit") and @hasDecl(XRWebGLLayerImpl, "deinitOwn")) @compileError("XRWebGLLayerImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRWebGLLayerImpl, "deinit")) return XRWebGLLayerImpl.deinit(instance);
         if (comptime @hasDecl(XRWebGLLayerImpl, "deinitOwn")) XRWebGLLayerImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -242,6 +243,7 @@ pub const XRWebGLLayer = struct {
         }
         const value = try XRWebGLLayerImpl.get_framebuffer(instance);
         state.own.cached_framebuffer = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "framebuffer");
         return value;
     }
 

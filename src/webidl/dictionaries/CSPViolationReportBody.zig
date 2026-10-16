@@ -22,4 +22,8 @@ pub const CSPViolationReportBody = struct {
     statusCode: ?u16 = null,
     lineNumber: ?u32 = null,
     columnNumber: ?u32 = null,
+
+    /// Optional members whose IDL type is nullable: a present null is the
+    /// value null. Any other member's present null converts by its type.
+    pub const nullable_members = .{ "referrer", "blockedURL", "sourceFile", "sample", "lineNumber", "columnNumber" };
 };

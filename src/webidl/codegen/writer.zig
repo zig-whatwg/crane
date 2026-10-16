@@ -390,6 +390,51 @@ pub fn isEventHandlerAttribute(attr: types.Attribute) bool {
     return false;
 }
 
+/// Write `Meta.secure_context_members` (and `secure_context_static_members`):
+/// the JS names of the interface's own attributes and operations that carry
+/// [SecureContext] - their own, their partial interface's or their interface
+/// mixin's (the IR scopes those to the members, ir.withMemberScopedExtAttrs).
+/// WebIDL 3.3.13 and "exposed": such a member is exposed only where the
+/// realm's settings object is a secure context, so the binding hides it in
+/// any other realm. Nothing when there are none.
+pub fn writeSecureContextMembers(writer: anytype, attributes: []const types.Attribute, operations: []const types.Operation) !void {
+    inline for (.{ false, true }) |static| {
+        var names = std.ArrayList([]const u8).empty;
+        defer names.deinit(std.heap.page_allocator);
+        for (attributes) |attr| {
+            if (attr.static != static or !hasExtendedAttribute(attr.extAttrs, "SecureContext")) continue;
+            try appendUniqueName(&names, attr.name);
+        }
+        for (operations) |op| {
+            const name = op.name orelse continue;
+            if (op.static != static or !hasExtendedAttribute(op.extAttrs, "SecureContext")) continue;
+            try appendUniqueName(&names, name);
+        }
+        if (names.items.len != 0) {
+            try writer.writeAll("        \n");
+            if (static) {
+                try writer.writeAll("        /// [SecureContext] static members: hidden from the interface object\n");
+                try writer.writeAll("        /// of a realm that is not a secure context (WebIDL 3.3.13).\n");
+                try writer.writeAll("        pub const secure_context_static_members = .{\n");
+            } else {
+                try writer.writeAll("        /// [SecureContext] members - their own, their partial interface's or\n");
+                try writer.writeAll("        /// their mixin's: hidden in a realm that is not a secure context\n");
+                try writer.writeAll("        /// (WebIDL 3.3.13).\n");
+                try writer.writeAll("        pub const secure_context_members = .{\n");
+            }
+            for (names.items) |name| try writer.print("            \"{s}\",\n", .{name});
+            try writer.writeAll("        };\n");
+        }
+    }
+}
+
+fn appendUniqueName(names: *std.ArrayList([]const u8), name: []const u8) !void {
+    for (names.items) |existing| {
+        if (std.mem.eql(u8, existing, name)) return;
+    }
+    try names.append(std.heap.page_allocator, name);
+}
+
 /// Whether `op` is a regular operation - a method of the interface prototype.
 /// WebIDL 2.5.3: "If an operation has an identifier, then it is a regular
 /// operation" - a special one (getter, setter, deleter, stringifier) declared
@@ -906,6 +951,9 @@ pub fn writeMetadata(
     // anonymous one's delegate is gated, and the table says whether its impl
     // implements it.
     if (!is_mixin and !is_callback) if (special_ops) |model| try special_operations.writeMeta(writer, model, interface_name);
+
+    // Its [SecureContext] members, which a non-secure realm hides.
+    try writeSecureContextMembers(writer, own_attributes_and_statics, own_operations);
 
     // Generate iterable metadata if present
     if (iterable) |iter| {
@@ -1624,6 +1672,16 @@ fn implOwnsEventHandlers(impl_name: []const u8) bool {
     return false;
 }
 
+/// Whether a State made from `attributes` caches a [SameObject] attribute:
+/// a `cached_<name>` field, which writeStateStruct adds for every non-static
+/// [SameObject] attribute (writeLifecycleFunctions' `same_object_caches`).
+pub fn cachesSameObject(attributes: []const types.Attribute) bool {
+    for (attributes) |attr| {
+        if (!attr.static and hasExtendedAttribute(attr.extAttrs, "SameObject")) return true;
+    }
+    return false;
+}
+
 pub fn writeGeneratedState(
     writer: anytype,
     attributes: []const types.Attribute,
@@ -2312,6 +2370,10 @@ pub const LifecycleOptions = struct {
     /// A mixin is never instantiated: it gets no lifecycle (and no vtable),
     /// only its impl's hooks.
     is_mixin: bool = false,
+    /// Its State caches a [SameObject] attribute (`cached_<name>`): the
+    /// destruction chain ends the edges its cached children may still wait
+    /// on (dom.same_object_cache.end).
+    same_object_caches: bool = false,
 };
 
 /// Write the construction and destruction chain
@@ -2451,6 +2513,9 @@ pub fn writeLifecycleFunctions(
     try writer.writeAll("    /// defines `deinit` chains by hand.\n");
     try writer.writeAll("    pub inline fn deinitChain(instance: *runtime.Instance) void {\n");
     try writer.print("        if (comptime @hasDecl({s}, \"deinit\") and @hasDecl({s}, \"deinitOwn\")) @compileError(\"{s} defines both deinit and deinitOwn\");\n", .{ impl_name, impl_name, impl_name });
+    // First, before an impl that chains by hand returns: this level's
+    // [SameObject] children are the generated layer's.
+    if (options.same_object_caches) try writer.writeAll("        @import(\"dom\").same_object_cache.end(State, instance);\n");
     try writer.print("        if (comptime @hasDecl({s}, \"deinit\")) return {s}.deinit(instance);\n", .{ impl_name, impl_name });
     try writer.print("        if (comptime @hasDecl({s}, \"deinitOwn\")) {s}.deinitOwn(instance);\n", .{ impl_name, impl_name });
     if (options.has_parent) try writer.writeAll("        Meta.ParentInterface.deinitChain(instance);\n");
@@ -3728,6 +3793,63 @@ pub fn writeRestrictedMembers(writer: anytype, members: []const types.Dictionary
     try writer.writeAll(" };\n");
 }
 
+/// A dictionary's optional members whose type is nullable, for the
+/// dictionary converter:
+///
+///     pub const nullable_members = .{ "body", "signal" };
+///
+/// WebIDL 3.2.18: a member is present unless its value is undefined, and a
+/// present member converts by its type - a present null to null for a
+/// nullable type, and through the type otherwise: ToString(null) is "null",
+/// an enumeration's "null" or an interface's null a TypeError
+/// (web-locks/acquire.https.any.js, `{mode: null}`). Every optional member is
+/// `?T = null` - Zig's null for "not present" - whatever its IDL type, so the
+/// converter needs to be told which members' null is a value. A nullable
+/// type is `T?`, a typedef of one, or a union that includes one (WebIDL
+/// 2.13.29 "includes a nullable type"). `any` members have their own table
+/// (any_members). Written inside the dictionary's struct; nothing when it has
+/// none.
+pub fn writeNullableMembers(writer: anytype, members: []const types.DictionaryMember, model: ?*const ir.IR) !void {
+    var any = false;
+    for (members) |member| {
+        if (isNullableMember(member, model)) any = true;
+    }
+    if (!any) return;
+    try writer.writeAll("\n    /// Optional members whose IDL type is nullable: a present null is the\n");
+    try writer.writeAll("    /// value null. Any other member's present null converts by its type.\n");
+    try writer.writeAll("    pub const nullable_members = .{");
+    var first = true;
+    for (members) |member| {
+        if (!isNullableMember(member, model)) continue;
+        try writer.print("{s}\"{s}\"", .{ if (first) " " else ", ", member.name });
+        first = false;
+    }
+    try writer.writeAll(" };\n");
+}
+
+/// Whether an optional dictionary member's type is nullable (see
+/// writeNullableMembers). A required member is never listed: it converts a
+/// present null by its type already.
+pub fn isNullableMember(member: types.DictionaryMember, model: ?*const ir.IR) bool {
+    if (member.required) return false;
+    return isNullableIDLType(member.idlType, model, 0);
+}
+
+fn isNullableIDLType(t: types.IDLType, model: ?*const ir.IR, depth: usize) bool {
+    if (t.nullable) return true;
+    if (depth >= 8) return false;
+    if (t.unionTypes) |union_members| {
+        for (union_members) |union_member| {
+            if (isNullableIDLType(union_member, model, depth + 1)) return true;
+        }
+        return false;
+    }
+    if (t.generic != null or t.sequence != null or t.record != null) return false;
+    const m = model orelse return false;
+    const typedef = m.typedefs.get(t.type) orelse return false;
+    return isNullableIDLType(typedef.idlType, model, depth + 1);
+}
+
 /// A dictionary's `any` members, for the dictionary converter:
 ///
 ///     pub const any_members = .{ "detail" };
@@ -4336,6 +4458,15 @@ pub fn writeDelegateFunctions(
                 try writer.print("        const value = try {s}.get_{s}(instance);\n", .{ member_impl, sanitized_name });
             }
             try writer.print("        state.own.cached_{s} = value;\n", .{sanitized_name});
+            // The child its owner keeps, whoever read it first: a native
+            // read leaves what a script read does (dom.same_object_cache).
+            if (std.mem.eql(u8, return_type, "*runtime.Instance")) {
+                if (is_nullable) {
+                    try writer.print("        if (value) |child| @import(\"dom\").same_object_cache.made(instance, child, \"{s}\");\n", .{sanitized_name});
+                } else {
+                    try writer.print("        @import(\"dom\").same_object_cache.made(instance, value, \"{s}\");\n", .{sanitized_name});
+                }
+            }
             try writer.writeAll("        return value;\n");
         } else if (reflect_getter) {
             try writer.print("        if (comptime @hasDecl({s}, \"{s}{s}\")) return try {s}.{s}{s}(instance);\n", .{ member_impl, get_prefix, sanitized_name, member_impl, get_prefix, sanitized_name });

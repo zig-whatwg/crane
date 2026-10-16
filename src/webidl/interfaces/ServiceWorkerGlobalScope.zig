@@ -153,6 +153,14 @@ pub const ServiceWorkerGlobalScope = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "onpush",
+            "onpushsubscriptionchange",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -294,6 +302,7 @@ pub const ServiceWorkerGlobalScope = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "deinit") and @hasDecl(ServiceWorkerGlobalScopeImpl, "deinitOwn")) @compileError("ServiceWorkerGlobalScopeImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "deinit")) return ServiceWorkerGlobalScopeImpl.deinit(instance);
         if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "deinitOwn")) ServiceWorkerGlobalScopeImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -317,6 +326,7 @@ pub const ServiceWorkerGlobalScope = struct {
         }
         const value = try ServiceWorkerGlobalScopeImpl.get_clients(instance);
         state.own.cached_clients = value;
+        @import("dom").same_object_cache.made(instance, value, "clients");
         return value;
     }
 
@@ -329,6 +339,7 @@ pub const ServiceWorkerGlobalScope = struct {
         }
         const value = try ServiceWorkerGlobalScopeImpl.get_registration(instance);
         state.own.cached_registration = value;
+        @import("dom").same_object_cache.made(instance, value, "registration");
         return value;
     }
 
@@ -341,6 +352,7 @@ pub const ServiceWorkerGlobalScope = struct {
         }
         const value = try ServiceWorkerGlobalScopeImpl.get_serviceWorker(instance);
         state.own.cached_serviceWorker = value;
+        @import("dom").same_object_cache.made(instance, value, "serviceWorker");
         return value;
     }
 
@@ -465,6 +477,7 @@ pub const ServiceWorkerGlobalScope = struct {
         }
         const value = try ServiceWorkerGlobalScopeImpl.get_cookieStore(instance);
         state.own.cached_cookieStore = value;
+        @import("dom").same_object_cache.made(instance, value, "cookieStore");
         return value;
     }
 
@@ -528,21 +541,25 @@ pub const ServiceWorkerGlobalScope = struct {
         try event_handlers.setValue(EventHandler, instance, "onperiodicsync", value);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn get_onpush(instance: *runtime.Instance) anyerror!EventHandler {
         if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onpush")) return try ServiceWorkerGlobalScopeImpl.get_onpush(instance);
         return event_handlers.value(EventHandler, instance, "onpush");
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn set_onpush(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onpush")) return try ServiceWorkerGlobalScopeImpl.set_onpush(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onpush", value);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn get_onpushsubscriptionchange(instance: *runtime.Instance) anyerror!EventHandler {
         if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onpushsubscriptionchange")) return try ServiceWorkerGlobalScopeImpl.get_onpushsubscriptionchange(instance);
         return event_handlers.value(EventHandler, instance, "onpushsubscriptionchange");
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn set_onpushsubscriptionchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onpushsubscriptionchange")) return try ServiceWorkerGlobalScopeImpl.set_onpushsubscriptionchange(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onpushsubscriptionchange", value);

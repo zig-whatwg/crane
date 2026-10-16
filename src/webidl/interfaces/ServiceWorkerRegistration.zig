@@ -120,6 +120,13 @@ pub const ServiceWorkerRegistration = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "pushManager",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -247,6 +254,7 @@ pub const ServiceWorkerRegistration = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(ServiceWorkerRegistrationImpl, "deinit") and @hasDecl(ServiceWorkerRegistrationImpl, "deinitOwn")) @compileError("ServiceWorkerRegistrationImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(ServiceWorkerRegistrationImpl, "deinit")) return ServiceWorkerRegistrationImpl.deinit(instance);
         if (comptime @hasDecl(ServiceWorkerRegistrationImpl, "deinitOwn")) ServiceWorkerRegistrationImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -282,6 +290,7 @@ pub const ServiceWorkerRegistration = struct {
         }
         const value = try ServiceWorkerRegistrationImpl.get_navigationPreload(instance);
         state.own.cached_navigationPreload = value;
+        @import("dom").same_object_cache.made(instance, value, "navigationPreload");
         return value;
     }
 
@@ -322,6 +331,7 @@ pub const ServiceWorkerRegistration = struct {
         }
         const value = try ServiceWorkerRegistrationImpl.get_index(instance);
         state.own.cached_index = value;
+        @import("dom").same_object_cache.made(instance, value, "index");
         return value;
     }
 
@@ -334,6 +344,7 @@ pub const ServiceWorkerRegistration = struct {
         }
         const value = try ServiceWorkerRegistrationImpl.get_cookies(instance);
         state.own.cached_cookies = value;
+        @import("dom").same_object_cache.made(instance, value, "cookies");
         return value;
     }
 
@@ -346,6 +357,7 @@ pub const ServiceWorkerRegistration = struct {
         }
         const value = try ServiceWorkerRegistrationImpl.get_paymentManager(instance);
         state.own.cached_paymentManager = value;
+        @import("dom").same_object_cache.made(instance, value, "paymentManager");
         return value;
     }
 
@@ -353,6 +365,7 @@ pub const ServiceWorkerRegistration = struct {
         return try ServiceWorkerRegistrationImpl.get_periodicSync(instance);
     }
 
+    /// Extended attributes: [SecureContext]
     pub const get_pushManager = mixins.PushManagerAttribute.get_pushManager;
 
     /// Extended attributes: [NewObject]

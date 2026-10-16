@@ -92,6 +92,7 @@ pub const HTMLOrSVGElement = struct {
         }
         const value = try HTMLOrSVGElementImpl.get_dataset(instance);
         state.own.cached_dataset = value;
+        @import("dom").same_object_cache.made(instance, value, "dataset");
         return value;
     }
 

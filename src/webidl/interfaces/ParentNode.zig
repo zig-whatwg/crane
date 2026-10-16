@@ -109,6 +109,7 @@ pub const ParentNode = struct {
         }
         const value = try ParentNodeImpl.get_children(instance);
         state.own.cached_children = value;
+        @import("dom").same_object_cache.made(instance, value, "children");
         return value;
     }
 

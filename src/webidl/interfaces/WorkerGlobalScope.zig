@@ -153,6 +153,13 @@ pub const WorkerGlobalScope = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "caches",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -305,6 +312,7 @@ pub const WorkerGlobalScope = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(WorkerGlobalScopeImpl, "deinit") and @hasDecl(WorkerGlobalScopeImpl, "deinitOwn")) @compileError("WorkerGlobalScopeImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(WorkerGlobalScopeImpl, "deinit")) return WorkerGlobalScopeImpl.deinit(instance);
         if (comptime @hasDecl(WorkerGlobalScopeImpl, "deinitOwn")) WorkerGlobalScopeImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -414,6 +422,7 @@ pub const WorkerGlobalScope = struct {
         }
         const value = try mixins.WindowOrWorkerGlobalScope.get_indexedDB(instance);
         state.own.cached_indexedDB = value;
+        @import("dom").same_object_cache.made(instance, value, "indexedDB");
         return value;
     }
 
@@ -434,6 +443,7 @@ pub const WorkerGlobalScope = struct {
         }
         const value = try mixins.WindowOrWorkerGlobalScope.get_caches(instance);
         state.own.cached_caches = value;
+        @import("dom").same_object_cache.made(instance, value, "caches");
         return value;
     }
 
@@ -448,6 +458,7 @@ pub const WorkerGlobalScope = struct {
         }
         const value = try mixins.WindowOrWorkerGlobalScope.get_crypto(instance);
         state.own.cached_crypto = value;
+        @import("dom").same_object_cache.made(instance, value, "crypto");
         return value;
     }
 

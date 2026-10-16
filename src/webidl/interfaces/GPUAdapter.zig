@@ -164,6 +164,7 @@ pub const GPUAdapter = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(GPUAdapterImpl, "deinit") and @hasDecl(GPUAdapterImpl, "deinitOwn")) @compileError("GPUAdapterImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(GPUAdapterImpl, "deinit")) return GPUAdapterImpl.deinit(instance);
         if (comptime @hasDecl(GPUAdapterImpl, "deinitOwn")) GPUAdapterImpl.deinitOwn(instance);
     }
@@ -186,6 +187,7 @@ pub const GPUAdapter = struct {
         }
         const value = try GPUAdapterImpl.get_features(instance);
         state.own.cached_features = value;
+        @import("dom").same_object_cache.made(instance, value, "features");
         return value;
     }
 
@@ -198,6 +200,7 @@ pub const GPUAdapter = struct {
         }
         const value = try GPUAdapterImpl.get_limits(instance);
         state.own.cached_limits = value;
+        @import("dom").same_object_cache.made(instance, value, "limits");
         return value;
     }
 
@@ -210,6 +213,7 @@ pub const GPUAdapter = struct {
         }
         const value = try GPUAdapterImpl.get_info(instance);
         state.own.cached_info = value;
+        @import("dom").same_object_cache.made(instance, value, "info");
         return value;
     }
 

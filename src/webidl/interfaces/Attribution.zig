@@ -61,6 +61,14 @@ pub const Attribution = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "saveImpression",
+            "measureConversion",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -170,10 +178,12 @@ pub const Attribution = struct {
         return try AttributionImpl.get_aggregationServices(instance);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_measureConversion(instance: *runtime.Instance, options: AttributionConversionOptions) anyerror!runtime.JSValue {
         return try AttributionImpl.call_measureConversion(instance, options);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_saveImpression(instance: *runtime.Instance, options: AttributionImpressionOptions) anyerror!runtime.JSValue {
         return try AttributionImpl.call_saveImpression(instance, options);
     }

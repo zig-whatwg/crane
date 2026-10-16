@@ -167,6 +167,7 @@ pub const HIDInputReportEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(HIDInputReportEventImpl, "deinit") and @hasDecl(HIDInputReportEventImpl, "deinitOwn")) @compileError("HIDInputReportEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(HIDInputReportEventImpl, "deinit")) return HIDInputReportEventImpl.deinit(instance);
         if (comptime @hasDecl(HIDInputReportEventImpl, "deinitOwn")) HIDInputReportEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -198,6 +199,7 @@ pub const HIDInputReportEvent = struct {
         }
         const value = try HIDInputReportEventImpl.get_device(instance);
         state.own.cached_device = value;
+        @import("dom").same_object_cache.made(instance, value, "device");
         return value;
     }
 

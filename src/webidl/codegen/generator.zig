@@ -1821,6 +1821,7 @@ fn generateInterfaceFile(
         .interface_name = interface.name,
         .has_parent = base_info.is_interface,
         .is_mixin = interface.mixin,
+        .same_object_caches = writer.cachesSameObject(own_attrs.items),
     });
 
     // HTML 2.7.1: a [Serializable] interface publishes its impl's steps.
@@ -2946,6 +2947,8 @@ pub fn generateDictionary(
     try writer.writeByteStringMembers(w, dictionary.members, ir);
     // Which members keep a present null as `.null` (the converter reads it).
     try writer.writeAnyMembers(w, dictionary.members);
+    // Which optional members' present null is the value null.
+    try writer.writeNullableMembers(w, dictionary.members, ir);
     // Which integer members take [EnforceRange]'s or [Clamp]'s conversion.
     try writer.writeIntegerMembers(w, dictionary.members);
 

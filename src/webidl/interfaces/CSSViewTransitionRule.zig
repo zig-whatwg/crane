@@ -148,6 +148,7 @@ pub const CSSViewTransitionRule = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(CSSViewTransitionRuleImpl, "deinit") and @hasDecl(CSSViewTransitionRuleImpl, "deinitOwn")) @compileError("CSSViewTransitionRuleImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(CSSViewTransitionRuleImpl, "deinit")) return CSSViewTransitionRuleImpl.deinit(instance);
         if (comptime @hasDecl(CSSViewTransitionRuleImpl, "deinitOwn")) CSSViewTransitionRuleImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);

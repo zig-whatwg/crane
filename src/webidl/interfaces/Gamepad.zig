@@ -191,6 +191,7 @@ pub const Gamepad = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(GamepadImpl, "deinit") and @hasDecl(GamepadImpl, "deinitOwn")) @compileError("GamepadImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(GamepadImpl, "deinit")) return GamepadImpl.deinit(instance);
         if (comptime @hasDecl(GamepadImpl, "deinitOwn")) GamepadImpl.deinitOwn(instance);
     }
@@ -245,6 +246,7 @@ pub const Gamepad = struct {
         }
         const value = try GamepadImpl.get_vibrationActuator(instance);
         state.own.cached_vibrationActuator = value;
+        @import("dom").same_object_cache.made(instance, value, "vibrationActuator");
         return value;
     }
 

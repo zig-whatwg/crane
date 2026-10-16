@@ -312,6 +312,7 @@ pub const HTMLMapElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(HTMLMapElementImpl, "deinit") and @hasDecl(HTMLMapElementImpl, "deinitOwn")) @compileError("HTMLMapElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(HTMLMapElementImpl, "deinit")) return HTMLMapElementImpl.deinit(instance);
         if (comptime @hasDecl(HTMLMapElementImpl, "deinitOwn")) HTMLMapElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -361,6 +362,7 @@ pub const HTMLMapElement = struct {
         }
         const value = try HTMLMapElementImpl.get_areas(instance);
         state.own.cached_areas = value;
+        @import("dom").same_object_cache.made(instance, value, "areas");
         return value;
     }
 

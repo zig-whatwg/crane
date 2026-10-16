@@ -75,6 +75,7 @@ pub const SVGURIReference = struct {
         }
         const value = try SVGURIReferenceImpl.get_href(instance);
         state.own.cached_href = value;
+        @import("dom").same_object_cache.made(instance, value, "href");
         return value;
     }
 };

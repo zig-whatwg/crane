@@ -173,6 +173,7 @@ pub const ShadowAnimation = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(ShadowAnimationImpl, "deinit") and @hasDecl(ShadowAnimationImpl, "deinitOwn")) @compileError("ShadowAnimationImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(ShadowAnimationImpl, "deinit")) return ShadowAnimationImpl.deinit(instance);
         if (comptime @hasDecl(ShadowAnimationImpl, "deinitOwn")) ShadowAnimationImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -196,6 +197,7 @@ pub const ShadowAnimation = struct {
         }
         const value = try ShadowAnimationImpl.get_sourceAnimation(instance);
         state.own.cached_sourceAnimation = value;
+        @import("dom").same_object_cache.made(instance, value, "sourceAnimation");
         return value;
     }
 };

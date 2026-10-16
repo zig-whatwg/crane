@@ -339,6 +339,7 @@ pub const SVGImageElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGImageElementImpl, "deinit") and @hasDecl(SVGImageElementImpl, "deinitOwn")) @compileError("SVGImageElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGImageElementImpl, "deinit")) return SVGImageElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGImageElementImpl, "deinitOwn")) SVGImageElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -362,6 +363,7 @@ pub const SVGImageElement = struct {
         }
         const value = try SVGImageElementImpl.get_x(instance);
         state.own.cached_x = value;
+        @import("dom").same_object_cache.made(instance, value, "x");
         return value;
     }
 
@@ -374,6 +376,7 @@ pub const SVGImageElement = struct {
         }
         const value = try SVGImageElementImpl.get_y(instance);
         state.own.cached_y = value;
+        @import("dom").same_object_cache.made(instance, value, "y");
         return value;
     }
 
@@ -386,6 +389,7 @@ pub const SVGImageElement = struct {
         }
         const value = try SVGImageElementImpl.get_width(instance);
         state.own.cached_width = value;
+        @import("dom").same_object_cache.made(instance, value, "width");
         return value;
     }
 
@@ -398,6 +402,7 @@ pub const SVGImageElement = struct {
         }
         const value = try SVGImageElementImpl.get_height(instance);
         state.own.cached_height = value;
+        @import("dom").same_object_cache.made(instance, value, "height");
         return value;
     }
 
@@ -410,6 +415,7 @@ pub const SVGImageElement = struct {
         }
         const value = try SVGImageElementImpl.get_preserveAspectRatio(instance);
         state.own.cached_preserveAspectRatio = value;
+        @import("dom").same_object_cache.made(instance, value, "preserveAspectRatio");
         return value;
     }
 
@@ -430,6 +436,7 @@ pub const SVGImageElement = struct {
         }
         const value = try mixins.SVGURIReference.get_href(instance);
         state.own.cached_href = value;
+        @import("dom").same_object_cache.made(instance, value, "href");
         return value;
     }
 };

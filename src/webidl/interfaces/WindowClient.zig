@@ -168,6 +168,7 @@ pub const WindowClient = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(WindowClientImpl, "deinit") and @hasDecl(WindowClientImpl, "deinitOwn")) @compileError("WindowClientImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(WindowClientImpl, "deinit")) return WindowClientImpl.deinit(instance);
         if (comptime @hasDecl(WindowClientImpl, "deinitOwn")) WindowClientImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);

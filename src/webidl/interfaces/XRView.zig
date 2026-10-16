@@ -72,6 +72,14 @@ pub const XRView = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "projectionMatrix",
+            "transform",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -177,6 +185,7 @@ pub const XRView = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRViewImpl, "deinit") and @hasDecl(XRViewImpl, "deinitOwn")) @compileError("XRViewImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRViewImpl, "deinit")) return XRViewImpl.deinit(instance);
         if (comptime @hasDecl(XRViewImpl, "deinitOwn")) XRViewImpl.deinitOwn(instance);
     }
@@ -211,6 +220,7 @@ pub const XRView = struct {
         }
         const value = try XRViewImpl.get_camera(instance);
         state.own.cached_camera = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "camera");
         return value;
     }
 
@@ -218,9 +228,10 @@ pub const XRView = struct {
         return try XRViewImpl.get_isFirstPersonObserver(instance);
     }
 
+    /// Extended attributes: [SecureContext]
     pub const get_projectionMatrix = mixins.XRViewGeometry.get_projectionMatrix;
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_transform(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -229,6 +240,7 @@ pub const XRView = struct {
         }
         const value = try mixins.XRViewGeometry.get_transform(instance);
         state.own.cached_transform = value;
+        @import("dom").same_object_cache.made(instance, value, "transform");
         return value;
     }
 

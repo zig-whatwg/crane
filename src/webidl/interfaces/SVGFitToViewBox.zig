@@ -80,6 +80,7 @@ pub const SVGFitToViewBox = struct {
         }
         const value = try SVGFitToViewBoxImpl.get_viewBox(instance);
         state.own.cached_viewBox = value;
+        @import("dom").same_object_cache.made(instance, value, "viewBox");
         return value;
     }
 
@@ -92,6 +93,7 @@ pub const SVGFitToViewBox = struct {
         }
         const value = try SVGFitToViewBoxImpl.get_preserveAspectRatio(instance);
         state.own.cached_preserveAspectRatio = value;
+        @import("dom").same_object_cache.made(instance, value, "preserveAspectRatio");
         return value;
     }
 };

@@ -179,6 +179,7 @@ pub const ExtendableMessageEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(ExtendableMessageEventImpl, "deinit") and @hasDecl(ExtendableMessageEventImpl, "deinitOwn")) @compileError("ExtendableMessageEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(ExtendableMessageEventImpl, "deinit")) return ExtendableMessageEventImpl.deinit(instance);
         if (comptime @hasDecl(ExtendableMessageEventImpl, "deinitOwn")) ExtendableMessageEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);

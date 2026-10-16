@@ -13,4 +13,8 @@ pub const PaymentHandlerResponse = struct {
     payerPhone: ?runtime.DOMString = null,
     shippingAddress: ?runtime.JSValue = null,
     shippingOption: ?runtime.DOMString = null,
+
+    /// Optional members whose IDL type is nullable: a present null is the
+    /// value null. Any other member's present null converts by its type.
+    pub const nullable_members = .{ "payerName", "payerEmail", "payerPhone", "shippingOption" };
 };

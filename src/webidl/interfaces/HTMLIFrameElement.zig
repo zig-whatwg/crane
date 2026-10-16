@@ -273,6 +273,14 @@ pub const HTMLIFrameElement = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "privateToken",
+            "sharedStorageWritable",
+        };
     };
 
     /// HTML 3.2.3 [HTMLConstructor]: the constructor's steps are HTML's "HTML
@@ -446,6 +454,7 @@ pub const HTMLIFrameElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(HTMLIFrameElementImpl, "deinit") and @hasDecl(HTMLIFrameElementImpl, "deinitOwn")) @compileError("HTMLIFrameElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(HTMLIFrameElementImpl, "deinit")) return HTMLIFrameElementImpl.deinit(instance);
         if (comptime @hasDecl(HTMLIFrameElementImpl, "deinitOwn")) HTMLIFrameElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -525,6 +534,7 @@ pub const HTMLIFrameElement = struct {
         }
         const value = if (comptime @hasDecl(HTMLIFrameElementImpl, "get_sandbox")) try HTMLIFrameElementImpl.get_sandbox(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "sandbox" });
         state.own.cached_sandbox = value;
+        @import("dom").same_object_cache.made(instance, value, "sandbox");
         return value;
     }
 
@@ -766,6 +776,7 @@ pub const HTMLIFrameElement = struct {
         }
         const value = try HTMLIFrameElementImpl.get_permissionsPolicy(instance);
         state.own.cached_permissionsPolicy = value;
+        @import("dom").same_object_cache.made(instance, value, "permissionsPolicy");
         return value;
     }
 

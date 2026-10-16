@@ -248,6 +248,7 @@ pub const Performance = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(PerformanceImpl, "deinit") and @hasDecl(PerformanceImpl, "deinitOwn")) @compileError("PerformanceImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(PerformanceImpl, "deinit")) return PerformanceImpl.deinit(instance);
         if (comptime @hasDecl(PerformanceImpl, "deinitOwn")) PerformanceImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -275,6 +276,7 @@ pub const Performance = struct {
         }
         const value = try PerformanceImpl.get_eventCounts(instance);
         state.own.cached_eventCounts = value;
+        @import("dom").same_object_cache.made(instance, value, "eventCounts");
         return value;
     }
 
@@ -291,6 +293,7 @@ pub const Performance = struct {
         }
         const value = try PerformanceImpl.get_timing(instance);
         state.own.cached_timing = value;
+        @import("dom").same_object_cache.made(instance, value, "timing");
         return value;
     }
 
@@ -303,6 +306,7 @@ pub const Performance = struct {
         }
         const value = try PerformanceImpl.get_navigation(instance);
         state.own.cached_navigation = value;
+        @import("dom").same_object_cache.made(instance, value, "navigation");
         return value;
     }
 

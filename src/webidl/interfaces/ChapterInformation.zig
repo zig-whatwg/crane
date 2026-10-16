@@ -149,6 +149,7 @@ pub const ChapterInformation = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(ChapterInformationImpl, "deinit") and @hasDecl(ChapterInformationImpl, "deinitOwn")) @compileError("ChapterInformationImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(ChapterInformationImpl, "deinit")) return ChapterInformationImpl.deinit(instance);
         if (comptime @hasDecl(ChapterInformationImpl, "deinitOwn")) ChapterInformationImpl.deinitOwn(instance);
     }

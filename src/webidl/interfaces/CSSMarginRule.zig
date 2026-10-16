@@ -156,6 +156,7 @@ pub const CSSMarginRule = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(CSSMarginRuleImpl, "deinit") and @hasDecl(CSSMarginRuleImpl, "deinitOwn")) @compileError("CSSMarginRuleImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(CSSMarginRuleImpl, "deinit")) return CSSMarginRuleImpl.deinit(instance);
         if (comptime @hasDecl(CSSMarginRuleImpl, "deinitOwn")) CSSMarginRuleImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);

@@ -100,6 +100,13 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "oncharacteristicvaluechanged",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -210,6 +217,7 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(BluetoothRemoteGATTCharacteristicImpl, "deinit") and @hasDecl(BluetoothRemoteGATTCharacteristicImpl, "deinitOwn")) @compileError("BluetoothRemoteGATTCharacteristicImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(BluetoothRemoteGATTCharacteristicImpl, "deinit")) return BluetoothRemoteGATTCharacteristicImpl.deinit(instance);
         if (comptime @hasDecl(BluetoothRemoteGATTCharacteristicImpl, "deinitOwn")) BluetoothRemoteGATTCharacteristicImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -233,6 +241,7 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
         }
         const value = try BluetoothRemoteGATTCharacteristicImpl.get_service(instance);
         state.own.cached_service = value;
+        @import("dom").same_object_cache.made(instance, value, "service");
         return value;
     }
 
@@ -248,6 +257,7 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
         return try BluetoothRemoteGATTCharacteristicImpl.get_value(instance);
     }
 
+    /// Extended attributes: [SecureContext]
     pub const get_oncharacteristicvaluechanged = mixins.CharacteristicEventHandlers.get_oncharacteristicvaluechanged;
     pub const set_oncharacteristicvaluechanged = mixins.CharacteristicEventHandlers.set_oncharacteristicvaluechanged;
 

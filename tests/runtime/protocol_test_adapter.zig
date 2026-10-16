@@ -80,6 +80,8 @@ pub fn requestGarbageCollection(_: *Agent) void {}
 pub fn notifyMemoryPressure(_: *Agent, _: engine.MemoryPressure) void {}
 
 // 4.2 Realms
+/// No engine: no realm, so none that exposes a [SecureContext] construct
+/// it was asked to hide (WindowRealmOptions.secure_context).
 pub fn createWindowRealm(_: *const engine.WindowRealmOptions) Error!Context {
     return error.NotSupported;
 }
@@ -195,6 +197,8 @@ pub fn finishDynamicImport(_: *engine.ImportRequest, _: engine.DynamicImportOutc
 pub fn releaseModuleRecord(_: *engine.ModuleRecord) void {}
 
 // 4.4 Invoking callbacks
+/// No engine: no callback runs, so none of a Window whose Document is not
+/// fully active either (engine_protocol.zig invokeCallbackFunction).
 pub fn invokeCallbackFunction(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
     return error.NotSupported;
 }

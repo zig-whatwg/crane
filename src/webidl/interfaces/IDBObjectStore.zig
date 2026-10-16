@@ -216,6 +216,7 @@ pub const IDBObjectStore = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(IDBObjectStoreImpl, "deinit") and @hasDecl(IDBObjectStoreImpl, "deinitOwn")) @compileError("IDBObjectStoreImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(IDBObjectStoreImpl, "deinit")) return IDBObjectStoreImpl.deinit(instance);
         if (comptime @hasDecl(IDBObjectStoreImpl, "deinitOwn")) IDBObjectStoreImpl.deinitOwn(instance);
     }
@@ -254,6 +255,7 @@ pub const IDBObjectStore = struct {
         }
         const value = try IDBObjectStoreImpl.get_transaction(instance);
         state.own.cached_transaction = value;
+        @import("dom").same_object_cache.made(instance, value, "transaction");
         return value;
     }
 

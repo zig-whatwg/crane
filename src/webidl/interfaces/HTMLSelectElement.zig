@@ -420,6 +420,7 @@ pub const HTMLSelectElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(HTMLSelectElementImpl, "deinit") and @hasDecl(HTMLSelectElementImpl, "deinitOwn")) @compileError("HTMLSelectElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(HTMLSelectElementImpl, "deinit")) return HTMLSelectElementImpl.deinit(instance);
         if (comptime @hasDecl(HTMLSelectElementImpl, "deinitOwn")) HTMLSelectElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -556,6 +557,7 @@ pub const HTMLSelectElement = struct {
         }
         const value = try HTMLSelectElementImpl.get_options(instance);
         state.own.cached_options = value;
+        @import("dom").same_object_cache.made(instance, value, "options");
         return value;
     }
 
@@ -582,6 +584,7 @@ pub const HTMLSelectElement = struct {
         }
         const value = try HTMLSelectElementImpl.get_selectedOptions(instance);
         state.own.cached_selectedOptions = value;
+        @import("dom").same_object_cache.made(instance, value, "selectedOptions");
         return value;
     }
 

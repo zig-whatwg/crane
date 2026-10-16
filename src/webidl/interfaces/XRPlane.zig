@@ -160,6 +160,7 @@ pub const XRPlane = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRPlaneImpl, "deinit") and @hasDecl(XRPlaneImpl, "deinitOwn")) @compileError("XRPlaneImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRPlaneImpl, "deinit")) return XRPlaneImpl.deinit(instance);
         if (comptime @hasDecl(XRPlaneImpl, "deinitOwn")) XRPlaneImpl.deinitOwn(instance);
     }
@@ -182,6 +183,7 @@ pub const XRPlane = struct {
         }
         const value = try XRPlaneImpl.get_planeSpace(instance);
         state.own.cached_planeSpace = value;
+        @import("dom").same_object_cache.made(instance, value, "planeSpace");
         return value;
     }
 

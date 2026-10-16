@@ -174,6 +174,7 @@ pub const XRVisibilityMaskChangeEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRVisibilityMaskChangeEventImpl, "deinit") and @hasDecl(XRVisibilityMaskChangeEventImpl, "deinitOwn")) @compileError("XRVisibilityMaskChangeEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRVisibilityMaskChangeEventImpl, "deinit")) return XRVisibilityMaskChangeEventImpl.deinit(instance);
         if (comptime @hasDecl(XRVisibilityMaskChangeEventImpl, "deinitOwn")) XRVisibilityMaskChangeEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -205,6 +206,7 @@ pub const XRVisibilityMaskChangeEvent = struct {
         }
         const value = try XRVisibilityMaskChangeEventImpl.get_session(instance);
         state.own.cached_session = value;
+        @import("dom").same_object_cache.made(instance, value, "session");
         return value;
     }
 
