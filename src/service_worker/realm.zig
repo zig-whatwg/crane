@@ -391,10 +391,18 @@ pub const RealmEnvironment = struct {
         var holder: ?*objects.ClientObject = try objects.ClientObject.create(self.allocator, info);
         errdefer if (holder) |data| data.destroy();
         const data = holder.?;
-        if (data.window) |*window| {
-            return interfaces.WindowClient.initWith(self.realm.allocator, self.realm, .{ .client = &holder, .window_client = window });
-        }
-        return interfaces.Client.initWith(self.realm.allocator, self.realm, .{ .client = &holder });
+        const instance = if (data.window) |*window|
+            try interfaces.WindowClient.initWith(self.realm.allocator, self.realm, .{ .client = &holder, .window_client = window })
+        else
+            try interfaces.Client.initWith(self.realm.allocator, self.realm, .{ .client = &holder });
+        // Wrapped at once: its wrapper owns it from here, so a step that
+        // fails before script holds it leaves nothing behind.
+        const wrapper = engine.retainValue(self.realm, runtime.JSValue.fromInstance(instance)) catch |err| {
+            instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
+            return err;
+        };
+        wrapper.release();
+        return instance;
     }
 
     /// This environment as a client its service worker sees: its id, URL,

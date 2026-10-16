@@ -485,9 +485,6 @@ fn fireMessage(manager: *Manager, realm: runtime.Context, global_scope: *runtime
         .service_worker => |info| try environment.workerObject(info),
         .client => |*info| try environment.clientObject(info),
     };
-    // A new Client is the event's to hold; one the event never took goes.
-    const source_generation = runtime.SlabAllocator.generationOf(source);
-    defer if (message.source == .client) source.releaseIfUnwrapped(source_generation);
     // 6.2.3. destination: the worker's global.
     // 6.2.4. StructuredDeserializeWithTransfer, its transferred ports
     // received here first.

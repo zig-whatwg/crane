@@ -248,6 +248,17 @@ fn internalResponseOf(allocator: Allocator, stored: *const records.StoredRespons
     return response;
 }
 
+/// Wrap `object` at once: its wrapper owns it from here, so a step that fails
+/// before script holds it leaves nothing behind.
+fn wrapNow(realm: runtime.Context, object: *runtime.Instance) !*runtime.Instance {
+    const wrapper = engine.retainValue(realm, runtime.JSValue.fromInstance(object)) catch |err| {
+        object.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(object));
+        return err;
+    };
+    wrapper.release();
+    return object;
+}
+
 /// "A new Response object associated with response and a new Headers object
 /// whose guard is immutable", in `realm`.
 fn responseObject(realm: runtime.Context, stored: *const records.StoredResponse) !*runtime.Instance {
@@ -258,9 +269,10 @@ fn responseObject(realm: runtime.Context, stored: *const records.StoredResponse)
     };
     if (!dom.fetch_objects.adoptResponse(object, internal, .immutable)) {
         internal.deinit();
+        object.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(object));
         return error.InvalidStateError;
     }
-    return object;
+    return wrapNow(realm, object);
 }
 
 /// "A new Request object associated with request and a new associated
@@ -273,13 +285,15 @@ fn requestObject(realm: runtime.Context, stored: *const records.StoredRequest) !
     };
     const adopted = dom.fetch_objects.adoptRequest(object, internal, .immutable) catch |err| {
         internal.deinit();
+        object.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(object));
         return err;
     };
     if (!adopted) {
         internal.deinit();
+        object.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(object));
         return error.InvalidStateError;
     }
-    return object;
+    return wrapNow(realm, object);
 }
 
 /// A RequestInfo as a request record: a Request object's request, or the
@@ -374,7 +388,7 @@ pub fn storageOpen(cache_storage: *runtime.Instance, name: []const u8) !runtime.
     var scope = try Scope.of(realm);
     defer scope.deinit();
     const id = scope.storage.openCache(scope.browser, scope.storage_key, name) catch |err| return storeError(err);
-    const object = try interfaces.Cache.initWith(realm.allocator, realm, .{ .cache = CacheHandle{ .storage = scope.storage, .cache = id } });
+    const object = try wrapNow(realm, try interfaces.Cache.initWith(realm.allocator, realm, .{ .cache = CacheHandle{ .storage = scope.storage, .cache = id } }));
     return resolved(realm, runtime.JSValue.fromInstance(object));
 }
 
