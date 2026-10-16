@@ -42,6 +42,9 @@ const Manager = manager_mod.Manager;
 const Delivery = manager_mod.Delivery;
 const WorkerInfo = manager_mod.WorkerInfo;
 const RegistrationInfo = manager_mod.RegistrationInfo;
+const ClientInfo = manager_mod.ClientInfo;
+const ClientMessage = manager_mod.ClientMessage;
+const WindowData = manager_mod.WindowData;
 
 const log = std.log.scoped(.service_worker);
 
@@ -62,6 +65,9 @@ pub const RealmEnvironment = struct {
     creation_url: []u8,
     /// A service worker's own global: which worker it runs.
     service_worker_id: u64 = 0,
+    /// A window client's frame type (Get Frame Type), as it was when the
+    /// environment was made.
+    frame_type: registry_mod.FrameType = .none,
     /// The realm's navigator's ServiceWorkerContainer, once made.
     container: ?Held = null,
     /// The service worker object map (3.1.1).
@@ -77,6 +83,11 @@ pub const RealmEnvironment = struct {
     /// own frame) leaves the memory to the Delivery.
     delivering: u32 = 0,
     ended: bool = false,
+    /// The container's client message queue (3.4) is enabled: its tasks
+    /// run. Until then the messages Client.postMessage adds to it wait in
+    /// `client_queue`.
+    client_queue_enabled: bool = false,
+    client_queue: std.ArrayListUnmanaged(*ClientMessage) = .empty,
 
     const Held = struct {
         instance: *runtime.Instance,
@@ -211,7 +222,7 @@ pub const RealmEnvironment = struct {
     /// task of the realm (HTML "queue a task ... using the DOM manipulation
     /// task source"), its agent entered - a worker loop runs what its sink
     /// takes outside any realm.
-    fn deliver(endpoint: *manager_mod.Endpoint, delivery: *const Delivery) void {
+    fn deliver(endpoint: *manager_mod.Endpoint, delivery: *Delivery) void {
         const self = RealmEnvironment.ofEndpoint(endpoint);
         if (self.ended) return;
         self.delivering += 1;
@@ -227,7 +238,7 @@ pub const RealmEnvironment = struct {
 
     const DeliveryInRealm = struct {
         environment: *RealmEnvironment,
-        delivery: *const Delivery,
+        delivery: *Delivery,
 
         fn steps(data: ?*anyopaque) void {
             const self: *DeliveryInRealm = @ptrCast(@alignCast(data.?));
@@ -235,7 +246,7 @@ pub const RealmEnvironment = struct {
         }
     };
 
-    fn handle(self: *RealmEnvironment, delivery: *const Delivery) !void {
+    fn handle(self: *RealmEnvironment, delivery: *Delivery) !void {
         switch (delivery.*) {
             // Resolve Job Promise 1.2-1.4: the registration's object here.
             .resolve_registration => |m| {
@@ -286,6 +297,8 @@ pub const RealmEnvironment = struct {
                     .type_error => try engine.createSimpleException(self.realm, .TypeError, m.message),
                     .security_error => try engine.createDOMException(self.realm, "SecurityError", m.message),
                     .invalid_state_error => try engine.createDOMException(self.realm, "InvalidStateError", m.message),
+                    .invalid_access_error => try engine.createDOMException(self.realm, "InvalidAccessError", m.message),
+                    .not_supported_error => try engine.createDOMException(self.realm, "NotSupportedError", m.message),
                 };
                 defer exception.release();
                 try engine.rejectPromise(&capability, exception.borrow());
@@ -329,7 +342,159 @@ pub const RealmEnvironment = struct {
                 const object = try self.registrationObject(info);
                 try engine.resolvePromise(&kept.capability, runtime.JSValue.fromInstance(object));
             },
+            // Client.postMessage step 4.5: a task of the container's client
+            // message queue - run now if the queue is enabled, kept until it
+            // is otherwise.
+            .client_message => |*m| {
+                const message = m.* orelse return;
+                m.* = null;
+                if (!self.client_queue_enabled) {
+                    self.client_queue.append(self.allocator, message) catch |err| {
+                        message.destroy();
+                        return err;
+                    };
+                    return;
+                }
+                try self.dispatchClientMessage(message);
+            },
+            // matchAll() step 2.6.1-2.6.5: a Client or WindowClient for each
+            // matched client, in a new frozen array.
+            .resolve_clients => |m| {
+                var capability = self.takePromise(m.promise) orelse return;
+                defer engine.releasePromiseCapability(&capability);
+                const values = try self.allocator.alloc(runtime.JSValue, m.clients.len);
+                defer self.allocator.free(values);
+                for (m.clients, values) |*info, *value| value.* = runtime.JSValue.fromInstance(try self.clientObject(info));
+                const array = try engine.createFrozenArray(self.realm, values);
+                defer array.release();
+                try engine.resolvePromise(&capability, array.borrow());
+            },
+            // get(id): Resolve Get Client Promise's resolution, or undefined.
+            .resolve_client => |*m| {
+                var capability = self.takePromise(m.promise) orelse return;
+                defer engine.releasePromiseCapability(&capability);
+                const info = if (m.client) |*c| c else return engine.resolvePromise(&capability, runtime.JSValue.jsUndefined);
+                try engine.resolvePromise(&capability, runtime.JSValue.fromInstance(try self.clientObject(info)));
+            },
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Clients (Create Client, Create Window Client)
+    // ------------------------------------------------------------------
+
+    /// A new Client - a WindowClient when `info` has window data - in this
+    /// (a service worker's) realm, representing `info`'s client.
+    pub fn clientObject(self: *RealmEnvironment, info: *const ClientInfo) !*runtime.Instance {
+        // The Client impl takes the object's state from `holder`; what it
+        // has not taken when the construction fails is still ours.
+        var holder: ?*objects.ClientObject = try objects.ClientObject.create(self.allocator, info);
+        errdefer if (holder) |data| data.destroy();
+        const data = holder.?;
+        const instance = if (data.window) |*window|
+            try interfaces.WindowClient.initWith(self.realm.allocator, self.realm, .{ .client = &holder, .window_client = window })
+        else
+            try interfaces.Client.initWith(self.realm.allocator, self.realm, .{ .client = &holder });
+        // Wrapped at once: its wrapper owns it from here, so a step that
+        // fails before script holds it leaves nothing behind.
+        const wrapper = engine.retainValue(self.realm, runtime.JSValue.fromInstance(instance)) catch |err| {
+            instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
+            return err;
+        };
+        wrapper.release();
+        return instance;
+    }
+
+    /// This environment as a client its service worker sees: its id, URL,
+    /// type and frame type, and a window's window data now. OWNED (the
+    /// manager's allocator: it crosses threads).
+    fn clientInfo(self: *RealmEnvironment) !ClientInfo {
+        const allocator = self.manager.allocator;
+        const id = self.manager.clientIdOf(self.id) orelse return error.InvalidStateError;
+        var info: ClientInfo = .{
+            .environment = self.id,
+            .id = id,
+            .url = try allocator.dupe(u8, self.creation_url),
+            .kind = self.kind,
+            .frame_type = self.frame_type,
+        };
+        errdefer info.deinit(allocator);
+        if (self.kind == .window) info.window = (try windowDataOf(allocator, self.realm)) orelse .{};
+        return info;
+    }
+
+    // ------------------------------------------------------------------
+    // The client message queue (3.4)
+    // ------------------------------------------------------------------
+
+    /// Enable the container's client message queue, if it is not enabled:
+    /// the messages waiting in it run, each as a task of its own, in order.
+    pub fn enableClientMessageQueue(self: *RealmEnvironment) void {
+        if (self.client_queue_enabled) return;
+        self.client_queue_enabled = true;
+        const waiting = self.client_queue;
+        self.client_queue = .empty;
+        var list = waiting;
+        defer list.deinit(self.allocator);
+        for (list.items) |message| self.manager.deliverLater(self.id, .{ .client_message = message });
+    }
+
+    /// Client.postMessage step 4.5.1-4.5.6, a task of the client message
+    /// queue: `message` (taken) dispatched at the container.
+    fn dispatchClientMessage(self: *RealmEnvironment, message: *ClientMessage) !void {
+        defer message.destroy();
+        const realm = self.realm;
+        // 4.4. destination: the container whose client this is.
+        const destination = (try self.containerInstance()) orelse return;
+        // 4.5.1. origin: sourceSettings' origin.
+        const origin = message.origin;
+        // 4.5.2. source: the service worker's object in this realm.
+        const source_info = message.source orelse return;
+        const source = try self.workerObject(source_info);
+        const port_message = message.message orelse return;
+        message.message = null;
+        defer port_message.destroy();
+        // The transferred ports, received here (their transfer-receiving
+        // steps), then 4.5.3 StructuredDeserializeWithTransfer.
+        var ports: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+        defer ports.deinit(self.allocator);
+        const ends = port_message.takeEnds();
+        defer port_message.allocator.free(ends);
+        for (ends) |shipped| {
+            const port = dom.message_ports.receive(realm, @ptrCast(shipped)) catch continue;
+            ports.append(self.allocator, port) catch continue;
+        }
+        const data = engine.structuredDeserializeWithTransfer(realm, port_message.serialized, port_message.array_buffers, ports.items) catch {
+            // "If this throws an exception, catch it, fire an event named
+            // messageerror at destination, using MessageEvent, with its
+            // origin initialized to origin and the source attribute
+            // initialized to source."
+            fireContainerMessage(realm, destination, "messageerror", runtime.JSValue.jsNull, origin, source, &.{});
+            return;
+        };
+        defer data.release();
+        // 4.5.4-4.5.6.
+        fireContainerMessage(realm, destination, "message", data.value, origin, source, ports.items);
+    }
+
+    /// The realm's navigator's ServiceWorkerContainer, made if the realm
+    /// never asked for it ("the user agent must create a
+    /// ServiceWorkerContainer object when a Navigator object or a
+    /// WorkerNavigator object is created").
+    fn containerInstance(self: *RealmEnvironment) !?*runtime.Instance {
+        if (self.container) |held_container| if (held_container.live()) |instance| return instance;
+        const global = globalOf(self.realm) orelse return null;
+        const navigator = switch (self.kind) {
+            .window => try interfaces.Window.get_navigator(global),
+            .dedicated_worker, .shared_worker => try interfaces.WorkerGlobalScope.get_navigator(global),
+            .service_worker => return null,
+        };
+        const container = switch (self.kind) {
+            .window => try interfaces.Navigator.get_serviceWorker(navigator),
+            else => try interfaces.WorkerNavigator.get_serviceWorker(navigator),
+        };
+        // Its construction made it this environment's container.
+        return container;
     }
 
     fn workerEntry(self: *RealmEnvironment, worker_id: u64) ?*WorkerEntry {
@@ -369,10 +534,16 @@ pub const RealmEnvironment = struct {
             kept.promise.release();
             self.ready = null;
         }
+        // The messages still waiting for the client message queue are
+        // discarded with their ports.
+        for (self.client_queue.items) |message| message.destroy();
+        self.client_queue.clearAndFree(self.allocator);
         if (self.delivering == 0) self.destroy();
     }
 
     fn destroy(self: *RealmEnvironment) void {
+        for (self.client_queue.items) |message| message.destroy();
+        self.client_queue.deinit(self.allocator);
         self.workers.deinit(self.allocator);
         self.registrations.deinit(self.allocator);
         self.promises.deinit(self.allocator);
@@ -452,6 +623,19 @@ fn makeEnvironment(manager: *Manager, realm: runtime.Context) !?*RealmEnvironmen
         break :blk service.worker_id;
     } else 0;
     manager.noteCookieJar(dom.global_settings.cookieJarOf(global));
+    const frame_type: registry_mod.FrameType = if (kind == .window) frameTypeOf(global) else .none;
+    // The client message queue: a worker's is enabled once its script has
+    // run (HTML "run a worker" step 14) - before any task of its loop, so
+    // before any message could reach it; a window's after DOMContentLoaded
+    // ("the end" step 6.4, `enableClientMessageQueueOf`), which a document
+    // past "loading" has fired or is about to. (A message that arrives
+    // between readiness "interactive" and the DOMContentLoaded task runs
+    // before that event: stated deviation.)
+    const queue_enabled = switch (kind) {
+        .window => !documentIsLoading(global),
+        .dedicated_worker, .shared_worker => true,
+        .service_worker => false,
+    };
 
     const self = try allocator.create(RealmEnvironment);
     errdefer allocator.destroy(self);
@@ -460,7 +644,12 @@ fn makeEnvironment(manager: *Manager, realm: runtime.Context) !?*RealmEnvironmen
     const owned_url = try allocator.dupe(u8, creation_url);
     errdefer allocator.free(owned_url);
     self.* = .{
-        .endpoint = .{ .sink = sink.retain(), .deliver = RealmEnvironment.deliver, .realm = realm },
+        .endpoint = .{
+            .sink = sink.retain(),
+            .deliver = RealmEnvironment.deliver,
+            .window_data = endpointWindowData,
+            .realm = realm,
+        },
         .allocator = allocator,
         .manager = manager,
         .realm = realm,
@@ -469,6 +658,8 @@ fn makeEnvironment(manager: *Manager, realm: runtime.Context) !?*RealmEnvironmen
         .origin = owned_origin,
         .creation_url = owned_url,
         .service_worker_id = service_worker_id,
+        .frame_type = frame_type,
+        .client_queue_enabled = queue_enabled,
     };
     errdefer sink.release();
     self.id = try manager.addEnvironment(.{
@@ -476,10 +667,123 @@ fn makeEnvironment(manager: *Manager, realm: runtime.Context) !?*RealmEnvironmen
         .origin = owned_origin,
         .creation_url = owned_url,
         .secure_context = is_secure,
+        .frame_type = frame_type,
         .service_worker_id = service_worker_id,
         .endpoint = &self.endpoint,
     });
     return self;
+}
+
+/// Whether the document of the Window `global` is still loading (its
+/// readiness "loading": DOMContentLoaded has not fired).
+fn documentIsLoading(global: *runtime.Instance) bool {
+    const document = interfaces.Window.get_document(global) catch return false;
+    const readiness = interfaces.Document.get_readyState(document) catch return false;
+    return readiness == ._loading_;
+}
+
+/// Get Frame Type for the navigable of the Window `global`: "nested" when it
+/// has a parent, "auxiliary" when its browsing context is an auxiliary one
+/// (it has an opener: Chromium's GetFrameType asks HasOpener), "top-level"
+/// otherwise.
+fn frameTypeOf(global: *runtime.Instance) registry_mod.FrameType {
+    // 1. A parent: nested.
+    const parent = interfaces.Window.get_parent(global) catch return .@"top-level";
+    if (parent) |p| if (p != global) return .nested;
+    // 2. An auxiliary browsing context.
+    const opener = interfaces.Window.get_opener(global) catch return .@"top-level";
+    switch (opener) {
+        .null, .undefined => {},
+        else => return .auxiliary,
+    }
+    // 3.
+    return .@"top-level";
+}
+
+/// A window client's window data, as a task of its event loop reads them
+/// (matchAll() step 2.5.1.6.1-6, Resolve Get Client Promise 4.5): null when
+/// the client is not enumerable - its document is not fully active (it is
+/// not its browsing context's active document, or the context is gone).
+/// OWNED (`allocator`). Run in the realm.
+fn windowDataOf(allocator: std.mem.Allocator, realm: runtime.Context) !?WindowData {
+    const global = globalOf(realm) orelse return null;
+    if (!dom.document_activity.fullyActive(global, runtime.SlabAllocator.generationOf(global))) return null;
+    const document = try interfaces.Window.get_document(global);
+    var data: WindowData = .{};
+    // visibilityState, and the has focus steps.
+    data.visible = (try interfaces.Document.get_visibilityState(document)) == ._visible_;
+    data.focused = try interfaces.Document.call_hasFocus(document);
+    // The active document's ancestor origins list.
+    const location = try interfaces.Window.get_location(global);
+    const list = try interfaces.Location.get_ancestorOrigins(location);
+    const count = try interfaces.DOMStringList.get_length(list);
+    var origins: std.ArrayListUnmanaged([]u8) = .empty;
+    errdefer {
+        for (origins.items) |o| allocator.free(o);
+        origins.deinit(allocator);
+    }
+    var i: u32 = 0;
+    while (i < count) : (i += 1) {
+        var item = (try interfaces.DOMStringList.call_item(list, i)) orelse continue;
+        defer item.deinit(realm.allocator);
+        try origins.append(allocator, try allocator.dupe(u8, item.asSlice()));
+    }
+    data.ancestor_origins = try origins.toOwnedSlice(allocator);
+    return data;
+}
+
+/// The endpoint's window data, on the realm's thread: entered in its realm
+/// (a task from the sink runs in none).
+fn endpointWindowData(endpoint: *manager_mod.Endpoint, allocator: std.mem.Allocator) ?WindowData {
+    const self = RealmEnvironment.ofEndpoint(endpoint);
+    if (self.ended or self.kind != .window) return null;
+    var task: WindowDataInRealm = .{ .realm = self.realm, .allocator = allocator };
+    engine.runTaskInRealm(self.realm, WindowDataInRealm.steps, &task) catch return null;
+    return task.result;
+}
+
+const WindowDataInRealm = struct {
+    realm: runtime.Context,
+    allocator: std.mem.Allocator,
+    result: ?WindowData = null,
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *WindowDataInRealm = @ptrCast(@alignCast(data.?));
+        self.result = windowDataOf(self.allocator, self.realm) catch |err| blk: {
+            log.debug("a window client's data: {s}", .{@errorName(err)});
+            break :blk null;
+        };
+    }
+};
+
+/// Fire a MessageEvent named `event_type` at the container `destination`,
+/// made in `realm`, with its data, origin, source (a ServiceWorker) and
+/// ports (Client.postMessage step 4.5.3 / 4.5.6). Trusted: the user agent
+/// fires it.
+fn fireContainerMessage(
+    realm: runtime.Context,
+    destination: *runtime.Instance,
+    event_type: []const u8,
+    data: runtime.JSValue,
+    origin: []const u8,
+    source: *runtime.Instance,
+    ports: []const *runtime.Instance,
+) void {
+    const init_dict = @import("dictionaries").MessageEventInit{
+        .base = .{},
+        .data = data,
+        .origin = origin,
+        .source = .{ .service_worker = source },
+        .ports = ports,
+    };
+    const event = interfaces.MessageEvent.call_constructor(
+        realm,
+        runtime.DOMString.initInterned(event_type),
+        @import("webidl").Opt(@import("dictionaries").MessageEventInit).passed(init_dict),
+    ) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    _ = dom.fire_event.dispatchTrusted(destination, event) catch {};
+    event.releaseIfUnwrapped(generation);
 }
 
 /// HTML's unloading document cleanup steps (and a worker's end), for
@@ -527,6 +831,8 @@ fn rejected(realm: runtime.Context, kind: registry_mod.ErrorKind, message: []con
         .type_error => try engine.createSimpleException(realm, .TypeError, message),
         .security_error => try engine.createDOMException(realm, "SecurityError", message),
         .invalid_state_error => try engine.createDOMException(realm, "InvalidStateError", message),
+        .invalid_access_error => try engine.createDOMException(realm, "InvalidAccessError", message),
+        .not_supported_error => try engine.createDOMException(realm, "NotSupportedError", message),
     };
     defer exception.release();
     return (try engine.createRejectedPromise(realm, exception.borrow())).take();
@@ -778,4 +1084,189 @@ pub fn claim(clients: *runtime.Instance) !runtime.JSValue {
     // 3. In parallel (the job thread); 3.2's resolution comes back.
     environment.manager.report(.{ .claim = .{ .worker = environment.service_worker_id, .environment = environment.id, .promise = made.id } });
     return made.promise.take();
+}
+
+// ============================================================================
+// Messages: ServiceWorker.postMessage (3.1.5), Client.postMessage (4.2.6),
+// the client message queue (3.4)
+// ============================================================================
+
+/// ServiceWorker.postMessage(message, options) steps 1-6, for the
+/// ServiceWorker object `service_worker` whose state is `data`, with
+/// `transfer` - options["transfer"].
+pub fn postMessageToWorker(service_worker: *runtime.Instance, data: *const objects.ServiceWorkerObject, message: runtime.JSValue, transfer: []const runtime.JSValue) !void {
+    const manager = Manager.of(service_worker.ctx) orelse return;
+    const realm = engine.currentRealm() orelse service_worker.ctx;
+    // 2-3. incumbentSettings and incumbentGlobal.
+    const incumbent = engine.incumbentRealm() orelse service_worker.ctx;
+    // 4. StructuredSerializeWithTransfer(message, options["transfer"]);
+    // rethrow any exceptions.
+    const port_message = try html.worker_host.serializePortMessage(realm, message, transfer, manager.allocator);
+    // A sender that can be no environment - a removed frame's - sends
+    // nothing (its realm is going).
+    const environment = environmentOf(incumbent, true) orelse {
+        port_message.destroy();
+        return;
+    };
+    // 6.2.1-6.2.2: the source and origin, as the incumbent settings object
+    // is now - read here, on its own thread.
+    var source = messageSourceOf(environment) catch |err| {
+        port_message.destroy();
+        return err;
+    };
+    const outbound = manager.allocator.create(manager_mod.WorkerMessage) catch |err| {
+        source.deinit(manager.allocator);
+        port_message.destroy();
+        return err;
+    };
+    outbound.* = .{
+        .allocator = manager.allocator,
+        .message = port_message,
+        .origin = manager.allocator.dupe(u8, environment.origin) catch |err| {
+            source.deinit(manager.allocator);
+            port_message.destroy();
+            manager.allocator.destroy(outbound);
+            return err;
+        },
+        .source = source,
+    };
+    // 5. Should Skip Event never skips. 6. In parallel: Run Service Worker,
+    // then the worker's task.
+    manager.postToWorker(data.worker_id, outbound);
+}
+
+/// Who the incumbent `environment` is to a service worker's message event:
+/// its own service worker (a service worker's global), or a client.
+fn messageSourceOf(environment: *RealmEnvironment) !manager_mod.MessageSource {
+    const allocator = environment.manager.allocator;
+    if (environment.kind == .service_worker) {
+        const info = (try environment.manager.workerInfo(allocator, environment.service_worker_id)) orelse WorkerInfo{
+            .id = environment.service_worker_id,
+            .script_url = try allocator.dupe(u8, environment.creation_url),
+            .state = .redundant,
+        };
+        return .{ .service_worker = info };
+    }
+    return .{ .client = try environment.clientInfo() };
+}
+
+/// Client.postMessage(message, options) steps 1-4, for the Client object
+/// `client` whose state is `data`, in a service worker's realm.
+pub fn postMessageToClient(client: *runtime.Instance, data: *const objects.ClientObject, message: runtime.JSValue, transfer: []const runtime.JSValue) !void {
+    const realm = engine.currentRealm() orelse client.ctx;
+    // 2. sourceSettings: the Client's relevant settings object - the
+    // service worker's global.
+    const environment = environmentOf(client.ctx, true) orelse return;
+    const manager = environment.manager;
+    // 3. StructuredSerializeWithTransfer; rethrow any exceptions.
+    const port_message = try html.worker_host.serializePortMessage(realm, message, transfer, manager.allocator);
+    const outbound = manager.allocator.create(ClientMessage) catch |err| {
+        port_message.destroy();
+        return err;
+    };
+    outbound.* = .{
+        .allocator = manager.allocator,
+        .message = port_message,
+        .origin = manager.allocator.dupe(u8, environment.origin) catch |err| {
+            port_message.destroy();
+            manager.allocator.destroy(outbound);
+            return err;
+        },
+    };
+    // 4. In parallel: the target client, if it is still there, gets a task
+    // of its container's client message queue.
+    manager.postToClient(data.environment, environment.service_worker_id, outbound);
+}
+
+/// startMessages() (3.4.6), and the first set of onmessage (3.4.7): enable
+/// the container's client message queue.
+pub fn startMessages(container: *runtime.Instance) void {
+    const environment = environmentOf(container.ctx, true) orelse return;
+    environment.enableClientMessageQueue();
+}
+
+/// HTML "the end" step 6.4 (after DOMContentLoaded): enable the client
+/// message queue of the container whose client is `realm`'s settings
+/// object, if it is an environment yet (one made later checks the
+/// document's readiness).
+pub fn enableClientMessageQueueOf(realm: runtime.Context) void {
+    const manager = Manager.existingOf(realm) orelse return;
+    const endpoint = manager.endpointOf(realm) orelse return;
+    const environment = RealmEnvironment.ofEndpoint(endpoint);
+    if (environment.ended) return;
+    environment.enableClientMessageQueue();
+}
+
+// ============================================================================
+// Clients (4.3): get(), matchAll(), openWindow(); WindowClient (4.2)
+// ============================================================================
+
+/// matchAll(options) steps 1-3, for the Clients object `clients`.
+pub fn matchAll(clients: *runtime.Instance, include_uncontrolled: bool, client_type: Manager.ClientType) !runtime.JSValue {
+    const realm = clients.ctx;
+    const environment = environmentOf(realm, true) orelse return noEnvironment(realm);
+    const made = try environment.newPromise();
+    errdefer made.promise.release();
+    // 2. In parallel - the manager's, its answer a task here.
+    try environment.manager.matchAll(environment.id, environment.service_worker_id, include_uncontrolled, client_type, made.id);
+    return made.promise.take();
+}
+
+/// get(id) steps 1-3, for the Clients object `clients`.
+pub fn getClient(clients: *runtime.Instance, id: []const u8) !runtime.JSValue {
+    const realm = clients.ctx;
+    const environment = environmentOf(realm, true) orelse return noEnvironment(realm);
+    const made = try environment.newPromise();
+    errdefer made.promise.release();
+    try environment.manager.getClient(environment.id, environment.service_worker_id, id, made.id);
+    return made.promise.take();
+}
+
+/// openWindow(url) steps 1-4. Step 4 - "if no Window in this origin has
+/// transient activation, return a promise rejected with an
+/// InvalidAccessError" - is where every call ends: a headless user agent has
+/// no user to activate a window, and a window's activation lives on its
+/// own thread, which a service worker does not read. Chromium rejects
+/// openWindow() without a user gesture the same way ("Not allowed to open a
+/// window.").
+pub fn openWindow(clients: *runtime.Instance, url: []const u8) !runtime.JSValue {
+    const realm = clients.ctx;
+    const allocator = realm.allocator;
+    // 1-3. Parse url with the API base URL; failure or about:blank: TypeError.
+    const parsed = try scope_mod.parseAgainst(allocator, url, realm.documentUrl()) orelse
+        return rejected(realm, .type_error, "The URL is not valid");
+    defer allocator.free(parsed);
+    if (std.mem.eql(u8, parsed, "about:blank")) return rejected(realm, .type_error, "about:blank cannot be opened");
+    // 4.
+    return rejected(realm, .invalid_access_error, "Not allowed to open a window: no window has transient activation");
+}
+
+/// WindowClient.focus() step 1, where every call ends, as openWindow()
+/// step 4 does: no Window in this origin has transient activation that a
+/// service worker can see (Chromium: "Not allowed to focus a window.").
+pub fn focusClient(window_client: *runtime.Instance) !runtime.JSValue {
+    return rejected(window_client.ctx, .invalid_access_error, "Not allowed to focus a window: no window has transient activation");
+}
+
+/// WindowClient.navigate(url) steps 1-4, for the WindowClient whose client
+/// has the id `client_id`. Steps 5-8 navigate the client's browsing context
+/// from its own event loop, which is the navigation integration of batch 3
+/// (tmp/plans/lane-sw1-handoff.md): until then a client this service worker
+/// controls answers a "NotSupportedError" - a promise that settles, never
+/// one that waits for a navigation nothing makes.
+pub fn navigateClient(window_client: *runtime.Instance, client_id: []const u8, url: []const u8) !runtime.JSValue {
+    const realm = window_client.ctx;
+    const allocator = realm.allocator;
+    // 1-2. Parse url with the relevant settings object's API base URL.
+    const parsed = try scope_mod.parseAgainst(allocator, url, realm.documentUrl()) orelse
+        return rejected(realm, .type_error, "The URL is not valid");
+    defer allocator.free(parsed);
+    // 3. about:blank.
+    if (std.mem.eql(u8, parsed, "about:blank")) return rejected(realm, .type_error, "A client cannot be navigated to about:blank");
+    // 4. The client's active service worker must be this global's.
+    const environment = environmentOf(realm, true) orelse return noEnvironment(realm);
+    if (!environment.manager.clientControlledBy(client_id, environment.service_worker_id)) {
+        return rejected(realm, .type_error, "The client is not controlled by this service worker");
+    }
+    return rejected(realm, .not_supported_error, "Navigating a client from its service worker is not supported yet");
 }

@@ -212,11 +212,13 @@ pub const InternalState = struct {
     indexeddb_factory: ?*runtime.Instance = null,
     indexeddb_backend: ?*IDBFactoryBackend = null,
 
-    /// Cache storage (lazily created)
-    /// Service Worker spec: window.caches getter
-    /// TODO: Add service_worker module to impls in build.zig to enable CacheStorage backend
-    cache_storage: ?*runtime.Instance = null,
-    // cache_storage_backend: ?*CacheStorageBackend = null,
+    /// Service Workers 5.3: this global's CacheStorage, made on first use
+    /// and traced for its whole lifetime.
+    cache_storage: ?struct {
+        owner: *runtime.Instance,
+        value: *runtime.Instance,
+        edge: @import("same_object.zig").Traced = .{ .slot = .{ .name = "caches" } },
+    } = null,
 
     /// CookieStore instance (lazily created)
     /// Cookie Store spec: window.cookieStore getter
@@ -339,11 +341,7 @@ pub const InternalState = struct {
         // quick access, not for ownership.
         self.indexeddb_backend = null;
 
-        // Clean up Cache storage backend
-        // TODO: Enable once service_worker module is available to impls
-        // if (self.cache_storage_backend) |backend| {
-        //     backend.deinit();
-        // }
+        if (self.cache_storage) |*caches| caches.edge.release(caches.owner);
 
         // Free name if allocated
         if (self.name.len > 0) {
@@ -718,27 +716,11 @@ fn settingsIndexedDB(instance: *runtime.Instance) anyerror!*runtime.Instance {
 fn settingsCaches(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Return cached instance if available
-    if (internal.cache_storage) |cache_storage_instance| {
-        return cache_storage_instance;
-    }
-
-    // Create the CacheStorage WebIDL instance
-    const CacheStorageImpl = @import("CacheStorage.zig");
-    const CacheStorage = interfaces.CacheStorage;
-
-    const cache_storage_instance = CacheStorageImpl.init(
-        internal.allocator,
-        CacheStorage.State,
-        &CacheStorage.vtable,
-        instance.ctx,
-    ) catch {
-        return error.OutOfMemory;
-    };
-
-    // Cache and return the instance
-    internal.cache_storage = cache_storage_instance;
-    return cache_storage_instance;
+    if (internal.cache_storage) |caches| return caches.value;
+    const caches = try interfaces.CacheStorage.init(internal.allocator, instance.ctx);
+    internal.cache_storage = .{ .owner = instance, .value = caches };
+    internal.cache_storage.?.edge.hold(instance, caches);
+    return caches;
 }
 
 /// HR-Time: one Performance per global, reached through the settings hook -

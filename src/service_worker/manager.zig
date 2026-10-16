@@ -47,6 +47,7 @@ const registry_mod = @import("registry.zig");
 const Registry = registry_mod.Registry;
 const TaskSink = runtime.TaskSink;
 const WorkerLink = html.WorkerLink;
+const PortMessage = @import("dom").port_channels.PortMessage;
 
 const log = std.log.scoped(.service_worker);
 
@@ -116,6 +117,141 @@ pub const RegistrationInfo = struct {
     }
 };
 
+/// A WindowClient's window data (Service Workers 4.2: its frame type is the
+/// Client's; these are its visibility state, focus state and ancestor
+/// origins array), as the window's own thread found them. OWNED.
+pub const WindowData = struct {
+    /// The active document's visibilityState is "visible".
+    visible: bool = true,
+    /// The has focus steps for the active document.
+    focused: bool = false,
+    /// The active document's ancestor origins list, serialized. OWNED, each
+    /// and the slice.
+    ancestor_origins: [][]u8 = &.{},
+
+    pub fn clone(self: *const WindowData, allocator: Allocator) Allocator.Error!WindowData {
+        const origins = try allocator.alloc([]u8, self.ancestor_origins.len);
+        var made: usize = 0;
+        errdefer {
+            for (origins[0..made]) |o| allocator.free(o);
+            allocator.free(origins);
+        }
+        for (self.ancestor_origins) |origin| {
+            origins[made] = try allocator.dupe(u8, origin);
+            made += 1;
+        }
+        return .{ .visible = self.visible, .focused = self.focused, .ancestor_origins = origins };
+    }
+
+    pub fn deinit(self: *WindowData, allocator: Allocator) void {
+        for (self.ancestor_origins) |origin| allocator.free(origin);
+        allocator.free(self.ancestor_origins);
+        self.ancestor_origins = &.{};
+    }
+};
+
+/// A service worker client as a service worker's realm makes its Client or
+/// WindowClient object from it (Create Client, Create Window Client). OWNED.
+pub const ClientInfo = struct {
+    /// The client's environment in the registry: what Client.postMessage
+    /// posts to.
+    environment: u64,
+    /// Its id.
+    id: [36]u8,
+    /// Its creation URL, serialized. OWNED.
+    url: []u8,
+    kind: registry_mod.EnvironmentKind,
+    frame_type: registry_mod.FrameType = .none,
+    /// A window client's window data: the object is a WindowClient. Null for
+    /// a worker client.
+    window: ?WindowData = null,
+
+    /// The client `environment`, without its window data. Locked.
+    fn of(allocator: Allocator, environment: *const registry_mod.Environment) Allocator.Error!ClientInfo {
+        return .{
+            .environment = environment.id,
+            .id = environment.client_id,
+            .url = try allocator.dupe(u8, environment.creation_url),
+            .kind = environment.kind,
+            .frame_type = environment.frame_type,
+        };
+    }
+
+    pub fn clone(self: *const ClientInfo, allocator: Allocator) Allocator.Error!ClientInfo {
+        var copy = self.*;
+        copy.url = try allocator.dupe(u8, self.url);
+        errdefer allocator.free(copy.url);
+        copy.window = if (self.window) |*w| try w.clone(allocator) else null;
+        return copy;
+    }
+
+    pub fn deinit(self: *ClientInfo, allocator: Allocator) void {
+        allocator.free(self.url);
+        if (self.window) |*w| w.deinit(allocator);
+        self.window = null;
+    }
+};
+
+/// Who posted a message to a service worker (ServiceWorker.postMessage step
+/// 6.2.1): what its event's source is made from in the worker's realm.
+pub const MessageSource = union(enum) {
+    /// A service worker's global: the ServiceWorker object of its worker.
+    service_worker: WorkerInfo,
+    /// A client: a new WindowClient or Client representing it.
+    client: ClientInfo,
+
+    pub fn deinit(self: *MessageSource, allocator: Allocator) void {
+        switch (self.*) {
+            .service_worker => |*w| w.deinit(allocator),
+            .client => |*c| c.deinit(allocator),
+        }
+    }
+};
+
+/// A message on its way to a service worker (ServiceWorker.postMessage):
+/// StructuredSerializeWithTransfer's result with its transferred ports'
+/// ends, who sent it and from which origin. Crosses threads; OWNED
+/// (`destroy`) by whoever holds it last - the worker's task, or whatever
+/// drops it, which discards its ports' ends.
+pub const WorkerMessage = struct {
+    allocator: Allocator,
+    /// Taken by the task that delivers it.
+    message: ?*PortMessage,
+    /// incumbentSettings' origin, serialized. OWNED.
+    origin: []u8,
+    source: MessageSource,
+
+    pub fn destroy(self: *WorkerMessage) void {
+        if (self.message) |m| m.destroy();
+        self.allocator.free(self.origin);
+        self.source.deinit(self.allocator);
+        self.allocator.destroy(self);
+    }
+};
+
+/// A message on its way from a service worker to a client
+/// (Client.postMessage step 4.5): the serialized message with its ports'
+/// ends, sourceSettings' origin, and the service worker that sent it (its
+/// ServiceWorker object in the client's realm is the source). OWNED
+/// (`destroy`).
+pub const ClientMessage = struct {
+    allocator: Allocator,
+    /// Taken by the task that delivers it.
+    message: ?*PortMessage,
+    /// sourceSettings' origin, serialized. OWNED.
+    origin: []u8,
+    /// The sending service worker, as the client's realm makes its object;
+    /// filled in by the manager.
+    source: ?WorkerInfo = null,
+
+    pub fn destroy(self: *ClientMessage) void {
+        if (self.message) |m| m.destroy();
+        self.allocator.free(self.origin);
+        if (self.source) |*s| s.deinit(self.allocator);
+        self.allocator.destroy(self);
+    }
+};
+
 /// A registry Message, its strings copied, as it crosses to a realm's
 /// thread. OWNED (`deinit`).
 pub const Delivery = union(enum) {
@@ -134,6 +270,16 @@ pub const Delivery = union(enum) {
     /// getRegistrations() step 4.3: the registrations of the client's
     /// storage key. OWNED, each and the slice.
     resolve_registrations: struct { promise: u64, registrations: []RegistrationInfo },
+    /// Client.postMessage step 4.5: a task for the client's container's
+    /// client message queue. The message is OWNED until the realm side takes
+    /// it (it sets the field to null).
+    client_message: ?*ClientMessage,
+    /// Clients' matchAll() step 2.6: the matched clients, sorted. OWNED,
+    /// each and the slice.
+    resolve_clients: struct { promise: u64, clients: []ClientInfo },
+    /// Clients' get(id): the client (Resolve Get Client Promise), or
+    /// undefined.
+    resolve_client: struct { promise: u64, client: ?ClientInfo },
 
     /// `message`, copied - with the registry's lock held (its borrowed
     /// strings are valid until then). `registration`: the record a
@@ -169,6 +315,12 @@ pub const Delivery = union(enum) {
                 for (m.registrations) |*info| info.deinit(allocator);
                 allocator.free(m.registrations);
             },
+            .client_message => |m| if (m) |message| message.destroy(),
+            .resolve_clients => |m| {
+                for (m.clients) |*info| info.deinit(allocator);
+                allocator.free(m.clients);
+            },
+            .resolve_client => |*m| if (m.client) |*info| info.deinit(allocator),
             else => {},
         }
     }
@@ -193,8 +345,14 @@ pub const Endpoint = struct {
     /// (`endpointOf`). Compared, never dereferenced here.
     realm: *const anyopaque,
     /// On the realm's thread, with the lock NOT held: act on `delivery`
-    /// (BORROWED) for this environment.
-    deliver: *const fn (endpoint: *Endpoint, delivery: *const Delivery) void,
+    /// (BORROWED; what it takes of it, it clears) for this environment.
+    deliver: *const fn (endpoint: *Endpoint, delivery: *Delivery) void,
+    /// On the realm's thread, with the lock NOT held: a window client's
+    /// window data, as a task on its event loop finds them (matchAll() step
+    /// 2.5.1.6, Resolve Get Client Promise step 4.5) - null when the client
+    /// is not enumerable (its document is no longer its browsing context's
+    /// active document).
+    window_data: *const fn (endpoint: *Endpoint, allocator: Allocator) ?WindowData,
 };
 
 /// What a service worker's thread starts with (Run Service Worker steps 7-9,
@@ -237,6 +395,12 @@ pub const Host = struct {
     /// waits for its extended lifetime; its end comes back as
     /// `reportLifecycleDone(op, ...)` - also when the task never runs.
     dispatch: *const fn (manager: *Manager, started: Started, event: LifecycleEvent, op: u64) void,
+    /// ServiceWorker.postMessage step 6.2: queue the task that fires
+    /// `message`'s event (taken) at the worker's global object; once it is
+    /// dispatched and no longer active - or its task is discarded - the
+    /// worker reports `.message_done` with `worker_id` and `generation`.
+    /// Called with the lock held: it only posts.
+    post_message: *const fn (manager: *Manager, started: Started, message: *WorkerMessage, worker_id: u64, generation: u64) void,
 };
 
 /// A service worker the manager started, until its thread has ended.
@@ -295,6 +459,20 @@ pub const Manager = struct {
     /// The Browser's cookie jar, as the first environment's settings object
     /// reaches it (Browser-lifetime): a service worker global's.
     cookie_jar: ?*@import("fetch").internal.CookieJar = null,
+    /// Messages waiting for their service worker to start
+    /// (ServiceWorker.postMessage step 6.1), by the registry `other` waiter
+    /// that will answer for them.
+    pending_messages: std.ArrayListUnmanaged(PendingMessage) = .empty,
+    next_waiter: u64 = 1,
+    /// Clients' matchAll() and get() calls waiting for their window
+    /// clients' window data.
+    client_queries: std.ArrayListUnmanaged(*ClientQuery) = .empty,
+    next_query: u64 = 1,
+
+    const PendingMessage = struct {
+        waiter: u64,
+        message: *WorkerMessage,
+    };
 
     /// A BrowserScope supplement's init: called with the scope's lock held,
     /// so it reaches nothing else.
@@ -327,6 +505,10 @@ pub const Manager = struct {
             };
         }
         self.running.deinit(self.allocator);
+        for (self.pending_messages.items) |pending| pending.message.destroy();
+        self.pending_messages.deinit(self.allocator);
+        for (self.client_queries.items) |query| query.destroy(self.allocator);
+        self.client_queries.deinit(self.allocator);
         if (self.owner_sink) |sink| {
             sink.close();
             sink.release();
@@ -442,6 +624,16 @@ pub const Manager = struct {
         defer self.unlock();
         const worker = self.registry.findWorker(id) orelse return false;
         return worker.registration.active == worker;
+    }
+
+    /// Whether the client whose id is `client_id` is controlled by the
+    /// service worker `worker_id` (WindowClient.navigate() step 4).
+    pub fn clientControlledBy(self: *Manager, client_id: []const u8, worker_id: u64) bool {
+        self.lock();
+        defer self.unlock();
+        const client = self.registry.findClient(client_id) orelse return false;
+        const worker = client.active_worker orelse return false;
+        return worker.id == worker_id;
     }
 
     /// The environment `id`'s client id (a UUID), or null.
@@ -599,16 +791,34 @@ pub const Manager = struct {
         skip_waiting: struct { worker: u64, environment: u64, promise: u64 },
         /// clients.claim() in the worker.
         claim: struct { worker: u64, environment: u64, promise: u64 },
+        /// ServiceWorker.postMessage step 6: `message` (OWNED) for the
+        /// service worker `worker`.
+        post_message: struct { worker: u64, message: *WorkerMessage },
+        /// A message event handed to `worker` in its run `generation` is
+        /// done: dispatched and no longer active, or its task discarded.
+        message_done: struct { worker: u64, generation: u64 },
+        /// The window data task for `slot` of the client query `query` was
+        /// discarded: that client is not enumerable.
+        window_data_missing: struct { query: u64, slot: usize },
+
+        fn deinit(self: *Report) void {
+            switch (self.*) {
+                .post_message => |r| r.message.destroy(),
+                else => {},
+            }
+        }
     };
 
-    /// Post `report` to the job thread. Any thread; a manager whose job
-    /// thread has ended drops it.
+    /// Post `report` (taken) to the job thread. Any thread; a manager whose
+    /// job thread has ended drops it.
     pub fn report(self: *Manager, from: Report) void {
+        var owned = from;
         const task = self.allocator.create(ReportTask) catch {
             log.debug("out of memory posting a service worker's report; dropped", .{});
+            owned.deinit();
             return;
         };
-        task.* = .{ .manager = self, .report = from };
+        task.* = .{ .manager = self, .report = owned };
         self.postToJobThread(.{ .run = ReportTask.run, .drop = ReportTask.drop, .data = task });
     }
 
@@ -626,6 +836,7 @@ pub const Manager = struct {
 
         fn drop(data: ?*anyopaque) void {
             const self: *ReportTask = @ptrCast(@alignCast(data.?));
+            self.report.deinit();
             self.manager.allocator.destroy(self);
         }
     };
@@ -654,6 +865,347 @@ pub const Manager = struct {
                     error.OutOfMemory => return error.OutOfMemory,
                 };
                 self.settle(r.environment, .{ .resolve_undefined = .{ .promise = r.promise } });
+            },
+            .post_message => |r| try self.postMessageNow(r.worker, r.message),
+            .message_done => |r| try self.registry.functionalEventDone(r.worker, r.generation),
+            .window_data_missing => |r| {
+                const query = self.findQuery(r.query) orelse return;
+                self.queryAnswered(query, r.slot, null);
+            },
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Messages (ServiceWorker.postMessage, Client.postMessage)
+    // ------------------------------------------------------------------
+
+    /// ServiceWorker.postMessage step 6, from any thread: `message` (taken)
+    /// goes to the service worker `worker_id` once Run Service Worker has
+    /// answered - and is dropped when it fails (6.1).
+    pub fn postToWorker(self: *Manager, worker_id: u64, message: *WorkerMessage) void {
+        self.report(.{ .post_message = .{ .worker = worker_id, .message = message } });
+    }
+
+    /// Step 6.1 on the job thread, locked: Run Service Worker, its answer
+    /// `startAnswered`.
+    fn postMessageNow(self: *Manager, worker_id: u64, message: *WorkerMessage) Allocator.Error!void {
+        const worker = self.registry.findWorker(worker_id) orelse return message.destroy();
+        const waiter = self.next_waiter;
+        self.next_waiter += 1;
+        self.pending_messages.append(self.allocator, .{ .waiter = waiter, .message = message }) catch |err| {
+            message.destroy();
+            return err;
+        };
+        self.registry.runServiceWorker(worker, false, .{ .other = waiter }) catch |err| {
+            // The waiter was not recorded: nothing will answer for it.
+            if (self.takePendingMessage(waiter)) |pending| pending.destroy();
+            return err;
+        };
+    }
+
+    fn takePendingMessage(self: *Manager, waiter: u64) ?*WorkerMessage {
+        for (self.pending_messages.items, 0..) |pending, i| {
+            if (pending.waiter != waiter) continue;
+            _ = self.pending_messages.swapRemove(i);
+            return pending.message;
+        }
+        return null;
+    }
+
+    /// Client.postMessage step 4, from the service worker `worker_id`'s
+    /// thread: `message` (taken) is a task for the client message queue of
+    /// the container of the client whose environment is `environment_id`
+    /// (4.4-4.5) - dropped when that client has gone (4.3).
+    pub fn postToClient(self: *Manager, environment_id: u64, worker_id: u64, message: *ClientMessage) void {
+        self.lock();
+        defer self.unlock();
+        const environment = self.registry.findEnvironment(environment_id) orelse return message.destroy();
+        if (!environment.kind.isClient()) return message.destroy();
+        // 4.5.2's source: the service worker's object in the client's realm,
+        // as the worker is now.
+        const worker = self.registry.findWorker(worker_id) orelse return message.destroy();
+        message.source = WorkerInfo.of(self.allocator, Registry.snapshotWorker(worker)) catch return message.destroy();
+        self.postDelivery(environment, .{ .client_message = message });
+    }
+
+    /// Post `delivery` (taken) to `environment`'s realm. Locked.
+    fn postDelivery(self: *Manager, environment: *registry_mod.Environment, delivery: Delivery) void {
+        var owned = delivery;
+        const endpoint: *Endpoint = @ptrCast(@alignCast(environment.endpoint));
+        const task = self.allocator.create(DeliveryTask) catch return owned.deinit(self.allocator);
+        task.* = .{ .manager = self, .environment = environment.id, .delivery = owned };
+        // A closed sink - the realm's loop has ended - drops it.
+        _ = endpoint.sink.post(.{ .run = DeliveryTask.run, .drop = DeliveryTask.drop, .data = task });
+    }
+
+    /// Post `delivery` (taken) to the environment `id`, if it is still there.
+    /// Locked.
+    fn postDeliveryTo(self: *Manager, id: u64, delivery: Delivery) void {
+        var owned = delivery;
+        const environment = self.registry.findEnvironment(id) orelse return owned.deinit(self.allocator);
+        self.postDelivery(environment, owned);
+    }
+
+    // ------------------------------------------------------------------
+    // Clients' get() and matchAll()
+    // ------------------------------------------------------------------
+
+    /// ClientQueryOptions' type.
+    pub const ClientType = enum { window, worker, sharedworker, all };
+
+    /// A get() or matchAll() call waiting for its window clients' data.
+    pub const ClientQuery = struct {
+        id: u64,
+        /// The service worker's environment, whose promise it settles.
+        environment: u64,
+        promise: u64,
+        kind: enum { match_all, get },
+        /// One per target client, in creation order.
+        slots: []QuerySlot,
+        /// Window data tasks not yet answered.
+        outstanding: usize = 0,
+
+        const QuerySlot = struct {
+            /// The target client's environment.
+            environment: u64 = 0,
+            /// The client, once known; null while its window data is being
+            /// gathered, and for a client that is not enumerable.
+            info: ?ClientInfo = null,
+            /// Its window data task has answered (or it needed none).
+            answered: bool = false,
+        };
+
+        fn destroy(self: *ClientQuery, allocator: Allocator) void {
+            for (self.slots) |*slot| if (slot.info) |*info| info.deinit(allocator);
+            allocator.free(self.slots);
+            allocator.destroy(self);
+        }
+    };
+
+    fn findQuery(self: *Manager, id: u64) ?*ClientQuery {
+        for (self.client_queries.items) |query| if (query.id == id) return query;
+        return null;
+    }
+
+    /// A window data request, posted after the lock is let go.
+    const WindowDataRequest = struct {
+        sink: *TaskSink,
+        task: *WindowDataTask,
+    };
+
+    /// Clients' matchAll(options) step 2, for the service worker `worker_id`
+    /// whose environment is `environment_id`, settling its promise `promise`
+    /// (any thread but a window client's own; the service worker's).
+    pub fn matchAll(self: *Manager, environment_id: u64, worker_id: u64, include_uncontrolled: bool, client_type: ClientType, promise: u64) Allocator.Error!void {
+        var requests: std.ArrayListUnmanaged(WindowDataRequest) = .empty;
+        defer requests.deinit(self.allocator);
+        errdefer self.discardWindowDataRequests(requests.items);
+        {
+            self.lock();
+            defer self.unlock();
+            const worker = self.registry.findWorker(worker_id) orelse {
+                self.postDeliveryTo(environment_id, .{ .resolve_clients = .{ .promise = promise, .clients = &.{} } });
+                return;
+            };
+            // 2.1-2.2. targetClients.
+            const targets = try self.registry.matchAllClients(self.allocator, worker, include_uncontrolled);
+            defer self.allocator.free(targets);
+            const query = try self.newQuery(environment_id, promise, .match_all, targets.len);
+            errdefer self.dropQuery(query);
+            // 2.5. Window clients need their window data, gathered on their
+            // own event loops; worker clients of the type asked for are
+            // matched as they are.
+            for (targets, query.slots) |client, *slot| {
+                slot.environment = client.id;
+                const wants_window = (client_type == .window or client_type == .all) and client.kind == .window;
+                if (wants_window) {
+                    try self.requestWindowData(&requests, query, client, slot);
+                    continue;
+                }
+                slot.answered = true;
+                const wanted = switch (client.kind) {
+                    .dedicated_worker => client_type == .worker or client_type == .all,
+                    .shared_worker => client_type == .sharedworker or client_type == .all,
+                    else => false,
+                };
+                if (wanted) slot.info = try ClientInfo.of(self.allocator, client);
+            }
+            if (query.outstanding == 0) self.finishQuery(query);
+        }
+        self.postWindowDataRequests(requests.items);
+    }
+
+    /// Clients' get(id) step 2 and Resolve Get Client Promise, for the
+    /// service worker `worker_id` whose environment is `environment_id`.
+    pub fn getClient(self: *Manager, environment_id: u64, worker_id: u64, id: []const u8, promise: u64) Allocator.Error!void {
+        var requests: std.ArrayListUnmanaged(WindowDataRequest) = .empty;
+        defer requests.deinit(self.allocator);
+        errdefer self.discardWindowDataRequests(requests.items);
+        {
+            self.lock();
+            defer self.unlock();
+            const worker = self.registry.findWorker(worker_id) orelse {
+                self.postDeliveryTo(environment_id, .{ .resolve_client = .{ .promise = promise, .client = null } });
+                return;
+            };
+            // 2.1. The client of the worker's storage key whose id is `id`;
+            // 2.2, none: undefined.
+            const client = self.registry.getClient(worker, id) orelse {
+                self.postDeliveryTo(environment_id, .{ .resolve_client = .{ .promise = promise, .client = null } });
+                return;
+            };
+            // Resolve Get Client Promise step 1.1: not a secure context.
+            if (!client.secure_context) {
+                self.postDeliveryTo(environment_id, .{ .reject = .{
+                    .promise = promise,
+                    .kind = .security_error,
+                    .message = "The client is not a secure context",
+                } });
+                return;
+            }
+            // Step 3: a worker client - Create Client.
+            if (client.kind != .window) {
+                self.postDeliveryTo(environment_id, .{ .resolve_client = .{ .promise = promise, .client = try ClientInfo.of(self.allocator, client) } });
+                return;
+            }
+            // Step 4: a window client - its window data, on its event loop.
+            const query = try self.newQuery(environment_id, promise, .get, 1);
+            errdefer self.dropQuery(query);
+            query.slots[0].environment = client.id;
+            try self.requestWindowData(&requests, query, client, &query.slots[0]);
+        }
+        self.postWindowDataRequests(requests.items);
+    }
+
+    fn newQuery(self: *Manager, environment_id: u64, promise: u64, kind: @FieldType(ClientQuery, "kind"), slots: usize) Allocator.Error!*ClientQuery {
+        const query = try self.allocator.create(ClientQuery);
+        errdefer self.allocator.destroy(query);
+        const slot_list = try self.allocator.alloc(ClientQuery.QuerySlot, slots);
+        errdefer self.allocator.free(slot_list);
+        @memset(slot_list, .{});
+        query.* = .{ .id = self.next_query, .environment = environment_id, .promise = promise, .kind = kind, .slots = slot_list };
+        self.next_query += 1;
+        try self.client_queries.append(self.allocator, query);
+        return query;
+    }
+
+    /// Remove `query` from the list and free it. Locked.
+    fn dropQuery(self: *Manager, query: *ClientQuery) void {
+        for (self.client_queries.items, 0..) |listed, i| {
+            if (listed == query) {
+                _ = self.client_queries.swapRemove(i);
+                break;
+            }
+        }
+        query.destroy(self.allocator);
+    }
+
+    /// Ask the window client `client` for its window data, for `slot` of
+    /// `query`: a task of its realm's loop, posted once the lock is let go.
+    /// Locked.
+    fn requestWindowData(self: *Manager, requests: *std.ArrayListUnmanaged(WindowDataRequest), query: *ClientQuery, client: *const registry_mod.Environment, slot: *ClientQuery.QuerySlot) Allocator.Error!void {
+        const endpoint: *Endpoint = @ptrCast(@alignCast(client.endpoint));
+        const task = try self.allocator.create(WindowDataTask);
+        errdefer self.allocator.destroy(task);
+        task.* = .{
+            .manager = self,
+            .query = query.id,
+            .slot = (@intFromPtr(slot) - @intFromPtr(query.slots.ptr)) / @sizeOf(ClientQuery.QuerySlot),
+            .environment = client.id,
+        };
+        try requests.append(self.allocator, .{ .sink = endpoint.sink.retain(), .task = task });
+        query.outstanding += 1;
+    }
+
+    /// Requests that were never posted: their query has gone with the error.
+    fn discardWindowDataRequests(self: *Manager, requests: []const WindowDataRequest) void {
+        for (requests) |request| {
+            request.sink.release();
+            self.allocator.destroy(request.task);
+        }
+    }
+
+    fn postWindowDataRequests(self: *Manager, requests: []const WindowDataRequest) void {
+        _ = self;
+        for (requests) |request| {
+            // A closed sink - the client's loop has ended - drops it, which
+            // reports the client as not enumerable.
+            _ = request.sink.post(.{ .run = WindowDataTask.run, .drop = WindowDataTask.drop, .data = request.task });
+            request.sink.release();
+        }
+    }
+
+    /// `slot` of `query` answered: `data` (taken) is the client's window
+    /// data, or null when it is not enumerable. Locked.
+    fn queryAnswered(self: *Manager, query: *ClientQuery, slot_index: usize, data: ?WindowData) void {
+        var owned = data;
+        if (slot_index >= query.slots.len or query.slots[slot_index].answered) {
+            if (owned) |*d| d.deinit(self.allocator);
+            return;
+        }
+        const slot = &query.slots[slot_index];
+        slot.answered = true;
+        query.outstanding -= 1;
+        if (owned) |window| {
+            // The client, as it is now - if it is still there.
+            if (self.findClientEnvironment(query, slot_index)) |client| {
+                if (ClientInfo.of(self.allocator, client)) |info| {
+                    slot.info = info;
+                    slot.info.?.window = window;
+                    owned = null;
+                } else |_| {}
+            }
+        }
+        if (owned) |*d| d.deinit(self.allocator);
+        if (query.outstanding == 0) self.finishQuery(query);
+    }
+
+    fn findClientEnvironment(self: *Manager, query: *ClientQuery, slot_index: usize) ?*registry_mod.Environment {
+        return self.registry.findEnvironment(query.slots[slot_index].environment);
+    }
+
+    /// Every slot of `query` has answered: settle its promise (matchAll()
+    /// step 2.6, Resolve Get Client Promise step 4.5.6). Locked; `query`
+    /// goes.
+    fn finishQuery(self: *Manager, query: *ClientQuery) void {
+        defer self.dropQuery(query);
+        switch (query.kind) {
+            .get => {
+                const info = query.slots[0].info;
+                query.slots[0].info = null;
+                self.postDeliveryTo(query.environment, .{ .resolve_client = .{ .promise = query.promise, .client = info } });
+            },
+            .match_all => {
+                var clients: std.ArrayListUnmanaged(ClientInfo) = .empty;
+                for (query.slots) |*slot| {
+                    const info = slot.info orelse continue;
+                    clients.append(self.allocator, info) catch continue;
+                    slot.info = null;
+                }
+                // 2.6.4: window clients first - focused ones before the
+                // others - then worker clients, each group in creation
+                // order (the slots' order). Stated deviation: the order of
+                // the focused windows among themselves is creation order,
+                // not most recently focused first - no focus history is
+                // kept.
+                std.mem.sort(ClientInfo, clients.items, {}, struct {
+                    fn rank(info: ClientInfo) u2 {
+                        const window = info.window orelse return 2;
+                        return if (window.focused) 0 else 1;
+                    }
+                    fn lessThan(_: void, a: ClientInfo, b: ClientInfo) bool {
+                        const ra = rank(a);
+                        const rb = rank(b);
+                        if (ra != rb) return ra < rb;
+                        return a.environment < b.environment;
+                    }
+                }.lessThan);
+                const slice = clients.toOwnedSlice(self.allocator) catch {
+                    for (clients.items) |*info| info.deinit(self.allocator);
+                    clients.deinit(self.allocator);
+                    return;
+                };
+                self.postDeliveryTo(query.environment, .{ .resolve_clients = .{ .promise = query.promise, .clients = slice } });
             },
         }
     }
@@ -1087,7 +1639,29 @@ pub const Manager = struct {
         self.postToJobThread(.{ .run = LifecycleTimeout.arm, .drop = LifecycleTimeout.dropPosted, .data = task });
     }
 
-    fn startAnswered(_: *anyopaque, _: *registry_mod.Worker, _: u64, _: bool) void {}
+    /// ServiceWorker.postMessage step 6.1's answer: the worker started (or
+    /// was running) - 6.2, queue its message task - or did not, and the
+    /// message is dropped. The registry counted the event in flight when
+    /// `ok`: a message that cannot be handed over reports itself done.
+    fn startAnswered(ctx: *anyopaque, worker: *registry_mod.Worker, waiter: u64, ok: bool) void {
+        const self = ofCtx(ctx);
+        const generation = worker.run_generation;
+        const message = self.takePendingMessage(waiter) orelse {
+            if (ok) self.report(.{ .message_done = .{ .worker = worker.id, .generation = generation } });
+            return;
+        };
+        if (!ok) return message.destroy();
+        const entry = self.findRunning(worker.id);
+        const started = if (entry) |e| e.started else null;
+        if (started == null) {
+            message.destroy();
+            self.report(.{ .message_done = .{ .worker = worker.id, .generation = generation } });
+            return;
+        }
+        // An idle check armed before finds another event since.
+        entry.?.epoch +%= 1;
+        self.host.post_message(self, started.?, message, worker.id, generation);
+    }
 
     fn freeFetchClient(ctx: *anyopaque, fetch_client: *anyopaque) void {
         _ = ctx;
@@ -1143,5 +1717,49 @@ const DeliveryTask = struct {
         const allocator = self.manager.allocator;
         self.delivery.deinit(allocator);
         allocator.destroy(self);
+    }
+};
+
+/// A window client's window data, gathered by a task of its realm's loop
+/// (matchAll() step 2.5.1.6, Resolve Get Client Promise step 4.5) for one
+/// slot of a client query.
+const WindowDataTask = struct {
+    manager: *Manager,
+    query: u64,
+    slot: usize,
+    environment: u64,
+
+    /// On the client's thread.
+    fn run(data: ?*anyopaque) void {
+        const self: *WindowDataTask = @ptrCast(@alignCast(data.?));
+        const manager = self.manager;
+        defer manager.allocator.destroy(self);
+        const endpoint = blk: {
+            manager.lock();
+            defer manager.unlock();
+            const environment = manager.registry.findEnvironment(self.environment) orelse break :blk null;
+            break :blk @as(*Endpoint, @ptrCast(@alignCast(environment.endpoint)));
+        };
+        // The environment ends only on this thread: it is there for the
+        // call. One that has ended is not enumerable.
+        var window: ?WindowData = if (endpoint) |e| e.window_data(e, manager.allocator) else null;
+        manager.lock();
+        defer manager.unlock();
+        const query = manager.findQuery(self.query) orelse {
+            if (window) |*w| w.deinit(manager.allocator);
+            return;
+        };
+        manager.queryAnswered(query, self.slot, window);
+    }
+
+    /// Discarded - the client's loop has ended: the client is not
+    /// enumerable. Any thread; the answer goes through the job thread.
+    fn drop(data: ?*anyopaque) void {
+        const self: *WindowDataTask = @ptrCast(@alignCast(data.?));
+        const manager = self.manager;
+        const query = self.query;
+        const slot = self.slot;
+        manager.allocator.destroy(self);
+        manager.report(.{ .window_data_missing = .{ .query = query, .slot = slot } });
     }
 };

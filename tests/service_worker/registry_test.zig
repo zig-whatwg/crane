@@ -18,6 +18,8 @@ const Recorder = struct {
     terminated: std.ArrayListUnmanaged(u64) = .empty,
     lifecycle: std.ArrayListUnmanaged(struct { worker: u64, event: reg.LifecycleEvent, op: u64 }) = .empty,
     idled: std.ArrayListUnmanaged(u64) = .empty,
+    /// Each `other` waiter's answer: (worker, waiter, ok).
+    answered: std.ArrayListUnmanaged(struct { worker: u64, waiter: u64, ok: bool }) = .empty,
     now: i64 = 1_000_000,
 
     fn deinit(self: *Recorder) void {
@@ -29,6 +31,7 @@ const Recorder = struct {
         self.terminated.deinit(self.allocator);
         self.lifecycle.deinit(self.allocator);
         self.idled.deinit(self.allocator);
+        self.answered.deinit(self.allocator);
     }
 
     fn effects(self: *Recorder) reg.Effects {
@@ -85,7 +88,9 @@ const Recorder = struct {
         of(ctx).lifecycle.append(of(ctx).allocator, .{ .worker = worker.id, .event = event, .op = op }) catch {};
     }
 
-    fn startAnswered(_: *anyopaque, _: *reg.Worker, _: u64, _: bool) void {}
+    fn startAnswered(ctx: *anyopaque, worker: *reg.Worker, waiter: u64, ok: bool) void {
+        of(ctx).answered.append(of(ctx).allocator, .{ .worker = worker.id, .waiter = waiter, .ok = ok }) catch {};
+    }
     fn freeNothing(_: *anyopaque, _: *anyopaque) void {}
 
     fn nowMs(ctx: *anyopaque) i64 {
@@ -610,4 +615,173 @@ test "a running worker with nothing left to do is reported idle" {
     // Terminated for it, it is stopped - not idle, and nothing waits.
     try registry.workerEnded(worker_id);
     try testing.expect(!registry.isIdle(registry.findWorker(worker_id).?));
+}
+
+// ============================================================================
+// Functional events (postMessage's message event) and client queries
+// ============================================================================
+
+test "a message to a running worker is handed over at once, and is in flight until it is done" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 21);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    const worker_id = try installAndActivate(&recorder, &registry, page, "https://example.com/sw.js", "https://example.com/", "v1");
+    const worker = registry.findWorker(worker_id).?;
+    const idled_before = recorder.idled.items.len;
+
+    // postMessage step 6.1: Run Service Worker - it is running, so the
+    // owner's waiter is answered at once.
+    try registry.runServiceWorker(worker, false, .{ .other = 77 });
+    try testing.expectEqual(@as(usize, 1), recorder.answered.items.len);
+    try testing.expectEqual(@as(u64, 77), recorder.answered.items[0].waiter);
+    try testing.expect(recorder.answered.items[0].ok);
+    try testing.expectEqual(@as(u32, 1), worker.events_in_flight);
+    // A worker with an event in flight has pending events: not idle.
+    try testing.expect(!reg.serviceWorkerHasNoPendingEvents(worker));
+    try testing.expect(!registry.isIdle(worker));
+
+    try registry.functionalEventDone(worker_id, worker.run_generation);
+    try testing.expectEqual(@as(u32, 0), worker.events_in_flight);
+    try testing.expectEqual(idled_before + 1, recorder.idled.items.len);
+}
+
+test "a message to a stopped worker starts it, and is answered once its script has run" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 22);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    const worker_id = try installAndActivate(&recorder, &registry, page, "https://example.com/sw.js", "https://example.com/", "v1");
+    const worker = registry.findWorker(worker_id).?;
+    // Terminated (idle): stopped.
+    try registry.workerEnded(worker_id);
+    const started_before = recorder.started.items.len;
+
+    try registry.runServiceWorker(worker, false, .{ .other = 5 });
+    try testing.expectEqual(started_before + 1, recorder.started.items.len);
+    try testing.expectEqual(@as(usize, 0), recorder.answered.items.len);
+    try registry.workerEvaluated(worker_id, true);
+    try testing.expectEqual(@as(usize, 1), recorder.answered.items.len);
+    try testing.expect(recorder.answered.items[0].ok);
+    try testing.expectEqual(@as(u32, 1), worker.events_in_flight);
+
+    // A start that fails answers with failure, and nothing is in flight.
+    try registry.functionalEventDone(worker_id, worker.run_generation);
+    try registry.workerEnded(worker_id);
+    try registry.runServiceWorker(worker, false, .{ .other = 6 });
+    try registry.workerEvaluated(worker_id, false);
+    try testing.expectEqual(@as(usize, 2), recorder.answered.items.len);
+    try testing.expect(!recorder.answered.items[1].ok);
+    try testing.expectEqual(@as(u32, 0), worker.events_in_flight);
+}
+
+test "an event in flight from an earlier run of the worker does not end one of this run" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 23);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    const worker_id = try installAndActivate(&recorder, &registry, page, "https://example.com/sw.js", "https://example.com/", "v1");
+    const worker = registry.findWorker(worker_id).?;
+    try registry.runServiceWorker(worker, false, .{ .other = 1 });
+    const first_run = worker.run_generation;
+    // The worker ends with the event in flight, and starts again for another.
+    try registry.workerEnded(worker_id);
+    try testing.expectEqual(@as(u32, 0), worker.events_in_flight);
+    try registry.runServiceWorker(worker, false, .{ .other = 2 });
+    try registry.workerEvaluated(worker_id, true);
+    try testing.expect(worker.run_generation != first_run);
+    try testing.expectEqual(@as(u32, 1), worker.events_in_flight);
+    // The first run's late end changes nothing.
+    try registry.functionalEventDone(worker_id, first_run);
+    try testing.expectEqual(@as(u32, 1), worker.events_in_flight);
+    try registry.functionalEventDone(worker_id, worker.run_generation);
+    try testing.expectEqual(@as(u32, 0), worker.events_in_flight);
+}
+
+test "an active worker with a message in flight is not replaced until the message is done" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 24);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    const first = try installAndActivate(&recorder, &registry, page, "https://example.com/sw.js", "https://example.com/", "v1");
+    try registry.runServiceWorker(registry.findWorker(first).?, false, .{ .other = 9 });
+
+    // A second worker installs and asks to skip waiting.
+    try registerJob(&registry, page, "https://example.com/sw2.js", "https://example.com/", 2);
+    var plan = (try recorder.runQueuedJobs(&registry)).?;
+    try answerFetch(&registry, &plan, "v2", true);
+    const second = recorder.started.items[recorder.started.items.len - 1];
+    try registry.workerEvaluated(second, true);
+    try registry.lifecycleEventDone(recorder.lifecycle.items[recorder.lifecycle.items.len - 1].op, false);
+    try registry.skipWaiting(second);
+    const registration = registry.getRegistration("https://example.com", "https://example.com/").?;
+    // Try Activate step 3: the active worker has a pending event.
+    try testing.expectEqual(second, registration.waiting.?.id);
+    try testing.expectEqual(first, registration.active.?.id);
+
+    // Its end lets the waiting worker activate.
+    try registry.functionalEventDone(first, registry.findWorker(first).?.run_generation);
+    try testing.expectEqual(second, registration.active.?.id);
+}
+
+fn addClient(registry: *Registry, kind: reg.EnvironmentKind, origin: []const u8, url: []const u8, secure: bool) !*reg.Environment {
+    return registry.addEnvironment(.{
+        .kind = kind,
+        .origin = origin,
+        .creation_url = url,
+        .secure_context = secure,
+        .endpoint = &endpoint_dummy,
+    });
+}
+
+test "matchAll's target clients: the worker's storage key, in creation order, controlled unless includeUncontrolled" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 25);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    const frame = try addWindow(&registry, "https://example.com/frame.html");
+    _ = try addClient(&registry, .window, "https://other.com", "https://other.com/page.html", true);
+    _ = try addClient(&registry, .window, "https://example.com", "https://example.com/insecure.html", false);
+    const worker_id = try installAndActivate(&recorder, &registry, page, "https://example.com/sw.js", "https://example.com/", "v1");
+    const worker = registry.findWorker(worker_id).?;
+    // The service worker's own global is an environment, and no client.
+    _ = try addClient(&registry, .service_worker, "https://example.com", "https://example.com/sw.js", true);
+    try registry.claim(worker_id);
+    // The first client goes, a dedicated worker comes: creation order is
+    // kept whatever the list's order.
+    registry.removeEnvironment(page);
+    const dedicated = try addClient(&registry, .dedicated_worker, "https://example.com", "https://example.com/worker.js", true);
+
+    const controlled = try registry.matchAllClients(testing.allocator, worker, false);
+    defer testing.allocator.free(controlled);
+    try testing.expectEqual(@as(usize, 1), controlled.len);
+    try testing.expectEqual(frame, controlled[0]);
+
+    const all = try registry.matchAllClients(testing.allocator, worker, true);
+    defer testing.allocator.free(all);
+    try testing.expectEqual(@as(usize, 2), all.len);
+    try testing.expectEqual(frame, all[0]);
+    try testing.expectEqual(dedicated, all[1]);
+}
+
+test "get(id) finds a client of the worker's storage key by its id, and nothing else" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 26);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    const other = try addClient(&registry, .window, "https://other.com", "https://other.com/page.html", true);
+    const worker_id = try installAndActivate(&recorder, &registry, page, "https://example.com/sw.js", "https://example.com/", "v1");
+    const worker = registry.findWorker(worker_id).?;
+    const own_global = try addClient(&registry, .service_worker, "https://example.com", "https://example.com/sw.js", true);
+
+    try testing.expectEqual(page, registry.getClient(worker, &page.client_id).?);
+    try testing.expect(registry.getClient(worker, &other.client_id) == null);
+    try testing.expect(registry.getClient(worker, &own_global.client_id) == null);
+    try testing.expect(registry.getClient(worker, "not-an-id") == null);
 }

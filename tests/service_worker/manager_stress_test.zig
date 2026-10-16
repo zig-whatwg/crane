@@ -17,6 +17,7 @@ const fake_host: manager_mod.Host = .{
     .fetch = fakeFetch,
     .start = fakeStart,
     .dispatch = fakeDispatch,
+    .post_message = fakePostMessage,
 };
 
 fn fakeFetch(manager: *Manager, plan: *const registry.FetchPlan) registry.FetchOutcome {
@@ -38,12 +39,22 @@ fn fakeDispatch(manager: *Manager, _: manager_mod.Started, _: registry.Lifecycle
     manager.report(.{ .lifecycle_done = .{ .op = op, .failed = false } });
 }
 
+/// Every message is handled at once.
+fn fakePostMessage(manager: *Manager, _: manager_mod.Started, message: *manager_mod.WorkerMessage, worker_id: u64, generation: u64) void {
+    message.destroy();
+    manager.report(.{ .message_done = .{ .worker = worker_id, .generation = generation } });
+}
+
+fn noWindowData(_: *manager_mod.Endpoint, _: std.mem.Allocator) ?manager_mod.WindowData {
+    return null;
+}
+
 /// One realm thread's side.
 const Realm = struct {
     endpoint: manager_mod.Endpoint,
     resolved: usize = 0,
 
-    fn deliver(endpoint: *manager_mod.Endpoint, delivery: *const manager_mod.Delivery) void {
+    fn deliver(endpoint: *manager_mod.Endpoint, delivery: *manager_mod.Delivery) void {
         const self: *Realm = @fieldParentPtr("endpoint", endpoint);
         switch (delivery.*) {
             .resolve_registration, .resolve_boolean => self.resolved += 1,
@@ -64,7 +75,7 @@ fn run(manager: *Manager, index: usize) !void {
     const allocator = manager.allocator;
     const sink = try runtime.TaskSink.create(allocator);
     defer sink.release();
-    var realm: Realm = .{ .endpoint = .{ .sink = sink, .deliver = Realm.deliver, .realm = @ptrCast(sink) } };
+    var realm: Realm = .{ .endpoint = .{ .sink = sink, .deliver = Realm.deliver, .window_data = noWindowData, .realm = @ptrCast(sink) } };
     var origin_buffer: [64]u8 = undefined;
     const origin = try std.fmt.bufPrint(&origin_buffer, "https://r{d}.example", .{index});
     var page_buffer: [96]u8 = undefined;

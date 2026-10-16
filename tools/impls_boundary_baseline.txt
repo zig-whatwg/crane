@@ -51,11 +51,6 @@ src/runtime/engines/v8/wrapper_cache.zig History.getInternal 1
 src/runtime/engines/v8/wrapper_cache.zig Location.getInternalState 1
 src/runtime/engines/v8/wrapper_cache.zig Node.getInternalState 3
 src/webidl/impls/AbortController.zig AbortSignal.signalAbort 1
-src/webidl/impls/Cache.zig Request.getUrlInternal 1
-src/webidl/impls/Cache.zig Request.init 1
-src/webidl/impls/Cache.zig Response.getResponseData 1
-src/webidl/impls/Cache.zig Response.init 2
-src/webidl/impls/CacheStorage.zig Cache.initWithName 1
 src/webidl/impls/ChildNode.zig Node.call_insertBefore 3
 src/webidl/impls/ChildNode.zig Node.call_replaceChild 1
 src/webidl/impls/ChildNode.zig Node.convertNodesIntoNode 3
@@ -119,7 +114,6 @@ src/webidl/impls/ServiceWorkerRegistration.zig CookieStoreManager.createForRegis
 src/webidl/impls/Text.zig Node.setOwnerDocument 1
 src/webidl/impls/URL.zig Blob.getInternal 1
 src/webidl/impls/Window.zig CSSStyleDeclaration.initForComputedStyle 1
-src/webidl/impls/Window.zig CacheStorage.init 1
 src/webidl/impls/Window.zig History.State 1
 src/webidl/impls/Window.zig History.deinit 1
 src/webidl/impls/Window.zig History.getInternal 1

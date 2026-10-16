@@ -115,6 +115,7 @@ pub const history_traversal = @import("history_traversal.zig");
 pub const auxiliary_navigables = @import("auxiliary_navigables.zig");
 pub const global_settings = @import("global_settings.zig");
 pub const extract_origin = @import("extract_origin.zig");
+pub const client_message_queues = @import("client_message_queues.zig");
 /// Origin-Agent-Cluster and each browsing context group's historical agent
 /// cluster key map: whether a window's agent cluster is origin-keyed.
 pub const agent_cluster_keys = @import("agent_cluster_keys.zig");

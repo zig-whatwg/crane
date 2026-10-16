@@ -56,7 +56,6 @@ pub const interface_skip_list = .{
     "CSSViewTransitionRule", // DOMString array issues
     "ChapterInformation", // MediaImage array issues
     "DeviceChangeEvent", // MediaDeviceInfo array issues
-    "ExtendableMessageEvent", // Union type issues
     "FontFaceSetLoadEvent", // FontFace array issues
     "GamepadHapticActuator", // GamepadHapticEffectType array issues
     "MediaMetadata", // ChapterInformation array issues
@@ -68,7 +67,6 @@ pub const interface_skip_list = .{
     "PushSubscriptionOptions", // ArrayBuffer type issues
     "RTCTrackEvent", // MediaStream array issues
     "SVGPathElement", // Missing cached field
-    "WindowClient", // Missing VisibilityState type
     "XRCPUDepthInformation", // ArrayBuffer type issues
     "XRInputSource", // DOMString array issues
     "XRInputSourcesChangeEvent", // XRInputSource array issues

@@ -172,18 +172,22 @@ pub const GlobalType = enum {
             // testharness.js into it, and fetch_tests_from_worker() carries the
             // results back over postMessage.
             .worker => true,
-            // A shared worker is keyed by name and URL across browsing contexts;
-            // a service worker sits behind a registration and an
-            // install/activate lifecycle. Neither is wired up, so tests in them
-            // would report timeouts rather than results.
+            // A shared worker is keyed by name and URL across browsing
+            // contexts, and is not wired up: tests in it would report
+            // timeouts rather than results.
             .sharedworker => false,
-            .serviceworker => false,
+            // The service worker clears the bar (lane sw1-b2, granted): `wpt
+            // serve`'s `.any.serviceworker.html` registers the test script,
+            // and fetch_tests_from_worker() reads its results back over
+            // ServiceWorker.postMessage and Client.postMessage. Its URL is
+            // https whatever the file's name says (WptServer.buildTestUrl).
+            .serviceworker => true,
             // The module workers: `wpt serve` generates the
             // `.any.worker-module.html` / `.any.sharedworker-module.html`
             // wrappers, whose worker imports testharness.js and the test as
             // modules; a module Worker and a module SharedWorker run the
             // graph (crane/script-module-workers.html). A module service
-            // worker needs the registration a classic one lacks too.
+            // worker's wrapper has not been measured yet.
             .worker_module => true,
             .sharedworker_module => true,
             .serviceworker_module => false,
@@ -1460,8 +1464,9 @@ test "multi-context: test runs in each specified context" {
         }
     }
 
-    // Both window and the dedicated worker run this file.
-    try std.testing.expectEqual(@as(usize, 2), executed_contexts);
+    // Window, the dedicated worker and the service worker run this file
+    // ("worker" is all three; the shared worker stays off).
+    try std.testing.expectEqual(@as(usize, 3), executed_contexts);
 }
 
 test "multi-context: unimplemented contexts are skipped" {
@@ -1478,15 +1483,14 @@ test "multi-context: unimplemented contexts are skipped" {
     // Should have 3 globals parsed
     try std.testing.expectEqual(@as(usize, 3), parsed.metadata.globals.items.len);
 
-    // Only window: shared and service workers are separate globals with their
-    // own lifecycles, and neither is wired up yet.
+    // Window and the service worker: the shared worker is not wired up yet.
     var implemented: usize = 0;
     for (parsed.metadata.globals.items) |ctx| {
         if (ctx.isImplemented()) {
             implemented += 1;
         }
     }
-    try std.testing.expectEqual(@as(usize, 1), implemented);
+    try std.testing.expectEqual(@as(usize, 2), implemented);
 }
 
 test "multi-context: .any.js defaults to window+worker" {
@@ -1564,9 +1568,10 @@ test "multi-context: counting implemented vs unimplemented contexts" {
         }
     }
 
-    // window and worker run; sharedworker, serviceworker and shadowrealm's six do not.
-    try std.testing.expectEqual(@as(usize, 2), implemented);
-    try std.testing.expectEqual(@as(usize, 8), unimplemented);
+    // window, worker and serviceworker run; sharedworker and shadowrealm's
+    // six do not.
+    try std.testing.expectEqual(@as(usize, 3), implemented);
+    try std.testing.expectEqual(@as(usize, 7), unimplemented);
 }
 
 test "GlobalType.isImplemented - the dedicated worker runs" {
@@ -1578,13 +1583,15 @@ test "GlobalType.isImplemented - the dedicated worker runs" {
     try std.testing.expect(GlobalType.window.isImplemented());
 }
 
-test "GlobalType.isImplemented - other worker globals stay off" {
-    // Each of these needs infrastructure the dedicated worker does not: a
-    // registry keyed by name and URL for shared workers, and a registration and
-    // install/activate lifecycle for service workers. Turning them on with the
-    // dedicated worker would report timeouts, not results.
+test "GlobalType.isImplemented - the service worker runs; the shared worker and the module service worker stay off" {
+    // The service worker's variant registers its test script and reads its
+    // results back over ServiceWorker.postMessage and Client.postMessage
+    // (lane sw1-b2, granted): on a sample of 87 files it added 1,517 passing
+    // subtests and blocked nothing new. A module service worker and a shared
+    // worker still lack what their wrappers need.
+    try std.testing.expect(GlobalType.serviceworker.isImplemented());
+    try std.testing.expect(!GlobalType.serviceworker_module.isImplemented());
     try std.testing.expect(!GlobalType.sharedworker.isImplemented());
-    try std.testing.expect(!GlobalType.serviceworker.isImplemented());
 }
 
 test "GlobalType.isImplemented - dedicatedworker spelling agrees" {
@@ -1612,9 +1619,10 @@ test "multi-context: effective test count with variants and globals" {
     defer parsed.deinit();
 
     // MANIFEST.json's URLs: 4 globals (window; worker's dedicated, shared
-    // and service worker) * 3 variants. The runner runs 2 * 3 of them.
+    // and service worker) * 3 variants. The runner runs 3 * 3 of them (not
+    // the shared worker's).
     try std.testing.expectEqual(@as(usize, 12), parsed.metadata.getEffectiveTestCount());
-    try std.testing.expectEqual(@as(usize, 6), parsed.metadata.runCount());
+    try std.testing.expectEqual(@as(usize, 9), parsed.metadata.runCount());
 }
 
 test "variantsOrDefault: a file with no variants still runs exactly once" {
@@ -1668,10 +1676,11 @@ test "runCount: multiplies implemented globals by variants" {
     var parsed = try parseTestFile(allocator, "test.any.js", content);
     defer parsed.deinit();
 
-    // 2 globals * 3 variants. This is the runner's progress denominator, so a
-    // count that ignored either axis would leave the bar stuck short of its own
-    // total, or run past it.
-    try std.testing.expectEqual(@as(usize, 6), parsed.metadata.runCount());
+    // 3 run globals (window, the dedicated and the service worker) * 3
+    // variants. This is the runner's progress denominator, so a count that
+    // ignored either axis would leave the bar stuck short of its own total, or
+    // run past it.
+    try std.testing.expectEqual(@as(usize, 9), parsed.metadata.runCount());
 }
 
 test "runCount: counts only globals that run" {
@@ -1687,11 +1696,11 @@ test "runCount: counts only globals that run" {
     var parsed = try parseTestFile(allocator, "test.any.js", content);
     defer parsed.deinit();
 
-    // Unlike getEffectiveTestCount, which counts what WPT would run: the two
-    // unimplemented globals are skipped outright and never report, so counting
-    // them would promise results that never arrive.
+    // Unlike getEffectiveTestCount, which counts what WPT would run: the
+    // unimplemented shared worker is skipped outright and never reports, so
+    // counting it would promise results that never arrive.
     try std.testing.expectEqual(@as(usize, 8), parsed.metadata.getEffectiveTestCount());
-    try std.testing.expectEqual(@as(usize, 4), parsed.metadata.runCount());
+    try std.testing.expectEqual(@as(usize, 6), parsed.metadata.runCount());
 }
 
 test "runCount: a file with no variants counts once per global" {
@@ -1813,8 +1822,9 @@ test "META global: `//META:` with no space is a META line (Worker-constructor-pr
         \\test(() => {});
     ;
     try expectAnyGlobals(content, &.{ "worker", "sharedworker", "serviceworker" });
-    // Only the dedicated worker runs: no window run the file never asked for.
-    try expectAnyRuns(content, &.{"worker"});
+    // The dedicated and the service worker run: no window run the file never
+    // asked for.
+    try expectAnyRuns(content, &.{ "worker", "serviceworker" });
     // And it is labelled: MANIFEST.json lists three URLs for the file, and an
     // unlabelled run took the first of them, `.any.serviceworker.html`
     // (wpt_test_ids.pickManifestUrl).
@@ -1834,9 +1844,9 @@ test "META global: whitespace around META: is optional, around = it is not" {
 
 test "META global: worker is the dedicated, shared and service worker" {
     try expectAnyGlobals("// META: global=worker\n", &.{ "worker", "sharedworker", "serviceworker" });
-    try expectAnyRuns("// META: global=worker\n", &.{"worker"});
+    try expectAnyRuns("// META: global=worker\n", &.{ "worker", "serviceworker" });
     try expectAnyGlobals("// META: global=window,worker\n", &.{ "window", "worker", "sharedworker", "serviceworker" });
-    try expectAnyRuns("// META: global=window,worker\n", &.{ "window", "worker" });
+    try expectAnyRuns("// META: global=window,worker\n", &.{ "window", "worker", "serviceworker" });
     // Named once each, however often the longhand repeats them.
     try expectAnyGlobals("// META: global=dedicatedworker,worker,sharedworker\n", &.{ "worker", "sharedworker", "serviceworker" });
 }
@@ -1847,7 +1857,7 @@ test "META global: each single global" {
     try expectAnyGlobals("// META: global=sharedworker\n", &.{"sharedworker"});
     try expectAnyRuns("// META: global=sharedworker\n", &.{});
     try expectAnyGlobals("// META: global=serviceworker\n", &.{"serviceworker"});
-    try expectAnyRuns("// META: global=serviceworker\n", &.{});
+    try expectAnyRuns("// META: global=serviceworker\n", &.{"serviceworker"});
     try expectAnyGlobals("// META: global=dedicatedworker-module\n", &.{"dedicatedworker-module"});
     try expectAnyRuns("// META: global=dedicatedworker-module\n", &.{"dedicatedworker-module"});
     try expectAnyGlobals("// META: global=sharedworker-module\n", &.{"sharedworker-module"});

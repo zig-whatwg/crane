@@ -395,7 +395,14 @@ pub const WptServer = struct {
             suffix = ".worker.html";
         }
 
-        const listener = Listener.of(test_path);
+        // A service worker variant is loaded over TLS whatever the file's
+        // name says (WPT's manifest: its URL's "serviceworker" flag makes
+        // it https, tools/manifest/item.py) - a service worker needs a
+        // secure context.
+        const listener: Listener = switch (context) {
+            .serviceworker, .serviceworker_module => if (Listener.of(test_path) == .h2) .h2 else .https,
+            else => Listener.of(test_path),
+        };
         return std.fmt.allocPrint(allocator, "{s}://{s}:{d}/{s}{s}{s}", .{
             listener.scheme(),
             WPT_HOST,
@@ -511,6 +518,19 @@ test "WptServer.buildTestUrl" {
         const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .worker, "");
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://web-platform.test:8000/url/url-constructor.any.worker.html", url);
+    }
+
+    // A service worker variant is https whatever the file's name says
+    // (WPT's manifest: tools/manifest/item.py), on the TLS listener.
+    {
+        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .serviceworker, "");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings("https://web-platform.test:8443/url/url-constructor.any.serviceworker.html", url);
+    }
+    {
+        const url = try server.buildTestUrl(allocator, "cookiestore/x.https.any.js", .serviceworker, "?v");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings("https://web-platform.test:8443/cookiestore/x.https.any.serviceworker.html?v", url);
     }
 
     // Window context for another .any.js test

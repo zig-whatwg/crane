@@ -86,6 +86,13 @@ pub const InternalState = struct {
         value: *runtime.Instance,
         edge: same_object.Traced = .{ .slot = .{ .name = "performance" } },
     } = null,
+    /// Service Workers 5.3: this global's CacheStorage, made on first use,
+    /// kept by a collector-traced edge.
+    cache_storage: ?struct {
+        owner: *runtime.Instance,
+        value: *runtime.Instance,
+        edge: same_object.Traced = .{ .slot = .{ .name = "caches" } },
+    } = null,
     /// The settings object's time origin (HR-Time): "run a worker" step 3's
     /// unsafe worker creation time, monotonic nanoseconds as the worker host
     /// recorded it (worker_host.ScopeSettings); null when it recorded none.
@@ -152,6 +159,7 @@ pub const InternalState = struct {
         self.reporting.deinit(self.allocator);
         if (self.indexed_db) |*factory| factory.edge.release(factory.owner);
         if (self.performance) |*performance| performance.edge.release(performance.owner);
+        if (self.cache_storage) |*caches| caches.edge.release(caches.owner);
         if (self.crypto) |*crypto| crypto.edge.release(crypto.owner);
         if (self.trusted_types) |*factory| factory.edge.release(factory.owner);
         // The WorkerLocation and WorkerNavigator objects are the wrapper
@@ -229,6 +237,7 @@ pub fn installHooks() void {
         .is_secure_context = &settingsIsSecureContext,
         .cross_origin_isolated = &settingsCrossOriginIsolated,
         .performance = &settingsPerformance,
+        .caches = &settingsCaches,
         .time_origin = &settingsTimeOrigin,
         .crypto = &settingsCrypto,
         .trusted_types = &settingsTrustedTypes,
@@ -274,7 +283,7 @@ fn settingsCookieJar(instance: *runtime.Instance) ?*@import("cookiestore").Cooki
 
 // ============================================================================
 // This worker's environment settings, for the WindowOrWorkerGlobalScope mixin
-// (dom.global_settings). A worker has no CacheStorage of its own yet.
+// (dom.global_settings).
 // ============================================================================
 
 fn isWorkerGlobalScope(global: *runtime.Instance) bool {
@@ -319,6 +328,17 @@ fn settingsPerformance(instance: *runtime.Instance) anyerror!*runtime.Instance {
     internal.performance = .{ .owner = instance, .value = performance };
     internal.performance.?.edge.hold(instance, performance);
     return performance;
+}
+
+/// Service Workers 5.3: "the caches getter steps are to return this's
+/// associated CacheStorage object" - one per global, made on first use.
+fn settingsCaches(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    if (internal.cache_storage) |caches| return caches.value;
+    const caches = try interfaces.CacheStorage.init(internal.allocator, instance.ctx);
+    internal.cache_storage = .{ .owner = instance, .value = caches };
+    internal.cache_storage.?.edge.hold(instance, caches);
+    return caches;
 }
 
 /// The settings object's time origin: the worker's creation time.

@@ -11,6 +11,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const registry_mod = @import("registry.zig");
+const manager_mod = @import("manager.zig");
 
 /// A ServiceWorker object's state: the service worker it represents, and its
 /// `state` attribute's value - "the value (in ServiceWorkerState
@@ -88,4 +89,65 @@ pub const RegistrationObject = struct {
         self.allocator.free(self.storage_key);
         self.allocator.destroy(self);
     }
+};
+
+/// A Client object's state (4.2): the service worker client it represents,
+/// as the registry described it when the object was made - Create Client,
+/// Create Window Client. The Client impl owns it; a WindowClient's own part
+/// borrows `window` from it (the Client part outlives it: the destruction
+/// chain ends the WindowClient part first).
+pub const ClientObject = struct {
+    allocator: Allocator,
+    /// The client's environment in the registry: what postMessage posts to.
+    environment: u64,
+    /// Its id.
+    id: [36]u8,
+    /// Its creation URL, serialized. OWNED.
+    url: []u8,
+    kind: registry_mod.EnvironmentKind,
+    /// Its frame type ("none" unless stated otherwise).
+    frame_type: registry_mod.FrameType,
+    /// A WindowClient's visibility state, focus state and ancestor origins
+    /// array; null for a Client.
+    window: ?manager_mod.WindowData,
+
+    pub fn create(allocator: Allocator, info: *const manager_mod.ClientInfo) Allocator.Error!*ClientObject {
+        const self = try allocator.create(ClientObject);
+        errdefer allocator.destroy(self);
+        const url = try allocator.dupe(u8, info.url);
+        errdefer allocator.free(url);
+        self.* = .{
+            .allocator = allocator,
+            .environment = info.environment,
+            .id = info.id,
+            .url = url,
+            .kind = info.kind,
+            .frame_type = info.frame_type,
+            .window = if (info.window) |*w| try w.clone(allocator) else null,
+        };
+        return self;
+    }
+
+    pub fn destroy(self: *ClientObject) void {
+        if (self.window) |*w| w.deinit(self.allocator);
+        self.allocator.free(self.url);
+        self.allocator.destroy(self);
+    }
+};
+
+/// What a service worker's thread makes its message event from
+/// (ServiceWorker.postMessage step 6.2.5.3): the ExtendableMessageEvent's
+/// construction argument `message`. Every field BORROWED for the
+/// construction; the event keeps holds of its own.
+pub const ExtendableMessageInit = struct {
+    /// messageClone, or null for a messageerror event.
+    data: runtime.JSValue = runtime.JSValue.jsNull,
+    /// Its origin, serialized - an origin, not a string: the event's
+    /// extract-an-origin steps return it.
+    origin: []const u8,
+    /// Its source: a Client, a ServiceWorker or a MessagePort of the event's
+    /// realm, or null.
+    source: ?*runtime.Instance = null,
+    /// newPorts.
+    ports: []const *runtime.Instance = &.{},
 };

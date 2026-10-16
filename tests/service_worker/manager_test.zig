@@ -20,7 +20,7 @@ const TestEndpoint = struct {
 
     fn create(allocator: std.mem.Allocator, sink: *runtime.TaskSink) TestEndpoint {
         return .{
-            .endpoint = .{ .sink = sink, .deliver = deliver, .realm = @ptrCast(sink) },
+            .endpoint = .{ .sink = sink, .deliver = deliver, .window_data = noWindowData, .realm = @ptrCast(sink) },
             .allocator = allocator,
         };
     }
@@ -30,7 +30,7 @@ const TestEndpoint = struct {
         self.log.deinit(self.allocator);
     }
 
-    fn deliver(endpoint: *manager_mod.Endpoint, delivery: *const manager_mod.Delivery) void {
+    fn deliver(endpoint: *manager_mod.Endpoint, delivery: *manager_mod.Delivery) void {
         const self: *TestEndpoint = @fieldParentPtr("endpoint", endpoint);
         const line = switch (delivery.*) {
             .resolve_registration => |m| std.fmt.allocPrint(self.allocator, "resolve {s}", .{m.registration.scope_url}),
@@ -70,6 +70,7 @@ const fake_host: manager_mod.Host = .{
     .fetch = fakeFetch,
     .start = fakeStart,
     .dispatch = fakeDispatch,
+    .post_message = fakePostMessage,
 };
 
 fn fakeFetch(manager: *Manager, plan: *const registry.FetchPlan) registry.FetchOutcome {
@@ -89,6 +90,16 @@ fn fakeStart(manager: *Manager, start: *const manager_mod.WorkerStart) anyerror!
 
 fn fakeDispatch(manager: *Manager, _: manager_mod.Started, _: registry.LifecycleEvent, op: u64) void {
     manager.report(.{ .lifecycle_done = .{ .op = op, .failed = false } });
+}
+
+/// Every message is handled at once.
+fn fakePostMessage(manager: *Manager, _: manager_mod.Started, message: *manager_mod.WorkerMessage, worker_id: u64, generation: u64) void {
+    message.destroy();
+    manager.report(.{ .message_done = .{ .worker = worker_id, .generation = generation } });
+}
+
+fn noWindowData(_: *manager_mod.Endpoint, _: std.mem.Allocator) ?manager_mod.WindowData {
+    return null;
 }
 
 test "a register job runs on the job thread, and its realm hears Install and Activate in order" {
@@ -195,6 +206,7 @@ const stuck_host: manager_mod.Host = .{
     .fetch = fakeFetch,
     .start = fakeStart,
     .dispatch = stuckDispatch,
+    .post_message = fakePostMessage,
 };
 
 fn stuckDispatch(_: *Manager, _: manager_mod.Started, _: registry.LifecycleEvent, _: u64) void {}

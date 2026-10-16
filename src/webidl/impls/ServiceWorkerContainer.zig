@@ -7,9 +7,12 @@
 //! Its service worker client is its realm's environment, and what its
 //! members do there - the jobs, the matching, the ready promise, the
 //! controller - is the service_worker module's (src/service_worker/realm.zig),
-//! which keeps the realm's environment and the promises it waits on. Its
-//! event handlers (oncontrollerchange, onmessage, onmessageerror) are the
-//! generated ones (dom.event_handlers).
+//! which keeps the realm's environment and the promises it waits on, and its
+//! client message queue - what its service workers' Client.postMessage()
+//! sends waits there until startMessages(), the first set of onmessage, or
+//! DOMContentLoaded enables it. Its event handlers (oncontrollerchange,
+//! onmessage, onmessageerror) are the generated ones (dom.event_handlers);
+//! onmessage's setter adds the queue's step.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -36,6 +39,9 @@ pub const InternalState = struct {};
 /// on its thread - and the realm's environment ends with it.
 pub fn installHooks() void {
     @import("dom").unloading_cleanup.install(&service_worker.realm.environmentEnded);
+    // HTML "the end" step 6.4: the client message queue is enabled after
+    // DOMContentLoaded.
+    @import("dom").client_message_queues.install(&service_worker.realm.enableClientMessageQueueOf);
 }
 
 /// ServiceWorkerContainer's own construction steps: the generated chain runs
@@ -61,11 +67,17 @@ pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
 }
 
 /// Operation: startMessages (3.4.6) - "enable this's client message queue if
-/// it is not enabled". Nothing posts to the queue yet (ServiceWorker
-/// postMessage and Client.postMessage are batch 2), so there is nothing to
-/// enable.
+/// it is not enabled".
 pub fn call_startMessages(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
+    service_worker.realm.startMessages(instance);
+}
+
+/// Setter for onmessage (3.4.7): the generated event handler's steps, and
+/// "the first time the onmessage setter steps are performed, enable this's
+/// client message queue".
+pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
+    try @import("dom").event_handlers.setValue(typedefs.EventHandler, instance, "onmessage", value);
+    service_worker.realm.startMessages(instance);
 }
 
 /// Operation: getRegistrations (3.4.5).
