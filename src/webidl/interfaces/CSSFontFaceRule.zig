@@ -153,6 +153,7 @@ pub const CSSFontFaceRule = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(CSSFontFaceRuleImpl, "deinit") and @hasDecl(CSSFontFaceRuleImpl, "deinitOwn")) @compileError("CSSFontFaceRuleImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(CSSFontFaceRuleImpl, "deinit")) return CSSFontFaceRuleImpl.deinit(instance);
         if (comptime @hasDecl(CSSFontFaceRuleImpl, "deinitOwn")) CSSFontFaceRuleImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -176,6 +177,7 @@ pub const CSSFontFaceRule = struct {
         }
         const value = try CSSFontFaceRuleImpl.get_style(instance);
         state.own.cached_style = value;
+        @import("dom").same_object_cache.made(instance, value, "style");
         return value;
     }
 

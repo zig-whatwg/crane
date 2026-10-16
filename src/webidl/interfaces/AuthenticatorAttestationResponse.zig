@@ -160,6 +160,7 @@ pub const AuthenticatorAttestationResponse = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(AuthenticatorAttestationResponseImpl, "deinit") and @hasDecl(AuthenticatorAttestationResponseImpl, "deinitOwn")) @compileError("AuthenticatorAttestationResponseImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(AuthenticatorAttestationResponseImpl, "deinit")) return AuthenticatorAttestationResponseImpl.deinit(instance);
         if (comptime @hasDecl(AuthenticatorAttestationResponseImpl, "deinitOwn")) AuthenticatorAttestationResponseImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);

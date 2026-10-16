@@ -79,6 +79,7 @@ pub const SVGAnimatedPoints = struct {
         }
         const value = try SVGAnimatedPointsImpl.get_points(instance);
         state.own.cached_points = value;
+        @import("dom").same_object_cache.made(instance, value, "points");
         return value;
     }
 
@@ -91,6 +92,7 @@ pub const SVGAnimatedPoints = struct {
         }
         const value = try SVGAnimatedPointsImpl.get_animatedPoints(instance);
         state.own.cached_animatedPoints = value;
+        @import("dom").same_object_cache.made(instance, value, "animatedPoints");
         return value;
     }
 };

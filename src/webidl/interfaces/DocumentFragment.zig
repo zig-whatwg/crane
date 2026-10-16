@@ -223,6 +223,7 @@ pub const DocumentFragment = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(DocumentFragmentImpl, "deinit") and @hasDecl(DocumentFragmentImpl, "deinitOwn")) @compileError("DocumentFragmentImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(DocumentFragmentImpl, "deinit")) return DocumentFragmentImpl.deinit(instance);
         if (comptime @hasDecl(DocumentFragmentImpl, "deinitOwn")) DocumentFragmentImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -254,6 +255,7 @@ pub const DocumentFragment = struct {
         }
         const value = try mixins.ParentNode.get_children(instance);
         state.own.cached_children = value;
+        @import("dom").same_object_cache.made(instance, value, "children");
         return value;
     }
 

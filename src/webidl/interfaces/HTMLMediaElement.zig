@@ -570,6 +570,7 @@ pub const HTMLMediaElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(HTMLMediaElementImpl, "deinit") and @hasDecl(HTMLMediaElementImpl, "deinitOwn")) @compileError("HTMLMediaElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(HTMLMediaElementImpl, "deinit")) return HTMLMediaElementImpl.deinit(instance);
         if (comptime @hasDecl(HTMLMediaElementImpl, "deinitOwn")) HTMLMediaElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -803,6 +804,7 @@ pub const HTMLMediaElement = struct {
         }
         const value = try HTMLMediaElementImpl.get_audioTracks(instance);
         state.own.cached_audioTracks = value;
+        @import("dom").same_object_cache.made(instance, value, "audioTracks");
         return value;
     }
 
@@ -815,6 +817,7 @@ pub const HTMLMediaElement = struct {
         }
         const value = try HTMLMediaElementImpl.get_videoTracks(instance);
         state.own.cached_videoTracks = value;
+        @import("dom").same_object_cache.made(instance, value, "videoTracks");
         return value;
     }
 
@@ -827,6 +830,7 @@ pub const HTMLMediaElement = struct {
         }
         const value = try HTMLMediaElementImpl.get_textTracks(instance);
         state.own.cached_textTracks = value;
+        @import("dom").same_object_cache.made(instance, value, "textTracks");
         return value;
     }
 
@@ -871,6 +875,7 @@ pub const HTMLMediaElement = struct {
         }
         const value = try HTMLMediaElementImpl.get_remote(instance);
         state.own.cached_remote = value;
+        @import("dom").same_object_cache.made(instance, value, "remote");
         return value;
     }
 

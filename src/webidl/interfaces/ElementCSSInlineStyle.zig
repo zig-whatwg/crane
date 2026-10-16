@@ -86,6 +86,7 @@ pub const ElementCSSInlineStyle = struct {
         }
         const value = try ElementCSSInlineStyleImpl.get_style(instance);
         state.own.cached_style = value;
+        @import("dom").same_object_cache.made(instance, value, "style");
         return value;
     }
 
@@ -109,6 +110,7 @@ pub const ElementCSSInlineStyle = struct {
         }
         const value = try ElementCSSInlineStyleImpl.get_attributeStyleMap(instance);
         state.own.cached_attributeStyleMap = value;
+        @import("dom").same_object_cache.made(instance, value, "attributeStyleMap");
         return value;
     }
 };

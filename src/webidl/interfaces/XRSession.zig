@@ -339,6 +339,7 @@ pub const XRSession = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRSessionImpl, "deinit") and @hasDecl(XRSessionImpl, "deinitOwn")) @compileError("XRSessionImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRSessionImpl, "deinit")) return XRSessionImpl.deinit(instance);
         if (comptime @hasDecl(XRSessionImpl, "deinitOwn")) XRSessionImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -374,6 +375,7 @@ pub const XRSession = struct {
         }
         const value = try XRSessionImpl.get_renderState(instance);
         state.own.cached_renderState = value;
+        @import("dom").same_object_cache.made(instance, value, "renderState");
         return value;
     }
 
@@ -386,6 +388,7 @@ pub const XRSession = struct {
         }
         const value = try XRSessionImpl.get_inputSources(instance);
         state.own.cached_inputSources = value;
+        @import("dom").same_object_cache.made(instance, value, "inputSources");
         return value;
     }
 
@@ -398,6 +401,7 @@ pub const XRSession = struct {
         }
         const value = try XRSessionImpl.get_trackedSources(instance);
         state.own.cached_trackedSources = value;
+        @import("dom").same_object_cache.made(instance, value, "trackedSources");
         return value;
     }
 

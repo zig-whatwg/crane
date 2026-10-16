@@ -178,6 +178,7 @@ pub const DataTransfer = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(DataTransferImpl, "deinit") and @hasDecl(DataTransferImpl, "deinitOwn")) @compileError("DataTransferImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(DataTransferImpl, "deinit")) return DataTransferImpl.deinit(instance);
         if (comptime @hasDecl(DataTransferImpl, "deinitOwn")) DataTransferImpl.deinitOwn(instance);
     }
@@ -224,6 +225,7 @@ pub const DataTransfer = struct {
         }
         const value = try DataTransferImpl.get_items(instance);
         state.own.cached_items = value;
+        @import("dom").same_object_cache.made(instance, value, "items");
         return value;
     }
 
@@ -240,6 +242,7 @@ pub const DataTransfer = struct {
         }
         const value = try DataTransferImpl.get_files(instance);
         state.own.cached_files = value;
+        @import("dom").same_object_cache.made(instance, value, "files");
         return value;
     }
 

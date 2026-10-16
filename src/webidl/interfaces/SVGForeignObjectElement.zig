@@ -319,6 +319,7 @@ pub const SVGForeignObjectElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGForeignObjectElementImpl, "deinit") and @hasDecl(SVGForeignObjectElementImpl, "deinitOwn")) @compileError("SVGForeignObjectElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGForeignObjectElementImpl, "deinit")) return SVGForeignObjectElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGForeignObjectElementImpl, "deinitOwn")) SVGForeignObjectElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -342,6 +343,7 @@ pub const SVGForeignObjectElement = struct {
         }
         const value = try SVGForeignObjectElementImpl.get_x(instance);
         state.own.cached_x = value;
+        @import("dom").same_object_cache.made(instance, value, "x");
         return value;
     }
 
@@ -354,6 +356,7 @@ pub const SVGForeignObjectElement = struct {
         }
         const value = try SVGForeignObjectElementImpl.get_y(instance);
         state.own.cached_y = value;
+        @import("dom").same_object_cache.made(instance, value, "y");
         return value;
     }
 
@@ -366,6 +369,7 @@ pub const SVGForeignObjectElement = struct {
         }
         const value = try SVGForeignObjectElementImpl.get_width(instance);
         state.own.cached_width = value;
+        @import("dom").same_object_cache.made(instance, value, "width");
         return value;
     }
 
@@ -378,6 +382,7 @@ pub const SVGForeignObjectElement = struct {
         }
         const value = try SVGForeignObjectElementImpl.get_height(instance);
         state.own.cached_height = value;
+        @import("dom").same_object_cache.made(instance, value, "height");
         return value;
     }
 };

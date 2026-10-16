@@ -324,6 +324,7 @@ pub const SVGRadialGradientElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGRadialGradientElementImpl, "deinit") and @hasDecl(SVGRadialGradientElementImpl, "deinitOwn")) @compileError("SVGRadialGradientElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGRadialGradientElementImpl, "deinit")) return SVGRadialGradientElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGRadialGradientElementImpl, "deinitOwn")) SVGRadialGradientElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -347,6 +348,7 @@ pub const SVGRadialGradientElement = struct {
         }
         const value = try SVGRadialGradientElementImpl.get_cx(instance);
         state.own.cached_cx = value;
+        @import("dom").same_object_cache.made(instance, value, "cx");
         return value;
     }
 
@@ -359,6 +361,7 @@ pub const SVGRadialGradientElement = struct {
         }
         const value = try SVGRadialGradientElementImpl.get_cy(instance);
         state.own.cached_cy = value;
+        @import("dom").same_object_cache.made(instance, value, "cy");
         return value;
     }
 
@@ -371,6 +374,7 @@ pub const SVGRadialGradientElement = struct {
         }
         const value = try SVGRadialGradientElementImpl.get_r(instance);
         state.own.cached_r = value;
+        @import("dom").same_object_cache.made(instance, value, "r");
         return value;
     }
 
@@ -383,6 +387,7 @@ pub const SVGRadialGradientElement = struct {
         }
         const value = try SVGRadialGradientElementImpl.get_fx(instance);
         state.own.cached_fx = value;
+        @import("dom").same_object_cache.made(instance, value, "fx");
         return value;
     }
 
@@ -395,6 +400,7 @@ pub const SVGRadialGradientElement = struct {
         }
         const value = try SVGRadialGradientElementImpl.get_fy(instance);
         state.own.cached_fy = value;
+        @import("dom").same_object_cache.made(instance, value, "fy");
         return value;
     }
 
@@ -407,6 +413,7 @@ pub const SVGRadialGradientElement = struct {
         }
         const value = try SVGRadialGradientElementImpl.get_fr(instance);
         state.own.cached_fr = value;
+        @import("dom").same_object_cache.made(instance, value, "fr");
         return value;
     }
 };

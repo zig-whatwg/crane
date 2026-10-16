@@ -1624,6 +1624,16 @@ fn implOwnsEventHandlers(impl_name: []const u8) bool {
     return false;
 }
 
+/// Whether a State made from `attributes` caches a [SameObject] attribute:
+/// a `cached_<name>` field, which writeStateStruct adds for every non-static
+/// [SameObject] attribute (writeLifecycleFunctions' `same_object_caches`).
+pub fn cachesSameObject(attributes: []const types.Attribute) bool {
+    for (attributes) |attr| {
+        if (!attr.static and hasExtendedAttribute(attr.extAttrs, "SameObject")) return true;
+    }
+    return false;
+}
+
 pub fn writeGeneratedState(
     writer: anytype,
     attributes: []const types.Attribute,
@@ -2312,6 +2322,10 @@ pub const LifecycleOptions = struct {
     /// A mixin is never instantiated: it gets no lifecycle (and no vtable),
     /// only its impl's hooks.
     is_mixin: bool = false,
+    /// Its State caches a [SameObject] attribute (`cached_<name>`): the
+    /// destruction chain ends the edges its cached children may still wait
+    /// on (dom.same_object_cache.end).
+    same_object_caches: bool = false,
 };
 
 /// Write the construction and destruction chain
@@ -2451,6 +2465,9 @@ pub fn writeLifecycleFunctions(
     try writer.writeAll("    /// defines `deinit` chains by hand.\n");
     try writer.writeAll("    pub inline fn deinitChain(instance: *runtime.Instance) void {\n");
     try writer.print("        if (comptime @hasDecl({s}, \"deinit\") and @hasDecl({s}, \"deinitOwn\")) @compileError(\"{s} defines both deinit and deinitOwn\");\n", .{ impl_name, impl_name, impl_name });
+    // First, before an impl that chains by hand returns: this level's
+    // [SameObject] children are the generated layer's.
+    if (options.same_object_caches) try writer.writeAll("        @import(\"dom\").same_object_cache.end(State, instance);\n");
     try writer.print("        if (comptime @hasDecl({s}, \"deinit\")) return {s}.deinit(instance);\n", .{ impl_name, impl_name });
     try writer.print("        if (comptime @hasDecl({s}, \"deinitOwn\")) {s}.deinitOwn(instance);\n", .{ impl_name, impl_name });
     if (options.has_parent) try writer.writeAll("        Meta.ParentInterface.deinitChain(instance);\n");
@@ -4336,6 +4353,15 @@ pub fn writeDelegateFunctions(
                 try writer.print("        const value = try {s}.get_{s}(instance);\n", .{ member_impl, sanitized_name });
             }
             try writer.print("        state.own.cached_{s} = value;\n", .{sanitized_name});
+            // The child its owner keeps, whoever read it first: a native
+            // read leaves what a script read does (dom.same_object_cache).
+            if (std.mem.eql(u8, return_type, "*runtime.Instance")) {
+                if (is_nullable) {
+                    try writer.print("        if (value) |child| @import(\"dom\").same_object_cache.made(instance, child, \"{s}\");\n", .{sanitized_name});
+                } else {
+                    try writer.print("        @import(\"dom\").same_object_cache.made(instance, value, \"{s}\");\n", .{sanitized_name});
+                }
+            }
             try writer.writeAll("        return value;\n");
         } else if (reflect_getter) {
             try writer.print("        if (comptime @hasDecl({s}, \"{s}{s}\")) return try {s}.{s}{s}(instance);\n", .{ member_impl, get_prefix, sanitized_name, member_impl, get_prefix, sanitized_name });

@@ -155,6 +155,7 @@ pub const DocumentPictureInPictureEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(DocumentPictureInPictureEventImpl, "deinit") and @hasDecl(DocumentPictureInPictureEventImpl, "deinitOwn")) @compileError("DocumentPictureInPictureEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(DocumentPictureInPictureEventImpl, "deinit")) return DocumentPictureInPictureEventImpl.deinit(instance);
         if (comptime @hasDecl(DocumentPictureInPictureEventImpl, "deinitOwn")) DocumentPictureInPictureEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -186,6 +187,7 @@ pub const DocumentPictureInPictureEvent = struct {
         }
         const value = try DocumentPictureInPictureEventImpl.get_window(instance);
         state.own.cached_window = value;
+        @import("dom").same_object_cache.made(instance, value, "window");
         return value;
     }
 };

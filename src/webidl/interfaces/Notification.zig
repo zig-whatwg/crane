@@ -266,6 +266,7 @@ pub const Notification = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(NotificationImpl, "deinit") and @hasDecl(NotificationImpl, "deinitOwn")) @compileError("NotificationImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(NotificationImpl, "deinit")) return NotificationImpl.deinit(instance);
         if (comptime @hasDecl(NotificationImpl, "deinitOwn")) NotificationImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);

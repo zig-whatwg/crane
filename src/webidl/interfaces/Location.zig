@@ -200,6 +200,7 @@ pub const Location = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(LocationImpl, "deinit") and @hasDecl(LocationImpl, "deinitOwn")) @compileError("LocationImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(LocationImpl, "deinit")) return LocationImpl.deinit(instance);
         if (comptime @hasDecl(LocationImpl, "deinitOwn")) LocationImpl.deinitOwn(instance);
     }
@@ -307,6 +308,7 @@ pub const Location = struct {
         }
         const value = try LocationImpl.get_ancestorOrigins(instance);
         state.own.cached_ancestorOrigins = value;
+        @import("dom").same_object_cache.made(instance, value, "ancestorOrigins");
         return value;
     }
 

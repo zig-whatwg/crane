@@ -220,6 +220,7 @@ pub const URL = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(URLImpl, "deinit") and @hasDecl(URLImpl, "deinitOwn")) @compileError("URLImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(URLImpl, "deinit")) return URLImpl.deinit(instance);
         if (comptime @hasDecl(URLImpl, "deinitOwn")) URLImpl.deinitOwn(instance);
     }
@@ -328,6 +329,7 @@ pub const URL = struct {
         }
         const value = try URLImpl.get_searchParams(instance);
         state.own.cached_searchParams = value;
+        @import("dom").same_object_cache.made(instance, value, "searchParams");
         return value;
     }
 

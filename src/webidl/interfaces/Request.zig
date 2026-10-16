@@ -259,6 +259,7 @@ pub const Request = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(RequestImpl, "deinit") and @hasDecl(RequestImpl, "deinitOwn")) @compileError("RequestImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(RequestImpl, "deinit")) return RequestImpl.deinit(instance);
         if (comptime @hasDecl(RequestImpl, "deinitOwn")) RequestImpl.deinitOwn(instance);
     }
@@ -297,6 +298,7 @@ pub const Request = struct {
         }
         const value = try RequestImpl.get_headers(instance);
         state.own.cached_headers = value;
+        @import("dom").same_object_cache.made(instance, value, "headers");
         return value;
     }
 

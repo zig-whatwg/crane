@@ -195,6 +195,7 @@ pub const DOMQuad = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(DOMQuadImpl, "deinit") and @hasDecl(DOMQuadImpl, "deinitOwn")) @compileError("DOMQuadImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(DOMQuadImpl, "deinit")) return DOMQuadImpl.deinit(instance);
         if (comptime @hasDecl(DOMQuadImpl, "deinitOwn")) DOMQuadImpl.deinitOwn(instance);
     }
@@ -262,6 +263,7 @@ pub const DOMQuad = struct {
         }
         const value = try DOMQuadImpl.get_p1(instance);
         state.own.cached_p1 = value;
+        @import("dom").same_object_cache.made(instance, value, "p1");
         return value;
     }
 
@@ -274,6 +276,7 @@ pub const DOMQuad = struct {
         }
         const value = try DOMQuadImpl.get_p2(instance);
         state.own.cached_p2 = value;
+        @import("dom").same_object_cache.made(instance, value, "p2");
         return value;
     }
 
@@ -286,6 +289,7 @@ pub const DOMQuad = struct {
         }
         const value = try DOMQuadImpl.get_p3(instance);
         state.own.cached_p3 = value;
+        @import("dom").same_object_cache.made(instance, value, "p3");
         return value;
     }
 
@@ -298,6 +302,7 @@ pub const DOMQuad = struct {
         }
         const value = try DOMQuadImpl.get_p4(instance);
         state.own.cached_p4 = value;
+        @import("dom").same_object_cache.made(instance, value, "p4");
         return value;
     }
 

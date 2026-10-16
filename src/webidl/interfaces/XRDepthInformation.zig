@@ -165,6 +165,7 @@ pub const XRDepthInformation = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRDepthInformationImpl, "deinit") and @hasDecl(XRDepthInformationImpl, "deinitOwn")) @compileError("XRDepthInformationImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRDepthInformationImpl, "deinit")) return XRDepthInformationImpl.deinit(instance);
         if (comptime @hasDecl(XRDepthInformationImpl, "deinitOwn")) XRDepthInformationImpl.deinitOwn(instance);
     }
@@ -195,6 +196,7 @@ pub const XRDepthInformation = struct {
         }
         const value = try XRDepthInformationImpl.get_normDepthBufferFromNormView(instance);
         state.own.cached_normDepthBufferFromNormView = value;
+        @import("dom").same_object_cache.made(instance, value, "normDepthBufferFromNormView");
         return value;
     }
 
@@ -213,6 +215,7 @@ pub const XRDepthInformation = struct {
         }
         const value = try mixins.XRViewGeometry.get_transform(instance);
         state.own.cached_transform = value;
+        @import("dom").same_object_cache.made(instance, value, "transform");
         return value;
     }
 };

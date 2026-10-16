@@ -155,6 +155,7 @@ pub const PresentationConnectionAvailableEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(PresentationConnectionAvailableEventImpl, "deinit") and @hasDecl(PresentationConnectionAvailableEventImpl, "deinitOwn")) @compileError("PresentationConnectionAvailableEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(PresentationConnectionAvailableEventImpl, "deinit")) return PresentationConnectionAvailableEventImpl.deinit(instance);
         if (comptime @hasDecl(PresentationConnectionAvailableEventImpl, "deinitOwn")) PresentationConnectionAvailableEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -186,6 +187,7 @@ pub const PresentationConnectionAvailableEvent = struct {
         }
         const value = try PresentationConnectionAvailableEventImpl.get_connection(instance);
         state.own.cached_connection = value;
+        @import("dom").same_object_cache.made(instance, value, "connection");
         return value;
     }
 };

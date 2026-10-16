@@ -158,6 +158,7 @@ pub const FontFaceSetLoadEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(FontFaceSetLoadEventImpl, "deinit") and @hasDecl(FontFaceSetLoadEventImpl, "deinitOwn")) @compileError("FontFaceSetLoadEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(FontFaceSetLoadEventImpl, "deinit")) return FontFaceSetLoadEventImpl.deinit(instance);
         if (comptime @hasDecl(FontFaceSetLoadEventImpl, "deinitOwn")) FontFaceSetLoadEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);

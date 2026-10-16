@@ -158,6 +158,7 @@ pub const CSSKeyframeRule = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(CSSKeyframeRuleImpl, "deinit") and @hasDecl(CSSKeyframeRuleImpl, "deinitOwn")) @compileError("CSSKeyframeRuleImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(CSSKeyframeRuleImpl, "deinit")) return CSSKeyframeRuleImpl.deinit(instance);
         if (comptime @hasDecl(CSSKeyframeRuleImpl, "deinitOwn")) CSSKeyframeRuleImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -189,6 +190,7 @@ pub const CSSKeyframeRule = struct {
         }
         const value = try CSSKeyframeRuleImpl.get_style(instance);
         state.own.cached_style = value;
+        @import("dom").same_object_cache.made(instance, value, "style");
         return value;
     }
 

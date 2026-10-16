@@ -305,6 +305,7 @@ pub const SVGViewElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGViewElementImpl, "deinit") and @hasDecl(SVGViewElementImpl, "deinitOwn")) @compileError("SVGViewElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGViewElementImpl, "deinit")) return SVGViewElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGViewElementImpl, "deinitOwn")) SVGViewElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -328,6 +329,7 @@ pub const SVGViewElement = struct {
         }
         const value = try mixins.SVGFitToViewBox.get_viewBox(instance);
         state.own.cached_viewBox = value;
+        @import("dom").same_object_cache.made(instance, value, "viewBox");
         return value;
     }
 
@@ -340,6 +342,7 @@ pub const SVGViewElement = struct {
         }
         const value = try mixins.SVGFitToViewBox.get_preserveAspectRatio(instance);
         state.own.cached_preserveAspectRatio = value;
+        @import("dom").same_object_cache.made(instance, value, "preserveAspectRatio");
         return value;
     }
 };

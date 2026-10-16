@@ -289,6 +289,7 @@ pub const XMLHttpRequest = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XMLHttpRequestImpl, "deinit") and @hasDecl(XMLHttpRequestImpl, "deinitOwn")) @compileError("XMLHttpRequestImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XMLHttpRequestImpl, "deinit")) return XMLHttpRequestImpl.deinit(instance);
         if (comptime @hasDecl(XMLHttpRequestImpl, "deinitOwn")) XMLHttpRequestImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -352,6 +353,7 @@ pub const XMLHttpRequest = struct {
         }
         const value = try XMLHttpRequestImpl.get_upload(instance);
         state.own.cached_upload = value;
+        @import("dom").same_object_cache.made(instance, value, "upload");
         return value;
     }
 

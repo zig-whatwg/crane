@@ -330,6 +330,7 @@ pub const SVGFEImageElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGFEImageElementImpl, "deinit") and @hasDecl(SVGFEImageElementImpl, "deinitOwn")) @compileError("SVGFEImageElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGFEImageElementImpl, "deinit")) return SVGFEImageElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGFEImageElementImpl, "deinitOwn")) SVGFEImageElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -371,6 +372,7 @@ pub const SVGFEImageElement = struct {
         }
         const value = try mixins.SVGURIReference.get_href(instance);
         state.own.cached_href = value;
+        @import("dom").same_object_cache.made(instance, value, "href");
         return value;
     }
 };

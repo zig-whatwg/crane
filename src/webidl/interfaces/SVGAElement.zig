@@ -405,6 +405,7 @@ pub const SVGAElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGAElementImpl, "deinit") and @hasDecl(SVGAElementImpl, "deinitOwn")) @compileError("SVGAElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGAElementImpl, "deinit")) return SVGAElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGAElementImpl, "deinitOwn")) SVGAElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -428,6 +429,7 @@ pub const SVGAElement = struct {
         }
         const value = try SVGAElementImpl.get_target(instance);
         state.own.cached_target = value;
+        @import("dom").same_object_cache.made(instance, value, "target");
         return value;
     }
 
@@ -464,6 +466,7 @@ pub const SVGAElement = struct {
         }
         const value = try SVGAElementImpl.get_relList(instance);
         state.own.cached_relList = value;
+        @import("dom").same_object_cache.made(instance, value, "relList");
         return value;
     }
 
@@ -511,6 +514,7 @@ pub const SVGAElement = struct {
         }
         const value = try mixins.SVGURIReference.get_href(instance);
         state.own.cached_href = value;
+        @import("dom").same_object_cache.made(instance, value, "href");
         return value;
     }
 

@@ -183,6 +183,7 @@ pub const IDBCursor = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(IDBCursorImpl, "deinit") and @hasDecl(IDBCursorImpl, "deinitOwn")) @compileError("IDBCursorImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(IDBCursorImpl, "deinit")) return IDBCursorImpl.deinit(instance);
         if (comptime @hasDecl(IDBCursorImpl, "deinitOwn")) IDBCursorImpl.deinitOwn(instance);
     }
@@ -221,6 +222,7 @@ pub const IDBCursor = struct {
         }
         const value = try IDBCursorImpl.get_request(instance);
         state.own.cached_request = value;
+        @import("dom").same_object_cache.made(instance, value, "request");
         return value;
     }
 

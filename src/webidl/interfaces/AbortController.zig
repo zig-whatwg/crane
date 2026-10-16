@@ -146,6 +146,7 @@ pub const AbortController = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(AbortControllerImpl, "deinit") and @hasDecl(AbortControllerImpl, "deinitOwn")) @compileError("AbortControllerImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(AbortControllerImpl, "deinit")) return AbortControllerImpl.deinit(instance);
         if (comptime @hasDecl(AbortControllerImpl, "deinitOwn")) AbortControllerImpl.deinitOwn(instance);
     }
@@ -176,6 +177,7 @@ pub const AbortController = struct {
         }
         const value = try AbortControllerImpl.get_signal(instance);
         state.own.cached_signal = value;
+        @import("dom").same_object_cache.made(instance, value, "signal");
         return value;
     }
 

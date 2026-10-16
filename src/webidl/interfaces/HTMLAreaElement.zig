@@ -427,6 +427,7 @@ pub const HTMLAreaElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(HTMLAreaElementImpl, "deinit") and @hasDecl(HTMLAreaElementImpl, "deinitOwn")) @compileError("HTMLAreaElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(HTMLAreaElementImpl, "deinit")) return HTMLAreaElementImpl.deinit(instance);
         if (comptime @hasDecl(HTMLAreaElementImpl, "deinitOwn")) HTMLAreaElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -572,6 +573,7 @@ pub const HTMLAreaElement = struct {
         }
         const value = if (comptime @hasDecl(HTMLAreaElementImpl, "get_relList")) try HTMLAreaElementImpl.get_relList(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "rel" });
         state.own.cached_relList = value;
+        @import("dom").same_object_cache.made(instance, value, "relList");
         return value;
     }
 

@@ -335,6 +335,7 @@ pub const HTMLFencedFrameElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(HTMLFencedFrameElementImpl, "deinit") and @hasDecl(HTMLFencedFrameElementImpl, "deinitOwn")) @compileError("HTMLFencedFrameElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(HTMLFencedFrameElementImpl, "deinit")) return HTMLFencedFrameElementImpl.deinit(instance);
         if (comptime @hasDecl(HTMLFencedFrameElementImpl, "deinitOwn")) HTMLFencedFrameElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -408,6 +409,7 @@ pub const HTMLFencedFrameElement = struct {
         }
         const value = try HTMLFencedFrameElementImpl.get_sandbox(instance);
         state.own.cached_sandbox = value;
+        @import("dom").same_object_cache.made(instance, value, "sandbox");
         return value;
     }
 

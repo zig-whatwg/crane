@@ -283,6 +283,7 @@ pub const GPUDevice = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(GPUDeviceImpl, "deinit") and @hasDecl(GPUDeviceImpl, "deinitOwn")) @compileError("GPUDeviceImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(GPUDeviceImpl, "deinit")) return GPUDeviceImpl.deinit(instance);
         if (comptime @hasDecl(GPUDeviceImpl, "deinitOwn")) GPUDeviceImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -306,6 +307,7 @@ pub const GPUDevice = struct {
         }
         const value = try GPUDeviceImpl.get_features(instance);
         state.own.cached_features = value;
+        @import("dom").same_object_cache.made(instance, value, "features");
         return value;
     }
 
@@ -318,6 +320,7 @@ pub const GPUDevice = struct {
         }
         const value = try GPUDeviceImpl.get_limits(instance);
         state.own.cached_limits = value;
+        @import("dom").same_object_cache.made(instance, value, "limits");
         return value;
     }
 
@@ -330,6 +333,7 @@ pub const GPUDevice = struct {
         }
         const value = try GPUDeviceImpl.get_adapterInfo(instance);
         state.own.cached_adapterInfo = value;
+        @import("dom").same_object_cache.made(instance, value, "adapterInfo");
         return value;
     }
 
@@ -342,6 +346,7 @@ pub const GPUDevice = struct {
         }
         const value = try GPUDeviceImpl.get_queue(instance);
         state.own.cached_queue = value;
+        @import("dom").same_object_cache.made(instance, value, "queue");
         return value;
     }
 

@@ -938,6 +938,7 @@ pub const HTMLElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(HTMLElementImpl, "deinit") and @hasDecl(HTMLElementImpl, "deinitOwn")) @compileError("HTMLElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(HTMLElementImpl, "deinit")) return HTMLElementImpl.deinit(instance);
         if (comptime @hasDecl(HTMLElementImpl, "deinitOwn")) HTMLElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -1259,6 +1260,7 @@ pub const HTMLElement = struct {
         }
         const value = try HTMLElementImpl.get_style(instance);
         state.own.cached_style = value;
+        @import("dom").same_object_cache.made(instance, value, "style");
         return value;
     }
 
@@ -1282,6 +1284,7 @@ pub const HTMLElement = struct {
         }
         const value = try HTMLElementImpl.get_attributeStyleMap(instance);
         state.own.cached_attributeStyleMap = value;
+        @import("dom").same_object_cache.made(instance, value, "attributeStyleMap");
         return value;
     }
 
@@ -1672,6 +1675,7 @@ pub const HTMLElement = struct {
         }
         const value = try HTMLElementImpl.get_dataset(instance);
         state.own.cached_dataset = value;
+        @import("dom").same_object_cache.made(instance, value, "dataset");
         return value;
     }
 

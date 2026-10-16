@@ -188,6 +188,7 @@ pub const BluetoothAdvertisingEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(BluetoothAdvertisingEventImpl, "deinit") and @hasDecl(BluetoothAdvertisingEventImpl, "deinitOwn")) @compileError("BluetoothAdvertisingEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(BluetoothAdvertisingEventImpl, "deinit")) return BluetoothAdvertisingEventImpl.deinit(instance);
         if (comptime @hasDecl(BluetoothAdvertisingEventImpl, "deinitOwn")) BluetoothAdvertisingEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -219,6 +220,7 @@ pub const BluetoothAdvertisingEvent = struct {
         }
         const value = try BluetoothAdvertisingEventImpl.get_device(instance);
         state.own.cached_device = value;
+        @import("dom").same_object_cache.made(instance, value, "device");
         return value;
     }
 
@@ -251,6 +253,7 @@ pub const BluetoothAdvertisingEvent = struct {
         }
         const value = try BluetoothAdvertisingEventImpl.get_manufacturerData(instance);
         state.own.cached_manufacturerData = value;
+        @import("dom").same_object_cache.made(instance, value, "manufacturerData");
         return value;
     }
 
@@ -263,6 +266,7 @@ pub const BluetoothAdvertisingEvent = struct {
         }
         const value = try BluetoothAdvertisingEventImpl.get_serviceData(instance);
         state.own.cached_serviceData = value;
+        @import("dom").same_object_cache.made(instance, value, "serviceData");
         return value;
     }
 };

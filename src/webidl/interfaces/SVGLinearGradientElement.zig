@@ -314,6 +314,7 @@ pub const SVGLinearGradientElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGLinearGradientElementImpl, "deinit") and @hasDecl(SVGLinearGradientElementImpl, "deinitOwn")) @compileError("SVGLinearGradientElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGLinearGradientElementImpl, "deinit")) return SVGLinearGradientElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGLinearGradientElementImpl, "deinitOwn")) SVGLinearGradientElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -337,6 +338,7 @@ pub const SVGLinearGradientElement = struct {
         }
         const value = try SVGLinearGradientElementImpl.get_x1(instance);
         state.own.cached_x1 = value;
+        @import("dom").same_object_cache.made(instance, value, "x1");
         return value;
     }
 
@@ -349,6 +351,7 @@ pub const SVGLinearGradientElement = struct {
         }
         const value = try SVGLinearGradientElementImpl.get_y1(instance);
         state.own.cached_y1 = value;
+        @import("dom").same_object_cache.made(instance, value, "y1");
         return value;
     }
 
@@ -361,6 +364,7 @@ pub const SVGLinearGradientElement = struct {
         }
         const value = try SVGLinearGradientElementImpl.get_x2(instance);
         state.own.cached_x2 = value;
+        @import("dom").same_object_cache.made(instance, value, "x2");
         return value;
     }
 
@@ -373,6 +377,7 @@ pub const SVGLinearGradientElement = struct {
         }
         const value = try SVGLinearGradientElementImpl.get_y2(instance);
         state.own.cached_y2 = value;
+        @import("dom").same_object_cache.made(instance, value, "y2");
         return value;
     }
 };

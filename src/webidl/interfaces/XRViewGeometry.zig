@@ -88,6 +88,7 @@ pub const XRViewGeometry = struct {
         }
         const value = try XRViewGeometryImpl.get_transform(instance);
         state.own.cached_transform = value;
+        @import("dom").same_object_cache.made(instance, value, "transform");
         return value;
     }
 };

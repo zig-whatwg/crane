@@ -162,6 +162,7 @@ pub const BluetoothRemoteGATTServer = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(BluetoothRemoteGATTServerImpl, "deinit") and @hasDecl(BluetoothRemoteGATTServerImpl, "deinitOwn")) @compileError("BluetoothRemoteGATTServerImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(BluetoothRemoteGATTServerImpl, "deinit")) return BluetoothRemoteGATTServerImpl.deinit(instance);
         if (comptime @hasDecl(BluetoothRemoteGATTServerImpl, "deinitOwn")) BluetoothRemoteGATTServerImpl.deinitOwn(instance);
     }
@@ -184,6 +185,7 @@ pub const BluetoothRemoteGATTServer = struct {
         }
         const value = try BluetoothRemoteGATTServerImpl.get_device(instance);
         state.own.cached_device = value;
+        @import("dom").same_object_cache.made(instance, value, "device");
         return value;
     }
 

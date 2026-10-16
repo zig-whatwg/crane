@@ -407,6 +407,7 @@ pub const HTMLFormElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(HTMLFormElementImpl, "deinit") and @hasDecl(HTMLFormElementImpl, "deinitOwn")) @compileError("HTMLFormElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(HTMLFormElementImpl, "deinit")) return HTMLFormElementImpl.deinit(instance);
         if (comptime @hasDecl(HTMLFormElementImpl, "deinitOwn")) HTMLFormElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -591,6 +592,7 @@ pub const HTMLFormElement = struct {
         }
         const value = if (comptime @hasDecl(HTMLFormElementImpl, "get_relList")) try HTMLFormElementImpl.get_relList(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "rel" });
         state.own.cached_relList = value;
+        @import("dom").same_object_cache.made(instance, value, "relList");
         return value;
     }
 
@@ -614,6 +616,7 @@ pub const HTMLFormElement = struct {
         }
         const value = try HTMLFormElementImpl.get_elements(instance);
         state.own.cached_elements = value;
+        @import("dom").same_object_cache.made(instance, value, "elements");
         return value;
     }
 

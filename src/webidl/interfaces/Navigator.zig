@@ -605,6 +605,7 @@ pub const Navigator = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(NavigatorImpl, "deinit") and @hasDecl(NavigatorImpl, "deinitOwn")) @compileError("NavigatorImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(NavigatorImpl, "deinit")) return NavigatorImpl.deinit(instance);
         if (comptime @hasDecl(NavigatorImpl, "deinitOwn")) NavigatorImpl.deinitOwn(instance);
     }
@@ -631,6 +632,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_clipboard(instance);
         state.own.cached_clipboard = value;
+        @import("dom").same_object_cache.made(instance, value, "clipboard");
         return value;
     }
 
@@ -643,6 +645,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_contacts(instance);
         state.own.cached_contacts = value;
+        @import("dom").same_object_cache.made(instance, value, "contacts");
         return value;
     }
 
@@ -655,6 +658,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_credentials(instance);
         state.own.cached_credentials = value;
+        @import("dom").same_object_cache.made(instance, value, "credentials");
         return value;
     }
 
@@ -667,6 +671,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_devicePosture(instance);
         state.own.cached_devicePosture = value;
+        @import("dom").same_object_cache.made(instance, value, "devicePosture");
         return value;
     }
 
@@ -679,6 +684,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_epubReadingSystem(instance);
         state.own.cached_epubReadingSystem = value;
+        @import("dom").same_object_cache.made(instance, value, "epubReadingSystem");
         return value;
     }
 
@@ -691,6 +697,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_geolocation(instance);
         state.own.cached_geolocation = value;
+        @import("dom").same_object_cache.made(instance, value, "geolocation");
         return value;
     }
 
@@ -703,6 +710,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_userActivation(instance);
         state.own.cached_userActivation = value;
+        @import("dom").same_object_cache.made(instance, value, "userActivation");
         return value;
     }
 
@@ -715,6 +723,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_ink(instance);
         state.own.cached_ink = value;
+        @import("dom").same_object_cache.made(instance, value, "ink");
         return value;
     }
 
@@ -731,6 +740,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_keyboard(instance);
         state.own.cached_keyboard = value;
+        @import("dom").same_object_cache.made(instance, value, "keyboard");
         return value;
     }
 
@@ -748,6 +758,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_managed(instance);
         state.own.cached_managed = value;
+        @import("dom").same_object_cache.made(instance, value, "managed");
         return value;
     }
 
@@ -760,6 +771,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_mediaCapabilities(instance);
         state.own.cached_mediaCapabilities = value;
+        @import("dom").same_object_cache.made(instance, value, "mediaCapabilities");
         return value;
     }
 
@@ -772,6 +784,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_mediaDevices(instance);
         state.own.cached_mediaDevices = value;
+        @import("dom").same_object_cache.made(instance, value, "mediaDevices");
         return value;
     }
 
@@ -784,6 +797,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_preferences(instance);
         state.own.cached_preferences = value;
+        @import("dom").same_object_cache.made(instance, value, "preferences");
         return value;
     }
 
@@ -796,6 +810,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_mediaSession(instance);
         state.own.cached_mediaSession = value;
+        @import("dom").same_object_cache.made(instance, value, "mediaSession");
         return value;
     }
 
@@ -808,6 +823,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_permissions(instance);
         state.own.cached_permissions = value;
+        @import("dom").same_object_cache.made(instance, value, "permissions");
         return value;
     }
 
@@ -824,6 +840,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_presentation(instance);
         state.own.cached_presentation = value;
+        @import("dom").same_object_cache.made(instance, value, "presentation");
         return value;
     }
 
@@ -836,6 +853,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_attribution(instance);
         state.own.cached_attribution = value;
+        @import("dom").same_object_cache.made(instance, value, "attribution");
         return value;
     }
 
@@ -848,6 +866,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_wakeLock(instance);
         state.own.cached_wakeLock = value;
+        @import("dom").same_object_cache.made(instance, value, "wakeLock");
         return value;
     }
 
@@ -860,6 +879,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_serial(instance);
         state.own.cached_serial = value;
+        @import("dom").same_object_cache.made(instance, value, "serial");
         return value;
     }
 
@@ -872,6 +892,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_serviceWorker(instance);
         state.own.cached_serviceWorker = value;
+        @import("dom").same_object_cache.made(instance, value, "serviceWorker");
         return value;
     }
 
@@ -888,6 +909,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_protectedAudience(instance);
         state.own.cached_protectedAudience = value;
+        @import("dom").same_object_cache.made(instance, value, "protectedAudience");
         return value;
     }
 
@@ -900,6 +922,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_virtualKeyboard(instance);
         state.own.cached_virtualKeyboard = value;
+        @import("dom").same_object_cache.made(instance, value, "virtualKeyboard");
         return value;
     }
 
@@ -912,6 +935,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_bluetooth(instance);
         state.own.cached_bluetooth = value;
+        @import("dom").same_object_cache.made(instance, value, "bluetooth");
         return value;
     }
 
@@ -924,6 +948,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_smartCard(instance);
         state.own.cached_smartCard = value;
+        @import("dom").same_object_cache.made(instance, value, "smartCard");
         return value;
     }
 
@@ -936,6 +961,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_hid(instance);
         state.own.cached_hid = value;
+        @import("dom").same_object_cache.made(instance, value, "hid");
         return value;
     }
 
@@ -948,6 +974,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_usb(instance);
         state.own.cached_usb = value;
+        @import("dom").same_object_cache.made(instance, value, "usb");
         return value;
     }
 
@@ -960,6 +987,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_xr(instance);
         state.own.cached_xr = value;
+        @import("dom").same_object_cache.made(instance, value, "xr");
         return value;
     }
 
@@ -972,6 +1000,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_windowControlsOverlay(instance);
         state.own.cached_windowControlsOverlay = value;
+        @import("dom").same_object_cache.made(instance, value, "windowControlsOverlay");
         return value;
     }
 
@@ -1048,6 +1077,7 @@ pub const Navigator = struct {
         }
         const value = try mixins.NavigatorPlugins.get_plugins(instance);
         state.own.cached_plugins = value;
+        @import("dom").same_object_cache.made(instance, value, "plugins");
         return value;
     }
 
@@ -1060,6 +1090,7 @@ pub const Navigator = struct {
         }
         const value = try mixins.NavigatorPlugins.get_mimeTypes(instance);
         state.own.cached_mimeTypes = value;
+        @import("dom").same_object_cache.made(instance, value, "mimeTypes");
         return value;
     }
 
@@ -1078,6 +1109,7 @@ pub const Navigator = struct {
         }
         const value = try mixins.NavigatorNetworkInformation.get_connection(instance);
         state.own.cached_connection = value;
+        @import("dom").same_object_cache.made(instance, value, "connection");
         return value;
     }
 
@@ -1090,6 +1122,7 @@ pub const Navigator = struct {
         }
         const value = try mixins.NavigatorStorageBuckets.get_storageBuckets(instance);
         state.own.cached_storageBuckets = value;
+        @import("dom").same_object_cache.made(instance, value, "storageBuckets");
         return value;
     }
 
@@ -1102,6 +1135,7 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_storage(instance);
         state.own.cached_storage = value;
+        @import("dom").same_object_cache.made(instance, value, "storage");
         return value;
     }
 
@@ -1121,6 +1155,7 @@ pub const Navigator = struct {
         }
         const value = try mixins.NavigatorGPU.get_gpu(instance);
         state.own.cached_gpu = value;
+        @import("dom").same_object_cache.made(instance, value, "gpu");
         return value;
     }
 
@@ -1133,6 +1168,7 @@ pub const Navigator = struct {
         }
         const value = try mixins.NavigatorML.get_ml(instance);
         state.own.cached_ml = value;
+        @import("dom").same_object_cache.made(instance, value, "ml");
         return value;
     }
 

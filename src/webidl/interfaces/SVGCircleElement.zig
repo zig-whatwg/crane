@@ -319,6 +319,7 @@ pub const SVGCircleElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGCircleElementImpl, "deinit") and @hasDecl(SVGCircleElementImpl, "deinitOwn")) @compileError("SVGCircleElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGCircleElementImpl, "deinit")) return SVGCircleElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGCircleElementImpl, "deinitOwn")) SVGCircleElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -342,6 +343,7 @@ pub const SVGCircleElement = struct {
         }
         const value = try SVGCircleElementImpl.get_cx(instance);
         state.own.cached_cx = value;
+        @import("dom").same_object_cache.made(instance, value, "cx");
         return value;
     }
 
@@ -354,6 +356,7 @@ pub const SVGCircleElement = struct {
         }
         const value = try SVGCircleElementImpl.get_cy(instance);
         state.own.cached_cy = value;
+        @import("dom").same_object_cache.made(instance, value, "cy");
         return value;
     }
 
@@ -366,6 +369,7 @@ pub const SVGCircleElement = struct {
         }
         const value = try SVGCircleElementImpl.get_r(instance);
         state.own.cached_r = value;
+        @import("dom").same_object_cache.made(instance, value, "r");
         return value;
     }
 };

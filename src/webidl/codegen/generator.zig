@@ -1821,6 +1821,7 @@ fn generateInterfaceFile(
         .interface_name = interface.name,
         .has_parent = base_info.is_interface,
         .is_mixin = interface.mixin,
+        .same_object_caches = writer.cachesSameObject(own_attrs.items),
     });
 
     // HTML 2.7.1: a [Serializable] interface publishes its impl's steps.

@@ -145,6 +145,7 @@ pub const SVGAnimatedLength = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGAnimatedLengthImpl, "deinit") and @hasDecl(SVGAnimatedLengthImpl, "deinitOwn")) @compileError("SVGAnimatedLengthImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGAnimatedLengthImpl, "deinit")) return SVGAnimatedLengthImpl.deinit(instance);
         if (comptime @hasDecl(SVGAnimatedLengthImpl, "deinitOwn")) SVGAnimatedLengthImpl.deinitOwn(instance);
     }
@@ -167,6 +168,7 @@ pub const SVGAnimatedLength = struct {
         }
         const value = try SVGAnimatedLengthImpl.get_baseVal(instance);
         state.own.cached_baseVal = value;
+        @import("dom").same_object_cache.made(instance, value, "baseVal");
         return value;
     }
 
@@ -179,6 +181,7 @@ pub const SVGAnimatedLength = struct {
         }
         const value = try SVGAnimatedLengthImpl.get_animVal(instance);
         state.own.cached_animVal = value;
+        @import("dom").same_object_cache.made(instance, value, "animVal");
         return value;
     }
 };

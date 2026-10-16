@@ -294,6 +294,7 @@ pub const ServiceWorkerGlobalScope = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "deinit") and @hasDecl(ServiceWorkerGlobalScopeImpl, "deinitOwn")) @compileError("ServiceWorkerGlobalScopeImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "deinit")) return ServiceWorkerGlobalScopeImpl.deinit(instance);
         if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "deinitOwn")) ServiceWorkerGlobalScopeImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -317,6 +318,7 @@ pub const ServiceWorkerGlobalScope = struct {
         }
         const value = try ServiceWorkerGlobalScopeImpl.get_clients(instance);
         state.own.cached_clients = value;
+        @import("dom").same_object_cache.made(instance, value, "clients");
         return value;
     }
 
@@ -329,6 +331,7 @@ pub const ServiceWorkerGlobalScope = struct {
         }
         const value = try ServiceWorkerGlobalScopeImpl.get_registration(instance);
         state.own.cached_registration = value;
+        @import("dom").same_object_cache.made(instance, value, "registration");
         return value;
     }
 
@@ -341,6 +344,7 @@ pub const ServiceWorkerGlobalScope = struct {
         }
         const value = try ServiceWorkerGlobalScopeImpl.get_serviceWorker(instance);
         state.own.cached_serviceWorker = value;
+        @import("dom").same_object_cache.made(instance, value, "serviceWorker");
         return value;
     }
 
@@ -465,6 +469,7 @@ pub const ServiceWorkerGlobalScope = struct {
         }
         const value = try ServiceWorkerGlobalScopeImpl.get_cookieStore(instance);
         state.own.cached_cookieStore = value;
+        @import("dom").same_object_cache.made(instance, value, "cookieStore");
         return value;
     }
 

@@ -75,6 +75,7 @@ pub const NavigatorML = struct {
         }
         const value = try NavigatorMLImpl.get_ml(instance);
         state.own.cached_ml = value;
+        @import("dom").same_object_cache.made(instance, value, "ml");
         return value;
     }
 };

@@ -270,6 +270,7 @@ pub const BaseAudioContext = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(BaseAudioContextImpl, "deinit") and @hasDecl(BaseAudioContextImpl, "deinitOwn")) @compileError("BaseAudioContextImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(BaseAudioContextImpl, "deinit")) return BaseAudioContextImpl.deinit(instance);
         if (comptime @hasDecl(BaseAudioContextImpl, "deinitOwn")) BaseAudioContextImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -317,6 +318,7 @@ pub const BaseAudioContext = struct {
         }
         const value = try BaseAudioContextImpl.get_audioWorklet(instance);
         state.own.cached_audioWorklet = value;
+        @import("dom").same_object_cache.made(instance, value, "audioWorklet");
         return value;
     }
 

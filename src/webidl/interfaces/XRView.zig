@@ -177,6 +177,7 @@ pub const XRView = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRViewImpl, "deinit") and @hasDecl(XRViewImpl, "deinitOwn")) @compileError("XRViewImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRViewImpl, "deinit")) return XRViewImpl.deinit(instance);
         if (comptime @hasDecl(XRViewImpl, "deinitOwn")) XRViewImpl.deinitOwn(instance);
     }
@@ -211,6 +212,7 @@ pub const XRView = struct {
         }
         const value = try XRViewImpl.get_camera(instance);
         state.own.cached_camera = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "camera");
         return value;
     }
 
@@ -229,6 +231,7 @@ pub const XRView = struct {
         }
         const value = try mixins.XRViewGeometry.get_transform(instance);
         state.own.cached_transform = value;
+        @import("dom").same_object_cache.made(instance, value, "transform");
         return value;
     }
 

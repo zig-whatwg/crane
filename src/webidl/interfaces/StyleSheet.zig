@@ -182,6 +182,7 @@ pub const StyleSheet = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(StyleSheetImpl, "deinit") and @hasDecl(StyleSheetImpl, "deinitOwn")) @compileError("StyleSheetImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(StyleSheetImpl, "deinit")) return StyleSheetImpl.deinit(instance);
         if (comptime @hasDecl(StyleSheetImpl, "deinitOwn")) StyleSheetImpl.deinitOwn(instance);
     }
@@ -224,6 +225,7 @@ pub const StyleSheet = struct {
         }
         const value = try StyleSheetImpl.get_media(instance);
         state.own.cached_media = value;
+        @import("dom").same_object_cache.made(instance, value, "media");
         return value;
     }
 

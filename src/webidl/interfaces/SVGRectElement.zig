@@ -334,6 +334,7 @@ pub const SVGRectElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGRectElementImpl, "deinit") and @hasDecl(SVGRectElementImpl, "deinitOwn")) @compileError("SVGRectElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGRectElementImpl, "deinit")) return SVGRectElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGRectElementImpl, "deinitOwn")) SVGRectElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -357,6 +358,7 @@ pub const SVGRectElement = struct {
         }
         const value = try SVGRectElementImpl.get_x(instance);
         state.own.cached_x = value;
+        @import("dom").same_object_cache.made(instance, value, "x");
         return value;
     }
 
@@ -369,6 +371,7 @@ pub const SVGRectElement = struct {
         }
         const value = try SVGRectElementImpl.get_y(instance);
         state.own.cached_y = value;
+        @import("dom").same_object_cache.made(instance, value, "y");
         return value;
     }
 
@@ -381,6 +384,7 @@ pub const SVGRectElement = struct {
         }
         const value = try SVGRectElementImpl.get_width(instance);
         state.own.cached_width = value;
+        @import("dom").same_object_cache.made(instance, value, "width");
         return value;
     }
 
@@ -393,6 +397,7 @@ pub const SVGRectElement = struct {
         }
         const value = try SVGRectElementImpl.get_height(instance);
         state.own.cached_height = value;
+        @import("dom").same_object_cache.made(instance, value, "height");
         return value;
     }
 
@@ -405,6 +410,7 @@ pub const SVGRectElement = struct {
         }
         const value = try SVGRectElementImpl.get_rx(instance);
         state.own.cached_rx = value;
+        @import("dom").same_object_cache.made(instance, value, "rx");
         return value;
     }
 
@@ -417,6 +423,7 @@ pub const SVGRectElement = struct {
         }
         const value = try SVGRectElementImpl.get_ry(instance);
         state.own.cached_ry = value;
+        @import("dom").same_object_cache.made(instance, value, "ry");
         return value;
     }
 };

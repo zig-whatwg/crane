@@ -77,6 +77,7 @@ pub const NavigatorStorageBuckets = struct {
         }
         const value = try NavigatorStorageBucketsImpl.get_storageBuckets(instance);
         state.own.cached_storageBuckets = value;
+        @import("dom").same_object_cache.made(instance, value, "storageBuckets");
         return value;
     }
 };

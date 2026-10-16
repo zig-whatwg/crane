@@ -158,6 +158,7 @@ pub const XRMesh = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRMeshImpl, "deinit") and @hasDecl(XRMeshImpl, "deinitOwn")) @compileError("XRMeshImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRMeshImpl, "deinit")) return XRMeshImpl.deinit(instance);
         if (comptime @hasDecl(XRMeshImpl, "deinitOwn")) XRMeshImpl.deinitOwn(instance);
     }
@@ -180,6 +181,7 @@ pub const XRMesh = struct {
         }
         const value = try XRMeshImpl.get_meshSpace(instance);
         state.own.cached_meshSpace = value;
+        @import("dom").same_object_cache.made(instance, value, "meshSpace");
         return value;
     }
 

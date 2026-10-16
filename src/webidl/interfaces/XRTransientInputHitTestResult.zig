@@ -146,6 +146,7 @@ pub const XRTransientInputHitTestResult = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRTransientInputHitTestResultImpl, "deinit") and @hasDecl(XRTransientInputHitTestResultImpl, "deinitOwn")) @compileError("XRTransientInputHitTestResultImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRTransientInputHitTestResultImpl, "deinit")) return XRTransientInputHitTestResultImpl.deinit(instance);
         if (comptime @hasDecl(XRTransientInputHitTestResultImpl, "deinitOwn")) XRTransientInputHitTestResultImpl.deinitOwn(instance);
     }
@@ -168,6 +169,7 @@ pub const XRTransientInputHitTestResult = struct {
         }
         const value = try XRTransientInputHitTestResultImpl.get_inputSource(instance);
         state.own.cached_inputSource = value;
+        @import("dom").same_object_cache.made(instance, value, "inputSource");
         return value;
     }
 

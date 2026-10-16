@@ -75,6 +75,7 @@ pub const NavigatorNetworkInformation = struct {
         }
         const value = try NavigatorNetworkInformationImpl.get_connection(instance);
         state.own.cached_connection = value;
+        @import("dom").same_object_cache.made(instance, value, "connection");
         return value;
     }
 };

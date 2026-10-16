@@ -156,6 +156,7 @@ pub const XRRigidTransform = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRRigidTransformImpl, "deinit") and @hasDecl(XRRigidTransformImpl, "deinitOwn")) @compileError("XRRigidTransformImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRRigidTransformImpl, "deinit")) return XRRigidTransformImpl.deinit(instance);
         if (comptime @hasDecl(XRRigidTransformImpl, "deinitOwn")) XRRigidTransformImpl.deinitOwn(instance);
     }
@@ -186,6 +187,7 @@ pub const XRRigidTransform = struct {
         }
         const value = try XRRigidTransformImpl.get_position(instance);
         state.own.cached_position = value;
+        @import("dom").same_object_cache.made(instance, value, "position");
         return value;
     }
 
@@ -198,6 +200,7 @@ pub const XRRigidTransform = struct {
         }
         const value = try XRRigidTransformImpl.get_orientation(instance);
         state.own.cached_orientation = value;
+        @import("dom").same_object_cache.made(instance, value, "orientation");
         return value;
     }
 
@@ -214,6 +217,7 @@ pub const XRRigidTransform = struct {
         }
         const value = try XRRigidTransformImpl.get_inverse(instance);
         state.own.cached_inverse = value;
+        @import("dom").same_object_cache.made(instance, value, "inverse");
         return value;
     }
 };

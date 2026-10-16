@@ -1229,6 +1229,7 @@ pub const Document = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(DocumentImpl, "deinit") and @hasDecl(DocumentImpl, "deinitOwn")) @compileError("DocumentImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(DocumentImpl, "deinit")) return DocumentImpl.deinit(instance);
         if (comptime @hasDecl(DocumentImpl, "deinitOwn")) DocumentImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -1260,6 +1261,7 @@ pub const Document = struct {
         }
         const value = try DocumentImpl.get_implementation(instance);
         state.own.cached_implementation = value;
+        @import("dom").same_object_cache.made(instance, value, "implementation");
         return value;
     }
 
@@ -1464,6 +1466,7 @@ pub const Document = struct {
         }
         const value = try DocumentImpl.get_images(instance);
         state.own.cached_images = value;
+        @import("dom").same_object_cache.made(instance, value, "images");
         return value;
     }
 
@@ -1476,6 +1479,7 @@ pub const Document = struct {
         }
         const value = try DocumentImpl.get_embeds(instance);
         state.own.cached_embeds = value;
+        @import("dom").same_object_cache.made(instance, value, "embeds");
         return value;
     }
 
@@ -1488,6 +1492,7 @@ pub const Document = struct {
         }
         const value = try DocumentImpl.get_plugins(instance);
         state.own.cached_plugins = value;
+        @import("dom").same_object_cache.made(instance, value, "plugins");
         return value;
     }
 
@@ -1500,6 +1505,7 @@ pub const Document = struct {
         }
         const value = try DocumentImpl.get_links(instance);
         state.own.cached_links = value;
+        @import("dom").same_object_cache.made(instance, value, "links");
         return value;
     }
 
@@ -1512,6 +1518,7 @@ pub const Document = struct {
         }
         const value = try DocumentImpl.get_forms(instance);
         state.own.cached_forms = value;
+        @import("dom").same_object_cache.made(instance, value, "forms");
         return value;
     }
 
@@ -1524,6 +1531,7 @@ pub const Document = struct {
         }
         const value = try DocumentImpl.get_scripts(instance);
         state.own.cached_scripts = value;
+        @import("dom").same_object_cache.made(instance, value, "scripts");
         return value;
     }
 
@@ -1658,6 +1666,7 @@ pub const Document = struct {
         }
         const value = try DocumentImpl.get_anchors(instance);
         state.own.cached_anchors = value;
+        @import("dom").same_object_cache.made(instance, value, "anchors");
         return value;
     }
 
@@ -1670,6 +1679,7 @@ pub const Document = struct {
         }
         const value = try DocumentImpl.get_applets(instance);
         state.own.cached_applets = value;
+        @import("dom").same_object_cache.made(instance, value, "applets");
         return value;
     }
 
@@ -1682,6 +1692,7 @@ pub const Document = struct {
         }
         const value = try DocumentImpl.get_all(instance);
         state.own.cached_all = value;
+        @import("dom").same_object_cache.made(instance, value, "all");
         return value;
     }
 
@@ -1718,6 +1729,7 @@ pub const Document = struct {
         }
         const value = try DocumentImpl.get_permissionsPolicy(instance);
         state.own.cached_permissionsPolicy = value;
+        @import("dom").same_object_cache.made(instance, value, "permissionsPolicy");
         return value;
     }
 
@@ -1768,6 +1780,7 @@ pub const Document = struct {
         }
         const value = try DocumentImpl.get_fragmentDirective(instance);
         state.own.cached_fragmentDirective = value;
+        @import("dom").same_object_cache.made(instance, value, "fragmentDirective");
         return value;
     }
 
@@ -1792,6 +1805,7 @@ pub const Document = struct {
         }
         const value = try DocumentImpl.get_styleSheets(instance);
         state.own.cached_styleSheets = value;
+        @import("dom").same_object_cache.made(instance, value, "styleSheets");
         return value;
     }
 
@@ -1837,6 +1851,7 @@ pub const Document = struct {
         }
         const value = try mixins.ParentNode.get_children(instance);
         state.own.cached_children = value;
+        @import("dom").same_object_cache.made(instance, value, "children");
         return value;
     }
 

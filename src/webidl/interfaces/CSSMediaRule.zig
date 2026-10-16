@@ -162,6 +162,7 @@ pub const CSSMediaRule = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(CSSMediaRuleImpl, "deinit") and @hasDecl(CSSMediaRuleImpl, "deinitOwn")) @compileError("CSSMediaRuleImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(CSSMediaRuleImpl, "deinit")) return CSSMediaRuleImpl.deinit(instance);
         if (comptime @hasDecl(CSSMediaRuleImpl, "deinitOwn")) CSSMediaRuleImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -185,6 +186,7 @@ pub const CSSMediaRule = struct {
         }
         const value = try CSSMediaRuleImpl.get_media(instance);
         state.own.cached_media = value;
+        @import("dom").same_object_cache.made(instance, value, "media");
         return value;
     }
 

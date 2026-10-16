@@ -154,6 +154,7 @@ pub const RTCErrorEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(RTCErrorEventImpl, "deinit") and @hasDecl(RTCErrorEventImpl, "deinitOwn")) @compileError("RTCErrorEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(RTCErrorEventImpl, "deinit")) return RTCErrorEventImpl.deinit(instance);
         if (comptime @hasDecl(RTCErrorEventImpl, "deinitOwn")) RTCErrorEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -185,6 +186,7 @@ pub const RTCErrorEvent = struct {
         }
         const value = try RTCErrorEventImpl.get_error(instance);
         state.own.cached_error = value;
+        @import("dom").same_object_cache.made(instance, value, "error");
         return value;
     }
 };

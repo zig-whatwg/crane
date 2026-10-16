@@ -168,6 +168,7 @@ pub const ViewTransition = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(ViewTransitionImpl, "deinit") and @hasDecl(ViewTransitionImpl, "deinitOwn")) @compileError("ViewTransitionImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(ViewTransitionImpl, "deinit")) return ViewTransitionImpl.deinit(instance);
         if (comptime @hasDecl(ViewTransitionImpl, "deinitOwn")) ViewTransitionImpl.deinitOwn(instance);
     }
@@ -202,6 +203,7 @@ pub const ViewTransition = struct {
         }
         const value = try ViewTransitionImpl.get_types(instance);
         state.own.cached_types = value;
+        @import("dom").same_object_cache.made(instance, value, "types");
         return value;
     }
 

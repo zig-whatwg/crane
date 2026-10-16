@@ -510,6 +510,7 @@ pub const SVGSVGElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGSVGElementImpl, "deinit") and @hasDecl(SVGSVGElementImpl, "deinitOwn")) @compileError("SVGSVGElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGSVGElementImpl, "deinit")) return SVGSVGElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGSVGElementImpl, "deinitOwn")) SVGSVGElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -533,6 +534,7 @@ pub const SVGSVGElement = struct {
         }
         const value = try SVGSVGElementImpl.get_x(instance);
         state.own.cached_x = value;
+        @import("dom").same_object_cache.made(instance, value, "x");
         return value;
     }
 
@@ -545,6 +547,7 @@ pub const SVGSVGElement = struct {
         }
         const value = try SVGSVGElementImpl.get_y(instance);
         state.own.cached_y = value;
+        @import("dom").same_object_cache.made(instance, value, "y");
         return value;
     }
 
@@ -557,6 +560,7 @@ pub const SVGSVGElement = struct {
         }
         const value = try SVGSVGElementImpl.get_width(instance);
         state.own.cached_width = value;
+        @import("dom").same_object_cache.made(instance, value, "width");
         return value;
     }
 
@@ -569,6 +573,7 @@ pub const SVGSVGElement = struct {
         }
         const value = try SVGSVGElementImpl.get_height(instance);
         state.own.cached_height = value;
+        @import("dom").same_object_cache.made(instance, value, "height");
         return value;
     }
 
@@ -589,6 +594,7 @@ pub const SVGSVGElement = struct {
         }
         const value = try SVGSVGElementImpl.get_currentTranslate(instance);
         state.own.cached_currentTranslate = value;
+        @import("dom").same_object_cache.made(instance, value, "currentTranslate");
         return value;
     }
 
@@ -601,6 +607,7 @@ pub const SVGSVGElement = struct {
         }
         const value = try mixins.SVGFitToViewBox.get_viewBox(instance);
         state.own.cached_viewBox = value;
+        @import("dom").same_object_cache.made(instance, value, "viewBox");
         return value;
     }
 
@@ -613,6 +620,7 @@ pub const SVGSVGElement = struct {
         }
         const value = try mixins.SVGFitToViewBox.get_preserveAspectRatio(instance);
         state.own.cached_preserveAspectRatio = value;
+        @import("dom").same_object_cache.made(instance, value, "preserveAspectRatio");
         return value;
     }
 

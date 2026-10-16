@@ -225,6 +225,7 @@ pub const MediaSource = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(MediaSourceImpl, "deinit") and @hasDecl(MediaSourceImpl, "deinitOwn")) @compileError("MediaSourceImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(MediaSourceImpl, "deinit")) return MediaSourceImpl.deinit(instance);
         if (comptime @hasDecl(MediaSourceImpl, "deinitOwn")) MediaSourceImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -256,6 +257,7 @@ pub const MediaSource = struct {
         }
         const value = try MediaSourceImpl.get_handle(instance);
         state.own.cached_handle = value;
+        @import("dom").same_object_cache.made(instance, value, "handle");
         return value;
     }
 

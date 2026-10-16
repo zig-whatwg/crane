@@ -324,6 +324,7 @@ pub const SVGLineElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGLineElementImpl, "deinit") and @hasDecl(SVGLineElementImpl, "deinitOwn")) @compileError("SVGLineElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGLineElementImpl, "deinit")) return SVGLineElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGLineElementImpl, "deinitOwn")) SVGLineElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -347,6 +348,7 @@ pub const SVGLineElement = struct {
         }
         const value = try SVGLineElementImpl.get_x1(instance);
         state.own.cached_x1 = value;
+        @import("dom").same_object_cache.made(instance, value, "x1");
         return value;
     }
 
@@ -359,6 +361,7 @@ pub const SVGLineElement = struct {
         }
         const value = try SVGLineElementImpl.get_y1(instance);
         state.own.cached_y1 = value;
+        @import("dom").same_object_cache.made(instance, value, "y1");
         return value;
     }
 
@@ -371,6 +374,7 @@ pub const SVGLineElement = struct {
         }
         const value = try SVGLineElementImpl.get_x2(instance);
         state.own.cached_x2 = value;
+        @import("dom").same_object_cache.made(instance, value, "x2");
         return value;
     }
 
@@ -383,6 +387,7 @@ pub const SVGLineElement = struct {
         }
         const value = try SVGLineElementImpl.get_y2(instance);
         state.own.cached_y2 = value;
+        @import("dom").same_object_cache.made(instance, value, "y2");
         return value;
     }
 };

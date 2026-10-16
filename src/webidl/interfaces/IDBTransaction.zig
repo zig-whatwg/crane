@@ -208,6 +208,7 @@ pub const IDBTransaction = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(IDBTransactionImpl, "deinit") and @hasDecl(IDBTransactionImpl, "deinitOwn")) @compileError("IDBTransactionImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(IDBTransactionImpl, "deinit")) return IDBTransactionImpl.deinit(instance);
         if (comptime @hasDecl(IDBTransactionImpl, "deinitOwn")) IDBTransactionImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -243,6 +244,7 @@ pub const IDBTransaction = struct {
         }
         const value = try IDBTransactionImpl.get_db(instance);
         state.own.cached_db = value;
+        @import("dom").same_object_cache.made(instance, value, "db");
         return value;
     }
 

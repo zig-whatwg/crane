@@ -196,6 +196,7 @@ pub const PublicKeyCredential = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(PublicKeyCredentialImpl, "deinit") and @hasDecl(PublicKeyCredentialImpl, "deinitOwn")) @compileError("PublicKeyCredentialImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(PublicKeyCredentialImpl, "deinit")) return PublicKeyCredentialImpl.deinit(instance);
         if (comptime @hasDecl(PublicKeyCredentialImpl, "deinitOwn")) PublicKeyCredentialImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -224,6 +225,7 @@ pub const PublicKeyCredential = struct {
         }
         const value = try PublicKeyCredentialImpl.get_response(instance);
         state.own.cached_response = value;
+        @import("dom").same_object_cache.made(instance, value, "response");
         return value;
     }
 

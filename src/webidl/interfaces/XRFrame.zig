@@ -217,6 +217,7 @@ pub const XRFrame = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRFrameImpl, "deinit") and @hasDecl(XRFrameImpl, "deinitOwn")) @compileError("XRFrameImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRFrameImpl, "deinit")) return XRFrameImpl.deinit(instance);
         if (comptime @hasDecl(XRFrameImpl, "deinitOwn")) XRFrameImpl.deinitOwn(instance);
     }
@@ -239,6 +240,7 @@ pub const XRFrame = struct {
         }
         const value = try XRFrameImpl.get_session(instance);
         state.own.cached_session = value;
+        @import("dom").same_object_cache.made(instance, value, "session");
         return value;
     }
 
@@ -255,6 +257,7 @@ pub const XRFrame = struct {
         }
         const value = try XRFrameImpl.get_trackedAnchors(instance);
         state.own.cached_trackedAnchors = value;
+        @import("dom").same_object_cache.made(instance, value, "trackedAnchors");
         return value;
     }
 
@@ -267,6 +270,7 @@ pub const XRFrame = struct {
         }
         const value = try XRFrameImpl.get_body(instance);
         state.own.cached_body = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "body");
         return value;
     }
 

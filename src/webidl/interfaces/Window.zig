@@ -1230,6 +1230,7 @@ pub const Window = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(WindowImpl, "deinit") and @hasDecl(WindowImpl, "deinitOwn")) @compileError("WindowImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(WindowImpl, "deinit")) return WindowImpl.deinit(instance);
         if (comptime @hasDecl(WindowImpl, "deinitOwn")) WindowImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -1508,6 +1509,7 @@ pub const Window = struct {
         }
         const value = try WindowImpl.get_cookieStore(instance);
         state.own.cached_cookieStore = value;
+        @import("dom").same_object_cache.made(instance, value, "cookieStore");
         return value;
     }
 
@@ -1520,6 +1522,7 @@ pub const Window = struct {
         }
         const value = try WindowImpl.get_viewport(instance);
         state.own.cached_viewport = value;
+        @import("dom").same_object_cache.made(instance, value, "viewport");
         return value;
     }
 
@@ -1540,6 +1543,7 @@ pub const Window = struct {
         }
         const value = try WindowImpl.get_screen(instance);
         state.own.cached_screen = value;
+        @import("dom").same_object_cache.made(instance, value, "screen");
         return value;
     }
 
@@ -1560,6 +1564,7 @@ pub const Window = struct {
         }
         const value = try WindowImpl.get_visualViewport(instance);
         state.own.cached_visualViewport = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "visualViewport");
         return value;
     }
 
@@ -1749,6 +1754,7 @@ pub const Window = struct {
         }
         const value = try WindowImpl.get_documentPictureInPicture(instance);
         state.own.cached_documentPictureInPicture = value;
+        @import("dom").same_object_cache.made(instance, value, "documentPictureInPicture");
         return value;
     }
 
@@ -1778,6 +1784,7 @@ pub const Window = struct {
         }
         const value = try WindowImpl.get_external(instance);
         state.own.cached_external = value;
+        @import("dom").same_object_cache.made(instance, value, "external");
         return value;
     }
 
@@ -1863,6 +1870,7 @@ pub const Window = struct {
         }
         const value = try WindowImpl.get_speechSynthesis(instance);
         state.own.cached_speechSynthesis = value;
+        @import("dom").same_object_cache.made(instance, value, "speechSynthesis");
         return value;
     }
 
@@ -2268,6 +2276,7 @@ pub const Window = struct {
         }
         const value = try mixins.WindowOrWorkerGlobalScope.get_indexedDB(instance);
         state.own.cached_indexedDB = value;
+        @import("dom").same_object_cache.made(instance, value, "indexedDB");
         return value;
     }
 
@@ -2288,6 +2297,7 @@ pub const Window = struct {
         }
         const value = try mixins.WindowOrWorkerGlobalScope.get_caches(instance);
         state.own.cached_caches = value;
+        @import("dom").same_object_cache.made(instance, value, "caches");
         return value;
     }
 
@@ -2302,6 +2312,7 @@ pub const Window = struct {
         }
         const value = try mixins.WindowOrWorkerGlobalScope.get_crypto(instance);
         state.own.cached_crypto = value;
+        @import("dom").same_object_cache.made(instance, value, "crypto");
         return value;
     }
 

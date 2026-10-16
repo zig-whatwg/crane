@@ -446,6 +446,7 @@ pub const HTMLIFrameElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(HTMLIFrameElementImpl, "deinit") and @hasDecl(HTMLIFrameElementImpl, "deinitOwn")) @compileError("HTMLIFrameElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(HTMLIFrameElementImpl, "deinit")) return HTMLIFrameElementImpl.deinit(instance);
         if (comptime @hasDecl(HTMLIFrameElementImpl, "deinitOwn")) HTMLIFrameElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -525,6 +526,7 @@ pub const HTMLIFrameElement = struct {
         }
         const value = if (comptime @hasDecl(HTMLIFrameElementImpl, "get_sandbox")) try HTMLIFrameElementImpl.get_sandbox(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "sandbox" });
         state.own.cached_sandbox = value;
+        @import("dom").same_object_cache.made(instance, value, "sandbox");
         return value;
     }
 
@@ -766,6 +768,7 @@ pub const HTMLIFrameElement = struct {
         }
         const value = try HTMLIFrameElementImpl.get_permissionsPolicy(instance);
         state.own.cached_permissionsPolicy = value;
+        @import("dom").same_object_cache.made(instance, value, "permissionsPolicy");
         return value;
     }
 

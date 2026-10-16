@@ -145,6 +145,7 @@ pub const SVGAnimatedPreserveAspectRatio = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGAnimatedPreserveAspectRatioImpl, "deinit") and @hasDecl(SVGAnimatedPreserveAspectRatioImpl, "deinitOwn")) @compileError("SVGAnimatedPreserveAspectRatioImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGAnimatedPreserveAspectRatioImpl, "deinit")) return SVGAnimatedPreserveAspectRatioImpl.deinit(instance);
         if (comptime @hasDecl(SVGAnimatedPreserveAspectRatioImpl, "deinitOwn")) SVGAnimatedPreserveAspectRatioImpl.deinitOwn(instance);
     }
@@ -167,6 +168,7 @@ pub const SVGAnimatedPreserveAspectRatio = struct {
         }
         const value = try SVGAnimatedPreserveAspectRatioImpl.get_baseVal(instance);
         state.own.cached_baseVal = value;
+        @import("dom").same_object_cache.made(instance, value, "baseVal");
         return value;
     }
 
@@ -179,6 +181,7 @@ pub const SVGAnimatedPreserveAspectRatio = struct {
         }
         const value = try SVGAnimatedPreserveAspectRatioImpl.get_animVal(instance);
         state.own.cached_animVal = value;
+        @import("dom").same_object_cache.made(instance, value, "animVal");
         return value;
     }
 };

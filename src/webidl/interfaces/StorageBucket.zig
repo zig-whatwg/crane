@@ -179,6 +179,7 @@ pub const StorageBucket = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(StorageBucketImpl, "deinit") and @hasDecl(StorageBucketImpl, "deinitOwn")) @compileError("StorageBucketImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(StorageBucketImpl, "deinit")) return StorageBucketImpl.deinit(instance);
         if (comptime @hasDecl(StorageBucketImpl, "deinitOwn")) StorageBucketImpl.deinitOwn(instance);
     }
@@ -205,6 +206,7 @@ pub const StorageBucket = struct {
         }
         const value = try StorageBucketImpl.get_indexedDB(instance);
         state.own.cached_indexedDB = value;
+        @import("dom").same_object_cache.made(instance, value, "indexedDB");
         return value;
     }
 
@@ -217,6 +219,7 @@ pub const StorageBucket = struct {
         }
         const value = try StorageBucketImpl.get_caches(instance);
         state.own.cached_caches = value;
+        @import("dom").same_object_cache.made(instance, value, "caches");
         return value;
     }
 

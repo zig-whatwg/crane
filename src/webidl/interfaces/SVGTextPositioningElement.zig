@@ -336,6 +336,7 @@ pub const SVGTextPositioningElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGTextPositioningElementImpl, "deinit") and @hasDecl(SVGTextPositioningElementImpl, "deinitOwn")) @compileError("SVGTextPositioningElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGTextPositioningElementImpl, "deinit")) return SVGTextPositioningElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGTextPositioningElementImpl, "deinitOwn")) SVGTextPositioningElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -359,6 +360,7 @@ pub const SVGTextPositioningElement = struct {
         }
         const value = try SVGTextPositioningElementImpl.get_x(instance);
         state.own.cached_x = value;
+        @import("dom").same_object_cache.made(instance, value, "x");
         return value;
     }
 
@@ -371,6 +373,7 @@ pub const SVGTextPositioningElement = struct {
         }
         const value = try SVGTextPositioningElementImpl.get_y(instance);
         state.own.cached_y = value;
+        @import("dom").same_object_cache.made(instance, value, "y");
         return value;
     }
 
@@ -383,6 +386,7 @@ pub const SVGTextPositioningElement = struct {
         }
         const value = try SVGTextPositioningElementImpl.get_dx(instance);
         state.own.cached_dx = value;
+        @import("dom").same_object_cache.made(instance, value, "dx");
         return value;
     }
 
@@ -395,6 +399,7 @@ pub const SVGTextPositioningElement = struct {
         }
         const value = try SVGTextPositioningElementImpl.get_dy(instance);
         state.own.cached_dy = value;
+        @import("dom").same_object_cache.made(instance, value, "dy");
         return value;
     }
 
@@ -407,6 +412,7 @@ pub const SVGTextPositioningElement = struct {
         }
         const value = try SVGTextPositioningElementImpl.get_rotate(instance);
         state.own.cached_rotate = value;
+        @import("dom").same_object_cache.made(instance, value, "rotate");
         return value;
     }
 };

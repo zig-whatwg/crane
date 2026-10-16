@@ -218,6 +218,7 @@ pub const Bluetooth = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(BluetoothImpl, "deinit") and @hasDecl(BluetoothImpl, "deinitOwn")) @compileError("BluetoothImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(BluetoothImpl, "deinit")) return BluetoothImpl.deinit(instance);
         if (comptime @hasDecl(BluetoothImpl, "deinitOwn")) BluetoothImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -253,6 +254,7 @@ pub const Bluetooth = struct {
         }
         const value = try BluetoothImpl.get_referringDevice(instance);
         state.own.cached_referringDevice = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "referringDevice");
         return value;
     }
 

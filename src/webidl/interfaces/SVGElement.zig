@@ -794,6 +794,7 @@ pub const SVGElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGElementImpl, "deinit") and @hasDecl(SVGElementImpl, "deinitOwn")) @compileError("SVGElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGElementImpl, "deinit")) return SVGElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGElementImpl, "deinitOwn")) SVGElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -817,6 +818,7 @@ pub const SVGElement = struct {
         }
         const value = try SVGElementImpl.get_className(instance);
         state.own.cached_className = value;
+        @import("dom").same_object_cache.made(instance, value, "className");
         return value;
     }
 
@@ -1155,6 +1157,7 @@ pub const SVGElement = struct {
         }
         const value = try SVGElementImpl.get_correspondingElement(instance);
         state.own.cached_correspondingElement = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "correspondingElement");
         return value;
     }
 
@@ -1167,6 +1170,7 @@ pub const SVGElement = struct {
         }
         const value = try SVGElementImpl.get_correspondingUseElement(instance);
         state.own.cached_correspondingUseElement = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "correspondingUseElement");
         return value;
     }
 
@@ -1179,6 +1183,7 @@ pub const SVGElement = struct {
         }
         const value = try SVGElementImpl.get_dataset(instance);
         state.own.cached_dataset = value;
+        @import("dom").same_object_cache.made(instance, value, "dataset");
         return value;
     }
 
@@ -1232,6 +1237,7 @@ pub const SVGElement = struct {
         }
         const value = try SVGElementImpl.get_style(instance);
         state.own.cached_style = value;
+        @import("dom").same_object_cache.made(instance, value, "style");
         return value;
     }
 
@@ -1255,6 +1261,7 @@ pub const SVGElement = struct {
         }
         const value = try SVGElementImpl.get_attributeStyleMap(instance);
         state.own.cached_attributeStyleMap = value;
+        @import("dom").same_object_cache.made(instance, value, "attributeStyleMap");
         return value;
     }
 

@@ -336,6 +336,7 @@ pub const SVGUseElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGUseElementImpl, "deinit") and @hasDecl(SVGUseElementImpl, "deinitOwn")) @compileError("SVGUseElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGUseElementImpl, "deinit")) return SVGUseElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGUseElementImpl, "deinitOwn")) SVGUseElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -359,6 +360,7 @@ pub const SVGUseElement = struct {
         }
         const value = try SVGUseElementImpl.get_x(instance);
         state.own.cached_x = value;
+        @import("dom").same_object_cache.made(instance, value, "x");
         return value;
     }
 
@@ -371,6 +373,7 @@ pub const SVGUseElement = struct {
         }
         const value = try SVGUseElementImpl.get_y(instance);
         state.own.cached_y = value;
+        @import("dom").same_object_cache.made(instance, value, "y");
         return value;
     }
 
@@ -383,6 +386,7 @@ pub const SVGUseElement = struct {
         }
         const value = try SVGUseElementImpl.get_width(instance);
         state.own.cached_width = value;
+        @import("dom").same_object_cache.made(instance, value, "width");
         return value;
     }
 
@@ -395,6 +399,7 @@ pub const SVGUseElement = struct {
         }
         const value = try SVGUseElementImpl.get_height(instance);
         state.own.cached_height = value;
+        @import("dom").same_object_cache.made(instance, value, "height");
         return value;
     }
 
@@ -407,6 +412,7 @@ pub const SVGUseElement = struct {
         }
         const value = try SVGUseElementImpl.get_instanceRoot(instance);
         state.own.cached_instanceRoot = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "instanceRoot");
         return value;
     }
 
@@ -419,6 +425,7 @@ pub const SVGUseElement = struct {
         }
         const value = try SVGUseElementImpl.get_animatedInstanceRoot(instance);
         state.own.cached_animatedInstanceRoot = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "animatedInstanceRoot");
         return value;
     }
 
@@ -431,6 +438,7 @@ pub const SVGUseElement = struct {
         }
         const value = try mixins.SVGURIReference.get_href(instance);
         state.own.cached_href = value;
+        @import("dom").same_object_cache.made(instance, value, "href");
         return value;
     }
 };

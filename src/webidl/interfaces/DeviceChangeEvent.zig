@@ -159,6 +159,7 @@ pub const DeviceChangeEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(DeviceChangeEventImpl, "deinit") and @hasDecl(DeviceChangeEventImpl, "deinitOwn")) @compileError("DeviceChangeEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(DeviceChangeEventImpl, "deinit")) return DeviceChangeEventImpl.deinit(instance);
         if (comptime @hasDecl(DeviceChangeEventImpl, "deinitOwn")) DeviceChangeEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);

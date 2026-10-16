@@ -309,6 +309,7 @@ pub const SVGScriptElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGScriptElementImpl, "deinit") and @hasDecl(SVGScriptElementImpl, "deinitOwn")) @compileError("SVGScriptElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGScriptElementImpl, "deinit")) return SVGScriptElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGScriptElementImpl, "deinitOwn")) SVGScriptElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -348,6 +349,7 @@ pub const SVGScriptElement = struct {
         }
         const value = try mixins.SVGURIReference.get_href(instance);
         state.own.cached_href = value;
+        @import("dom").same_object_cache.made(instance, value, "href");
         return value;
     }
 };

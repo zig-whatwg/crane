@@ -161,6 +161,7 @@ pub const XRInputSourceEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRInputSourceEventImpl, "deinit") and @hasDecl(XRInputSourceEventImpl, "deinitOwn")) @compileError("XRInputSourceEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRInputSourceEventImpl, "deinit")) return XRInputSourceEventImpl.deinit(instance);
         if (comptime @hasDecl(XRInputSourceEventImpl, "deinitOwn")) XRInputSourceEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -192,6 +193,7 @@ pub const XRInputSourceEvent = struct {
         }
         const value = try XRInputSourceEventImpl.get_frame(instance);
         state.own.cached_frame = value;
+        @import("dom").same_object_cache.made(instance, value, "frame");
         return value;
     }
 
@@ -204,6 +206,7 @@ pub const XRInputSourceEvent = struct {
         }
         const value = try XRInputSourceEventImpl.get_inputSource(instance);
         state.own.cached_inputSource = value;
+        @import("dom").same_object_cache.made(instance, value, "inputSource");
         return value;
     }
 };

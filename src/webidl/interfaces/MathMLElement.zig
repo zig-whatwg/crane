@@ -733,6 +733,7 @@ pub const MathMLElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(MathMLElementImpl, "deinit") and @hasDecl(MathMLElementImpl, "deinitOwn")) @compileError("MathMLElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(MathMLElementImpl, "deinit")) return MathMLElementImpl.deinit(instance);
         if (comptime @hasDecl(MathMLElementImpl, "deinitOwn")) MathMLElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -756,6 +757,7 @@ pub const MathMLElement = struct {
         }
         const value = try MathMLElementImpl.get_style(instance);
         state.own.cached_style = value;
+        @import("dom").same_object_cache.made(instance, value, "style");
         return value;
     }
 
@@ -779,6 +781,7 @@ pub const MathMLElement = struct {
         }
         const value = try MathMLElementImpl.get_attributeStyleMap(instance);
         state.own.cached_attributeStyleMap = value;
+        @import("dom").same_object_cache.made(instance, value, "attributeStyleMap");
         return value;
     }
 

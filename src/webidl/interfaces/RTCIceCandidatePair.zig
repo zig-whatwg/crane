@@ -145,6 +145,7 @@ pub const RTCIceCandidatePair = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(RTCIceCandidatePairImpl, "deinit") and @hasDecl(RTCIceCandidatePairImpl, "deinitOwn")) @compileError("RTCIceCandidatePairImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(RTCIceCandidatePairImpl, "deinit")) return RTCIceCandidatePairImpl.deinit(instance);
         if (comptime @hasDecl(RTCIceCandidatePairImpl, "deinitOwn")) RTCIceCandidatePairImpl.deinitOwn(instance);
     }
@@ -167,6 +168,7 @@ pub const RTCIceCandidatePair = struct {
         }
         const value = try RTCIceCandidatePairImpl.get_local(instance);
         state.own.cached_local = value;
+        @import("dom").same_object_cache.made(instance, value, "local");
         return value;
     }
 
@@ -179,6 +181,7 @@ pub const RTCIceCandidatePair = struct {
         }
         const value = try RTCIceCandidatePairImpl.get_remote(instance);
         state.own.cached_remote = value;
+        @import("dom").same_object_cache.made(instance, value, "remote");
         return value;
     }
 };

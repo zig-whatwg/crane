@@ -369,6 +369,7 @@ pub const SVGTextContentElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGTextContentElementImpl, "deinit") and @hasDecl(SVGTextContentElementImpl, "deinitOwn")) @compileError("SVGTextContentElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGTextContentElementImpl, "deinit")) return SVGTextContentElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGTextContentElementImpl, "deinitOwn")) SVGTextContentElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -392,6 +393,7 @@ pub const SVGTextContentElement = struct {
         }
         const value = try SVGTextContentElementImpl.get_textLength(instance);
         state.own.cached_textLength = value;
+        @import("dom").same_object_cache.made(instance, value, "textLength");
         return value;
     }
 
@@ -404,6 +406,7 @@ pub const SVGTextContentElement = struct {
         }
         const value = try SVGTextContentElementImpl.get_lengthAdjust(instance);
         state.own.cached_lengthAdjust = value;
+        @import("dom").same_object_cache.made(instance, value, "lengthAdjust");
         return value;
     }
 

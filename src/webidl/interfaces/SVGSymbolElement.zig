@@ -313,6 +313,7 @@ pub const SVGSymbolElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGSymbolElementImpl, "deinit") and @hasDecl(SVGSymbolElementImpl, "deinitOwn")) @compileError("SVGSymbolElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGSymbolElementImpl, "deinit")) return SVGSymbolElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGSymbolElementImpl, "deinitOwn")) SVGSymbolElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -336,6 +337,7 @@ pub const SVGSymbolElement = struct {
         }
         const value = try mixins.SVGFitToViewBox.get_viewBox(instance);
         state.own.cached_viewBox = value;
+        @import("dom").same_object_cache.made(instance, value, "viewBox");
         return value;
     }
 
@@ -348,6 +350,7 @@ pub const SVGSymbolElement = struct {
         }
         const value = try mixins.SVGFitToViewBox.get_preserveAspectRatio(instance);
         state.own.cached_preserveAspectRatio = value;
+        @import("dom").same_object_cache.made(instance, value, "preserveAspectRatio");
         return value;
     }
 };

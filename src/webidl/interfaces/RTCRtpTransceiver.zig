@@ -172,6 +172,7 @@ pub const RTCRtpTransceiver = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(RTCRtpTransceiverImpl, "deinit") and @hasDecl(RTCRtpTransceiverImpl, "deinitOwn")) @compileError("RTCRtpTransceiverImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(RTCRtpTransceiverImpl, "deinit")) return RTCRtpTransceiverImpl.deinit(instance);
         if (comptime @hasDecl(RTCRtpTransceiverImpl, "deinitOwn")) RTCRtpTransceiverImpl.deinitOwn(instance);
     }
@@ -198,6 +199,7 @@ pub const RTCRtpTransceiver = struct {
         }
         const value = try RTCRtpTransceiverImpl.get_sender(instance);
         state.own.cached_sender = value;
+        @import("dom").same_object_cache.made(instance, value, "sender");
         return value;
     }
 
@@ -210,6 +212,7 @@ pub const RTCRtpTransceiver = struct {
         }
         const value = try RTCRtpTransceiverImpl.get_receiver(instance);
         state.own.cached_receiver = value;
+        @import("dom").same_object_cache.made(instance, value, "receiver");
         return value;
     }
 

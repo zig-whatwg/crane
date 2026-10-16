@@ -324,6 +324,7 @@ pub const WorkerNavigator = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(WorkerNavigatorImpl, "deinit") and @hasDecl(WorkerNavigatorImpl, "deinitOwn")) @compileError("WorkerNavigatorImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(WorkerNavigatorImpl, "deinit")) return WorkerNavigatorImpl.deinit(instance);
         if (comptime @hasDecl(WorkerNavigatorImpl, "deinitOwn")) WorkerNavigatorImpl.deinitOwn(instance);
     }
@@ -346,6 +347,7 @@ pub const WorkerNavigator = struct {
         }
         const value = try WorkerNavigatorImpl.get_mediaCapabilities(instance);
         state.own.cached_mediaCapabilities = value;
+        @import("dom").same_object_cache.made(instance, value, "mediaCapabilities");
         return value;
     }
 
@@ -358,6 +360,7 @@ pub const WorkerNavigator = struct {
         }
         const value = try WorkerNavigatorImpl.get_permissions(instance);
         state.own.cached_permissions = value;
+        @import("dom").same_object_cache.made(instance, value, "permissions");
         return value;
     }
 
@@ -370,6 +373,7 @@ pub const WorkerNavigator = struct {
         }
         const value = try WorkerNavigatorImpl.get_serial(instance);
         state.own.cached_serial = value;
+        @import("dom").same_object_cache.made(instance, value, "serial");
         return value;
     }
 
@@ -382,6 +386,7 @@ pub const WorkerNavigator = struct {
         }
         const value = try WorkerNavigatorImpl.get_serviceWorker(instance);
         state.own.cached_serviceWorker = value;
+        @import("dom").same_object_cache.made(instance, value, "serviceWorker");
         return value;
     }
 
@@ -394,6 +399,7 @@ pub const WorkerNavigator = struct {
         }
         const value = try WorkerNavigatorImpl.get_smartCard(instance);
         state.own.cached_smartCard = value;
+        @import("dom").same_object_cache.made(instance, value, "smartCard");
         return value;
     }
 
@@ -406,6 +412,7 @@ pub const WorkerNavigator = struct {
         }
         const value = try WorkerNavigatorImpl.get_hid(instance);
         state.own.cached_hid = value;
+        @import("dom").same_object_cache.made(instance, value, "hid");
         return value;
     }
 
@@ -418,6 +425,7 @@ pub const WorkerNavigator = struct {
         }
         const value = try WorkerNavigatorImpl.get_usb(instance);
         state.own.cached_usb = value;
+        @import("dom").same_object_cache.made(instance, value, "usb");
         return value;
     }
 
@@ -494,6 +502,7 @@ pub const WorkerNavigator = struct {
         }
         const value = try mixins.NavigatorNetworkInformation.get_connection(instance);
         state.own.cached_connection = value;
+        @import("dom").same_object_cache.made(instance, value, "connection");
         return value;
     }
 
@@ -506,6 +515,7 @@ pub const WorkerNavigator = struct {
         }
         const value = try mixins.NavigatorStorageBuckets.get_storageBuckets(instance);
         state.own.cached_storageBuckets = value;
+        @import("dom").same_object_cache.made(instance, value, "storageBuckets");
         return value;
     }
 
@@ -518,6 +528,7 @@ pub const WorkerNavigator = struct {
         }
         const value = try WorkerNavigatorImpl.get_storage(instance);
         state.own.cached_storage = value;
+        @import("dom").same_object_cache.made(instance, value, "storage");
         return value;
     }
 
@@ -535,6 +546,7 @@ pub const WorkerNavigator = struct {
         }
         const value = try mixins.NavigatorGPU.get_gpu(instance);
         state.own.cached_gpu = value;
+        @import("dom").same_object_cache.made(instance, value, "gpu");
         return value;
     }
 
@@ -547,6 +559,7 @@ pub const WorkerNavigator = struct {
         }
         const value = try mixins.NavigatorML.get_ml(instance);
         state.own.cached_ml = value;
+        @import("dom").same_object_cache.made(instance, value, "ml");
         return value;
     }
 

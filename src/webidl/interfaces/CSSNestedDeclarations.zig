@@ -153,6 +153,7 @@ pub const CSSNestedDeclarations = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(CSSNestedDeclarationsImpl, "deinit") and @hasDecl(CSSNestedDeclarationsImpl, "deinitOwn")) @compileError("CSSNestedDeclarationsImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(CSSNestedDeclarationsImpl, "deinit")) return CSSNestedDeclarationsImpl.deinit(instance);
         if (comptime @hasDecl(CSSNestedDeclarationsImpl, "deinitOwn")) CSSNestedDeclarationsImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -176,6 +177,7 @@ pub const CSSNestedDeclarations = struct {
         }
         const value = try CSSNestedDeclarationsImpl.get_style(instance);
         state.own.cached_style = value;
+        @import("dom").same_object_cache.made(instance, value, "style");
         return value;
     }
 

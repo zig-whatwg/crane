@@ -154,6 +154,7 @@ pub const GamepadHapticActuator = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(GamepadHapticActuatorImpl, "deinit") and @hasDecl(GamepadHapticActuatorImpl, "deinitOwn")) @compileError("GamepadHapticActuatorImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(GamepadHapticActuatorImpl, "deinit")) return GamepadHapticActuatorImpl.deinit(instance);
         if (comptime @hasDecl(GamepadHapticActuatorImpl, "deinitOwn")) GamepadHapticActuatorImpl.deinitOwn(instance);
     }

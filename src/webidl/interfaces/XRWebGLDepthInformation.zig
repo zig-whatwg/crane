@@ -153,6 +153,7 @@ pub const XRWebGLDepthInformation = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRWebGLDepthInformationImpl, "deinit") and @hasDecl(XRWebGLDepthInformationImpl, "deinitOwn")) @compileError("XRWebGLDepthInformationImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRWebGLDepthInformationImpl, "deinit")) return XRWebGLDepthInformationImpl.deinit(instance);
         if (comptime @hasDecl(XRWebGLDepthInformationImpl, "deinitOwn")) XRWebGLDepthInformationImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -176,6 +177,7 @@ pub const XRWebGLDepthInformation = struct {
         }
         const value = try XRWebGLDepthInformationImpl.get_texture(instance);
         state.own.cached_texture = value;
+        @import("dom").same_object_cache.made(instance, value, "texture");
         return value;
     }
 

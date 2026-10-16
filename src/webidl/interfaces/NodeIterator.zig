@@ -169,6 +169,7 @@ pub const NodeIterator = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(NodeIteratorImpl, "deinit") and @hasDecl(NodeIteratorImpl, "deinitOwn")) @compileError("NodeIteratorImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(NodeIteratorImpl, "deinit")) return NodeIteratorImpl.deinit(instance);
         if (comptime @hasDecl(NodeIteratorImpl, "deinitOwn")) NodeIteratorImpl.deinitOwn(instance);
     }
@@ -191,6 +192,7 @@ pub const NodeIterator = struct {
         }
         const value = try NodeIteratorImpl.get_root(instance);
         state.own.cached_root = value;
+        @import("dom").same_object_cache.made(instance, value, "root");
         return value;
     }
 

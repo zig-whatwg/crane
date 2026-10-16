@@ -169,6 +169,7 @@ pub const RTCTrackEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(RTCTrackEventImpl, "deinit") and @hasDecl(RTCTrackEventImpl, "deinitOwn")) @compileError("RTCTrackEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(RTCTrackEventImpl, "deinit")) return RTCTrackEventImpl.deinit(instance);
         if (comptime @hasDecl(RTCTrackEventImpl, "deinitOwn")) RTCTrackEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);

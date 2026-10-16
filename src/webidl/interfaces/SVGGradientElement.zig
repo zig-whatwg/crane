@@ -351,6 +351,7 @@ pub const SVGGradientElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGGradientElementImpl, "deinit") and @hasDecl(SVGGradientElementImpl, "deinitOwn")) @compileError("SVGGradientElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGGradientElementImpl, "deinit")) return SVGGradientElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGGradientElementImpl, "deinitOwn")) SVGGradientElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -374,6 +375,7 @@ pub const SVGGradientElement = struct {
         }
         const value = try SVGGradientElementImpl.get_gradientUnits(instance);
         state.own.cached_gradientUnits = value;
+        @import("dom").same_object_cache.made(instance, value, "gradientUnits");
         return value;
     }
 
@@ -386,6 +388,7 @@ pub const SVGGradientElement = struct {
         }
         const value = try SVGGradientElementImpl.get_gradientTransform(instance);
         state.own.cached_gradientTransform = value;
+        @import("dom").same_object_cache.made(instance, value, "gradientTransform");
         return value;
     }
 
@@ -398,6 +401,7 @@ pub const SVGGradientElement = struct {
         }
         const value = try SVGGradientElementImpl.get_spreadMethod(instance);
         state.own.cached_spreadMethod = value;
+        @import("dom").same_object_cache.made(instance, value, "spreadMethod");
         return value;
     }
 
@@ -410,6 +414,7 @@ pub const SVGGradientElement = struct {
         }
         const value = try mixins.SVGURIReference.get_href(instance);
         state.own.cached_href = value;
+        @import("dom").same_object_cache.made(instance, value, "href");
         return value;
     }
 };

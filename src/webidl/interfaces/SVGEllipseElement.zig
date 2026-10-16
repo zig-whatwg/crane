@@ -324,6 +324,7 @@ pub const SVGEllipseElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGEllipseElementImpl, "deinit") and @hasDecl(SVGEllipseElementImpl, "deinitOwn")) @compileError("SVGEllipseElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGEllipseElementImpl, "deinit")) return SVGEllipseElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGEllipseElementImpl, "deinitOwn")) SVGEllipseElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -347,6 +348,7 @@ pub const SVGEllipseElement = struct {
         }
         const value = try SVGEllipseElementImpl.get_cx(instance);
         state.own.cached_cx = value;
+        @import("dom").same_object_cache.made(instance, value, "cx");
         return value;
     }
 
@@ -359,6 +361,7 @@ pub const SVGEllipseElement = struct {
         }
         const value = try SVGEllipseElementImpl.get_cy(instance);
         state.own.cached_cy = value;
+        @import("dom").same_object_cache.made(instance, value, "cy");
         return value;
     }
 
@@ -371,6 +374,7 @@ pub const SVGEllipseElement = struct {
         }
         const value = try SVGEllipseElementImpl.get_rx(instance);
         state.own.cached_rx = value;
+        @import("dom").same_object_cache.made(instance, value, "rx");
         return value;
     }
 
@@ -383,6 +387,7 @@ pub const SVGEllipseElement = struct {
         }
         const value = try SVGEllipseElementImpl.get_ry(instance);
         state.own.cached_ry = value;
+        @import("dom").same_object_cache.made(instance, value, "ry");
         return value;
     }
 };

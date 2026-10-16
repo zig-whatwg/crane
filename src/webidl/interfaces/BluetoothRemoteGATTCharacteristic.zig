@@ -210,6 +210,7 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(BluetoothRemoteGATTCharacteristicImpl, "deinit") and @hasDecl(BluetoothRemoteGATTCharacteristicImpl, "deinitOwn")) @compileError("BluetoothRemoteGATTCharacteristicImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(BluetoothRemoteGATTCharacteristicImpl, "deinit")) return BluetoothRemoteGATTCharacteristicImpl.deinit(instance);
         if (comptime @hasDecl(BluetoothRemoteGATTCharacteristicImpl, "deinitOwn")) BluetoothRemoteGATTCharacteristicImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -233,6 +234,7 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
         }
         const value = try BluetoothRemoteGATTCharacteristicImpl.get_service(instance);
         state.own.cached_service = value;
+        @import("dom").same_object_cache.made(instance, value, "service");
         return value;
     }
 

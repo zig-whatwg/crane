@@ -283,6 +283,7 @@ pub const ShadowRoot = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(ShadowRootImpl, "deinit") and @hasDecl(ShadowRootImpl, "deinitOwn")) @compileError("ShadowRootImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(ShadowRootImpl, "deinit")) return ShadowRootImpl.deinit(instance);
         if (comptime @hasDecl(ShadowRootImpl, "deinitOwn")) ShadowRootImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -360,6 +361,7 @@ pub const ShadowRoot = struct {
         }
         const value = try ShadowRootImpl.get_styleSheets(instance);
         state.own.cached_styleSheets = value;
+        @import("dom").same_object_cache.made(instance, value, "styleSheets");
         return value;
     }
 

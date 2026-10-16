@@ -170,6 +170,7 @@ pub const MediaStreamAudioSourceNode = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(MediaStreamAudioSourceNodeImpl, "deinit") and @hasDecl(MediaStreamAudioSourceNodeImpl, "deinitOwn")) @compileError("MediaStreamAudioSourceNodeImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(MediaStreamAudioSourceNodeImpl, "deinit")) return MediaStreamAudioSourceNodeImpl.deinit(instance);
         if (comptime @hasDecl(MediaStreamAudioSourceNodeImpl, "deinitOwn")) MediaStreamAudioSourceNodeImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -201,6 +202,7 @@ pub const MediaStreamAudioSourceNode = struct {
         }
         const value = try MediaStreamAudioSourceNodeImpl.get_mediaStream(instance);
         state.own.cached_mediaStream = value;
+        @import("dom").same_object_cache.made(instance, value, "mediaStream");
         return value;
     }
 };

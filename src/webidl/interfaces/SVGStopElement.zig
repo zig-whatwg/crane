@@ -296,6 +296,7 @@ pub const SVGStopElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGStopElementImpl, "deinit") and @hasDecl(SVGStopElementImpl, "deinitOwn")) @compileError("SVGStopElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGStopElementImpl, "deinit")) return SVGStopElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGStopElementImpl, "deinitOwn")) SVGStopElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -319,6 +320,7 @@ pub const SVGStopElement = struct {
         }
         const value = try SVGStopElementImpl.get_offset(instance);
         state.own.cached_offset = value;
+        @import("dom").same_object_cache.made(instance, value, "offset");
         return value;
     }
 };

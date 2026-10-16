@@ -396,6 +396,7 @@ pub const Node = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(NodeImpl, "deinit") and @hasDecl(NodeImpl, "deinitOwn")) @compileError("NodeImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(NodeImpl, "deinit")) return NodeImpl.deinit(instance);
         if (comptime @hasDecl(NodeImpl, "deinitOwn")) NodeImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -447,6 +448,7 @@ pub const Node = struct {
         }
         const value = try NodeImpl.get_childNodes(instance);
         state.own.cached_childNodes = value;
+        @import("dom").same_object_cache.made(instance, value, "childNodes");
         return value;
     }
 

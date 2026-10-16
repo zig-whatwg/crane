@@ -162,6 +162,7 @@ pub const BufferedChangeEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(BufferedChangeEventImpl, "deinit") and @hasDecl(BufferedChangeEventImpl, "deinitOwn")) @compileError("BufferedChangeEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(BufferedChangeEventImpl, "deinit")) return BufferedChangeEventImpl.deinit(instance);
         if (comptime @hasDecl(BufferedChangeEventImpl, "deinitOwn")) BufferedChangeEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -193,6 +194,7 @@ pub const BufferedChangeEvent = struct {
         }
         const value = try BufferedChangeEventImpl.get_addedRanges(instance);
         state.own.cached_addedRanges = value;
+        @import("dom").same_object_cache.made(instance, value, "addedRanges");
         return value;
     }
 
@@ -205,6 +207,7 @@ pub const BufferedChangeEvent = struct {
         }
         const value = try BufferedChangeEventImpl.get_removedRanges(instance);
         state.own.cached_removedRanges = value;
+        @import("dom").same_object_cache.made(instance, value, "removedRanges");
         return value;
     }
 };

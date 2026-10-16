@@ -154,6 +154,7 @@ pub const MediaStreamTrackEvent = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(MediaStreamTrackEventImpl, "deinit") and @hasDecl(MediaStreamTrackEventImpl, "deinitOwn")) @compileError("MediaStreamTrackEventImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(MediaStreamTrackEventImpl, "deinit")) return MediaStreamTrackEventImpl.deinit(instance);
         if (comptime @hasDecl(MediaStreamTrackEventImpl, "deinitOwn")) MediaStreamTrackEventImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -185,6 +186,7 @@ pub const MediaStreamTrackEvent = struct {
         }
         const value = try MediaStreamTrackEventImpl.get_track(instance);
         state.own.cached_track = value;
+        @import("dom").same_object_cache.made(instance, value, "track");
         return value;
     }
 };

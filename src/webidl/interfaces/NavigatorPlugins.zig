@@ -87,6 +87,7 @@ pub const NavigatorPlugins = struct {
         }
         const value = try NavigatorPluginsImpl.get_plugins(instance);
         state.own.cached_plugins = value;
+        @import("dom").same_object_cache.made(instance, value, "plugins");
         return value;
     }
 
@@ -99,6 +100,7 @@ pub const NavigatorPlugins = struct {
         }
         const value = try NavigatorPluginsImpl.get_mimeTypes(instance);
         state.own.cached_mimeTypes = value;
+        @import("dom").same_object_cache.made(instance, value, "mimeTypes");
         return value;
     }
 

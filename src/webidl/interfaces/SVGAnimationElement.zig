@@ -348,6 +348,7 @@ pub const SVGAnimationElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGAnimationElementImpl, "deinit") and @hasDecl(SVGAnimationElementImpl, "deinitOwn")) @compileError("SVGAnimationElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGAnimationElementImpl, "deinit")) return SVGAnimationElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGAnimationElementImpl, "deinitOwn")) SVGAnimationElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -407,6 +408,7 @@ pub const SVGAnimationElement = struct {
         }
         const value = try mixins.SVGTests.get_requiredExtensions(instance);
         state.own.cached_requiredExtensions = value;
+        @import("dom").same_object_cache.made(instance, value, "requiredExtensions");
         return value;
     }
 
@@ -419,6 +421,7 @@ pub const SVGAnimationElement = struct {
         }
         const value = try mixins.SVGTests.get_systemLanguage(instance);
         state.own.cached_systemLanguage = value;
+        @import("dom").same_object_cache.made(instance, value, "systemLanguage");
         return value;
     }
 

@@ -455,6 +455,7 @@ pub const ElementInternals = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(ElementInternalsImpl, "deinit") and @hasDecl(ElementInternalsImpl, "deinitOwn")) @compileError("ElementInternalsImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(ElementInternalsImpl, "deinit")) return ElementInternalsImpl.deinit(instance);
         if (comptime @hasDecl(ElementInternalsImpl, "deinitOwn")) ElementInternalsImpl.deinitOwn(instance);
     }
@@ -501,6 +502,7 @@ pub const ElementInternals = struct {
         }
         const value = try ElementInternalsImpl.get_states(instance);
         state.own.cached_states = value;
+        @import("dom").same_object_cache.made(instance, value, "states");
         return value;
     }
 

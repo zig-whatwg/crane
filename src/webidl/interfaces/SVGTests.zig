@@ -79,6 +79,7 @@ pub const SVGTests = struct {
         }
         const value = try SVGTestsImpl.get_requiredExtensions(instance);
         state.own.cached_requiredExtensions = value;
+        @import("dom").same_object_cache.made(instance, value, "requiredExtensions");
         return value;
     }
 
@@ -91,6 +92,7 @@ pub const SVGTests = struct {
         }
         const value = try SVGTestsImpl.get_systemLanguage(instance);
         state.own.cached_systemLanguage = value;
+        @import("dom").same_object_cache.made(instance, value, "systemLanguage");
         return value;
     }
 };

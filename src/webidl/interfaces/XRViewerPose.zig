@@ -146,6 +146,7 @@ pub const XRViewerPose = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(XRViewerPoseImpl, "deinit") and @hasDecl(XRViewerPoseImpl, "deinitOwn")) @compileError("XRViewerPoseImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(XRViewerPoseImpl, "deinit")) return XRViewerPoseImpl.deinit(instance);
         if (comptime @hasDecl(XRViewerPoseImpl, "deinitOwn")) XRViewerPoseImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);

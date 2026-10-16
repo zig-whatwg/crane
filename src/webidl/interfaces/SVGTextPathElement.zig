@@ -382,6 +382,7 @@ pub const SVGTextPathElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGTextPathElementImpl, "deinit") and @hasDecl(SVGTextPathElementImpl, "deinitOwn")) @compileError("SVGTextPathElementImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGTextPathElementImpl, "deinit")) return SVGTextPathElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGTextPathElementImpl, "deinitOwn")) SVGTextPathElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -405,6 +406,7 @@ pub const SVGTextPathElement = struct {
         }
         const value = try SVGTextPathElementImpl.get_startOffset(instance);
         state.own.cached_startOffset = value;
+        @import("dom").same_object_cache.made(instance, value, "startOffset");
         return value;
     }
 
@@ -417,6 +419,7 @@ pub const SVGTextPathElement = struct {
         }
         const value = try SVGTextPathElementImpl.get_method(instance);
         state.own.cached_method = value;
+        @import("dom").same_object_cache.made(instance, value, "method");
         return value;
     }
 
@@ -429,6 +432,7 @@ pub const SVGTextPathElement = struct {
         }
         const value = try SVGTextPathElementImpl.get_spacing(instance);
         state.own.cached_spacing = value;
+        @import("dom").same_object_cache.made(instance, value, "spacing");
         return value;
     }
 
@@ -441,6 +445,7 @@ pub const SVGTextPathElement = struct {
         }
         const value = try mixins.SVGURIReference.get_href(instance);
         state.own.cached_href = value;
+        @import("dom").same_object_cache.made(instance, value, "href");
         return value;
     }
 };

@@ -75,6 +75,7 @@ pub const NavigatorGPU = struct {
         }
         const value = try NavigatorGPUImpl.get_gpu(instance);
         state.own.cached_gpu = value;
+        @import("dom").same_object_cache.made(instance, value, "gpu");
         return value;
     }
 };

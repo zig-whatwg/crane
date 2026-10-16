@@ -163,6 +163,7 @@ pub const WindowOrWorkerGlobalScope = struct {
         }
         const value = try WindowOrWorkerGlobalScopeImpl.get_indexedDB(instance);
         state.own.cached_indexedDB = value;
+        @import("dom").same_object_cache.made(instance, value, "indexedDB");
         return value;
     }
 
@@ -201,6 +202,7 @@ pub const WindowOrWorkerGlobalScope = struct {
         }
         const value = try WindowOrWorkerGlobalScopeImpl.get_caches(instance);
         state.own.cached_caches = value;
+        @import("dom").same_object_cache.made(instance, value, "caches");
         return value;
     }
 
@@ -217,6 +219,7 @@ pub const WindowOrWorkerGlobalScope = struct {
         }
         const value = try WindowOrWorkerGlobalScopeImpl.get_crypto(instance);
         state.own.cached_crypto = value;
+        @import("dom").same_object_cache.made(instance, value, "crypto");
         return value;
     }
 

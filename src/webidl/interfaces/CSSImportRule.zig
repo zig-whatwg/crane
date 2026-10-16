@@ -171,6 +171,7 @@ pub const CSSImportRule = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(CSSImportRuleImpl, "deinit") and @hasDecl(CSSImportRuleImpl, "deinitOwn")) @compileError("CSSImportRuleImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(CSSImportRuleImpl, "deinit")) return CSSImportRuleImpl.deinit(instance);
         if (comptime @hasDecl(CSSImportRuleImpl, "deinitOwn")) CSSImportRuleImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -198,6 +199,7 @@ pub const CSSImportRule = struct {
         }
         const value = try CSSImportRuleImpl.get_media(instance);
         state.own.cached_media = value;
+        @import("dom").same_object_cache.made(instance, value, "media");
         return value;
     }
 
@@ -221,6 +223,7 @@ pub const CSSImportRule = struct {
         }
         const value = try CSSImportRuleImpl.get_styleSheet(instance);
         state.own.cached_styleSheet = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "styleSheet");
         return value;
     }
 
