@@ -380,51 +380,6 @@ pub fn setScriptingEnabled(instance: *runtime.Instance, enabled: bool) void {
 }
 
 // =============================================================================
-// Module Map Management (HTML Standard §8.1.3.10)
-// =============================================================================
-
-/// Get a module from the module map by URL.
-/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#module-map
-/// KEEP: Module map stores JavaScript modules as *anyopaque because the
-/// actual module type is engine-specific (V8 Module, JSC Module, etc.)
-pub fn getModule(instance: *runtime.Instance, url: []const u8) ?*anyopaque {
-    const internal = getInternal(instance) orelse return null;
-    return internal.module_map.get(url);
-}
-
-/// Store a module in the module map.
-/// KEEP: Module is *anyopaque because it's an engine-specific JS module type
-pub fn setModule(instance: *runtime.Instance, url: []const u8, module: *anyopaque) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    if (internal.module_map.get(url)) |old_module| {
-        if (internal.dispose_module_fn) |dispose_fn| {
-            dispose_fn(old_module);
-        }
-        _ = internal.module_map.remove(url);
-    }
-
-    const owned_url = try internal.allocator.dupe(u8, url);
-    errdefer internal.allocator.free(owned_url);
-
-    try internal.module_map.put(owned_url, module);
-}
-
-/// Check if a module exists in the module map.
-pub fn hasModule(instance: *runtime.Instance, url: []const u8) bool {
-    const internal = getInternal(instance) orelse return false;
-    return internal.module_map.contains(url);
-}
-
-/// Set the module disposal function for this document.
-/// KEEP: Dispose function uses *anyopaque to match engine-specific module types
-pub fn setModuleDisposeFunction(instance: *runtime.Instance, dispose_fn: ?*const fn (*anyopaque) void) void {
-    if (getInternal(instance)) |internal| {
-        internal.dispose_module_fn = dispose_fn;
-    }
-}
-
-// =============================================================================
 // Import Map Management (HTML Standard §8.1.6)
 // =============================================================================
 

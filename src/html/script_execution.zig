@@ -1425,44 +1425,57 @@ fn reportClassicScriptError(host: ?*anyopaque, info: *const engine.ErrorInfo) vo
 ///
 /// HTML's classic script lives for as long as anything can still run it - a
 /// function it defined can call import() at any time - which the spec leaves
-/// to garbage collection. Crane keeps one record per base URL in the
-/// document's module map, under "classic:<base URL>", so it has the owner and
-/// the lifetime of the module scripts beside it (an inline module script is
-/// in no spec map either): the document frees it, through
-/// `disposeModuleMapEntry`. The engine keeps only the record's address, so
-/// `classicScriptBaseUrlOf` checks it against the records still alive before
-/// reading it; an import() from a function that outlived its document
-/// resolves against the realm's document base URL instead. (A freed record's
-/// address reused by a new one reads as the new one - a wrong base URL, never
-/// freed memory - as `module_script.scriptOf` accepts for module scripts.)
+/// to garbage collection. Crane keeps one record per base URL and fetch
+/// options in the document's module map, under "classic:..." (the prefix
+/// tells `disposeModuleMapEntry` what it is), so it has the owner and the
+/// lifetime of the module scripts beside it (an inline module script is in no
+/// spec map either): the document frees it. The engine keeps only the
+/// record's address, so `liveClassicScript` checks it against the records of
+/// the calling realm's agent before reading it; an import() from a function
+/// that outlived its document resolves against the realm's document base URL
+/// instead. (A freed record's address reused by a new one reads as the new
+/// one - a wrong base URL, never freed memory - as `module_script.scriptOf`
+/// accepts for module scripts.)
+///
+/// The records alive are the AGENT's (`AgentHost.classic_scripts`): only the
+/// agent's realms run its scripts' functions, on its thread. As one
+/// process-wide list, linked and unlinked from two Browsers' threads at once,
+/// they lost each other's records (tests/html/instances_classic_scripts_test.zig).
 const ClassicScriptRecord = struct {
     /// First, so the engine's pointer to it is the record's.
     script: module_script.ClassicScript,
-    /// Links in `live_classic_scripts`.
-    live_prev: ?*ClassicScriptRecord = null,
-    live_next: ?*ClassicScriptRecord = null,
+    /// Its place in its agent's `ClassicScripts`.
+    live: ClassicScripts.Link = .{},
 
     fn destroy(self: *ClassicScriptRecord) void {
-        if (self.live_prev) |prev| prev.live_next = self.live_next else live_classic_scripts = self.live_next;
-        if (self.live_next) |next| next.live_prev = self.live_prev;
+        ClassicScripts.remove(&self.live);
         std.heap.c_allocator.free(self.script.base_url);
         if (self.script.nonce.len > 0) std.heap.c_allocator.free(self.script.nonce);
         std.heap.c_allocator.destroy(self);
     }
 };
 
-/// Every ClassicScriptRecord that exists.
-var live_classic_scripts: ?*ClassicScriptRecord = null;
+const ClassicScripts = @import("html_core").agent_host.ClassicScripts;
+
+/// The classic script records of `realm`'s agent; null for an agent with no
+/// host - an engine-less test's, or an adapter's that keeps none.
+fn classicScriptsOf(realm: runtime.Context) ?*ClassicScripts {
+    const agent = realm.agent orelse return null;
+    const host: *@import("html_core").agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+    return &host.classic_scripts;
+}
 
 const classic_script_key_prefix = "classic:";
 
 /// `document`'s classic script record for `base_url` and the fetch options
 /// an import() from the script reads (`element`'s nonce and referrer
 /// policy), made (with its own copies) if it has none yet. Scripts that
-/// agree on all three share one. Null when it cannot be made - the script
-/// then runs with no [[HostDefined]], and an import() in it resolves against
-/// the document's base URL with the default options.
+/// agree on all three share one. Null when it cannot be made, or when the
+/// document's agent keeps no records to find it among - the script then runs
+/// with no [[HostDefined]], and an import() in it resolves against the
+/// document's base URL with the default options.
 fn classicScriptRecord(document: *runtime.Instance, base_url: []const u8, element: *runtime.Instance) ?*ClassicScriptRecord {
+    const records = classicScriptsOf(document.ctx) orelse return null;
     const allocator = std.heap.c_allocator;
     const options = moduleFetchOptions(element);
     const map = documentModuleMap(document);
@@ -1483,9 +1496,7 @@ fn classicScriptRecord(document: *runtime.Instance, base_url: []const u8, elemen
         return null;
     }) else "";
     record.* = .{ .script = .{ .base_url = owned_base_url, .nonce = owned_nonce, .referrer_policy = options.referrer_policy, .render_blocking = options.render_blocking } };
-    record.live_next = live_classic_scripts;
-    if (live_classic_scripts) |head| head.live_prev = record;
-    live_classic_scripts = record;
+    records.add(&record.live);
     if (!map.putFn(map.context, key, record)) {
         record.destroy();
         return null;
@@ -1493,32 +1504,25 @@ fn classicScriptRecord(document: *runtime.Instance, base_url: []const u8, elemen
     return record;
 }
 
-/// The base URL of the classic script whose [[HostDefined]] `host_defined`
-/// is, while its record exists.
-fn classicScriptBaseUrlOf(host_defined: *anyopaque) ?[]const u8 {
-    var it = live_classic_scripts;
-    while (it) |record| : (it = record.live_next) {
-        if (@as(*anyopaque, @ptrCast(&record.script)) == host_defined) return record.script.base_url;
-    }
-    return null;
-}
-
-/// The descendant fetch options of the classic script whose [[HostDefined]]
-/// `host_defined` is, or null for one that is not a live record.
-fn classicScriptFetchOptionsOf(host_defined: *anyopaque) ?module_script.FetchOptions {
-    var it = live_classic_scripts;
-    while (it) |record| : (it = record.live_next) {
-        if (@as(*anyopaque, @ptrCast(&record.script)) == host_defined) return record.script.descendantFetchOptions();
+/// The classic script record whose script `host_defined` is - an import()'s
+/// referrer in `realm` - while it exists. Only `realm`'s agent's records are
+/// searched: no other agent's script runs in it.
+fn liveClassicScript(realm: runtime.Context, host_defined: *anyopaque) ?*ClassicScriptRecord {
+    const records = classicScriptsOf(realm) orelse return null;
+    var it = records.first();
+    while (it) |link| : (it = link.next()) {
+        const record: *ClassicScriptRecord = @fieldParentPtr("live", link);
+        if (@as(*anyopaque, @ptrCast(&record.script)) == host_defined) return record;
     }
     return null;
 }
 
 /// The document's module map dispose function: its classic script records,
-/// and its module scripts.
-fn disposeModuleMapEntry(value: *anyopaque) void {
-    var it = live_classic_scripts;
-    while (it) |record| : (it = record.live_next) {
-        if (@as(*anyopaque, @ptrCast(record)) == value) return record.destroy();
+/// which their "classic:" keys name, and its module scripts.
+fn disposeModuleMapEntry(key: []const u8, value: *anyopaque) void {
+    if (std.mem.startsWith(u8, key, classic_script_key_prefix)) {
+        const record: *ClassicScriptRecord = @ptrCast(@alignCast(value));
+        return record.destroy();
     }
     module_script.disposeEntry(value);
 }
@@ -1748,11 +1752,12 @@ fn runSvgScriptSource(document: *runtime.Instance, element: *runtime.Instance, s
 /// The document's module map, as `module_script` sees it.
 ///
 /// The map lives in the Document's internal state and dies with it: the first
-/// store installs `module_script.disposeEntry` as the document's module
-/// dispose function, which is the only thing that frees a module script. Keys
-/// are "<type>:<url>" for fetched scripts and "inline:<n>" for inline ones -
-/// an inline module script is in no spec map, but keeping it here gives it the
-/// same owner and the same lifetime as everything it imports.
+/// store installs `disposeModuleMapEntry` as the document's module dispose
+/// function, which is the only thing that frees a module script or a classic
+/// script record. Keys are "<type>:<url>" for fetched scripts,
+/// "inline:<address>" for inline ones - an inline module script is in no spec
+/// map, but keeping it here gives it the same owner and the same lifetime as
+/// everything it imports - and "classic:..." for classic script records.
 fn documentModuleMap(document: *runtime.Instance) module_script.ModuleMap {
     return .{
         .context = document,
@@ -1777,10 +1782,6 @@ fn documentResolveImport(context: *anyopaque, specifier: []const u8, base_url: [
     const document: *runtime.Instance = @ptrCast(@alignCast(context));
     return document_modules.resolveImportSpecifier(document, specifier, base_url);
 }
-
-/// Distinguishes the map keys of inline module scripts. Process-wide, so a key
-/// is never reused, even across documents.
-var next_inline_module_id: u64 = 0;
 
 /// The module loading environment for a script element's node document.
 fn moduleEnvironment(script_element: *runtime.Instance, document: *runtime.Instance) ?module_script.Environment {
@@ -1965,7 +1966,7 @@ fn loadImportedModule(
     // handler's, eval's or a timer string's [[ScriptOrModule]] is null.
     const base: ImportBase = switch (referrer) {
         .module => |host_defined| if (module_script.scriptOf(host_defined)) |script| .{ .url = script.base_url } else .document,
-        .script => |host_defined| if (classicScriptBaseUrlOf(host_defined)) |url| .{ .url = url } else .document,
+        .script => |host_defined| if (liveClassicScript(realm, host_defined)) |record| .{ .url = record.script.base_url } else .document,
         .realm => .document,
     };
     // Steps 5-6: fetchOptions - the default classic script fetch options,
@@ -1974,7 +1975,7 @@ fn loadImportedModule(
     // import() passes a nonce-based script-src).
     const options: module_script.FetchOptions = switch (referrer) {
         .module => |host_defined| if (module_script.scriptOf(host_defined)) |script| script.descendantFetchOptions() else .{},
-        .script => |host_defined| classicScriptFetchOptionsOf(host_defined) orelse .{},
+        .script => |host_defined| if (liveClassicScript(realm, host_defined)) |record| record.script.descendantFetchOptions() else .{},
         .realm => .{},
     };
     loadImport(realm, base, specifier, type_attribute, options, request);
@@ -2193,9 +2194,11 @@ fn prepareInlineModuleScript(script_element: *runtime.Instance, document: *runti
     const script = module_script.createJavaScriptModuleScript(&env, source, base_url) catch return false;
 
     // Owned by the document from here on, like every fetched module script.
+    // Its key is its address: unique in the map, which holds every inline
+    // script it is given until the document goes. (A process-wide counter
+    // numbered them, read and bumped from every Browser's thread.)
     var key_buf: [32]u8 = undefined;
-    const key = std.fmt.bufPrint(&key_buf, "inline:{d}", .{next_inline_module_id}) catch unreachable;
-    next_inline_module_id += 1;
+    const key = std.fmt.bufPrint(&key_buf, "inline:{x}", .{@intFromPtr(script)}) catch unreachable;
     if (!env.map.putFn(env.map.context, key, @ptrCast(script))) {
         script.destroy();
         return false;

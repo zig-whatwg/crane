@@ -26,7 +26,9 @@
 //! traces, which still fails the test on a leak: std.testing.allocator is
 //! one allocator behind one lock, capturing a stack trace per allocation, and
 //! it kept the two Browsers taking turns - on main they ran 16,000 scripts
-//! between them without one collision.
+//! between them without one collision. With one each, main failed 7 of 7
+//! runs: the list lost a record, and its document's teardown, no longer
+//! finding it there, disposed of it as a module script.
 
 const std = @import("std");
 const testing = std.testing;
