@@ -289,6 +289,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A pending script exception is not a new host error](architecture-a-pending-script-exception-is-not-a-new-host-error.md) - Test the identity of a thrown object across each binding path, not merely that some exception was thrown.
 - [A setter borrows an `any` and takes a callback - on every path](architecture-a-setter-borrows-an-any-and-takes-a-callback-on-every-path.md) - Ownership of an argument is decided once, by its conversion, and holds on the error path too: release what the callee borrows whatever it returned, and leave what it takes to the taker even when it fails.
 - [A JSValue's type cannot say whether its conversion is fresh](architecture-a-jsvalue-s-type-cannot-say-whether-its-conversion-is-fresh.md) - A type-level "is it fresh?" answer must be "kept" for JSValue and unions, so it leaks every fresh value: ask the value (its arm) with an allowlist, and keep borrowed arms as the default.
+- [A release predicate must dispatch as its converter does](architecture-a-release-predicate-must-dispatch-as-its-converter-does.md) - Write a release predicate as a mirror of the converter's dispatch: a type the converter handles specially must be handled specially, and first, in the predicate too.
 
 ### Spec Compliance
 - [A reflection failure can come from an own accessor](spec-compliance-a-reflection-failure-can-come-from-an-own-accessor.md) - Trace generated dispatch and the member's complete algorithm before changing a shared reflector.
