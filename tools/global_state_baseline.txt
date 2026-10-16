@@ -175,8 +175,6 @@ src/html/module_script.zig search_epoch 1 G C decl:6160991ba0a1e2bb
 src/html/navigation/termination_nesting.zig level 1 TL A decl:cf9dca8c2da04496
 src/html/report_exception.zig reporting 1 G R decl:0d6bf23d65c97e7a
 src/html/script_element.zig implementation 1 G H decl:9c737e7125e9c3d4
-src/html/script_execution.zig live_classic_scripts 1 G I/engine decl:734615020de92ffc
-src/html/script_execution.zig next_inline_module_id 1 G I/engine decl:1dfcee87d8da8735
 src/html/script_execution.zig parser_script_loader 1 TL C decl:da637648594fc612
 src/html/script_execution.zig script_fetches 1 TL R decl:b358738a91fcb3d0
 src/html/style_sheet_loading.zig loads 1 TL R decl:30a96afe84f33aff

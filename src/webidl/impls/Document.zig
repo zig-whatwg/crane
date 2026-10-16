@@ -349,7 +349,7 @@ pub const InternalState = struct {
 
     /// Optional module dispose function - set when engine is configured
     /// Used to dispose V8/JSC module handles without compile-time dependency
-    dispose_module_fn: ?*const fn (*anyopaque) void,
+    dispose_module_fn: ?dom_document_modules.ModuleDisposeFn,
 
     // === Stylesheet Blocking (HTML Standard §14.3.3) ===
 
@@ -559,7 +559,7 @@ pub const InternalState = struct {
                 // Dispose module handle using stored function pointer
                 // (null if no JS engine configured, e.g., in stub test mode)
                 if (self.dispose_module_fn) |dispose_fn| {
-                    dispose_fn(entry.value_ptr.*);
+                    dispose_fn(entry.key_ptr.*, entry.value_ptr.*);
                 }
                 // Free the key (URL string)
                 self.allocator.free(entry.key_ptr.*);
@@ -5292,7 +5292,7 @@ pub fn setModule(instance: *runtime.Instance, url: []const u8, module: *anyopaqu
         // Dispose the old module handle using stored function pointer
         // (null if no JS engine configured, e.g., in stub test mode)
         if (internal.dispose_module_fn) |dispose_fn| {
-            dispose_fn(old_module);
+            dispose_fn(url, old_module);
         }
         // Remove old entry (key is already allocated)
         _ = internal.module_map.remove(url);
@@ -5314,7 +5314,7 @@ pub fn hasModule(instance: *runtime.Instance, url: []const u8) bool {
 /// Set the module disposal function for this document
 /// Called when a JS engine is configured to enable proper module cleanup.
 /// Without this, modules won't be disposed (acceptable in stub test mode).
-pub fn setModuleDisposeFunction(instance: *runtime.Instance, dispose_fn: ?*const fn (*anyopaque) void) void {
+pub fn setModuleDisposeFunction(instance: *runtime.Instance, dispose_fn: ?dom_document_modules.ModuleDisposeFn) void {
     if (getInternal(instance)) |internal| {
         internal.dispose_module_fn = dispose_fn;
     }

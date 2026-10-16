@@ -550,6 +550,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A failing test can hide per-call leaks](testing-a-failing-test-can-hide-per-call-leaks.md) - A passing test can expose more of an old leak; equal-call controls distinguish that from a new allocation leak.
 - [An obsolete WebSocket assertion can reward a bug](testing-an-obsolete-websocket-assertion-can-reward-a-bug.md) - A browser-aligned change can lower the WPT score; retain the evidence and report the loss without changing the test or concealing the new blocker.
 - [A shared nesting guard races first as a stale restore, not an underflow](testing-a-shared-nesting-guard-races-first-as-a-stale-restore-not-an-underflow.md) - To make a cross-thread race on shared guard state reproducible, hold both critical sections open for milliseconds and assert what the restore leaves behind, not the crash a lost update causes.
+- [A shared test allocator makes two Browsers take turns](testing-a-shared-test-allocator-makes-two-browsers-take-turns.md) - A race test's threads must not share a lock the code under test does not take - std.testing.allocator is one, so give each Browser its own allocator.
 
 ### Debugging
 
