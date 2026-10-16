@@ -1,6 +1,7 @@
-//! The two Fetch steps with no IDL surface that `fetch()` takes on objects
-//! it did not make: "requestObject's request" and "creating a Response
-//! object given response and guard".
+//! The Fetch steps with no IDL surface that `fetch()` and the Cache API take
+//! on objects they did not make: "requestObject's request", "a Response
+//! object's response", and creating a Request or Response object given a
+//! request or response and a guard.
 //!
 //! A Request's request and a Response's response are those types' own state,
 //! and `fetch()` lives in the WindowOrWorkerGlobalScope mixin, which may not
@@ -28,6 +29,13 @@ pub const RequestSteps = struct {
     /// ReadableStream given as the body, or a proxy of one - so fetch()
     /// must read the stream to send them. Null for a body of bytes.
     body_stream: *const fn (request_object: *runtime.Instance) ?*runtime.Instance,
+    /// Make `request_object` - a new Request object - hold `request` (a
+    /// `*fetch.internal.InternalRequest`, whose ownership passes to it) with
+    /// a headers guard of `guard` (the Cache API's "a new Request object
+    /// associated with request and a new associated Headers object whose
+    /// guard is immutable").
+    /// It gets a new AbortSignal (Fetch: every Request object has one).
+    adopt: *const fn (request_object: *runtime.Instance, request: *anyopaque, guard: Guard) anyerror!void,
 };
 
 pub const ResponseSteps = struct {
@@ -39,6 +47,9 @@ pub const ResponseSteps = struct {
     /// call that made it: once it is aborted, the body is errored with its
     /// reason ("abort the fetch() call" step 5).
     follow: *const fn (response_object: *runtime.Instance, signal: *runtime.Instance) void,
+    /// `response_object`'s response (a `*fetch.internal.InternalResponse`),
+    /// borrowed: it lives as long as the Response object.
+    response_of: *const fn (response_object: *runtime.Instance) ?*anyopaque,
 };
 
 var request_steps: ?RequestSteps = null;
@@ -78,6 +89,22 @@ pub fn requestBodyStream(request_object: *runtime.Instance) ?*runtime.Instance {
     return steps.body_stream(request_object);
 }
 
+/// Hand `request` to `request_object`. False when Request has installed
+/// nothing, or on an error (the object's signal could not be made), and
+/// then `request` is still the caller's.
+pub fn adoptRequest(request_object: *runtime.Instance, request: *anyopaque, guard: Guard) anyerror!bool {
+    const steps = request_steps orelse return false;
+    try steps.adopt(request_object, request, guard);
+    return true;
+}
+
+/// `response_object`'s response, or null when Response has installed
+/// nothing - which cannot happen for an object Response's impl made.
+pub fn responseOf(response_object: *runtime.Instance) ?*anyopaque {
+    const steps = response_steps orelse return null;
+    return steps.response_of(response_object);
+}
+
 /// Hand `response` to `response_object`. False when Response has installed
 /// nothing, and then `response` is still the caller's.
 pub fn adoptResponse(response_object: *runtime.Instance, response: *anyopaque, guard: Guard) bool {
@@ -97,6 +124,8 @@ test "without installed steps nothing is asked of an object" {
     var object: runtime.Instance = undefined;
     var response: u8 = 0;
     try std.testing.expect(requestOf(&object) == null);
+    try std.testing.expect(responseOf(&object) == null);
+    try std.testing.expect(!try adoptRequest(&object, &response, .immutable));
     try std.testing.expect(requestBodyStream(&object) == null);
     try std.testing.expect(!adoptResponse(&object, &response, .immutable));
     try std.testing.expect(!followSignal(&object, &object));

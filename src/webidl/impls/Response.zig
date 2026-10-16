@@ -72,7 +72,7 @@ pub const InternalState = struct {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // fetch() hands a Response object its response through this hook.
-    @import("dom").fetch_objects.installResponse(.{ .adopt = &adoptResponse, .follow = &followSignal });
+    @import("dom").fetch_objects.installResponse(.{ .adopt = &adoptResponse, .follow = &followSignal, .response_of = &responseOf });
 }
 
 /// Initialize instance
@@ -124,6 +124,13 @@ pub fn fromInternalResponse(
     state.own._internal = internal;
 
     return instance;
+}
+
+/// dom.fetch_objects: a Response object's response. Borrowed.
+fn responseOf(response_object: *runtime.Instance) ?*anyopaque {
+    const state = response_object.stateAs(State) orelse return null;
+    const internal = state.own._internal orelse return null;
+    return @ptrCast(internal.response);
 }
 
 /// dom.fetch_objects, Fetch "create a Response object" steps 2-3 for a

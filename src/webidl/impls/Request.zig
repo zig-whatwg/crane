@@ -101,13 +101,16 @@ pub const InternalState = struct {
     /// signal is the wrapper cache's - a fetch() still using it holds its own
     /// pin.
     signal_pin: same_object.Traced = .{ .slot = .{ .name = "signal" } },
+    /// The guard its Headers object gets, when it was given one with its
+    /// request (`adoptRequest`); null: the constructor's, from the mode.
+    headers_guard: ?fetch.internal.HeaderGuard = null,
 };
 
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // fetch() reads a Request object's request through this hook.
-    @import("dom").fetch_objects.installRequest(.{ .request_of = &requestOf, .body_stream = &bodyStreamToSend });
+    @import("dom").fetch_objects.installRequest(.{ .request_of = &requestOf, .body_stream = &bodyStreamToSend, .adopt = &adoptRequest });
 }
 
 /// Initialize instance
@@ -138,6 +141,27 @@ pub fn init(
     state.own._internal = internal;
 
     return instance;
+}
+
+/// dom.fetch_objects: a Request object just made holds `request` (taken)
+/// with a headers guard of `guard` - the Cache API's keys() and the
+/// Request objects it gives back.
+fn adoptRequest(request_object: *runtime.Instance, request: *anyopaque, guard: @import("dom").fetch_objects.Guard) anyerror!void {
+    const state = request_object.stateAs(State) orelse return error.InvalidStateError;
+    const internal = state.own._internal orelse return error.InvalidStateError;
+    // Its signal: a new AbortSignal (a dependent signal of no signals) -
+    // made first, so a failure leaves `request` with the caller.
+    state.own.signal = try abort_algorithms.createDependent(request_object.ctx, &.{});
+    internal.signal_pin.hold(request_object, state.own.signal);
+    internal.request.deinit();
+    internal.request = @ptrCast(@alignCast(request));
+    internal.headers_guard = switch (guard) {
+        .immutable => .immutable,
+        .request => .request,
+        .request_no_cors => .request_no_cors,
+        .response => .response,
+        .none => .none,
+    };
 }
 
 /// dom.fetch_objects: "requestObject's request". Borrowed.
@@ -654,7 +678,7 @@ pub fn get_headers(instance: *runtime.Instance) anyerror!*runtime.Instance {
         internal.allocator,
         instance.ctx,
         &internal.request.header_list,
-        if (internal.request.mode == .no_cors) .request_no_cors else .request,
+        internal.headers_guard orelse if (internal.request.mode == .no_cors) .request_no_cors else .request,
         instance,
         &state.own.cached_headers,
     );
@@ -1016,14 +1040,6 @@ pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
 }
 
 // === Helper Functions ===
-
-/// Get URL from instance (for internal use by other impls)
-/// Used by Cache.zig and CacheStorage.zig
-pub fn getUrlInternal(instance: *runtime.Instance) ?[]const u8 {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return null;
-    return internal.request.getUrl();
-}
 
 /// Normalize HTTP method per Fetch spec
 /// Uppercases DELETE, GET, HEAD, OPTIONS, POST, PUT
