@@ -1,64 +1,70 @@
-//! Implementation for PerformanceServerTiming interface
+//! Server Timing §3: an immutable metric of a final HTTP response.
+//! https://w3c.github.io/server-timing/#the-performanceservertiming-interface
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
+const Metric = @import("fetch").internal.fetch_timing.server_timing.Metric;
 const PerformanceServerTiming = interfaces.PerformanceServerTiming;
 
 pub const State = PerformanceServerTiming.State;
 
-pub const ImplError = error{
-    NotImplemented,
+pub const construction_args = .{"metric"};
+
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    metric: Metric,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
-
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+/// Server Timing §3.3: copy one parsed metric into its platform object.
+/// The entry and the metric can independently outlive each other.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    const metric: Metric = if (@hasField(@TypeOf(args), "metric")) args.metric else .{ .name = "" };
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
+    const name = try allocator.dupe(u8, metric.name);
+    errdefer allocator.free(name);
+    const description = try allocator.dupe(u8, metric.description);
+    internal.* = .{ .allocator = allocator, .metric = .{ .name = name, .duration = metric.duration, .description = description } };
+    instance.getState(StateType).own._internal = internal;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+pub fn deinitOwn(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+    internal.allocator.free(internal.metric.name);
+    internal.allocator.free(internal.metric.description);
+    internal.allocator.destroy(internal);
+    state.own._internal = null;
+}
+
+fn metricOf(instance: *runtime.Instance) !*const Metric {
+    const state = instance.stateAs(State) orelse return error.InvalidStateError;
+    return &(state.own._internal orelse return error.InvalidStateError).metric;
 }
 
 /// Getter for name
 pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return runtime.DOMString.initInterned((try metricOf(instance)).name);
 }
 
 /// Getter for duration
 pub fn get_duration(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
-    _ = instance;
-    return error.NotImplemented;
+    return (try metricOf(instance)).duration;
 }
 
 /// Getter for description
 pub fn get_description(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return runtime.DOMString.initInterned((try metricOf(instance)).description);
 }
 
 /// Operation: toJSON
 pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.PerformanceServerTiming.PerformanceServerTimingToJSON {
-    _ = instance;
-    return error.NotImplemented;
+    const metric = try metricOf(instance);
+    return .{
+        .name = runtime.DOMString.initInterned(metric.name),
+        .duration = metric.duration,
+        .description = runtime.DOMString.initInterned(metric.description),
+    };
 }

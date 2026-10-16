@@ -145,6 +145,9 @@ const Sheet = struct {
     /// The sheet whose @import rule this is; null for the link's own sheet.
     parent: ?*Sheet,
     depth: usize,
+    /// HTML's create-a-CSS-style-sheet origin-clean flag, set from the
+    /// fetched response before this sheet's imports start.
+    origin_clean: bool = false,
     /// While the fetch runs.
     fetch: ?*AsyncFetch = null,
 
@@ -737,10 +740,13 @@ fn startFetchOrFail(load: *Load, url: []const u8, parent: ?*Sheet, options: Link
     try request.setIntegrityMetadata(options.integrity);
     if (options.nonce.len != 0) try request.setCryptographicNonceMetadata(options.nonce);
     request.priority = options.fetch_priority;
-    // Step 6 of "default fetch and process the linked resource": the
-    // initiator type is "css" for a stylesheet link, "link" otherwise; an
-    // import's is "css" too.
-    request.initiator_type = if (load.kind == .preload or load.kind == .prefetch) .link else .css;
+    // Resource Timing initiatorType: CSS imports (including an inline
+    // style's first import) are "css"; link requests are "link". For
+    // modulepreload, Firefox/Safari agree on "link", unlike Chrome/WPT's
+    // "other" (aligned stable runs, 2026-10-16; row 47 Q5/Q6).
+    // CSS Values 4 §4.5.4 step 7: an origin-dirty parent does not expose
+    // its imported URLs through resource timing. Inline styles are clean.
+    request.initiator_type = if (parent != null and !parent.?.origin_clean) null else if (parent != null or load.kind == .style) .css else .link;
     // Prefetch step 5. Fetch consumes this for CSP's union check.
     // It is distinct from Resource Timing's initiatorType.
     if (load.kind == .prefetch) request.initiator = .prefetch;
@@ -853,6 +859,9 @@ fn processResponse(sheet: *Sheet, outcome: fetch.algorithms.FetchError!fetch.alg
     }
     // The sheet is parsed; its @import rules are fetched relative to its
     // location, the response's URL.
+    // HTML stylesheet processing: origin-clean is set for a
+    // CORS-same-origin response, independently of its URL or TAO headers.
+    sheet.origin_clean = cors_same_origin;
     const location = response.url() orelse sheet.url;
     fetchImports(load, sheet, body.getBytes(), location);
 }

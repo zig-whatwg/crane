@@ -11,6 +11,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+pub const server_timing = @import("server_timing.zig");
+
 /// DOMHighResTimeStamp type (milliseconds with sub-millisecond precision).
 /// Per spec, this is a floating-point value representing time in milliseconds.
 pub const DOMHighResTimeStamp = f64;
@@ -141,7 +143,8 @@ pub const FetchTimingInfo = struct {
     /// Connection timing info (null until connection established).
     final_connection_timing_info: ?ConnectionTimingInfo = null,
 
-    /// List of Server-Timing header values.
+    /// Owned Server-Timing header values (bytes until the metric parser's
+    /// isomorphic decode).
     /// Per spec: "A list of strings."
     server_timing_headers: std.ArrayListUnmanaged([]const u8),
 
@@ -161,12 +164,15 @@ pub const FetchTimingInfo = struct {
 
     /// Deinitialize and free resources.
     pub fn deinit(self: *Self) void {
+        for (self.server_timing_headers.items) |header| self.allocator.free(header);
         self.server_timing_headers.deinit(self.allocator);
     }
 
     /// Add a Server-Timing header value.
     pub fn addServerTimingHeader(self: *Self, header: []const u8) !void {
-        try self.server_timing_headers.append(self.allocator, header);
+        const copy = try self.allocator.dupe(u8, header);
+        errdefer self.allocator.free(copy);
+        try self.server_timing_headers.append(self.allocator, copy);
     }
 
     /// Set the final connection timing info.

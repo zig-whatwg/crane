@@ -50,30 +50,29 @@ pub fn installHooks() void {
     });
 }
 
-/// Initialize instance (creates the instance)
+/// Performance's own construction steps, after the generated chain has
+/// initialized EventTarget's listener and event-handler state.
 ///
 /// HR-Time: the time origin is the global's environment settings object's,
 /// which the global records when it is made (a Window: at its creation,
 /// standing in for its document's navigation start time) - never the moment
 /// this object is made, which may be much later (a frame's `performance`
 /// read for the first time).
-pub fn init(
+pub fn initOwn(
+    instance: *runtime.Instance,
     allocator: std.mem.Allocator,
     comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
-
+    args: anytype,
+) !void {
+    _ = StateType;
+    _ = args;
     const internal = try allocator.create(InternalState);
     internal.* = .{
         .allocator = allocator,
-        .time_origin = timeOriginOf(ctx),
+        .time_origin = timeOriginOf(instance.ctx),
         .timeline = performance_timeline.Timeline.init(allocator, instance),
     };
     instance.getState(State).own._internal = internal;
-    return instance;
 }
 
 /// The time origin of `ctx`'s global's settings object.
@@ -99,16 +98,14 @@ fn globalOf(ctx: runtime.Context) ?*runtime.Instance {
     return @ptrCast(@alignCast(record.global_object orelse return null));
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// Release Performance's state; the generated chain then releases EventTarget.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.timeline.deinit();
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
-    // NOTE: Don't call runtime.Instance.deinit(instance) here!
-    // The GC integration layer (gc.onObjectFreed) handles freeing the slab.
 }
 
 /// Get internal state from instance using shared accessor
@@ -244,19 +241,6 @@ pub fn get_timing(instance: *runtime.Instance) anyerror!*runtime.Instance {
 pub fn get_navigation(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return interfaces.PerformanceNavigation.init(internal.allocator, instance.ctx);
-}
-
-/// Getter for onresourcetimingbufferfull
-pub fn get_onresourcetimingbufferfull(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for onresourcetimingbufferfull
-pub fn set_onresourcetimingbufferfull(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
 }
 
 // ============================================================================
