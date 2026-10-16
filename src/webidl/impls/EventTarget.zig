@@ -1546,11 +1546,11 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
         // (engine.callUserObjectOperation, invokeCallbackFunction).
         // dom.document_activity answers a Window for its associated Document:
         // false for one a navigation replaced or whose navigable is gone, and
-        // for one whose realm has ended. A Window of a realm whose host keeps
-        // no navigables - one made without a Browser, as engine and DOM tests
-        // make them - has none to lose, and is fully active, as
-        // document_activity holds every live document of a context built for
-        // tests.
+        // for one whose realm has ended. A Window of a realm no Browser made
+        // (no `browser_scope` of its own - engine and DOM tests make them,
+        // and their realms fall back to the process's standalone scope) has
+        // no navigable to lose, and is fully active, as document_activity
+        // holds every live document of a context built for tests.
         {
             const holder = if (current_target.stateAs(interfaces.Node.State) != null)
                 (interfaces.Node.get_ownerDocument(current_target) catch null) orelse current_target
@@ -1558,8 +1558,8 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
                 current_target;
             if (!holder.ctx.hasEngine()) continue;
             if (windowOfRealm(holder.ctx)) |target_global| {
-                const keeps_navigables = if (target_global.ctx.browserScope()) |scope| dom_module.browser_state.existingNavigablesIn(scope) != null else false;
-                if (keeps_navigables and !dom_module.document_activity.fullyActive(target_global, runtime.SlabAllocator.generationOf(target_global))) continue;
+                const made_by_browser = target_global.ctx.browser_scope != null;
+                if (made_by_browser and !dom_module.document_activity.fullyActive(target_global, runtime.SlabAllocator.generationOf(target_global))) continue;
             }
         }
 
