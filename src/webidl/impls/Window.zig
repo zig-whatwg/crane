@@ -415,6 +415,15 @@ fn effectiveOrigin(instance: *runtime.Instance, internal: *InternalState) []cons
         if (flags.sandboxesSameOrigin()) return "null";
     }
     const document = internal.document orelse return internal.origin;
+    // A Window's origin is its associated Document's (HTML 7.1.6: the
+    // relevant settings object's origin is the document's). A document made
+    // with an origin of known serialization - a new opaque origin for a
+    // network error's document or a sandboxed one, its creator's for
+    // about:blank - says so in its origin record; only a document still
+    // deriving its own (the record unresolved) derives it from its URL here.
+    if (@import("dom").document_origin.record(document)) |record| {
+        if (record.serialized) |serialized| return serialized;
+    }
     const url = interfaces.Document.get_URL(document) catch return internal.origin;
     // The getter clones into the document's context allocator.
     defer document.ctx.allocator.free(url);
