@@ -10,11 +10,12 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const SanitizerConfig = @import("dictionaries").SanitizerConfig;
 const SanitizerAttribute = @import("typedefs").SanitizerAttribute;
 const SanitizerPresets = @import("enums").SanitizerPresets;
-const SanitizerElement = @import("typedefs").SanitizerElement;
 const SanitizerElementWithAttributes = @import("typedefs").SanitizerElementWithAttributes;
+const SanitizerConfig = @import("dictionaries").SanitizerConfig;
+const SanitizerPI = @import("typedefs").SanitizerPI;
+const SanitizerElement = @import("typedefs").SanitizerElement;
 
 pub const Sanitizer = struct {
     pub const Meta = struct {
@@ -45,6 +46,9 @@ pub const Sanitizer = struct {
             .{ "setComments", "call_setComments", 1 },
             .{ "setDataAttributes", "call_setDataAttributes", 1 },
             .{ "removeUnsafe", "call_removeUnsafe", 0 },
+            .{ "allowProcessingInstruction", "call_allowProcessingInstruction", 1 },
+            .{ "removeProcessingInstruction", "call_removeProcessingInstruction", 1 },
+            .{ "setJavascriptURLs", "call_setJavascriptURLs", 1 },
         };
 
         /// Methods defined/overridden by this interface
@@ -58,6 +62,9 @@ pub const Sanitizer = struct {
             "setComments",
             "setDataAttributes",
             "removeUnsafe",
+            "allowProcessingInstruction",
+            "removeProcessingInstruction",
+            "setJavascriptURLs",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -83,13 +90,16 @@ pub const Sanitizer = struct {
     const delegates = .{
         .call_allowAttribute = &call_allowAttribute,
         .call_allowElement = &call_allowElement,
+        .call_allowProcessingInstruction = &call_allowProcessingInstruction,
         .call_get = &call_get,
         .call_removeAttribute = &call_removeAttribute,
         .call_removeElement = &call_removeElement,
+        .call_removeProcessingInstruction = &call_removeProcessingInstruction,
         .call_removeUnsafe = &call_removeUnsafe,
         .call_replaceElementWithChildren = &call_replaceElementWithChildren,
         .call_setComments = &call_setComments,
         .call_setDataAttributes = &call_setDataAttributes,
+        .call_setJavascriptURLs = &call_setJavascriptURLs,
 
         .deinit = &deinit,
     };
@@ -187,12 +197,20 @@ pub const Sanitizer = struct {
         return try SanitizerImpl.call_constructor(ctx, configuration);
     }
 
+    pub fn call_removeProcessingInstruction(instance: *runtime.Instance, pi: SanitizerPI) anyerror!bool {
+        return try SanitizerImpl.call_removeProcessingInstruction(instance, pi);
+    }
+
     pub fn call_replaceElementWithChildren(instance: *runtime.Instance, element: SanitizerElement) anyerror!bool {
         return try SanitizerImpl.call_replaceElementWithChildren(instance, element);
     }
 
     pub fn call_get(instance: *runtime.Instance) anyerror!SanitizerConfig {
         return try SanitizerImpl.call_get(instance);
+    }
+
+    pub fn call_setJavascriptURLs(instance: *runtime.Instance, allow: bool) anyerror!bool {
+        return try SanitizerImpl.call_setJavascriptURLs(instance, allow);
     }
 
     pub fn call_allowElement(instance: *runtime.Instance, element: SanitizerElementWithAttributes) anyerror!bool {
@@ -205,6 +223,10 @@ pub const Sanitizer = struct {
 
     pub fn call_setDataAttributes(instance: *runtime.Instance, allow: bool) anyerror!bool {
         return try SanitizerImpl.call_setDataAttributes(instance, allow);
+    }
+
+    pub fn call_allowProcessingInstruction(instance: *runtime.Instance, pi: SanitizerPI) anyerror!bool {
+        return try SanitizerImpl.call_allowProcessingInstruction(instance, pi);
     }
 
     pub fn call_setComments(instance: *runtime.Instance, allow: bool) anyerror!bool {

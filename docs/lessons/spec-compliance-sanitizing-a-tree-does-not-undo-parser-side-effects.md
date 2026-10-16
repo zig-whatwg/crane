@@ -1,4 +1,4 @@
-# Security: Sanitizing a Tree Does Not Undo Parser Side Effects
+# Spec Compliance: Sanitizing a Tree Does Not Undo Parser Side Effects
 
 **Date**: 2026-10-16
 **Lesson**: A safe HTML setter requires inert parsing before its tree filter runs.

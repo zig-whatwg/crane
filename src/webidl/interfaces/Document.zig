@@ -39,8 +39,9 @@ const StyleSheetList = @import("interfaces").StyleSheetList;
 const FragmentDirective = @import("interfaces").FragmentDirective;
 const Comment = @import("interfaces").Comment;
 const NamedFlowMap = @import("interfaces").NamedFlowMap;
-const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
+const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
+const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const StorageAccessHandle = @import("interfaces").StorageAccessHandle;
 const ImportNodeOptions = @import("dictionaries").ImportNodeOptions;
 const DOMImplementation = @import("interfaces").DOMImplementation;
@@ -54,12 +55,13 @@ const DocumentType = @import("interfaces").DocumentType;
 const HTMLAllCollection = @import("interfaces").HTMLAllCollection;
 const DocumentFragment = @import("interfaces").DocumentFragment;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
+const ParseHTMLUnsafeOptions = @import("dictionaries").ParseHTMLUnsafeOptions;
 const DOMString = @import("typedefs").DOMString;
-const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const FontFaceSet = @import("interfaces").FontFaceSet;
 const BrowsingTopicsOptions = @import("dictionaries").BrowsingTopicsOptions;
 const DOMQuad = @import("interfaces").DOMQuad;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const CDATASection = @import("interfaces").CDATASection;
@@ -388,6 +390,7 @@ pub const Document = struct {
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "parseHTMLUnsafe", "call_static_parseHTMLUnsafe", 1 },
+            .{ "parseHTML", "call_static_parseHTML", 1 },
         };
 
         /// Methods defined/overridden by this interface
@@ -438,6 +441,7 @@ pub const Document = struct {
             "requestStorageAccessFor",
             "hasUnpartitionedCookieAccess",
             "requestStorageAccess",
+            "parseHTML",
             "getSelection",
             "hasStorageAccess",
             "browsingTopics",
@@ -2198,8 +2202,8 @@ pub const Document = struct {
         return try DocumentImpl.call_elementsFromPoint(instance, x, y);
     }
 
-    pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString) anyerror!*runtime.Instance {
-        return try DocumentImpl.call_static_parseHTMLUnsafe(instance, html);
+    pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString, options: webidl.Opt(ParseHTMLUnsafeOptions)) anyerror!*runtime.Instance {
+        return try DocumentImpl.call_static_parseHTMLUnsafe(instance, html, options);
     }
 
     /// Extended attributes: [CEReactions]
@@ -2234,6 +2238,10 @@ pub const Document = struct {
         // [NewObject] - Caller owns the returned object
 
         return try DocumentImpl.call_createTreeWalker(instance, root, whatToShow, filter);
+    }
+
+    pub fn call_static_parseHTML(instance: *runtime.Instance, html: DOMString, options: webidl.Opt(SetHTMLOptions)) anyerror!*runtime.Instance {
+        return try DocumentImpl.call_static_parseHTML(instance, html, options);
     }
 
     pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime.Instance) anyerror!*runtime.Instance {

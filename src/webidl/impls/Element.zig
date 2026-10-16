@@ -2330,12 +2330,18 @@ pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: we
     return error.NotImplemented;
 }
 
-/// Operation: setHTMLUnsafe
-/// HTML Sanitizer API - Sets HTML without sanitization
-/// Spec: https://wicg.github.io/sanitizer-api/#dom-element-sethtmlunsafe
-///
-/// Note: Requires HTML fragment parsing algorithm (not implemented)
-pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTMLOrDOMString) anyerror!void {
+/// HTML 8.5.2 setHTML, steps 1–2: template contents, then safe filtering.
+pub fn call_setHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(dictionaries.SetHTMLOptions)) anyerror!void {
+    var converted = try @import("html").sanitizer.convertOptions(instance.ctx, options.getOrDefault(.{}).sanitizer, true);
+    defer converted.deinit();
+    const target = try dom.template_contents.insertionTarget(instance);
+    try @import("html").sanitizer.setHTML(instance, target, html.asSlice(), &converted, true);
+}
+
+/// HTML 8.5.2 setHTMLUnsafe, steps 1–3.
+pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTMLOrDOMString, options: webidl.Opt(dictionaries.SetHTMLUnsafeOptions)) anyerror!void {
+    var converted = try @import("html").sanitizer.convertOptions(instance.ctx, options.getOrDefault(.{}).sanitizer, false);
+    defer converted.deinit();
     // Step 1: "Let compliantHTML be the result of invoking the get trusted
     // type compliant string algorithm with TrustedHTML, this's relevant
     // global object, html, "Element setHTMLUnsafe", and "script"."
@@ -2345,19 +2351,8 @@ pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTM
     // Step 2: "Let target be this's template contents if this is a template
     // element; otherwise this."
     const target = try dom.template_contents.insertionTarget(instance);
-    const target_base = dom.instance_bridge.getNodeBase(target) orelse return error.InvalidStateError;
-    // Step 3, "set and filter HTML" given target, this, compliantHTML and
-    // false. Steps 4-6: the IDL has no options, so no sanitizer and the
-    // Inert scripting mode. Step 7: the HTML fragment parsing algorithm with
-    // allowDeclarativeShadowRoots true (the context is this).
-    const fragment = @import("html").custom_elements.parseFragmentUnsafe(instance, compliant) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => return error.NotSupportedError,
-    };
-    defer dom.node_creation.destroyUninserted(fragment);
-    const fragment_base = dom.instance_bridge.getNodeBase(@ptrCast(fragment)) orelse return error.InvalidStateError;
-    // Step 9: "Replace all with fragment within target."
-    try dom.mutation.replaceAll(@as(?*dom.NodeBase, fragment_base), target_base);
+    // Step 3: configure, parse, sanitize, and replace children.
+    try @import("html").sanitizer.setHTML(instance, target, compliant, &converted, false);
 }
 
 /// Operation: scrollIntoView

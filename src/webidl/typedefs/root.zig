@@ -138,6 +138,7 @@ pub const RouterSource = @import("RouterSource.zig").RouterSource;
 pub const SanitizerAttribute = @import("SanitizerAttribute.zig").SanitizerAttribute;
 pub const SanitizerElement = @import("SanitizerElement.zig").SanitizerElement;
 pub const SanitizerElementWithAttributes = @import("SanitizerElementWithAttributes.zig").SanitizerElementWithAttributes;
+pub const SanitizerPI = @import("SanitizerPI.zig").SanitizerPI;
 pub const SharedStorageResponse = @import("SharedStorageResponse.zig").SharedStorageResponse;
 pub const SmallCryptoKeyID = @import("SmallCryptoKeyID.zig").SmallCryptoKeyID;
 pub const StartInDirectory = @import("StartInDirectory.zig").StartInDirectory;

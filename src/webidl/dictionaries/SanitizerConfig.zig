@@ -13,4 +13,7 @@ pub const SanitizerConfig = struct {
     removeAttributes: ?[]const typedefs.SanitizerAttribute = null,
     comments: ?bool = null,
     dataAttributes: ?bool = null,
+    processingInstructions: ?[]const typedefs.SanitizerPI = null,
+    removeProcessingInstructions: ?[]const typedefs.SanitizerPI = null,
+    javascriptURLs: ?bool = null,
 };

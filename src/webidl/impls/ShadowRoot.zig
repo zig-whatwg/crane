@@ -437,24 +437,25 @@ pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(dictionarie
     return @import("html").serialization.fragmentWithShadowRoots(instance, given.serializableShadowRoots orelse false, given.shadowRoots orelse &.{});
 }
 
-/// setHTMLUnsafe(html) - Parse and replace shadow tree contents
-pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTMLOrDOMString) anyerror!void {
+/// HTML 8.5.2 setHTML: safe filtering with this root's host as context.
+pub fn call_setHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(dictionaries.SetHTMLOptions)) anyerror!void {
+    var converted = try @import("html").sanitizer.convertOptions(instance.ctx, options.getOrDefault(.{}).sanitizer, true);
+    defer converted.deinit();
+    try @import("html").sanitizer.setHTML(instance, instance, html.asSlice(), &converted, true);
+}
+
+/// HTML 8.5.2 setHTMLUnsafe, steps 1–2.
+pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTMLOrDOMString, options: webidl.Opt(dictionaries.SetHTMLUnsafeOptions)) anyerror!void {
+    var converted = try @import("html").sanitizer.convertOptions(instance.ctx, options.getOrDefault(.{}).sanitizer, false);
+    defer converted.deinit();
     // Step 1: "Let compliantHTML be the result of invoking the get trusted
     // type compliant string algorithm with TrustedHTML, this's relevant
     // global object, html, "ShadowRoot setHTMLUnsafe", and "script"."
     const allocator = instance.ctx.allocator;
     const compliant = try @import("dom").trusted_types.compliantStringFor(allocator, .html, instance, html, "ShadowRoot setHTMLUnsafe");
     defer allocator.free(compliant);
-    // Step 2: "set and filter HTML" given this, compliantHTML and false: the
-    // context is this's host; no sanitizer (the IDL has no options); the
-    // HTML fragment parsing algorithm with allowDeclarativeShadowRoots true;
-    // then "replace all with fragment within this".
-    const dom = @import("dom");
-    const fragment = try @import("html").custom_elements.parseFragmentUnsafe(instance, compliant);
-    defer dom.node_creation.destroyUninserted(fragment);
-    const fragment_base = dom.instance_bridge.getNodeBase(fragment) orelse return error.InvalidStateError;
-    const shadow_base = dom.instance_bridge.getNodeBase(instance) orelse return error.InvalidStateError;
-    try dom.mutation.replaceAll(@as(?*dom.NodeBase, fragment_base), shadow_base);
+    // Step 2: configure, parse, sanitize, and replace the shadow children.
+    try @import("html").sanitizer.setHTML(instance, instance, compliant, &converted, false);
 }
 
 /// getAnimations() - Get all animations in shadow tree

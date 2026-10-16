@@ -29,12 +29,14 @@ const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
+const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
 const Node = @import("interfaces").Node;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
+const SetHTMLUnsafeOptions = @import("dictionaries").SetHTMLUnsafeOptions;
 const Range = @import("interfaces").Range;
-const Animation = @import("interfaces").Animation;
 const Event = @import("interfaces").Event;
+const Animation = @import("interfaces").Animation;
 const FocusOptions = @import("dictionaries").FocusOptions;
 const TrustedTypeOrDOMString = @import("typedefs").TrustedTypeOrDOMString;
 const DOMString = @import("typedefs").DOMString;
@@ -180,6 +182,7 @@ pub const SVGFETileElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
+            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",

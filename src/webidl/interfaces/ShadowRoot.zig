@@ -12,9 +12,9 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const DocumentFragment = @import("interfaces").DocumentFragment;
 const DocumentOrShadowRoot = @import("mixins").DocumentOrShadowRoot;
-const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const Document = @import("interfaces").Document;
+const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const HTMLCollection = @import("interfaces").HTMLCollection;
 const USVString = @import("typedefs").USVString;
 const Element = @import("interfaces").Element;
@@ -26,8 +26,10 @@ const StyleSheetList = @import("interfaces").StyleSheetList;
 const EventHandler = @import("typedefs").EventHandler;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
+const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
 const TrustedHTML = @import("interfaces").TrustedHTML;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
+const SetHTMLUnsafeOptions = @import("dictionaries").SetHTMLUnsafeOptions;
 const Animation = @import("interfaces").Animation;
 const Node = @import("interfaces").Node;
 const NodeList = @import("interfaces").NodeList;
@@ -84,6 +86,7 @@ pub const ShadowRoot = struct {
         pub const methods = .{
             .{ "setHTMLUnsafe", "call_setHTMLUnsafe", 1 },
             .{ "getHTML", "call_getHTML", 0 },
+            .{ "setHTML", "call_setHTML", 1 },
             .{ "getAnimations", "call_getAnimations", 0 },
         };
 
@@ -91,6 +94,7 @@ pub const ShadowRoot = struct {
         pub const own_methods = .{
             "setHTMLUnsafe",
             "getHTML",
+            "setHTML",
             "getAnimations",
         };
 
@@ -200,6 +204,7 @@ pub const ShadowRoot = struct {
 
         .call_getAnimations = &call_getAnimations,
         .call_getHTML = &call_getHTML,
+        .call_setHTML = &call_setHTML,
         .call_setHTMLUnsafe = &call_setHTMLUnsafe,
 
         .deinit = &deinit,
@@ -396,16 +401,25 @@ pub const ShadowRoot = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString) anyerror!void {
+    pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString, options: webidl.Opt(SetHTMLUnsafeOptions)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
-        return try ShadowRootImpl.call_setHTMLUnsafe(instance, html);
+        return try ShadowRootImpl.call_setHTMLUnsafe(instance, html, options);
     }
 
     pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(GetHTMLOptions)) anyerror!DOMString {
         return try ShadowRootImpl.call_getHTML(instance, options);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_setHTML(instance: *runtime.Instance, html: DOMString, options: webidl.Opt(SetHTMLOptions)) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
+
+        return try ShadowRootImpl.call_setHTML(instance, html, options);
     }
 
     /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
@@ -421,5 +435,6 @@ pub const ShadowRoot = struct {
     pub const ce_reactions = .{
         "set_innerHTML",
         "call_setHTMLUnsafe",
+        "call_setHTML",
     };
 };
