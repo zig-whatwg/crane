@@ -39,6 +39,24 @@ pub const ImplError = error{
 /// recomputed from the href attribute on every access.
 pub const InternalState = struct {};
 
+pub fn installHooks() void {
+    @import("dom").extract_origin.install(.hyperlink, .{ .owns = &ownsOriginExtraction, .extract = &extractOrigin });
+}
+
+fn ownsOriginExtraction(instance: *runtime.Instance) bool {
+    return instance.stateAs(interfaces.HTMLAnchorElement.State) != null or
+        instance.stateAs(interfaces.HTMLAreaElement.State) != null;
+}
+
+/// HTML hyperlink extract-an-origin steps 1-2: null for no URL, otherwise
+/// its origin. Reuse "set the url"'s encoding parse without a URL wrapper.
+fn extractOrigin(instance: *runtime.Instance) !?*@import("dom").origin_record.OriginRecord {
+    const href = hrefAttribute(instance) orelse return null;
+    const serialized = (try html.encoding_parse.encodingParseAndSerialize(instance, href)) orelse return null;
+    defer instance.ctx.allocator.free(serialized);
+    return @import("dom").extract_origin.ownedRecordForUrl(instance.ctx.allocator, serialized);
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,

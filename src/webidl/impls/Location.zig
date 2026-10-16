@@ -99,6 +99,9 @@ pub const InternalState = struct {
 
     /// Cached ancestor origins (lazily created DOMStringList)
     ancestor_origins: ?*runtime.Instance = null,
+    /// The generated SameObject cache keeps a native pointer; this edge
+    /// keeps the list's wrapper and its script properties alive with ours.
+    ancestor_origins_edge: @import("same_object.zig").Traced = .{ .slot = .{ .name = "Location.ancestorOrigins" } },
 
     /// Cached href for comparison
     cached_href: ?[]const u8 = null,
@@ -329,6 +332,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        internal.ancestor_origins_edge.release(instance);
         internal.deinit();
         internal.allocator.destroy(internal);
         // Clear the pointer to prevent double-free on subsequent calls
@@ -569,18 +573,52 @@ pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
     return result;
 }
 
-/// Getter for ancestorOrigins
-/// Per spec §7.1.3: Returns a DOMStringList of ancestor browsing context origins.
+/// HTML ancestorOrigins steps 1-4. The active document's ancestor chain
+/// cannot change while it is active, so its snapshot can be built lazily.
 pub fn get_ancestorOrigins(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    // Step 2: the same-origin-domain check (step 1, the empty list for a
-    // null relevant Document, is part of what is not implemented below).
-    try checkGetter(instance);
-    // TODO: Implement DOMStringList creation
-    // This requires:
-    // 1. Walking up the browsing context tree
-    // 2. Collecting origins from each ancestor
-    // 3. Creating a DOMStringList with those origins
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    var strings: std.ArrayList([]const u8) = .empty;
+    defer strings.deinit(internal.allocator);
+
+    // Step 1 precedes the access check: no relevant Document means an empty
+    // list, including a detached or superseded Window's Location.
+    const context = if (internal.window) |window| dom.browser_state.browsingContextOf(window) else null;
+    if (context) |current| {
+        if (current.active_document) |raw_document| {
+            const document: *runtime.Instance = @ptrCast(@alignCast(raw_document));
+            if (dom.document_activity.fullyActive(document, runtime.SlabAllocator.generationOf(document))) {
+                try checkGetter(instance); // Step 2: same origin-domain.
+
+                // Browser deviation from HTML 3.1.3, internal ancestor origin
+                // objects list creation steps 7-12: do not mask by the iframe's
+                // referrerpolicy. Aligned stable WPT (2026-10-06) has Chrome
+                // 154 and Safari 27 at 9/16, Firefox 157 at 16/16; the seven
+                // differences are container masking. The browser majority
+                // also fails both referrerpolicy-snapshot subtests and the
+                // twelve redirect-still-mask cases that expect masking.
+                // Blink Location::ancestorOrigins and WebKit's counterpart
+                // walk parent frames and serialize their security origins.
+                var ancestor = current.parent;
+                while (ancestor) |parent| : (ancestor = parent.parent) {
+                    const raw_parent_document = parent.active_document orelse return error.InvalidStateError;
+                    const parent_document: *runtime.Instance = @ptrCast(@alignCast(raw_parent_document));
+                    const ancestor_origin = (try dom.document_origin.shareable(parent_document)) orelse return error.InvalidStateError;
+                    try strings.append(internal.allocator, ancestor_origin.serialized orelse "null");
+                }
+            }
+        }
+    }
+
+    // Ancestor origins list creation steps 3-5: a DOMStringList that owns
+    // copies of the serializations. A traced edge preserves script state
+    // when only the Location still refers to the [SameObject] list.
+    const list = try dom.string_lists.create(instance.ctx, strings.items);
+    internal.ancestor_origins_edge.hold(instance, list);
+    internal.ancestor_origins = list;
+    // The generated cache currently bypasses this getter after its first
+    // read. binding3 owns the opt-out needed to return a new empty list after
+    // detachment; row 45's handoff describes the impl-owned cache to follow.
+    return list;
 }
 
 // =============================================================================

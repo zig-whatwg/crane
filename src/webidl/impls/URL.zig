@@ -75,6 +75,7 @@ pub const InternalState = struct {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    @import("dom").extract_origin.install(.url, .{ .owns = &ownsOriginExtraction, .extract = &extractOrigin });
     // The File API's unloading document cleanup step (`removeBlobURLEntries`).
     @import("dom").unloading_cleanup.install(&removeBlobURLEntries);
     // Every fetch of a blob URL - a module script's, a worker's import(), an
@@ -83,6 +84,18 @@ pub fn installHooks() void {
     // module fetch of a blob URL was a network error in a process that had
     // run neither yet (blob-url.any.js: 4 of 24 alone, 20 after other files).
     fetch_body.installBlobURLResolver();
+}
+
+fn ownsOriginExtraction(instance: *runtime.Instance) bool {
+    return instance.stateAs(State) != null;
+}
+
+/// URL's extract-an-origin steps: return this's URL's origin. The shared
+/// URL helper owns the result; a later href mutation cannot change it.
+fn extractOrigin(instance: *runtime.Instance) !?*@import("dom").origin_record.OriginRecord {
+    const href = try get_href(instance);
+    defer instance.ctx.allocator.free(href);
+    return @import("dom").extract_origin.ownedRecordForUrl(instance.ctx.allocator, href);
 }
 
 /// Initialize instance (creates the instance)

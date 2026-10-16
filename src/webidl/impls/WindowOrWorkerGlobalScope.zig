@@ -869,11 +869,34 @@ const FetchCall = struct {
 /// by crane.Process through the generated mixin module (docs/instances.md):
 /// "abort a document" reaches fetch()'s calls through `FetchCall.live`.
 pub fn installHooks() void {
+    @import("dom").extract_origin.install(.global, .{ .owns = &ownsOriginExtraction, .extract = &extractOrigin });
     @import("dom").document_fetches.install(.{
         .discard = &FetchCall.abortIn,
         .prepare_abort = &FetchCall.prepareDocumentAbort,
         .abort = &FetchCall.abortDocument,
     });
+}
+
+fn ownsOriginExtraction(instance: *runtime.Instance) bool {
+    return global_settings.of(instance) != null;
+}
+
+/// WindowOrWorkerGlobalScope extract-an-origin steps 1-2. Read the
+/// settings object's origin, never derive a Window's origin from its URL.
+fn extractOrigin(instance: *runtime.Instance) !?*@import("dom").origin_record.OriginRecord {
+    if (engine.entryRealm()) |entry| {
+        const realm = entry.getRealm() orelse return null;
+        const global: *runtime.Instance = @ptrCast(@alignCast(realm.global_object orelse return null));
+        if (!global_settings.sameOriginDomain(instance, global)) return null;
+    }
+    if (try global_settings.shareableOriginOf(instance)) |record| return record.retain();
+    // Globals without a record hook still expose their serialized origin.
+    // Stable opaque worker identity depends on WorkerGlobalScope installing
+    // its origin_record hook (row 45 ANSWER Q5; workers4 owns that change).
+    const settings = global_settings.of(instance) orelse return null;
+    const serialized = try settings.origin(instance);
+    defer instance.ctx.allocator.free(serialized);
+    return try @import("dom").origin_record.OriginRecord.create(instance.ctx.allocator, serialized);
 }
 
 /// Operation: fetch

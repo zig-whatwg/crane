@@ -25,8 +25,27 @@ pub const InternalState = struct {};
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    @import("dom").extract_origin.install(.svg_anchor, .{ .owns = &ownsOriginExtraction, .extract = &extractOrigin });
     // Its activation behaviour: following its hyperlink (dom.activation).
     @import("dom").activation.install(.{ .has = &hasActivationBehavior, .run = &runActivationBehavior });
+}
+
+fn ownsOriginExtraction(instance: *runtime.Instance) bool {
+    return instance.stateAs(State) != null;
+}
+
+/// SVG includes HTMLHyperlinkElementUtils (SVG.idl:674), whose extraction
+/// steps return null for a null URL and the URL's origin otherwise (HTML
+/// "API for a and area elements"). Chrome 154 rejects SVG extraction;
+/// Safari 27 supports it (aligned stable WPT, 2026-10-06: 1/51 vs 51/51).
+/// Firefox does not ship Origin, so the shipping-browser tie follows SVG.
+fn extractOrigin(instance: *runtime.Instance) !?*@import("dom").origin_record.OriginRecord {
+    // Share SVGAnimatedString's scalar reflection steps without acquiring a
+    // cached animated object that a native caller never wraps or owns.
+    const href = (try @import("dom").reflected_with_fallback.value(instance, "href", xlink_namespace)) orelse return null;
+    const serialized = (try @import("dom").encoding_parse.encodingParseAndSerialize(instance, href)) orelse return null;
+    defer instance.ctx.allocator.free(serialized);
+    return @import("dom").extract_origin.ownedRecordForUrl(instance.ctx.allocator, serialized);
 }
 
 /// Initialize instance (creates the instance)

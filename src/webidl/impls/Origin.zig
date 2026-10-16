@@ -1,83 +1,113 @@
+//! HTML 7.1.1.3, the Origin interface. An Origin owns a reference to its
+//! origin record, independently of the platform object it was extracted from.
+//! https://html.spec.whatwg.org/multipage/browsers.html#the-origin-interface
 const std = @import("std");
 const runtime = @import("runtime");
-const webidl = @import("webidl");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const mixins = @import("mixins");
-const Origin = interfaces.Origin;
+const dom = @import("dom");
+const engine = @import("engine");
+const OriginRecord = dom.origin_record.OriginRecord;
 
-pub const State = Origin.State;
+pub const State = interfaces.Origin.State;
+pub const construction_args = .{"origin"};
 
-pub const ImplError = error{
-    NotImplemented,
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    origin: *OriginRecord,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
-
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+pub fn installHooks() void {
+    dom.extract_origin.install(.origin, .{ .owns = &ownsOrigin, .extract = &extractOrigin });
 }
 
-/// Deinitialize instance - clean up owned resources only
-/// NOTE: Do NOT call runtime.Instance.deinit() here - the GC integration
-/// layer (gc_integration.onObjectFreed) handles freeing the slab after
-/// calling this deinit function. Calling it here causes double-free.
-pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance;
-    // TODO: Clean up your instance's owned resources here (strings, arrays, etc.)
+/// The construction argument is borrowed. Each new Origin keeps its own
+/// reference, as Blink's DOMOrigin keeps a scoped_refptr<SecurityOrigin>.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
+    internal.* = .{
+        .allocator = allocator,
+        .origin = if (@hasField(@TypeOf(args), "origin")) args.origin.retain() else try OriginRecord.create(allocator, "null"),
+    };
+    instance.getState(StateType).own._internal = internal;
 }
 
-/// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
-/// Note: Use ctx.allocator for all allocations to ensure consistency with deinit
+pub fn deinitOwn(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+    internal.origin.release();
+    internal.allocator.destroy(internal);
+    state.own._internal = null;
+}
+
+/// Constructor step 1: a new opaque origin, unique to this object until copied.
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    // Create instance through init() - use ctx.allocator for consistency with deinit
-    const instance = try init(ctx.allocator, State, &Origin.vtable, ctx);
-    errdefer deinit(instance);
-
-    // TODO: Implement constructor logic with parameters
-
-    return instance;
+    return interfaces.Origin.init(ctx.allocator, ctx);
 }
 
-/// Getter for opaque
+fn recordOf(instance: *runtime.Instance) !*OriginRecord {
+    const state = instance.stateAs(State) orelse return error.TypeError;
+    return (state.own._internal orelse return error.InvalidStateError).origin;
+}
+
+fn view(record: *const OriginRecord) dom.origin_record.Origin {
+    return .{ .serialized = record.serialized orelse "null", .record = record };
+}
+
+/// The opaque getter returns whether this's origin is an opaque origin.
 pub fn get_opaque(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return (try recordOf(instance)).isOpaque();
 }
 
-/// Operation: isSameOrigin
 pub fn call_isSameOrigin(instance: *runtime.Instance, other: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    _ = other;
-    return error.NotImplemented;
+    return dom.origin_record.sameOrigin(view(try recordOf(instance)), view(try recordOf(other)));
 }
 
-/// Operation: isSameSite
 pub fn call_isSameSite(instance: *runtime.Instance, other: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    _ = other;
-    return error.NotImplemented;
+    const a = try recordOf(instance);
+    const b = try recordOf(other);
+    // "Obtain a site" step 1: an opaque origin is its own site. Equal
+    // tuple origins also necessarily have equal sites.
+    if (dom.origin_record.sameOrigin(view(a), view(b))) return true;
+    if (a.isOpaque() or b.isOpaque()) return false;
+    const allocator = instance.ctx.allocator;
+    const a_site = try @import("html").agent_clusters.siteOf(allocator, view(a).serialized);
+    defer allocator.free(a_site);
+    const b_site = try @import("html").agent_clusters.siteOf(allocator, view(b).serialized);
+    defer allocator.free(b_site);
+    return std.mem.eql(u8, a_site, b_site);
 }
 
-/// Static operation: from
+/// Origin.from steps 1-3: platform extraction, else a primitive string's
+/// basic URL parse, else TypeError. Objects are never string-coerced.
 pub fn call_static_from(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const ctx = instance.ctx;
+    const platform_object = switch (value) {
+        .instance => |object| object,
+        .handle => engine.convertToPlatformObject(ctx, value),
+        else => null,
+    };
+    const record = if (platform_object) |object|
+        (try dom.extract_origin.extract(object)) orelse return error.TypeError
+    else switch (value) {
+        .string => |string| (try dom.extract_origin.ownedRecordForUrl(ctx.allocator, string.data)) orelse return error.TypeError,
+        .handle => blk: {
+            if (engine.typeOf(ctx, value) != .string) return error.TypeError;
+            const string = try engine.convertToUSVString(ctx, value, ctx.allocator);
+            defer ctx.allocator.free(string);
+            break :blk (try dom.extract_origin.ownedRecordForUrl(ctx.allocator, string)) orelse return error.TypeError;
+        },
+        else => return error.TypeError,
+    };
+    defer record.release();
+    return interfaces.Origin.initWith(ctx.allocator, ctx, .{ .origin = record });
+}
+
+fn ownsOrigin(instance: *runtime.Instance) bool {
+    return instance.stateAs(State) != null;
+}
+
+/// Origin's extract-an-origin steps return this's origin (with our own hold).
+fn extractOrigin(instance: *runtime.Instance) !?*OriginRecord {
+    return (try recordOf(instance)).retain();
 }
