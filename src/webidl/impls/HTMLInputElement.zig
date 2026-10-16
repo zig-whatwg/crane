@@ -466,6 +466,34 @@ pub fn installHooks() void {
     dom.mutation.registerInsertionStepsCallback(&insertionStepsCallback) catch |err| {
         log.warn("input insertion steps not registered: {}", .{err});
     };
+    dom.cloning_steps.install(&cloningSteps);
+}
+
+/// HTML 4.10.5: "The cloning steps for input elements given node, copy, and
+/// subtree are to propagate the value, dirty value flag, checkedness, dirty
+/// checkedness flag, and indeterminateness from node to copy." They run for
+/// every clone (dom.cloning_steps); an input owns `getInternal`.
+///
+/// Beyond the spec's list, the value carries Crane's record that it was
+/// last changed by a user edit - `editor_text`, the raw edit, and the
+/// `bad_input` it left - which constraint validation reads (tooLong,
+/// tooShort, badInput): Gecko HTMLInputElement::Clone copies
+/// mLastValueChangeWasInteractive and Blink
+/// TextControlElement::CloneNonAttributePropertiesFrom copies
+/// last_change_was_user_edit_, so a clone of an edited control is as
+/// invalid as the original (html/semantics/selectors/pseudo-classes/
+/// invalid-after-clone.html, PASS in all three at wpt.fyi cc74d2669f).
+fn cloningSteps(node: *runtime.Instance, copy: *runtime.Instance, subtree: bool) anyerror!void {
+    _ = subtree;
+    const source = getInternal(node) orelse return;
+    const target = getInternal(copy) orelse return;
+    // The value and its dirty value flag: a non-null value is a dirty one.
+    if (source.value) |value| try target.setValue(value) else target.clearValue();
+    if (source.editor_text) |raw| target.editor_text = try target.allocator.dupe(u8, raw);
+    target.bad_input = source.bad_input;
+    target.checkedness = source.checkedness;
+    target.dirty_checkedness = source.dirty_checkedness;
+    target.indeterminate = source.indeterminate;
 }
 
 /// Initialize instance (creates the instance)

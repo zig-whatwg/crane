@@ -3,14 +3,15 @@
 //! "Clone a node" step 3: "Run any cloning steps defined for node in other
 //! applicable specifications and pass node, copy, and subtree as
 //! parameters." HTML defines them for `script` (copy "already started"),
-//! `input` (value, dirtiness and checkedness) and `template` (the contents).
+//! `input` (value, dirtiness, checkedness and indeterminateness), `textarea`
+//! (raw value and dirtiness) and `template` (the contents).
 //!
 //! The clone algorithm is Node's, and a base type cannot depend on its
 //! subtypes, so each owning impl installs its steps here once, at process
 //! start (its installHooks), and the algorithm runs every installed set. The same shape as `mutation.zig`'s
 //! insertion-steps registry.
 //!
-//! lint-impls: hook for HTMLScriptElement, SVGScriptElement, HTMLTemplateElement, Document
+//! lint-impls: hook for HTMLScriptElement, SVGScriptElement, HTMLTemplateElement, Document, HTMLInputElement, HTMLTextAreaElement
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
