@@ -1026,14 +1026,13 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
     var send_body = try SendBody.convert(instance, body, allocator);
     defer if (send_body) |*b| b.deinit();
 
-    // Browser split, codex-xhr D5: Chrome throws NetworkError, Safari
-    // returns, Firefox throws InvalidStateError after detach. Follow the
-    // spec's inactive-document rejection in this three-way split.
-    if (relevantGlobalIsWindow(instance)) {
-        const document = relevantDocument(instance) orelse return error.InvalidStateError;
-        if (!dom_mod.document_activity.fullyActive(document, runtime.SlabAllocator.generationOf(document)))
-            return error.InvalidStateError;
-    }
+    // No fully-active check here. The XHR Standard checks "fully active"
+    // only in open() step 1; send() has no such step. The browsers split
+    // three ways after the document is detached (xhr/open-url-multi-window-3,
+    // wpt.fyi cc74d2669f): Chrome throws NetworkError, Firefox throws
+    // InvalidStateError, Safari does not throw. With no majority the spec
+    // decides (golden rule 2; integrator ruling at the row 44 merge, review
+    // S1), so send() proceeds as Safari's does.
     // Steps 1-3 precede Document serialization. GET/HEAD discard it.
     if (xhr_state.ready_state != .OPENED or xhr_state.send_flag) return error.InvalidStateError;
     const method = xhr_state.request_method orelse "";
