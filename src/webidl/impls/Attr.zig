@@ -69,13 +69,26 @@ pub const InternalState = struct {
         };
     }
 
+    /// What the state owns, without its Attr (dom.orphan_states): its
+    /// names and its value.
     pub fn deinit(self: *InternalState) void {
         if (self.namespace_uri) |ns| self.allocator.free(ns);
         if (self.prefix) |p| self.allocator.free(p);
         if (self.local_name.len > 0) self.allocator.free(self.local_name);
         if (self.value.len > 0) self.allocator.free(self.value);
+        self.namespace_uri = null;
+        self.prefix = null;
+        self.local_name = "";
+        self.value = &[_]u8{};
     }
 };
+
+/// The Attr's state: a block of the Browser's arena, registered, so an Attr
+/// no deinit reaches still frees its strings at its Browser's end
+/// (dom.orphan_states). An Attr is made for script and wrapped at once, so
+/// none was seen orphaned (crane/cl-orphan-link-style-details.html: 0 at
+/// lane orphanleak's base); this is the exit its strings had none of.
+const States = dom.orphan_states.Swept(.attr, InternalState);
 
 /// Get internal state from instance using shared accessor
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
@@ -89,6 +102,8 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 pub fn installHooks() void {
     // The hook elements and Document's factories fill a new node through.
     dom.attr_nodes.install(.{ .name = &nameHook, .attach = &attachHook, .detach = &detachHook });
+    // The states no deinit reached, at their Browser's end.
+    States.installSweep();
 }
 
 /// Attr's own construction steps: the generated chain runs Node's first.
@@ -97,9 +112,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     _ = args;
     // Initialize Attr internal state
     const state = instance.getState(State);
-    const internal = try runtime.arenaOf(instance).create(InternalState);
-    internal.* = InternalState.init(allocator);
-    state.own._internal = internal;
+    state.own._internal = try States.create(instance, InternalState.init(allocator));
 }
 
 /// The member an attribute keeps its element in (engine.traceChild): an Attr
@@ -176,15 +189,12 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
         // An Attr its wrapper's collection frees has no edge left to end; one
         // freed unwrapped lets go of the element waiting for its wrapper.
         if (internal.element_traced) engine.forgetTracedChild(instance, element_slot);
-        internal.deinit();
-
-        // Return the block itself, not just what it points to.
-        // `internal.deinit()` releases the strings and lists the state
-        // OWNS; without this the state struct stays allocated for the
-        // life of the process - measured at 208 bytes per discarded
-        // element across the impls still doing it this way.
-        runtime.arenaOf(instance).destroy(InternalState, internal);
+        // What the state owns, then the block itself, back to the arena -
+        // not just what it points to: without the block the state struct
+        // stayed allocated for the life of the process (208 bytes per
+        // discarded element, measured, across the impls doing it that way).
         state.own._internal = null;
+        States.destroy(instance);
     }
 }
 
