@@ -70,6 +70,7 @@ pub const Storage = struct {
             .named_getter = .{ .function = "call_getItem" },
             .named_setter = .{ .function = "call_setItem" },
             .named_deleter = .{ .function = "call_removeItem" },
+            .supported_property_name = .{ .function = "isSupportedPropertyName", .implemented = @hasDecl(StorageImpl, "isSupportedPropertyName") },
         };
     };
 
@@ -207,5 +208,18 @@ pub const Storage = struct {
     /// Per WebIDL spec §3.9.3, returns names in list order for proper enumeration
     pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
         return StorageImpl.getSupportedPropertyNames(instance, allocator);
+    }
+
+    /// Whether `name` is one of the supported property names (WebIDL 3.9.7
+    /// step 1, asked for one name), answered without building the list. Gated:
+    /// error.NotImplemented until the impl declares it, and
+    /// Meta.special_operations.supported_property_name says whether it does -
+    /// without it the binding searches getSupportedPropertyNames' list.
+    pub fn isSupportedPropertyName(instance: *runtime.Instance, name: runtime.DOMString) anyerror!bool {
+        if (comptime @hasDecl(StorageImpl, "isSupportedPropertyName")) {
+            return try StorageImpl.isSupportedPropertyName(instance, name);
+        } else {
+            return error.NotImplemented;
+        }
     }
 };

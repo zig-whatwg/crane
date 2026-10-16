@@ -336,6 +336,18 @@ pub fn writeMeta(writer: anytype, model: *const Model, interface_name: []const u
         }
         try writer.writeAll(" },\n");
     }
+    // The per-name query beside the supported property names: gated like an
+    // anonymous operation, on the impl of whichever interface declares the
+    // named getter (an heir's is its parent's).
+    if (model.get(.named_getter)) |e| if (!e.crane_css) {
+        try writer.writeAll("            .supported_property_name = .{ .function = \"isSupportedPropertyName\"");
+        if (e.inherited_from) |parent| {
+            try writer.print(", .implemented = {s}.Meta.special_operations.supported_property_name.?.implemented", .{parent});
+        } else {
+            try writer.print(", .implemented = @hasDecl({s}Impl, \"isSupportedPropertyName\")", .{interface_name});
+        }
+        try writer.writeAll(" },\n");
+    };
     if (model.legacy_override_built_ins) try writer.writeAll("            .legacy_override_built_ins = true,\n");
     if (model.legacy_unenumerable_named_properties) try writer.writeAll("            .legacy_unenumerable_named_properties = true,\n");
     if (!model.named_properties_in_own_keys) try writer.writeAll("            .named_properties_in_own_keys = false,\n");
@@ -385,6 +397,7 @@ pub fn writeInherited(
     }
     if (model.get(.named_getter)) |e| if (e.inherited_from != null) {
         try writer.print("    pub const getSupportedPropertyNames = {s}.getSupportedPropertyNames;\n\n", .{parent});
+        try writer.print("    pub const isSupportedPropertyName = {s}.isSupportedPropertyName;\n\n", .{parent});
     };
 }
 

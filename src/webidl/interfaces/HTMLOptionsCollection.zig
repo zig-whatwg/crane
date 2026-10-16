@@ -75,6 +75,7 @@ pub const HTMLOptionsCollection = struct {
             .indexed_getter = .{ .function = "call_item" },
             .indexed_setter = .{ .function = "call_setter", .implemented = @hasDecl(HTMLOptionsCollectionImpl, "call_setter") },
             .named_getter = .{ .function = "call_namedItem" },
+            .supported_property_name = .{ .function = "isSupportedPropertyName", .implemented = HTMLCollection.Meta.special_operations.supported_property_name.?.implemented },
             .legacy_unenumerable_named_properties = true,
         };
     };
@@ -258,4 +259,6 @@ pub const HTMLOptionsCollection = struct {
     pub const call_namedItem = HTMLCollection.call_namedItem;
 
     pub const getSupportedPropertyNames = HTMLCollection.getSupportedPropertyNames;
+
+    pub const isSupportedPropertyName = HTMLCollection.isSupportedPropertyName;
 };

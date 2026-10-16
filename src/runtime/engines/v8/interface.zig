@@ -1553,6 +1553,11 @@ pub const SpecialBinding = struct {
     named_getter: ?[]const u8 = null,
     named_setter: ?[]const u8 = null,
     named_deleter: ?[]const u8 = null,
+    /// The per-name query (webidl.SpecialOperations.supported_property_name):
+    /// `isSupportedPropertyName`, when the named getter is bound and its impl
+    /// declares one. Null - the default - searches the supported property
+    /// names' list instead.
+    supported_property_name: ?[]const u8 = null,
     legacy_override_built_ins: bool = false,
     legacy_unenumerable_named_properties: bool = false,
     /// [[OwnPropertyKeys]] (3.9.6) step 3 lists the visible named
@@ -1611,6 +1616,7 @@ pub fn specialBinding(comptime Interface: type) SpecialBinding {
                     @compileError(@typeName(Interface) ++ " has a named getter and no getSupportedPropertyNames");
                 binding.named_setter = boundSpecialOperation(Interface, ops.named_setter, .name_value);
                 binding.named_deleter = boundSpecialOperation(Interface, ops.named_deleter, .name);
+                binding.supported_property_name = boundSpecialOperation(Interface, ops.supported_property_name, .name);
                 binding.legacy_override_built_ins = ops.legacy_override_built_ins;
                 binding.legacy_unenumerable_named_properties = ops.legacy_unenumerable_named_properties;
                 binding.named_properties_in_own_keys = ops.named_properties_in_own_keys;
@@ -6559,11 +6565,19 @@ pub fn V8Interface(comptime Interface: type) type {
 
         /// The named property visibility algorithm's step 1 (WebIDL 3.9.7):
         /// whether `name` is one of `instance`'s supported property names
-        /// (2.5.6.2), the generated getSupportedPropertyNames' list. The list
-        /// is made in an arena over a stack buffer that spills to the heap: a
-        /// fixed 8 KB buffer said "not supported" for every name of a long
-        /// list (a Storage of many keys).
+        /// (2.5.6.2). Asked of the impl for this one name when it answers
+        /// that (special.supported_property_name; WebKit's
+        /// isSupportedPropertyName, Blink's NamedPropertyQuery): a masking
+        /// interceptor asks on EVERY property read, and a form's list is a
+        /// walk of its tree (codex-lpo review M1). Otherwise the generated
+        /// getSupportedPropertyNames' list, made in an arena over a stack
+        /// buffer that spills to the heap: a fixed 8 KB buffer said "not
+        /// supported" for every name of a long list (a Storage of many keys).
+        /// A failure answers "not supported", as an unbuildable list does.
         fn isSupportedPropertyName(instance: *runtime.Instance, key: []const u8) bool {
+            if (comptime special.supported_property_name) |query| {
+                return @field(Interface, query)(instance, runtime.DOMString.initInterned(key)) catch false;
+            }
             var fallback = std.heap.stackFallback(8192, std.heap.c_allocator);
             var arena = std.heap.ArenaAllocator.init(fallback.get());
             defer arena.deinit();

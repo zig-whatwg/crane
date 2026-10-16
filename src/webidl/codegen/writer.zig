@@ -4612,6 +4612,18 @@ pub fn writeNamedPropertySupport(
     try writer.writeAll("    pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {\n");
     try writer.print("        return {s}.getSupportedPropertyNames(instance, allocator);\n", .{impl_name});
     try writer.writeAll("    }\n\n");
+    try writer.writeAll("    /// Whether `name` is one of the supported property names (WebIDL 3.9.7\n");
+    try writer.writeAll("    /// step 1, asked for one name), answered without building the list. Gated:\n");
+    try writer.writeAll("    /// error.NotImplemented until the impl declares it, and\n");
+    try writer.writeAll("    /// Meta.special_operations.supported_property_name says whether it does -\n");
+    try writer.writeAll("    /// without it the binding searches getSupportedPropertyNames' list.\n");
+    try writer.writeAll("    pub fn isSupportedPropertyName(instance: *runtime.Instance, name: runtime.DOMString) anyerror!bool {\n");
+    try writer.print("        if (comptime @hasDecl({s}, \"isSupportedPropertyName\")) {{\n", .{impl_name});
+    try writer.print("            return try {s}.isSupportedPropertyName(instance, name);\n", .{impl_name});
+    try writer.writeAll("        } else {\n");
+    try writer.writeAll("            return error.NotImplemented;\n");
+    try writer.writeAll("        }\n");
+    try writer.writeAll("    }\n\n");
 }
 
 /// Write CSS property named handlers for CSSStyleDeclaration and CSSStyleProperties
