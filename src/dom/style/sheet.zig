@@ -441,7 +441,20 @@ const Compiler = struct {
             const end = std.mem.indexOfScalarPos(u8, rest, 1, rest[0]) orelse return;
             rest = rest[end + 1 ..];
         } else if (std.ascii.startsWithIgnoreCase(rest, "url(")) {
-            const end = std.mem.indexOfScalar(u8, rest, ')') orelse return;
+            // The prelude is serialized (css.rules): a url() is
+            // `url("...")`, its string escaped - the `)` that ends it is the
+            // one after the string's closing quote, not one inside it.
+            var i: usize = "url(".len;
+            while (i < rest.len and rest[i] == ' ') i += 1;
+            if (i < rest.len and (rest[i] == '"' or rest[i] == '\'')) {
+                const quote = rest[i];
+                i += 1;
+                while (i < rest.len and rest[i] != quote) : (i += 1) {
+                    if (rest[i] == '\\') i += 1;
+                }
+                i += 1;
+            }
+            const end = std.mem.indexOfScalarPos(u8, rest, @min(i, rest.len), ')') orelse return;
             rest = rest[end + 1 ..];
         } else return;
         rest = std.mem.trim(u8, rest, " \t\n\r\x0c");
@@ -607,6 +620,14 @@ test "layers: names declared in order, nested names dotted, statements first" {
     try testing.expectEqual(@as(?u16, 2), contents.rules.items[1].layer);
     try testing.expect(contents.rules.items[2].layer != null);
     try testing.expectEqual(@as(?u16, null), contents.rules.items[3].layer);
+}
+
+test "an @import whose URL holds a parenthesis keeps its media" {
+    const contents = try Contents.parse(testing.allocator, "@import url('a.css?pipe=trickle(d1)'); @import url(b.css) print; p { color: red }", .{});
+    defer contents.destroy();
+    try testing.expectEqual(@as(usize, 2), contents.imports.items.len);
+    try testing.expect(contents.imports.items[0].media == null);
+    try testing.expect(contents.imports.items[1].media != null);
 }
 
 test "the HTML default namespace marks the sheet HTML-only" {

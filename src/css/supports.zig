@@ -16,6 +16,7 @@ const tokenizer_mod = @import("tokenizer.zig");
 const Tokenizer = tokenizer_mod.Tokenizer;
 const Token = tokenizer_mod.Token;
 const property_parser = @import("property_parser.zig");
+const properties = @import("properties.zig");
 const PropertyParser = property_parser.PropertyParser;
 const ParserContext = @import("context.zig").ParserContext;
 
@@ -36,6 +37,15 @@ pub fn supportsDeclaration(allocator: std.mem.Allocator, property: []const u8, v
     var name_buf: [64]u8 = undefined;
     if (property.len == 0 or property.len > name_buf.len) return false;
     const name = std.ascii.lowerString(&name_buf, property);
+    // A property of the style system's table (css.properties): its grammar.
+    if (properties.lookup(name)) |known| {
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+        var assignments: std.ArrayList(properties.Assignment) = .empty;
+        const ok = properties.parseDeclaration(.{ .allocator = arena.allocator() }, known, value, &assignments) catch return false;
+        for (assignments.items) |a| a.value.release();
+        return ok;
+    }
     if (PropertyParser.getPropertyType(name) == .unknown) return false;
 
     var ctx = ParserContext.noQuirks(allocator);
@@ -386,4 +396,13 @@ test "supports(conditionText): a long condition" {
     const text = "(color: red)";
     @memcpy(big[big.len - text.len ..], text);
     try testing.expect(cond(big));
+}
+
+test "a property of the style system's table is supported with its grammar" {
+    try testing.expect(supportsDeclaration(testing.allocator, "display", "block"));
+    try testing.expect(supportsDeclaration(testing.allocator, "DISPLAY", "inline flow-root"));
+    try testing.expect(!supportsDeclaration(testing.allocator, "display", "blocky"));
+    try testing.expect(supportsDeclaration(testing.allocator, "margin", "1px 2px"));
+    try testing.expect(!supportsDeclaration(testing.allocator, "display", "block !important"));
+    try testing.expect(supportsCondition(testing.allocator, "(display: block)", null));
 }

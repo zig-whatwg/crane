@@ -88,13 +88,17 @@ fn makeImmortal(c: *Contents) void {
 
 fn destroyContents(c: *Contents) void {
     // An immortal text value is not freed by its block's release: free each
-    // one first, then the rest.
+    // one once - a shorthand shares one value among its longhands - and
+    // leave the declarations holding none.
+    var seen: std.AutoHashMapUnmanaged(*css.style_values.SharedText, void) = .empty;
+    defer seen.deinit(std.heap.c_allocator);
     for (c.style_rules.items) |rule| {
         for (rule.block.entries.items) |*e| switch (e.*) {
             .typed => |*d| switch (d.value) {
                 .value => |v| if (v.sharedText()) |t| {
-                    t.destroyImmortal();
                     d.value = .{ .value = css.style_values.Value.kw(.none) };
+                    const slot = seen.getOrPut(std.heap.c_allocator, t) catch continue;
+                    if (!slot.found_existing) t.destroyImmortal();
                 },
                 .css_wide => {},
             },
