@@ -33,4 +33,6 @@
 # value names a wpt.fyi run ("wpt.fyi run <id>: <passes>/<total>"); no other
 # key appears.
 #
-# Entries:
+# Entries: none. The 2026-10-17 audit of every stated browser deviation (lane
+# gr2audit, 108 deviations) found none that all three browsers intentionally
+# declined with evidence. Add an entry only with that evidence for all three.
