@@ -596,6 +596,42 @@ test "importScripts in a service worker: fetched while installing, then answered
     }
 }
 
+test "a module worker's imported modules join its script resource map while it is parsed or installing - not after" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 13);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    try registerJob(&registry, page, "https://example.com/sw.mjs", "https://example.com/", 1);
+    var plan = (try recorder.runQueuedJobs(&registry)).?;
+    try answerFetch(&registry, &plan, "import './dep.mjs';", true);
+    const worker_id = recorder.started.items[0];
+
+    // Parsed: its graph's fetch of dep.mjs is kept - but no classic script
+    // was imported.
+    try registry.addModuleScript(worker_id, .{
+        .url = try testing.allocator.dupe(u8, "https://example.com/dep.mjs"),
+        .body = try testing.allocator.dupe(u8, "export {};"),
+        .content_type = try testing.allocator.dupe(u8, "text/javascript"),
+    });
+    const worker = registry.findWorker(worker_id).?;
+    try testing.expect(!worker.classic_scripts_imported);
+    try testing.expectEqual(@as(usize, 2), worker.resources.items.len);
+    try testing.expectEqualStrings("export {};", worker.resource("https://example.com/dep.mjs").?.body);
+
+    // Installed: a later run's fetch changes nothing - the map is the
+    // installed one, which an update compares against.
+    try registry.workerEvaluated(worker_id, true, true);
+    try registry.lifecycleEventDone(recorder.lifecycle.items[0].op, false);
+    try registry.addModuleScript(worker_id, .{
+        .url = try testing.allocator.dupe(u8, "https://example.com/dep.mjs"),
+        .body = try testing.allocator.dupe(u8, "export const later = 1;"),
+        .content_type = try testing.allocator.dupe(u8, "text/javascript"),
+    });
+    try testing.expectEqualStrings("export {};", worker.resource("https://example.com/dep.mjs").?.body);
+    try testing.expectEqual(@as(usize, 2), worker.resources.items.len);
+}
+
 test "a running worker with nothing left to do is reported idle" {
     var recorder: Recorder = .{ .allocator = testing.allocator };
     defer recorder.deinit();

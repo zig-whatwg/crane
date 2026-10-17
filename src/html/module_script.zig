@@ -263,6 +263,18 @@ pub const Environment = struct {
     /// an imported script otherwise uses the referencing script's base URL.
     referrer: []const u8 = "",
 
+    /// A service worker's "perform the fetch" hook, as far as it keeps the
+    /// responses of the module scripts its graph fetches beyond the root
+    /// (Service Workers Update step 7's hook, step 4; the worker's script
+    /// resource map): run after each such fetch with its URL and response
+    /// (BORROWED for the call). Null - every other loader - changes nothing.
+    fetched: ?FetchedHook = null,
+
+    pub const FetchedHook = struct {
+        context: *anyopaque,
+        run: *const fn (context: *anyopaque, url: []const u8, response: *const fetch.internal.InternalResponse) void,
+    };
+
     /// HTML resolve a module integrity metadata: absent entries give "".
     pub fn resolveIntegrity(self: *const Environment, url: []const u8) []const u8 {
         const lookup = self.resolveIntegrityFn orelse return "";
@@ -536,6 +548,7 @@ fn fetchAndCreate(env: *const Environment, url: []const u8, module_type: ModuleT
     defer fetched.timing_info.deinit();
     const response = fetched.response;
     defer response.deinit();
+    if (env.fetched) |hook| hook.run(hook.context, url, response);
 
     // The same response steps as the async loader, including a response's
     // Referrer-Policy for subsequent static and dynamic imports.

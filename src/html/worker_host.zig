@@ -2590,7 +2590,26 @@ const WorkerModules = struct {
             // CSSStyleSheet is not exposed in a worker: a CSS module request
             // is a TypeError, and nothing is fetched for it.
             .css_allowed = false,
+            // A service worker keeps the modules its graph imports in its
+            // script resource map (ServiceHooks.module_fetched).
+            .fetched = if (self.service != null) .{ .context = self, .run = &serviceModuleFetched } else null,
         };
+    }
+
+    /// module_script.Environment.fetched for a service worker: a good
+    /// response for a module its graph imported is handed to the manager
+    /// (ServiceHooks.module_fetched); a network error, a status that is not
+    /// an ok status or a MIME type that is not JavaScript is not kept (a bad
+    /// import script response, which an update would ignore).
+    fn serviceModuleFetched(context: *anyopaque, url: []const u8, response: *const fetch_mod.internal.InternalResponse) void {
+        const self: *WorkerHost = @ptrCast(@alignCast(context));
+        const service = self.service orelse return;
+        const hook = service.hooks.module_fetched orelse return;
+        if (response.response_type == .@"error" or response.status < 200 or response.status > 299) return;
+        const content_type = response.header_list.getFirstValue("Content-Type") orelse return;
+        if (!module_script.isJavaScriptMimeType(content_type)) return;
+        const body = if (response.body) |b| b.getBytes() else "";
+        hook(service.manager, service.worker_id, url, content_type, body);
     }
 
     fn mapGet(context: *anyopaque, key: []const u8) ?*anyopaque {
@@ -3157,6 +3176,11 @@ pub const ServiceHooks = struct {
     /// fetch hook's steps - answered from its script resource map, or
     /// fetched and recorded there. NetworkError for a network error.
     import_script: *const fn (manager: *anyopaque, worker_id: u64, ctx: runtime.Context, url: []const u8) error{ NetworkError, OutOfMemory }!ImportedScript,
+    /// A module service worker's graph fetched the module script at `url`
+    /// (a good response: `content_type`, `body` BORROWED for the call): the
+    /// manager keeps it in the worker's script resource map while the worker
+    /// is parsed or installing (Registry.addModuleScript).
+    module_fetched: ?*const fn (manager: *anyopaque, worker_id: u64, url: []const u8, content_type: []const u8, body: []const u8) void = null,
 };
 
 /// The service worker scope of the realm `ctx`, when it is a service

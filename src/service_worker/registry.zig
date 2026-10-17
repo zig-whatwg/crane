@@ -2103,6 +2103,28 @@ pub const Registry = struct {
         worker.classic_scripts_imported = true;
     }
 
+    /// A module script a module service worker's graph fetched beyond its
+    /// root (the Update fetch hook's step 4, the "perform the fetch" hook
+    /// for a non-top-level fetch): `resource` (taken) joins the worker's
+    /// script resource map and set of used scripts while the worker is
+    /// parsed or installing - its installed map, which an update compares
+    /// (update_fetch.zig says why: the browsers do) - and is let go after.
+    /// The classic scripts imported flag is not set.
+    pub fn addModuleScript(self: *Registry, worker_id: u64, resource: Resource) Allocator.Error!void {
+        var owned = resource;
+        const worker = self.findWorker(worker_id) orelse return owned.deinit(self.allocator);
+        if (worker.state != .parsed and worker.state != .installing) return owned.deinit(self.allocator);
+        for (worker.resources.items) |*existing| {
+            if (std.mem.eql(u8, existing.url, owned.url)) {
+                existing.deinit(self.allocator);
+                existing.* = owned;
+                return self.markUsed(worker, existing.url);
+            }
+        }
+        try worker.resources.append(self.allocator, owned);
+        try self.markUsed(worker, owned.url);
+    }
+
     fn markUsed(self: *Registry, worker: *Worker, url: []const u8) Allocator.Error!void {
         for (worker.used_scripts.items) |used| if (std.mem.eql(u8, used, url)) return;
         try worker.used_scripts.append(self.allocator, try self.allocator.dupe(u8, url));

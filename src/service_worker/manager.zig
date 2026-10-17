@@ -2355,6 +2355,14 @@ pub const Manager = struct {
         return self.registry.addImportedScript(worker_id, resource, checked_network);
     }
 
+    /// A module service worker's graph fetched `resource` (taken) beyond its
+    /// root: Registry.addModuleScript.
+    pub fn addModuleScript(self: *Manager, worker_id: u64, resource: registry_mod.Resource) Allocator.Error!void {
+        self.lock();
+        defer self.unlock();
+        return self.registry.addModuleScript(worker_id, resource);
+    }
+
     /// The service worker `worker_id`'s thread has ended, and its owner (the
     /// job thread) has joined it: it is not running. Job thread.
     pub fn reportEnded(self: *Manager, worker_id: u64) void {

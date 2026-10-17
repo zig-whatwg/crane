@@ -16,8 +16,16 @@
 //! - An imported script whose fetch is a network error is left out of the
 //!   updated resource map (step 21.5 stores the network error; a worker that
 //!   then imports it gets a network error either way).
-//! - A module script's imports are not compared: only its root is fetched
-//!   here (its graph is fetched by the worker's realm when it runs).
+//! - A module worker's imported modules ARE compared, as step 21 compares a
+//!   classic worker's imported scripts: the spec's fetch hook returns a
+//!   non-top-level fetch uncompared (Update step 7's hook, step 4), but
+//!   Chrome, Firefox and Safari all update a worker whose imported module
+//!   changed (update-bytecheck.https.html and -cors-import's module cases,
+//!   8/8 in each, wpt.fyi df642c4142) - golden rule 2, the browsers.
+//!   Chromium compares every script the installed version stored
+//!   (ServiceWorkerUpdateChecker). The modules are the ones the worker's
+//!   graph fetched while it was parsed or installing
+//!   (Registry.addModuleScript), fetched again here as imported scripts are.
 //!
 //! Spec: https://w3c.github.io/ServiceWorker/#update-algorithm
 
@@ -105,10 +113,11 @@ fn runFallible(allocator: Allocator, plan: *const registry_mod.FetchPlan, fetche
         outcome.has_updated_resources = true;
         return finish(allocator, &outcome, &policy, fetcher);
     }
-    // 21. Unchanged main script, and classic scripts were imported: each
-    // imported script is fetched again and compared - every one, so the
+    // 21. Unchanged main script, and classic scripts were imported - or,
+    // for a module worker, its graph imported modules (see the file's
+    // deviations): each is fetched again and compared - every one, so the
     // map is complete.
-    if (newest.classic_scripts_imported) {
+    if (newest.classic_scripts_imported or newest.worker_type == .module) {
         for (newest.resources) |stored| {
             // 21.1.1. Not the main script.
             if (std.mem.eql(u8, stored.url, plan.script_url)) continue;

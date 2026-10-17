@@ -224,7 +224,28 @@ const OwnerEnd = struct {
 const service_hooks: worker_host.ServiceHooks = .{
     .evaluated = evaluated,
     .import_script = importScript,
+    .module_fetched = moduleFetched,
 };
+
+/// A module service worker's graph fetched `url` (a good response): kept in
+/// the worker's script resource map while it is parsed or installing, for
+/// an update to compare (update_fetch.zig).
+fn moduleFetched(manager_ptr: *anyopaque, worker_id: u64, url: []const u8, content_type: []const u8, body: []const u8) void {
+    const manager = managerOf(manager_ptr);
+    const allocator = manager.allocator;
+    const owned_url = allocator.dupe(u8, url) catch return;
+    const owned_body = allocator.dupe(u8, body) catch {
+        allocator.free(owned_url);
+        return;
+    };
+    const owned_type = allocator.dupe(u8, content_type) catch {
+        allocator.free(owned_url);
+        allocator.free(owned_body);
+        return;
+    };
+    manager.addModuleScript(worker_id, .{ .url = owned_url, .body = owned_body, .content_type = owned_type }) catch |err|
+        log.debug("a service worker's imported module was not kept: {s}", .{@errorName(err)});
+}
 
 fn managerOf(ctx: *anyopaque) *Manager {
     return @ptrCast(@alignCast(ctx));
