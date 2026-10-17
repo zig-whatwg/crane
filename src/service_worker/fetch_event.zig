@@ -195,13 +195,29 @@ pub const Responder = struct {
         const allocator = self.manager.allocator;
         const copy = try copyResponse(allocator, inner);
         errdefer copy.deinit();
+        // 10.2.5.2's body info: a body whose bytes are all here already
+        // (a constructed response's) has its sizes now - the fetching side
+        // reports its timing when the response is handed over, before a
+        // body still arriving is known.
+        if (inner.body) |b| if (b.pipe == null and (b.source != .none or b.data.items.len > 0)) {
+            copy.body_info.encoded_size = b.getBytes().len;
+            copy.body_info.decoded_size = b.getBytes().len;
+        };
+        // An opaque response's body is its internal response's, which script
+        // cannot read (the Response's body is null): it is copied as the
+        // associated response is, from Zig.
+        const filtered = inner.response_type == .@"opaque" or inner.response_type == .opaqueredirect;
+        const internal_body: ?*fetch.internal.Body = if (filtered) inner.body else null;
         // 10.2.5. Its body: read from the body's stream, chunk by chunk.
-        const relay: ?*BodyRelay = if (stream != null) try BodyRelay.create(allocator) else null;
+        const has_body = stream != null or internal_body != null;
+        const relay: ?*BodyRelay = if (has_body) try BodyRelay.create(allocator) else null;
         errdefer if (relay) |r| {
             r.release();
             r.release();
         };
-        if (stream) |s| try BodyPump.start(realm, s, relay.?);
+        if (internal_body) |body| {
+            try InternalBodyPump.start(body, relay.?);
+        } else if (stream) |s| try BodyPump.start(realm, s, relay.?);
         // 10.3, then Handle Fetch step 23: the response, and eventHandled
         // resolved.
         self.wait_to_respond = false;
@@ -327,6 +343,55 @@ const BodyPump = struct {
         self.relay.release();
         self.reader_hold.release();
         self.realm.allocator.destroy(self);
+    }
+};
+
+/// An opaque response's internal body, written to the relay on the worker's
+/// thread: its bytes at once, or - still arriving from the network - as its
+/// pipe hears of them, through a reader of its own (a tee).
+const InternalBodyPump = struct {
+    allocator: Allocator,
+    relay: *BodyRelay,
+    pipe: *fetch.internal.BodyPipe,
+
+    fn start(body: *fetch.internal.Body, relay: *BodyRelay) !void {
+        const pipe = body.pipe orelse {
+            _ = relay.write(body.getBytes());
+            relay.close();
+            relay.release();
+            return;
+        };
+        const branch = try pipe.tee();
+        const self = body.allocator.create(InternalBodyPump) catch |err| {
+            branch.release();
+            return err;
+        };
+        self.* = .{ .allocator = body.allocator, .relay = relay, .pipe = branch };
+        branch.consumer = .{ .context = self, .notify = notify };
+        // What it holds already.
+        notify(self);
+    }
+
+    fn notify(context: *anyopaque) void {
+        const self: *InternalBodyPump = @ptrCast(@alignCast(context));
+        if (self.pipe.hasBytes()) {
+            const bytes = self.pipe.take() catch return self.finish(false);
+            defer self.allocator.free(bytes);
+            if (!self.relay.write(bytes)) return self.finish(false);
+        }
+        switch (self.pipe.state) {
+            .open => {},
+            .closed => self.finish(true),
+            .errored => self.finish(false),
+        }
+    }
+
+    fn finish(self: *InternalBodyPump, closed: bool) void {
+        if (closed) self.relay.close() else self.relay.fail();
+        self.relay.release();
+        self.pipe.consumer = null;
+        self.pipe.release();
+        self.allocator.destroy(self);
     }
 };
 

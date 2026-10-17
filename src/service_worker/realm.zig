@@ -607,7 +607,15 @@ pub fn environmentOf(realm: runtime.Context, create: bool) ?*RealmEnvironment {
     const manager = Manager.of(realm) orelse return null;
     if (manager.endpointOf(realm)) |endpoint| {
         const found = RealmEnvironment.ofEndpoint(endpoint);
-        return if (found.ended) null else found;
+        if (found.ended) return null;
+        // A window whose document is no longer fully active - a closed
+        // popup's, a removed frame's, before its environment ends - is no
+        // environment to reach (stated deviation 2).
+        if (found.kind == .window) {
+            const global = globalOf(realm) orelse return null;
+            if (!dom.document_activity.fullyActive(global, runtime.SlabAllocator.generationOf(global))) return null;
+        }
+        return found;
     }
     if (!create) return null;
     return makeEnvironment(manager, realm) catch |err| {

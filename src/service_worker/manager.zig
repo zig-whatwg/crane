@@ -456,6 +456,9 @@ pub fn copyRequestForWorker(allocator: Allocator, request: *const InternalReques
             return err;
         };
         body.length = bytes.len;
+        // A byte sequence's body: its source is its own bytes (a body with
+        // no source has its bytes only in a stream, which fetch() reads).
+        body.source = .{ .bytes = body.data.items };
         copy.body = .{ .body = body };
     }
     copy.mode = request.mode;
@@ -607,15 +610,16 @@ pub const Manager = struct {
     /// Event and Dispatch steps 15-16), by the registry `other` waiter that
     /// will answer for them.
     pending_fetches: std.ArrayListUnmanaged(PendingFetch) = .empty,
-    /// get() calls for a reserved client, waiting for it to be execution
-    /// ready or discarded (4.3.1 step 2.1.2).
-    parked_gets: std.ArrayListUnmanaged(ParkedGet) = .empty,
     /// Threads blocked in a synchronous fetch a service worker answers, by
     /// their loop's sink: their window clients' data, read before they
     /// blocked, which a client query is answered from meanwhile.
     blocked: std.ArrayListUnmanaged(BlockedThread) = .empty,
     /// Registrations whose Soft Update waits out `soft_update_delay_ms`.
     soft_updates: std.ArrayListUnmanaged(PendingSoftUpdate) = .empty,
+    /// Client.postMessage()s to a reserved client, waiting for the realm
+    /// that adopts it (`createClient`) - or for its discard, which drops
+    /// them.
+    reserved_messages: std.ArrayListUnmanaged(ReservedMessage) = .empty,
     /// WindowClient.navigate() calls waiting for the browsing context they
     /// navigate to have its next window client.
     navigates: std.ArrayListUnmanaged(PendingNavigate) = .empty,
@@ -627,6 +631,11 @@ pub const Manager = struct {
     const PendingMessage = struct {
         waiter: u64,
         message: *WorkerMessage,
+    };
+
+    const ReservedMessage = struct {
+        environment: u64,
+        message: *ClientMessage,
     };
 
     const PendingNavigate = struct {
@@ -643,15 +652,6 @@ pub const Manager = struct {
     const PendingFetch = struct {
         waiter: u64,
         dispatch: *FetchDispatch,
-    };
-
-    const ParkedGet = struct {
-        /// The service worker's environment, whose promise it settles.
-        environment: u64,
-        worker: u64,
-        /// The reserved client's environment.
-        client: u64,
-        promise: u64,
     };
 
     const BlockedThread = struct {
@@ -710,10 +710,11 @@ pub const Manager = struct {
         self.client_queries.deinit(self.allocator);
         for (self.pending_fetches.items) |pending| pending.dispatch.fail();
         self.pending_fetches.deinit(self.allocator);
-        self.parked_gets.deinit(self.allocator);
         for (self.blocked.items) |*thread| thread.deinit(self.allocator);
         self.blocked.deinit(self.allocator);
         self.soft_updates.deinit(self.allocator);
+        for (self.reserved_messages.items) |entry| entry.message.destroy();
+        self.reserved_messages.deinit(self.allocator);
         for (self.navigates.items) |pending| self.allocator.free(pending.origin);
         self.navigates.deinit(self.allocator);
         if (self.owner_sink) |sink| {
@@ -1165,16 +1166,12 @@ pub const Manager = struct {
                         });
                         environment.secure_context = values.secure_context;
                         environment.navigable = values.navigable;
-                        // 4.3.1 step 2.1.2: a get() that waited for it.
-                        self.resumeParkedGets(&requests, environment.id) catch {};
+                        // The messages a service worker sent it meanwhile.
+                        self.deliverReservedMessages(environment);
                         self.navigated(&requests, values.navigable, environment) catch {};
                         break :blk environment.id;
                     }
-                    if (environment.endpoint == null) {
-                        const discarded = environment.id;
-                        self.registry.removeEnvironment(environment);
-                        self.resumeParkedGets(&requests, discarded) catch {};
-                    }
+                    if (environment.endpoint == null) self.discardReserved(environment);
                 }
             };
             const environment = try self.registry.addEnvironment(.{
@@ -1203,25 +1200,18 @@ pub const Manager = struct {
 
     /// A reserved client never handed to `createClient` (taken): its
     /// reserved environment, if Handle Fetch made one, is discarded - HTML's
-    /// environment discarding steps (SW 2.4: its discarded flag) - and a
-    /// get() that waited for it resolves with undefined.
+    /// environment discarding steps (SW 2.4: its discarded flag): a get() of
+    /// it is undefined from now on, and the messages waiting for it go.
     pub fn releaseReserved(self: *Manager, reserved: *ReservedClient) void {
-        var requests: std.ArrayListUnmanaged(WindowDataRequest) = .empty;
-        defer requests.deinit(self.allocator);
         {
             self.lock();
             defer self.unlock();
             if (reserved.environment != 0) {
                 if (self.registry.findEnvironment(reserved.environment)) |environment| {
-                    if (environment.endpoint == null) {
-                        const discarded = environment.id;
-                        self.registry.removeEnvironment(environment);
-                        self.resumeParkedGets(&requests, discarded) catch {};
-                    }
+                    if (environment.endpoint == null) self.discardReserved(environment);
                 }
             }
         }
-        self.postWindowDataRequests(requests.items);
         self.allocator.destroy(reserved);
     }
 
@@ -1381,10 +1371,14 @@ pub const Manager = struct {
                 // Create Fetch Event and Dispatch step 17.4.9: resultingClientId.
                 resulting_client_id = environment.client_id;
             }
-            // 17.4.8: clientId, the request's client's - its initiator's.
-            if (reserved.creator != 0) if (self.registry.findEnvironment(reserved.creator)) |creator| {
-                client_id = creator.client_id;
-            };
+            // 17.4.8: clientId, the request's client's - its initiator's. A
+            // navigation's is the empty string in every browser (wpt.fyi
+            // fetch-event.https.html "existing client id": Chrome, Firefox and
+            // Safari answer "Client ID Not Found" for a frame's navigation);
+            // a worker's script names its owner.
+            if (!request.isNavigationRequest() and reserved.creator != 0) {
+                if (self.registry.findEnvironment(reserved.creator)) |creator| client_id = creator.client_id;
+            }
             worker_id = matched.worker.id;
             registration_id = matched.worker.registration.id;
             soft_update = matched.soft_update;
@@ -1608,6 +1602,11 @@ pub const Manager = struct {
         // as the worker is now.
         const worker = self.registry.findWorker(worker_id) orelse return message.destroy();
         message.source = WorkerInfo.of(self.allocator, Registry.snapshotWorker(worker)) catch return message.destroy();
+        // A reserved client: the message waits for the realm that adopts it.
+        if (environment.endpoint == null) {
+            self.reserved_messages.append(self.allocator, .{ .environment = environment.id, .message = message }) catch message.destroy();
+            return;
+        }
         self.postDelivery(environment, .{ .client_message = message });
     }
 
@@ -1737,10 +1736,17 @@ pub const Manager = struct {
                 self.postDeliveryTo(environment_id, .{ .resolve_client = .{ .promise = promise, .client = null } });
                 return;
             };
-            // 2.1.2. Wait for its execution ready flag or its discarded flag:
-            // a reserved client is asked again once it is either.
-            if (!client.execution_ready) {
-                try self.parked_gets.append(self.allocator, .{ .environment = environment_id, .worker = worker_id, .client = client.id, .promise = promise });
+            // 2.1.2 says to wait for its execution ready flag or its
+            // discarded flag. Firefox and Safari resolve at once with a
+            // reserved client - a navigation's resultingClientId, a worker's
+            // - whose messages then wait for the realm that adopts it
+            // (wpt.fyi 2026-10-16, controlled-iframe-postMessage.https.html:
+            // Chrome 2/5, Firefox 5/5, Safari 5/5 - the fetch handler awaits
+            // clients.get(resultingClientId) before its respondWith()
+            // settles, which a client made execution ready by that very
+            // response could never satisfy). Crane does as they do.
+            if (client.discarded) {
+                self.postDeliveryTo(environment_id, .{ .resolve_client = .{ .promise = promise, .client = null } });
                 return;
             }
             try self.resolveGetClient(&requests, environment_id, client, promise);
@@ -1766,6 +1772,15 @@ pub const Manager = struct {
             self.postDeliveryTo(environment_id, .{ .resolve_client = .{ .promise = promise, .client = try ClientInfo.of(self.allocator, client) } });
             return;
         }
+        // A reserved window client has no realm yet: its window data are a
+        // new document's (visible, not focused, its ancestors not known).
+        if (client.endpoint == null) {
+            var info = try ClientInfo.of(self.allocator, client);
+            errdefer info.deinit(self.allocator);
+            info.window = .{};
+            self.postDeliveryTo(environment_id, .{ .resolve_client = .{ .promise = promise, .client = info } });
+            return;
+        }
         // Step 4: a window client - its window data, on its event loop.
         const query = try self.newQuery(environment_id, promise, .get, 1);
         errdefer self.dropQuery(query);
@@ -1775,24 +1790,38 @@ pub const Manager = struct {
         if (query.outstanding == 0) self.finishQuery(query);
     }
 
-    /// get() calls that waited for the reserved client `client`: it is
-    /// execution ready now, or gone (undefined). Locked.
-    fn resumeParkedGets(self: *Manager, requests: *std.ArrayListUnmanaged(WindowDataRequest), client: u64) Allocator.Error!void {
+    /// The reserved client `environment` is gone - its document is
+    /// another origin's, or none came (HTML "environment discarding steps",
+    /// SW 2.4 its discarded flag): the messages that waited for it go too.
+    /// Locked.
+    fn discardReserved(self: *Manager, environment: *registry_mod.Environment) void {
+        const id = environment.id;
+        self.registry.removeEnvironment(environment);
         var index: usize = 0;
-        while (index < self.parked_gets.items.len) {
-            const parked = self.parked_gets.items[index];
-            if (parked.client != client) {
+        while (index < self.reserved_messages.items.len) {
+            const entry = self.reserved_messages.items[index];
+            if (entry.environment != id) {
                 index += 1;
                 continue;
             }
-            _ = self.parked_gets.swapRemove(index);
-            if (self.registry.findEnvironment(parked.client)) |environment| {
-                if (environment.execution_ready and !environment.discarded) {
-                    try self.resolveGetClient(requests, parked.environment, environment, parked.promise);
-                    continue;
-                }
+            _ = self.reserved_messages.orderedRemove(index);
+            entry.message.destroy();
+        }
+    }
+
+    /// The reserved client `environment` was adopted: the messages that
+    /// waited for it go to its realm now, in the order they were sent.
+    /// Locked.
+    fn deliverReservedMessages(self: *Manager, environment: *registry_mod.Environment) void {
+        var index: usize = 0;
+        while (index < self.reserved_messages.items.len) {
+            const entry = self.reserved_messages.items[index];
+            if (entry.environment != environment.id) {
+                index += 1;
+                continue;
             }
-            self.postDeliveryTo(parked.environment, .{ .resolve_client = .{ .promise = parked.promise, .client = null } });
+            _ = self.reserved_messages.orderedRemove(index);
+            self.postDelivery(environment, .{ .client_message = entry.message });
         }
     }
 

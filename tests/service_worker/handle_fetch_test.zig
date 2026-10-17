@@ -208,6 +208,12 @@ fn controllerOf(manager: *Manager, environment_id: u64) u64 {
     return worker.id;
 }
 
+fn clientMessage(allocator: std.mem.Allocator) !*manager_mod.ClientMessage {
+    const message = try allocator.create(manager_mod.ClientMessage);
+    message.* = .{ .allocator = allocator, .message = null, .origin = try allocator.dupe(u8, "https://example.com") };
+    return message;
+}
+
 fn testResponse(allocator: std.mem.Allocator, status: u16) !*InternalResponse {
     const response = try InternalResponse.init(allocator);
     response.status = status;
@@ -298,7 +304,7 @@ test "a controlled client's subresource request goes to its service worker, and 
     manager.removeEnvironment(fixture.sw_environment);
 }
 
-test "a navigation's reserved client is made and controlled by Handle Fetch, then adopted by its realm; a get() for it waits until then" {
+test "a navigation's reserved client is made and controlled by Handle Fetch, then adopted by its realm; get() finds it at once, and its messages wait for it" {
     var fixture: Fixture = .{};
     try fixture.setUp();
     defer fixture.tearDown();
@@ -317,17 +323,18 @@ test "a navigation's reserved client is made and controlled by Handle Fetch, the
     defer call.release();
     const kept = try fixture.harness.nextDispatch(10_000);
     const resulting = kept.dispatch.resulting_client_id.?;
-    // The navigation request's client is its creator.
-    try testing.expectEqualStrings(&manager.clientIdOf(fixture.page_environment).?, &kept.dispatch.client_id.?);
+    // A navigation's fetch event names no client (as every browser does).
+    try testing.expect(kept.dispatch.client_id == null);
     try testing.expect(reserved.environment != 0);
     // Step 9.8: the reserved client is controlled from now on.
     try testing.expectEqual(fixture.worker_id, controllerOf(manager, reserved.environment));
 
-    // clients.get(resultingClientId) in the fetch event waits: the client is
-    // not execution ready.
+    // clients.get(resultingClientId) in the fetch event resolves at once with
+    // the reserved client (Firefox's and Safari's answer), and a message to it
+    // waits for the realm that adopts it.
     try manager.getClient(fixture.sw_environment, fixture.worker_id, &resulting, 7);
-    try runPosted(fixture.sw_sink, a);
-    try testing.expectEqual(@as(usize, 0), fixture.worker_realm.log.items.len);
+    try drainUntil(fixture.sw_sink, &fixture.worker_realm, "client https://example.com/frame.html", 10_000);
+    manager.postToClient(reserved.environment, fixture.worker_id, try clientMessage(a));
 
     // The worker falls back to the network; the fetch goes on.
     kept.dispatch.call.answer(.fallback);
@@ -343,17 +350,20 @@ test "a navigation's reserved client is made and controlled by Handle Fetch, the
     const id = try manager.createClient(.{
         .kind = .window,
         .origin = "https://example.com",
-        .creation_url = "https://example.com/frame.html",
+        .creation_url = "https://example.com/frame.html?final",
         .secure_context = true,
         .endpoint = &frame.endpoint,
         .reserved = reserved,
     });
     try testing.expectEqualStrings(&resulting, &manager.clientIdOf(id).?);
     try testing.expectEqual(fixture.worker_id, controllerOf(manager, id));
-    // Its window data is read on its loop (the page's), then the worker's
-    // realm hears the client.
+    // The message that waited reaches the realm.
+    try drainUntil(fixture.sink, &frame, "client_message", 10_000);
+    // get() now: its window data is read on its loop (the page's), then the
+    // worker's realm hears the client at its final URL.
+    try manager.getClient(fixture.sw_environment, fixture.worker_id, &resulting, 8);
     var waited: u64 = 0;
-    while (!fixture.worker_realm.heard("client https://example.com/frame.html")) : (waited += 10) {
+    while (!fixture.worker_realm.heard("client https://example.com/frame.html?final")) : (waited += 10) {
         if (waited > 10_000) return error.Timeout;
         try runPosted(fixture.sink, a);
         fixture.sw_sink.waitForWork(10 * std.time.ns_per_ms);
@@ -383,7 +393,8 @@ test "a reserved client the document is not of its origin, or that no document c
         defer call.release();
         const kept = try fixture.harness.nextDispatch(10_000);
         const resulting = kept.dispatch.resulting_client_id.?;
-        try manager.getClient(fixture.sw_environment, fixture.worker_id, &resulting, 8);
+        // A message to the reserved client waits - and goes with it.
+        manager.postToClient(reserved.environment, fixture.worker_id, try clientMessage(a));
         kept.dispatch.call.answer(.fallback);
         kept.dispatch.destroy();
         fixture.harness.done(kept);
@@ -409,6 +420,7 @@ test "a reserved client the document is not of its origin, or that no document c
             // A 204, a network error, an aborted navigation.
             manager.releaseReserved(reserved);
         }
+        try manager.getClient(fixture.sw_environment, fixture.worker_id, &resulting, 9);
         try drainUntil(fixture.sw_sink, &fixture.worker_realm, "client undefined", 10_000);
         for (fixture.worker_realm.log.items) |line| a.free(line);
         fixture.worker_realm.log.clearRetainingCapacity();
