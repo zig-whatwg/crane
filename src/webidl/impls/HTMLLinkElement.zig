@@ -64,6 +64,12 @@ pub const InternalState = struct {
     parser_document_generation: u64 = 0,
     enabled_at_creation: bool = false,
     explicitly_enabled: bool = false,
+    /// The element's associated CSS style sheet (the stylesheet link type's
+    /// "process the linked resource" step 4), owned; null when it has none.
+    sheet: ?*dom_module.style.SheetRecord = null,
+    /// The document whose style engine applies it, with its generation.
+    sheet_document: ?*runtime.Instance = null,
+    sheet_document_generation: u64 = 0,
 };
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
@@ -78,6 +84,8 @@ pub fn installHooks() void {
     dom_module.attribute_change_steps.install("link", &attributeChangeSteps);
     dom_module.style_sheet_owners.installLoadDelay(.{ .delays = &style_sheet_loading.delaysLoadEvent, .blocks_scripts = &style_sheet_loading.blocksScripts });
     dom_module.style_sheet_owners.installLinkParserSteps(&createdByParser);
+    // The CSS style sheet the element owns, which the style engine applies.
+    dom_module.style.hooks.install(.{ .link_sheet_of = &sheetOf, .link_sheet_arrived = &sheetArrived });
     dom_module.mutation.registerPostConnectionStepsCallback(&insertionSteps) catch |err| {
         log.warn("link insertion steps not registered: {}", .{err});
     };
@@ -108,6 +116,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         style_sheet_loading.elementGone(instance);
+        removeSheet(instance, internal);
         runtime.arenaOf(instance).destroy(InternalState, internal);
         state.own._internal = null;
     }
@@ -142,6 +151,10 @@ fn fetchAndProcess(element: *runtime.Instance) void {
     const previous_load = internal.load;
     internal.load = 0;
     defer if (previous_load != 0) style_sheet_loading.cancel(previous_load);
+    // A link that no longer creates a stylesheet link loses its sheet; one
+    // that fetches again keeps it until the new one arrives (the stylesheet
+    // link type's "process the linked resource" step 3).
+    if (!createsStyleSheetLink(element)) removeSheet(element, internal);
     // "Browsing-context connected": connected, and its document has a
     // browsing context.
     if (!(interfaces.Node.get_isConnected(element) catch false)) return;
@@ -388,6 +401,11 @@ fn attributeChangeSteps(
         false;
     if (!refetch) {
         if (std.mem.eql(u8, local_name, "media")) {
+            // The associated CSS style sheet's media follows the attribute.
+            if (internal.sheet) |record| {
+                record.setMedia(value orelse "") catch {};
+                if (internal.sheet_document) |document| dom_module.style.sheetsChanged(document);
+            }
             if (interfaces.Node.get_ownerDocument(element) catch null) |document| style_sheet_loading.queueBlockingMayHaveEnded(document);
         }
         return;
@@ -432,10 +450,80 @@ fn removingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
     if (node.node_type != 1) return;
     const instance = linkOf(node) orelse return;
     const internal = getInternal(instance) orelse return;
+    // No longer connected: the link no longer contributes to styling, and
+    // its sheet goes.
+    removeSheet(instance, internal);
     if (internal.load == 0) return;
     const load = internal.load;
     internal.load = 0;
     style_sheet_loading.cancel(load);
+}
+
+/// Whether the element creates a stylesheet link that contributes to the
+/// styling processing model: connected, rel stylesheet, a supported type,
+/// an href, and no disabled attribute.
+fn createsStyleSheetLink(element: *runtime.Instance) bool {
+    if (!(interfaces.Node.get_isConnected(element) catch false)) return false;
+    if (linkType(element) != .stylesheet) return false;
+    if (!supportedType(attribute(element, "type"))) return false;
+    if (attribute(element, "disabled") != null) return false;
+    const href = attribute(element, "href") orelse return false;
+    return href.len != 0;
+}
+
+/// dom.style's `link_sheet_arrived`: the stylesheet link type's "process
+/// the linked resource" steps 2-4 for a resource that succeeded. "If el no
+/// longer creates an external resource link that contributes to the
+/// styling processing model ... return. If el has an associated CSS style
+/// sheet, remove the CSS style sheet. If success is true, then: create a
+/// CSS style sheet" - type text/css, location the response's URL, owner
+/// node el, media its media attribute, title its title attribute (in a
+/// document tree), the alternate flag for an alternative style sheet that
+/// is not explicitly enabled, the origin-clean flag for a CORS-same-origin
+/// response.
+fn sheetArrived(element: *runtime.Instance, text: []const u8, url: []const u8, origin_clean: bool) void {
+    const internal = getInternal(element) orelse return;
+    if (!createsStyleSheetLink(element)) return;
+    removeSheet(element, internal);
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
+    var root = instance_bridge.getNodeBase(element);
+    while (root) |r| : (root = r.parent_node) if (r.parent_node == null) break;
+    const in_document_tree = if (root) |r| r.node_type == NodeBase.DOCUMENT_NODE else false;
+    const record = dom_module.style.SheetRecord.create(element.ctx.allocator, text, .{
+        .owner_node = element,
+        .title = if (in_document_tree) attribute(element, "title") orelse "" else "",
+        .alternate = isAlternate(element, internal),
+        .media = attribute(element, "media") orelse "",
+        .base_url = url,
+        .origin_clean = origin_clean,
+        .mode = .{ .quirks = dom_module.document_internals.getMode(document) == .quirks },
+    }) catch |err| {
+        log.warn("link style sheet not created: {}", .{err});
+        return;
+    };
+    internal.sheet = record;
+    internal.sheet_document = document;
+    internal.sheet_document_generation = runtime.SlabAllocator.generationOf(document);
+    if (dom_module.style.engine.engineOf(document)) |engine| engine.addOwner(element) catch {};
+}
+
+/// CSSOM "remove a CSS style sheet" of the element's sheet, if it has one.
+fn removeSheet(element: *runtime.Instance, internal: *InternalState) void {
+    const record = internal.sheet orelse return;
+    internal.sheet = null;
+    if (internal.sheet_document) |document| {
+        if (runtime.SlabAllocator.generationOf(document) == internal.sheet_document_generation) {
+            if (dom_module.style.engine.engineOf(document)) |engine| engine.removeOwner(element);
+        }
+    }
+    internal.sheet_document = null;
+    record.destroy();
+}
+
+/// dom.style's `link_sheet_of`.
+fn sheetOf(element: *runtime.Instance) ?*dom_module.style.SheetRecord {
+    const internal = getInternal(element) orelse return null;
+    return internal.sheet;
 }
 
 /// The link element `node` is, if it is one: a brand check on its instance,

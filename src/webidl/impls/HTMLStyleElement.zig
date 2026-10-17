@@ -14,9 +14,13 @@
 //! Step 5, Content Security Policy's inline check, is
 //! dom.csp_violations.shouldBlockInline; a blocked block fires `error`.
 //!
-//! Not modelled, stated: the style sheet is not parsed into CSSOM, so
-//! `sheet` is null and `disabled` has no sheet to disable; render-blocking
-//! is not kept. Critical imports of parser-created stylesheets block scripts.
+//! Step 6 creates the element's CSS style sheet (dom.style.SheetRecord,
+//! which the element owns and the document's style engine applies - lane
+//! style1); step 2 removes it. `disabled` reads and sets its disabled flag.
+//!
+//! Not modelled, stated: `sheet` (the CSSStyleSheet object over the sheet)
+//! is null until the CSSOM objects land (style batch 2); render-blocking is
+//! not kept. Critical imports of parser-created stylesheets block scripts.
 //! HTML names the XML parser
 //! too, but Crane has none (DOMParser's XML types are a TODO): only the HTML
 //! parser drivers make style elements. The fragment parser's (innerHTML)
@@ -63,6 +67,13 @@ pub const InternalState = struct {
     parser_inserting: bool = false,
     parser_document: ?*runtime.Instance = null,
     parser_document_generation: u64 = 0,
+    /// The element's associated CSS style sheet ("create a CSS style
+    /// sheet", step 6), owned; null when it has none.
+    sheet: ?*dom_module.style.SheetRecord = null,
+    /// The document whose style engine applies it, and that document's
+    /// generation when it was registered.
+    sheet_document: ?*runtime.Instance = null,
+    sheet_document_generation: u64 = 0,
 };
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
@@ -76,6 +87,8 @@ pub fn installHooks() void {
     dom_module.style_sheet_owners.installLoadDelay(.{ .delays = &style_sheet_loading.delaysLoadEvent, .blocks_scripts = &style_sheet_loading.blocksScripts });
     dom_module.style_sheet_owners.installParserSteps(.{ .created = &createdByParser, .popped = &poppedByParser });
     dom_module.attribute_change_steps.install("style", &attributeChangeSteps);
+    // The CSS style sheet the element owns, which the style engine applies.
+    dom_module.style.hooks.install(.{ .style_sheet_of = &sheetOf });
     dom_module.mutation.registerInsertionStepsCallback(&insertionSteps) catch |err| {
         log.warn("style insertion steps not registered: {}", .{err});
     };
@@ -109,6 +122,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         style_sheet_loading.elementGone(instance);
+        removeSheet(instance, internal);
         runtime.arenaOf(instance).destroy(InternalState, internal);
         state.own._internal = null;
     }
@@ -137,6 +151,7 @@ fn updateStyleBlock(element: *runtime.Instance) void {
     const previous_load = internal.load;
     internal.load = 0;
     defer if (previous_load != 0) style_sheet_loading.abandon(previous_load);
+    removeSheet(element, internal);
     // 3. If element is not connected, then return.
     if (!(interfaces.Node.get_isConnected(element) catch false)) return;
     // 4. If element's type attribute is present and its value is neither the
@@ -166,9 +181,67 @@ fn updateStyleBlock(element: *runtime.Instance) void {
     // content - and, once its critical subresources are fetched, queue the
     // task that fires load or error at the element.
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
+    createSheet(element, internal, document, text) catch |err| log.warn("style sheet not created: {}", .{err});
     const parser_created = internal.parser_document == document and
         runtime.SlabAllocator.generationOf(document) == internal.parser_document_generation;
     internal.load = style_sheet_loading.startStyle(element, text, parser_created) orelse 0;
+}
+
+/// HTML "create a CSS style sheet" (step 6): type text/css, owner node the
+/// element, media its media attribute, title its title attribute when it is
+/// in a document tree, location null (its base URL is the document's), and
+/// the origin-clean flag set. CSSOM's "add a CSS style sheet" is the
+/// document's style engine's, which the element registers with.
+fn createSheet(element: *runtime.Instance, internal: *InternalState, document: *runtime.Instance, text: []const u8) !void {
+    const allocator = element.ctx.allocator;
+    const media = attributeValue(element, "media");
+    defer if (media) |m| allocator.free(m);
+    var root = instance_bridge.getNodeBase(element);
+    while (root) |r| : (root = r.parent_node) if (r.parent_node == null) break;
+    const in_document_tree = if (root) |r| r.node_type == NodeBase.DOCUMENT_NODE else false;
+    const title = if (in_document_tree) attributeValue(element, "title") else null;
+    defer if (title) |t| allocator.free(t);
+    const base = interfaces.Node.get_baseURI(document) catch null;
+    defer if (base) |b| document.ctx.allocator.free(b);
+    const record = try dom_module.style.SheetRecord.create(allocator, text, .{
+        .owner_node = element,
+        .title = title orelse "",
+        .media = media orelse "",
+        .base_url = base orelse "",
+        .mode = .{ .quirks = dom_module.document_internals.getMode(document) == .quirks },
+    });
+    internal.sheet = record;
+    internal.sheet_document = document;
+    internal.sheet_document_generation = runtime.SlabAllocator.generationOf(document);
+    if (dom_module.style.engine.engineOf(document)) |engine| try engine.addOwner(element);
+}
+
+/// HTML step 2, "remove the CSS style sheet in question" (CSSOM "remove a
+/// CSS style sheet"): out of the document's sheets, and freed.
+fn removeSheet(element: *runtime.Instance, internal: *InternalState) void {
+    const record = internal.sheet orelse return;
+    internal.sheet = null;
+    if (internal.sheet_document) |document| {
+        if (runtime.SlabAllocator.generationOf(document) == internal.sheet_document_generation) {
+            if (dom_module.style.engine.engineOf(document)) |engine| engine.removeOwner(element);
+        }
+    }
+    internal.sheet_document = null;
+    record.destroy();
+}
+
+/// dom.style's `style_sheet_of`.
+fn sheetOf(element: *runtime.Instance) ?*dom_module.style.SheetRecord {
+    const internal = getInternal(element) orelse return null;
+    return internal.sheet;
+}
+
+/// The value of the element's attribute `name` (no namespace), owned by its
+/// allocator; null when absent.
+fn attributeValue(element: *runtime.Instance, name: []const u8) ?[]u8 {
+    var value = (interfaces.Element.call_getAttributeNS(element, null, runtime.DOMString.initInterned(name)) catch null) orelse return null;
+    defer value.deinit(element.ctx.allocator);
+    return element.ctx.allocator.dupe(u8, value.asSlice()) catch null;
 }
 
 /// The element's private nonce slot: what CSP 6.7.3.3 step 2 matches
@@ -252,8 +325,13 @@ fn poppedByParser(element: *runtime.Instance) void {
 
 fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, old_value: ?[]const u8, value: ?[]const u8, namespace: ?[]const u8) void {
     _ = old_value;
-    _ = value;
-    if (namespace != null or getInternal(element) == null or !std.mem.eql(u8, local_name, "media")) return;
+    const internal = getInternal(element) orelse return;
+    if (namespace != null or !std.mem.eql(u8, local_name, "media")) return;
+    // The associated CSS style sheet's media follows the attribute.
+    if (internal.sheet) |record| {
+        record.setMedia(value orelse "") catch {};
+        if (internal.sheet_document) |document| dom_module.style.sheetsChanged(document);
+    }
     if (interfaces.Node.get_ownerDocument(element) catch null) |document| style_sheet_loading.queueBlockingMayHaveEnded(document);
 }
 
@@ -262,11 +340,12 @@ fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, old_
 // ============================================================================
 
 /// Getter for disabled: "If this does not have an associated CSS style
-/// sheet, return false." Style sheets are not parsed into CSSOM, so there is
-/// none to be disabled.
+/// sheet, return false. If this's associated CSS style sheet's disabled flag
+/// is set, return true. Return false."
 pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return false;
+    const internal = getInternal(instance) orelse return false;
+    const record = internal.sheet orelse return false;
+    return record.disabled;
 }
 
 /// Getter for sheet: the associated CSS style sheet - not parsed into CSSOM
@@ -277,8 +356,13 @@ pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 }
 
 /// Setter for disabled: "If this does not have an associated CSS style
-/// sheet, return."
+/// sheet, return. If the given value is true, set this's associated CSS
+/// style sheet's disabled flag. Otherwise, unset this's associated CSS style
+/// sheet's disabled flag."
 pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
+    const internal = getInternal(instance) orelse return;
+    const record = internal.sheet orelse return;
+    if (record.disabled == value) return;
+    record.disabled = value;
+    if (internal.sheet_document) |document| dom_module.style.sheetsChanged(document);
 }
