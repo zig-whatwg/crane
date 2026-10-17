@@ -67,6 +67,10 @@ pub const Implementation = struct {
     /// "Populate request from client" for `global`'s settings object: the
     /// route its requests take while a service worker controls it.
     route_for_global: *const fn (global: *runtime.Instance) ?fetch.internal.ServiceWorkerRoute,
+    /// How many service worker registrations the Browser whose scope is
+    /// `scope` has in its registration map (the WPT runner's question: a
+    /// file that leaves one gets a fresh Browser after it).
+    registration_count: *const fn (scope: *runtime.BrowserScope) usize,
 };
 
 // process-wide: one function table the ServiceWorkerContainer impl installs once at process start (crane.Process), the same for every Browser and thread; the clients themselves are each Browser's (its service worker manager)
@@ -105,6 +109,13 @@ pub fn release(reserved: ?*anyopaque) void {
     impl.release(handle);
 }
 
+/// How many service worker registrations the Browser whose scope is `scope`
+/// holds; 0 with nothing installed.
+pub fn registrationCount(scope: *runtime.BrowserScope) usize {
+    const impl = implementation orelse return 0;
+    return impl.registration_count(scope);
+}
+
 /// The route `global`'s requests take, while a service worker controls it.
 pub fn routeForGlobal(global: *runtime.Instance) ?fetch.internal.ServiceWorkerRoute {
     const impl = implementation orelse return null;
@@ -120,4 +131,7 @@ test "with nothing installed, no client is reserved and no request is routed" {
     try std.testing.expect(routeOfReserved(null) == null);
     release(null);
     created(&realm, .{ .kind = .window, .creation_url = "about:blank", .origin = "null", .secure_context = true });
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    try std.testing.expectEqual(@as(usize, 0), registrationCount(&scope));
 }

@@ -1314,6 +1314,13 @@ pub const Manager = struct {
         return null;
     }
 
+    /// How many registrations the registration map holds.
+    pub fn registrationCount(self: *Manager) usize {
+        self.lock();
+        defer self.unlock();
+        return self.registry.registrations.items.len;
+    }
+
     /// The route a reserved client's request takes to Handle Fetch.
     pub fn routeOfReserved(self: *Manager) service_worker_fetch.Route {
         return .{ .context = self, .client = 0, .handle = handleFetchRoute };

@@ -789,6 +789,13 @@ pub fn releaseReserved(reserved: *anyopaque) void {
     handle.manager.releaseReserved(handle);
 }
 
+/// dom.service_worker_clients' `registration_count`: the registrations in
+/// the map of the Browser whose scope is `scope` (none made: 0).
+pub fn registrationCount(scope: *runtime.BrowserScope) usize {
+    const manager = scope.existing(Manager) orelse return 0;
+    return manager.registrationCount();
+}
+
 /// dom.service_worker_clients' `route_for_global`: "populate request from
 /// client" - the route of a controlled client's requests.
 pub fn routeForGlobal(global: *runtime.Instance) ?@import("fetch").internal.ServiceWorkerRoute {

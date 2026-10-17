@@ -18,6 +18,19 @@ const std = @import("std");
 const host = @import("host");
 const Allocator = std.mem.Allocator;
 
+/// What a finished file left in its Browser that the next file would run
+/// into, as the runner's adapter asks it of the Browser after the file.
+pub const Leftovers = struct {
+    /// Service worker registrations in the Browser's registration map. A
+    /// registration outlives the page that made it - the next file's
+    /// register() at its scope updates it instead of installing, its
+    /// worker answers the next file's fetches at that scope, and
+    /// getRegistrations() lists it - so a file that ends without
+    /// unregistering what it registered hands that to whichever file runs
+    /// next in the process.
+    service_worker_registrations: usize = 0,
+};
+
 /// Outcome of running one test file in one global context.
 ///
 /// The first three mirror WPT's harness statuses; `crash` is ours, written by
@@ -40,8 +53,19 @@ pub const Status = enum {
     /// at 'resources/blank.html'). A CRASH is the supervisor's: the process
     /// is gone, and a new one starts. (A stall the watchdog catches ends the
     /// process too.)
-    pub fn restartsBrowser(self: Status) bool {
-        return self == .timeout or self == .@"error";
+    ///
+    /// And after any file that left a service worker registration behind,
+    /// whatever its status: wptrunner runs each file in a fresh browser
+    /// profile's worth of service worker state only because WPT's tests
+    /// clean up after themselves; one that does not (an error message
+    /// event file that registers at 'resources' and never unregisters) left
+    /// the next files a controller they never asked for (installing.https,
+    /// ServiceWorkerGlobalScope/unregister.https, lane sw1-b3's A/B). The
+    /// runner restarts the Browser - it never unregisters for the file,
+    /// which would run script and the Unregister job on its behalf.
+    pub fn restartsBrowser(self: Status, leftovers: Leftovers) bool {
+        if (self == .crash) return false;
+        return self == .timeout or self == .@"error" or leftovers.service_worker_registrations > 0;
     }
 
     pub fn toString(self: Status) []const u8 {
@@ -927,10 +951,24 @@ test "summarize counts records by status" {
 }
 
 test "the runner restarts its Browser after a file that timed out or errored, and only then" {
-    try std.testing.expect(Status.timeout.restartsBrowser());
-    try std.testing.expect(Status.@"error".restartsBrowser());
-    try std.testing.expect(!Status.ok.restartsBrowser());
+    try std.testing.expect(Status.timeout.restartsBrowser(.{}));
+    try std.testing.expect(Status.@"error".restartsBrowser(.{}));
+    try std.testing.expect(!Status.ok.restartsBrowser(.{}));
     // A crash is the supervisor's: the process that ran the file is gone,
     // and the next file starts in a new one.
-    try std.testing.expect(!Status.crash.restartsBrowser());
+    try std.testing.expect(!Status.crash.restartsBrowser(.{}));
+}
+
+test "the runner restarts its Browser after a file that left a service worker registration, whatever its status" {
+    const left: Leftovers = .{ .service_worker_registrations = 1 };
+    try std.testing.expect(Status.ok.restartsBrowser(left));
+    try std.testing.expect(Status.timeout.restartsBrowser(left));
+    try std.testing.expect(Status.@"error".restartsBrowser(left));
+    try std.testing.expect(Status.ok.restartsBrowser(.{ .service_worker_registrations = 3 }));
+    // A file that unregistered what it registered leaves nothing: an OK
+    // file keeps the Browser.
+    try std.testing.expect(!Status.ok.restartsBrowser(.{ .service_worker_registrations = 0 }));
+    // Leftovers are a question about a live process: after a crash there
+    // is no Browser left to ask.
+    try std.testing.expect(!Status.crash.restartsBrowser(left));
 }

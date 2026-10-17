@@ -44,6 +44,8 @@ const wpt_server = @import("wpt_server.zig");
 
 // Browser module for context type mapping
 const browser = @import("browser");
+const dom = @import("dom");
+const journal = @import("journal.zig");
 
 /// Adapter that provides browser-aligned WPT test execution
 /// with fresh context per test (matching real browser behavior)
@@ -80,6 +82,16 @@ pub const BrowserAdapter = struct {
         self.wpt_browser.deinit();
         self.allocator.free(self.wpt_root);
         self.allocator.destroy(self);
+    }
+
+    /// What the file just run left in this Browser that the next file would
+    /// run into (journal.Status.restartsBrowser decides what to do about
+    /// it): the service worker registrations in its registration map, as
+    /// its service worker manager counts them.
+    pub fn leftovers(self: *BrowserAdapter) journal.Leftovers {
+        return .{
+            .service_worker_registrations = dom.service_worker_clients.registrationCount(self.wpt_browser.browser.scope),
+        };
     }
 
     /// Check if a script has already been loaded in this context
