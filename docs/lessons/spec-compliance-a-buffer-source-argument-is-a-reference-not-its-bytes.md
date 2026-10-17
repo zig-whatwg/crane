@@ -1,6 +1,7 @@
 # Spec Compliance: A buffer source argument is a reference to its object, not its bytes
 
 **Date**: 2026-10-02
+**Status** (2026-10-16): AllowSharedBufferSource follows the same rule now (lane bindsafe): its slice over the backing store read freed memory once a later argument's getter transferred the buffer - see [An argument must survive every later argument's conversion](architecture-an-argument-must-survive-every-later-argument-s-conversion.md).
 **Lesson**: WebIDL makes a BufferSource or ArrayBufferView argument "a reference to the same object", and each spec copies the bytes at its own step; a binding that copies at conversion reads them too early, and one that slices the backing store reads freed memory.
 
 **Why**: The tempting design converts a buffer argument to bytes once, in the binding, so the impl has a plain `[]const u8`. That freezes the bytes BEFORE the operation's own steps run, and those steps can run script first. WebCrypto's encrypt, sign and digest normalize the algorithm (its `name` getter runs script) at step 2 and "get a copy of the bytes held by" the data at step 4; 41 WPT sites alter the plaintext or transfer its buffer inside that getter and expect the change to be seen (or the transferred buffer to read as empty). A slice into the backing store instead of a copy is worse: the transfer frees it under the impl.

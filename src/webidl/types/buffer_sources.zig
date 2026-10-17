@@ -781,6 +781,13 @@ pub const BufferSource = union(enum) {
 pub const SharedArrayBuffer = struct {
     data: []u8,
     allocator: std.mem.Allocator,
+    /// The JavaScript SharedArrayBuffer this IDL value refers to, when it was
+    /// converted from one (an AllowSharedBufferSource argument or member) - an
+    /// engine handle the binding releases with the value, as
+    /// `ArrayBuffer.js` is. The bytes are then the engine's: `data` is empty,
+    /// and a spec reads them at its own step
+    /// (`engine.getCopyOfAllowSharedBufferSourceBytes`).
+    js: ?*anyopaque = null,
 
     /// Create a new SharedArrayBuffer with the specified byte length
     ///
@@ -1062,16 +1069,54 @@ pub const SharedArrayBuffer = struct {
 /// typedef (ArrayBuffer or SharedArrayBuffer or [AllowShared] ArrayBufferView) AllowSharedBufferSource;
 ///
 /// Spec: https://webidl.spec.whatwg.org/#AllowSharedBufferSource
+///
+/// One converted from JavaScript is a REFERENCE to its object (WebIDL 3.2.26),
+/// as a BufferSource is: `.array_buffer` an ArrayBuffer struct whose `js` is
+/// the buffer, `.shared_array_buffer` a SharedArrayBuffer struct whose `js` is
+/// the shared buffer, `.array_buffer_view` a view whose `js` is the view (over
+/// either kind of buffer). None holds bytes. A spec copies them at its own
+/// step - "get a copy of the bytes held by the buffer source",
+/// `engine.getCopyOfAllowSharedBufferSourceBytes(realm,
+/// source.jsValue(runtime.JSValue).?, allocator)` - after every argument has
+/// converted, so a buffer a later argument's getter transferred reads as
+/// empty instead of as its freed backing store. (This was a `.byte_slice`
+/// over the backing store, taken at conversion: TextDecoder.decode read the
+/// store its options' `stream` getter had freed.)
 pub const AllowSharedBufferSource = union(enum) {
     array_buffer: *ArrayBuffer,
     shared_array_buffer: *SharedArrayBuffer,
     array_buffer_view: ArrayBufferView,
-    /// Non-owning byte slice - used for temporary views into external buffers (e.g., V8 TypedArray)
-    /// The caller is responsible for ensuring the underlying data remains valid during use.
+    /// Bytes held in Zig, never the engine's: a value made in Zig, or the
+    /// empty value an absent input converts to. Borrowed from its maker.
     byte_slice: []const u8,
 
-    /// Returns a byte slice view of the buffer data
+    /// The JavaScript object this value refers to - an ArrayBuffer, a
+    /// SharedArrayBuffer, a typed array or a DataView - when it was converted
+    /// from one; null for a value made in Zig. An argument's is BORROWED for
+    /// the call: the binding releases it once the operation returns (see
+    /// `ArrayBufferView.jsHandle`).
+    pub fn jsHandle(self: AllowSharedBufferSource) ?*anyopaque {
+        return switch (self) {
+            .array_buffer => |buffer| buffer.js,
+            .shared_array_buffer => |buffer| buffer.js,
+            .array_buffer_view => |view| view.jsHandle(),
+            .byte_slice => null,
+        };
+    }
+
+    /// `jsHandle()` as a `.handle` JSValue of the runtime's type, which the
+    /// caller names (this module sits below `runtime`):
+    /// `source.jsValue(runtime.JSValue)` - what
+    /// `engine.getCopyOfAllowSharedBufferSourceBytes` takes. Borrowed exactly
+    /// as `jsHandle()` is. Null for a value made in Zig.
+    pub fn jsValue(self: AllowSharedBufferSource, comptime JSValue: type) ?JSValue {
+        return JSValue.fromHandle(self.jsHandle() orelse return null);
+    }
+
+    /// The bytes of a value made in Zig. One converted from JavaScript holds
+    /// no bytes here - `error.BytesHeldByEngine` (see the type's comment).
     pub fn asBytes(self: AllowSharedBufferSource) ![]const u8 {
+        if (self.jsHandle() != null) return error.BytesHeldByEngine;
         return switch (self) {
             .array_buffer => |buf| {
                 if (buf.isDetached()) return error.DetachedBuffer;

@@ -2724,6 +2724,13 @@ bool v8_Value_IsArrayBuffer(Global<Value>* value) {
     return val->IsArrayBuffer();
 }
 
+bool v8_Value_IsSharedArrayBuffer(Global<Value>* value) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsSharedArrayBuffer();
+}
+
 bool v8_Value_IsArrayBufferView(Global<Value>* value) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);

@@ -888,6 +888,8 @@ pub extern fn v8_Value_IsConstructor(value: *Value) bool;
 
 pub extern fn v8_Value_IsArray(value: *Value) bool;
 pub extern fn v8_Value_IsArrayBuffer(value: *Value) bool;
+/// IsSharedArrayBuffer(V): a SharedArrayBuffer (never a view over one).
+pub extern fn v8_Value_IsSharedArrayBuffer(value: *Value) bool;
 pub extern fn v8_Value_IsArrayBufferView(value: *Value) bool;
 pub extern fn v8_Value_IsDate(value: *Value) bool;
 

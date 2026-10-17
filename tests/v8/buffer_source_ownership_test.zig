@@ -4,7 +4,7 @@
 //! The third predicate in the family that `retention_predicate_test.zig` covers,
 //! and the one that had already gone wrong when it was written. `needsArgCleanup`
 //! answered "owned" for *any* slice, including the `byte_slice` arm of
-//! `AllowSharedBufferSource`, which `conv.convertAllowSharedBufferSource` builds
+//! `AllowSharedBufferSource`, which `conv.convertAllowSharedBufferSource` built
 //! by pointing straight at `v8_ArrayBuffer_Data`:
 //!
 //!     _ = allocator; // Not needed - we create a non-owning view
@@ -30,9 +30,14 @@
 //! makes an ordinary owned argument still get freed — a predicate that answered
 //! TRUE too widely would leak every string.
 //!
-//! BufferSource left the list on 2026-10-02: its conversion now makes a
-//! reference to the object (tests/v8/buffer_source_argument_test.zig), which
-//! the argument owns until it is freed.
+//! BufferSource left the list on 2026-10-02, and AllowSharedBufferSource on
+//! 2026-10-16 (lane bindsafe): both conversions make a reference to the object
+//! (tests/v8/buffer_source_argument_test.zig, allow_shared_buffer_source_test.zig),
+//! which the argument owns until it is freed - the slice did not survive a
+//! later argument's getter that transferred the buffer. No conversion is
+//! non-owning today; AllowSharedBufferSource's `byte_slice` arm (Zig's own
+//! bytes) is still never freed, by `freeBufferSourceArg` rather than by this
+//! predicate.
 
 const std = @import("std");
 const v8 = @import("v8");
@@ -41,38 +46,31 @@ const runtime = @import("runtime");
 const nonOwning = v8.interface_mod.argConversionIsNonOwning;
 const types = v8.interface_mod.non_owning_arg_types;
 
-test "AllowSharedBufferSource is non-owning - the crash this predicate exists for" {
-    try std.testing.expect(nonOwning(types.AllowSharedBufferSource));
-}
-
-test "BufferSource and ArrayBufferView are NOT non-owning: they hold a reference to free" {
-    // A BufferSource was listed here while its conversion failed for every
-    // value. It is now a reference to the object it was converted from
-    // (conv.convertBufferSource): the argument's handle, and for an
-    // ArrayBuffer a struct allocated for it, both released when the argument
-    // is freed (freeBufferSourceArg). Non-owning would skip that free and
-    // leak a Global per call.
+test "BufferSource, AllowSharedBufferSource and ArrayBufferView are NOT non-owning: they hold a reference to free" {
+    // Each is a reference to the object it was converted from
+    // (conv.convertBufferSource, convertAllowSharedBufferSource): the
+    // argument's handle, and for an ArrayBuffer or a SharedArrayBuffer a
+    // struct allocated for it, both released when the argument is freed
+    // (freeBufferSourceArg). Non-owning would skip that free and leak a
+    // Global per call.
+    try std.testing.expect(!nonOwning(types.AllowSharedBufferSource));
     try std.testing.expect(!nonOwning(types.BufferSource));
     try std.testing.expect(!nonOwning(types.ArrayBufferView));
 }
 
-test "the recognised union really does carry a bare slice arm" {
-    // Why the predicate has to be consulted BEFORE any structural rule: the arm
-    // is a `[]const u8`, indistinguishable by shape from a string that
-    // `fromV8String` allocated. If this assertion ever fails the arm was
-    // renamed or retyped, and whoever did that needs to re-check
-    // `convertAllowSharedBufferSource` before trusting the predicate.
-    const info = @typeInfo(types.AllowSharedBufferSource).@"union";
-    var saw_slice = false;
-    inline for (info.fields) |field| {
-        const fi = @typeInfo(field.type);
-        if (fi == .pointer and fi.pointer.size == .slice) {
-            try std.testing.expectEqualStrings("byte_slice", field.name);
-            try std.testing.expectEqual(u8, fi.pointer.child);
-            saw_slice = true;
-        }
-    }
-    try std.testing.expect(saw_slice);
+test "AllowSharedBufferSource's bare slice arm is never freed - the crash this predicate existed for" {
+    // The arm is a `[]const u8`, indistinguishable by shape from a string that
+    // `fromV8String` allocated. freeConvertedArg routes the whole type to
+    // freeBufferSourceArg before any structural rule, and that leaves the arm
+    // alone: a stack buffer stands in for memory no Zig allocator owns, and the
+    // testing allocator panics ("Invalid free") if anything frees it.
+    var backing = [_]u8{ 1, 2, 3 };
+    const allocator = std.testing.allocator;
+    v8.interface_mod.freeConvertedArg(types.AllowSharedBufferSource, allocator, .{ .byte_slice = &backing });
+    const webidl_opt = @import("webidl").Opt(types.AllowSharedBufferSource);
+    v8.interface_mod.freeConvertedArg(webidl_opt, allocator, webidl_opt.passed(.{ .byte_slice = &backing }));
+    v8.interface_mod.freeArgument(webidl_opt, allocator, webidl_opt.passed(.{ .byte_slice = &backing }));
+    try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3 }, &backing);
 }
 
 test "an unrecognised type defaults to OWNED, so ordinary arguments still get freed" {
@@ -93,8 +91,7 @@ test "an unrecognised type defaults to OWNED, so ordinary arguments still get fr
 
     // Notably including a union that merely *looks* like a buffer source. The
     // predicate matches the real type, not the shape, because the question it
-    // answers is "which conversion produced this", and only
-    // `convertAllowSharedBufferSource` declines to allocate.
+    // answers is "which conversion produced this".
     const LookalikeUnion = union(enum) { array_buffer: *anyopaque, byte_slice: []const u8 };
     try std.testing.expect(!nonOwning(LookalikeUnion));
 }
@@ -106,8 +103,8 @@ test "an unrecognised type defaults to OWNED, so ordinary arguments still get fr
 // `convertBodyInit` COPIES a buffer (an ArrayBuffer struct and its bytes) into
 // BodyInit's BufferSource arm, so nothing a later argument's getter does to the
 // buffer can leave the impl reading freed memory. That makes this BufferSource
-// owned, where the type-level predicate above - rightly, for TextDecoder's
-// views - says "never free". `freeBodyInitArg` frees BodyInit by arm; these
+// owned, where everywhere else a BufferSource is a reference whose handle is
+// released and whose bytes are the engine's. `freeBodyInitArg` frees BodyInit by arm; these
 // tests run it under std.testing.allocator, which fails on a leak AND on a
 // free of anything it did not allocate.
 

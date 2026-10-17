@@ -3,17 +3,21 @@
 //! WHATWG Encoding Standard § 8.1:
 //!   `USVString decode(optional [AllowShared] BufferSource input, ...)`
 //!
-//! The binding layer converts that argument with
-//! `conv.convertAllowSharedBufferSource`, which does not allocate — it points a
-//! `[]const u8` at V8's ArrayBuffer backing store and returns
+//! The binding layer converted that argument with
+//! `conv.convertAllowSharedBufferSource`, which did not allocate — it pointed a
+//! `[]const u8` at V8's ArrayBuffer backing store and returned
 //! `AllowSharedBufferSource{ .byte_slice = ... }`. The generic argument-cleanup
 //! path could not tell that slice apart from one `fromV8String` had allocated,
 //! freed it, and the DebugAllocator aborted the process with
 //! `panic: Invalid free` on every `decode()` over a non-empty buffer — 67 of 149
 //! `encoding/` WPT files, including all fifteen `textdecoder-*.any.js`.
 //!
-//! These tests pin the property that made the free invalid, from the encoding
-//! side: the `byte_slice` arm ALIASES its input. Nothing here allocates, so
+//! The conversion is a reference to the object now (lane bindsafe,
+//! 2026-10-16: the slice read freed memory once a later argument's getter
+//! transferred the buffer), and decode() copies the bytes at its step 3. The
+//! `byte_slice` arm stays for bytes made in Zig, and these tests pin the
+//! property that made the free invalid, from the encoding side: the
+//! `byte_slice` arm ALIASES its input. Nothing here allocates, so
 //! `std.testing.allocator` has nothing to report; that is the point.
 
 const std = @import("std");
@@ -66,8 +70,8 @@ test "a decoded byte_slice survives the decode call unmodified" {
 }
 
 test "an empty byte_slice is still a view, not a freeable allocation" {
-    // `convertAllowSharedBufferSource` returns `.{ .byte_slice = &[_]u8{} }` for
-    // a detached or zero-length buffer. That case never crashed — the cleanup
+    // `convertAllowSharedBufferSource` returned `.{ .byte_slice = &[_]u8{} }` for
+    // a detached or zero-length buffer (and still does for null). That case never crashed — the cleanup
     // path skipped zero-length slices — which is exactly why the bug read as
     // "some decodes abort" rather than "decode is broken".
     const source = AllowSharedBufferSource{ .byte_slice = &[_]u8{} };

@@ -251,13 +251,13 @@ pub fn call_decode(instance: *runtime.Instance, input: webidl.Opt(typedefs.Allow
     // Step 2: Set do not flush to options["stream"]
     internal.do_not_flush = stream;
 
-    // Step 3: Get bytes from input and add to I/O queue
-    // If input was not passed, use empty byte slice
-    const input_bytes: []const u8 = if (input.was_passed) extractBytesFromBufferSource(input.value) else &[_]u8{};
-
-    // IMPORTANT: Free the AllowSharedBufferSource after we're done with the bytes
-    // The V8 conversion allocates an ArrayBuffer struct and data that must be freed
-    defer if (input.was_passed) freeBufferSource(instance.ctx.allocator, input.value);
+    // Step 3: If input is given, then push a copy of input to this's I/O
+    // queue. The copy is taken here, after options converted: a buffer its
+    // `stream` getter transferred holds no bytes (the binding hands over a
+    // reference to the object, borrowed for the call, not its bytes).
+    const input_copy: ?[]u8 = if (input.was_passed) try copyOfInput(instance.ctx, input.value) else null;
+    defer if (input_copy) |copy| instance.ctx.allocator.free(copy);
+    const input_bytes: []const u8 = input_copy orelse &[_]u8{};
 
     // Combine pending bytes (I/O queue) with new input
     var bytes: []const u8 = input_bytes;
@@ -283,43 +283,16 @@ pub fn call_decode(instance: *runtime.Instance, input: webidl.Opt(typedefs.Allow
     return try processAndSerialize(internal, instance.ctx.allocator, bytes, state.own.fatal, state.own.ignoreBOM, is_last);
 }
 
-/// Extract bytes from AllowSharedBufferSource
-fn extractBytesFromBufferSource(source: typedefs.AllowSharedBufferSource) []const u8 {
-    // AllowSharedBufferSource is a tagged union - use its asBytes method
-    return source.asBytes() catch return &[_]u8{};
-}
-
-/// Free an AllowSharedBufferSource that was allocated during V8 conversion
-///
-/// For most V8 conversions, we now use a non-owning byte_slice variant that
-/// doesn't require any cleanup. This function handles cleanup for cases where
-/// actual allocation occurred.
-fn freeBufferSource(allocator: std.mem.Allocator, source: typedefs.AllowSharedBufferSource) void {
-    switch (source) {
-        .array_buffer => |buf| {
-            // Free the data array (unless it's empty - indicated by ptr being null or len being 0)
-            if (buf.data.len > 0) {
-                allocator.free(buf.data);
-            }
-            // Free the ArrayBuffer struct itself
-            allocator.destroy(buf);
-        },
-        .shared_array_buffer => |buf| {
-            // SharedArrayBuffer uses its own deinit which handles aligned deallocation
-            var mutable_buf = buf;
-            mutable_buf.deinit();
-            // Note: The SharedArrayBuffer struct itself may need freeing if it was heap-allocated
-            // For now, we assume it manages its own memory via its stored allocator
-        },
-        .array_buffer_view => {
-            // ArrayBufferView references an existing buffer, doesn't own the memory
-            // Nothing to free here
-        },
-        .byte_slice => {
-            // Non-owning view into V8 buffer - nothing to free
-            // The V8 GC manages the underlying buffer lifetime
-        },
+/// "A copy of input" (Encoding decode() step 3): WebIDL "get a copy of the
+/// bytes held by the buffer source" - an ArrayBuffer's or SharedArrayBuffer's
+/// bytes, a view's own window of its buffer, none when detached. OWNED by
+/// `realm.allocator`.
+fn copyOfInput(realm: runtime.Context, input: typedefs.AllowSharedBufferSource) ![]u8 {
+    if (input.jsValue(runtime.JSValue)) |value| {
+        return (try @import("engine").getCopyOfAllowSharedBufferSourceBytes(realm, value, realm.allocator)) orelse error.TypeError;
     }
+    // A value made in Zig, or the empty value null converts to.
+    return realm.allocator.dupe(u8, input.asBytes() catch &[_]u8{});
 }
 
 /// Process bytes through decoder and run serialize I/O queue algorithm
