@@ -481,6 +481,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [SameObject caching must not bypass lifecycle checks](codegen-sameobject-caching-must-not-bypass-lifecycle-checks.md) - When a generated [SameObject] contradicts a WPT file every browser passes, check the current IDL first: the pinned snapshot can lag the standard (ancestorOrigins lost [SameObject] upstream).
 - [Native SameObject getters can leak unwrapped instances](codegen-native-sameobject-getters-can-leak-unwrapped-instances.md) - Share scalar reads before acquiring wrapper objects; measure Zig and C++ allocations separately.
 - [A partial interface's [SecureContext] is its members', not the interface's](codegen-a-partial-interfaces-securecontext-is-its-members-not-the-interfaces.md) - Before honouring an interface-level extended attribute, check that a partial or mixin did not put it there: some attributes scope members, not the interface.
+- [A generated import can rest on a typedef an upstream IDL file happens to declare](codegen-a-generated-import-can-rest-on-a-typedef-an-upstream-idl-file-happens-to-declare.md) - When a generated file relies on something being generated, codegen must generate it itself; find out by deleting an upstream file in a test fixture, not by waiting for upstream to delete it.
 
 ### Testing
 - [A headers file applies only to the path it names](testing-a-headers-file-applies-only-to-the-path-it-names.md) - Before diagnosing a header-driven failure, confirm the header is sent (`curl -sI`): a misnamed headers file fails silently, in your tests and in upstream ones.
@@ -663,6 +664,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Freeze the tree while a test run compiles](workflow-freeze-the-tree-while-a-test-run-compiles.md) - Under load, `zig build test` reads sources for ~20 minutes - an edit landing in that window is compiled into some test binaries and not others.
 - [A rule with no check that passes today is a suggestion](workflow-a-rule-with-no-check-that-passes-today-is-a.md) - A rule needs a check that passes today and fails on regression.
 - [Tools are Zig, and so are their gates](workflow-tools-are-zig-and-so-are-their-gates.md) - Write the tool in the language the repo builds with, tests first.
+- [webref's curated branch is the IDL WPT asserts](workflow-webref-s-curated-branch-is-the-idl-wpt-asserts.md) - Pin Crane's IDL to the package WPT imports, not to the repository's default branch; match on blob hashes and report the residuals file by file.
 - [WindowOrWorkerGlobalScope is inherited; its includer state goes through `dom.global_settings`](workflow-windoworworkerglobalscope-is-inherited-its.md) - A mixin with includer state is still implemented once.
 - [Never overwrite a binary macOS has already run; remove it first](workflow-never-overwrite-a-binary-macos-has-already-run.md) - Exit 137 before the first line of output is code signing, not the engine.
 - [Build after each lane merge - two clean merges can make a broken tree](workflow-build-after-each-lane-merge.md) - "Each branch is green" says nothing about their merge.
