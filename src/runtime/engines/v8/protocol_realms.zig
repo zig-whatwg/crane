@@ -21,6 +21,8 @@ const realm_v8 = @import("realm_v8.zig");
 const template_registry = @import("template_registry.zig");
 const page_realm = @import("page_realm.zig");
 const protocol_agents = @import("protocol_agents.zig");
+const support = @import("protocol_support.zig");
+const conversions = @import("conversions.zig");
 const namespaces = @import("namespaces");
 
 const Context = engine.Context;
@@ -925,4 +927,116 @@ pub fn functionRealm(value: JSValue) ?Context {
     };
     var revoked = false;
     return realmOfOwnedContext(ffi.v8_Value_GetFunctionRealm(handle, &revoked));
+}
+
+// ============================================================================
+// A global object's built-in functions
+// ============================================================================
+
+/// The engine protocol's globalBuiltinFunction: ECMAScript
+/// CreateBuiltinFunction(steps, length, name, « », realm) for a function
+/// `realm`'s global object is associated with (Streams 7.2.2 and 7.3.2, the
+/// byte length and count queuing strategy size functions), made on the
+/// first call for `key` and the same function on every later one.
+///
+/// Blink's GetCachedSizeFunction (core/streams/queuing_strategy_common.cc):
+/// the function is kept under a private symbol on the realm's global - an
+/// edge the collector traces from the global, never a root - so a realm
+/// whose navigable is gone is still collected with it. Here the global
+/// OBJECT holds it, not the global proxy: a WindowProxy a navigation hands
+/// on to a later realm would carry the old realm's function into the new
+/// one. Function::New with ConstructorBehavior::kThrow
+/// (v8_Function_NewWithData): no [[Construct]] and no "prototype", and not
+/// cached in the context's template instantiation cache. OWNED: a hold of
+/// the function.
+pub fn globalBuiltinFunction(realm: Context, key: []const u8, function_name: []const u8, length: u32, function: *const engine.BuiltinFunction) Error!engine.Owned {
+    const entered = try support.enter(realm);
+    defer entered.leave();
+    const isolate = entered.isolate;
+    const context = entered.context();
+    const global = ffi.v8_Context_GetRealGlobal(context) orelse return error.OperationFailed;
+    defer ffi.v8_Object_Dispose(global);
+    // The function made for `key` before: the global object keeps it.
+    if (ffi.v8_Object_GetPrivateRef(global, key.ptr, @intCast(key.len))) |made| return support.owned(made);
+
+    // 2. Let F be ! CreateBuiltinFunction(steps, length, name, « »,
+    //    globalObject's relevant Realm). The steps reach `function` through
+    //    the closure's [[data]], an External the function keeps.
+    const external = ffi.v8_External_New(isolate, @ptrCast(@constCast(function))) orelse return error.OperationFailed;
+    defer ffi.v8_External_Dispose(external);
+    const made = try support.newClosure(entered, builtinFunctionSteps, @ptrCast(external), @intCast(length));
+    errdefer ffi.v8_Global_Dispose(made);
+    const name = try support.newString(isolate, function_name);
+    defer ffi.v8_String_Dispose(name);
+    ffi.v8_Function_SetName(@ptrCast(made), name);
+    // 3. Set globalObject's ... function to F: kept by the global object.
+    ffi.v8_Object_SetPrivateRef(global, key.ptr, @intCast(key.len), made);
+    return support.owned(made);
+}
+
+/// A built-in function's argument as its steps see it (engine.BuiltinSteps):
+/// a primitive as itself, a string as its UTF-8 (owned by `allocator`),
+/// anything else a handle BORROWED for the call.
+fn builtinArgument(isolate: *ffi.Isolate, context: *ffi.Context, value: *ffi.Value, allocator: std.mem.Allocator) !JSValue {
+    if (ffi.v8_Value_IsUndefined(value)) return JSValue.jsUndefined;
+    if (ffi.v8_Value_IsNull(value)) return JSValue.jsNull;
+    if (ffi.v8_Value_IsBoolean(value)) return .{ .boolean = ffi.v8_Value_BooleanValue(value, isolate) };
+    if (ffi.v8_Value_IsNumber(value)) return .{ .number = ffi.v8_Value_NumberValue(value, context) };
+    if (ffi.v8_Value_IsString(value)) {
+        const str: *ffi.String = @ptrCast(value);
+        const len = ffi.v8_String_Utf8Length(str);
+        if (len <= 0) return JSValue.fromStringRef("");
+        const buffer = try allocator.alloc(u8, @intCast(len));
+        _ = ffi.v8_String_WriteUtf8(str, buffer.ptr, len);
+        return JSValue.fromStringOwned(buffer);
+    }
+    return .{ .handle = .{ .ptr = @ptrCast(value) } };
+}
+
+/// What a globalBuiltinFunction's function runs: its steps, given its
+/// arguments; what they return is its result.
+fn builtinFunctionSteps(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const data = info.getData();
+    defer ffi.v8_Global_Dispose(data);
+    const function: *const engine.BuiltinFunction = @ptrCast(@alignCast(ffi.v8_External_Value(@ptrCast(data)) orelse return));
+    const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer ffi.v8_Context_Dispose(context);
+
+    const allocator = std.heap.c_allocator;
+    const argc: usize = @intCast(@max(info.length(), 0));
+    var handles_buf: [4]*ffi.Value = undefined;
+    var values_buf: [4]JSValue = undefined;
+    const handles = if (argc <= handles_buf.len) handles_buf[0..argc] else allocator.alloc(*ffi.Value, argc) catch return;
+    defer if (argc > handles_buf.len) allocator.free(handles);
+    const values = if (argc <= values_buf.len) values_buf[0..argc] else allocator.alloc(JSValue, argc) catch return;
+    defer if (argc > values_buf.len) allocator.free(values);
+    var made: usize = 0;
+    defer for (handles[0..made], values[0..made]) |handle, *value| {
+        value.deinit(allocator);
+        ffi.v8_Global_Dispose(handle);
+    };
+    while (made < argc) : (made += 1) {
+        // An owned Global for each argument; its value borrows it.
+        handles[made] = info.get(@intCast(made));
+        values[made] = builtinArgument(isolate, context, handles[made], allocator) catch {
+            ffi.v8_Global_Dispose(handles[made]);
+            return;
+        };
+    }
+
+    const result = function.steps(function.data, values) catch |err| switch (err) {
+        // Already thrown: leave it in flight.
+        error.ExceptionPending => return,
+        else => {
+            conversions.throwWebIDLErrorFromContext(isolate, context, @errorName(err));
+            return;
+        },
+    };
+    const returned = conversions.toV8Value(JSValue, isolate, context, result) catch return;
+    info.setReturnValue(returned);
+    // The result is the engine's (engine.BuiltinSteps): a value made for it,
+    // or a handle the steps handed over, released now that V8 holds its own.
+    // An instance's wrapper is the wrapper cache's.
+    if (result != .instance) ffi.v8_Global_Dispose(returned);
 }

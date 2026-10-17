@@ -246,6 +246,10 @@ pub fn defineBuiltinFunction(realm: Context, function_name: []const u8, length: 
     return worker_realm.defineBuiltinFunction(realm, function_name, length, function) catch |err| protocolError(err);
 }
 
+pub fn globalBuiltinFunction(realm: Context, key: []const u8, function_name: []const u8, length: u32, function: *const engine.BuiltinFunction) Error!engine.Owned {
+    return protocol_realms.globalBuiltinFunction(realm, key, function_name, length, function);
+}
+
 // ============================================================================
 // 4.3 Running script
 // ============================================================================
