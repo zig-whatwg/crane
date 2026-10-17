@@ -615,6 +615,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A matching hash does not prove the algorithm was recognized](testing-a-matching-hash-does-not-prove-recognition.md) - Before trusting a passing parser test, ask whether ignoring its input would pass it too.
 
 ### Debugging
+- [A parsed selector borrows its source text](debugging-a-parsed-selector-borrows-its-source-text.md) - Before keeping a parse result, find out what it borrows: an AST of slices lives no longer than its source.
 - [A per-call allocation in a lonely size class maps a page every call](debugging-a-per-call-allocation-in-a-lonely-size-class-maps-a-page.md) - Count allocations AND look at where they land: a per-call allocation that empties a DebugAllocator page costs a syscall pair; put call-lifetime data on the stack.
 
 - [An interface on the bindings' skip list is never installed](debugging-an-interface-on-the-bindings-skip-list-is-never-installed.md) - When an event is dispatched but its listener sees `undefined`, check that the event's interface is installed at all - grep the bindings' skip list before tracing the dispatch.
