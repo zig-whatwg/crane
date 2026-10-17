@@ -1975,8 +1975,13 @@ const Wait = struct {
         const record = for (internal.records.items) |r| {
             if (r.id == self.record_id) break r;
         } else return;
-        record.waits -= 1;
-        defer collect(internal);
+        // Delivery can run script (notably focus-reset blur handlers) that
+        // starts another navigation and collects finished records. Keep
+        // this wait's existing hold until every delivery step has returned.
+        defer {
+            record.waits -= 1;
+            collect(internal);
+        }
         const outcome = self.outcome orelse return;
         switch (outcome) {
             .fulfilled => switch (self.phase) {
