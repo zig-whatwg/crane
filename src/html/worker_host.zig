@@ -2125,15 +2125,18 @@ const SharedConnect = struct {
         }) catch return self.fireError();
         defer fetched.deinit();
 
+        // The global scope's policy container, from the response - or the
+        // creator's, for a data: or blob: script. Fails closed: a clone that
+        // cannot be made is the start's failure, never a worker without its
+        // creator's policies.
+        const policy_container = workerPolicyContainer(allocator, &fetched, self.owner_realm) catch return self.fireError();
         var start: WorkerStart = .{
             .source = fetched.source,
             .script_url = fetched.final_url,
             .worker_type = self.worker_type,
             // 8. The global scope's name (its SharedScope has it too).
             .name = self.name,
-            // The global scope's policy container, from the response - or
-            // the creator's, for a data: or blob: script.
-            .policy_container = workerPolicyContainer(allocator, &fetched, self.owner_realm),
+            .policy_container = policy_container,
             .cookie_jar = creatorCookieJar(self.owner_realm),
             .owner_realm = self.owner_realm,
             .owner_worker = self.ownerWorker(),
@@ -2280,8 +2283,16 @@ const Connect = struct {
 /// script - for blob:, "create a policy container from a fetch response"
 /// step 1 takes its blob URL entry's environment's, which is the creator's
 /// here: the blob store answers only the creator's origin), else the
-/// response's. A new container when neither can be had.
-pub fn workerPolicyContainer(allocator: Allocator, fetched: *workers.FetchedScript, owner_realm: runtime.Context) fetch_mod.internal.PolicyContainer {
+/// response's. A new container when neither can be had: an owner whose
+/// global has no policy container to give.
+///
+/// Fails closed: a clone that cannot be allocated is OutOfMemory, and the
+/// caller fails the worker's start (an `error` event at the Worker or
+/// SharedWorker). It used to fall back to a NEW container - no CSP list, the
+/// default referrer policy - so a data: or blob: worker whose creator's
+/// container could not be cloned ran without its creator's policies (lane
+/// leaks2; tests/html/worker_policy_container_oom_test.zig).
+pub fn workerPolicyContainer(allocator: Allocator, fetched: *workers.FetchedScript, owner_realm: runtime.Context) error{OutOfMemory}!fetch_mod.internal.PolicyContainer {
     const PolicyContainer = fetch_mod.internal.PolicyContainer;
     // Step 2: the response's, when a network fetch made one. Upgrade
     // Insecure Requests 3.3: a worker inherits its creator's insecure
@@ -2296,7 +2307,7 @@ pub fn workerPolicyContainer(allocator: Allocator, fetched: *workers.FetchedScri
     // Step 1: "If workerGlobalScope's url is local but its scheme is not
     // "blob"": a clone of its owner's - the one owner a dedicated worker,
     // or a shared worker's creator, has.
-    if (creatorPolicyContainer(owner_realm)) |owner| return owner.clone(allocator) catch PolicyContainer.init(allocator);
+    if (creatorPolicyContainer(owner_realm)) |owner| return owner.clone(allocator);
     return PolicyContainer.init(allocator);
 }
 

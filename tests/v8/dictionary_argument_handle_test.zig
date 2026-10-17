@@ -1,5 +1,7 @@
 //! A dictionary argument's own handle goes when the call returns, when the
-//! dictionary has a sequence member.
+//! dictionary has a sequence member - or callback members (an operation's:
+//! NavigateEvent.intercept's shape; the constructors' are in
+//! dictionary_callback_member_handle_test.zig).
 //!
 //! The binding releases an argument's Global right after converting it when
 //! no part of the converted value can alias it (`argHandleIsCopied`). A
@@ -135,8 +137,8 @@ const Probe = struct {
         pub const exposed_in_all_contexts = true;
         pub const properties = .{};
         pub const methods = .{};
-        pub const static_methods = .{.{ "take", "call_static_take", 1 }};
-        pub const own_methods = .{"take"};
+        pub const static_methods = .{ .{ "take", "call_static_take", 1 }, .{ "intercept", "call_static_intercept", 0 } };
+        pub const own_methods = .{ "take", "intercept" };
         pub const inherited_methods = .{};
         pub const eager_properties = .{};
         pub const lazy_properties = .{};
@@ -150,7 +152,54 @@ const Probe = struct {
         _ = message;
         _ = options;
     }
+
+    /// NavigateEvent.intercept(optional NavigationInterceptOptions)'s
+    /// conversion path: an operation whose dictionary has callback members.
+    /// A callback it is given is taken over and given back, as
+    /// Navigation's interceptHook takes each into its handler lists.
+    pub fn call_static_intercept(instance: *runtime.Instance, options: webidl.Opt(InterceptShaped)) anyerror!void {
+        _ = instance;
+        if (!options.was_passed) return;
+        if (options.value.precommitHandler) |handler| engine.takeCallbackFunction(@ptrCast(handler)).release();
+        if (options.value.handler) |handler| engine.takeCallbackFunction(@ptrCast(handler)).release();
+    }
 };
+
+/// dictionaries.NavigationInterceptOptions' callback members (callbacks.
+/// NavigationPrecommitHandler, NavigationInterceptHandler): function
+/// pointers, codegen's type for a callback function.
+const InterceptShaped = struct {
+    precommitHandler: ?*const fn (controller: *runtime.Instance) runtime.JSValue = null,
+    handler: ?*const fn () runtime.JSValue = null,
+};
+
+test "a dictionary whose members are callback functions is copied" {
+    try std.testing.expect(copied(InterceptShaped));
+    try std.testing.expect(copied(webidl.Opt(InterceptShaped)));
+}
+
+test "an operation's dictionary argument with callback members leaves no handle per call" {
+    // NavigateEvent.intercept({handler}) kept two Globals per call (Codex
+    // row 55, navigation-api/navigate-event/intercept-resolve.html): the
+    // dictionary's own - its callback members made the dictionary rule
+    // answer "kept" - and the Get handle of the absent precommitHandler,
+    // which converts to null. An absent member of each kind, and a present
+    // handler the operation takes over.
+    _ = try realm();
+    const control = try handleBytesLeftBy("BceDictionaryProbe.intercept();");
+    const one = oneHandleBytes();
+    inline for (.{
+        "BceDictionaryProbe.intercept({});",
+        "BceDictionaryProbe.intercept({ handler: (globalThis.handlerOnce ||= () => 0) });",
+        "BceDictionaryProbe.intercept({ precommitHandler: (globalThis.precommitOnce ||= () => 0), handler: (globalThis.handlerOnce ||= () => 0) });",
+    }) |statement| {
+        const left = try handleBytesLeftBy(statement);
+        if (left - control >= one * 8) {
+            std.debug.print("64 x `{s}` left {d} bytes of global handles; the control left {d} ({d} a handle)\n", .{ statement, left, control, one });
+            return error.HandlesLeaked;
+        }
+    }
+}
 
 test "a dictionary argument with a sequence member leaves no handle per call" {
     _ = try realm();

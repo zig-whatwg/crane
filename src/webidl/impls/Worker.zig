@@ -365,14 +365,22 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     };
     defer fetched.deinit();
 
+    // "Initialize a worker global scope's policy container", from the
+    // response - or this realm's global's, for a data: or blob: script. It
+    // fails closed: a clone of this realm's container that cannot be made
+    // fails the start (`error` at the worker), and the worker never runs
+    // without the policies it inherits.
+    const policy_container = worker_host.workerPolicyContainer(ctx.allocator, &fetched, ctx) catch |err| {
+        log.debug("the worker's policy container could not be made: {}", .{err});
+        queueStartFailure(instance);
+        return instance;
+    };
     var start: worker_host.WorkerStart = .{
         .source = fetched.source,
         .script_url = fetched.final_url,
         .worker_type = worker_type,
         .name = name,
-        // "Initialize a worker global scope's policy container", from the
-        // response - or this realm's global's, for a data: or blob: script.
-        .policy_container = worker_host.workerPolicyContainer(ctx.allocator, &fetched, ctx),
+        .policy_container = policy_container,
         // The worker shares its creator's cookie jar - the user agent's.
         .cookie_jar = creatorCookieJar(ctx),
         .owner_realm = ctx,
