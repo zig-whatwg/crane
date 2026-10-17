@@ -846,53 +846,56 @@ pub fn setRangeText(allocator: std.mem.Allocator, value: []const u8, selection: 
 /// again each time: a table the count lives in can move.
 pub const PendingSelectTasks = *const fn (element: *Instance) ?*u32;
 
-/// A queued select event task.
-const SelectTask = struct {
-    element: *Instance,
-    generation: u64,
-    pending: PendingSelectTasks,
-    allocator: std.mem.Allocator,
+/// The existing kept-control task, shared by select and picker cancel.
+fn ControlEventTask(comptime event_type: []const u8) type {
+    return struct {
+        const Self = @This();
+        element: *Instance,
+        generation: u64,
+        pending: PendingSelectTasks,
+        allocator: std.mem.Allocator,
 
-    fn run(data: ?*anyopaque) void {
-        const self: *SelectTask = @ptrCast(@alignCast(data orelse return));
-        defer self.finish();
-        if (runtime.SlabAllocator.generationOf(self.element) != self.generation) return;
-        // A realm retired by a navigation runs none of its tasks.
-        if (self.element.ctx.engine_ctx == null) return;
-        // A task runs from the event loop, in no realm: it runs in the
-        // element's.
-        engine.runTaskInRealm(self.element.ctx, steps, self) catch |err| {
-            log.warn("select event task not run: {}", .{err});
-        };
-    }
-
-    /// `Task.drop`: the loop is ending with the task still queued.
-    fn drop(data: ?*anyopaque) void {
-        const self: *SelectTask = @ptrCast(@alignCast(data orelse return));
-        self.finish();
-    }
-
-    /// Fire an event named select at the element, with the bubbles attribute
-    /// initialized to true.
-    fn steps(data: ?*anyopaque) void {
-        const self: *SelectTask = @ptrCast(@alignCast(data orelse return));
-        fireSimpleEvent(self.element, "select", .{ .bubbles = true }) catch |err| {
-            log.warn("select not fired: {}", .{err});
-        };
-    }
-
-    /// The task has left the queue, run or not: the element needs keeping
-    /// only while another select task waits.
-    fn finish(self: *SelectTask) void {
-        if (runtime.SlabAllocator.generationOf(self.element) == self.generation) {
-            if (self.pending(self.element)) |count| {
-                if (count.* > 0) count.* -= 1;
-                if (count.* == 0) engine.releasePlatformObject(self.element);
-            }
+        fn run(data: ?*anyopaque) void {
+            const self: *Self = @ptrCast(@alignCast(data orelse return));
+            defer self.finish();
+            if (runtime.SlabAllocator.generationOf(self.element) != self.generation) return;
+            // A realm retired by a navigation runs none of its tasks.
+            if (self.element.ctx.engine_ctx == null) return;
+            // A task runs from the event loop, in no realm: it runs in the
+            // element's.
+            engine.runTaskInRealm(self.element.ctx, steps, self) catch |err| {
+                log.warn("{s} event task not run: {}", .{ event_type, err });
+            };
         }
-        self.allocator.destroy(self);
-    }
-};
+
+        /// `Task.drop`: the loop is ending with the task still queued.
+        fn drop(data: ?*anyopaque) void {
+            const self: *Self = @ptrCast(@alignCast(data orelse return));
+            self.finish();
+        }
+
+        /// Fire the named event at the element, with the bubbles attribute
+        /// initialized to true.
+        fn steps(data: ?*anyopaque) void {
+            const self: *Self = @ptrCast(@alignCast(data orelse return));
+            fireSimpleEvent(self.element, event_type, .{ .bubbles = true }) catch |err| {
+                log.warn("{s} not fired: {}", .{ event_type, err });
+            };
+        }
+
+        /// The task has left the queue, run or not: the element needs keeping
+        /// only while another control event task waits.
+        fn finish(self: *Self) void {
+            if (runtime.SlabAllocator.generationOf(self.element) == self.generation) {
+                if (self.pending(self.element)) |count| {
+                    if (count.* > 0) count.* -= 1;
+                    if (count.* == 0) engine.releasePlatformObject(self.element);
+                }
+            }
+            self.allocator.destroy(self);
+        }
+    };
+}
 
 /// "Queue an element task on the user interaction task source given the
 /// element to fire an event named select at the element, with the bubbles
@@ -900,14 +903,24 @@ const SelectTask = struct {
 /// as a browser's does: a detached control whose selection changed still
 /// fires select at its onselect.
 pub fn queueSelectEvent(element: *Instance, pending: PendingSelectTasks) void {
+    queueControlEvent(element, pending, "select");
+}
+
+/// HTML file picker cancellation: a trusted, bubbling element task.
+pub fn queueCancelEvent(element: *Instance, pending: PendingSelectTasks) void {
+    queueControlEvent(element, pending, "cancel");
+}
+
+fn queueControlEvent(element: *Instance, pending: PendingSelectTasks, comptime event_type: []const u8) void {
+    const Task = ControlEventTask(event_type);
     const loop = element.ctx.getOptionalEventLoop() orelse {
-        log.warn("select event not queued: the element's realm has no event loop", .{});
+        log.warn("{s} event not queued: the element's realm has no event loop", .{event_type});
         return;
     };
     const count = pending(element) orelse return;
     const allocator = element.ctx.allocator;
-    const task = allocator.create(SelectTask) catch |err| {
-        log.warn("select event not queued: {}", .{err});
+    const task = allocator.create(Task) catch |err| {
+        log.warn("{s} event not queued: {}", .{ event_type, err });
         return;
     };
     task.* = .{
@@ -920,7 +933,7 @@ pub fn queueSelectEvent(element: *Instance, pending: PendingSelectTasks) void {
     // ended with the last.
     if (count.* == 0) engine.keepPlatformObjectAlive(element);
     count.* += 1;
-    loop.queueTask(.{ .callback = &SelectTask.run, .context = task, .drop = &SelectTask.drop });
+    loop.queueTask(.{ .callback = &Task.run, .context = task, .drop = &Task.drop });
 }
 
 /// DOM "fire an event" named `event_type` at `target`: a trusted Event with
@@ -941,17 +954,41 @@ pub fn fireSimpleEvent(target: *Instance, comptime event_type: []const u8, init:
 // labels (§ 4.10.18 "labels")
 // ============================================================================
 
-/// A new NodeList of `element`'s labels, in tree order.
-///
-/// Stated deviation: the spec's list is live and the same object on every
-/// read; this one is a snapshot made on each read, as Blink's was before its
-/// LabelsNodeList.
+/// A new live NodeList of `element`'s labels, in tree order. The NodeList's
+/// existing root hold keeps the control alive while script retains the list.
 pub fn labelsNodeList(element: *Instance) !*Instance {
-    const allocator = element.ctx.allocator;
-    const labels = try labelsOf(allocator, element);
-    defer allocator.free(labels);
-    const list = try interfaces.NodeList.init(allocator, element.ctx);
-    errdefer list.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(list));
-    try @import("dom").node_lists.setStatic(list, labels);
+    const list = try interfaces.NodeList.init(element.ctx.allocator, element.ctx);
+    errdefer runtime.Instance.deinit(list);
+    try @import("dom").node_lists.labels(list, element);
     return list;
 }
+
+/// HTML 4.10.19: labels returns the same live list. Reuse ElementInternals'
+/// traced-child cache: the wrapper graph owns an engine-backed list, while
+/// an engine-free control frees the native list at teardown.
+pub const LabelsCache = struct {
+    list: ?*Instance = null,
+    generation: u64 = 0,
+    traced: bool = false,
+
+    pub fn get(self: *LabelsCache, element: *Instance) !*Instance {
+        if (@import("forms/root.zig").liveChild(self.list, self.generation)) |list| return list;
+        const list = try labelsNodeList(element);
+        if (element.ctx.hasEngine()) {
+            engine.traceChild(element, list, .{ .name = "labels" });
+            self.traced = true;
+        }
+        self.list = list;
+        self.generation = runtime.SlabAllocator.generationOf(list);
+        return list;
+    }
+
+    pub fn deinit(self: *LabelsCache, element: *Instance) void {
+        if (self.traced) {
+            engine.forgetTracedChild(element, .{ .name = "labels" });
+        } else if (@import("forms/root.zig").liveChild(self.list, self.generation)) |list| {
+            runtime.Instance.deinit(list);
+        }
+        self.* = .{};
+    }
+};

@@ -63,6 +63,8 @@ pub const Request = struct {
     /// The URL, parsed and serialized.
     url: []const u8,
     noopener: bool = false,
+    /// A form's noreferrer link type selects the no-referrer policy.
+    noreferrer: bool = false,
     history_behavior: HistoryBehavior = .auto,
     /// Form submission step 22: the form document had not completely loaded
     /// when the form was submitted - decided then, not when the planned

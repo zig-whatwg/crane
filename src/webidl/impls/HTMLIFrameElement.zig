@@ -3456,7 +3456,7 @@ fn frameWindowByName(current_document: *runtime.Instance, name: []const u8) ?*ru
 /// stated: the top-level page cannot be replaced - navigating it does only
 /// what its Location can (a fragment navigation).
 fn navigateByTarget(source_document: *runtime.Instance, request: dom_module.navigables.Request) void {
-    navigateByTargetWithReferrerPolicy(source_document, request, .empty);
+    navigateByTargetWithReferrerPolicy(source_document, request, if (request.noreferrer) .no_referrer else .empty);
 }
 
 /// `navigateByTarget`, with navigate's referrerPolicy - a hyperlink's. It

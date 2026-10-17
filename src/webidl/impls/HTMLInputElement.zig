@@ -139,9 +139,13 @@ pub const ValueMode = enum { value, default, default_on, filename };
 
 /// The element's type attribute's state.
 pub fn typeOf(instance: *runtime.Instance) InputType {
-    const value = attribute(instance, "type") orelse return .text;
-    defer instance.ctx.allocator.free(value);
-    return InputType.fromAttribute(value);
+    return InputType.fromAttribute(borrowedAttribute(instance, "type"));
+}
+
+/// Borrow only across synchronous parsing, never across a mutation/callback.
+fn borrowedAttribute(instance: *runtime.Instance, comptime name: []const u8) ?[]const u8 {
+    const data = dom.element_data.of(instance) orelse return null;
+    return (dom.element_data.getAttributeByNamespaceAndLocalName(data, null, name) orelse return null).value;
 }
 
 /// The value of a content attribute in no namespace, owned by the element's
@@ -186,6 +190,7 @@ const Registry = runtime.InstanceRegistry(.html_input_element, InternalState);
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     validation: forms.Validation = .{},
+    labels: form_associated.LabelsCache = .{},
     /// Owned. Non-null means the dirty value flag is set; always sanitized.
     value: ?[]u8 = null,
     /// The last user edit's owned raw text. Null after every script value
@@ -442,11 +447,12 @@ fn userEdit(instance: *runtime.Instance, edit: dom.form_controls.UserEdit) !void
         raw[0 .. raw.len - 1]
     else
         raw;
-    const sanitized = try sanitize(internal.allocator, instance, input_type, visible);
-    defer internal.allocator.free(sanitized);
-    try internal.setValue(sanitized);
+    var sanitized = try sanitize(internal.allocator, instance, input_type, visible);
+    defer sanitized.deinit(internal.allocator);
+    const empty = sanitized.isEmpty();
+    try internal.setValue(sanitized.asSlice());
     internal.editor_text = raw;
-    internal.bad_input = input_type == .number and raw.len != 0 and sanitized.len == 0;
+    internal.bad_input = input_type == .number and raw.len != 0 and empty;
     // HTML 4.10.19.3–4: only this non-IDL path records a user edit.
     internal.selection = .{ .start = edit.selection_start, .end = edit.selection_end, .direction = .none };
 }
@@ -527,6 +533,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     if (Registry.get(instance)) |internal| {
         dropFiles(instance, internal);
+        internal.labels.deinit(instance);
         if (internal.validation.validity_traced) @import("engine").forgetTracedChild(instance, .{ .name = "validity" });
         internal.deinit();
     }
@@ -565,6 +572,15 @@ fn attributeChangeSteps(
         const previous = InputType.fromAttribute(old_value);
         const now = InputType.fromAttribute(value);
         if (previous != now) typeChangeSteps(instance, previous, now);
+    } else if (std.mem.eql(u8, local_name, "alpha") or std.mem.eql(u8, local_name, "colorspace")) {
+        // Color state: update a color well control color on either attribute
+        // change. Clean values still reparse their value attribute on read.
+        if (typeOf(instance) != .color) return;
+        if (internal.value) |dirty| {
+            var sanitized = sanitize(internal.allocator, instance, .color, dirty) catch return;
+            defer sanitized.deinit(internal.allocator);
+            internal.setValue(sanitized.asSlice()) catch {};
+        }
     } else if (std.mem.eql(u8, local_name, "checked")) {
         // "When the checked content attribute is added, if the control does
         // not have dirty checkedness, the user agent must set the checkedness
@@ -619,9 +635,9 @@ fn typeChangeSteps(instance: *runtime.Instance, previous: InputType, now: InputT
     // 6. The value sanitization algorithm of the new state, on a dirty value
     // (a clean one is sanitized when read).
     if (internal.value) |dirty| {
-        const sanitized = sanitize(internal.allocator, instance, now, dirty) catch return;
-        defer internal.allocator.free(sanitized);
-        internal.setValue(sanitized) catch {};
+        var sanitized = sanitize(internal.allocator, instance, now, dirty) catch return;
+        defer sanitized.deinit(internal.allocator);
+        internal.setValue(sanitized.asSlice()) catch {};
     }
     // 7-9. Newly selectable: the text entry cursor at the beginning, the
     // direction "none".
@@ -811,7 +827,7 @@ fn runActivationBehavior(instance: *runtime.Instance, event: *runtime.Instance) 
                 log.warn("form not reset: {}", .{err});
             };
         },
-        // File Upload and Color show a picker: there is none to show.
+        .file, .color => showPickerIfApplicable(instance, input_type),
         else => {},
     }
     // 3-4. The popover target attribute activation behavior is not
@@ -878,9 +894,12 @@ fn valueIn(instance: *runtime.Instance, input_type: InputType) ![]u8 {
         // "value": the element's value - the dirty one, or the value
         // attribute sanitized.
         .value => if (internal.value) |v| allocator.dupe(u8, v) else blk: {
-            const given = attribute(instance, "value");
-            defer if (given) |g| instance.ctx.allocator.free(g);
-            break :blk sanitize(allocator, instance, input_type, given orelse "");
+            const given = borrowedAttribute(instance, "value") orelse "";
+            var sanitized = try sanitize(allocator, instance, input_type, given);
+            // The getter promises owned storage; a clean sanitizer result
+            // borrows its input only until this synchronous copy.
+            defer sanitized.deinit(allocator);
+            break :blk allocator.dupe(u8, sanitized.asSlice());
         },
         // "default": the value attribute, or the empty string.
         .default => attribute(instance, "value") orelse allocator.dupe(u8, ""),
@@ -931,16 +950,17 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
             defer internal.allocator.free(old);
             // 2-4. Set the value to the new value, set the dirty value flag,
             // and invoke the value sanitization algorithm.
-            const sanitized = try sanitize(internal.allocator, instance, input_type, value.asSlice());
-            defer internal.allocator.free(sanitized);
-            try internal.setValue(sanitized);
+            var sanitized = try sanitize(internal.allocator, instance, input_type, value.asSlice());
+            defer sanitized.deinit(internal.allocator);
+            const changed = !std.mem.eql(u8, old, sanitized.asSlice());
+            const end = if (changed) form_associated.utf16Length(sanitized.asSlice()) else 0;
+            try internal.setValue(sanitized.asSlice());
             // 5. "If the element's value (after applying the value
             // sanitization algorithm) is different from oldValue, and the
             // element has a text entry cursor position, move the text entry
             // cursor position to the end of the text control, unselecting any
             // selected text and resetting the selection direction to "none"."
-            if (!std.mem.eql(u8, old, sanitized)) {
-                const end = form_associated.utf16Length(sanitized);
+            if (changed) {
                 internal.selection = .{ .start = end, .end = end, .direction = .none };
             }
         },
@@ -982,22 +1002,39 @@ fn trimAsciiWhitespace(text: []const u8) []const u8 {
 }
 
 /// The value sanitization algorithm of `input_type`, applied to `value`.
-/// The result is owned by `allocator`.
-fn sanitize(allocator: std.mem.Allocator, instance: *runtime.Instance, input_type: InputType, value: []const u8) ![]u8 {
+/// Clean values are borrowed. Only a changed serialization allocates.
+fn sanitize(allocator: std.mem.Allocator, instance: *runtime.Instance, input_type: InputType, value: []const u8) !runtime.DOMString {
     switch (input_type) {
         // "Strip newlines from the value."
-        .text, .search, .tel, .password => return stripNewlines(allocator, value),
+        .text, .search, .tel, .password => return if (std.mem.indexOfAny(u8, value, "\r\n") == null)
+            runtime.DOMString.initInterned(value)
+        else
+            runtime.DOMString.initOwned(try stripNewlines(allocator, value)),
         // "Strip newlines from the value, then strip leading and trailing
         // ASCII whitespace from the value."
         .url => {
+            if (std.mem.indexOfAny(u8, value, "\r\n") == null) return runtime.DOMString.initInterned(trimAsciiWhitespace(value));
             const stripped = try stripNewlines(allocator, value);
             defer allocator.free(stripped);
-            return allocator.dupe(u8, trimAsciiWhitespace(stripped));
+            return runtime.DOMString.initDupe(allocator, trimAsciiWhitespace(stripped));
         },
         .email => {
+            const multiple = hasAttribute(instance, "multiple");
+            if (std.mem.indexOfAny(u8, value, "\r\n") == null) {
+                if (!multiple) return runtime.DOMString.initInterned(trimAsciiWhitespace(value));
+                var clean = true;
+                var tokens = std.mem.splitScalar(u8, value, ',');
+                while (tokens.next()) |token| {
+                    if (trimAsciiWhitespace(token).len != token.len) {
+                        clean = false;
+                        break;
+                    }
+                }
+                if (clean) return runtime.DOMString.initInterned(value);
+            }
             const stripped = try stripNewlines(allocator, value);
             defer allocator.free(stripped);
-            if (!hasAttribute(instance, "multiple")) return allocator.dupe(u8, trimAsciiWhitespace(stripped));
+            if (!multiple) return runtime.DOMString.initDupe(allocator, trimAsciiWhitespace(stripped));
             // multiple: "split on commas, strip leading and trailing ASCII
             // whitespace from each resulting token, if any, and let the
             // element's values be the (possibly empty) resulting list of
@@ -1012,31 +1049,33 @@ fn sanitize(allocator: std.mem.Allocator, instance: *runtime.Instance, input_typ
                 first = false;
                 try out.appendSlice(allocator, trimAsciiWhitespace(token));
             }
-            return out.toOwnedSlice(allocator);
+            return runtime.DOMString.initOwned(try out.toOwnedSlice(allocator));
         },
         // "If the value of the element is not a valid date string, then set
         // it to the empty string instead" - and likewise for the others.
-        .date => return allocator.dupe(u8, if (parseDate(value) != null) value else ""),
-        .month => return allocator.dupe(u8, if (parseMonth(value) != null) value else ""),
-        .week => return allocator.dupe(u8, if (parseWeek(value) != null) value else ""),
-        .time => return allocator.dupe(u8, if (parseTime(value) != null) value else ""),
+        .date => return runtime.DOMString.initInterned(if (parseDate(value) != null) value else ""),
+        .month => return runtime.DOMString.initInterned(if (parseMonth(value) != null) value else ""),
+        .week => return runtime.DOMString.initInterned(if (parseWeek(value) != null) value else ""),
+        .time => return runtime.DOMString.initInterned(if (parseTime(value) != null) value else ""),
         // "If the value of the element is a valid local date and time string,
         // then set it to a valid normalized local date and time string
         // representing the same date and time; otherwise, set it to the empty
         // string instead."
         .@"datetime-local" => {
-            const parsed = parseLocalDateTime(value) orelse return allocator.dupe(u8, "");
-            return formatLocalDateTime(allocator, parsed);
+            const parsed = parseLocalDateTime(value) orelse return .empty;
+            if (isNormalizedLocalDateTime(value, parsed)) return runtime.DOMString.initInterned(value);
+            return runtime.DOMString.initOwned(try formatLocalDateTime(allocator, parsed));
         },
         // "If the value of the element is not a valid floating-point number,
         // then set it to the empty string instead."
-        .number => return allocator.dupe(u8, if (parseValidFloat(value) != null) value else ""),
+        .number => return runtime.DOMString.initInterned(if (parseValidFloat(value) != null) value else ""),
         .range => return sanitizeRange(allocator, instance, value),
         // HTML 4.10.5.1.14: update a color well control color.
-        // TODO: display-p3 output and alpha serialization need the style
-        // system's non-sRGB value representation (Q20's deferred scope).
-        .color => return forms.sanitizeColor(allocator, value),
-        else => return allocator.dupe(u8, value),
+        .color => return forms.color_values.sanitize(allocator, value, .{
+            .alpha = hasAttribute(instance, "alpha"),
+            .space = if (std.ascii.eqlIgnoreCase(borrowedAttribute(instance, "colorspace") orelse "", "display-p3")) .display_p3 else .limited_srgb,
+        }),
+        else => return runtime.DOMString.initInterned(value),
     }
 }
 
@@ -1045,7 +1084,7 @@ fn sanitize(allocator: std.mem.Allocator, instance: *runtime.Instance, input_typ
 /// a floating-point number, of the default value" - then the state's
 /// underflow, overflow and step mismatch rules, which set the value to the
 /// minimum, the maximum, or the nearest allowed step (rounding up on a tie).
-fn sanitizeRange(allocator: std.mem.Allocator, instance: *runtime.Instance, value: []const u8) ![]u8 {
+fn sanitizeRange(allocator: std.mem.Allocator, instance: *runtime.Instance, value: []const u8) !runtime.DOMString {
     const minimum = numberAttribute(instance, .range, "min") orelse 0;
     const maximum_given = numberAttribute(instance, .range, "max") orelse 100;
     // "The default maximum is 100 ... if the maximum is less than the
@@ -1068,7 +1107,19 @@ fn sanitizeRange(allocator: std.mem.Allocator, instance: *runtime.Instance, valu
             number = snapped;
         }
     }
-    return formatFloat(allocator, number);
+    var buffer: [32]u8 = undefined;
+    const serialized = reflection.numberToString(&buffer, number);
+    return if (std.mem.eql(u8, value, serialized)) runtime.DOMString.initInterned(value) else runtime.DOMString.initDupe(allocator, serialized);
+}
+
+fn isNormalizedLocalDateTime(value: []const u8, parsed: LocalDateTime) bool {
+    const separator = std.mem.indexOfScalar(u8, value, 'T') orelse return false;
+    const year_end = std.mem.indexOfScalar(u8, value, '-') orelse return false;
+    if (year_end > 4 and value[0] == '0') return false;
+    const time = value[separator + 1 ..];
+    if (parsed.time.millisecond == 0) return time.len == 5;
+    if (parsed.time.millisecond % 1000 == 0) return time.len == 8;
+    return time.len > 9 and time[time.len - 1] != '0';
 }
 
 // ============================================================================
@@ -1482,8 +1533,7 @@ fn numberToString(allocator: std.mem.Allocator, input_type: InputType, number: f
 
 /// An attribute parsed with the type's string-to-number algorithm, or null.
 fn numberAttribute(instance: *runtime.Instance, input_type: InputType, comptime name: []const u8) ?f64 {
-    const value = attribute(instance, name) orelse return null;
-    defer instance.ctx.allocator.free(value);
+    const value = borrowedAttribute(instance, name) orelse return null;
     return stringToNumber(input_type, value);
 }
 
@@ -1525,8 +1575,7 @@ fn stepDefaults(input_type: InputType) struct { step: f64, scale: f64 } {
 /// times the step scale factor; null when step is "any".
 fn allowedValueStep(instance: *runtime.Instance, input_type: InputType) ?f64 {
     const defaults = stepDefaults(input_type);
-    const value = attribute(instance, "step") orelse return defaults.step * defaults.scale;
-    defer instance.ctx.allocator.free(value);
+    const value = borrowedAttribute(instance, "step") orelse return defaults.step * defaults.scale;
     if (std.ascii.eqlIgnoreCase(value, "any")) return null;
     const parsed = parseValidFloat(value) orelse return defaults.step * defaults.scale;
     if (parsed <= 0) return defaults.step * defaults.scale;
@@ -1554,8 +1603,7 @@ fn numericStepMismatch(instance: *runtime.Instance, value: []const u8, fallback_
     const number = std.fmt.parseFloat(f128, value) catch return false;
     const base = numberAttributeForStep(instance, "min") orelse numberAttributeForStep(instance, "value") orelse 0;
     var step: f128 = fallback_step;
-    if (attribute(instance, "step")) |text| {
-        defer instance.ctx.allocator.free(text);
+    if (borrowedAttribute(instance, "step")) |text| {
         if (parseValidFloat(text)) |parsed| {
             if (parsed > 0) step = std.fmt.parseFloat(f128, text) catch step;
         }
@@ -1564,8 +1612,7 @@ fn numericStepMismatch(instance: *runtime.Instance, value: []const u8, fallback_
 }
 
 fn numberAttributeForStep(instance: *runtime.Instance, comptime name: []const u8) ?f128 {
-    const text = attribute(instance, name) orelse return null;
-    defer instance.ctx.allocator.free(text);
+    const text = borrowedAttribute(instance, name) orelse return null;
     if (parseValidFloat(text) == null) return null;
     return std.fmt.parseFloat(f128, text) catch null;
 }
@@ -1577,46 +1624,81 @@ fn stepValue(instance: *runtime.Instance, n: i32, comptime up: bool) !void {
     // 1. The method does not apply: InvalidStateError.
     if (!input_type.numeric()) return error.InvalidStateError;
     // 2. No allowed value step: InvalidStateError.
-    const step = allowedValueStep(instance, input_type) orelse return error.InvalidStateError;
-    const minimum = minimumOf(instance, input_type);
-    const maximum = maximumOf(instance, input_type);
-    const base = stepBase(instance, input_type);
+    const allowed_step = allowedValueStep(instance, input_type) orelse return error.InvalidStateError;
+    const decimal = input_type == .number or input_type == .range;
+    // Blink/WebKit use Decimal for ApplyStep. Keep the original decimal
+    // strings in f128 through the arithmetic, narrowing only for the
+    // state's final number-to-string conversion (as for stepMismatch).
+    const step: f128 = if (decimal) blk: {
+        const candidate = numberAttributeForStep(instance, "step") orelse break :blk allowed_step;
+        break :blk if (candidate > 0) candidate else allowed_step;
+    } else allowed_step;
+    const minimum: ?f128 = if (minimumOf(instance, input_type)) |value|
+        (if (decimal) numberAttributeForStep(instance, "min") orelse value else value)
+    else
+        null;
+    const maximum: ?f128 = if (maximumOf(instance, input_type)) |value|
+        (if (decimal) numberAttributeForStep(instance, "max") orelse value else value)
+    else
+        null;
+    const base: f128 = if (decimal)
+        numberAttributeForStep(instance, "min") orelse numberAttributeForStep(instance, "value") orelse 0
+    else
+        stepBase(instance, input_type);
     if (minimum != null and maximum != null) {
         // 3. A minimum greater than the maximum: nothing.
         if (minimum.? > maximum.?) return;
         // 4. No allowed value between them: nothing.
-        const first = base + @ceil((minimum.? - base) / step) * step;
+        const first = alignedStep(minimum.?, base, step, true);
         if (first > maximum.?) return;
     }
     // 5. The value as a number, or zero.
     const current = try currentValue(instance);
     defer internal.allocator.free(current);
-    var value = stringToNumber(input_type, current) orelse 0;
+    var value: f128 = if (stringToNumber(input_type, current)) |number|
+        (if (decimal) std.fmt.parseFloat(f128, current) catch number else number)
+    else
+        0;
     // 6.
     const before = value;
-    // 7. Off a step: to the nearest step below (stepDown) or above (stepUp).
-    const steps = (value - base) / step;
-    if (!isIntegral(steps)) {
-        value = base + (if (up) @ceil(steps) else @floor(steps)) * step;
-    } else {
-        // 7.1-7.4: delta = step × n, negated for stepDown.
-        const delta = step * @as(f64, @floatFromInt(n));
-        value += if (up) delta else -delta;
+    // 7: browsers use the SIGNED count, and count an off-step snap as the
+    // first requested step (Blink InputType::ApplyStep; WebKit applyStep).
+    // This differs from the text's method-name direction / one-snap branch.
+    var count: i64 = if (up) @as(i64, n) else -@as(i64, n);
+    const mismatch = forms.numericStepMismatch(value, base, step);
+    if (mismatch and count != 0) {
+        value = alignedStep(value, base, step, count > 0);
+        count += if (count < 0) @as(i64, 1) else -1;
     }
+    value += step * @as(f128, @floatFromInt(count));
+    if (!mismatch or n != 0) value = base + @round((value - base) / step) * step;
     // 8. Below the minimum: the smallest step at or above it.
     if (minimum) |min| {
-        if (value < min) value = base + @ceil((min - base) / step) * step;
+        if (value < min) value = alignedStep(min, base, step, true);
     }
     // 9. Above the maximum: the largest step at or below it.
     if (maximum) |max| {
-        if (value > max) value = base + @floor((max - base) / step) * step;
+        if (value > max) value = alignedStep(max, base, step, false);
     }
     // 10. Moving the wrong way: nothing.
-    if ((!up and value > before) or (up and value < before)) return;
+    if ((count < 0 and value > before) or (count > 0 and value < before)) return;
     // 11-12. Set the value to its string.
-    const text = try numberToString(internal.allocator, input_type, value);
+    const result: f64 = @floatCast(value);
+    if (!std.math.isFinite(result)) return;
+    const text = try numberToString(internal.allocator, input_type, result);
     defer internal.allocator.free(text);
     try set_value(instance, runtime.DOMString.initInterned(text));
+}
+
+fn alignedStep(value: f128, base: f128, step: f128, up: bool) f128 {
+    const quotient = (value - base) / step;
+    const integral = if (!forms.numericStepMismatch(value, base, step))
+        @round(quotient)
+    else if (up)
+        @ceil(quotient)
+    else
+        @floor(quotient);
+    return base + integral * step;
 }
 
 /// Operation: stepUp
@@ -1812,8 +1894,16 @@ pub fn get_width(instance: *runtime.Instance) anyerror!u32 {
 
 /// Getter for list
 pub fn get_list(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
+    // HTML 4.10.5.3.9: only the states to which list applies have a
+    // suggestions source. Resolve the FIRST matching ID in this tree.
+    switch (typeOf(instance)) {
+        .text, .search, .url, .tel, .email, .date, .month, .week, .time, .@"datetime-local", .number, .range, .color => {},
+        else => return null,
+    }
+    const data = dom.element_data.of(instance) orelse return null;
+    const list = dom.element_data.getAttributeByNamespaceAndLocalName(data, null, "list") orelse return null;
+    const source = form_associated.firstElementWithId(form_associated.rootOf(instance), list.value) orelse return null;
+    return if (source.stateAs(interfaces.HTMLDataListElement.State) != null) source else null;
 }
 
 /// Getter for size
@@ -1932,7 +2022,7 @@ pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMSt
 /// Getter for labels: null in the Hidden state, else the element's labels.
 pub fn get_labels(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     if (typeOf(instance) == .hidden) return null;
-    return try form_associated.labelsNodeList(instance);
+    return try (getInternal(instance) orelse return error.InvalidStateError).labels.get(instance);
 }
 
 /// Getter for capture
@@ -2019,8 +2109,28 @@ pub fn set_popoverTargetAction(instance: *runtime.Instance, value: runtime.DOMSt
 
 /// Operation: showPicker
 pub fn call_showPicker(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
+    const input_type = typeOf(instance);
+    // HTML showPicker steps 1–3: mutability, origin, then activation.
+    if (!isMutable(instance, input_type)) return error.InvalidStateError;
+    if (input_type != .file and input_type != .color) try forms.picker.requireSameOriginWithTop(instance);
+    _ = try forms.picker.requireActivation(instance);
+    // Step 4: also the file/color states' input activation behavior.
+    showPickerIfApplicable(instance, input_type);
+}
+
+fn showPickerIfApplicable(instance: *runtime.Instance, input_type: InputType) void {
+    const activation = @import("html").user_activation;
+    const window = activation.windowOfRealm(instance.ctx) orelse return;
+    // "Show the picker, if applicable", steps 1–3: return quietly from
+    // activation behavior when inactive/immutable; otherwise consume.
+    if (!activation.hasTransientActivation(window) or !isMutable(instance, input_type)) return;
+    activation.consume(window);
+    // Step 4: an unsupported file dialog is dismissed without a selection.
+    // Use the existing kept-control element-task mechanism for cancel.
+    // Other pickers need host operations that the current protocol lacks.
+    if (input_type == .file and @import("platform").capabilities.file_picker == .unsupported) {
+        form_associated.queueCancelEvent(instance, &pendingSelectTasks);
+    }
 }
 
 /// Operation: setCustomValidity

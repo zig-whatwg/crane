@@ -8,6 +8,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const HTMLMeterElement = interfaces.HTMLMeterElement;
+const form_associated = @import("html").form_associated;
 
 pub const State = HTMLMeterElement.State;
 
@@ -15,11 +16,19 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Created only when labels is read, from the element's arena.
+pub const InternalState = struct {
+    labels: form_associated.LabelsCache = .{},
+};
+
+pub fn deinitOwn(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.labels.deinit(instance);
+        runtime.arenaOf(instance).destroy(InternalState, internal);
+        state.own._internal = null;
+    }
+}
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
@@ -91,6 +100,11 @@ pub fn get_optimum(instance: *runtime.Instance) anyerror!f64 {
 
 /// Getter for labels
 pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    if (state.own._internal == null) {
+        const internal = try runtime.arenaOf(instance).create(InternalState);
+        internal.* = .{};
+        state.own._internal = internal;
+    }
+    return state.own._internal.?.labels.get(instance);
 }

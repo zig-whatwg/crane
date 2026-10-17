@@ -35,6 +35,7 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 
 /// Getter for options
 pub fn get_options(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    // HTML 4.10.8: every descendant HTML option, including empty/disabled
+    // options. The generated SameObject accessor owns the cached collection.
+    return interfaces.Element.call_getElementsByTagNameNS(instance, runtime.DOMString.initInterned("http://www.w3.org/1999/xhtml"), runtime.DOMString.initInterned("option"));
 }

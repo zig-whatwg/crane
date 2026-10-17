@@ -75,6 +75,25 @@ pub const FloatColor = struct {
     rgb: [3]f64,
     alpha: f64 = 1,
 
+    /// CSS Color 4 §19 sample conversions: extended sRGB -> XYZ D65 ->
+    /// Display P3. P3 uses sRGB's transfer function; do not clamp or gamut map.
+    pub fn toDisplayP3(self: FloatColor) [3]f64 {
+        var linear = self.rgb;
+        for (&linear) |*value| value.* = linearSrgb(value.*);
+        const xyz = matrixVector(.{
+            .{ 506752.0 / 1228815.0, 87881.0 / 245763.0, 12673.0 / 70218.0 },
+            .{ 87098.0 / 409605.0, 175762.0 / 245763.0, 12673.0 / 175545.0 },
+            .{ 7918.0 / 409605.0, 87881.0 / 737289.0, 1001167.0 / 1053270.0 },
+        }, linear);
+        var p3 = matrixVector(.{
+            .{ 446124.0 / 178915.0, -333277.0 / 357830.0, -72051.0 / 178915.0 },
+            .{ -14852.0 / 17905.0, 63121.0 / 35810.0, 423.0 / 17905.0 },
+            .{ 11844.0 / 330415.0, -50337.0 / 660830.0, 316169.0 / 330415.0 },
+        }, xyz);
+        for (&p3) |*value| value.* = encodedSrgb(value.*);
+        return p3;
+    }
+
     pub fn quantize(self: FloatColor) Color {
         return .{
             .r = ColorParser.clampColorComponent(self.rgb[0] * 255),

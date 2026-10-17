@@ -26,6 +26,7 @@ pub const InternalState = struct {
     /// override came from: the context's.
     allocator: std.mem.Allocator,
     validation: forms.Validation = .{},
+    labels: form_associated.LabelsCache = .{},
     // HTML 4.10.12: null means the default is computed from descendant text.
     default_value_override: ?runtime.DOMString = null,
 
@@ -95,6 +96,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        internal.labels.deinit(instance);
         if (internal.validation.validity_traced) @import("engine").forgetTracedChild(instance, .{ .name = "validity" });
         internal.validation.deinit(instance.ctx.allocator);
         state.own._internal = null;
@@ -170,7 +172,7 @@ pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMSt
 
 /// Getter for labels
 pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    return form_associated.labelsNodeList(instance);
+    return (try internalState(instance)).labels.get(instance);
 }
 
 /// Setter for defaultValue

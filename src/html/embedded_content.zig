@@ -957,7 +957,8 @@ fn hasInactiveAncestor(element: *runtime.Instance) bool {
 /// attribute whose display is `none`. An author style sheet's
 /// `display: none` is not seen (stated: no cascade). Blink loads no plugin
 /// and no frame for an object or embed without a layout box.
-fn isBeingRendered(element: *runtime.Instance) bool {
+/// Also used by select.showPicker's being-rendered precondition.
+pub fn isBeingRendered(element: *runtime.Instance) bool {
     var node: ?*runtime.Instance = element;
     var depth: usize = 0;
     while (node) |current| : (depth += 1) {
