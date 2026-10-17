@@ -99,6 +99,9 @@ pub const Implementation = struct {
     download_hyperlink: *const fn (subject: *runtime.Instance, user_involvement: navigation_api.UserInvolvement) void,
     traverse_navigable: *const fn (browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64) void,
     find_by_name: *const fn (source_document: *runtime.Instance, name: []const u8) ?*runtime.Instance,
+    /// The owner's integration for this browsing context, borrowed for the
+    /// synchronous navigation step. Null when no integration owns it.
+    integration_of: *const fn (browsing_context: *anyopaque) ?*IFrameIntegration,
     /// "Create a new child navigable" step 3 for `container`, whose content
     /// navigable is `integration`'s: "create a new browsing context and
     /// document" - a browsing context in `container`'s node document's
@@ -173,6 +176,13 @@ pub fn traverseNavigable(browsing_context: *anyopaque, entry_id: u64, url: []con
 pub fn findByName(current_document: *runtime.Instance, name: []const u8) ?*runtime.Instance {
     const impl = implementation orelse return null;
     return impl.find_by_name(current_document, name);
+}
+
+/// The owning container's integration for an html_core.BrowsingContext.
+/// Borrowed for immediate use; the lookup neither retains it nor runs script.
+pub fn integrationOf(browsing_context: *anyopaque) ?*IFrameIntegration {
+    const impl = implementation orelse return null;
+    return impl.integration_of(browsing_context);
 }
 
 // ============================================================================
@@ -646,6 +656,15 @@ test "without an installed implementation nothing navigates" {
     downloadHyperlink(&element, .activation);
     traverseNavigable(@ptrCast(&element), 1, "about:blank", null, 1);
     try std.testing.expect(findByName(&element, "name") == null);
+}
+
+test "without an installed implementation no navigable integration is borrowed" {
+    const saved = implementation;
+    defer implementation = saved;
+    implementation = null;
+    // The absent hook must return null without reading the context.
+    var context: BrowsingContext = undefined;
+    try std.testing.expect(integrationOf(@ptrCast(&context)) == null);
 }
 
 test "a serialized origin parses back to the origin it names; anything else is opaque" {

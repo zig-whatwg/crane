@@ -3137,7 +3137,16 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
             // Step 16.1: "If urlRecord is not null, then navigate targetNavigable
             // to urlRecord using sourceDocument, with referrerPolicy and
             // exceptionsEnabled set to true."
-            if (url_record) |u| found.integration.navigate(u, .{ .source_document = @ptrCast(source_document), .referrer_policy = referrer_policy });
+            if (url_record) |u| {
+                if (found.integration) |integration| {
+                    integration.navigate(u, .{ .source_document = @ptrCast(source_document), .referrer_policy = referrer_policy });
+                } else {
+                    const host_document = interfaces.Window.get_document(found.window) catch return null;
+                    // A host has no integration. _self takes its existing
+                    // page-navigation branch without another name search.
+                    navigables.navigateByTarget(source_document, .{ .target = "_self", .url = u, .current_document = host_document, .noopener = noopener });
+                }
+            }
             return if (noopener) null else found.window;
         }
     }
@@ -3191,23 +3200,32 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     return if (noopener) null else created.window;
 }
 
-const NamedPopup = struct { integration: *html_core.IFrameIntegration, window: *runtime.Instance };
+const NamedPopup = struct {
+    /// Null for a host page, whose Window identifies the target.
+    integration: ?*html_core.IFrameIntegration,
+    window: *runtime.Instance,
+};
 
-/// "Find a navigable by target name" steps 5-7 for the popups: an open popup
-/// named `name` in the browsing context group of `window`'s page - the root
-/// of its opener chain and every popup opened from it, however deep.
+/// "Find a navigable by target name" steps 5-7: search the other top-level
+/// contexts in this page's group, including their frames. Blink's
+/// FrameTree::FindFrameForNavigationInternal likewise visits related pages.
 fn popupByName(window: *runtime.Instance, name: []const u8) ?NamedPopup {
     const internal = getInternal(window) orelse return null;
-    var root = window;
-    var hops: usize = 0;
-    while (hops < 16) : (hops += 1) {
-        const root_internal = getInternal(root) orelse break;
-        root = root_internal.opener orelse break;
+    const current = internal.browsing_context;
+    const top = current.getTop();
+    const navigables = current.navigables orelse return null;
+    // Step 7 permits a consistent order: use the Browser's live-list order.
+    // This synchronous traversal runs no script and retains no list entry.
+    // Group membership survives disowning an opener; an opener-chain walk
+    // cannot enumerate the group.
+    for (navigables.contexts()) |candidate| {
+        if (candidate == top or candidate.parent != null or candidate.orphaned or
+            candidate.is_closed or candidate.is_closing) continue;
+        if (candidate.virtual_group_id != top.virtual_group_id) continue;
+        const page: *runtime.Instance = @ptrCast(@alignCast(candidate.getActiveWindow() orelse continue));
+        if (namedPopup(page, name, current)) |found| return found;
     }
-    // Step 7 searches this page's browsing context group: a popup opened
-    // with noopener began a group of its own.
-    const group = internal.browsing_context.getTop().virtual_group_id;
-    return namedPopup(root, name, group, 0);
+    return null;
 }
 
 /// "The rules for choosing a navigable" step 8 for `window`'s navigable (the
@@ -3217,7 +3235,7 @@ fn popupByName(window: *runtime.Instance, name: []const u8) ?NamedPopup {
 /// about:blank document. The popup is `window`'s: it goes with `window`'s
 /// page. The machinery is HTMLIFrameElement's (dom.auxiliary_navigables).
 /// Null when none can be made.
-fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopener: bool, is_popup: bool, current_window: *runtime.Instance) error{OutOfMemory}!?NamedPopup {
+fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopener: bool, is_popup: bool, current_window: *runtime.Instance) error{OutOfMemory}!?struct { integration: *html_core.IFrameIntegration, window: *runtime.Instance } {
     const internal = getInternal(window) orelse return null;
     const allocator = internal.allocator;
     const auxiliary_navigables = @import("dom").auxiliary_navigables;
@@ -3284,7 +3302,10 @@ fn sandboxingFlagsOfWindow(window: *runtime.Instance) @import("dom").sandboxing.
 /// top-level traversable (step 8).
 fn chooseTopLevelTraversable(current_window: *runtime.Instance, target: []const u8, noopener: bool) ?@import("dom").auxiliary_navigables.Chosen {
     if (!std.ascii.eqlIgnoreCase(target, "_blank")) {
-        if (popupByName(current_window, target)) |found| return .{ .integration = @ptrCast(found.integration), .window = found.window };
+        if (popupByName(current_window, target)) |found| return .{
+            .integration = if (found.integration) |integration| @ptrCast(integration) else null,
+            .window = found.window,
+        };
     }
     // Step 8: no new top-level traversable for a document whose active
     // sandboxing flag set has the sandboxed auxiliary navigation browsing
@@ -3294,27 +3315,99 @@ fn chooseTopLevelTraversable(current_window: *runtime.Instance, target: []const 
     return .{ .integration = @ptrCast(created.integration), .window = created.window };
 }
 
-/// An open popup named `name` that `window` opened, or that one of its
-/// popups did, depth first. A popup's page is torn down by its opener's, so
-/// every window reached here is live.
-fn namedPopup(window: *runtime.Instance, name: []const u8, group: u64, depth: usize) ?NamedPopup {
-    if (depth > 16) return null;
+/// Step 7.3: the named navigable among a related page's inclusive
+/// descendants, provided the calling context is familiar with it.
+fn namedPopup(window: *runtime.Instance, name: []const u8, current: *html_core.BrowsingContext) ?NamedPopup {
     const internal = getInternal(window) orelse return null;
-    for (internal.auxiliary_navigables.items) |integration| {
-        const bc = integration.browsing_context orelse continue;
-        // A popup close() was called on is closing, and targeting passes it
-        // by from that moment (close-method.window.js: "window.close()
-        // affects name targeting immediately").
-        if (bc.is_closed or bc.is_closing) continue;
-        // "Find a navigable by target name" step 7 looks through the
-        // searching page's browsing context group: a popup opened with
-        // noopener, and every popup it opened, are another group's.
+    const document = internal.document orelse return null;
+    const navigables = @import("dom").navigables;
+    var documents = navigables.inclusiveDescendantDocuments(document, std.heap.page_allocator);
+    defer documents.deinit(std.heap.page_allocator);
+    const group = current.getTop().virtual_group_id;
+    for (documents.items) |entry| {
+        const bc = entry.browsing_context orelse internal.browsing_context;
+        if (bc.orphaned or bc.is_closed or bc.is_closing) continue;
         if (bc.virtual_group_id != group) continue;
-        const popup: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse continue));
-        if (std.mem.eql(u8, bc.target_name, name)) return .{ .integration = integration, .window = popup };
-        if (namedPopup(popup, name, group, depth + 1)) |found| return found;
+        if (!std.mem.eql(u8, bc.target_name, name)) continue;
+        if (!familiarNamedContext(current, bc)) continue;
+        const integration = navigables.integrationOf(@ptrCast(bc));
+        const target: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse continue));
+        return .{ .integration = integration, .window = target };
     }
     return null;
+}
+
+/// HTML "familiar with", for the active documents of two live contexts.
+/// Group membership alone is insufficient: a foreign page's child is not
+/// familiar just because its top-level page was opened by this one.
+/// Blink's LocalFrame::CanNavigate/CanAccessAncestor likewise compare the
+/// target/ancestor origins and the auxiliary opener when resolving names.
+fn familiarNamedContext(current: *html_core.BrowsingContext, other: *html_core.BrowsingContext) bool {
+    const navigables = current.navigables orelse return false;
+    const contexts = navigables.contexts();
+    const a = liveNamedContext(contexts, current) orelse return false;
+    const a_origin = namedContextOrigin(a) orelse return false;
+    const a_top: ?*html_core.BrowsingContext = blk: {
+        var ancestor = a;
+        for (0..contexts.len) |_| {
+            const parent = ancestor.parent orelse break :blk ancestor;
+            ancestor = liveNamedContext(contexts, parent) orelse break :blk null;
+        }
+        break :blk null;
+    };
+    var b = liveNamedContext(contexts, other) orelse return false;
+
+    // Steps 1, 2 and 4 are alternatives to step 3's recursive result, so
+    // check them before tail-following B's auxiliary opener. A valid chain
+    // has at most contexts.len entries; that bound also terminates cycles
+    // without truncating a longer valid chain at an arbitrary fixed depth.
+    for (0..contexts.len) |_| {
+        // 1. A's and B's active documents have the same origin.
+        if (namedContextOrigin(b)) |b_origin| {
+            if (@import("dom").origin_record.sameOrigin(a_origin, b_origin)) return true;
+        }
+        // 2. B is A's top-level browsing context.
+        if (a_top == b) return true;
+        // 4. An ancestor of B has the same origin as A's active document.
+        var ancestor = liveNamedContext(contexts, b.parent);
+        for (0..contexts.len) |_| {
+            const parent = ancestor orelse break;
+            if (namedContextOrigin(parent)) |origin| {
+                if (@import("dom").origin_record.sameOrigin(a_origin, origin)) return true;
+            }
+            ancestor = liveNamedContext(contexts, parent.parent);
+        }
+        // 3. B is auxiliary and A is familiar with B's opener.
+        if (b.parent != null or b.disowned) return false;
+        b = liveNamedContext(contexts, b.opener) orelse return false;
+    }
+    return false;
+}
+
+/// Borrow a context from the Browser's live list before following a stored
+/// parent/opener edge. The lookup runs no script and retains no pointer.
+fn liveNamedContext(contexts: []const *html_core.BrowsingContext, wanted: ?*html_core.BrowsingContext) ?*html_core.BrowsingContext {
+    const pointer = wanted orelse return null;
+    for (contexts) |context| {
+        if (context != pointer) continue;
+        if (context.orphaned or context.is_closed or context.is_closing) return null;
+        return context;
+    }
+    return null;
+}
+
+fn namedContextOrigin(context: *html_core.BrowsingContext) ?@import("dom").origin_record.Origin {
+    if (context.getActiveDocument() == null) return null;
+    const window: *runtime.Instance = @ptrCast(@alignCast(context.getActiveWindow() orelse return null));
+    const internal = getInternal(window) orelse return null;
+    const record = settingsOriginRecord(window);
+    // Familiarity compares active DOCUMENT origins. An initial about:blank
+    // child shares its creator's resolved record even when the Window's
+    // creation-origin string is stale after a cross-origin navigation.
+    return .{
+        .serialized = if (record) |origin| origin.serialized orelse effectiveOrigin(window, internal) else effectiveOrigin(window, internal),
+        .record = record,
+    };
 }
 
 /// The entry global object, when it is a window: the global of the entry
