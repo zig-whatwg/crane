@@ -49,10 +49,12 @@ fn nonceState(instance: *runtime.Instance) ?*InternalState {
     return state.own._internal;
 }
 
-/// Getter for className
+/// SVG 2 4.4.1: className reflects class through a [SameObject] animated string.
 pub fn get_className(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return interfaces.SVGAnimatedString.initWith(instance.ctx.allocator, instance.ctx, .{
+        .reflected_element = instance,
+        .reflected_attribute = "class",
+    });
 }
 
 /// Getter for ownerSVGElement
