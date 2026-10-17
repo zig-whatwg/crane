@@ -1844,6 +1844,9 @@ fn generateInterfaceFile(
             defer overload.freeConstructorSet(allocator, ctor_set);
             try writer.writeOverloadedConstructor(w, impl_name, ctor_set, type_reg);
         }
+        // Which constructor arguments convert to an interface type, and the
+        // interface each must implement.
+        try writer.writeConstructorInterfaceArguments(w, own_constructors.items, type_reg);
     }
 
     // Generate delegate functions (ONLY for own attributes/operations, not inherited)
@@ -2951,6 +2954,9 @@ pub fn generateDictionary(
     try writer.writeNullableMembers(w, dictionary.members, ir);
     // Which integer members take [EnforceRange]'s or [Clamp]'s conversion.
     try writer.writeIntegerMembers(w, dictionary.members);
+    // Which members convert to an interface type, and the interface each
+    // must implement.
+    try writer.writeInterfaceMembers(w, dictionary.members, &ir.type_registry);
 
     try w.writeAll("};\n");
 
