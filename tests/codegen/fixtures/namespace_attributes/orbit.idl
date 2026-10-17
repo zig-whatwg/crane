@@ -1,0 +1,11 @@
+// Fixture for tests/codegen/namespace_attributes_test.zig: a namespace with
+// readonly regular attributes (as CSS has paintWorklet and the rest).
+[Exposed=Window]
+interface Moon {};
+
+[Exposed=Window]
+namespace Orbit {
+  readonly attribute Moon moon;
+  readonly attribute DOMString name;
+  boolean spin(DOMString axis);
+};
