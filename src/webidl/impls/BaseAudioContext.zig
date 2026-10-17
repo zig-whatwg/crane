@@ -76,10 +76,12 @@ pub fn get_renderQuantumSize(instance: *runtime.Instance) anyerror!u32 {
     return error.NotImplemented;
 }
 
-/// Getter for audioWorklet
+/// Getter for audioWorklet (Web Audio API 1.1.2): the context's AudioWorklet,
+/// "the AudioWorklet object that can import scripts containing
+/// AudioWorkletProcessor class definitions". [SameObject]: the generated
+/// getter caches it, and the context's wrapper keeps it.
 pub fn get_audioWorklet(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return interfaces.AudioWorklet.initWith(instance.ctx.allocator, instance.ctx, .{ .worklet_kind = .audio });
 }
 
 /// Getter for onstatechange

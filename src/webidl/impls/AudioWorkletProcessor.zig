@@ -1,57 +1,26 @@
-//! Implementation for AudioWorkletProcessor interface
+//! Implementation for the AudioWorkletProcessor interface (Web Audio API
+//! 1.32.4). A processor is constructed only by an AudioWorkletNode's
+//! construction, which renders audio - the host media backend's (the user's
+//! 2026-10-08 ruling) - so no processor construction data is ever pending.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
 const AudioWorkletProcessor = interfaces.AudioWorkletProcessor;
 
 pub const State = AudioWorkletProcessor.State;
 
-pub const ImplError = error{
-    NotImplemented,
-};
-
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
+/// The constructor (1.32.4.1): step 2 looks up the pending processor
+/// construction data, and step 3 throws a TypeError when there is none -
+/// always, here: nothing constructs a processor for an AudioWorkletNode.
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &AudioWorkletProcessor.vtable, ctx);
-    errdefer deinit(instance);
-
-    // TODO: Implement constructor logic with parameters
-
-    return instance;
+    _ = ctx;
+    return error.TypeError;
 }
 
-/// Getter for port
+/// Getter for port: the processor's end of its node's port (not modelled).
 pub fn get_port(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;

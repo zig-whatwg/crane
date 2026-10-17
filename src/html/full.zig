@@ -280,6 +280,10 @@ pub const worker_thread = @import("worker_thread.zig");
 pub const WorkerThread = worker_thread.WorkerThread;
 pub const worker_registry = @import("worker_registry.zig");
 pub const WorkerRegistry = worker_registry.WorkerRegistry;
+/// Worklets (HTML 11): a worklet's global scopes and added modules,
+/// addModule's steps, and the Browser's live worklet global scopes (a
+/// BrowserScope supplement) that end with their documents.
+pub const worklet_host = @import("worklet_host.zig");
 /// The Web Locks API's lock managers (a BrowserScope supplement) and the hook
 /// LockManager makes Lock objects through.
 pub const web_locks = @import("web_locks/root.zig");

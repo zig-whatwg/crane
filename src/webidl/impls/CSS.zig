@@ -13,6 +13,8 @@ const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 const css_syntax = @import("css");
+const engine = @import("engine");
+const interfaces = @import("interfaces");
 const selector = @import("selector");
 
 /// CSSOM: "The escape(ident) operation must return the result of invoking
@@ -54,6 +56,40 @@ fn selectorIsSupported(allocator: std.mem.Allocator, text: []const u8) bool {
         if (token.tag != .eof) return false;
     }
     return true;
+}
+
+// The worklets (CSS Painting API 3, CSS Layout API, CSS Animation Worklet):
+// the paintWorklet, layoutWorklet and animationWorklet attributes are
+// [SameObject] Worklets of the Window - each "the Worklet object" of its
+// worklet type, made on first read and kept by the Window (engine.traceChild,
+// as a generated [SameObject] cache keeps its child), so a later read in the
+// same realm returns the same object. The namespace's getter runs in the
+// current realm, the CSS namespace object's - a Window's ([Exposed=Window]).
+
+pub fn get_paintWorklet(ctx: runtime.Context) anyerror!runtime.JSValue {
+    return windowWorklet(ctx, .paint, "CSS.paintWorklet");
+}
+
+pub fn get_layoutWorklet(ctx: runtime.Context) anyerror!runtime.JSValue {
+    return windowWorklet(ctx, .layout, "CSS.layoutWorklet");
+}
+
+pub fn get_animationWorklet(ctx: runtime.Context) anyerror!runtime.JSValue {
+    return windowWorklet(ctx, .animation, "CSS.animationWorklet");
+}
+
+fn windowWorklet(ctx: runtime.Context, comptime kind: @TypeOf(.enum_literal), comptime slot_name: []const u8) !runtime.JSValue {
+    const record = ctx.getRealm() orelse return error.InvalidStateError;
+    const window: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return error.InvalidStateError));
+    if (window.stateAs(interfaces.Window.State) == null) return error.InvalidStateError;
+    const slot: engine.TracedSlot = .{ .name = slot_name };
+    if (engine.tracedValue(window, slot)) |held| {
+        defer held.release();
+        if (engine.convertToPlatformObject(ctx, held.value)) |worklet| return .{ .instance = worklet };
+    }
+    const worklet = try interfaces.Worklet.initWith(ctx.allocator, ctx, .{ .worklet_kind = kind });
+    engine.traceChild(window, worklet, slot);
+    return .{ .instance = worklet };
 }
 
 // Not implemented yet: each answers NotImplemented (an operation throws).

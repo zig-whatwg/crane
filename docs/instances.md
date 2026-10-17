@@ -62,7 +62,7 @@ the part every lane needs to know before it adds state.
 | **Browser** | one Crane instance: one thread for its window agent (isolate) and event loop, plus one thread per worker - a WebDriver BiDi "user context" | the web's shared state a browser profile holds: the storage shed (localStorage, IndexedDB, Cache API, buckets), the cookie jar, the HTTP cache and network, the blob URL store, BroadcastChannel delivery, SharedWorker instances, Web Locks, service worker registrations and clients, permissions, the browsing context groups and the tabs; and its runtime allocators and engine registries |
 | **Tab** | one top-level traversable | session history, sessionStorage (its traversable storage shed, cloned into a popup that has an opener), the frame clock, visibility and system focus, its frames |
 | **Agent** (event loop) | the window agent, or a worker's - each worker agent on its own thread | the custom element reactions stack, mutation observer state, the timer nesting level, the execution context stack, the nesting of its script-queue drains (`AgentHost.script_drain`), the [[HostDefined]] records of its classic scripts (`AgentHost.classic_scripts`) |
-| **Realm** | a Window, a WorkerGlobalScope, a ShadowRealm | its map of active timers, animation frame callbacks, module map, fetch group |
+| **Realm** | a Window, a WorkerGlobalScope, a ShadowRealm, a WorkletGlobalScope (in its owner Window's agent, html.worklet_host) | its map of active timers, animation frame callbacks, module map, fetch group |
 
 A tab the host creates starts a new browsing context group; a popup joins its opener's group,
 unless it was opened with noopener. Two Browsers in one process share nothing mutable. In memory by

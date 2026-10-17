@@ -1,45 +1,22 @@
-//! Implementation for AudioWorklet interface
+//! Implementation for the AudioWorklet interface (Web Audio API 1.32): a
+//! Worklet whose worklet global scope type is AudioWorkletGlobalScope and
+//! whose destination type is "audioworklet". Its Worklet state is Worklet's
+//! (the construction chain runs Worklet's part); the port belongs to the
+//! audio rendering the host media backend supplies, which Crane does not run.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
 const AudioWorklet = interfaces.AudioWorklet;
 
 pub const State = AudioWorklet.State;
 
-pub const ImplError = error{
-    NotImplemented,
-};
-
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+/// No state beyond Worklet's (the generated State names it).
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Getter for port
+/// Getter for port: the MessagePort entangled with the
+/// AudioWorkletGlobalScope's - made with the rendering thread, which the
+/// host media backend supplies (not modelled).
 pub fn get_port(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;

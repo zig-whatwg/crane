@@ -227,6 +227,10 @@ pub const FetchOptions = struct {
     parser_inserted: bool = false,
     render_blocking: bool = false,
     referrer_policy: fetch.internal.ReferrerPolicy = .empty,
+    /// The script fetch options' credentials mode: "same-origin" for every
+    /// module graph but a worklet's, whose WorkletOptions name it (HTML
+    /// "fetch a worklet/module worker script graph" step 1).
+    credentials_mode: fetch.internal.CredentialsMode = .same_origin,
 };
 
 /// Everything the loader needs from the document it loads for.
@@ -256,6 +260,11 @@ pub const Environment = struct {
     /// - "fetch the descendants of a module script" gets the descendant
     /// script fetch options from the referrer script's - its descendants'.
     fetch_options: FetchOptions = .{},
+    /// The destination of a JavaScript module's request: "script", or a
+    /// worklet's destination type (HTML "fetch a worklet script graph"; a
+    /// JSON or CSS module's is still "json" or "style", HTML "fetch a single
+    /// module script" step 1).
+    script_destination: fetch.internal.Destination = .script,
 
     /// HTML resolve a module integrity metadata: absent entries give "".
     pub fn resolveIntegrity(self: *const Environment, url: []const u8) []const u8 {
@@ -1237,6 +1246,9 @@ pub const AsyncModuleLoader = struct {
                 if (!child.settled and loader.pending.get(child.key) == null) {
                     var options = script.descendantFetchOptions();
                     options.integrity = env.resolveIntegrity(request.url);
+                    // "Descendant script fetch options": the credentials
+                    // mode is the original options' - the graph's root's.
+                    options.credentials_mode = self.options.credentials_mode;
                     loader.fetchSingle(self, child, options);
                 } else if (!child.settled) {
                     try loader.pending.get(child.key).?.addWaiter(self, child);
@@ -1392,7 +1404,9 @@ pub const AsyncModuleLoader = struct {
 
         fn fetched(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.algorithms.FetchResult) void {
             const self: *SingleFetch = @ptrCast(@alignCast(context));
-            if (self.loader) |loader| @import("dom").reporting.reportScriptFetch(loader.env.realm(), self.transport, outcome);
+            // The fetch client's realm reports (CSP 6.7.1.2): the document's,
+            // also for a worklet's graph, whose records are made elsewhere.
+            if (self.loader) |loader| @import("dom").reporting.reportScriptFetch(loader.env.context_instance.ctx, self.transport, outcome);
             self.transport = null;
             self.outcome = outcome catch null;
             const loader = self.loader orelse return self.destroy();
@@ -1483,9 +1497,9 @@ pub const AsyncModuleLoader = struct {
         var request_owned = true;
         defer if (request_owned) request.deinit();
         request.mode = .cors;
-        request.credentials_mode = .same_origin;
+        request.credentials_mode = options.credentials_mode;
         request.destination = switch (node.module_type) {
-            .javascript => .script,
+            .javascript => self.env.script_destination,
             .json => .json,
             .css => .style,
         };
