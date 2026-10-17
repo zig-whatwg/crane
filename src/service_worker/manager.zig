@@ -522,6 +522,11 @@ pub fn copyRequestForWorker(allocator: Allocator, request: *const InternalReques
         .origin => |origin| try copy.setOrigin(origin),
         .client => {},
     }
+    // Its URL list is the hop alone: the redirect-taint the earlier hops
+    // gave the request goes with it (InternalRequest.redirect_tainted).
+    // Not computable (an unparsable URL in the list): tainted - the origin
+    // serializes as "null".
+    copy.redirect_tainted = !(request.redirectTaintIsSameOrigin() catch false);
     if (request.integrity_metadata.len > 0) copy.integrity_metadata = try allocator.dupe(u8, request.integrity_metadata);
     return copy;
 }

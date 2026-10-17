@@ -523,6 +523,18 @@ pub const InternalRequest = struct {
 
     /// Timing allow failed flag
     timing_allow_failed: bool = false,
+    /// The redirect-taint the hops this request's URL list no longer holds
+    /// gave it: set when it is not "same-origin". Fetch computes a request's
+    /// redirect-taint from its URL list; a copy that keeps only the
+    /// request's current URL - a service worker's request, whose URL is the
+    /// hop its fetch event shows (service_worker manager.copyRequestForWorker,
+    /// as every browser's fetch event shows it) - carries here what the
+    /// dropped hops made of it, so that `fetch(event.request)` of a hop after
+    /// a cross-origin redirect serializes its origin as "null", as the
+    /// request itself would (navigation-headers.https.html's "POST ... with
+    /// ... redirect and passthrough service worker" cases). Copied by clone:
+    /// `new Request(event.request)` keeps it.
+    redirect_tainted: bool = false,
 
     const Self = @This();
 
@@ -689,6 +701,8 @@ pub const InternalRequest = struct {
             .client => return true,
             .origin => |o| o,
         };
+        // Hops before this request's first URL already tainted it.
+        if (self.redirect_tainted) return false;
         // 1-2. Let lastURL be null, and taint "same-origin".
         var last_url: ?[]const u8 = null;
         // 3. For each url of request's URL list:
@@ -834,6 +848,7 @@ pub const InternalRequest = struct {
             .prevent_no_cache_cache_control_header_modification = self.prevent_no_cache_cache_control_header_modification,
             .done = self.done,
             .timing_allow_failed = self.timing_allow_failed,
+            .redirect_tainted = self.redirect_tainted,
         };
         return new_request;
     }
@@ -1127,6 +1142,26 @@ test "a request origin serializes as null once a redirect went elsewhere" {
     const after_two = try request.serializeOrigin(allocator);
     defer allocator.free(after_two);
     try std.testing.expectEqualStrings("null", after_two);
+}
+
+test "a request whose dropped hops redirect-tainted it serializes its origin as null, and its clone does too" {
+    const allocator = std.testing.allocator;
+    // One URL, the request's origin's: untainted by its own URL list.
+    const request = try InternalRequest.init(allocator, "http://a.test/hop");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    try std.testing.expect(try request.redirectTaintIsSameOrigin());
+    // The hops before this URL - kept by whoever copied the request down to
+    // its current URL - were tainted.
+    request.redirect_tainted = true;
+    try std.testing.expect(!try request.redirectTaintIsSameOrigin());
+    const serialized = try request.serializeOrigin(allocator);
+    defer allocator.free(serialized);
+    try std.testing.expectEqualStrings("null", serialized);
+    const copy = try request.clone();
+    defer copy.deinit();
+    try std.testing.expect(copy.redirect_tainted);
+    try std.testing.expect(!try copy.redirectTaintIsSameOrigin());
 }
 
 test "a request owns its policy container: set, replaced, cloned, released" {
