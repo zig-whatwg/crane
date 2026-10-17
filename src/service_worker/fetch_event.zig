@@ -23,6 +23,7 @@ const dom = @import("dom");
 const fetch = @import("fetch");
 const manager_mod = @import("manager.zig");
 const ExtendLifetime = @import("extend_lifetime.zig").ExtendLifetime;
+const navigation_preload = @import("navigation_preload.zig");
 
 const Manager = manager_mod.Manager;
 const FetchDispatch = manager_mod.FetchDispatch;
@@ -42,8 +43,8 @@ pub const FetchEventInit = struct {
     client_id: []const u8,
     resulting_client_id: []const u8,
     replaces_client_id: []const u8,
-    /// 17.4.7: preloadResponse - a promise resolved with undefined (no
-    /// navigation preload).
+    /// 17.4.7: preloadResponse - the navigation preload's promise, or one
+    /// resolved with undefined.
     preload_response: runtime.JSValue,
     /// 17.4.11: handled - eventHandled.
     handled: runtime.JSValue,
@@ -492,8 +493,13 @@ fn fireEvent(manager: *Manager, realm: runtime.Context, global_scope: *runtime.I
     }
     const request_hold = try engine.retainValue(realm, runtime.JSValue.fromInstance(request_object));
     defer request_hold.release();
-    // 17.4.7. preloadResponse: resolved with undefined.
-    const preload = try engine.createResolvedPromise(realm, runtime.JSValue.jsUndefined);
+    // 17.4.7. preloadResponse: Handle Fetch step 15's - the navigation
+    // preload's fetch starts now (navigation_preload.zig) - or step 16's,
+    // resolved with undefined.
+    const preload = if (dispatch.preload_header) |value|
+        try navigation_preload.start(realm, global_scope, dispatch.request, value)
+    else
+        try engine.createResolvedPromise(realm, runtime.JSValue.jsUndefined);
     defer preload.release();
     const handled_promise = responder.handled.?.promise;
 

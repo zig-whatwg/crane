@@ -35,6 +35,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const scope_mod = @import("scope.zig");
+const router = @import("router.zig");
 
 const log = std.log.scoped(.service_worker);
 
@@ -111,6 +112,15 @@ pub const Worker = struct {
     policy: ?*anyopaque = null,
     /// The script resource's has ever been evaluated flag.
     has_ever_been_evaluated: bool = false,
+    /// Its set of event types to handle contains "fetch": its global had a
+    /// fetch listener when its script first ran (Run Service Worker step
+    /// 9.8). Handle Fetch's navigation preload condition, Should Skip Event
+    /// and InstallEvent.addRoutes() step 3.2 read it.
+    handles_fetch: bool = false,
+    /// Its list of router rules (InstallEvent.addRoutes() step 9.4), or
+    /// null for none: a counted, immutable list - Handle Fetch evaluates an
+    /// active worker's on the fetching thread, holding a reference.
+    router_rules: ?*router.Rules = null,
     /// Running: started (Run Service Worker) and not yet ended.
     run: RunState = .stopped,
     /// The extended events still active (the owner counts what the worker's
@@ -811,6 +821,7 @@ pub const Registry = struct {
         worker.start_waiters.deinit(self.allocator);
         worker.activation_waiters.deinit(self.allocator);
         if (worker.policy) |policy| self.effects.free_policy(self.effects.ctx, policy);
+        if (worker.router_rules) |rules| rules.release();
         self.allocator.free(worker.script_url);
         self.allocator.destroy(worker);
     }
@@ -1421,11 +1432,15 @@ pub const Registry = struct {
     /// Run Service Worker step 10: the worker's script has been evaluated
     /// (`ok` false: an abrupt completion, or its global could not be set
     /// up). Its waiters resume.
-    pub fn workerEvaluated(self: *Registry, worker_id: u64, ok: bool) Allocator.Error!void {
+    pub fn workerEvaluated(self: *Registry, worker_id: u64, ok: bool, handles_fetch: bool) Allocator.Error!void {
         const worker = self.findWorker(worker_id) orelse return;
         if (worker.run != .starting) return;
         worker.run = .running;
-        // 9.8. The script's has ever been evaluated flag.
+        // 9.8. If the script's has ever been evaluated flag is unset: each
+        // event type of the global's event listeners joins the set of event
+        // types to handle (Crane keeps the one type the algorithms ask about,
+        // fetch); then the flag is set.
+        if (!worker.has_ever_been_evaluated) worker.handles_fetch = handles_fetch;
         worker.has_ever_been_evaluated = true;
         try self.answerWaiters(worker, ok);
         // A worker whose script failed to evaluate does not stay.

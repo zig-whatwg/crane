@@ -241,9 +241,41 @@ pub const AsyncFetch = struct {
     }
 
     /// Whether the fetch is over: its response delivered, and no body left
-    /// arriving.
+    /// arriving - and no next manual redirect for the client to process (a
+    /// navigation's redirect: the fetch goes on when the client asks).
     fn over(self: *const AsyncFetch) bool {
-        return self.delivered and self.source == null and self.transfer == null and self.relay == null;
+        return self.delivered and self.source == null and self.transfer == null and self.relay == null and
+            !self.job.hasNextManualRedirect();
+    }
+
+    /// Whether the response delivered is a navigation's redirect whose next
+    /// hop waits for the client (HTTP fetch step 6 "manual", FetchJob).
+    pub fn hasNextManualRedirect(self: *const AsyncFetch) bool {
+        return self.delivered and self.job.hasNextManualRedirect();
+    }
+
+    /// The request's current URL (BORROWED until the fetch goes): HTML
+    /// "create and initialize a Document object" step 3's creationURL.
+    pub fn requestCurrentUrl(self: *const AsyncFetch) []const u8 {
+        return self.job.request.currentUrl();
+    }
+
+    /// That redirect's location URL; null for failure (or none).
+    pub fn nextManualRedirectUrl(self: *const AsyncFetch) ?[]const u8 {
+        return self.job.nextManualRedirectUrl();
+    }
+
+    /// Fetch "process the next manual redirect", for the client (HTML's
+    /// navigation, step 21.6): the next hop starts, and its response is
+    /// delivered through `done` again. The request's reserved client and its
+    /// route are the caller's for this hop (HTML step 21.1-21.2 may have
+    /// replaced them): BORROWED, as when the fetch started.
+    pub fn processNextManualRedirect(self: *AsyncFetch, reserved_client: ?*anyopaque, route: ?service_worker_fetch.Route) void {
+        if (!self.hasNextManualRedirect()) return;
+        self.job.request.reserved_client = reserved_client;
+        self.job.request.service_worker = route;
+        self.delivered = false;
+        self.advance(self.job.processNextManualRedirect());
     }
 
     /// Take the job's next step: hand its request to the network, or keep
