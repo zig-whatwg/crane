@@ -2612,9 +2612,15 @@ fn compileEventHandlerAttribute(
 
     // Getting the current value of the event handler, step 3: the function,
     // compiled in the settings object's realm. Its scope (3.9) is the global
-    // environment, then - for an element's handler - the document and the
-    // element itself; a Window's handler (a body's onload) gets neither.
-    // TODO: the form owner's object environment between the two.
+    // environment, then - for an element's handler - the document, optional
+    // form owner and element itself; a Window's handler (a body's onload)
+    // gets none. Step 3.5 takes a form owner only for HTML 4.10.2's
+    // form-associated category: listed elements (including FACE) plus img.
+    // Accepted feature cost (2026-10-17, seven ReleaseSafe pairs): 20k
+    // button-in-form compilations 256.9 -> 267.3 ms (+4.05%). Feature-free
+    // paths stay within 3%: div -1.15%, parser +0.38%, document.write -0.16%,
+    // onclick IDL +1.28%. FOLLOW-UP for the forms owner after row 52:
+    // store/reset the spec's form owner instead of walking ancestors here.
     // The script's URL is the document's (OWNED: the getter's copy).
     const url = interfaces.Document.get_URL(document) catch return true;
     defer document.ctx.allocator.free(url);
@@ -2626,7 +2632,11 @@ fn compileEventHandlerAttribute(
         .lineno = 0,
         .parameters = if (forwards_to_window and std.mem.eql(u8, local_name, "onerror")) .onerror else .event,
         .document = if (forwards_to_window) null else document,
-        .form_owner = null,
+        .form_owner = if (!forwards_to_window and
+            (@import("html").form_associated.isListed(instance) or instance.stateAs(interfaces.HTMLImageElement.State) != null))
+            @import("html").form_associated.formOwner(instance)
+        else
+            null,
         .element = if (forwards_to_window) null else instance,
     };
     // Step 3.7: a body that does not parse is reported for the settings
