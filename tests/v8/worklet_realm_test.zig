@@ -181,6 +181,13 @@ test "a worklet realm's end leaves its owner working and no handle of its own" {
         try expect(warm.realm, "typeof registerPaint", "function");
         protocol.destroyWorkletRealm(warm.realm);
     }
+    // V8's own count of global handles in use (used_global_handles_size) is
+    // the measure. The adapter's ledger counters drift downwards on main
+    // already (they read negative before this test makes anything): a
+    // v8_Object_New handle - the console namespace object a realm gets - is
+    // not counted when made but is when disposed (v8_wrapper.cpp). So they
+    // may only not grow.
+    const bytes_before = try counter("global_handle_bytes");
     const contexts_before = try counter("live_context_globals");
     const objects_before = try counter("live_object_globals");
     const strings_before = try counter("live_string_globals");
@@ -194,10 +201,11 @@ test "a worklet realm's end leaves its owner working and no handle of its own" {
     , "2 4 6,worklet,true");
     protocol.destroyWorkletRealm(made.realm);
 
+    try testing.expectEqual(bytes_before, try counter("global_handle_bytes"));
     try testing.expectEqual(contexts_before, try counter("live_context_globals"));
-    try testing.expectEqual(objects_before, try counter("live_object_globals"));
-    try testing.expectEqual(strings_before, try counter("live_string_globals"));
     try testing.expectEqual(cache_before, try counter("wrapper_cache_entries"));
+    try testing.expect(try counter("live_object_globals") <= objects_before);
+    try testing.expect(try counter("live_string_globals") <= strings_before);
 
     // The page's realm and its templates go on.
     try expect(page.realm, "[typeof Window, 1 + 1].join()", "function,2");
