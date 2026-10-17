@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A filter applied in place loses the internal response](architecture-a-filter-applied-in-place-loses-the-internal-response.md) - Clear a response in place only when nothing will ever read it unfiltered again; a Response object can be handed on - to a controlled page, to a cache - and needs its internal response kept.
 - [A fragment that will be filtered must be built where nothing runs](architecture-a-filtered-fragment-must-be-built-where-nothing-runs.md) - When code must filter a tree before anything in it acts, build the tree in a document that cannot act (no browsing context) and let insertion's adoption bring the survivors to life - never filter after creating in the live document, and never compile or fetch from an adopting step.
 - [An element's own state block needs a registry and a sweep, or it leaks for every orphan](architecture-an-orphan-s-state-needs-a-sweep-or-the-arena.md) - An element impl that keeps a state block of its own needs both exits: a registry entry (in the arena) that its deinit removes, and a teardown sweep for the orphans no deinit reaches; test with an unwrapped node dropped by innerHTML, not removeChild, which wraps.
 - [A helper move must follow the production module graph](architecture-a-helper-move-must-follow-the-production-module-graph.md) - Check the destination module's actual dependency table; a matching import elsewhere does not make a move compile.
@@ -302,6 +303,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A traced value read still owns its handle](architecture-a-traced-value-read-still-owns-its-handle.md) - Object identity, reachability and ownership of the returned handle are three separate questions: a `tracedValue` read is Owned, so a getter may hand it on with `take()`, but it never goes into a record whose converter only borrows it.
 
 ### Spec Compliance
+- [A wait that the page's own load waits on deadlocks](spec-compliance-a-wait-the-page-s-own-load-waits-on-deadlocks.md) - Before implementing a spec wait, check whether what it waits for waits on the caller; if it does, follow the browser majority's break of the cycle and state it, rather than adding a special case per caller.
 - [Parse selectors over CSS tokens, not characters](spec-compliance-parse-selectors-over-css-tokens.md) - A selector is a CSS grammar over CSS tokens: tokenize per CSS Syntax 3 first, and validity questions answer themselves.
 - [:hover and :active follow the engines' observable rules](spec-compliance-user-action-pseudo-classes-follow-the-engines.md) - For user-action state, read each subtest's browser result before applying the prose: the engines' narrower rules are what WPT checks.
 - [A sandbox belongs to the document it was created with, not to the frame](spec-compliance-a-sandbox-belongs-to-the-document-not-the-frame.md) - Put a security state on the object the spec puts it on, and fix it where the spec fixes it: a flag kept on the frame cannot say which document it applies to.
