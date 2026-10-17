@@ -32,10 +32,13 @@
 //!   all three, which Firefox's reuse of the about:blank client also passes).
 //! - A window realm whose document is not fully active - a removed frame's,
 //!   a closed window's - or whose `closed` is already true (close() was
-//!   called and its traversable is closing) becomes no environment: what it calls is rejected
-//!   with an "InvalidStateError" (Chromium's answer for a detached context),
-//!   and the promises it was waiting on when its environment ended stay
-//!   pending (nothing runs in a realm that has gone).
+//!   called and its traversable is closing) becomes no environment: what it
+//!   calls is rejected with an "InvalidStateError" (Chromium's answer for a
+//!   detached context), and the promises it was waiting on when its
+//!   environment ended stay pending (nothing runs in a realm that has gone).
+//! - ServiceWorker.postMessage() sends as the ServiceWorker object's
+//!   relevant settings object, not the incumbent (`postMessageToWorker`):
+//!   what all three browsers do.
 //!
 //! Spec: https://w3c.github.io/ServiceWorker/#client-context
 
@@ -1307,8 +1310,20 @@ pub fn claim(clients: *runtime.Instance) !runtime.JSValue {
 pub fn postMessageToWorker(service_worker: *runtime.Instance, data: *const objects.ServiceWorkerObject, message: runtime.JSValue, transfer: []const runtime.JSValue) !void {
     const manager = Manager.of(service_worker.ctx) orelse return;
     const realm = engine.currentRealm() orelse service_worker.ctx;
-    // 2-3. incumbentSettings and incumbentGlobal.
-    const incumbent = engine.incumbentRealm() orelse service_worker.ctx;
+    // 2-3. incumbentSettings and incumbentGlobal. Deviation, the browsers'
+    // (AGENTS.md golden rule 2): the ServiceWorker object's relevant
+    // settings object, not the incumbent - the client whose ServiceWorker
+    // object it is sends the message. A top-level page calling
+    // frame.contentWindow.navigator.serviceWorker.controller.postMessage()
+    // sends it as the frame: ServiceWorkerGlobalScope/
+    // extendable-message-event.https.html "Post an extendable message from a
+    // nested client" asserts the event's source is the frame's WindowClient
+    // (its URL, frameType "nested") and passes in Chrome, Firefox and Safari
+    // (wpt.fyi 2026-10-16, 4/4 in each); the incumbent, the top-level page,
+    // fails it. Chromium posts through the object's own container host,
+    // Gecko from its owner window's client, WebKit from its script
+    // execution context.
+    const incumbent = service_worker.ctx;
     // 4. StructuredSerializeWithTransfer(message, options["transfer"]);
     // rethrow any exceptions.
     const port_message = try html.worker_host.serializePortMessage(realm, message, transfer, manager.allocator);
