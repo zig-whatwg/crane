@@ -664,8 +664,11 @@ test "Blob - slice negative indices" {
     try std.testing.expectEqual(@as(u64, 6), size);
 }
 
-/// Operation: textStream
+/// File API §3.3.6, textStream(). This newer specification is shipped by
+/// Chrome; Firefox/Safari lag it (FileAPI PR 221, wpt.fyi cc74d2669f).
 pub fn call_textStream(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    // 1. Get stream: the existing source pulls immutable bytes in chunks.
+    const stream = try call_stream(instance);
+    // 2–4. Decode in this's relevant realm, regardless of Blob.type.
+    return @import("dom").text_stream.decode(instance.ctx, stream);
 }
