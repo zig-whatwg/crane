@@ -78,6 +78,8 @@ pub fn isBaseUriAllowedByList(
     base_port: ?u16,
     base_path: []const u8,
 ) bool {
+    // A list that could not record a policy blocks everything (fail closed).
+    if (csp_list.blocksEverything()) return false;
     for (csp_list.policies.items) |*policy| {
         if (!isBaseUriAllowed(policy, base_scheme, base_host, base_port, base_path)) {
             return false;

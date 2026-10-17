@@ -201,6 +201,8 @@ pub fn getSandboxFlags(policy: *const types.Policy) ?SandboxFlags {
 /// Get combined sandbox flags from all policies in CSP list.
 /// Flags are merged (intersection - all policies must allow).
 pub fn getCombinedSandboxFlags(csp_list: *const types.CSPList) ?SandboxFlags {
+    // A list that could not record a policy fails closed: every restriction.
+    if (csp_list.blocksEverything()) return SandboxFlags.allRestricted();
     var result: ?SandboxFlags = null;
 
     for (csp_list.policies.items) |*policy| {

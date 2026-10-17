@@ -20,6 +20,9 @@ const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
 const realm_v8 = @import("realm_v8.zig");
 const template_registry = @import("template_registry.zig");
 const page_realm = @import("page_realm.zig");
+const protocol_agents = @import("protocol_agents.zig");
+const support = @import("protocol_support.zig");
+const conversions = @import("conversions.zig");
 const namespaces = @import("namespaces");
 
 const Context = engine.Context;
@@ -98,12 +101,40 @@ const retained_key = "crane:retained";
 /// more (HTML "destroy a document" step 7: they are removed from the task
 /// queues without running).
 pub fn isDetached(realm: Context) bool {
-    const state = window_realms.get(realm) orelse return false;
+    const state = stateOf(realm) orelse return false;
     return state.detached != null;
 }
 
-/// The Window realms made on this thread (an agent is one thread), by realm.
-threadlocal var window_realms: std.AutoHashMapUnmanaged(Context, *WindowRealmState) = .empty;
+/// The Window realms an agent made, by realm. Held on the agent's record
+/// (protocol_agents.AgentRecord.window_realms) and freed with it, as Blink
+/// keeps its per-isolate maps on V8PerIsolateData: it was a `threadlocal` on
+/// c_allocator, whose entries every realm's end removed but whose capacity
+/// nothing freed, so each thread that ever made a Window realm left its
+/// storage behind when it ended (192 B a thread, Codex row 56's fresh-thread
+/// test under leaks --atExit; docs/lessons/architecture-a-threadlocal-
+/// container-outlives-its-thread-unless-its-capacity-goes.md). Read and
+/// written on the agent's own thread only, as the record's other state is.
+pub const WindowRealms = std.AutoHashMapUnmanaged(Context, *WindowRealmState);
+
+/// The Window realms of the agent whose isolate this is; null for an isolate
+/// createAgent did not make, which can make no Window realm.
+fn realmsOfAgent(isolate: *ffi.Isolate) ?*WindowRealms {
+    const record = protocol_agents.recordOf(isolate) orelse return null;
+    return &record.window_realms;
+}
+
+/// The Window realms of `realm`'s agent.
+fn realmsOf(realm: Context) ?*WindowRealms {
+    const agent = realm.agent orelse return null;
+    return realmsOfAgent(@ptrCast(@alignCast(agent)));
+}
+
+/// What the adapter keeps for `realm`, a Window realm it made and that has
+/// not ended; null for any other realm.
+fn stateOf(realm: Context) ?*WindowRealmState {
+    const realms = realmsOf(realm) orelse return null;
+    return realms.get(realm);
+}
 
 fn contextOf(realm: Context) ?*ffi.Context {
     const engine_ctx = realm.engine_ctx orelse return null;
@@ -150,6 +181,12 @@ fn realmOfOwnedContext(context: ?*ffi.Context) ?Context {
 pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Context {
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(options.agent));
     const allocator = options.allocator;
+    // The agent keeps its Window realms (`WindowRealms`): one createAgent
+    // made, as WindowRealmOptions.agent says.
+    const realms = realmsOfAgent(isolate) orelse {
+        log.warn("createWindowRealm: the agent was not made by createAgent; it has no record to keep its Window realms in", .{});
+        return error.OperationFailed;
+    };
 
     // The agent stays entered while its realm lives: the page's context is
     // entered for its whole life, and a context can be entered only in its
@@ -170,7 +207,7 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
         .window_proxy_of => |old| {
             const old_context = contextOf(old) orelse return error.OperationFailed;
             reused_proxy = ffi.v8_Context_Global(old_context) orelse return error.OperationFailed;
-            const old_state = window_realms.get(old);
+            const old_state = realms.get(old);
             if (old_state == null or !old_state.?.window_proxy_handed_on) {
                 // The old global object, behind the proxy until the detach:
                 // the old realm's end severs it from its Window. V8's V1
@@ -309,10 +346,10 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
         .window = window,
         .allocator = allocator,
     };
-    const parent_state: ?*WindowRealmState = if (options.parent) |parent| window_realms.get(parent) else null;
+    const parent_state: ?*WindowRealmState = if (options.parent) |parent| realms.get(parent) else null;
     if (parent_state) |ps| ps.children.append(std.heap.c_allocator, realm) catch return error.OutOfMemory;
     errdefer if (parent_state) |ps| removeChild(ps, realm);
-    window_realms.put(std.heap.c_allocator, realm, state) catch return error.OutOfMemory;
+    realms.put(std.heap.c_allocator, realm, state) catch return error.OutOfMemory;
 
     if (options.parent != null) {
         // A frame's window gets the window operations its parent's has.
@@ -349,7 +386,7 @@ pub fn tracedEdgeHolderOfWindow(window: *engine.Instance) TracedEdgeHolder {
     // never wrap it as an ordinary object - its wrapper is a global object
     // or nothing.
     const is_window = std.mem.eql(u8, window.vtable.name, "Window");
-    const state = window_realms.get(window.ctx) orelse return if (is_window) .gone else .not_a_realm_window;
+    const state = stateOf(window.ctx) orelse return if (is_window) .gone else .not_a_realm_window;
     if (state.window != window) return if (is_window) .gone else .not_a_realm_window;
     // Its WindowProxy went on to a later realm: the global object it had is
     // the one createWindowRealm kept (weakly) as `retired_global`.
@@ -471,7 +508,7 @@ pub const SameOriginCheck = struct {
 };
 
 pub fn sameOriginCheckOf(realm: Context) ?SameOriginCheck {
-    const state = window_realms.get(realm) orelse return null;
+    const state = stateOf(realm) orelse return null;
     return .{
         .is_platform_object_same_origin = state.is_platform_object_same_origin orelse return null,
         .host = state.host,
@@ -482,7 +519,7 @@ pub fn sameOriginCheckOf(realm: Context) ?SameOriginCheck {
 /// (v8_Object_Dispose), when `window` is the Window behind it; null for a
 /// Window whose proxy went on to a later realm, or one not made here.
 pub fn windowProxyOf(window: *engine.Instance) ?*ffi.Object {
-    const state = window_realms.get(window.ctx) orelse return null;
+    const state = stateOf(window.ctx) orelse return null;
     if (state.window != window or state.window_proxy_handed_on) return null;
     const context = contextOf(window.ctx) orelse return null;
     return ffi.v8_Context_Global(context);
@@ -605,7 +642,7 @@ fn isEnding(realm: Context) bool {
 /// Each is detached (`detach`), and ends once the collector takes it, or
 /// with its page, whichever comes first (`endRealm`).
 pub fn destroyWindowRealm(realm: Context, how: engine.WindowRealmEnd) void {
-    if (window_realms.get(realm)) |state| {
+    if (stateOf(realm)) |state| {
         if (state.parent != null and state.detached == null) switch (how) {
             .navigable_destroyed => return detach(realm, state),
             .global_detached => if (state.window_proxy_handed_on) return detach(realm, state),
@@ -670,7 +707,7 @@ fn detach(realm: Context, state: *WindowRealmState) void {
         i -= 1;
         if (i >= state.children.items.len) continue;
         const child = state.children.items[i];
-        if (window_realms.get(child)) |child_state| {
+        if (stateOf(child)) |child_state| {
             if (child_state.detached != null) continue;
         }
         destroyWindowRealm(child, .navigable_destroyed);
@@ -774,18 +811,19 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
 
     // Its frames' realms that are still alive end first, the same way: a
     // removed frame's frames are destroyed navigables too.
-    if (window_realms.get(realm)) |s| {
+    const realms = realmsOf(realm);
+    if (stateOf(realm)) |s| {
         while (s.children.pop()) |child| endRealm(child, how);
         s.children.deinit(std.heap.c_allocator);
     }
-    const state = if (window_realms.fetchRemove(realm)) |kv| kv.value else null;
+    const state = if (realms) |r| (if (r.fetchRemove(realm)) |kv| kv.value else null) else null;
     const detached: ?*Detached = if (state) |s| s.detached else null;
     defer if (state) |s| {
         if (s.retired_global) |g| ffi.v8_Global_Dispose(g);
         s.allocator.destroy(s);
     };
     if (state) |s| if (s.parent) |parent| {
-        if (window_realms.get(parent)) |ps| removeChild(ps, realm);
+        if (realms.?.get(parent)) |ps| removeChild(ps, realm);
     };
     // A detached realm's context is its record's handle - `engine_ctx` reads
     // null once the collector took it.
@@ -889,4 +927,116 @@ pub fn functionRealm(value: JSValue) ?Context {
     };
     var revoked = false;
     return realmOfOwnedContext(ffi.v8_Value_GetFunctionRealm(handle, &revoked));
+}
+
+// ============================================================================
+// A global object's built-in functions
+// ============================================================================
+
+/// The engine protocol's globalBuiltinFunction: ECMAScript
+/// CreateBuiltinFunction(steps, length, name, « », realm) for a function
+/// `realm`'s global object is associated with (Streams 7.2.2 and 7.3.2, the
+/// byte length and count queuing strategy size functions), made on the
+/// first call for `key` and the same function on every later one.
+///
+/// Blink's GetCachedSizeFunction (core/streams/queuing_strategy_common.cc):
+/// the function is kept under a private symbol on the realm's global - an
+/// edge the collector traces from the global, never a root - so a realm
+/// whose navigable is gone is still collected with it. Here the global
+/// OBJECT holds it, not the global proxy: a WindowProxy a navigation hands
+/// on to a later realm would carry the old realm's function into the new
+/// one. Function::New with ConstructorBehavior::kThrow
+/// (v8_Function_NewWithData): no [[Construct]] and no "prototype", and not
+/// cached in the context's template instantiation cache. OWNED: a hold of
+/// the function.
+pub fn globalBuiltinFunction(realm: Context, key: []const u8, function_name: []const u8, length: u32, function: *const engine.BuiltinFunction) Error!engine.Owned {
+    const entered = try support.enter(realm);
+    defer entered.leave();
+    const isolate = entered.isolate;
+    const context = entered.context();
+    const global = ffi.v8_Context_GetRealGlobal(context) orelse return error.OperationFailed;
+    defer ffi.v8_Object_Dispose(global);
+    // The function made for `key` before: the global object keeps it.
+    if (ffi.v8_Object_GetPrivateRef(global, key.ptr, @intCast(key.len))) |made| return support.owned(made);
+
+    // 2. Let F be ! CreateBuiltinFunction(steps, length, name, « »,
+    //    globalObject's relevant Realm). The steps reach `function` through
+    //    the closure's [[data]], an External the function keeps.
+    const external = ffi.v8_External_New(isolate, @ptrCast(@constCast(function))) orelse return error.OperationFailed;
+    defer ffi.v8_External_Dispose(external);
+    const made = try support.newClosure(entered, builtinFunctionSteps, @ptrCast(external), @intCast(length));
+    errdefer ffi.v8_Global_Dispose(made);
+    const name = try support.newString(isolate, function_name);
+    defer ffi.v8_String_Dispose(name);
+    ffi.v8_Function_SetName(@ptrCast(made), name);
+    // 3. Set globalObject's ... function to F: kept by the global object.
+    ffi.v8_Object_SetPrivateRef(global, key.ptr, @intCast(key.len), made);
+    return support.owned(made);
+}
+
+/// A built-in function's argument as its steps see it (engine.BuiltinSteps):
+/// a primitive as itself, a string as its UTF-8 (owned by `allocator`),
+/// anything else a handle BORROWED for the call.
+fn builtinArgument(isolate: *ffi.Isolate, context: *ffi.Context, value: *ffi.Value, allocator: std.mem.Allocator) !JSValue {
+    if (ffi.v8_Value_IsUndefined(value)) return JSValue.jsUndefined;
+    if (ffi.v8_Value_IsNull(value)) return JSValue.jsNull;
+    if (ffi.v8_Value_IsBoolean(value)) return .{ .boolean = ffi.v8_Value_BooleanValue(value, isolate) };
+    if (ffi.v8_Value_IsNumber(value)) return .{ .number = ffi.v8_Value_NumberValue(value, context) };
+    if (ffi.v8_Value_IsString(value)) {
+        const str: *ffi.String = @ptrCast(value);
+        const len = ffi.v8_String_Utf8Length(str);
+        if (len <= 0) return JSValue.fromStringRef("");
+        const buffer = try allocator.alloc(u8, @intCast(len));
+        _ = ffi.v8_String_WriteUtf8(str, buffer.ptr, len);
+        return JSValue.fromStringOwned(buffer);
+    }
+    return .{ .handle = .{ .ptr = @ptrCast(value) } };
+}
+
+/// What a globalBuiltinFunction's function runs: its steps, given its
+/// arguments; what they return is its result.
+fn builtinFunctionSteps(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const data = info.getData();
+    defer ffi.v8_Global_Dispose(data);
+    const function: *const engine.BuiltinFunction = @ptrCast(@alignCast(ffi.v8_External_Value(@ptrCast(data)) orelse return));
+    const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer ffi.v8_Context_Dispose(context);
+
+    const allocator = std.heap.c_allocator;
+    const argc: usize = @intCast(@max(info.length(), 0));
+    var handles_buf: [4]*ffi.Value = undefined;
+    var values_buf: [4]JSValue = undefined;
+    const handles = if (argc <= handles_buf.len) handles_buf[0..argc] else allocator.alloc(*ffi.Value, argc) catch return;
+    defer if (argc > handles_buf.len) allocator.free(handles);
+    const values = if (argc <= values_buf.len) values_buf[0..argc] else allocator.alloc(JSValue, argc) catch return;
+    defer if (argc > values_buf.len) allocator.free(values);
+    var made: usize = 0;
+    defer for (handles[0..made], values[0..made]) |handle, *value| {
+        value.deinit(allocator);
+        ffi.v8_Global_Dispose(handle);
+    };
+    while (made < argc) : (made += 1) {
+        // An owned Global for each argument; its value borrows it.
+        handles[made] = info.get(@intCast(made));
+        values[made] = builtinArgument(isolate, context, handles[made], allocator) catch {
+            ffi.v8_Global_Dispose(handles[made]);
+            return;
+        };
+    }
+
+    const result = function.steps(function.data, values) catch |err| switch (err) {
+        // Already thrown: leave it in flight.
+        error.ExceptionPending => return,
+        else => {
+            conversions.throwWebIDLErrorFromContext(isolate, context, @errorName(err));
+            return;
+        },
+    };
+    const returned = conversions.toV8Value(JSValue, isolate, context, result) catch return;
+    info.setReturnValue(returned);
+    // The result is the engine's (engine.BuiltinSteps): a value made for it,
+    // or a handle the steps handed over, released now that V8 holds its own.
+    // An instance's wrapper is the wrapper cache's.
+    if (result != .instance) ffi.v8_Global_Dispose(returned);
 }

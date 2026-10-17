@@ -74,7 +74,7 @@ pub fn shouldBlockInline(
     // window is read the same way, its own container.
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
     const container = policy_containers.of(document) orelse return false;
-    if (container.csp_list.policies.items.len == 0) return false;
+    if (container.csp_list.isEmpty()) return false;
     var eligible = matching;
     // §6.7.3.1 steps 1-2, reached by §6.7.3.3 step 2: a supplied nonce
     // cannot authorize a script with dangling markup in an attribute. Read
@@ -96,6 +96,9 @@ pub fn shouldBlockInline(
         }
     }
     const window: ?*runtime.Instance = interfaces.Document.get_defaultView(document) catch null;
+    // A list that could not record a policy blocks everything (fail closed,
+    // csp.CSPList.unenforceable).
+    if (container.csp_list.blocksEverything()) return true;
     // 2. Let result be "Allowed".
     var blocked = false;
     // 3. For each policy of the CSP list:
@@ -225,7 +228,7 @@ const ElementReporter = struct {
 pub fn shouldTargetBlockJavascriptUrl(target_window: *runtime.Instance, url: []const u8) bool {
     const document = windowDocument(target_window) orelse return false;
     const container = policy_containers.of(document) orelse return false;
-    if (container.csp_list.policies.items.len == 0) return false;
+    if (container.csp_list.isEmpty()) return false;
     const request = csp.navigation_check.NavigationRequest.ofSerialized(url);
     return csp.navigation_check.javascriptUrlInlineChecks(&container.csp_list, request, reporterFor(target_window)) == .blocked;
 }

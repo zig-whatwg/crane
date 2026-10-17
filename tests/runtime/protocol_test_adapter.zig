@@ -109,6 +109,10 @@ pub fn defineBuiltinFunction(_: Context, _: []const u8, _: u32, _: *const engine
     return error.NotSupported;
 }
 
+pub fn globalBuiltinFunction(_: Context, _: []const u8, _: []const u8, _: u32, _: *const engine.BuiltinFunction) Error!engine.Owned {
+    return error.NotSupported;
+}
+
 // 4.3 Running script
 
 /// No engine parses here, so every non-empty script fails to parse: it is

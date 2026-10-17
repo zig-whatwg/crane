@@ -84,10 +84,11 @@ static std::vector<GlobalHandleEntry> g_snapshot_handles;
 // is a delete site like any other.
 static void releaseWeakArmRaw(void* handle);
 
-// Defined with the live string count below: every delete site a Global<String>
-// can reach calls it, so the count is of handles, not of entry points.
+// Defined with the live string and object counts below: every delete site a
+// Global<String> or Global<Object> can reach calls it, so the counts are of
+// handles, not of entry points.
 template <typename T>
-static void forgetStringHandle(Global<T>* handle);
+static void forgetCountedHandle(Global<T>* handle);
 
 // ---- lane: realms (realm-tagged handles) ----
 // Handles the engine protocol made for a realm's callbacks (an event
@@ -128,7 +129,7 @@ template<typename T>
 static void resetGlobalHandle(void* ptr) {
     releaseWeakArmRaw(ptr);
     Global<T>* handle = static_cast<Global<T>*>(ptr);
-    forgetStringHandle(handle);
+    forgetCountedHandle(handle);
     handle->Reset();
     delete handle;
 }
@@ -200,14 +201,42 @@ static void rememberStringHandle(Global<String>* handle) {
 #endif
 }
 
+// Live Global<Object> handles (`live_object_globals`), in every build, and
+// counted by HANDLE as the strings are. It used to be counted at six entry
+// points (`This`, `Context::Global`, the prototype getters, NewInstance) and
+// uncounted in v8_Object_Dispose, so it drifted both ways: NEGATIVE by one
+// for every handle an uncounted entry point made (v8_Object_New and its
+// siblings, Holder, NewInstance of a function, Proxy::New - fourteen of the
+// twenty) that v8_Object_Dispose released (lane worklets), POSITIVE by one
+// for every counted handle the binding released as a Value
+// (v8_Global_Dispose) and for every v8_GetGlobalPrototype that counted
+// before it returned null. So trackHandle marks every Global<Object> it makes
+// - all twenty `new Global<Object>` go through it - and every dispose a
+// handle can reach reads the mark back, whatever type it is released as.
+// A weak handle V8 collects is no longer live: the weak callback reads the
+// mark before it resets the node.
+static std::atomic<int64_t> g_live_object_globals{0};
+
+static constexpr uint16_t kCountedObjectClassId = 0x4F42;  // "OB"
+
+static void rememberObjectHandle(Global<Object>* handle) {
+    handle->SetWrapperClassId(kCountedObjectClassId);
+    g_live_object_globals.fetch_add(1, std::memory_order_relaxed);
+}
+
+/// Take a counted handle out of its count, before its node is reset. An
+/// empty handle answers class id 0: it was counted out when it was reset.
 template <typename T>
-static void forgetStringHandle(Global<T>* handle) {
+static void forgetCountedHandle(Global<T>* handle) {
+    const uint16_t class_id = handle->WrapperClassId();
+    if (class_id == kCountedObjectClassId) {
+        g_live_object_globals.fetch_sub(1, std::memory_order_relaxed);
+        return;
+    }
 #if CRANE_TRACK_GLOBALS
-    if (handle->WrapperClassId() == kCountedStringClassId) {
+    if (class_id == kCountedStringClassId) {
         g_live_string_globals.fetch_sub(1, std::memory_order_relaxed);
     }
-#else
-    (void)handle;
 #endif
 }
 
@@ -249,6 +278,7 @@ extern "C" bool v8_Debug_GlobalSite(int index, uintptr_t* pc, int64_t* count) {
 template <typename T>
 static Global<T>* trackHandle(Global<T>* handle) {
     if (handle) {
+        if constexpr (std::is_same_v<T, Object>) rememberObjectHandle(handle);
 #if CRANE_TRACK_GLOBALS
         g_live_globals.fetch_add(1, std::memory_order_relaxed);
         // Frame 0 - inside the `v8_*` wrapper, so this attributes by WHICH V8 entry
@@ -620,6 +650,9 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
         std::lock_guard<std::mutex> guard(weakDataLock());
         armedWeakData().erase(static_cast<const void*>(data->handle));
     }
+    // The node is reset here, not by the dispose that may follow: counted out
+    // now (an inline read of the node's class id, no V8 call).
+    forgetCountedHandle(data->handle);
     data->handle->Reset();
 
     // A `handle_survives` detach (v8_Global_ClearWeak on an already-queued
@@ -2166,11 +2199,9 @@ void v8_Isolate_Exit(Isolate* isolate) {
 // entirely startup, which made a 4-per-element leak look real when there was none.
 static std::atomic<int64_t> g_live_context_globals{0};
 
-// Live Global<Object> handles. Counted at the entry points that mint one on the
-// per-element path - `This`, `Context::Global`, the prototype getters - and
-// decremented in v8_Object_Dispose. Same reason as the context counter: cumulative
-// creations cannot tell a released handle from a leaked one.
-static std::atomic<int64_t> g_live_object_globals{0};
+// Live Global<Object> handles: g_live_object_globals, kept by handle with the
+// string count (rememberObjectHandle). Same reason as the context counter:
+// cumulative creations cannot tell a released handle from a leaked one.
 
 extern "C" int64_t v8_Debug_LiveObjectGlobals() {
     return g_live_object_globals.load(std::memory_order_relaxed);
@@ -2495,7 +2526,6 @@ Global<Object>* v8_Context_GetRealGlobal(Global<Context>* context) {
 }
 
 Global<Object>* v8_Context_Global(Global<Context>* context) {
-    g_live_object_globals.fetch_add(1, std::memory_order_relaxed);
     g_obj_src[2].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
@@ -2578,7 +2608,7 @@ void v8_String_Dispose(Global<String>* str) {
         // created inside snapshot mode and then clears the handles - a live
         // use-after-free that this guard fixes, independent of any new disposal.
         if (g_snapshot_mode) return;
-        forgetStringHandle(str);
+        forgetCountedHandle(str);
         releaseWeakArm(str);
         str->Reset();
         delete str;
@@ -2957,7 +2987,7 @@ void v8_FreeToStringResult(V8ToStringResult* result) {
     // aborts inside `resetGlobalHandle`.
     if (!g_snapshot_mode) {
         if (result->value) {
-            forgetStringHandle(result->value);
+            forgetCountedHandle(result->value);
             result->value->Reset();
             delete result->value;
         }
@@ -2984,7 +3014,7 @@ void v8_Value_Dispose(Global<Value>* value) {
     // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
     if (g_snapshot_mode) return;
     if (value) {
-        forgetStringHandle(value);
+        forgetCountedHandle(value);
         releaseWeakArm(value);
         untagRealmHandle(value);
         value->Reset();
@@ -3930,11 +3960,11 @@ void v8_Object_SetPrivateRef(Global<Object>* holder, const char* key, int key_le
 
 void v8_Object_Dispose(Global<Object>* obj) {
     if (!obj) return;
-    g_live_object_globals.fetch_sub(1, std::memory_order_relaxed);
     // See v8_ObjectTemplate_Dispose: while the snapshot is being built every
     // handle is registered for bulk cleanup, so disposing one here as well is a
     // double free.
     if (g_snapshot_mode) return;
+    forgetCountedHandle(obj);
     releaseWeakArm(obj);
     obj->Reset();
     delete obj;
@@ -4009,6 +4039,7 @@ void v8_Array_Dispose(Global<Array>* arr) {
     // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
     if (g_snapshot_mode) return;
     if (arr) {
+        forgetCountedHandle(arr);
         releaseWeakArm(arr);
         arr->Reset();
         delete arr;
@@ -5178,7 +5209,6 @@ void v8_FunctionTemplate_ReadOnlyPrototype(Global<FunctionTemplate>* tpl) {
 // Used when wrapping Zig instances as V8 objects - we need to manually set the prototype
 // because ObjectTemplate::NewInstance() doesn't automatically link to the FunctionTemplate's prototype.
 Global<Object>* v8_FunctionTemplate_GetPrototypeObject(Global<FunctionTemplate>* tpl, Global<Context>* context) {
-    g_live_object_globals.fetch_add(1, std::memory_order_relaxed);
     g_obj_src[4].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
@@ -5214,7 +5244,6 @@ Global<Object>* v8_FunctionTemplate_GetPrototypeObject(Global<FunctionTemplate>*
 // This ensures we get the SAME prototype that JavaScript sees on globalThis.ConstructorName.prototype.
 // This is necessary for `instanceof` to work correctly.
 Global<Object>* v8_GetGlobalPrototype(Global<Context>* context, const char* constructor_name) {
-    g_live_object_globals.fetch_add(1, std::memory_order_relaxed);
     g_obj_src[3].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
@@ -5489,6 +5518,7 @@ void v8_Function_Dispose(Global<Function>* fn) {
     // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
     if (g_snapshot_mode) return;
     if (fn) {
+        forgetCountedHandle(fn);
         releaseWeakArm(fn);
         fn->Reset();
         delete fn;
@@ -5508,7 +5538,6 @@ void v8_Function_SetName(Global<Function>* func, Global<String>* name) {
 
 // FunctionCallbackInfo - get 'this' object
 Global<Object>* v8_FunctionCallbackInfo_This(const FunctionCallbackInfo<Value>* info) {
-    g_live_object_globals.fetch_add(1, std::memory_order_relaxed);
     g_obj_src[0].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
@@ -6256,7 +6285,6 @@ void v8_ObjectTemplate_SetIndexedPropertyHandlerWithDefiner(
 
 // ObjectTemplate - create instance from template
 Global<Object>* v8_ObjectTemplate_NewInstance(Global<ObjectTemplate>* tpl, Global<Context>* context) {
-    g_live_object_globals.fetch_add(1, std::memory_order_relaxed);
     g_obj_src[5].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
@@ -6283,7 +6311,6 @@ Isolate* v8_PropertyCallbackInfo_Void_GetIsolate(const PropertyCallbackInfo<void
 
 // PropertyCallbackInfo - get this
 Global<Object>* v8_PropertyCallbackInfo_This(const PropertyCallbackInfo<Value>* info) {
-    g_live_object_globals.fetch_add(1, std::memory_order_relaxed);
     g_obj_src[1].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
@@ -7333,6 +7360,7 @@ void v8_Promise_Dispose(Global<Promise>* promise) {
     // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
     if (g_snapshot_mode) return;
     if (promise) {
+        forgetCountedHandle(promise);
         releaseWeakArm(promise);
         promise->Reset();
         delete promise;
@@ -7372,6 +7400,7 @@ void v8_PromiseResolver_Dispose(Global<Promise::Resolver>* resolver) {
     // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
     if (g_snapshot_mode) return;
     if (resolver) {
+        forgetCountedHandle(resolver);
         releaseWeakArm(resolver);
         resolver->Reset();
         delete resolver;
@@ -9311,7 +9340,7 @@ void v8_Global_Dispose(Global<Value>* global) {
     // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
     if (g_snapshot_mode) return;
     if (global != nullptr) {
-        forgetStringHandle(global);
+        forgetCountedHandle(global);
         releaseWeakArm(global);
         untagRealmHandle(global);
         global->Reset();

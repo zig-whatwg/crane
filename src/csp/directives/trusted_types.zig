@@ -101,6 +101,8 @@ pub fn shouldPolicyCreationBeBlocked(
     created_policy_names: []const []const u8,
     reporter: ?violation_events.Reporter,
 ) Result {
+    // A list that could not record a policy blocks everything (fail closed).
+    if (csp_list.blocksEverything()) return .blocked;
     // 1. Let result be "Allowed".
     var result: Result = .allowed;
     // 2. For each policy in global's CSP list:

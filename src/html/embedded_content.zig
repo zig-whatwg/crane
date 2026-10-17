@@ -575,7 +575,7 @@ fn pluginWithoutUrlCheck(element: *runtime.Instance) void {
     if (std.mem.trim(u8, type_attribute, " \t\n\r\x0c").len == 0) return;
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
     const container = dom.policy_containers.of(document) orelse return;
-    if (container.csp_list.policies.items.len == 0) return;
+    if (container.csp_list.isEmpty()) return;
     const window = (interfaces.Document.get_defaultView(document) catch null) orelse return;
     _ = csp.plugin_check.shouldPluginContentWithoutUrlBeBlocked(&container.csp_list, dom.csp_violations.reporterFor(window), element);
 }

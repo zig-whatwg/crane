@@ -169,7 +169,7 @@ pub const ByteLengthQueuingStrategy = struct {
         return try ByteLengthQueuingStrategyImpl.get_highWaterMark(instance);
     }
 
-    pub fn get_size(instance: *runtime.Instance) anyerror!Function {
+    pub fn get_size(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ByteLengthQueuingStrategyImpl.get_size(instance);
     }
 };

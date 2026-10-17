@@ -225,6 +225,112 @@ fn cancelWorkerTimers(owner: *WorkerHost) void {
     for (ids.items) |id| owner.clearTimer(id);
 }
 
+// ============================================================================
+// Animation frames (HTML 8.12) - a dedicated worker's
+// ============================================================================
+//
+// A DedicatedWorkerGlobalScope is its own AnimationFrameProvider's target
+// object, and is "supported" when its owner set contains a Document, or a
+// DedicatedWorkerGlobalScope that is supported (`ownerSupportsAnimationFrames`,
+// read on the owner's thread when it starts the worker). The worker event
+// loop's processing model, step 6.1: when the user agent believes the worker
+// would benefit from having its rendering updated, it runs the animation
+// frame callbacks for the global scope, passing in now. Crane renders
+// nothing; a frame is due every `animation_frame_interval_ms` while callbacks
+// wait, from one timer armed only then - an idle worker pays nothing - as
+// Window's frames are (src/browser/Context.zig). Each callback is the map's
+// until it runs, is cancelled, or the worker's tasks are discarded (close(),
+// the realm's end: `discardAnimationFrames`), which releases it: a callback
+// still queued when the worker ends left its Global for the agent's life
+// (lane leaks2: 2 roots under leaks --atExit over workers/).
+
+/// ~60Hz, as a Window's: the spec leaves the rate to the user agent.
+const animation_frame_interval_ms: u64 = 16;
+
+/// An entry of a global scope's map of animation frame callbacks.
+const AnimationFrameCallback = struct {
+    handle: u32,
+    /// OWNED.
+    callback: engine.CallbackFunction,
+};
+
+/// requestAnimationFrame(callback) for the dedicated worker global scope
+/// whose realm is `ctx` (HTML 8.12). Takes `callback`: the map keeps it, or
+/// it is released here.
+pub fn requestAnimationFrame(ctx: runtime.Context, callback: engine.CallbackFunction) error{ NotSupportedError, OutOfMemory }!u32 {
+    const wctx = forScope(ctx) orelse {
+        // A global scope no worker this host runs has: nothing could ever
+        // run its callbacks.
+        callback.release();
+        return error.NotSupportedError;
+    };
+    return wctx.requestAnimationFrame(callback);
+}
+
+/// cancelAnimationFrame(handle) for the dedicated worker global scope whose
+/// realm is `ctx` (HTML 8.12).
+pub fn cancelAnimationFrame(ctx: runtime.Context, handle: u32) error{NotSupportedError}!void {
+    const wctx = forScope(ctx) orelse return error.NotSupportedError;
+    return wctx.cancelAnimationFrame(handle);
+}
+
+/// HTML 8.12 "supported", for the dedicated worker the realm `owner_realm`
+/// starts: its owner set - that realm's global object, a Window's being its
+/// associated Document - contains a Document, or a DedicatedWorkerGlobalScope
+/// that is supported. Read on the owner's thread.
+fn ownerSupportsAnimationFrames(owner_realm: runtime.Context) bool {
+    if (owner_realm.isWindow()) return true;
+    const owner = forScope(owner_realm) orelse return false;
+    return owner.supportsAnimationFrames();
+}
+
+/// The frame's timer: the worker's rendering opportunity.
+fn animationFrameTrampoline(data: ?*anyopaque) void {
+    const self: *WorkerHost = @ptrCast(@alignCast(data orelse return));
+    self.animation_frame_timer = null;
+    // A closing worker runs no further task; its end releases the callbacks.
+    if (!self.runsTasks() or self.realm == null) return;
+    if (self.animation_frame_callbacks.items.len == 0) return;
+    self.runTask(AnimationFrames.steps, self);
+    // What the callbacks requested waits for the next frame.
+    if (self.animation_frame_callbacks.items.len > 0) self.armAnimationFrame();
+}
+
+const AnimationFrames = struct {
+    /// The worker event loop's step 6.1, as a task of the worker's realm:
+    /// 6.1.1. Let now be the current high resolution time given the
+    /// DedicatedWorkerGlobalScope. 6.1.2. Run the animation frame callbacks
+    /// for it, passing in now.
+    fn steps(data: ?*anyopaque) void {
+        const self: *WorkerHost = @ptrCast(@alignCast(data orelse return));
+        const realm = self.realm orelse return;
+        const now = self.currentHighResolutionTime();
+        // "Run the animation frame callbacks": 1. Let callbacks be target's
+        // map of animation frame callbacks. 2. Let callbackHandles be the
+        // result of getting the keys of callbacks. Without memory for them
+        // the frame is skipped: the callbacks wait for the next one.
+        const handles = self.allocator.alloc(u32, self.animation_frame_callbacks.items.len) catch return;
+        defer self.allocator.free(handles);
+        for (handles, self.animation_frame_callbacks.items) |*handle, entry| handle.* = entry.handle;
+        // 3. For each handle in callbackHandles, if handle exists in
+        // callbacks - a callback before it may have cancelled it:
+        for (handles) |handle| {
+            if (!self.runsTasks()) break;
+            const index = self.animationFrameIndex(handle) orelse continue;
+            // 3.1-3.2. Let callback be callbacks[handle]; remove it.
+            const entry = self.animation_frame_callbacks.orderedRemove(index);
+            defer entry.callback.release();
+            // 3.3. Invoke callback with « now » and "report".
+            const completion = engine.invokeCallbackFunction(realm, &entry.callback, .undefined, &.{.{ .number = now }}, .{
+                .report = self.reporter(),
+            }) catch continue;
+            switch (completion) {
+                inline else => |value| value.release(),
+            }
+        }
+    }
+};
+
 /// Every worker on this thread whose realm is still there, for
 /// `scopeSettings` and the realm hooks: a worker's thread has its one. Freed
 /// when it empties, so a worker thread that ends leaves nothing of it.
@@ -735,6 +841,20 @@ pub const WorkerHost = struct {
     /// repeat, and the id script holds must not.
     next_timer_id: runtime.TimerId = 1,
 
+    /// HTML 8.12: the global scope's map of animation frame callbacks - a
+    /// DedicatedWorkerGlobalScope is its own target object - in the order
+    /// they were requested. Each callback OWNED until it runs, is cancelled
+    /// or the worker's tasks are discarded (`discardAnimationFrames`).
+    animation_frame_callbacks: std.ArrayListUnmanaged(AnimationFrameCallback) = .empty,
+    /// Its animation frame callback identifier: the last handle handed out.
+    animation_frame_identifier: u32 = 0,
+    /// The timer manager's id of the next frame's task, armed only while
+    /// callbacks wait.
+    animation_frame_timer: ?runtime.TimerId = null,
+    /// Whether the global scope is a "supported" AnimationFrameProvider
+    /// (`ownerSupportsAnimationFrames`, for a dedicated worker).
+    animation_frames_owner_supported: bool = false,
+
     /// The worker's module map (HTML "module map" of its settings object):
     /// keys owned, values a `*module_script.ModuleScript` or
     /// `module_script.fetch_failed`, disposed with the realm.
@@ -800,6 +920,7 @@ pub const WorkerHost = struct {
             .time_origin_ns = start.time_origin_ns,
             .owner_is_secure_context = start.owner_is_secure_context,
             .owner_prohibits_mixed_security_contexts = start.owner_prohibits_mixed_security_contexts,
+            .animation_frames_owner_supported = start.owner_supports_animation_frames,
         };
         // Taken, not copied: the start's allocator is this one, and a move
         // has no failure to unwind.
@@ -928,6 +1049,92 @@ pub const WorkerHost = struct {
     }
 
     // ------------------------------------------------------------------
+    // Animation frames (HTML 8.12)
+    // ------------------------------------------------------------------
+
+    /// Whether this global scope is a supported AnimationFrameProvider: a
+    /// dedicated worker's whose owner set has a Document, or a supported
+    /// dedicated worker global scope.
+    fn supportsAnimationFrames(self: *const Self) bool {
+        return self.animation_frames_owner_supported and self.shared == null and self.service == null;
+    }
+
+    /// requestAnimationFrame(callback), taking `callback`.
+    fn requestAnimationFrame(self: *Self, callback: engine.CallbackFunction) error{ NotSupportedError, OutOfMemory }!u32 {
+        // 1. "If this is not supported, then throw a "NotSupportedError"
+        // DOMException."
+        if (!self.supportsAnimationFrames()) {
+            callback.release();
+            return error.NotSupportedError;
+        }
+        // 2-3. Increment target's animation frame callback identifier by
+        // one, and let handle be the result (an unsigned long).
+        self.animation_frame_identifier +%= 1;
+        const handle = self.animation_frame_identifier;
+        // A closing worker runs no further task (its tasks are discarded):
+        // the callback could never run.
+        if (!self.runsTasks()) {
+            callback.release();
+            return handle;
+        }
+        // 4-5. Set callbacks[handle] to callback.
+        self.animation_frame_callbacks.append(self.allocator, .{ .handle = handle, .callback = callback }) catch {
+            callback.release();
+            return error.OutOfMemory;
+        };
+        self.armAnimationFrame();
+        // 6. Return handle.
+        return handle;
+    }
+
+    /// cancelAnimationFrame(handle).
+    fn cancelAnimationFrame(self: *Self, handle: u32) error{NotSupportedError}!void {
+        // 1. "If this is not supported, then throw a "NotSupportedError"
+        // DOMException."
+        if (!self.supportsAnimationFrames()) return error.NotSupportedError;
+        // 2-3. Remove callbacks[handle].
+        const index = self.animationFrameIndex(handle) orelse return;
+        const entry = self.animation_frame_callbacks.orderedRemove(index);
+        entry.callback.release();
+    }
+
+    fn animationFrameIndex(self: *const Self, handle: u32) ?usize {
+        for (self.animation_frame_callbacks.items, 0..) |entry, i| {
+            if (entry.handle == handle) return i;
+        }
+        return null;
+    }
+
+    /// The next frame's timer, unless one is armed.
+    fn armAnimationFrame(self: *Self) void {
+        if (self.animation_frame_timer != null) return;
+        const timer = self.timer orelse return;
+        const id = timer.setTimeout(animation_frame_interval_ms, animationFrameTrampoline, self);
+        if (id != 0) self.animation_frame_timer = id;
+    }
+
+    /// The worker's tasks are discarded (close() step 1, "terminate a
+    /// worker", the realm's end): the frame's timer is cancelled, and every
+    /// callback still in the map is released, never run.
+    fn discardAnimationFrames(self: *Self) void {
+        if (self.animation_frame_timer) |id| {
+            if (self.timer) |timer| _ = timer.clearTimeout(id);
+            self.animation_frame_timer = null;
+        }
+        for (self.animation_frame_callbacks.items) |entry| entry.callback.release();
+        self.animation_frame_callbacks.clearAndFree(self.allocator);
+    }
+
+    /// HR-Time's current high resolution time given the global scope - what
+    /// its performance.now() answers: the coarsened time since its time
+    /// origin, in milliseconds. 0 when the global scope has none.
+    fn currentHighResolutionTime(self: *const Self) f64 {
+        const global_scope = self.global_scope orelse return 0;
+        const performance = interfaces.WorkerGlobalScope.get_performance(global_scope) catch return 0;
+        return interfaces.Performance.call_now(performance) catch 0;
+    }
+
+    // ------------------------------------------------------------------
     // A shared worker's connections
     // ------------------------------------------------------------------
 
@@ -992,6 +1199,7 @@ pub const WorkerHost = struct {
         if (self.phase != .running) return;
         self.phase = .closing;
         cancelWorkerTimers(self);
+        self.discardAnimationFrames();
         // The loop runs no further task; its end discards them.
         _ = self.link.requestClose();
     }
@@ -1005,6 +1213,7 @@ pub const WorkerHost = struct {
         self.phase = .realm_gone;
         removeLive(self);
         cancelWorkerTimers(self);
+        self.discardAnimationFrames();
         // "Run a worker" step 17: disentangle the worker's ports - its
         // implicit port first. Its Worker object's outside port is no longer
         // entangled; what the worker was sent and never ran goes with it.
@@ -1055,6 +1264,8 @@ pub const WorkerHost = struct {
         removeHost(self);
         std.debug.assert(self.timers.count() == 0);
         self.timers.deinit(self.allocator);
+        std.debug.assert(self.animation_frame_callbacks.items.len == 0);
+        self.animation_frame_callbacks.deinit(self.allocator);
         if (self.shared) |*shared| shared.deinit(self.allocator);
         std.debug.assert(self.pending_imports.items.len == 0);
         self.pending_imports.deinit(self.allocator);
@@ -2913,6 +3124,10 @@ const ThreadHost = struct {
         owner_is_secure_context: bool,
         /// The owner's mixed-content answer, read on that same thread.
         owner_prohibits_mixed_security_contexts: bool,
+        /// Whether a dedicated worker's global scope will be a supported
+        /// AnimationFrameProvider, read on the owner's thread
+        /// (`ownerSupportsAnimationFrames`).
+        owner_supports_animation_frames: bool = false,
         shared: ?SharedScope,
         /// The agent cluster of a DEDICATED worker's agent: its owner's
         /// ("obtain a worker/worklet agent" step 3 - isTopLevel is false, so
@@ -2959,6 +3174,9 @@ const ThreadHost = struct {
                 // 1.2.1 asks owner set[0]'s relevant settings object.
                 .owner_is_secure_context = ownerIsSecureContext(start.owner_realm),
                 .owner_prohibits_mixed_security_contexts = owner_prohibits_mixed_security_contexts,
+                // On the owner's thread: HTML 8.12's "supported" asks the
+                // owner set.
+                .owner_supports_animation_frames = start.shared == null and ownerSupportsAnimationFrames(start.owner_realm),
                 .shared = start.shared,
                 // On the owner's thread, in its realm: the owner's agent
                 // cluster, for a dedicated worker.

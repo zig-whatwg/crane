@@ -40,8 +40,16 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// `new ReadableStream(underlyingSource, strategy)` - § 4.2.4.
 pub fn call_constructor(ctx: runtime.Context, underlyingSource: webidl.Opt(runtime.JSValue), strategy: webidl.Opt(dictionaries.QueuingStrategy)) !*runtime.Instance {
-    const realm = try js.Realm.ofContext(ctx);
     const strat = if (strategy.was_passed) strategy.value else dictionaries.QueuingStrategy{};
+    // The strategy's `size` callback is this constructor's from here: the
+    // binding hands a callback member over (it adopts the handle Get made
+    // for it), and only step 5.2's ExtractSizeAlgorithm takes it. Every
+    // return before that releases it - a byte stream's step 4.1 RangeError,
+    // and steps 1 and 2 throwing - or its Global stays for the agent's life
+    // (lane leaks2: 3 roots under leaks --atExit over streams/).
+    var size_callback = strat.size;
+    errdefer if (size_callback) |size| engine.takeCallbackFunction(@ptrCast(size)).release();
+    const realm = try js.Realm.ofContext(ctx);
 
     // Step 1: If underlyingSource is missing, set it to null. It is typed
     // `object`: undefined is "missing", any other non-object throws.
@@ -89,7 +97,9 @@ pub fn call_constructor(ctx: runtime.Context, underlyingSource: webidl.Opt(runti
         return instance;
     }
 
-    // Step 5.2: Let sizeAlgorithm be ! ExtractSizeAlgorithm(strategy).
+    // Step 5.2: Let sizeAlgorithm be ! ExtractSizeAlgorithm(strategy). It
+    // takes the callback, and releases it itself if it fails.
+    size_callback = null;
     var size = try sw.extractSizeAlgorithm(strat);
     errdefer if (size == .callback) js.dispose(size.callback);
     // Step 5.3: Let highWaterMark be ? ExtractHighWaterMark(strategy, 1).

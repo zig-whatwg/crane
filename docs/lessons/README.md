@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Failing closed needs an allocation-free state that every fast path reads](architecture-fail-closed-needs-an-allocation-free-state-every-fast-path-reads.md) - Fail-closed state must cost no allocation and must live where every reader already looks; route "is there anything to check?" through the type's own method, never through a length a flag cannot change.
 - [One Zig type for every interface type converts any platform object](architecture-one-zig-type-for-every-interface-type-converts-any-platform-object.md) - When one Zig type stands for many IDL types, the conversion cannot check what the type does not say: have codegen name the IDL type at each position, and make an unnamed position a compile error, never an unchecked default.
 - [A filter applied in place loses the internal response](architecture-a-filter-applied-in-place-loses-the-internal-response.md) - Clear a response in place only when nothing will ever read it unfiltered again; a Response object can be handed on - to a controlled page, to a cache - and needs its internal response kept.
 - [A fragment that will be filtered must be built where nothing runs](architecture-a-filtered-fragment-must-be-built-where-nothing-runs.md) - When code must filter a tree before anything in it acts, build the tree in a document that cannot act (no browsing context) and let insertion's adoption bring the survivors to life - never filter after creating in the live document, and never compile or fetch from an adopting step.
@@ -470,6 +471,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Script options belong to preparation](spec-compliance-script-options-belong-to-preparation.md) - An attribute at execution time is not the fetch option of the script that was prepared earlier.
 
 ### Codegen
+- [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
 
 - [A generated default runs a src/dom algorithm, not an impls helper](codegen-a-generated-default-runs-a-src-dom-algorithm-not-an.md) - A generated default is a spec algorithm the generated layer calls: put it in src/dom, decide what the IDL fixes at compile time, and hook only what needs an impl's own state.
 - [The generated interface is the class - its construction chain and construction arguments are emitted](codegen-the-generated-interface-is-the-class.md) - An impl writes only its own construction and destruction steps (initOwn/deinitOwn); what it is given at construction arrives as an argument of the generated chain.
@@ -508,6 +510,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A generated import can rest on a typedef an upstream IDL file happens to declare](codegen-a-generated-import-can-rest-on-a-typedef-an-upstream-idl-file-happens-to-declare.md) - When a generated file relies on something being generated, codegen must generate it itself; find out by deleting an upstream file in a test fixture, not by waiting for upstream to delete it.
 
 ### Testing
+- [A handle ledger is kept by handle, not by entry point](testing-a-handle-ledger-is-kept-by-handle-not-by-entry-point.md) - Count a handle by a mark on the handle, read at every delete site - never by the entry point that made it or the type it is released as; a weak handle V8 resets is uncounted when its callback resets it.
 - [A headers file applies only to the path it names](testing-a-headers-file-applies-only-to-the-path-it-names.md) - Before diagnosing a header-driven failure, confirm the header is sent (`curl -sI`): a misnamed headers file fails silently, in your tests and in upstream ones.
 - [Only state made natively can be orphaned - a wrap reaches up to the root](testing-only-state-made-natively-can-be-orphaned.md) - An orphan is a subtree script never touched: reproduce an orphan leak with state the engine makes on its own, first with state made at parse time; reading the node from script wraps it and every ancestor.
 - [Crane tests are not in the wptreport stream](testing-crane-tests-are-not-in-the-wptreport-stream.md) - A wptreport query proves nothing about crane/ files: check their journal records.
