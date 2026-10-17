@@ -79,6 +79,14 @@ pub const FetchOptions = struct {
     /// a caller that frees its result with FetchResult.deinit asks: the
     /// others take the response and timing info apart and would leak it.
     report_referrer: bool = false,
+    /// The client processes the next manual redirect of a navigate request
+    /// itself - HTML's navigation ("create navigation params by fetching"
+    /// step 21): HTTP fetch step 6 "manual" hands it the redirect response and
+    /// keeps the next manual redirect steps. Any other client of a navigate
+    /// request with redirect mode "manual" - a navigation preload's - gets
+    /// an opaque-redirect filtered response, which is what browsers hand a
+    /// preload (navigation-preload/redirect.https.html).
+    follows_manual_redirects: bool = false,
 };
 
 pub const FetchJob = struct {
@@ -113,6 +121,21 @@ pub const FetchJob = struct {
     service_worker_call: ?*service_worker_fetch.Call = null,
     service_worker_start_time: f64 = 0,
     service_worker_preflight: bool = false,
+    /// The fetch controller's next manual redirect steps (HTTP fetch step 6
+    /// "manual", a navigation): HTTP-redirect fetch given fetchParams and
+    /// the redirect response handed over - `processNextManualRedirect`.
+    /// Null when the response handed over is no such redirect.
+    next_manual_redirect: ?ManualRedirect = null,
+
+    /// What the next manual redirect steps keep of the redirect response.
+    const ManualRedirect = struct {
+        /// A copy of the redirect response but its body: what HTTP-redirect
+        /// fetch reads (status, headers, URL list). OWNED.
+        response: *InternalResponse,
+        /// Its location URL given the request's current URL's fragment,
+        /// serialized - null for failure. OWNED.
+        location: ?[]u8,
+    };
 
     /// What the job needs next.
     pub const Step = union(enum) {
@@ -185,6 +208,7 @@ pub const FetchJob = struct {
         }
         if (self.response) |response| response.deinit();
         if (self.pending_response) |response| response.deinit();
+        self.dropManualRedirect();
         self.params.deinit();
         self.controller.deinit();
         self.timing_info.deinit();
@@ -283,6 +307,11 @@ pub const FetchJob = struct {
     pub fn takeResult(self: *FetchJob) FetchResult {
         const response = self.response orelse unreachable; // the job is not done
         self.response = null;
+        // A redirect of a navigation followed by hand: the fetch goes on, and
+        // its timing info with it, to the response that ends it.
+        if (self.next_manual_redirect != null) {
+            return .{ .response = response, .timing_info = FetchTimingInfo.init(self.allocator) };
+        }
         const timing_info = self.timing_info;
         self.timing_info = FetchTimingInfo.init(self.allocator);
         // Out of memory, the referrer is left out (null): the document gets
@@ -292,6 +321,103 @@ pub const FetchJob = struct {
             .no_referrer, .client => null,
         };
         return .{ .response = response, .timing_info = timing_info, .referrer = referrer };
+    }
+
+    /// Whether the response handed over is a navigation's redirect, with
+    /// the fetch controller's next manual redirect steps set.
+    pub fn hasNextManualRedirect(self: *const FetchJob) bool {
+        return self.next_manual_redirect != null;
+    }
+
+    /// The location URL of the redirect handed over (HTML "create
+    /// navigation params by fetching" step 21.14's locationURL); null when
+    /// there is no next manual redirect, or the location is failure.
+    pub fn nextManualRedirectUrl(self: *const FetchJob) ?[]const u8 {
+        const next = self.next_manual_redirect orelse return null;
+        return next.location;
+    }
+
+    /// Fetch "process the next manual redirect": the controller's next
+    /// manual redirect steps - HTTP-redirect fetch given fetchParams and the
+    /// redirect response - and main fetch, one deeper, as far as it can go:
+    /// the next hop's request, with every per-request check main fetch makes
+    /// (as a redirect that is followed gets), and HTTP fetch step 3 - its
+    /// service worker - again.
+    pub fn processNextManualRedirect(self: *FetchJob) FetchError!Step {
+        const next = self.next_manual_redirect orelse return FetchError.NetworkError;
+        self.next_manual_redirect = null;
+        if (next.location) |location| self.allocator.free(location);
+        const redirected = http_fetch.httpRedirectFetchStart(self.allocator, self.params, next.response) catch |err| {
+            return self.httpFetchFailed(err);
+        };
+        switch (redirected) {
+            // A network error: a location that is failure or not HTTP(S), too
+            // many redirects, a body that cannot be sent again.
+            .response => |r| return self.mainFetchFetched(r),
+            .recursive_main_fetch => {
+                self.depth += 1;
+                return self.mainFetch();
+            },
+            .manual_redirect => |r| return self.manualRedirect(r),
+        }
+    }
+
+    /// HTTP fetch step 6 "manual" for a navigation: `response` (taken) is
+    /// HTTP fetch's response, and the next manual redirect steps keep a copy
+    /// of it. A redirect with no `Location` has no location URL - HTML takes
+    /// it as the response that ends the navigation's fetch - so it keeps no
+    /// steps either.
+    fn manualRedirect(self: *FetchJob, response: *InternalResponse) FetchError!Step {
+        const allocator = self.allocator;
+        // A client that does not follow them: an opaque-redirect.
+        if (!self.options.follows_manual_redirects) {
+            response.response_type = .opaqueredirect;
+            return self.mainFetchFetched(response);
+        }
+        const location: ?[]u8 = http_fetch.locationUrl(allocator, response, self.request.currentUrl()) catch |err| switch (err) {
+            error.OutOfMemory => {
+                response.deinit();
+                return FetchError.OutOfMemory;
+            },
+            error.InvalidLocation => null,
+        };
+        const has_location = location != null or hasLocationHeader(response);
+        if (!has_location) return self.mainFetchFetched(response);
+        const kept = manualRedirectCopy(allocator, response) catch {
+            if (location) |l| allocator.free(l);
+            response.deinit();
+            return FetchError.OutOfMemory;
+        };
+        self.dropManualRedirect();
+        self.next_manual_redirect = .{ .response = kept, .location = location };
+        return self.mainFetchFetched(response);
+    }
+
+    fn hasLocationHeader(response: *const InternalResponse) bool {
+        for (response.header_list.iterator()) |header| {
+            if (std.ascii.eqlIgnoreCase(header.name, "Location")) return true;
+        }
+        return false;
+    }
+
+    /// What HTTP-redirect fetch reads of a redirect response: its status,
+    /// type, headers and URL list - not its body.
+    fn manualRedirectCopy(allocator: Allocator, response: *const InternalResponse) Allocator.Error!*InternalResponse {
+        const copy = try InternalResponse.init(allocator);
+        errdefer copy.deinit();
+        copy.response_type = response.response_type;
+        copy.status = response.status;
+        copy.header_list.deinit();
+        copy.header_list = try response.header_list.clone(allocator);
+        for (response.url_list.items) |url| try copy.addUrl(url);
+        return copy;
+    }
+
+    fn dropManualRedirect(self: *FetchJob) void {
+        const next = self.next_manual_redirect orelse return;
+        self.next_manual_redirect = null;
+        next.response.deinit();
+        if (next.location) |location| self.allocator.free(location);
     }
 
     /// Main fetch, at the current depth, as far as it can go.
@@ -339,6 +465,7 @@ pub const FetchJob = struct {
                         self.depth += 1;
                         return self.mainFetch();
                     },
+                    .manual_redirect => |r| return self.manualRedirect(r),
                 }
             },
         }
@@ -429,6 +556,7 @@ pub const FetchJob = struct {
         };
         switch (next) {
             .response => |r| return self.mainFetchFetched(r),
+            .manual_redirect => |r| return self.manualRedirect(r),
             .recursive_main_fetch => {
                 self.is_authentication_fetch = false;
                 if (self.authentication_realm) |realm| self.allocator.free(realm);
@@ -519,6 +647,15 @@ pub const FetchJob = struct {
 
     /// Fetch's steps after main fetch returned `response`.
     fn finish(self: *FetchJob, response: *InternalResponse) Step {
+        // A navigation's redirect followed by hand: handed over to HTML,
+        // whose navigation goes on with the next manual redirect. The fetch
+        // is not over - its end time, Server-Timing, resource timing entry
+        // and process response are the response's that ends it, as for a
+        // redirect fetch follows itself.
+        if (self.next_manual_redirect != null) {
+            self.response = response;
+            return .done;
+        }
         // Record end time
         self.timing_info.end_time = http_fetch.getCurrentTimeMs();
 
@@ -979,4 +1116,227 @@ test "a fetch ended while a service worker answers abandons the call: the late a
     job.destroy();
     try std.testing.expect(workers.call.?.isAbandoned());
     workers.answer(.{ .response = .{ .response = try testServiceWorkerResponse(200) } });
+}
+
+fn testRedirect(status: u16, location: []const u8) NetworkResponse {
+    var answer = testAnswer(status);
+    std.testing.allocator.free(answer.headers);
+    answer.headers = std.testing.allocator.alloc(NetworkResponse.Header, 1) catch unreachable;
+    answer.headers[0] = .{
+        .name = std.testing.allocator.dupe(u8, "Location") catch unreachable,
+        .value = std.testing.allocator.dupe(u8, location) catch unreachable,
+    };
+    return answer;
+}
+
+test "HTTP fetch step 6 manual, a navigation: the redirect response itself is handed over, and the next manual redirect runs the next hop" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "http://a.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    request.mode = .navigate;
+    request.destination = .iframe;
+    request.redirect_mode = .manual;
+    const job = try FetchJob.create(allocator, request, false, .{ .follows_manual_redirects = true });
+    defer job.destroy();
+    try std.testing.expect(try job.start() == .network);
+    try std.testing.expect(try job.resumeNetwork(testRedirect(302, "/y")) == .done);
+    {
+        var hop = job.takeResult();
+        defer hop.deinit();
+        // Not an opaque-redirect: the response, which HTML reads.
+        try std.testing.expectEqual(@as(u16, 302), hop.response.status);
+        try std.testing.expect(hop.response.response_type != .opaqueredirect);
+    }
+    try std.testing.expectEqualStrings("http://a.test/y", job.nextManualRedirectUrl().?);
+    // Process the next manual redirect: the next hop's request goes out.
+    try std.testing.expect(try job.processNextManualRedirect() == .network);
+    try std.testing.expectEqualStrings("http://a.test/y", request.currentUrl());
+    try std.testing.expectEqual(@as(u32, 1), request.redirect_count);
+    try std.testing.expect(try job.resumeNetwork(testAnswer(200)) == .done);
+    try std.testing.expect(job.nextManualRedirectUrl() == null);
+    var result = job.takeResult();
+    defer result.deinit();
+    try std.testing.expectEqual(@as(u16, 200), result.response.status);
+    try std.testing.expectEqual(@as(usize, 2), result.response.url_list.items.len);
+}
+
+test "HTTP fetch step 6 manual, not a navigation: an opaque-redirect, with no next manual redirect" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "http://a.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    request.mode = .same_origin;
+    request.redirect_mode = .manual;
+    const job = try FetchJob.create(allocator, request, false, .{});
+    defer job.destroy();
+    _ = try job.start();
+    try std.testing.expect(try job.resumeNetwork(testRedirect(302, "/y")) == .done);
+    var result = job.takeResult();
+    defer result.deinit();
+    try std.testing.expectEqual(internal_response.ResponseType.opaqueredirect, result.response.response_type);
+    try std.testing.expect(!job.hasNextManualRedirect());
+}
+
+test "a navigation's manual redirect with no Location is the response, with nothing to follow" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "http://a.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    request.mode = .navigate;
+    request.destination = .iframe;
+    request.redirect_mode = .manual;
+    const job = try FetchJob.create(allocator, request, false, .{ .follows_manual_redirects = true });
+    defer job.destroy();
+    _ = try job.start();
+    try std.testing.expect(try job.resumeNetwork(testAnswer(302)) == .done);
+    var result = job.takeResult();
+    defer result.deinit();
+    try std.testing.expectEqual(@as(u16, 302), result.response.status);
+    try std.testing.expect(!job.hasNextManualRedirect());
+}
+
+test "an uncontrolled navigation's redirect chain followed by hand ends where following it ends: final URL, URL list, redirect count, timing" {
+    const allocator = std.testing.allocator;
+    var finals: [2]struct { url: [64]u8 = undefined, url_len: usize = 0, hops: usize = 0, redirects: u32 = 0, redirect_end: bool = false } = .{ .{}, .{} };
+    for ([_]internal_request.RedirectMode{ .follow, .manual }, 0..) |mode, i| {
+        const request = try InternalRequest.init(allocator, "http://a.test/one");
+        defer request.deinit();
+        try request.setOrigin("http://a.test");
+        request.mode = .navigate;
+        request.destination = .iframe;
+        request.redirect_mode = mode;
+        const job = try FetchJob.create(allocator, request, false, .{ .follows_manual_redirects = true });
+        defer job.destroy();
+        try std.testing.expect(try job.start() == .network);
+        var step = try job.resumeNetwork(testRedirect(302, "http://b.test/two"));
+        if (mode == .manual) {
+            try std.testing.expect(step == .done);
+            var hop = job.takeResult();
+            hop.deinit();
+            step = try job.processNextManualRedirect();
+        }
+        try std.testing.expect(step == .network);
+        step = try job.resumeNetwork(testRedirect(301, "/three"));
+        if (mode == .manual) {
+            try std.testing.expect(step == .done);
+            var hop = job.takeResult();
+            hop.deinit();
+            step = try job.processNextManualRedirect();
+        }
+        try std.testing.expect(step == .network);
+        try std.testing.expect(try job.resumeNetwork(testAnswer(200)) == .done);
+        var result = job.takeResult();
+        defer result.deinit();
+        const final_url = result.response.url().?;
+        @memcpy(finals[i].url[0..final_url.len], final_url);
+        finals[i].url_len = final_url.len;
+        finals[i].hops = result.response.url_list.items.len;
+        finals[i].redirects = request.redirect_count;
+        finals[i].redirect_end = result.timing_info.redirect_end_time > 0;
+    }
+    try std.testing.expectEqualStrings(finals[0].url[0..finals[0].url_len], finals[1].url[0..finals[1].url_len]);
+    try std.testing.expectEqualStrings("http://b.test/three", finals[1].url[0..finals[1].url_len]);
+    try std.testing.expectEqual(finals[0].hops, finals[1].hops);
+    try std.testing.expectEqual(@as(usize, 3), finals[1].hops);
+    try std.testing.expectEqual(finals[0].redirects, finals[1].redirects);
+    try std.testing.expectEqual(finals[0].redirect_end, finals[1].redirect_end);
+}
+
+test "a service worker sees every hop of a navigation followed by hand; its own redirect is a hop too" {
+    const allocator = std.testing.allocator;
+    var workers: TestServiceWorkers = .{};
+    const request = try InternalRequest.init(allocator, "http://a.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    request.mode = .navigate;
+    request.destination = .iframe;
+    request.redirect_mode = .manual;
+    request.service_worker = workers.route();
+    const job = try FetchJob.create(allocator, request, false, .{ .follows_manual_redirects = true });
+    defer job.destroy();
+    const first = try job.start();
+    try std.testing.expect(first == .service_worker);
+    // The worker answers with Response.redirect(): handed over as it is.
+    const redirect = try testServiceWorkerResponse(302);
+    try redirect.header_list.append("Location", "http://a.test/y");
+    workers.answer(.{ .response = .{ .response = redirect } });
+    const answer = first.service_worker.take().?;
+    try std.testing.expect(try job.resumeServiceWorker(.{ .response = answer.response.response }) == .done);
+    {
+        var hop = job.takeResult();
+        defer hop.deinit();
+        try std.testing.expectEqual(@as(u16, 302), hop.response.status);
+    }
+    // The next hop asks the worker again; it falls back; the network's 302
+    // is a hop of its own, which the worker sees in turn.
+    const second = try job.processNextManualRedirect();
+    try std.testing.expect(second == .service_worker);
+    try std.testing.expectEqual(@as(u32, 2), workers.asked);
+    workers.answer(.fallback);
+    _ = second.service_worker.take().?;
+    try std.testing.expect(try job.resumeServiceWorker(.fallback) == .network);
+    try std.testing.expectEqual(internal_request.ServiceWorkersMode.all, request.service_workers_mode);
+    try std.testing.expect(try job.resumeNetwork(testRedirect(302, "http://a.test/z")) == .done);
+    {
+        var hop = job.takeResult();
+        defer hop.deinit();
+    }
+    const third = try job.processNextManualRedirect();
+    try std.testing.expect(third == .service_worker);
+    try std.testing.expectEqual(@as(u32, 3), workers.asked);
+    try std.testing.expectEqualStrings("http://a.test/z", request.currentUrl());
+    workers.answer(.{ .response = .{ .response = try testServiceWorkerResponse(200) } });
+    const final = third.service_worker.take().?;
+    try std.testing.expect(try job.resumeServiceWorker(.{ .response = final.response.response }) == .done);
+    var result = job.takeResult();
+    defer result.deinit();
+    try std.testing.expectEqual(@as(u16, 200), result.response.status);
+}
+
+test "a hop main fetch blocks when the fetch follows it (mixed content) is blocked the same when the navigation follows it by hand" {
+    const allocator = std.testing.allocator;
+    for ([_]internal_request.RedirectMode{ .follow, .manual }) |mode| {
+        const request = try InternalRequest.init(allocator, "https://a.test/x");
+        defer request.deinit();
+        try request.setOrigin("https://a.test");
+        request.mode = .navigate;
+        request.destination = .iframe;
+        request.redirect_mode = mode;
+        request.prohibits_mixed_security_contexts = true;
+        const job = try FetchJob.create(allocator, request, false, .{ .follows_manual_redirects = true });
+        defer job.destroy();
+        try std.testing.expect(try job.start() == .network);
+        var step = try job.resumeNetwork(testRedirect(302, "http://b.test/y"));
+        if (mode == .manual) {
+            try std.testing.expect(step == .done);
+            var hop = job.takeResult();
+            hop.deinit();
+            step = try job.processNextManualRedirect();
+        }
+        // Main fetch step 4's mixed content check, for the next hop: no
+        // request goes out, a network error is the answer.
+        try std.testing.expect(step == .done);
+        var result = job.takeResult();
+        defer result.deinit();
+        try std.testing.expectEqual(internal_response.ResponseType.@"error", result.response.response_type);
+    }
+}
+
+test "a navigate request whose client follows no manual redirects (a navigation preload's) gets an opaque-redirect" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "http://a.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    request.mode = .navigate;
+    request.destination = .iframe;
+    request.redirect_mode = .manual;
+    const job = try FetchJob.create(allocator, request, false, .{});
+    defer job.destroy();
+    _ = try job.start();
+    try std.testing.expect(try job.resumeNetwork(testRedirect(302, "/y")) == .done);
+    try std.testing.expect(!job.hasNextManualRedirect());
+    var result = job.takeResult();
+    defer result.deinit();
+    try std.testing.expectEqual(internal_response.ResponseType.opaqueredirect, result.response.response_type);
 }

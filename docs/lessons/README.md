@@ -451,6 +451,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Integrity checks precede response handover](spec-compliance-sri-checks-before-response-handover.md) - Put a security check before the operation that exposes its result, and preserve both streaming cancellation and the empty-metadata fast path.
 - [Restored decoder bytes outlive the input chunk](spec-compliance-restored-decoder-bytes-outlive-the-input-chunk.md) - Input consumption and output capacity are separate boundaries: preserve both the restored queue prefix and the state needed to retry unwritten output.
 - [A fatal decode drops input, not handler mode](spec-compliance-a-fatal-decode-drops-input-not-handler-state.md) - When whole browser outcomes split three ways, compare mechanism by mechanism; take the component majorities only if their combination is a shipping browser's behaviour, otherwise the spec.
+- [A fetch event shows the hop's URL, not the redirect chain's first](spec-compliance-a-fetch-event-shows-the-hop-not-the-first-url.md) - A request handed to another party (a service worker, a preload) is the hop being fetched: its URL is the current URL - check what "clone" carries before trusting it to mean that.
 
 ### Codegen
 
@@ -701,3 +702,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [Check what a WPT resource serves before choosing what to support](workflow-check-what-a-wpt-resource-serves-before-choosing-a-format.md) - Read the resource the tests load, not the tests' description of it: a WPT handler's real output decides what Crane must support.
 - [Read Gecko from mozilla-firefox/firefox, not the archived gecko-dev](workflow-read-gecko-from-mozilla-firefox-not-the-archived-gecko-dev.md) - Cite Gecko from searchfox or mozilla-firefox/firefox, and name whether the evidence is the shipped release or the engine head.
 - [A parked lane resumes by asking main what it already has](workflow-a-parked-lane-resumes-by-asking-main-what-it-already-has.md) - A stale branch's diff says what it changed, not what main still lacks: ask main item by item (log, grep, latest sweep) before merging.
+- [A queued remote job builds the mirror as its slot finds it](workflow-a-queued-remote-job-builds-the-mirror-as-its-slot-finds-it.md) - Before its slot comes, a queued job's mirror is still yours to update - sync it instead of resubmitting; after, never touch it.

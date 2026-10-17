@@ -476,9 +476,15 @@ pub fn copyRequestForWorker(allocator: Allocator, request: *const InternalReques
         .body => |body| if (body.pipe != null) null else body.getBytes(),
     } else &.{};
     const bytes = body_bytes orelse return null;
-    const copy = try InternalRequest.init(allocator, request.url_list.items[0]);
+    // Its URL is the request's current URL - a redirect's next hop is the
+    // request the worker sees, its url that hop's: what every browser's
+    // fetch event shows (navigation-redirect.https.html's intercepted URLs,
+    // fetch-event-redirect.https.html), where a clone's URL list would make
+    // its Request object's url the first hop's (Fetch's request URL), and a
+    // worker that redirects its navigation's first URL would see that URL
+    // again at every hop.
+    const copy = try InternalRequest.init(allocator, request.currentUrl());
     errdefer copy.deinit();
-    for (request.url_list.items[1..]) |url| try copy.addUrl(url);
     try copy.setMethod(request.method);
     copy.header_list.deinit();
     copy.header_list = try request.header_list.clone(allocator);
