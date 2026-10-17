@@ -143,13 +143,16 @@ pub fn prepareScriptElementWithLoader(
 /// the-script-element/data-url.html), is fetched. Null body: a network error.
 const FetchedSource = struct {
     body: ?[]const u8,
+    final_url: ?[]const u8 = null,
     allocator: std.mem.Allocator,
     /// The script's muted errors ("fetch a classic script" step 5.5).
     muted: bool = false,
 
     fn deinit(self: *FetchedSource) void {
         if (self.body) |b| self.allocator.free(b);
+        if (self.final_url) |url| self.allocator.free(url);
         self.body = null;
+        self.final_url = null;
     }
 };
 
@@ -159,9 +162,11 @@ fn fetchClassicScriptSource(allocator: std.mem.Allocator, script_element: *runti
     }
     var fetch_result = fetchClassicScript(allocator, script_element, document, url);
     const body = fetch_result.body;
+    const final_url = fetch_result.final_url;
     fetch_result.body = null;
+    fetch_result.final_url = null;
     fetch_result.deinit(allocator);
-    return .{ .body = body, .allocator = allocator, .muted = fetch_result.muted };
+    return .{ .body = body, .final_url = final_url, .allocator = allocator, .muted = fetch_result.muted };
 }
 
 /// The embedder's loader, if the parser is preparing `script_element` with
@@ -326,8 +331,9 @@ pub fn prepareScriptElement(
         }
     }
 
-    // Steps 23-31: Build fetch options (encoding, CORS, integrity, etc.)
-    // For now, we skip external script fetching
+    // Step 25: retain a classic script's credentials mode at preparation.
+    // Module preparation reads it when it creates the graph's fetch options.
+    const credentials_mode = if (script_type == .classic) scriptCredentialsMode(script_element) else .same_origin;
 
     // Set the script type
     state.script_type = script_type;
@@ -438,16 +444,24 @@ pub fn prepareScriptElement(
             const can_suspend = if (parserScriptLoaderFor(script_element)) |loader| loader.can_suspend else false;
             if (parser_document == null or hasAsyncAttribute(script_element) or hasDeferAttribute(script_element) or can_suspend) {
                 if (node_document) |doc| {
-                    if (startClassicScriptFetch(script_element, doc, script_url)) {
+                    if (startClassicScriptFetch(script_element, doc, script_url, credentials_mode)) {
                         return handleScriptSchedulingOf(allocator, script_element, parser_document, script_type, .fetching);
                     }
                 }
             }
             var fetched = fetchClassicScriptSource(allocator, script_element, node_document, src, script_url);
             defer fetched.deinit();
-            try setClassicScriptResult(script_element, true, fetched.body, script_url, fetched.muted);
+            // Fetch-classic step 5.6 uses the response URL after redirects.
+            // Keep it through the element's existing owned URL, which is also
+            // what a deferred result borrows. Unredirected scripts reuse it.
+            const result_url = if (fetched.final_url) |final_url|
+                (if (std.mem.eql(u8, final_url, script_url)) script_url else state.setScriptUrl(final_url) catch
+                    return ScriptExecutionError.OutOfMemory)
+            else
+                script_url;
+            try setClassicScriptResult(script_element, true, fetched.body, result_url, fetched.muted, credentials_mode);
         } else {
-            try setClassicScriptResult(script_element, true, null, script_url, false);
+            try setClassicScriptResult(script_element, true, null, script_url, false, credentials_mode);
         }
 
         // Step 35: scheduling - which also decides when the result, already
@@ -470,11 +484,12 @@ pub fn prepareScriptElement(
                 // result. With no record, the document's URL, which the
                 // document keeps too. (Its errors report the document's URL
                 // as their filename: runClassicScript.)
-                const script_base_url = if (classicScriptRecord(doc, base_url, script_element)) |record|
+                const script_base_url = if (classicScriptRecord(doc, base_url, script_element, credentials_mode)) |record|
                     record.script.base_url
                 else
                     documentUrl(doc, script_element);
-                const script = ClassicScript.init(source_text, script_base_url);
+                var script = ClassicScript.init(source_text, script_base_url);
+                script.credentials_mode = credentials_mode;
 
                 // Step 34.2.2: Mark as ready
                 state.result = .{ .script = script };
@@ -1363,7 +1378,7 @@ fn runClassicScript(script_element: *runtime.Instance, document: *runtime.Instan
     // The resource name errors report as their filename: the script's URL for
     // an external script (its base URL), the document's URL for an inline one.
     const url = if (from_external) script.base_url else documentUrl(document, script_element);
-    runClassicScriptText(script_element, document, source, url, script.base_url, script.muted_errors);
+    runClassicScriptText(script_element, document, source, url, script.base_url, script.muted_errors, script.credentials_mode);
 }
 
 /// "Create a classic script" from `source` with `base_url`, and "run a classic
@@ -1375,10 +1390,16 @@ fn runClassicScript(script_element: *runtime.Instance, document: *runtime.Instan
 /// resource name, the filename of what it throws.
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-classic-script
-fn runClassicScriptText(element: *runtime.Instance, document: *runtime.Instance, source: []const u8, url: []const u8, base_url: []const u8, muted: bool) void {
+fn runClassicScriptText(element: *runtime.Instance, document: *runtime.Instance, source: []const u8, url: []const u8, base_url: []const u8, muted: bool, credentials_mode: fetch.internal.CredentialsMode) void {
     const realm = element.ctx;
-    // The script's [[HostDefined]]: what an import() in it resolves against.
-    const host_defined: ?*anyopaque = if (classicScriptRecord(document, base_url, element)) |record| &record.script else null;
+    // Create-classic step 1 sanitizes a muted script's import base, while
+    // its resource name remains the response URL for error reporting.
+    // HTML PR 5753 (2020-07-24), WPT 23560: Chrome 155 ships it; Firefox 158
+    // (bug 1646034) and Safari 27 (WebKit 214754) lag, with implementer
+    // consensus and no objection. Chromium: crbug 1082086. Follow the newer spec.
+    // https://github.com/whatwg/html/pull/5753
+    const import_base_url = if (muted) "about:blank" else base_url;
+    const host_defined: ?*anyopaque = if (classicScriptRecord(document, import_base_url, element, credentials_mode)) |record| &record.script else null;
     var host = ClassicScriptReport{ .realm = realm, .muted = muted };
     engine.runClassicScript(realm, .{ .utf8 = source }, url, host_defined, .{
         .report = reportClassicScriptError,
@@ -1468,20 +1489,23 @@ fn classicScriptsOf(realm: runtime.Context) ?*ClassicScripts {
 const classic_script_key_prefix = "classic:";
 
 /// `document`'s classic script record for `base_url` and the fetch options
-/// an import() from the script reads (`element`'s nonce and referrer
-/// policy), made (with its own copies) if it has none yet. Scripts that
-/// agree on all three share one. Null when it cannot be made, or when the
+/// an import() from the script reads, made with its own copies if absent.
+/// Scripts that agree on the URL and every retained option share one. Null when it cannot be made, or when the
 /// document's agent keeps no records to find it among - the script then runs
 /// with no [[HostDefined]], and an import() in it resolves against the
 /// document's base URL with the default options.
-fn classicScriptRecord(document: *runtime.Instance, base_url: []const u8, element: *runtime.Instance) ?*ClassicScriptRecord {
+fn classicScriptRecord(document: *runtime.Instance, base_url: []const u8, element: *runtime.Instance, credentials_mode: fetch.internal.CredentialsMode) ?*ClassicScriptRecord {
     const records = classicScriptsOf(document.ctx) orelse return null;
     const allocator = std.heap.c_allocator;
-    const options = moduleFetchOptions(element);
+    const options = scriptFetchOptions(element, credentials_mode);
     const map = documentModuleMap(document);
-    // Include every option retained by this record: import() from otherwise
-    // identical classics must preserve its own render-blocking option.
-    const key = std.mem.concat(allocator, u8, &.{ classic_script_key_prefix, options.nonce, "\x00", @tagName(options.referrer_policy), "\x00", if (options.render_blocking) "1" else "0", "\x00", base_url }) catch return null;
+    // Include every retained option: otherwise equal-URL classics can share
+    // another script's import credentials. HTML PR 3044 specifies inheritance;
+    // WPT 49d0a2ef3a and crbugs 1133238/1114988 cover Chromium's implementation.
+    // Chrome 155 passes; Firefox 158 and Safari 27 lag, with no Gecko/WebKit
+    // bug or negative position found. Per the newer-spec ruling, follow HTML.
+    // https://github.com/whatwg/html/pull/3044
+    const key = std.mem.concat(allocator, u8, &.{ classic_script_key_prefix, options.nonce, "\x00", @tagName(options.referrer_policy), "\x00", if (options.render_blocking) "1" else "0", "\x00", @tagName(options.credentials_mode), "\x00", base_url }) catch return null;
     defer allocator.free(key);
     if (map.getFn(map.context, key)) |value| return @ptrCast(@alignCast(value));
 
@@ -1495,7 +1519,7 @@ fn classicScriptRecord(document: *runtime.Instance, base_url: []const u8, elemen
         allocator.destroy(record);
         return null;
     }) else "";
-    record.* = .{ .script = .{ .base_url = owned_base_url, .nonce = owned_nonce, .referrer_policy = options.referrer_policy, .render_blocking = options.render_blocking } };
+    record.* = .{ .script = .{ .base_url = owned_base_url, .nonce = owned_nonce, .referrer_policy = options.referrer_policy, .credentials_mode = options.credentials_mode, .render_blocking = options.render_blocking } };
     records.add(&record.live);
     if (!map.putFn(map.context, key, record)) {
         record.destroy();
@@ -1626,6 +1650,8 @@ fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Insta
         }
     }
 
+    const credentials_mode = scriptCredentialsMode(element);
+
     if (href) |raw| {
         // Step 33.3: an empty URL queues an element task to fire error at the
         // element - and fetches nothing: resolved, "" is the document's own
@@ -1640,15 +1666,16 @@ fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Insta
 
         var fetched = fetchClassicScript(allocator, element, document, url);
         defer fetched.deinit(allocator);
+        const response_url = fetched.final_url orelse url;
         if (from_parser_end_tag) {
             // A parser-blocking script, whose result is in hand: run it now.
             const body = fetched.body orelse return fireErrorEvent(allocator, element);
-            runSvgScriptSource(document, element, body, url, url, fetched.muted);
+            runSvgScriptSource(document, element, body, response_url, response_url, fetched.muted, credentials_mode);
             fireLoadEvent(allocator, element);
         } else {
             // A script-inserted one runs from a task, as step 35's force-async
             // HTML scripts do.
-            queueSvgScriptRun(element, fetched.body, url, fetched.muted);
+            queueSvgScriptRun(element, fetched.body, response_url, fetched.muted, credentials_mode);
         }
         return;
     }
@@ -1657,7 +1684,7 @@ fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Insta
     // (step 34.1) as its base URL and the document's URL as its resource name.
     const base_url = documentBaseUrlAlloc(allocator, document, element) orelse return;
     defer allocator.free(base_url);
-    runSvgScriptSource(document, element, source, documentUrl(document, element), base_url, false);
+    runSvgScriptSource(document, element, source, documentUrl(document, element), base_url, false, credentials_mode);
 }
 
 /// A script-inserted external SVG script's run, queued: the element as
@@ -1684,6 +1711,7 @@ const QueuedSvgScript = struct {
     url: []u8,
     /// The script's muted errors.
     muted: bool,
+    credentials_mode: fetch.internal.CredentialsMode = .same_origin,
 
     fn destroy(self: *QueuedSvgScript) void {
         const root = self.element_root;
@@ -1694,7 +1722,7 @@ const QueuedSvgScript = struct {
     }
 };
 
-fn queueSvgScriptRun(element: *runtime.Instance, body: ?[]const u8, url: []const u8, muted: bool) void {
+fn queueSvgScriptRun(element: *runtime.Instance, body: ?[]const u8, url: []const u8, muted: bool, credentials_mode: fetch.internal.CredentialsMode) void {
     const loop = element.ctx.getOptionalEventLoop() orelse return;
     const task = std.heap.c_allocator.create(QueuedSvgScript) catch return;
     task.* = .{
@@ -1706,6 +1734,7 @@ fn queueSvgScriptRun(element: *runtime.Instance, body: ?[]const u8, url: []const
             return;
         },
         .muted = muted,
+        .credentials_mode = credentials_mode,
     };
     // The element lives until the task is done with it. Without the hold
     // (out of memory) the generation checks below still keep a freed
@@ -1729,7 +1758,7 @@ fn runQueuedSvgScript(data: ?*anyopaque) void {
     const document = getNodeDocument(task.element) orelse return;
     const allocator = task.element.ctx.allocator;
     const source = task.source orelse return fireErrorEvent(allocator, task.element);
-    runSvgScriptSource(document, task.element, source, task.url, task.url, task.muted);
+    runSvgScriptSource(document, task.element, source, task.url, task.url, task.muted, task.credentials_mode);
     // Again after the script: the task's hold keeps the element through
     // anything the script does, but not through a teardown it starts.
     if (runtime.SlabAllocator.generationOf(task.element) != task.generation) return;
@@ -1754,10 +1783,10 @@ fn scriptingEnabled(document: *runtime.Instance) bool {
 /// errors: currentScript is the element while it runs (it is an
 /// HTMLOrSVGScriptElement), and clean-up's microtask checkpoint follows, as
 /// for an HTML script.
-fn runSvgScriptSource(document: *runtime.Instance, element: *runtime.Instance, source: []const u8, url: []const u8, base_url: []const u8, muted: bool) void {
+fn runSvgScriptSource(document: *runtime.Instance, element: *runtime.Instance, source: []const u8, url: []const u8, base_url: []const u8, muted: bool, credentials_mode: fetch.internal.CredentialsMode) void {
     const old_current_script = swapCurrentScript(document, element);
     defer _ = swapCurrentScript(document, old_current_script);
-    runClassicScriptText(element, document, source, url, base_url, muted);
+    runClassicScriptText(element, document, source, url, base_url, muted, credentials_mode);
 }
 
 // =============================================================================
@@ -1813,7 +1842,7 @@ fn moduleEnvironment(script_element: *runtime.Instance, document: *runtime.Insta
         .resolveImportFn = &documentResolveImport,
         .resolveIntegrityFn = &documentResolveIntegrity,
         // The element's script fetch options, for its graph's requests.
-        .fetch_options = moduleFetchOptions(script_element),
+        .fetch_options = scriptFetchOptions(script_element, scriptCredentialsMode(script_element)),
     };
 }
 
@@ -2042,26 +2071,14 @@ fn loadImport(realm: runtime.Context, base: ImportBase, specifier: []const u8, t
     // the way a real network fetch completes.
     const loop = window.ctx.getOptionalEventLoop() orelse
         return finishImportWithTypeError(realm, request, "No event loop to load the module on");
-    const task = std.heap.c_allocator.create(DynamicImportTask) catch
-        return finishImportWithTypeError(realm, request, "Out of memory");
-    const nonce: []const u8 = if (options.nonce.len > 0) (std.heap.c_allocator.dupe(u8, options.nonce) catch {
-        std.heap.c_allocator.destroy(task);
-        return finishImportWithTypeError(realm, request, "Out of memory");
-    }) else "";
-    task.* = .{
-        .realm = realm,
-        .window = window,
-        .generation = runtime.SlabAllocator.generationOf(window),
-        .url = std.heap.c_allocator.dupe(u8, url) catch {
-            if (nonce.len > 0) std.heap.c_allocator.free(nonce);
-            std.heap.c_allocator.destroy(task);
-            return finishImportWithTypeError(realm, request, "Out of memory");
-        },
-        .module_type = module_type,
-        .nonce = nonce,
-        .referrer_policy = options.referrer_policy,
-        .request = request,
+    const import_referrer = switch (base) {
+        .url => base_url,
+        .document => "",
     };
+    // Window imports start their request below, borrowing the referring URL.
+    // The deferred ShadowRealm path keeps it beside the task's URL and nonce.
+    const task = DynamicImportTask.create(realm, window, url, module_type, options, request, if (env.realm_override != null) import_referrer else "") catch
+        return finishImportWithTypeError(realm, request, "Out of memory");
     // The loader owns Window imports at preparation time, so an immediate
     // stop() snapshots them before their asynchronous kickoff task.
     if (env.realm_override == null) {
@@ -2076,7 +2093,7 @@ fn loadImport(realm: runtime.Context, base: ImportBase, specifier: []const u8, t
         // HostLoadImportedModule: each imported URL takes its own map entry.
         var import_options = options;
         import_options.integrity = env.resolveIntegrity(url);
-        loader.start(task.url, task.module_type, null, import_options, .{
+        loader.startWithReferrer(task.url, task.module_type, null, import_options, import_referrer, .{
             .context = task,
             .done = dynamicModuleGraphDone,
             .gone = dynamicModuleGraphGone,
@@ -2108,22 +2125,80 @@ const DynamicImportTask = struct {
     /// Owned (c_allocator).
     url: []const u8,
     module_type: module_script.ModuleType,
-    /// The fetch options the import's requests carry (steps 5-6): the nonce
-    /// (owned, c_allocator, when not empty) and referrer policy.
+    /// The fetch options the import's requests carry (steps 5-6).
+    /// Nonempty nonce/referrer strings are owned, using c_allocator.
     nonce: []const u8,
+    referrer: []const u8,
     referrer_policy: fetch.internal.ReferrerPolicy,
+    credentials_mode: fetch.internal.CredentialsMode,
     /// The host's until finished.
     request: *engine.ImportRequest,
     document_root: ?engine.Owned = null,
+
+    fn create(realm: runtime.Context, window: *runtime.Instance, url: []const u8, module_type: module_script.ModuleType, options: module_script.FetchOptions, request: *engine.ImportRequest, referrer: []const u8) !*DynamicImportTask {
+        const allocator = std.heap.c_allocator;
+        const task = try allocator.create(DynamicImportTask);
+        errdefer allocator.destroy(task);
+        const owned_url = try allocator.dupe(u8, url);
+        errdefer allocator.free(owned_url);
+        const nonce: []const u8 = if (options.nonce.len > 0) try allocator.dupe(u8, options.nonce) else "";
+        errdefer if (nonce.len > 0) allocator.free(nonce);
+        const owned_referrer: []const u8 = if (referrer.len > 0) try allocator.dupe(u8, referrer) else "";
+        errdefer if (owned_referrer.len > 0) allocator.free(owned_referrer);
+        task.* = .{
+            .realm = realm,
+            .window = window,
+            .generation = runtime.SlabAllocator.generationOf(window),
+            .url = owned_url,
+            .module_type = module_type,
+            .nonce = nonce,
+            .referrer = owned_referrer,
+            .referrer_policy = options.referrer_policy,
+            .credentials_mode = options.credentials_mode,
+            .request = request,
+        };
+        return task;
+    }
 
     fn destroy(self: *DynamicImportTask) void {
         const root = self.document_root;
         std.heap.c_allocator.free(self.url);
         if (self.nonce.len > 0) std.heap.c_allocator.free(self.nonce);
+        if (self.referrer.len > 0) std.heap.c_allocator.free(self.referrer);
         std.heap.c_allocator.destroy(self);
         if (root) |value| value.release();
     }
 };
+
+// Only test builds include these checks. ShadowRealm.importValue always
+// starts with default fetch options, so script cannot construct the
+// include-mode case itself. An ordinary Window import supplies a real
+// request to exercise the deferred task without requiring a snapshot.
+pub const deferred_import_test_cases = if (@import("builtin").is_test) struct {
+    pub fn forDrop(realm: runtime.Context, window: *runtime.Instance, request: *engine.ImportRequest) !runtime.EventLoopTask {
+        const task = try DynamicImportTask.create(realm, window, "https://sc2.test/imported.js", .javascript, .{ .nonce = "sc2-native-nonce" }, request, "https://sc2.test/referring.js");
+        errdefer task.destroy();
+        try retainedOptions(task);
+        return .{ .callback = &runDynamicImport, .context = task, .drop = &dropDynamicImport };
+    }
+
+    pub fn retainedOptions(data: ?*anyopaque) !void {
+        const original: *DynamicImportTask = @ptrCast(@alignCast(data orelse return error.NoImportTask));
+        try std.testing.expect(original.referrer.len > 0);
+        for ([_]fetch.internal.CredentialsMode{ .include, .same_origin }) |mode| {
+            var options: module_script.FetchOptions = .{ .credentials_mode = mode, .nonce = "sc2-native-nonce" };
+            // The copy only borrows the request while this test inspects it.
+            // destroy frees its strings; only the original task's drop may
+            // finish the engine's actual request.
+            const copy = try DynamicImportTask.create(original.realm, original.window, original.url, original.module_type, options, original.request, original.referrer);
+            defer copy.destroy();
+            options.credentials_mode = .omit;
+            try std.testing.expectEqual(mode, copy.credentials_mode);
+            try std.testing.expectEqualStrings(original.referrer, copy.referrer);
+            try std.testing.expect(copy.referrer.ptr != original.referrer.ptr);
+        }
+    }
+} else struct {};
 
 fn dropDynamicImport(data: ?*anyopaque) void {
     const task: *DynamicImportTask = @ptrCast(@alignCast(data orelse return));
@@ -2156,7 +2231,8 @@ fn dynamicImportSteps(data: ?*anyopaque) void {
     var env = importEnvironment(realm, task.window, document, &shadow_realm_map) orelse
         return finishImportWithTypeError(realm, task.request, "import() has no document to load for");
     // The import's fetch options (HostLoadImportedModule steps 5-6).
-    env.fetch_options = .{ .nonce = task.nonce, .referrer_policy = task.referrer_policy };
+    env.fetch_options = .{ .nonce = task.nonce, .referrer_policy = task.referrer_policy, .credentials_mode = task.credentials_mode };
+    env.referrer = task.referrer;
 
     // A null graph is a failed fetch: TypeError.
     const graph = module_script.fetchImportedModuleScriptGraph(&env, task.url, task.module_type) orelse
@@ -3012,13 +3088,19 @@ fn setUpScriptRequest(request: *fetch.internal.InternalRequest, element: *runtim
     request.referrer_policy = fetch.internal.policy_container.referrerPolicyFromAttribute(getAttribute(element, "referrerpolicy"));
 }
 
-/// The script fetch options a module script graph rooted at `element` is
-/// fetched with (HTML "prepare the script element" steps 26-31), for
-/// module_script's Environment.
-fn moduleFetchOptions(element: *runtime.Instance) module_script.FetchOptions {
+/// HTML "prepare the script element" step 25.
+fn scriptCredentialsMode(element: *runtime.Instance) fetch.internal.CredentialsMode {
+    // Prepare step 25: No CORS and Anonymous both give "same-origin" for
+    // module fetches, including a classic script's later imports.
+    return if (script_request.corsSettingFromAttribute(getAttribute(element, "crossorigin")) == .use_credentials) .include else .same_origin;
+}
+
+/// Prepare steps 26-31, with the credentials mode captured at preparation.
+fn scriptFetchOptions(element: *runtime.Instance, credentials_mode: fetch.internal.CredentialsMode) module_script.FetchOptions {
     const state = script_element_state.of(element);
     return .{
         .nonce = getNonceAttribute(element),
+        .credentials_mode = credentials_mode,
         .integrity = getAttribute(element, "integrity") orelse "",
         .parser_inserted = state != null and state.?.parser_document != null,
         .render_blocking = if (state) |s| s.fetch_render_blocking else false,
@@ -3043,8 +3125,7 @@ fn moduleFetchOptions(element: *runtime.Instance) module_script.FetchOptions {
 ///
 /// Deviations, stated: step 4's "set up the classic script request" sets no
 /// priority; steps 5.2-5.4 decode as UTF-8, with no
-/// legacy encoding extraction; step 5.6's base URL is the request URL, not the
-/// response's.
+/// legacy encoding extraction.
 fn fetchClassicScript(allocator: std.mem.Allocator, element: *runtime.Instance, document: ?*runtime.Instance, url: []const u8) ExternalScriptFetchResult {
     var result = ExternalScriptFetchResult{
         .body = null,
@@ -3092,7 +3173,10 @@ fn fetchClassicScript(allocator: std.mem.Allocator, element: *runtime.Instance, 
         result.content_type = allocator.dupe(u8, ct) catch null;
     }
     if (response.url()) |response_url| {
-        result.final_url = allocator.dupe(u8, response_url) catch null;
+        result.final_url = allocator.dupe(u8, response_url) catch {
+            result.deinit(allocator);
+            return result;
+        };
     }
 
     const bytes: []const u8 = if (response.body) |resp_body| resp_body.data.items else "";
@@ -3107,7 +3191,7 @@ fn fetchClassicScript(allocator: std.mem.Allocator, element: *runtime.Instance, 
 /// given result", as far as the result - a classic script of `body` (kept by
 /// the element, which the result points into), or null for no body (a
 /// network error, a status that is not ok) or a script CSP blocked.
-fn setClassicScriptResult(element: *runtime.Instance, allowed: bool, body: ?[]const u8, url: []const u8, muted: bool) ScriptExecutionError!void {
+fn setClassicScriptResult(element: *runtime.Instance, allowed: bool, body: ?[]const u8, url: []const u8, muted: bool, credentials_mode: fetch.internal.CredentialsMode) ScriptExecutionError!void {
     const state = script_element_state.of(element) orelse return;
     if (!allowed) {
         state.result = .null;
@@ -3117,6 +3201,7 @@ fn setClassicScriptResult(element: *runtime.Instance, allowed: bool, body: ?[]co
     if (state.cached_source_text) |kept| {
         var script = ClassicScript.init(kept, url);
         script.muted_errors = muted;
+        script.credentials_mode = credentials_mode;
         state.result = .{ .script = script };
     } else {
         // The element still goes through the scheduling: executing it is
@@ -3162,6 +3247,7 @@ const ClassicScriptFetch = struct {
     /// What `done` found: the body (OWNED) or none, and muted errors.
     body: ?[]u8 = null,
     muted: bool = false,
+    credentials_mode: fetch.internal.CredentialsMode = .same_origin,
     /// The task that delivers the result is queued.
     task_queued: bool = false,
     /// Marked before any document-abort callback can start new fetches.
@@ -3195,7 +3281,7 @@ fn isFetching(element: *runtime.Instance) bool {
 /// `url`, prepared in `document`. False when it cannot run in parallel - no
 /// event loop to hand the response to - and the caller fetches it
 /// synchronously instead.
-fn startClassicScriptFetch(element: *runtime.Instance, document: *runtime.Instance, url: []const u8) bool {
+fn startClassicScriptFetch(element: *runtime.Instance, document: *runtime.Instance, url: []const u8, credentials_mode: fetch.internal.CredentialsMode) bool {
     if (element.ctx.getOptionalEventLoop() == null) return false;
     const allocator = element.ctx.allocator;
     const self = allocator.create(ClassicScriptFetch) catch return false;
@@ -3207,6 +3293,7 @@ fn startClassicScriptFetch(element: *runtime.Instance, document: *runtime.Instan
         .document_generation = runtime.SlabAllocator.generationOf(document),
         .realm = element.ctx,
         .url = url,
+        .credentials_mode = credentials_mode,
     };
     script_fetches.append(std.heap.smp_allocator, self) catch {
         allocator.destroy(self);
@@ -3284,6 +3371,23 @@ fn fetchDone(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.alg
             self.body = self.allocator.dupe(u8, bytes) catch null;
             // Step 5.5: muted errors for a CORS-cross-origin response.
             self.muted = response.response_type == .@"opaque" or response.response_type == .opaqueredirect;
+            // Fetch-classic step 5.6: the result's base URL is the response's.
+            // Reuse the element's existing URL owner; the fetch borrows it.
+            if (self.elementIsLive()) {
+                if (script_element_state.of(self.element)) |state| {
+                    if (response.url()) |final_url| {
+                        if (!std.mem.eql(u8, final_url, self.url)) {
+                            self.url = state.setScriptUrl(final_url) catch blk: {
+                                // A result whose response URL cannot be retained
+                                // is a failed fetch, like a body allocation failure.
+                                if (self.body) |body| self.allocator.free(body);
+                                self.body = null;
+                                break :blk self.url;
+                            };
+                        }
+                    }
+                }
+            }
         }
     } else |_| {}
 
@@ -3311,8 +3415,8 @@ fn fetchedSteps(data: ?*anyopaque) void {
     // No longer fetching: the queues may run it now.
     forgetFetch(self);
     // Out of memory keeping the body: the result is null, as for no body.
-    setClassicScriptResult(self.element, true, self.body, self.url, self.muted) catch
-        setClassicScriptResult(self.element, false, null, self.url, false) catch {};
+    setClassicScriptResult(self.element, true, self.body, self.url, self.muted, self.credentials_mode) catch
+        setClassicScriptResult(self.element, false, null, self.url, false, self.credentials_mode) catch {};
     markReadyNow(self.allocator, self.element, self.document);
 }
 
