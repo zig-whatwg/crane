@@ -540,6 +540,7 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
     const state = element_style.existingOf(element) orelse return null;
     const own = state.cached orelse return null;
     const p = pseudo orelse return own.style;
+    if (!hasPseudoElement(element, p)) return null;
 
     // A pseudo-element's style inherits from its originating element's.
     if (state.pseudoCached(p)) |cached| {
@@ -549,6 +550,24 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
     const style = try resolveOne(&res, element, node, state, p, own.style, false, &reads);
     try state.setPseudoCached(p, .{ .style = style, .key = res.key, .@"volatile" = reads.@"volatile" or own.@"volatile" });
     return state.pseudoCached(p).?.cached.style;
+}
+
+/// Whether `element` has the pseudo-element `name` at all. CSS Forms'
+/// ::picker(select) is a drop-down box's picker: a select that is a list
+/// box (`multiple`, or a display size above 1) has none, and its computed
+/// declarations are empty (CSSOM 7.2 step 5's null obj). Chrome, the one
+/// engine shipping ::picker, answers so
+/// (customizable-select/select-picker-pseudo-box-type.html).
+fn hasPseudoElement(element: *runtime.Instance, name: []const u8) bool {
+    if (!std.mem.eql(u8, name, "picker")) return true;
+    const data = element_data.of(element) orelse return false;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "select")) return false;
+    if (data.findAttribute(null, "multiple") != null) return false;
+    if (data.findAttribute(null, "size")) |size| {
+        const n = std.fmt.parseInt(u32, std.mem.trim(u8, size.value, " \t\n\r\x0c"), 10) catch 0;
+        if (n > 1) return false;
+    }
+    return true;
 }
 
 const LineageEntry = struct {
