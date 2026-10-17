@@ -730,6 +730,9 @@ pub extern fn v8_Isolate_New() ?*Isolate;
 pub extern fn v8_Isolate_Dispose(isolate: *Isolate) void;
 /// Whether `isolate` was restored from a snapshot (v8_Isolate_NewFromSnapshot).
 pub extern fn v8_Isolate_IsFromSnapshot(isolate: *Isolate) bool;
+/// The bytes V8 restores `isolate` from (its StartupData's data) and their
+/// size; null, size 0, for an isolate made afresh. For tests.
+pub extern fn v8_Isolate_SnapshotBlob(isolate: *Isolate, out_size: *usize) ?[*]const u8;
 /// How many of `isolate`'s JSON (and default-export) modules wait for
 /// evaluation - the adapter's per-isolate record holds their parsed values
 /// until then. For tests.

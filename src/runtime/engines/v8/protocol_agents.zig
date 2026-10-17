@@ -116,6 +116,11 @@ const AgentRecord = struct {
     /// the host's took the thread's context manager and templates down under
     /// the page.
     host_agent: bool,
+    /// The isolate was restored from the engine's snapshot, whose bytes it
+    /// reads in place for its whole life (v8_Isolate_NewFromSnapshot): the
+    /// host may free them only after the agent is destroyed
+    /// (`liveSnapshotAgents`, deinitializeEngine).
+    from_snapshot: bool = false,
     /// The agent's ShadowRealms (shadow_realm.zig): made with the agent,
     /// freed by its end. Null when ShadowRealm support was not installed.
     shadow_realms: ?*shadow_realm.ShadowRealmCallbackData = null,
@@ -174,6 +179,20 @@ pub fn observableArraysOf(isolate: *ffi.Isolate) ?*observable_array.Registry {
 var agents_lock: std.Io.Mutex = .init;
 /// Every agent made by createAgent and not yet destroyed, by isolate.
 var agents: std.AutoHashMapUnmanaged(*ffi.Isolate, *AgentRecord) = .empty;
+
+/// How many agents createAgent restored from the engine's snapshot and that
+/// are not yet ended - each reads the snapshot's bytes in place, so the host
+/// may free them only when this is 0 (deinitializeEngine checks it).
+pub fn liveSnapshotAgents() usize {
+    std.Io.Threaded.mutexLock(&agents_lock);
+    defer std.Io.Threaded.mutexUnlock(&agents_lock);
+    var count: usize = 0;
+    var records = agents.valueIterator();
+    while (records.next()) |record| {
+        if (record.*.from_snapshot) count += 1;
+    }
+    return count;
+}
 
 /// The hooks of the agent whose isolate this is; null for an isolate
 /// createAgent did not make (a test's own).
@@ -265,7 +284,7 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
 
     const record = std.heap.c_allocator.create(AgentRecord) catch return error.OutOfMemory;
     errdefer std.heap.c_allocator.destroy(record);
-    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .host_agent = host_agent, .deferred_teardown = options.deferred_teardown };
+    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .host_agent = host_agent, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .deferred_teardown = options.deferred_teardown };
     {
         std.Io.Threaded.mutexLock(&agents_lock);
         defer std.Io.Threaded.mutexUnlock(&agents_lock);

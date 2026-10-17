@@ -2063,6 +2063,17 @@ bool v8_Isolate_IsFromSnapshot(Isolate* isolate) {
     return data && data->startup_data;
 }
 
+/// The bytes V8 restores `isolate` from - its StartupData's `data` - and
+/// their size in `out_size`, for tests; null (size 0) for an isolate made
+/// afresh.
+const char* v8_Isolate_SnapshotBlob(Isolate* isolate, size_t* out_size) {
+    IsolateData* data = isolateData(isolate);
+    if (out_size) *out_size = 0;
+    if (!data || !data->startup_data) return nullptr;
+    if (out_size) *out_size = static_cast<size_t>(data->startup_data->raw_size);
+    return data->startup_data->data;
+}
+
 /// How many of `isolate`'s JSON (and default-export) modules wait for
 /// evaluation (IsolateData::synthetic_json_exports), for tests.
 size_t v8_Isolate_PendingSyntheticModuleCount(Isolate* isolate) {
