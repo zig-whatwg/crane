@@ -31,7 +31,8 @@
 //!   Firefox 7/7, Safari 4/7; clients-get-resultingClientId.https.html 6/6 in
 //!   all three, which Firefox's reuse of the about:blank client also passes).
 //! - A window realm whose document is not fully active - a removed frame's,
-//!   a closed window's - becomes no environment: what it calls is rejected
+//!   a closed window's - or whose `closed` is already true (close() was
+//!   called and its traversable is closing) becomes no environment: what it calls is rejected
 //!   with an "InvalidStateError" (Chromium's answer for a detached context),
 //!   and the promises it was waiting on when its environment ended stay
 //!   pending (nothing runs in a realm that has gone).
@@ -610,10 +611,17 @@ pub fn environmentOf(realm: runtime.Context, create: bool) ?*RealmEnvironment {
         if (found.ended) return null;
         // A window whose document is no longer fully active - a closed
         // popup's, a removed frame's, before its environment ends - is no
-        // environment to reach (stated deviation 2).
+        // environment to reach (stated deviation 2). Nor is one whose
+        // `closed` is already true - close() set its traversable's is
+        // closing, and the task that definitely closes it is queued: a job
+        // started now would settle its promise after that task, through a
+        // realm that has gone, and the promise would never settle
+        // (register-closed-window.https.html, which all three browsers
+        // pass, awaits register() on such a window).
         if (found.kind == .window) {
             const global = globalOf(realm) orelse return null;
             if (!dom.document_activity.fullyActive(global, runtime.SlabAllocator.generationOf(global))) return null;
+            if (interfaces.Window.get_closed(global) catch true) return null;
         }
         return found;
     }
