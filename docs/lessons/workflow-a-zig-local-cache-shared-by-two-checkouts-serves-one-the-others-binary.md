@@ -40,3 +40,17 @@ The run rewrote 1,260 generated interfaces with implsb2's construction-chain tex
 codegen wrote one line. A lane-private cache (`~/Library/Caches/crane-<lane>-cache`, deleted with the lane)
 gave the one line. Run codegen, or any build whose output you commit, from a lane's own cache, and read
 `git status` after every regeneration.
+
+**Status (2026-10-17)**: a third occurrence, again on this Mac. Lane bindtype ran `zig build codegen -j2
+--cache-dir ~/Library/Caches/crane-z16-cache -- --dest-root src/webidl/` in its worktree (base 93275d76703,
+its codegen changes uncommitted) while lane idlupdate was changing the codegen in its worktree. The codegen
+that ran failed on bindtype's own specs/idl with `error: Element.setHTMLUnsafe is declared twice (again in
+sanitizer-integration.idl)` and `error.DuplicateMember`, and its stack trace named
+`.claude/worktrees/idlupdate/src/webidl/codegen/ir.zig`. The two trees' codegen sources differed:
+generator.zig, writer.zig, pipeline.zig, inherited_mixins.zig and member_overrides.zig, the last being the
+table that decides that duplicate. The same command with a lane-private cache (`--cache-dir
+~/Library/Caches/crane-z16-cache-bindtype`) built bindtype's codegen, regenerated without error, and
+codegen-check matched it. The failed run wrote nothing, which is the only reason it was harmless: it failed
+in stage 1, before any file was written. AGENTS.md still names the one shared local cache for every local
+build. Until it changes, a lane runs codegen and every build whose output it commits from a lane-private
+cache.
