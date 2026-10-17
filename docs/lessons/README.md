@@ -444,6 +444,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A report endpoint belongs to the policy's delivery URL](spec-compliance-a-report-endpoint-belongs-to-the-policy-delivery-url.md) - A violation's document URL, its blocked resource URL, and its report endpoint base are separate inputs. Preserve each input through inheritance instead of deriving one from another.
 - [A new token kind falls into every `else` branch](spec-compliance-a-new-token-kind-falls-into-every-else-branch.md) - When a union gains a kind, the compiler finds the exhaustive switches; the `else` branches are yours to find - map every spec rule for the new kind to its switch before trusting a green build.
 - [Integrity checks precede response handover](spec-compliance-sri-checks-before-response-handover.md) - Put a security check before the operation that exposes its result, and preserve both streaming cancellation and the empty-metadata fast path.
+- [Restored decoder bytes outlive the input chunk](spec-compliance-restored-decoder-bytes-outlive-the-input-chunk.md) - Input consumption and output capacity are separate boundaries: preserve both the restored queue prefix and the state needed to retry unwritten output.
+- [A fatal decode drops input, not handler mode](spec-compliance-a-fatal-decode-drops-input-not-handler-state.md) - When whole browser outcomes split three ways, compare mechanism by mechanism; take the component majorities only if their combination is a shipping browser's behaviour, otherwise the spec.
 
 ### Codegen
 
@@ -654,6 +656,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A permission query cannot repair its settings object](debugging-a-permission-query-cannot-repair-its-settings-object.md) - A consumer's correct behavior cannot compensate for incorrect shared settings; repair the owner and keep the reproducer.
 - [Throwing a caught exception again relocates it - only ReThrow keeps where it was thrown](debugging-throwing-a-caught-exception-again-relocates-it.md) - A value is not an exception: to pass an exception on with its location, rethrow it where it was caught (TryCatch::ReThrow) - catching it as a value and throwing that again moves it to the line that threw it again.
 - [V8 gives an API function called with null its OWN realm's global proxy](debugging-v8-gives-an-api-function-called-with-null-the-functions-own-global.md) - Measure how the engine converts a receiver before writing a heuristic to undo it: here the conversion already gave the spec's answer.
+- [A streaming encoder retries from this call's cursor](debugging-a-streaming-encoder-retries-from-this-calls-cursor.md) - Checkpoint input and state together; error position, input consumption, and output capacity are different facts.
+- [Bound intermediate output before consuming input](debugging-bound-intermediate-output-before-consuming-input.md) - Input boundaries, intermediate-unit boundaries and final-byte boundaries are independent; exercise all three, including the empty call that drains pending output.
 
 ### Workflow
 - [Zig optimizes a compilation at its root module's level; a module's own mode is its semantics](workflow-zig-optimizes-a-compilation-at-its-root-module-s-level.md) - The root module's mode is the optimizer; every other module's mode is its semantics. To speed up a binary without losing a module's Debug-only checks, raise the root and leave the module.
