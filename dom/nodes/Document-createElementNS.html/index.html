@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../dom/"><code>dom/</code></a></li><li><a href="../../../dom/nodes/"><code>nodes/</code></a></li><li aria-current="page"><code>Document-<wbr>createElementNS.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>Document-<wbr>createElementNS.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="dom/nodes/Document-createElementNS.html">
-<p class="figures-main"><span class="fg-pass">584</span><span class="fg-of"> / 596</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>12</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">596</span><span class="fg-of"> / 596</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-a9901e8535</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/a9901e8535"><code>a9901e8535</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-90c38a07f9</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/90c38a07f9"><code>90c38a07f9</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/dom/nodes/Document-createElementNS.html"><code>dom/<wbr>nodes/<wbr>Document-<wbr>createElementNS.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -34,21 +34,7 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-8de0c97c"><details><summary><span class="mark">FAIL</span><span class="sub-name">createElementNS test in HTML document: undefined,&quot;f::oo&quot;,&quot;NAMESPACE_ERR&quot;</span></summary><pre class="msg">assert_throws_dom: function &quot;function() {doc.createElementNS(namespace, qualifiedName) }&quot; threw object &quot;InvalidCharacterError: InvalidCharacterError&quot; that is not a DOMException NAMESPACE_ERR: property &quot;code&quot; is equal to 5, expected 14</pre></details><a class="self" href="#s-8de0c97c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2c183ce8"><details><summary><span class="mark">FAIL</span><span class="sub-name">createElementNS test in XML document: undefined,&quot;f::oo&quot;,&quot;NAMESPACE_ERR&quot;</span></summary><pre class="msg">assert_throws_dom: function &quot;function() {doc.createElementNS(namespace, qualifiedName) }&quot; threw object &quot;InvalidCharacterError: InvalidCharacterError&quot; that is not a DOMException NAMESPACE_ERR: property &quot;code&quot; is equal to 5, expected 14</pre></details><a class="self" href="#s-2c183ce8" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ffcb908f"><details><summary><span class="mark">FAIL</span><span class="sub-name">createElementNS test in XHTML document: undefined,&quot;f::oo&quot;,&quot;NAMESPACE_ERR&quot;</span></summary><pre class="msg">assert_throws_dom: function &quot;function() {doc.createElementNS(namespace, qualifiedName) }&quot; threw object &quot;InvalidCharacterError: InvalidCharacterError&quot; that is not a DOMException NAMESPACE_ERR: property &quot;code&quot; is equal to 5, expected 14</pre></details><a class="self" href="#s-ffcb908f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9e257df7"><details><summary><span class="mark">FAIL</span><span class="sub-name">createElementNS test in HTML document: &quot;http://example.com/&quot;,&quot;f:o:o&quot;,null</span></summary><pre class="msg">assert_equals: element.localName expected &quot;o:o&quot; but got &quot;o&quot;</pre></details><a class="self" href="#s-9e257df7" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-4ab6ac9d"><details><summary><span class="mark">FAIL</span><span class="sub-name">createElementNS test in XML document: &quot;http://example.com/&quot;,&quot;f:o:o&quot;,null</span></summary><pre class="msg">assert_equals: element.localName expected &quot;o:o&quot; but got &quot;o&quot;</pre></details><a class="self" href="#s-4ab6ac9d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-657fae26"><details><summary><span class="mark">FAIL</span><span class="sub-name">createElementNS test in XHTML document: &quot;http://example.com/&quot;,&quot;f:o:o&quot;,null</span></summary><pre class="msg">assert_equals: element.localName expected &quot;o:o&quot; but got &quot;o&quot;</pre></details><a class="self" href="#s-657fae26" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-467f62ac"><details><summary><span class="mark">FAIL</span><span class="sub-name">createElementNS test in HTML document: &quot;http://example.com/&quot;,&quot;f::oo&quot;,null</span></summary><pre class="msg">InvalidCharacterError</pre></details><a class="self" href="#s-467f62ac" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6941dcaf"><details><summary><span class="mark">FAIL</span><span class="sub-name">createElementNS test in XML document: &quot;http://example.com/&quot;,&quot;f::oo&quot;,null</span></summary><pre class="msg">InvalidCharacterError</pre></details><a class="self" href="#s-6941dcaf" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b16f28dd"><details><summary><span class="mark">FAIL</span><span class="sub-name">createElementNS test in XHTML document: &quot;http://example.com/&quot;,&quot;f::oo&quot;,null</span></summary><pre class="msg">InvalidCharacterError</pre></details><a class="self" href="#s-b16f28dd" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e86995fa"><details><summary><span class="mark">FAIL</span><span class="sub-name">createElementNS test in HTML document: &quot;http://example.com/&quot;,&quot;prefix::local&quot;,null</span></summary><pre class="msg">InvalidCharacterError</pre></details><a class="self" href="#s-e86995fa" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-928a12a3"><details><summary><span class="mark">FAIL</span><span class="sub-name">createElementNS test in XML document: &quot;http://example.com/&quot;,&quot;prefix::local&quot;,null</span></summary><pre class="msg">InvalidCharacterError</pre></details><a class="self" href="#s-928a12a3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-df8eb7dc"><details><summary><span class="mark">FAIL</span><span class="sub-name">createElementNS test in XHTML document: &quot;http://example.com/&quot;,&quot;prefix::local&quot;,null</span></summary><pre class="msg">InvalidCharacterError</pre></details><a class="self" href="#s-df8eb7dc" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<p class="omitted">584 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+<p class="omitted">596 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
 </div>
 </section>
 <footer class="foot">
