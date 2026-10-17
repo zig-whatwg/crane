@@ -68,8 +68,6 @@ src/webidl/impls/Element.zig DOMTokenList.setElement 2
 src/webidl/impls/Element.zig NamedNodeMap.setOwnerElement 1
 src/webidl/impls/File.zig Blob.processBlobParts 1
 src/webidl/impls/File.zig Blob.setBlobData 2
-src/webidl/impls/FileReaderSync.zig Blob.InternalState 1
-src/webidl/impls/FileReaderSync.zig Blob.getInternal 1
 src/webidl/impls/HTMLAnchorElement.zig DOMTokenList.setElement 1
 src/webidl/impls/HTMLAreaElement.zig DOMTokenList.setElement 1
 src/webidl/impls/HTMLElement.zig CSSStyleDeclaration.initForInlineStyle 1

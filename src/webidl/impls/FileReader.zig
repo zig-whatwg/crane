@@ -19,9 +19,7 @@ const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const dictionaries = @import("dictionaries");
 const engine = @import("engine");
-const encoding = @import("encoding");
-const mimesniff = @import("mimesniff");
-const infra = @import("infra");
+const file = @import("file");
 const FileReader = interfaces.FileReader;
 const same_object = @import("same_object.zig");
 const blob_bytes = @import("dom").blob_bytes;
@@ -459,88 +457,23 @@ const ReadOperation = struct {
     /// Spec: https://w3c.github.io/FileAPI/#blob-package-data
     fn packageData(self: *ReadOperation) !engine.Owned {
         const realm = self.reader.ctx;
-        const allocator = self.allocator;
-        switch (self.read_type) {
-            // ArrayBuffer: a new ArrayBuffer whose contents are bytes.
-            .array_buffer => return engine.createArrayBuffer(realm, self.bytes),
-            // BinaryString: bytes as a binary string, every byte a code
-            // unit of equal value.
-            .binary_string => {
-                const text = try infra.bytes.isomorphicDecodeToUtf8(allocator, self.bytes);
-                defer allocator.free(text);
-                return engine.retainValue(realm, runtime.JSValue.fromStringRef(text));
+        // Creating the engine buffer already copies the bytes; do not make
+        // an intermediate native copy for the ArrayBuffer arm.
+        if (self.read_type == .array_buffer) return engine.createArrayBuffer(realm, self.bytes);
+        const result = try file.algorithms.packageData(
+            self.allocator,
+            self.bytes,
+            switch (self.read_type) {
+                .array_buffer => unreachable,
+                .binary_string => .BinaryString,
+                .text => .Text,
+                .data_url => .DataURL,
             },
-            .text => {
-                const text = try self.decodeText();
-                defer allocator.free(text);
-                return engine.retainValue(realm, runtime.JSValue.fromStringRef(text));
-            },
-            // DataURL: bytes as a data: URL, with the blob's type. For a
-            // blob with no type the spec returns one "without a media-type"
-            // (and calls this underspecified: FileAPI issue 104); every
-            // browser, and WPT's filereader_readAsDataURL.any.js, uses
-            // application/octet-stream, which is what this does.
-            .data_url => {
-                const media_type = if (self.blob_type.len > 0) self.blob_type else "application/octet-stream";
-                const Base64 = std.base64.standard.Encoder;
-                const prefix = try std.fmt.allocPrint(allocator, "data:{s};base64,", .{media_type});
-                defer allocator.free(prefix);
-                const url = try allocator.alloc(u8, prefix.len + Base64.calcSize(self.bytes.len));
-                defer allocator.free(url);
-                @memcpy(url[0..prefix.len], prefix);
-                _ = Base64.encode(url[prefix.len..], self.bytes);
-                return engine.retainValue(realm, runtime.JSValue.fromStringRef(url));
-            },
-        }
-    }
-
-    /// Package data's Text steps: bytes decoded with the encoding named,
-    /// else the blob type's charset, else UTF-8 - a BOM overriding each.
-    /// OWNED, as UTF-8.
-    fn decodeText(self: *ReadOperation) ![]u8 {
-        const allocator = self.allocator;
-        // 1. Let encoding be failure.
-        var charset: ?*const encoding.encoding.Encoding = null;
-        // 2. If the encodingName is present, set encoding to the result of
-        //    getting an encoding from encodingName.
-        if (self.encoding_name) |name| charset = encoding.getEncoding(name);
-        // 3. If encoding is failure, and mimeType is present:
-        if (charset == null and self.blob_type.len > 0) {
-            // 3.1. Let type be the result of parse a MIME type given
-            //      mimeType.
-            if (try mimesniff.parseMimeType(allocator, self.blob_type)) |parsed| {
-                var mime_type = parsed;
-                defer mime_type.deinit();
-                // 3.2. If type is not failure, set encoding to the result of
-                //      getting an encoding from type's parameters["charset"].
-                if (charsetOf(mime_type)) |label| {
-                    const label_bytes = try allocator.alloc(u8, label.len);
-                    defer allocator.free(label_bytes);
-                    for (label, label_bytes) |c, *b| b.* = @truncate(c);
-                    charset = encoding.getEncoding(label_bytes);
-                }
-            }
-        }
-        // 4. If encoding is failure, then set encoding to UTF-8.
-        // 5. Decode bytes using fallback encoding encoding, and return the
-        //    result.
-        const code_units = encoding.hooks.decode(allocator, self.bytes, charset orelse &encoding.encoding.UTF_8) catch return error.OutOfMemory;
-        defer allocator.free(code_units);
-        // A decoder's output is scalar values: no surrogate is unpaired.
-        return std.unicode.utf16LeToUtf8Alloc(allocator, code_units) catch |err| switch (err) {
-            error.OutOfMemory => error.OutOfMemory,
-            else => unreachable,
-        };
-    }
-
-    /// `mime_type`'s parameters["charset"], if it exists. (Its map compares
-    /// slice keys by address, so this compares the text.)
-    fn charsetOf(mime_type: mimesniff.MimeType) ?[]const u16 {
-        const name = std.unicode.utf8ToUtf16LeStringLiteral("charset");
-        for (mime_type.parameters.entries.items()) |entry| {
-            if (std.mem.eql(u16, entry.key, name)) return entry.value;
-        }
-        return null;
+            self.blob_type,
+            self.encoding_name,
+        );
+        defer self.allocator.free(result.string);
+        return engine.retainValue(realm, runtime.JSValue.fromStringRef(result.string));
     }
 };
 
