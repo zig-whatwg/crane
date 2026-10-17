@@ -51,6 +51,7 @@ const Navigation = interfaces.Navigation;
 const same_object = @import("same_object.zig");
 const navigation_entries = @import("navigation_entries.zig");
 const html_core = @import("html_core");
+const html = @import("html");
 const joint_history = html_core.navigation.joint_history;
 const navigate_steps = html_core.navigation.navigate_steps;
 const dom = @import("dom");
@@ -273,6 +274,7 @@ threadlocal var live: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
 pub fn installHooks() void {
     dom.navigation_api.install(.{
         .same_document_navigation = &sameDocumentNavigation,
+        .set_focus_changed = &setFocusChangedHook,
         .page_swap_activation = &pageSwapActivationHook,
         .entries_removed = &entriesRemovedHook,
         .fire_push_replace_reload = &firePushReplaceReloadHook,
@@ -1261,6 +1263,13 @@ fn targetOf(window: *runtime.Instance) ?Target {
     return null;
 }
 
+/// HTML focus update/removing steps change the existing Navigation flag.
+/// Never ask Window.navigation here: an unused API needs no new object.
+fn setFocusChangedHook(window: *runtime.Instance, changed: bool) void {
+    const target = targetOf(window) orelse return;
+    target.internal.focus_changed = changed;
+}
+
 /// dom.navigation_api: HTML "fire a push/replace/reload navigate event".
 fn firePushReplaceReloadHook(window: *runtime.Instance, args: *const dom.navigation_api.PushReplaceReload) bool {
     const target = targetOf(window) orelse return true;
@@ -2088,10 +2097,8 @@ fn finish(instance: *runtime.Instance, internal: *InternalState, record: *EventR
     record.interception_state = .finished;
 }
 
-/// HTML "potentially reset the focus" given the event's record: the body
-/// (or the document element) is focused unless focus changed during the
-/// navigation or the event asked for "manual". The autofocus delegate is
-/// not modelled, stated.
+/// HTML "potentially reset the focus": use the autofocus delegate, body
+/// or document element, with the document viewport as the fallback.
 fn potentiallyResetFocus(instance: *runtime.Instance, internal: *InternalState, record: *EventRecord) void {
     // 3-5.
     const focus_changed = internal.focus_changed;
@@ -2099,14 +2106,15 @@ fn potentiallyResetFocus(instance: *runtime.Instance, internal: *InternalState, 
     if (focus_changed) return;
     // 6.
     if (record.focus_reset == .manual) return;
-    // 7-10: the focus target.
+    // 7-10: autofocus delegate, then body, then document element.
     const scope = scopeOf(instance, internal) orelse return;
-    const target = (interfaces.Document.get_body(scope.document) catch null) orelse
-        (interfaces.Document.get_documentElement(scope.document) catch null) orelse return;
-    // 11: "Run the focusing steps for focusTarget."
-    if (target.stateAs(interfaces.HTMLElement.State) != null) {
-        interfaces.HTMLElement.call_focus(target, webidl.Opt(dictionaries.FocusOptions).notPassed()) catch {};
-    }
+    const target = html.focus.autofocusDelegate(scope.document, .other) orelse
+        (interfaces.Document.get_body(scope.document) catch null) orelse
+        (interfaces.Document.get_documentElement(scope.document) catch null) orelse scope.document;
+    // 11: the viewport is the fallback even when the body is not focusable.
+    html.focus.focusingSteps(target, scope.document, .other);
+    // 12: the sequential focus navigation starting point is not modelled;
+    // adding its Document-owned node requires the separate holder work.
 }
 
 /// HTML "potentially process scroll behavior": with no layout, processing
