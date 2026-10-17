@@ -28,6 +28,14 @@ pub const GlobalScope = enum {
     /// DedicatedWorker global
     DedicatedWorker,
 
+    /// The worklet global scopes ([Global=(Worklet,PaintWorklet)] and the
+    /// rest): CSS Painting API, CSS Layout API, CSS Animation Worklet and
+    /// Web Audio API.
+    PaintWorklet,
+    LayoutWorklet,
+    AnimationWorklet,
+    AudioWorklet,
+
     /// Convert from string identifier
     pub fn fromString(identifier: []const u8) ?GlobalScope {
         inline for (std.meta.fields(GlobalScope)) |field| {
@@ -55,6 +63,15 @@ pub const GlobalScope = enum {
         if (std.mem.eql(u8, identifier, "Worker")) {
             return switch (self) {
                 .Worker, .DedicatedWorker, .SharedWorker, .ServiceWorker => true,
+                else => false,
+            };
+        }
+
+        // Worklet inheritance: [Exposed=Worklet] applies to every worklet
+        // global scope - each one's [Global] names "Worklet" (HTML 11.3.1).
+        if (std.mem.eql(u8, identifier, "Worklet")) {
+            return switch (self) {
+                .Worklet, .PaintWorklet, .LayoutWorklet, .AnimationWorklet, .AudioWorklet => true,
                 else => false,
             };
         }
