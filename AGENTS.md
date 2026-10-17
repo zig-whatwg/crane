@@ -134,6 +134,14 @@ says only that the page ran to its end; 1,053 files were OK with nothing passing
 when this rule was added (2026-09-30). Report blocking files by this rule, and
 beside the headline subtest rate report the rate outside `encoding/` and the mean
 per-file rate, which the page prints: `encoding/` holds most of the subtests.
+One exception (the user, 2026-10-17): a file whose failures exist because ALL
+THREE browsers intentionally deviate from the spec - golden rule 2's "all three
+intentionally declined" case, each browser with evidence of intent - is omitted
+from the blocking count. Each such file is listed with its evidence (the
+wpt.fyi results and the standards position, WontFix bug or objection per
+browser) in `tools/wpt_gate_exemptions.txt`, which `tools/wpt_progress.py`
+reads and the page shows as its own group. A file every browser merely fails,
+or that only some browsers decline, is NOT exempt.
 
 `wpt-results/progress.html` is how the 0.1 gate is watched. It is regenerated
 from journals, and only from `wpt-results/*.jsonl` and
