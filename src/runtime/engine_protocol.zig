@@ -1566,6 +1566,20 @@ pub inline fn getCopyOfAllowSharedBufferSourceBytes(realm: Context, value: JSVal
     return impl.getCopyOfAllowSharedBufferSourceBytes(realm, value, allocator);
 }
 
+/// The bytes held by a buffer source over a NON-shared buffer - an
+/// ArrayBuffer's, or a view's own window of its ArrayBuffer - read in place,
+/// where "get a copy of the bytes held by the buffer source" would copy them.
+/// BORROWED: valid only until script next runs or the buffer is detached, so
+/// the caller reads them before anything that can run script, and only where
+/// the copy could not be observed. Empty when detached. Null when `value` is
+/// none of those - a SharedArrayBuffer or a view over one included: another
+/// agent can write shared memory while it is read, which is why the spec
+/// copies (fall back to getCopyOfAllowSharedBufferSourceBytes). Blink reads
+/// a non-shared buffer in place the same way (DOMArrayPiece).
+pub inline fn borrowBufferSourceBytes(realm: Context, value: JSValue) ?[]const u8 {
+    return impl.borrowBufferSourceBytes(realm, value);
+}
+
 /// WebIDL sequence<any>. OWNED slice of OWNED values.
 pub inline fn convertToSequence(realm: Context, value: JSValue, allocator: std.mem.Allocator) Error![]Owned {
     return impl.convertToSequence(realm, value, allocator);

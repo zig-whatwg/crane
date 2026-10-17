@@ -1,6 +1,7 @@
 # Architecture: A conversion that allocates nothing still looks allocated
 
 **Date**: 2026-09-21
+**Status** (2026-10-16): no conversion is non-owning today - AllowSharedBufferSource is a reference to its object (lane bindsafe), and `freeBufferSourceArg` leaves its Zig-only `byte_slice` arm alone; `argConversionIsNonOwning` names nothing, and stays as the place to name the next one.
 **Lesson**: `needsArgCleanup` called every slice "owned", including one that aliased V8's heap.
 
 **Why**: `conv.convertAllowSharedBufferSource` discards its allocator on purpose

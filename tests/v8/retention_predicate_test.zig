@@ -282,20 +282,25 @@ test "argHandleIsCopied - BodyInit is copied: its converter only ever makes stri
     try std.testing.expect(copied(v8.interface_mod.copied_arg_types.BodyInit));
 }
 
-test "argHandleIsCopied - AllowSharedBufferSource is copied: a slice over the backing store, not the handle" {
-    // conv.convertAllowSharedBufferSource reads the bytes through
-    // v8_AllowSharedBufferSource_Bytes and returns `.byte_slice` - nothing
-    // that refers to the argument's Global. The JS argument keeps the buffer
-    // alive for the call; kept, the Global leaked once per
-    // TextDecoder.decode call.
+test "argHandleIsCopied - AllowSharedBufferSource is a reference to its object, never copied" {
+    // conv.convertAllowSharedBufferSource keeps the argument's handle as the
+    // IDL value's reference to its object (WebIDL 3.2.26), released with the
+    // value (bufferHandleIsKeptInValue). It was "copied" while the conversion
+    // was a slice over the backing store - and a later argument's getter that
+    // transferred the buffer left TextDecoder.decode reading the freed store.
     const webidl = @import("webidl");
-    try std.testing.expect(copied(webidl.AllowSharedBufferSource));
-    try std.testing.expect(copied(?webidl.AllowSharedBufferSource));
-    try std.testing.expect(copied(webidl.Opt(webidl.AllowSharedBufferSource)));
-    // Its neighbours are references to their objects, released with the
-    // value instead (bufferHandleIsKeptInValue): never "copied".
+    try std.testing.expect(!copied(webidl.AllowSharedBufferSource));
+    try std.testing.expect(!copied(?webidl.AllowSharedBufferSource));
+    try std.testing.expect(!copied(webidl.Opt(webidl.AllowSharedBufferSource)));
     try std.testing.expect(!copied(webidl.BufferSource));
     try std.testing.expect(!copied(webidl.ArrayBufferView));
+    // All three keep the handle in the value, nullable and optional forms too,
+    // so the binding releases it exactly once: with the value.
+    const kept = v8.interface_mod.bufferHandleIsKeptInValue;
+    try std.testing.expect(kept(webidl.AllowSharedBufferSource));
+    try std.testing.expect(kept(?webidl.AllowSharedBufferSource));
+    try std.testing.expect(kept(webidl.Opt(webidl.AllowSharedBufferSource)));
+    try std.testing.expect(v8.interface_mod.argumentHandleIsKeptInValue(webidl.Opt(webidl.AllowSharedBufferSource)));
 }
 
 test "argHandleIsCopied - wrappers follow their payload" {

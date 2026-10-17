@@ -2724,6 +2724,13 @@ bool v8_Value_IsArrayBuffer(Global<Value>* value) {
     return val->IsArrayBuffer();
 }
 
+bool v8_Value_IsSharedArrayBuffer(Global<Value>* value) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsSharedArrayBuffer();
+}
+
 bool v8_Value_IsArrayBufferView(Global<Value>* value) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
@@ -12670,6 +12677,45 @@ int v8_Object_HasOwnPropertyOrThrow(Global<Object>* object, Global<Context>* con
     // Nothing: [[GetOwnProperty]] threw, and the exception stays pending.
     if (result.IsNothing()) return -1;
     return result.FromJust() ? 1 : 0;
+}
+
+/// The bytes a buffer source over a NON-shared buffer holds, in one call
+/// (engine.borrowBufferSourceBytes reads TextDecoder.decode's input with it):
+/// an ArrayBuffer's - none when detached - or the window [[ByteOffset]],
+/// [[ByteLength]] of a view over an ArrayBuffer. False for a
+/// SharedArrayBuffer, a view over one, and anything that is not a buffer
+/// source. A view's Buffer() gives an on-heap typed array its off-heap store
+/// first, so the pointer holds until script next runs or the buffer is
+/// detached.
+bool v8_BufferSource_UnsharedBytes(Global<Value>* value, void** data, size_t* byte_length) {
+    *data = nullptr;
+    *byte_length = 0;
+    if (!value || value->IsEmpty()) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> v = value->Get(isolate);
+    Local<ArrayBuffer> ab;
+    size_t offset = 0;
+    size_t length = 0;
+    if (v->IsArrayBufferView()) {
+        Local<ArrayBufferView> view = v.As<ArrayBufferView>();
+        Local<Object> buffer = view->Buffer();
+        if (!buffer->IsArrayBuffer()) return false;
+        ab = buffer.As<ArrayBuffer>();
+        offset = view->ByteOffset();
+        length = view->ByteLength();
+    } else if (v->IsArrayBuffer()) {
+        ab = v.As<ArrayBuffer>();
+        length = ab->ByteLength();
+    } else {
+        return false;
+    }
+    if (ab->WasDetached() || length == 0) return true;
+    void* base = ab->Data();
+    if (!base) return true;
+    *data = static_cast<uint8_t*>(base) + offset;
+    *byte_length = length;
+    return true;
 }
 
 /// The bytes an AllowSharedBufferSource holds (engine.

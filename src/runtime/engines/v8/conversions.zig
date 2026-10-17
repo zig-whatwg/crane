@@ -1030,36 +1030,59 @@ const buffer_sources = @import("webidl").buffer_sources;
 /// input among others - whose flattened member types are ArrayBuffer,
 /// SharedArrayBuffer, DataView and the typed arrays:
 ///
-/// - Step 6: an ArrayBuffer (a detached one holds no bytes).
-/// - Step 7: a SharedArrayBuffer.
+/// - Step 6: an ArrayBuffer (3.2.26 "the result of converting V to
+///   ArrayBuffer": a reference to the same object).
+/// - Step 7: a SharedArrayBuffer (likewise, to SharedArrayBuffer).
 /// - Steps 8-9: a DataView or a typed array, over either kind of buffer
-///   ([AllowShared]): its own window of the buffer, [[ByteOffset]] for
-///   [[ByteLength]] (none when the buffer is detached).
+///   ([AllowShared]) - `ArrayBufferView.fromEngine`, as
+///   `convertArrayBufferView` makes one, without its step 3.
 /// - Step 20: anything else is a TypeError.
 ///
-/// `v8_AllowSharedBufferSource_Bytes` answers all four, the way
-/// `engine.getCopyOfAllowSharedBufferSourceBytes` reads them. (This used to
-/// accept only typed arrays and DataViews, measuring a DataView with the typed
-/// array accessors: `decode(arrayBuffer)` was a TypeError and `decode(dataView)`
-/// read as empty.)
+/// The IDL value is a REFERENCE (`value` itself, BORROWED: see
+/// `convertArrayBufferView`), never a slice into the backing store. This was
+/// a `.byte_slice` over the store, read here: a later argument's conversion
+/// can run script that transfers the buffer and frees that store, and the
+/// impl read it afterwards - TextDecoder.decode(input, options), whose
+/// options' `stream` getter transfers the input's buffer
+/// (encoding/textdecoder-arguments.any.js), read 10,000 freed bytes. The impl
+/// copies at its spec's step through
+/// `engine.getCopyOfAllowSharedBufferSourceBytes` (a detached buffer reads
+/// as empty), after every argument has converted. Blink's bindings hand the
+/// impl a DOMArrayBuffer/DOMArrayBufferView the same way, read at use.
 ///
-/// null and undefined still read as no bytes, as before, rather than WebIDL's
-/// TypeError: an omitted optional argument reaches here as undefined.
+/// `.array_buffer` and `.shared_array_buffer` point at a struct allocated
+/// here (`js` the buffer, no bytes), freed with the argument
+/// (`interface.freeConvertedArg`), which also releases the handle.
 ///
-/// The result is a non-owning byte slice over the backing store, valid only for
-/// the synchronous call that converted it - never stored past it.
+/// null and undefined still read as no bytes (`.byte_slice`, empty, no
+/// handle), as before, rather than WebIDL's TypeError: an omitted optional
+/// argument reaches here as undefined.
 fn convertAllowSharedBufferSource(
     allocator: std.mem.Allocator,
     value: *v8.Value,
 ) ConversionError!typedefs.AllowSharedBufferSource {
-    _ = allocator; // A view over the engine's bytes: nothing to allocate.
-    var data: ?*anyopaque = null;
-    var length: usize = 0;
-    if (v8.v8_AllowSharedBufferSource_Bytes(value, &data, &length)) {
-        if (data == null or length == 0) return .{ .byte_slice = &[_]u8{} };
-        return .{ .byte_slice = @as([*]const u8, @ptrCast(data.?))[0..length] };
+    // Steps 8-9: a view over either kind of buffer - first, as the common
+    // case (TextDecoder.decode's input), one FFI call.
+    var info: v8.ViewInfo = undefined;
+    if (v8.v8_ArrayBufferView_Describe(value, &info)) {
+        const view = typedefs.ArrayBufferView.fromEngine(@intCast(@intFromEnum(info.kind)), info.byte_offset, info.length, @ptrCast(value)) orelse
+            return ConversionError.TypeError;
+        return .{ .array_buffer_view = view };
+    }
+    // Step 6 (V8's IsArrayBuffer is false for a SharedArrayBuffer).
+    if (v8.v8_Value_IsArrayBuffer(value)) {
+        const buffer = try allocator.create(buffer_sources.ArrayBuffer);
+        buffer.* = .{ .data = &[_]u8{}, .detached = false, .js = @ptrCast(value) };
+        return .{ .array_buffer = buffer };
+    }
+    // Step 7.
+    if (v8.v8_Value_IsSharedArrayBuffer(value)) {
+        const buffer = try allocator.create(buffer_sources.SharedArrayBuffer);
+        buffer.* = .{ .data = &[_]u8{}, .allocator = allocator, .js = @ptrCast(value) };
+        return .{ .shared_array_buffer = buffer };
     }
     if (v8.v8_Value_IsNullOrUndefined(value)) return .{ .byte_slice = &[_]u8{} };
+    // Step 20.
     return ConversionError.TypeError;
 }
 

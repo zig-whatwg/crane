@@ -304,12 +304,11 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
         if (T == *runtime.CallbackWrapper) break :blk false;
         if (info == .pointer and info.pointer.size == .one and @typeInfo(info.pointer.child) == .@"fn") break :blk false;
 
-        // Buffer sources are made without the context: a BufferSource or an
-        // ArrayBufferView is a reference to its object (conv.convertBufferSource
-        // reads the kind and the view's Describe, nothing else), and
-        // AllowSharedBufferSource a view over the backing store
-        // (convertAllowSharedBufferSource ignores it). Whether the ARGUMENT
-        // handle may go is argHandleIsCopied's question, not this one.
+        // Buffer sources are made without the context: a BufferSource, an
+        // AllowSharedBufferSource or an ArrayBufferView is a reference to its
+        // object (conv.convertBufferSource and convertAllowSharedBufferSource
+        // read the kind and the view's Describe, nothing else). Whether the
+        // ARGUMENT handle may go is argHandleIsCopied's question, not this one.
         if (T == webidl.BufferSource or T == webidl.ArrayBufferView or T == webidl.AllowSharedBufferSource) break :blk false;
 
         // A self-referential dictionary would recurse without end; past this
@@ -397,35 +396,17 @@ pub fn argHandleIsCopied(comptime T: type) bool {
         if (T == runtime.JSValue) break :blk false;
 
         // A buffer source IS a reference to the object it was converted from:
-        // the handle itself (conv.convertBufferSource), released with the
-        // value (`bufferHandleIsKeptInValue`). Named before the structural
-        // rules, which must never get to call it copied.
-        if (T == webidl.BufferSource or T == webidl.ArrayBufferView) break :blk false;
-
-        // AllowSharedBufferSource IS copied in this predicate's sense: nothing
-        // the conversion makes refers to the argument's Global.
-        // `conv.convertAllowSharedBufferSource` reads the bytes through
-        // v8_AllowSharedBufferSource_Bytes and returns `.byte_slice` over the
-        // buffer's backing store. Kept, that Global leaked once per
-        // TextDecoder.decode call (leaks --atExit, lane bufsrc 2026-10-10).
-        // Why releasing it is safe:
-        // - The Global does not own the backing store; the JS object does, and
-        //   V8 roots a callback's arguments until it returns.
-        // - Nothing keeps the slice past the call. TextDecoder.decode copies
-        //   what it keeps (pending bytes into its own array, output duplicated);
-        //   TextDecoderStream converts its chunk itself, with
-        //   getCopyOfAllowSharedBufferSourceBytes. Every other operation taking
-        //   one is a NotImplemented stub: FileSystemSyncAccessHandle.read/write,
-        //   EncodedAudioChunk/EncodedVideoChunk/VideoFrame/AudioData.copyTo,
-        //   GPUQueue.writeBuffer/writeTexture, MLContext.writeTensor and
-        //   createConstantTensor, MLGraphBuilder.constant, WebGL(2) bufferSubData.
-        // - A dictionary member of this type (EncodedAudioChunkInit and
-        //   EncodedVideoChunkInit `data`, Audio/VideoDecoderConfig `description`,
-        //   ImageDecoderInit `data` through ImageBufferSource; all stub consumers)
-        //   now has its Get handle released too. Its slice was never safe past a
-        //   later member's getter, which can transfer the buffer: whoever
-        //   implements one copies the bytes before script runs again.
-        if (T == webidl.AllowSharedBufferSource) break :blk true;
+        // the handle itself (conv.convertBufferSource,
+        // convertAllowSharedBufferSource, convertArrayBufferView), released
+        // with the value (`bufferHandleIsKeptInValue`). Named before the
+        // structural rules, which must never get to call it copied.
+        //
+        // AllowSharedBufferSource was "copied" here while its conversion was
+        // a slice over the backing store, and its Global went at conversion -
+        // but the slice did not survive a later argument's getter that
+        // transferred the buffer (TextDecoder.decode read the freed store).
+        // It is a reference now, kept until the call returns.
+        if (T == webidl.BufferSource or T == webidl.ArrayBufferView or T == webidl.AllowSharedBufferSource) break :blk false;
 
         // A wrapped platform object: the conversion returns the Instance from
         // the wrapper's internal field, and the argument's own handle is not
@@ -699,11 +680,11 @@ pub const copied_arg_types = struct {
 ///
 /// Ownership is the conversion's, not the type's, so this is decided here by
 /// arm rather than by the structural rules. Those would get the BufferSource
-/// arm wrong: `argConversionIsNonOwning` rightly calls BufferSource a view
-/// that must never be freed - true of TextDecoder's AllowSharedBufferSource,
-/// false of BodyInit's, which is a copy (an ArrayBuffer struct and its bytes)
-/// so that nothing in the call can detach the buffer under it. Left to the
-/// structural rules, every `new Response(bytes)` leaked the copy.
+/// arm wrong: a BufferSource is a reference to its object everywhere else
+/// (`freeBufferSourceArg` releases its handle), but BodyInit's is a copy (an
+/// ArrayBuffer struct and its bytes) so that nothing in the call can detach
+/// the buffer under it. Left to the structural rules, every
+/// `new Response(bytes)` leaked the copy.
 ///
 /// - `readable_stream`, `blob`, `form_data`, `urlsearch_params`: the Instance
 ///   a wrapper holds. Not ours.
@@ -730,31 +711,26 @@ pub fn freeBodyInitArg(allocator: std.mem.Allocator, arg: copied_arg_types.BodyI
 /// Does converting an argument of type `T` yield a NON-OWNING view - memory
 /// this engine never allocated and must therefore never free?
 ///
-/// `conv.convertAllowSharedBufferSource` says so in its own words: it discards
-/// the allocator (`_ = allocator; // Not needed - we create a non-owning view`),
-/// reads `v8_ArrayBuffer_Data`, and returns
-/// `.{ .byte_slice = src_ptr[0..byte_length] }` - a `[]const u8` aliasing V8's
-/// backing store. `needsArgCleanup` then walked into that union arm, saw a
-/// slice, and concluded "allocated by fromV8Sequence"; `freeConvertedArg`
-/// called `allocator.free` on it and the DebugAllocator aborted the process
-/// with `panic: Invalid free`. Every `new TextDecoder(x).decode(bytes)` over a
-/// non-empty buffer died that way - 67 of 149 `encoding/` WPT files, including
-/// all fifteen `textdecoder-*`.
+/// `needsArgCleanup`'s slice rule answers "owned" for *any* slice - a
+/// blocklist over an open set, wrong by default in exactly the way AGENTS.md
+/// warns about - and a conversion that returns a slice aliasing V8's heap
+/// would have it freed: `conv.convertAllowSharedBufferSource` returned
+/// `.{ .byte_slice = <the backing store> }`, and `freeConvertedArg` handed
+/// the store to `allocator.free` (`panic: Invalid free` on every
+/// `new TextDecoder(x).decode(bytes)`, 67 of 149 `encoding/` WPT files).
+/// Flipping that default would leak every string argument, so the narrow
+/// repair is to name the conversions known not to allocate here, consulted
+/// before the structural rules.
 ///
-/// The hazard this guards is `needsArgCleanup`'s slice rule, which answers
-/// "owned" for *any* slice - a blocklist over an open set, wrong by default in
-/// exactly the way AGENTS.md warns about. Flipping that default would leak
-/// every string argument, so the narrow repair is to name the conversions that
-/// are known not to allocate. Today `convertAllowSharedBufferSource` is the
-/// only one; `grep -n "non-owning" conversions.zig` is how you check that is
-/// still true. Anything unrecognised answers FALSE and keeps the existing
-/// free-it behaviour, so adding a second non-owning conversion without adding
-/// it here reintroduces the abort.
+/// None does today: AllowSharedBufferSource is a reference to its object
+/// (`bufferHandleIsKeptInValue`), freed by `freeBufferSourceArg`, and its
+/// `.byte_slice` arm - Zig's own bytes, or the empty value null converts to -
+/// is never freed there. `grep -n "non-owning" conversions.zig` is how you
+/// check that is still true; a new non-owning conversion is named here, or
+/// its slice is freed.
 pub fn argConversionIsNonOwning(comptime T: type) bool {
-    // BufferSource was listed here while its conversion failed for every
-    // value; it is now a reference to its object (`conv.convertBufferSource`),
-    // which the argument owns until it is freed (`freeConvertedArg`).
-    return T == webidl.buffer_sources.AllowSharedBufferSource;
+    _ = T;
+    return false;
 }
 
 /// The buffer-source types the ownership rules name, re-exported so
@@ -962,13 +938,16 @@ pub fn releaseAnyArgument(comptime T: type, value: T) void {
 
 /// Is `T` a buffer source whose conversion keeps, as the IDL value's
 /// reference to its object (WebIDL 3.2.26), the handle it was converted
-/// from: BufferSource or ArrayBufferView, nullable or a `webidl.Opt` of
-/// either, or a union whose only non-copying arms are buffer sources?
+/// from: BufferSource, AllowSharedBufferSource or ArrayBufferView, nullable
+/// or a `webidl.Opt` of one, or a union whose only non-copying arms are
+/// buffer sources?
 ///
-/// `conv.convertBufferSource` and `conv.convertArrayBufferView` return the
-/// handle they were given as `js` - no clone, no copy of the bytes - and fail
-/// for anything else, keeping nothing. The value says which: a view, an
-/// ArrayBuffer struct, or null / not passed / a copying union arm.
+/// `conv.convertBufferSource`, `conv.convertAllowSharedBufferSource` and
+/// `conv.convertArrayBufferView` return the handle they were given as `js` -
+/// no clone, no copy of the bytes - and fail for anything else, keeping
+/// nothing. The value says which: a view, an ArrayBuffer or
+/// SharedArrayBuffer struct, or null / not passed / a copying union arm /
+/// AllowSharedBufferSource's empty `.byte_slice` for null and undefined.
 ///
 /// Such a handle is the VALUE's until it is freed: `freeConvertedArg` releases
 /// it, for an argument once the call returns, for a dictionary member or a
@@ -982,7 +961,7 @@ pub fn releaseAnyArgument(comptime T: type, value: T) void {
 /// conversion was a TypeError for every value.
 pub fn bufferHandleIsKeptInValue(comptime T: type) bool {
     return comptime blk: {
-        if (T == webidl.BufferSource or T == webidl.ArrayBufferView) break :blk true;
+        if (T == webidl.BufferSource or T == webidl.ArrayBufferView or T == webidl.AllowSharedBufferSource) break :blk true;
         // A conversion that copies keeps nothing (BodyInit: convertBodyInit
         // copies its buffer).
         if (argHandleIsCopied(T)) break :blk false;
@@ -1008,7 +987,7 @@ pub fn bufferHandleIsKeptInValue(comptime T: type) bool {
 /// that `bufferHandleIsKeptInValue` accepts.
 pub fn bufferArgumentHandle(comptime T: type, value: T) ?*anyopaque {
     comptime std.debug.assert(bufferHandleIsKeptInValue(T));
-    if (T == webidl.BufferSource or T == webidl.ArrayBufferView) return value.jsHandle();
+    if (T == webidl.BufferSource or T == webidl.ArrayBufferView or T == webidl.AllowSharedBufferSource) return value.jsHandle();
     const info = @typeInfo(T);
     if (info == .optional) return if (value) |v| bufferArgumentHandle(info.optional.child, v) else null;
     if (comptime isOptWrapper(T)) {
@@ -1025,20 +1004,21 @@ pub fn bufferArgumentHandle(comptime T: type, value: T) ?*anyopaque {
 
 /// Free a converted buffer source: release the reference it holds (the
 /// handle it was converted from, see `bufferHandleIsKeptInValue`) and, for an
-/// ArrayBuffer, the struct `conv.convertBufferSource` allocated for it. A
-/// value made in Zig (`js` null) holds no handle; an ArrayBuffer struct of
-/// one is its maker's.
+/// ArrayBuffer or a SharedArrayBuffer, the struct `conv.convertBufferSource`
+/// or `conv.convertAllowSharedBufferSource` allocated for it. A value made in
+/// Zig (`js` null) holds no handle; its struct, and a `.byte_slice`'s bytes,
+/// are its maker's.
 pub fn freeBufferSourceArg(comptime T: type, allocator: std.mem.Allocator, arg: T) void {
-    if (T == webidl.ArrayBufferView) {
-        if (arg.jsHandle()) |handle| v8.v8_Value_Dispose(@ptrCast(@alignCast(handle)));
-        return;
-    }
+    const handle = arg.jsHandle() orelse return;
+    v8.v8_Value_Dispose(@ptrCast(@alignCast(handle)));
+    if (T == webidl.ArrayBufferView) return;
     switch (arg) {
-        .array_buffer => |buffer| if (buffer.js) |handle| {
-            v8.v8_Value_Dispose(@ptrCast(@alignCast(handle)));
-            allocator.destroy(buffer);
+        inline else => |payload, tag| {
+            const name = @tagName(tag);
+            if (comptime std.mem.eql(u8, name, "array_buffer") or std.mem.eql(u8, name, "shared_array_buffer")) {
+                allocator.destroy(payload);
+            }
         },
-        .array_buffer_view => |view| freeBufferSourceArg(webidl.ArrayBufferView, allocator, view),
     }
 }
 
@@ -1352,8 +1332,10 @@ pub fn needsArgCleanup(comptime T: type) bool {
     // arm for a reference (`freeBodyInitArg`).
     if (T == copied_arg_types.BodyInit) return true;
     // A buffer source holds the handle it refers to, and an
-    // ArrayBuffer the struct made for it (`freeBufferSourceArg`).
-    if (T == webidl.BufferSource or T == webidl.ArrayBufferView) return true;
+    // ArrayBuffer or SharedArrayBuffer the struct made for it
+    // (`freeBufferSourceArg`) - before the union rule below, which would
+    // take AllowSharedBufferSource's `.byte_slice` arm for an owned slice.
+    if (T == webidl.BufferSource or T == webidl.ArrayBufferView or T == webidl.AllowSharedBufferSource) return true;
     // Raw string slice - allocated by fromV8Value
     if (T == []const u8) return true;
     // DOMString - allocated by fromV8String
@@ -1411,7 +1393,7 @@ const static_empty_u8: []const u8 = &[_]u8{};
 pub fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) void {
     if (comptime !needsArgCleanup(T)) return;
     if (T == copied_arg_types.BodyInit) return freeBodyInitArg(allocator, arg);
-    if (T == webidl.BufferSource or T == webidl.ArrayBufferView) return freeBufferSourceArg(T, allocator, arg);
+    if (T == webidl.BufferSource or T == webidl.ArrayBufferView or T == webidl.AllowSharedBufferSource) return freeBufferSourceArg(T, allocator, arg);
 
     if (T == []const u8) {
         // Only free if it's not the static empty slice and has content

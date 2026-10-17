@@ -464,6 +464,22 @@ pub fn getCopyOfAllowSharedBufferSourceBytes(realm: Context, value: JSValue, all
     return webidl_conversions.getCopyOfAllowSharedBufferSourceBytes(realm, value, allocator) catch |err| protocolError(err);
 }
 
+/// engine.borrowBufferSourceBytes: an ArrayBuffer's backing store, or a
+/// view's window of its ArrayBuffer (a view over an on-heap typed array is
+/// given an off-heap store by its Buffer() first, so the address holds) - for
+/// a buffer that is not shared. One FFI call: TextDecoder.decode makes it per
+/// call.
+pub fn borrowBufferSourceBytes(realm: Context, value: JSValue) ?[]const u8 {
+    const target = handleOf(value) orelse return null;
+    const entered = enter(realm) catch return null;
+    defer entered.leave();
+    var data: ?*anyopaque = null;
+    var length: usize = 0;
+    if (!ffi.v8_BufferSource_UnsharedBytes(target, &data, &length)) return null;
+    if (length == 0 or data == null) return &.{};
+    return @as([*]const u8, @ptrCast(data.?))[0..length];
+}
+
 const protocol_conversions = @import("protocol_conversions.zig");
 pub const convertToSequence = protocol_conversions.convertToSequence;
 pub const convertToSequenceOfStringPairs = protocol_conversions.convertToSequenceOfStringPairs;
