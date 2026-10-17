@@ -869,10 +869,15 @@ const Navigation = struct {
     fetch: ?*fetch_mod.algorithms.AsyncFetch = null,
     /// What the fetch answered, until the commit takes it.
     response: ?navigation_fetch.NavigationFetchResult = null,
+    /// "Create navigation params by fetching"'s reserved client
+    /// (dom.service_worker_clients' handle), until the new document's realm
+    /// takes it; one no document took is discarded.
+    reserved_client: ?*anyopaque = null,
 
     fn destroy(self: *Navigation) void {
         // Terminating a fetch runs neither `done` nor `gone`.
         if (self.fetch) |f| f.terminate();
+        dom_module.service_worker_clients.release(self.reserved_client);
         if (self.response) |*r| r.deinit();
         if (self.srcdoc) |s| self.allocator.free(s);
         if (self.javascript_result) |r| self.allocator.free(r);
@@ -1548,6 +1553,12 @@ fn startFetch(record: *Navigation) void {
                 };
             }
         }
+        // "Create navigation params by fetching": the request's reserved
+        // client, a new environment - which Handle Fetch may make controlled
+        // (Service Workers 2.5.1) and the new document's realm adopts.
+        if (navigationRealmOf(record.integration)) |creator| record.reserved_client = dom_module.service_worker_clients.reserve(creator, .window, url);
+        request.reserved_client = record.reserved_client;
+        request.service_worker = dom_module.service_worker_clients.routeOfReserved(record.reserved_client);
         const client: fetch_mod.algorithms.AsyncFetch.Client = .{
             .context = @ptrFromInt(record.id),
             .done = &fetchDone,
@@ -1803,6 +1814,11 @@ fn runCommit(context: ?*anyopaque) void {
         log.warn("[navigation] no realm for {s}: {s}", .{ record.url, @errorName(err) });
         return endLoadDelay(integration);
     };
+    // Service Workers 2.5.1: the new document's window client - the
+    // navigation's reserved client, or its creator's controller for a
+    // document no fetch went through HTTP for - before any of its script
+    // runs.
+    clientForNewDocument(integration, record, response);
     // "Finalize a cross-document navigation" step 4: a top-level
     // traversable - not an auxiliary browsing context whose opener browsing
     // context is non-null - navigated to a document of another origin loses
@@ -1839,6 +1855,29 @@ fn runCommit(context: ?*anyopaque) void {
     integration.setNextRefresh(if (response.headers) |h| h.get("refresh") else null);
     defer integration.setNextRefresh(null);
     commitNavigation(integration, record, response);
+}
+
+/// The window client of the document `record`'s navigation makes in the
+/// navigable's realm (dom.service_worker_clients), which takes the
+/// navigation's reserved client.
+fn clientForNewDocument(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult) void {
+    const realm = navigableContext(integration) orelse return;
+    const final_url = if (response.final_url.len > 0) response.final_url else record.url;
+    // The navigation params' origin - opaque for a response whose CSP
+    // sandboxes it, which is no client.
+    const computed: ?[]u8 = if (record.target_origin == null) navigationParamsOrigin(integration, final_url, integration.allocator) catch return else null;
+    defer if (computed) |o| integration.allocator.free(o);
+    const origin: []const u8 = if (responseSandboxesOrigin(integration.allocator, response, final_url)) "null" else record.target_origin orelse computed.?;
+    const reserved = record.reserved_client;
+    record.reserved_client = null;
+    dom_module.service_worker_clients.created(realm, .{
+        .kind = .window,
+        .creation_url = final_url,
+        .origin = origin,
+        .secure_context = realm.secure_context,
+        .reserved = reserved,
+        .creator = navigationRealmOf(integration),
+    });
 }
 
 /// HTML "create and initialize a Document object" step 7 for the document
@@ -3953,6 +3992,15 @@ fn attachNavigableContext(
             inheritPolicyContainer(document, creator_document);
         }
     }
+    // Service Workers 2.5.1: the browsing context's initial window client,
+    // its active service worker its creator's - none for an opaque origin.
+    dom_module.service_worker_clients.created(realm, .{
+        .kind = .window,
+        .creation_url = "about:blank",
+        .origin = origin orelse "null",
+        .secure_context = realm.secure_context,
+        .creator = parent,
+    });
     return realm;
 }
 
