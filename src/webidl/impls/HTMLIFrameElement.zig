@@ -3604,7 +3604,9 @@ fn followHyperlink(subject: *runtime.Instance, user_involvement: dom_module.navi
             interfaces.Element.call_getAttributeNS(subject, runtime.DOMString.initInterned("http://www.w3.org/1999/xlink"), runtime.DOMString.initInterned("href")) catch null
         else
             null) orelse return;
-    const url = parseRelativeToDocument(document, href.asSlice()) orelse return;
+    // Step 5 uses the document's encoding for the query, as the href getter
+    // does, rather than the URL constructor's UTF-8 default.
+    const url = (dom_module.encoding_parse.encodingParseAndSerialize(document, href.asSlice()) catch null) orelse return;
     defer document.ctx.allocator.free(url);
 
     // Step 6: "get an element's noopener".
