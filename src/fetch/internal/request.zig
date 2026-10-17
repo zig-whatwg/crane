@@ -61,6 +61,21 @@ pub const TimingReporter = struct {
 /// How a request reaches its Browser's service workers (Service Workers
 /// "Handle Fetch"; service_worker_fetch.zig).
 pub const ServiceWorkerRoute = @import("service_worker_fetch.zig").Route;
+
+/// SRI §3.8.3: all strings and endpoint names are BORROWED for the call.
+pub const IntegrityViolation = struct {
+    blocked_url: []const u8,
+    destination: Destination,
+    report_only: bool,
+    endpoints: []const []const u8,
+};
+
+/// The client's existing reporting queue, reached synchronously by Fetch.
+/// The callback only queues reports; it must not pump the network.
+pub const IntegrityViolationReporter = struct {
+    context: *anyopaque,
+    report: *const fn (context: *anyopaque, violation: *const IntegrityViolation) void,
+};
 const Body = body_mod.Body;
 
 // =============================================================================
@@ -402,6 +417,11 @@ pub const InternalRequest = struct {
     /// outlives every fetch. Null: no service worker sees the request, and
     /// step 3 costs one check.
     service_worker: ?ServiceWorkerRoute = null,
+
+    /// SRI policy reports go to the client's global. BORROWED with the CSP
+    /// reporter's lifetime: a fetch whose client is gone is terminated
+    /// before it reports. Null for a request whose reports nobody hears.
+    integrity_violation_reporter: ?IntegrityViolationReporter = null,
 
     /// Top-level navigation initiator origin
     top_level_navigation_initiator_origin: ?[]const u8 = null,
@@ -776,6 +796,7 @@ pub const InternalRequest = struct {
             .csp_violation_reporter = self.csp_violation_reporter,
             .timing_reporter = self.timing_reporter,
             .service_worker = self.service_worker,
+            .integrity_violation_reporter = self.integrity_violation_reporter,
             // Cloned below: each request owns its own.
             .policy_container = .client,
             // Copied below when it is an owned URL.

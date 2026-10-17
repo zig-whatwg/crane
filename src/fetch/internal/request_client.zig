@@ -61,6 +61,8 @@ pub const RequestClient = struct {
     /// Fetch" step 10): set only while a service worker controls the
     /// settings object. BORROWED: its Browser outlives every fetch.
     service_worker: ?request_mod.ServiceWorkerRoute = null,
+    /// SRI §3.8.3. BORROWED with the CSP reporter's client lifetime.
+    integrity_violation_reporter: ?request_mod.IntegrityViolationReporter = null,
 };
 
 /// Fetch "populate request from client", for a request whose client is the
@@ -138,6 +140,7 @@ pub fn populateRequestFromClient(request: *InternalRequest, client: RequestClien
     // its client's active service worker - one the client has when it is
     // populated.
     if (request.service_worker == null) request.service_worker = client.service_worker;
+    if (request.integrity_violation_reporter == null) request.integrity_violation_reporter = client.integrity_violation_reporter;
 }
 
 test "populate request from client: traversable, origin, referrer and jar" {
