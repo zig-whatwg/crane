@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const infra = @import("infra");
-const clock = @import("clock");
+const performance_timeline = @import("dom").performance_timeline;
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const event_dispatch = @import("dom").event_dispatch;
 const Event = interfaces.Event;
@@ -147,7 +147,9 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.own.cancelBubble = false;
     state.own.returnValue = true; // !canceled_flag
     state.own.defaultPrevented = false;
-    state.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
+    // DOM inner event creation steps 3: relative high resolution coarse time
+    // for the event's relevant global, also used by that global's performance.
+    state.own.timeStamp = performance_timeline.now(instance.ctx) orelse 0;
 
     return instance;
 }
@@ -385,7 +387,7 @@ fn innerEventCreationSteps(instance: *runtime.Instance, @"type": runtime.DOMStri
     // 3. Initialize event's timeStamp attribute to the relative high
     //    resolution coarse time given time (now) and event's relevant global
     //    object.
-    state.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
+    state.own.timeStamp = performance_timeline.now(instance.ctx) orelse 0;
 
     // 4. For each member -> value of dictionary: if event has an attribute
     //    whose identifier is member, initialize that attribute to value.

@@ -18,6 +18,9 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const ProcessingInstruction = interfaces.ProcessingInstruction;
+const dom = @import("dom");
+const engine = @import("engine");
+const Attributes = dom.pi_attributes.Attributes;
 
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
@@ -35,6 +38,11 @@ pub const InternalState = struct {
 
     /// The target of this processing instruction (e.g., "xml-stylesheet")
     target: []const u8,
+    // The logical map starts empty/stale. Allocate and parse only on API use:
+    // parsing a page containing PIs alone must not allocate attribute maps.
+    attributes: ?*Attributes = null,
+    attributes_stale: bool = true,
+    attributes_already_updated: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -45,6 +53,12 @@ pub const InternalState = struct {
 
     pub fn deinit(self: *InternalState) void {
         if (self.target.len > 0) self.allocator.free(self.target);
+        self.target = "";
+        if (self.attributes) |attributes| {
+            attributes.deinit();
+            self.allocator.destroy(attributes);
+            self.attributes = null;
+        }
     }
 };
 
@@ -101,17 +115,37 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
-    @import("dom").teardown_sweeps.install(.element_types, &sweepLive);
+    dom.teardown_sweeps.install(.element_types, &sweepLive);
+    dom.character_data.installProcessingInstruction(.{ .data_changed = &dataChanged });
 }
+
+/// Replace-data step 12. Consume the already-updated argument before step 13
+/// can run children-changed steps and reenter script with a different change.
+fn dataChanged(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    if (internal.attributes_already_updated) {
+        internal.attributes_already_updated = false;
+        return;
+    }
+    // DOM initialize step 5 / update-attributes-from-data steps 1-4, delayed
+    // until an attribute member observes the map. Blink likewise uses
+    // ProcessingInstruction::ProcessAttributesIfNeeded (core/dom/processing_instruction.cc).
+    internal.attributes_stale = true;
+}
+
+pub const construction_args = .{"target"};
 
 /// ProcessingInstruction's own construction steps: the generated chain runs CharacterData's first.
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
     _ = StateType;
-    _ = args;
     // Initialize ProcessingInstruction internal state
     const state = instance.getState(State);
     const internal = try runtime.arenaOf(instance).create(InternalState);
+    errdefer runtime.arenaOf(instance).destroy(InternalState, internal);
     internal.* = InternalState.init(allocator);
+    if (@hasField(@TypeOf(args), "target")) {
+        internal.target = try allocator.dupe(u8, args.target);
+    }
     state.own._internal = internal;
     trackLive(instance);
 }
@@ -171,78 +205,128 @@ pub fn createProcessingInstruction(
     target: []const u8,
     data: []const u8,
 ) !*runtime.Instance {
-    // The data is CharacterData's construction argument.
-    const instance = try ProcessingInstruction.initWith(allocator, ctx, .{ .data = data });
-    errdefer ProcessingInstruction.deinit(instance);
-
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Set the target
-    internal.target = try allocator.dupe(u8, target);
-
-    return instance;
+    // Parser/clone inputs are already node data; validation belongs to the
+    // script entry points, not to the generated construction chain.
+    return ProcessingInstruction.initWith(allocator, ctx, .{ .target = target, .data = data });
 }
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
 /// Note: Use ctx.allocator for all allocations to ensure consistency with deinit
 pub fn call_constructor(ctx: runtime.Context, target: runtime.DOMString, data: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
-    // Create the instance through the generated construction chain.
-    const instance = try ProcessingInstruction.init(ctx.allocator, ctx);
+    // Rule 2: newer spec, browsers lagging. whatwg/dom 729983ac2a was
+    // co-authored by implementers; Mozilla #1369 and WebKit #628 support the
+    // feature family, though no browser ships its constructor yet.
+    // Initialization steps 1-2: XML Name, and no ?> in initial data.
+    const value = if (data.was_passed) data.value.asSlice() else "";
+    if (!dom.pi_attributes.isXmlName(target.asSlice()) or std.mem.indexOf(u8, value, "?>") != null)
+        return error.InvalidCharacterError;
+    const realm = ctx.realm orelse return error.InvalidStateError;
+    const global: *runtime.Instance = @ptrCast(@alignCast(realm.global_object orelse return error.InvalidStateError));
+    const document = try interfaces.Window.get_document(global);
+    const instance = try ProcessingInstruction.initWith(ctx.allocator, ctx, .{ .target = target.asSlice(), .data = value });
     errdefer ProcessingInstruction.deinit(instance);
-
-    _ = target;
-    _ = data;
-    // TODO: Implement constructor logic with parameters
-
+    // Constructor step 1; initialization steps 3-5 are the target/data
+    // construction arguments and the initially stale, lazily parsed map.
+    try dom.node_document.set(instance, document);
     return instance;
 }
 
-/// Operation: hasAttributes
+/// Rule 2: newer spec, one shipping browser. Chrome ships the attributes
+/// added by whatwg/dom 729983ac2a (WPT 60815); Firefox/Safari still lag.
+/// DOM update-attributes-from-data steps 1-4, evaluated lazily, as Blink's
+/// ProcessingInstruction::ProcessAttributesIfNeeded does. Invalid syntax
+/// clears the whole map; allocation failure is propagated, never cached.
+fn ensureAttributes(instance: *runtime.Instance) !*Attributes {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.attributes == null) {
+        const attributes = try internal.allocator.create(Attributes);
+        attributes.* = Attributes.init(internal.allocator);
+        internal.attributes = attributes;
+    }
+    const attributes = internal.attributes.?;
+    if (internal.attributes_stale) {
+        // Steps 1-2: clear, then parse the current CharacterData bytes.
+        attributes.parse(dom.character_data.dataOf(instance) orelse "") catch |err| switch (err) {
+            // Step 3: a parsing error leaves the cleared map empty.
+            error.InvalidPseudoAttributes => {},
+            error.OutOfMemory => return error.OutOfMemory,
+        };
+        // Step 4: parse inserted the ordered pseudo-attributes into the map.
+        internal.attributes_stale = false;
+    }
+    return attributes;
+}
+
+fn updateDataFromAttributes(instance: *runtime.Instance, attributes: *Attributes) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // Steps 1-2: ordered serialization, including U+003E -> &gt; (the
+    // whatwg/dom b76da7af5f erratum, not the earlier U+003D typo).
+    const data = try attributes.serialize();
+    defer internal.allocator.free(data);
+    // Step 3: replace all data with piAttributesAlreadyUpdated = true.
+    // The callback consumes this before children-changed steps run script.
+    // Reparsing would lose relaxed DOM attribute names XML Name rejects.
+    const length = try interfaces.CharacterData.get_length(instance);
+    internal.attributes_already_updated = true;
+    defer internal.attributes_already_updated = false;
+    try interfaces.CharacterData.call_replaceData(instance, 0, length, runtime.DOMString.initInterned(data));
+}
+
 pub fn call_hasAttributes(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return (try ensureAttributes(instance)).entries.size() != 0;
 }
 
-/// Operation: toggleAttribute
 pub fn call_toggleAttribute(instance: *runtime.Instance, name: runtime.DOMString, force: webidl.Opt(bool)) anyerror!bool {
-    _ = instance;
-    _ = name;
-    _ = force;
-    return error.NotImplemented;
+    // Step 1: validate the DOM local name (not XML's Name production).
+    if (!dom.names.isValidAttributeLocalName(name.asSlice())) return error.InvalidCharacterError;
+    // Steps 2-3: add an absent name unless force is explicitly false.
+    const attributes = try ensureAttributes(instance);
+    if (attributes.get(name.asSlice()) == null) {
+        if (force.was_passed and !force.value) return false;
+        try attributes.set(name.asSlice(), "");
+        try updateDataFromAttributes(instance, attributes);
+        return true;
+    }
+    // Steps 4-5: remove a present name unless force is explicitly true.
+    if (force.was_passed and force.value) return true;
+    attributes.remove(name.asSlice());
+    try updateDataFromAttributes(instance, attributes);
+    return false;
 }
 
-/// Operation: hasAttribute
 pub fn call_hasAttribute(instance: *runtime.Instance, name: runtime.DOMString) anyerror!bool {
-    _ = instance;
-    _ = name;
-    return error.NotImplemented;
+    return (try ensureAttributes(instance)).get(name.asSlice()) != null;
 }
 
-/// Operation: getAttribute
 pub fn call_getAttribute(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.DOMString {
-    _ = instance;
-    _ = name;
-    return error.NotImplemented;
+    const value = (try ensureAttributes(instance)).get(name.asSlice()) orelse return null;
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, value);
 }
 
-/// Operation: getAttributeNames
 pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+    const attributes = try ensureAttributes(instance);
+    const values = try instance.ctx.allocator.alloc(runtime.JSValue, attributes.entries.size());
+    defer instance.ctx.allocator.free(values);
+    for (attributes.entries.items(), values) |entry, *value| value.* = runtime.JSValue.fromStringRef(entry.name);
+    return (try engine.createSequenceOfValues(engine.currentRealm() orelse instance.ctx, values)).take();
 }
 
 /// Operation: removeAttribute
 pub fn call_removeAttribute(instance: *runtime.Instance, name: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = name;
-    return error.NotImplemented;
+    // Steps 1-2: remove the map entry, then serialize even if absent.
+    // Current DOM requires this unconditionally; Blink still skips the
+    // absent-name case (covered separately by the native regression).
+    const attributes = try ensureAttributes(instance);
+    attributes.remove(name.asSlice());
+    try updateDataFromAttributes(instance, attributes);
 }
 
 /// Operation: setAttribute
 pub fn call_setAttribute(instance: *runtime.Instance, name: runtime.DOMString, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = name;
-    _ = value;
-    return error.NotImplemented;
+    // Steps 1-3: validate, set the ordered map entry, update data.
+    if (!dom.names.isValidAttributeLocalName(name.asSlice())) return error.InvalidCharacterError;
+    const attributes = try ensureAttributes(instance);
+    try attributes.set(name.asSlice(), value.asSlice());
+    try updateDataFromAttributes(instance, attributes);
 }

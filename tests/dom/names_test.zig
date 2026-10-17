@@ -60,11 +60,13 @@ test "valid doctype name allows the empty string" {
     try std.testing.expect(!names.isValidDoctypeName("a>"));
 }
 
-test "validate and extract: splits on the first colon and keeps piece 1" {
+test "validate and extract: splits only on the first colon" {
     const r = try names.validateAndExtract("http://example.com/", "f:o:o", .element);
     try std.testing.expectEqualStrings("http://example.com/", r.namespace.?);
     try std.testing.expectEqualStrings("f", r.prefix.?);
-    try std.testing.expectEqualStrings("o", r.local_name);
+    try std.testing.expectEqualStrings("o:o", r.local_name);
+    try std.testing.expectEqualStrings(":oo", (try names.validateAndExtract("urn:x", "f::oo", .element)).local_name);
+    try std.testing.expectEqualStrings(":local", (try names.validateAndExtract("urn:x", "prefix::local", .element)).local_name);
 }
 
 test "validate and extract: the empty namespace is null" {

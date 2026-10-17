@@ -36,7 +36,6 @@ const Registry = runtime.InstanceRegistry(.document, InternalState);
 
 // Import impls ONLY for internal initialization methods not exposed via interfaces
 const NodeImpl = @import("Node.zig");
-const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
 const RangeImpl = @import("Range.zig");
 const same_object = @import("same_object.zig");
 
@@ -3310,19 +3309,16 @@ pub fn call_elementsFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyer
 pub fn call_createProcessingInstruction(instance: *runtime.Instance, target: runtime.DOMString, data: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // DOM 4.5: return a new ProcessingInstruction with target `target`, data
-    // `data` and node document this. The target is readonly on the interface,
-    // so it can only be set at creation.
-    const pi = try ProcessingInstructionImpl.createProcessingInstruction(
-        internal.allocator,
-        instance.ctx,
-        target.asSlice(),
-        data.asSlice(),
-    );
+    // Create/initialize a processing instruction, steps 1-2: validate XML
+    // Name and forbid ?> in data (the constructor shares these conditions).
+    if (!@import("dom").pi_attributes.isXmlName(target.asSlice()) or std.mem.indexOf(u8, data.asSlice(), "?>") != null)
+        return error.InvalidCharacterError;
+    const pi = try interfaces.ProcessingInstruction.initWith(internal.allocator, instance.ctx, .{
+        .target = target.asSlice(),
+        .data = data.asSlice(),
+    });
     errdefer interfaces.ProcessingInstruction.deinit(pi);
-
-    // Set owner document
-    try NodeImpl.setOwnerDocument(pi, instance);
+    try @import("dom").node_document.set(pi, instance);
 
     return pi;
 }
@@ -3722,12 +3718,13 @@ pub fn call_adoptNode(instance: *runtime.Instance, node: *runtime.Instance) anye
 pub fn call_createTextNode(instance: *runtime.Instance, data: runtime.DOMString) anyerror!*runtime.Instance {
     _ = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Use interface instead of impl (per Golden Rule #13)
-    const text = try interfaces.Text.call_constructor(instance.ctx, webidl.Opt(runtime.DOMString).passed(data));
+    // Create-text-node steps: copy data without the script constructor's
+    // current-global requirement, then assign this node document.
+    const text = try interfaces.Text.initWith(instance.ctx.allocator, instance.ctx, .{ .data = data.asSlice() });
     errdefer interfaces.Text.deinit(text);
 
     // Set owner document
-    try NodeImpl.setOwnerDocument(text, instance);
+    try @import("dom").node_document.set(text, instance);
 
     return text;
 }
@@ -3838,12 +3835,12 @@ pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: we
 pub fn call_createComment(instance: *runtime.Instance, data: runtime.DOMString) anyerror!*runtime.Instance {
     _ = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Use interface instead of impl (per Golden Rule #13)
-    const comment = try interfaces.Comment.call_constructor(instance.ctx, webidl.Opt(runtime.DOMString).passed(data));
+    // Create-comment-node steps: data and node document come from this call.
+    const comment = try interfaces.Comment.initWith(instance.ctx.allocator, instance.ctx, .{ .data = data.asSlice() });
     errdefer interfaces.Comment.deinit(comment);
 
     // Set owner document
-    try NodeImpl.setOwnerDocument(comment, instance);
+    try @import("dom").node_document.set(comment, instance);
 
     return comment;
 }
@@ -5092,6 +5089,12 @@ pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime
 /// 7. Return iterator
 pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // Removal runs pre-removing steps for iterators whose root's node
+    // document is the removed node's document, even across factory documents.
+    const root_document = if (try interfaces.Node.get_nodeType(root) == interfaces.Node.get_DOCUMENT_NODE())
+        root
+    else
+        (try interfaces.Node.get_ownerDocument(root)) orelse return error.InvalidStateError;
     // The filter argument, borrowed for the call: the iterator takes its own.
     const filter_wrapper: ?*runtime.CallbackWrapper = if (filter.was_passed) (filter.value orelse null) else null;
 
@@ -5102,10 +5105,10 @@ pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Insta
 
     // Steps 2-6: the iterator's own state, set through dom.traversal.
     const what_to_show: u32 = if (whatToShow.was_passed) whatToShow.value else 0xFFFFFFFF;
-    try traversal.setUpNodeIterator(iterator, root, what_to_show, filter_wrapper, instance);
+    try traversal.setUpNodeIterator(iterator, root, what_to_show, filter_wrapper, root_document);
 
-    // Register this iterator with the document
-    try registerNodeIterator(instance, iterator);
+    // Register in the same document recorded for generation-safe teardown.
+    try registerNodeIterator(root_document, iterator);
 
     // Step 7: Return iterator
     return iterator;

@@ -823,12 +823,10 @@ pub const DomTreeAdapter = struct {
 
     fn createTextNode(self: *DomTreeAdapter, tree_node: *TreeNode) !*runtime.Instance {
         const text_data = tree_node.text_content.toSlice();
-        const dom_string = runtime.DOMString.initInterned(text_data);
-        const webidl = @import("webidl");
-
-        const text = try interfaces.Text.call_constructor(
+        const text = try interfaces.Text.initWith(
+            self.ctx.allocator,
             self.ctx,
-            webidl.Opt(runtime.DOMString).passed(dom_string),
+            .{ .data = text_data },
         );
 
         node_document.set(text, self.document) catch {};
@@ -839,12 +837,10 @@ pub const DomTreeAdapter = struct {
 
     fn createCommentNode(self: *DomTreeAdapter, tree_node: *TreeNode) !*runtime.Instance {
         const comment_data = tree_node.text_content.toSlice();
-        const dom_string = runtime.DOMString.initInterned(comment_data);
-        const webidl = @import("webidl");
-
-        const comment = try interfaces.Comment.call_constructor(
+        const comment = try interfaces.Comment.initWith(
+            self.ctx.allocator,
             self.ctx,
-            webidl.Opt(runtime.DOMString).passed(dom_string),
+            .{ .data = comment_data },
         );
 
         node_document.set(comment, self.document) catch {};

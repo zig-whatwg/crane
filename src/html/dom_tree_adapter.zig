@@ -405,11 +405,10 @@ pub const DomTreeAdapter = struct {
     /// Create a Text DOM node from a TreeNode.
     fn createTextNode(self: *DomTreeAdapter, tree_node: *TreeNode) DomTreeAdapterError!*runtime.Instance {
         const text_data = tree_node.text_content.toSlice();
-        const dom_string = runtime.DOMString.initInterned(text_data);
-
-        const text = Text.call_constructor(
+        const text = Text.initWith(
+            self.ctx.allocator,
             self.ctx,
-            webidl.Opt(runtime.DOMString).passed(dom_string),
+            .{ .data = text_data },
         ) catch return DomTreeAdapterError.OutOfMemory;
 
         // Set owner document
@@ -423,11 +422,10 @@ pub const DomTreeAdapter = struct {
     /// Create a Comment DOM node from a TreeNode.
     fn createCommentNode(self: *DomTreeAdapter, tree_node: *TreeNode) DomTreeAdapterError!*runtime.Instance {
         const comment_data = tree_node.text_content.toSlice();
-        const dom_string = runtime.DOMString.initInterned(comment_data);
-
-        const comment = Comment.call_constructor(
+        const comment = Comment.initWith(
+            self.ctx.allocator,
             self.ctx,
-            webidl.Opt(runtime.DOMString).passed(dom_string),
+            .{ .data = comment_data },
         ) catch return DomTreeAdapterError.OutOfMemory;
 
         // Set owner document

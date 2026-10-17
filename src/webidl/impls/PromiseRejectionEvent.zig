@@ -20,7 +20,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
-const clock = @import("clock");
+const performance_timeline = @import("dom").performance_timeline;
 const engine = @import("engine");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const PromiseRejectionEvent = interfaces.PromiseRejectionEvent;
@@ -94,7 +94,8 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.base.own.cancelBubble = false;
     state.base.own.returnValue = true;
     state.base.own.defaultPrevented = false;
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
+    // DOM inner event creation step 3: relative to the relevant global.
+    state.base.own.timeStamp = performance_timeline.now(instance.ctx) orelse 0;
 
     internal.promise = try hold(ctx, eventInitDict.promise);
     if (eventInitDict.reason) |reason| internal.reason = try hold(ctx, reason);

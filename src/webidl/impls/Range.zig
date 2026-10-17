@@ -1277,7 +1277,9 @@ pub fn call_surroundContents(instance: *runtime.Instance, newParent: *runtime.In
         var node: ?*runtime.Instance = pair[0];
         while (node) |n| : (node = DomTree.parent(n)) {
             if (isInclusiveAncestor(n, pair[1])) break;
-            if ((interfaces.Node.get_nodeType(n) catch 0) != interfaces.Node.get_TEXT_NODE()) return error.InvalidStateError;
+            // CDATASection implements Text too (the interface, not just type 3).
+            const node_type = try interfaces.Node.get_nodeType(n);
+            if (node_type != interfaces.Node.get_TEXT_NODE() and node_type != interfaces.Node.get_CDATA_SECTION_NODE()) return error.InvalidStateError;
         }
     }
 

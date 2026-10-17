@@ -121,9 +121,13 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 /// Constructor implementation
 /// DOM §4.8 - DocumentFragment()
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
+    const realm = ctx.realm orelse return error.InvalidStateError;
+    const global: *runtime.Instance = @ptrCast(@alignCast(realm.global_object orelse return error.InvalidStateError));
+    const document = try interfaces.Window.get_document(global);
     const instance = try DocumentFragment.init(ctx.allocator, ctx);
     errdefer DocumentFragment.deinit(instance);
-
+    // Constructor steps: node document is the current global's document.
+    try dom.node_document.set(instance, document);
     return instance;
 }
 

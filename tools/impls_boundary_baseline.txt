@@ -14,7 +14,6 @@ src/dom/document_internals.zig Document.InternalState 1
 src/dom/document_internals.zig Document.SpeculationEagerness 1
 src/dom/document_internals.zig Document.getInternal 1
 src/dom/mutation.zig Node.getInternalState 1
-src/dom/mutation.zig NodeIterator.preRemoveSteps 1
 src/dom/mutation.zig Range.getEndContainer 5
 src/dom/mutation.zig Range.getEndOffset 4
 src/dom/mutation.zig Range.getStartContainer 5
@@ -59,8 +58,7 @@ src/webidl/impls/DOMImplementation.zig DocumentType.createDocumentType 2
 src/webidl/impls/DOMParser.zig HTMLParser.parseHTML 1
 src/webidl/impls/Document.zig DOMImplementation.setDocument 1
 src/webidl/impls/Document.zig Node.deinitNodeByType 2
-src/webidl/impls/Document.zig Node.setOwnerDocument 8
-src/webidl/impls/Document.zig ProcessingInstruction.createProcessingInstruction 1
+src/webidl/impls/Document.zig Node.setOwnerDocument 5
 src/webidl/impls/Document.zig Range.call_deleteContents 1
 src/webidl/impls/Document.zig Range.call_insertNode 1
 src/webidl/impls/Document.zig Range.call_surroundContents 2
@@ -102,14 +100,12 @@ src/webidl/impls/ParentNode.zig Node.call_appendChild 1
 src/webidl/impls/ParentNode.zig Node.call_insertBefore 1
 src/webidl/impls/ParentNode.zig Node.convertNodesIntoNode 3
 src/webidl/impls/ParentNode.zig Node.removeNodeFromParent 1
-src/webidl/impls/ParentNode.zig Node.replaceAllChildren 1
 src/webidl/impls/Request.zig FormData.createFromInternal 1
 src/webidl/impls/Request.zig Headers.initWithHeaderList 1
 src/webidl/impls/Response.zig FormData.createFromInternal 1
 src/webidl/impls/Response.zig Headers.initWithHeaderList 1
 src/webidl/impls/SVGScriptElement.zig Node.setLocalName 1
 src/webidl/impls/ServiceWorkerRegistration.zig CookieStoreManager.createForRegistration 1
-src/webidl/impls/Text.zig Node.setOwnerDocument 1
 src/webidl/impls/URL.zig Blob.getInternal 1
 src/webidl/impls/Window.zig CSSStyleDeclaration.initForComputedStyle 1
 src/webidl/impls/Window.zig History.State 1

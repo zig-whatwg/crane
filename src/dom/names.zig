@@ -152,20 +152,19 @@ pub fn validateAndExtract(namespace_arg: ?[]const u8, qualified_name: []const u8
     // Step 3: "Let localName be qualifiedName."
     var local_name = qualified_name;
 
-    // Step 4: "If qualifiedName contains a U+003A (:)": strictly split it on
-    // U+003A (:), take piece 0 as the prefix and piece 1 as the local name.
-    // Pieces past the second are dropped - "f:o:o" extracts ("f", "o").
+    // Step 4: split at the FIRST colon; the local name includes the suffix.
+    // DOM's March 2026 correction ships in Firefox/Safari. Chrome 154 still
+    // drops later pieces; implement the newer spec (whatwg/dom 3a80353f7a).
     if (std.mem.indexOfScalar(u8, qualified_name, ':')) |first| {
         prefix = qualified_name[0..first];
-        const rest = qualified_name[first + 1 ..];
-        local_name = if (std.mem.indexOfScalar(u8, rest, ':')) |second| rest[0..second] else rest;
+        local_name = qualified_name[first + 1 ..];
 
-        // Step 4.4: "If prefix is not a valid namespace prefix, then throw an
+        // Step 4.3: "If prefix is not a valid namespace prefix, then throw an
         // "InvalidCharacterError" DOMException."
         if (!isValidNamespacePrefix(prefix.?)) return error.InvalidCharacterError;
     }
 
-    // Step 5 asserts what step 4.4 just established.
+    // Step 5 asserts what step 4.3 just established.
 
     // Step 6: "If context is "attribute" and localName is not a valid
     // attribute local name, then throw an "InvalidCharacterError"."
