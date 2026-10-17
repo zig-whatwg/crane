@@ -2551,11 +2551,6 @@ fn getAttributeNS(element: *runtime.Instance, namespace: ?[]const u8, name: []co
     return null;
 }
 
-/// Get the type attribute value
-fn getTypeAttribute(element: *runtime.Instance) []const u8 {
-    return getAttribute(element, "type") orelse "";
-}
-
 /// Get the language attribute value (obsolete)
 fn getLanguageAttribute(element: *runtime.Instance) []const u8 {
     return getAttribute(element, "language") orelse "";
@@ -2564,31 +2559,25 @@ fn getLanguageAttribute(element: *runtime.Instance) []const u8 {
 /// Determine script type from type attribute
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element (steps 8-13)
 fn determineScriptType(element: *runtime.Instance) ScriptType {
-    const type_attr = getTypeAttribute(element);
-    const lang_attr = getLanguageAttribute(element);
+    const type_attr = getAttribute(element, "type");
 
-    // Step 8: Determine the script block's type string
-    var type_string: []const u8 = undefined;
-
-    if (type_attr.len == 0) {
-        // type attribute is empty or missing
-        if (lang_attr.len == 0) {
-            // No type, no language -> default to text/javascript
-            type_string = "text/javascript";
-        } else {
-            // Has language attribute -> "text/" + language
-            // For simplicity, we'll handle common cases
-            if (std.ascii.eqlIgnoreCase(lang_attr, "javascript")) {
-                type_string = "text/javascript";
-            } else {
-                // Unknown language type
-                return .null;
-            }
-        }
-    } else {
-        // Use type attribute value, stripped of whitespace
-        type_string = std.mem.trim(u8, type_attr, " \t\n\r\x0c");
-    }
+    // Prepare step 8 distinguishes a missing type from an explicitly empty
+    // one: the latter is classic even when language says something else.
+    // WebKit ScriptElement::determineScriptType makes the same distinction.
+    var language_type: ["text/javascript1.5".len]u8 = undefined;
+    const type_string: []const u8 = if (type_attr) |value| blk: {
+        if (value.len == 0) return .classic;
+        break :blk std.mem.trim(u8, value, " \t\n\r\x0c");
+    } else blk: {
+        const language = getLanguageAttribute(element);
+        if (language.len == 0) return .classic;
+        // Step 8's obsolete language form is exactly "text/" + language;
+        // language itself is not stripped. No recognized essence is longer.
+        if (language.len > language_type.len - "text/".len) return .null;
+        @memcpy(language_type[0.."text/".len], "text/");
+        @memcpy(language_type["text/".len..][0..language.len], language);
+        break :blk language_type[0 .. "text/".len + language.len];
+    };
 
     // Step 9: If type string is a JavaScript MIME type essence match -> classic
     if (isJavaScriptMimeType(type_string)) {
@@ -2617,11 +2606,6 @@ fn determineScriptType(element: *runtime.Instance) ScriptType {
 /// Check if a MIME type is a JavaScript MIME type essence match
 /// Spec: https://mimesniff.spec.whatwg.org/#javascript-mime-type
 fn isJavaScriptMimeType(mime_type: []const u8) bool {
-    // Lowercase the input into a stack buffer
-    var buffer: [64]u8 = undefined;
-    const len = @min(mime_type.len, 64);
-    const lower = std.ascii.lowerString(buffer[0..len], mime_type[0..len]);
-
     // JavaScript MIME type essence matches
     const js_types = [_][]const u8{
         "application/ecmascript",
@@ -2642,15 +2626,10 @@ fn isJavaScriptMimeType(mime_type: []const u8) bool {
         "text/x-javascript",
     };
 
+    // An essence match compares the entire string with an essence. Parsing
+    // parameters or matching only a prefix would execute unsupported types.
     for (js_types) |js_type| {
-        if (std.mem.startsWith(u8, lower, js_type)) {
-            // Check for exact match or parameters (;)
-            if (lower.len == js_type.len or
-                (lower.len > js_type.len and lower[js_type.len] == ';'))
-            {
-                return true;
-            }
-        }
+        if (std.ascii.eqlIgnoreCase(mime_type, js_type)) return true;
     }
 
     return false;
@@ -4223,7 +4202,7 @@ test "resolveUrl - relative URLs" {
 test "isJavaScriptMimeType" {
     try std.testing.expect(isJavaScriptMimeType("text/javascript"));
     try std.testing.expect(isJavaScriptMimeType("TEXT/JAVASCRIPT"));
-    try std.testing.expect(isJavaScriptMimeType("text/javascript; charset=utf-8"));
+    try std.testing.expect(!isJavaScriptMimeType("text/javascript; charset=utf-8"));
     try std.testing.expect(isJavaScriptMimeType("application/javascript"));
     try std.testing.expect(isJavaScriptMimeType("application/ecmascript"));
 
@@ -4231,6 +4210,47 @@ test "isJavaScriptMimeType" {
     try std.testing.expect(!isJavaScriptMimeType("application/json"));
     try std.testing.expect(!isJavaScriptMimeType(""));
 }
+
+// These cases create platform objects; tests/html links the engine needed by
+// their runtime context, while the HTML module's inline tests stay pure Zig.
+pub const script_type_test_cases = if (@import("builtin").is_test) struct {
+    pub fn attributes() !void {
+        interfaces.process_hooks.startHooksForTest();
+        const allocator = std.testing.allocator;
+        runtime.initializeRuntime(allocator);
+        defer runtime.deinitializeRuntime();
+        var context = try runtime.ContextData.init(allocator, .{});
+        defer context.deinit();
+
+        const Case = struct { type_value: ?[]const u8, language: ?[]const u8, expected: ScriptType };
+        const cases = [_]Case{
+            .{ .type_value = null, .language = null, .expected = .classic },
+            .{ .type_value = "", .language = "unknown", .expected = .classic },
+            .{ .type_value = null, .language = "", .expected = .classic },
+            .{ .type_value = null, .language = "ECMASCRIPT", .expected = .classic },
+            .{ .type_value = null, .language = "javascript1.0", .expected = .classic },
+            .{ .type_value = null, .language = "javascript1.5", .expected = .classic },
+            .{ .type_value = null, .language = "JSCRIPT", .expected = .classic },
+            .{ .type_value = null, .language = "livescript", .expected = .classic },
+            .{ .type_value = null, .language = "x-ecmascript", .expected = .classic },
+            .{ .type_value = null, .language = "x-javascript", .expected = .classic },
+            .{ .type_value = null, .language = " javascript ", .expected = .null },
+            .{ .type_value = "text/plain", .language = "javascript", .expected = .null },
+            .{ .type_value = "text/javascript; charset=utf-8", .language = "javascript", .expected = .null },
+            .{ .type_value = " \tTEXT/JAVASCRIPT\r\n\x0c", .language = "unknown", .expected = .classic },
+            .{ .type_value = " ", .language = "javascript", .expected = .null },
+            .{ .type_value = "text/javascript\xc2\xa0", .language = null, .expected = .null },
+            .{ .type_value = null, .language = "javascript" ** 20, .expected = .null },
+        };
+        for (cases) |case| {
+            const element = try HTMLScriptElement.init(allocator, &context);
+            defer HTMLScriptElement.deinit(element);
+            if (case.type_value) |value| try HTMLScriptElement.set_type(element, runtime.DOMString.initInterned(value));
+            if (case.language) |value| try Element.call_setAttribute(element, runtime.DOMString.initInterned("language"), .{ .domstring = runtime.DOMString.initInterned(value) });
+            try std.testing.expectEqual(case.expected, determineScriptType(element));
+        }
+    }
+} else struct {};
 
 // =============================================================================
 // Import Map Tests
