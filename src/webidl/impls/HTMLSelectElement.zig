@@ -46,6 +46,7 @@ pub const InternalState = struct {
     /// The allocator the custom validity message came from: the context's.
     allocator: std.mem.Allocator,
     validation: forms.Validation = .{},
+    labels: form_associated.LabelsCache = .{},
     options: ?*runtime.Instance = null,
     options_generation: u64 = 0,
     options_traced: bool = false,
@@ -138,6 +139,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        internal.labels.deinit(instance);
         if (internal.validation.validity_traced) @import("engine").forgetTracedChild(instance, .{ .name = "validity" });
         internal.validation.deinit(instance.ctx.allocator);
         if (internal.options_traced) engine.forgetTracedChild(instance, .{ .name = "options" });
@@ -319,7 +321,7 @@ pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMSt
 
 /// Getter for labels
 pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    return form_associated.labelsNodeList(instance);
+    return (try internalState(instance)).labels.get(instance);
 }
 
 /// Setter for length
@@ -418,8 +420,15 @@ pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
 
 /// Operation: showPicker
 pub fn call_showPicker(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
+    // HTML select.showPicker steps 1–4, in order. A failed rendering check
+    // does not consume activation. content-visibility awaits style support.
+    if (form_associated.isDisabled(instance)) return error.InvalidStateError;
+    try forms.picker.requireSameOriginWithTop(instance);
+    const window = try forms.picker.requireActivation(instance);
+    if (!(try interfaces.Node.get_isConnected(instance)) or
+        !@import("html").embedded_content.isBeingRendered(instance)) return error.NotSupportedError;
+    // Steps 5–6: consume; a headless host has no select-picker operation.
+    @import("html").user_activation.consume(window);
 }
 
 /// Operation: reportValidity

@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const infra = @import("infra");
-const clock = @import("clock");
+const performance_timeline = @import("dom").performance_timeline;
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const event_dispatch = @import("dom").event_dispatch;
 const Event = interfaces.Event;
@@ -43,7 +43,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 pub fn installHooks() void {
     // The constructing steps every subclass runs (dom.event_construction);
     // each subclass's init chains through this one.
-    @import("dom").event_construction.installEvent(.{ .inner_event_creation_steps = &innerEventCreationStepsHook, .dispatch_flag = &dispatchFlag });
+    @import("dom").event_construction.installEvent(.{ .inner_event_creation_steps = &innerEventCreationStepsHook, .dispatch_flag = &dispatchFlag, .force_canceled_flag = &forceCanceledFlag });
     // The state dispatch works on, and what it does to an event that no IDL
     // member does (dom.event_dispatch).
     event_dispatch.install(.{ .state = &stateOf, .swap_type = &swapTypeHook });
@@ -147,7 +147,9 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.own.cancelBubble = false;
     state.own.returnValue = true; // !canceled_flag
     state.own.defaultPrevented = false;
-    state.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
+    // DOM inner event creation steps 3: relative high resolution coarse time
+    // for the event's relevant global, also used by that global's performance.
+    state.own.timeStamp = performance_timeline.now(instance.ctx) orelse 0;
 
     return instance;
 }
@@ -285,6 +287,13 @@ fn setCanceledFlag(instance: *runtime.Instance) void {
     internal.setCanceledFlag(state.own.cancelable);
 }
 
+/// HTML "abort the ongoing navigation" step 6 assigns the flag even when
+/// the navigate event is not cancelable. Script keeps the guarded path above.
+fn forceCanceledFlag(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    internal.canceled_flag = true;
+}
+
 /// Operation: stopPropagation
 /// Spec: https://dom.spec.whatwg.org/#dom-event-stoppropagation
 pub fn call_stopPropagation(instance: *runtime.Instance) anyerror!void {
@@ -385,7 +394,7 @@ fn innerEventCreationSteps(instance: *runtime.Instance, @"type": runtime.DOMStri
     // 3. Initialize event's timeStamp attribute to the relative high
     //    resolution coarse time given time (now) and event's relevant global
     //    object.
-    state.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
+    state.own.timeStamp = performance_timeline.now(instance.ctx) orelse 0;
 
     // 4. For each member -> value of dictionary: if event has an attribute
     //    whose identifier is member, initialize that attribute to value.

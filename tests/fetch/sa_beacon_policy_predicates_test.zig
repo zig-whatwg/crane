@@ -1,4 +1,4 @@
-//! Existing main-fetch policy behavior before Beacon's non-mutating probe.
+//! Main-fetch policy decisions and Beacon's non-mutating probe agree.
 const std = @import("std");
 const fetch = @import("fetch");
 const testing = std.testing;
@@ -7,7 +7,7 @@ test "UIR preserves navigation headers, destination exemptions and explicit port
     const cases = .{
         .{ .empty, "http://example.test:8443/beacon", true, false, "https://example.test:8443/beacon" },
         .{ .empty, "http://example.test/beacon", false, false, "http://example.test/beacon" },
-        .{ .document, "http://example.test/page", true, true, "http://example.test/page" },
+        .{ .document, "http://example.test/page", true, true, "https://example.test/page" },
         .{ .iframe, "http://example.test:80/page", true, true, "https://example.test:80/page" },
         .{ .frame, "http://example.test/page", true, true, "https://example.test/page" },
         .{ .object, "https://example.test/page", true, false, "https://example.test/page" },

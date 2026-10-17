@@ -184,7 +184,7 @@ test "a registration runs Register, Update, Install and Activate, and each realm
     // Update step 15: Run Service Worker.
     try testing.expectEqual(@as(usize, 1), recorder.started.items.len);
     const worker_id = recorder.started.items[0];
-    try registry.workerEvaluated(worker_id, true);
+    try registry.workerEvaluated(worker_id, true, true);
 
     // Install steps 4-11: installing, its state, the job promise, updatefound,
     // then the install event.
@@ -233,7 +233,7 @@ test "registering the same script again resolves with the registration, and noth
     try registerJob(&registry, page, "https://example.com/sw.js", "https://example.com/", 1);
     var plan = (try recorder.runQueuedJobs(&registry)).?;
     try answerFetch(&registry, &plan, "x", true);
-    try registry.workerEvaluated(recorder.started.items[0], true);
+    try registry.workerEvaluated(recorder.started.items[0], true, true);
     try registry.lifecycleEventDone(recorder.lifecycle.items[0].op, false);
     try registry.lifecycleEventDone(recorder.lifecycle.items[1].op, false);
     for (recorder.log.items) |line| testing.allocator.free(line);
@@ -255,7 +255,7 @@ test "an update whose script is unchanged resolves without a new worker" {
     try registerJob(&registry, page, "https://example.com/sw.js", "https://example.com/", 1);
     var plan = (try recorder.runQueuedJobs(&registry)).?;
     try answerFetch(&registry, &plan, "x", true);
-    try registry.workerEvaluated(recorder.started.items[0], true);
+    try registry.workerEvaluated(recorder.started.items[0], true, true);
     try registry.lifecycleEventDone(recorder.lifecycle.items[0].op, false);
     try registry.lifecycleEventDone(recorder.lifecycle.items[1].op, false);
     for (recorder.log.items) |line| testing.allocator.free(line);
@@ -336,7 +336,7 @@ test "Schedule Job: an equivalent job joins the last one; a different one waits 
 
     var plan = (try recorder.runQueuedJobs(&registry)).?;
     try answerFetch(&registry, &plan, "x", true);
-    try registry.workerEvaluated(recorder.started.items[0], true);
+    try registry.workerEvaluated(recorder.started.items[0], true, true);
     // Both clients' promises resolve with the registration.
     try recorder.expectLog(&.{
         "1: installing = 7",
@@ -368,7 +368,7 @@ test "an install event that fails leaves the worker redundant and removes a new 
     var plan = (try recorder.runQueuedJobs(&registry)).?;
     try answerFetch(&registry, &plan, "x", true);
     const worker_id = recorder.started.items[0];
-    try registry.workerEvaluated(worker_id, true);
+    try registry.workerEvaluated(worker_id, true, true);
     for (recorder.log.items) |line| testing.allocator.free(line);
     recorder.log.clearRetainingCapacity();
 
@@ -391,7 +391,7 @@ test "a waiting worker activates only once no client uses the registration, or w
     var plan = (try recorder.runQueuedJobs(&registry)).?;
     try answerFetch(&registry, &plan, "v1", true);
     const first = recorder.started.items[0];
-    try registry.workerEvaluated(first, true);
+    try registry.workerEvaluated(first, true, true);
     try registry.lifecycleEventDone(recorder.lifecycle.items[0].op, false);
     try registry.lifecycleEventDone(recorder.lifecycle.items[1].op, false);
 
@@ -405,7 +405,7 @@ test "a waiting worker activates only once no client uses the registration, or w
     var plan2 = (try recorder.runQueuedJobs(&registry)).?;
     try answerFetch(&registry, &plan2, "v2", true);
     const second = recorder.started.items[1];
-    try registry.workerEvaluated(second, true);
+    try registry.workerEvaluated(second, true, true);
     try registry.lifecycleEventDone(recorder.lifecycle.items[2].op, false);
     try testing.expectEqual(second, registration.waiting.?.id);
     try testing.expectEqual(first, registration.active.?.id);
@@ -434,7 +434,7 @@ test "unregister resolves true, and with no client the registration is cleared" 
     var plan = (try recorder.runQueuedJobs(&registry)).?;
     try answerFetch(&registry, &plan, "x", true);
     const worker_id = recorder.started.items[0];
-    try registry.workerEvaluated(worker_id, true);
+    try registry.workerEvaluated(worker_id, true, true);
     try registry.lifecycleEventDone(recorder.lifecycle.items[0].op, false);
     try registry.lifecycleEventDone(recorder.lifecycle.items[1].op, false);
     for (recorder.log.items) |line| testing.allocator.free(line);
@@ -478,7 +478,7 @@ test "an environment that ends while it is controlled lets a waiting worker acti
     var plan = (try recorder.runQueuedJobs(&registry)).?;
     try answerFetch(&registry, &plan, "v1", true);
     const first = recorder.started.items[0];
-    try registry.workerEvaluated(first, true);
+    try registry.workerEvaluated(first, true, true);
     try registry.lifecycleEventDone(recorder.lifecycle.items[0].op, false);
     try registry.lifecycleEventDone(recorder.lifecycle.items[1].op, false);
     try registry.claim(first);
@@ -487,7 +487,7 @@ test "an environment that ends while it is controlled lets a waiting worker acti
     var plan2 = (try recorder.runQueuedJobs(&registry)).?;
     try answerFetch(&registry, &plan2, "v2", true);
     const second = recorder.started.items[1];
-    try registry.workerEvaluated(second, true);
+    try registry.workerEvaluated(second, true, true);
     try registry.lifecycleEventDone(recorder.lifecycle.items[2].op, false);
     const registration = registry.getRegistration("https://example.com", "https://example.com/").?;
     try testing.expectEqual(second, registration.waiting.?.id);
@@ -507,7 +507,7 @@ fn installAndActivate(recorder: *Recorder, registry: *Registry, page: *reg.Envir
     var plan = (try recorder.runQueuedJobs(registry)).?;
     try answerFetch(registry, &plan, body, true);
     const worker_id = recorder.started.items[recorder.started.items.len - 1];
-    try registry.workerEvaluated(worker_id, true);
+    try registry.workerEvaluated(worker_id, true, true);
     try registry.lifecycleEventDone(recorder.lifecycle.items[recorder.lifecycle.items.len - 1].op, false);
     try registry.lifecycleEventDone(recorder.lifecycle.items[recorder.lifecycle.items.len - 1].op, false);
     for (recorder.log.items) |line| testing.allocator.free(line);
@@ -575,7 +575,7 @@ test "importScripts in a service worker: fetched while installing, then answered
     }
 
     // Installed: a URL the map lacks is a network error (step 4).
-    try registry.workerEvaluated(worker_id, true);
+    try registry.workerEvaluated(worker_id, true, true);
     try registry.lifecycleEventDone(recorder.lifecycle.items[0].op, false);
     try testing.expect(worker.state != .parsed and worker.state != .installing);
     try testing.expect((try registry.importStep(worker_id, "https://example.com/b.js")) == .network_error);
@@ -598,7 +598,7 @@ test "a running worker with nothing left to do is reported idle" {
     var plan = (try recorder.runQueuedJobs(&registry)).?;
     try answerFetch(&registry, &plan, "x", true);
     const worker_id = recorder.started.items[0];
-    try registry.workerEvaluated(worker_id, true);
+    try registry.workerEvaluated(worker_id, true, true);
     // Its install event is pending: not idle.
     try testing.expectEqual(@as(usize, 0), recorder.idled.items.len);
     try registry.lifecycleEventDone(recorder.lifecycle.items[0].op, false);
@@ -662,7 +662,7 @@ test "a message to a stopped worker starts it, and is answered once its script h
     try registry.runServiceWorker(worker, false, .{ .other = 5 });
     try testing.expectEqual(started_before + 1, recorder.started.items.len);
     try testing.expectEqual(@as(usize, 0), recorder.answered.items.len);
-    try registry.workerEvaluated(worker_id, true);
+    try registry.workerEvaluated(worker_id, true, true);
     try testing.expectEqual(@as(usize, 1), recorder.answered.items.len);
     try testing.expect(recorder.answered.items[0].ok);
     try testing.expectEqual(@as(u32, 1), worker.events_in_flight);
@@ -671,7 +671,7 @@ test "a message to a stopped worker starts it, and is answered once its script h
     try registry.functionalEventDone(worker_id, worker.run_generation);
     try registry.workerEnded(worker_id);
     try registry.runServiceWorker(worker, false, .{ .other = 6 });
-    try registry.workerEvaluated(worker_id, false);
+    try registry.workerEvaluated(worker_id, false, true);
     try testing.expectEqual(@as(usize, 2), recorder.answered.items.len);
     try testing.expect(!recorder.answered.items[1].ok);
     try testing.expectEqual(@as(u32, 0), worker.events_in_flight);
@@ -691,7 +691,7 @@ test "an event in flight from an earlier run of the worker does not end one of t
     try registry.workerEnded(worker_id);
     try testing.expectEqual(@as(u32, 0), worker.events_in_flight);
     try registry.runServiceWorker(worker, false, .{ .other = 2 });
-    try registry.workerEvaluated(worker_id, true);
+    try registry.workerEvaluated(worker_id, true, true);
     try testing.expect(worker.run_generation != first_run);
     try testing.expectEqual(@as(u32, 1), worker.events_in_flight);
     // The first run's late end changes nothing.
@@ -715,7 +715,7 @@ test "an active worker with a message in flight is not replaced until the messag
     var plan = (try recorder.runQueuedJobs(&registry)).?;
     try answerFetch(&registry, &plan, "v2", true);
     const second = recorder.started.items[recorder.started.items.len - 1];
-    try registry.workerEvaluated(second, true);
+    try registry.workerEvaluated(second, true, true);
     try registry.lifecycleEventDone(recorder.lifecycle.items[recorder.lifecycle.items.len - 1].op, false);
     try registry.skipWaiting(second);
     const registration = registry.getRegistration("https://example.com", "https://example.com/").?;
@@ -919,7 +919,7 @@ test "a fetch for an activating worker waits until it is activated; one whose wo
     var plan = (try recorder.runQueuedJobs(&registry)).?;
     try answerFetch(&registry, &plan, "v1", true);
     const worker_id = recorder.started.items[recorder.started.items.len - 1];
-    try registry.workerEvaluated(worker_id, true);
+    try registry.workerEvaluated(worker_id, true, true);
     // The install event ends: Activate runs, and the worker is activating
     // until its activate event's lifetime ends.
     try registry.lifecycleEventDone(recorder.lifecycle.items[recorder.lifecycle.items.len - 1].op, false);
@@ -947,7 +947,7 @@ test "a fetch for an activating worker waits until it is activated; one whose wo
     var plan2 = (try recorder.runQueuedJobs(&registry)).?;
     try answerFetch(&registry, &plan2, "v2", true);
     const second_id = recorder.started.items[recorder.started.items.len - 1];
-    try registry.workerEvaluated(second_id, true);
+    try registry.workerEvaluated(second_id, true, true);
     try registry.lifecycleEventDone(recorder.lifecycle.items[recorder.lifecycle.items.len - 1].op, false);
     try registry.skipWaiting(second_id);
     const second = registry.findWorker(second_id).?;

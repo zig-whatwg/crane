@@ -86,6 +86,9 @@ pub const InternalState = struct {
 
     /// Whether the pointer is before the reference node
     pointer_before_reference: bool,
+    candidate: ?*runtime.Instance = null,
+    pointer_before_candidate: bool = false,
+    traced_candidate: ?*runtime.Instance = null,
 
     /// Bitmask indicating which node types to show
     what_to_show: u32,
@@ -144,10 +147,10 @@ fn getInternal(instance: *runtime.Instance) *InternalState {
 /// and `root` read a freed node once its tree was collected (lane ownerdoc,
 /// crane/od-node-iterator-keeps-its-nodes.html).
 ///
-/// The reference is kept on its own: it stays inside the root's subtree
-/// while nothing is removed, but the pre-removing steps move it to the
-/// removed node's parent or preceding node, which is outside the root when
-/// the removed node is the root's ancestor.
+/// Reference and candidate are separate node pointers. The pre-removing
+/// steps adjust both, and leave both untouched when an inclusive ancestor
+/// of root is removed. A temporary Owned root keeps the original filtered
+/// node across script even when the candidate is adjusted to another node.
 ///
 /// An iterator is made only by createNodeIterator(), which the binding wraps
 /// as it returns: until then traceChild holds the nodes strongly for the
@@ -155,6 +158,7 @@ fn getInternal(instance: *runtime.Instance) *InternalState {
 /// freed unwrapped (an error inside createNodeIterator).
 const root_slot: engine.TracedSlot = .{ .name = "root" };
 const reference_slot: engine.TracedSlot = .{ .name = "reference" };
+const candidate_slot: engine.TracedSlot = .{ .name = "candidate" };
 
 /// Set `instance`'s reference to `node`, keeping it (`reference_slot`) when it
 /// is not the root.
@@ -166,11 +170,21 @@ fn setReference(instance: *runtime.Instance, internal: *InternalState, node: ?*r
     if (kept) |n| engine.traceChild(instance, n, reference_slot) else engine.forgetTracedChild(instance, reference_slot);
 }
 
+/// The in-flight node pointer has the same traced ownership as reference.
+/// Removals may move it while a filter runs; clear it on every traverse exit.
+fn setCandidate(instance: *runtime.Instance, internal: *InternalState, node: ?*runtime.Instance) void {
+    internal.candidate = node;
+    const kept: ?*runtime.Instance = if (node == internal.root) null else node;
+    if (kept == internal.traced_candidate) return;
+    internal.traced_candidate = kept;
+    if (kept) |n| engine.traceChild(instance, n, candidate_slot) else engine.forgetTracedChild(instance, candidate_slot);
+}
+
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // Document sets a new iterator up through dom.traversal.
-    traversal.installNodeIterator(&setUp);
+    traversal.installNodeIterator(.{ .set_up = &setUp, .pre_remove = &preRemoveSteps });
 }
 
 /// Initialize instance (creates the instance)
@@ -210,6 +224,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         // end; one freed unwrapped lets go of what waits for its wrapper.
         if (internal.root_traced) engine.forgetTracedChild(instance, root_slot);
         if (internal.traced_reference != null) engine.forgetTracedChild(instance, reference_slot);
+        if (internal.traced_candidate != null) engine.forgetTracedChild(instance, candidate_slot);
         node_filter.release(internal.filter);
         internal.filter = null;
         internal.deinit();
@@ -326,57 +341,59 @@ pub fn call_detach(instance: *runtime.Instance) anyerror!void {
 fn traverse(instance: *runtime.Instance, direction: Direction) ImplError!?*runtime.Instance {
     const internal = getInternal(instance);
 
-    // Step 1: Let node be iterator's reference
-    var node = internal.reference orelse return null;
+    // A nested traversal must throw without overwriting the outer candidate.
+    // Gecko NodeIterator::NextOrPrevNode checks the active filter first too.
+    if (internal.active_flag) return error.InvalidStateError;
 
-    // Step 2: Let beforeNode be iterator's pointer before reference
-    var before_node = internal.pointer_before_reference;
+    // Rule 2: newer spec, one shipping browser (Firefox 157); Chrome/Safari
+    // lag whatwg/dom 71372741d0's candidate-reference removal adjustment.
+    // Step 1: initialize candidate from the externally visible reference.
+    setCandidate(instance, internal, internal.reference);
+    internal.pointer_before_candidate = internal.pointer_before_reference;
+    // Step 4, including the step 3.4 throwing path.
+    defer setCandidate(instance, internal, null);
 
-    // Step 3: While true
-    while (true) {
-        // Step 3.1: Branch on direction
+    // Steps 2-3: null at the end of the collection; otherwise find an accept.
+    while (internal.candidate) |candidate| {
         switch (direction) {
             .next => {
-                if (!before_node) {
-                    // Find first node following node in iterator collection
-                    const next_node = getNextNodeInTree(node, internal.root);
-                    if (next_node == null) return null;
-                    node = next_node.?;
-                } else {
-                    // Set beforeNode to false
-                    before_node = false;
+                if (!internal.pointer_before_candidate) {
+                    const following = getNextNodeInTree(candidate, internal.root) orelse return null;
+                    setCandidate(instance, internal, following);
                 }
+                internal.pointer_before_candidate = false;
             },
             .previous => {
-                if (before_node) {
-                    // Find first node preceding node in iterator collection
-                    const prev_node = getPreviousNodeInTree(node, internal.root);
-                    if (prev_node == null) return null;
-                    node = prev_node.?;
-                } else {
-                    // Set beforeNode to true
-                    before_node = true;
+                if (internal.pointer_before_candidate) {
+                    const preceding = getPreviousNodeInTree(candidate, internal.root) orelse return null;
+                    setCandidate(instance, internal, preceding);
                 }
+                internal.pointer_before_candidate = true;
             },
         }
-
-        // Step 3.2: Let result be the result of filtering node within iterator
+        // Step 3.3's node is the original candidate, even if removal retargets
+        // the candidate tuple. Gecko holds its testNode across filtering too.
+        const node = internal.candidate orelse return null;
+        const held: ?engine.Owned = if (internal.filter != null)
+            engine.retainValue(node.ctx, .{ .instance = node }) catch |err| return switch (err) {
+                error.OutOfMemory => error.OutOfMemory,
+                error.ExceptionPending => error.ExceptionPending,
+                else => error.InvalidStateError,
+            }
+        else
+            null;
+        // Covers callback AND return-value conversion, which can run JS/GC.
+        defer if (held) |value| value.release();
+        // Step 3.4: filter. The candidate edge is cleared even when it throws.
         const result = try filterNode(instance, node);
-
-        // Step 3.3: If result is FILTER_ACCEPT, then break
         if (result == NodeFilter.FILTER_ACCEPT) {
-            break;
+            // Step 3.5: publish the adjusted tuple but return the filtered node.
+            setReference(instance, internal, internal.candidate);
+            internal.pointer_before_reference = internal.pointer_before_candidate;
+            return node;
         }
     }
-
-    // Step 4: Set iterator's reference to node
-    setReference(instance, internal, node);
-
-    // Step 5: Set iterator's pointer before reference to beforeNode
-    internal.pointer_before_reference = before_node;
-
-    // Step 6: Return node
-    return node;
+    return null;
 }
 
 /// DOM §6 - filter algorithm
@@ -502,52 +519,35 @@ fn getLastInclusiveDescendant(node: *runtime.Instance) *runtime.Instance {
 pub fn preRemoveSteps(instance: *runtime.Instance, to_be_removed: *runtime.Instance) void {
     const internal = getInternal(instance);
 
-    // Step 1: If toBeRemovedNode is not an inclusive ancestor of reference,
-    // or toBeRemovedNode is root, then return
-    if (internal.root) |root| {
-        if (to_be_removed == root) return;
+    // Pre-remove steps 1-2: adjust both node pointers independently.
+    if (internal.reference) |reference| {
+        const adjusted = adjustNodePointer(.{ .node = reference, .before = internal.pointer_before_reference }, internal.root, to_be_removed);
+        setReference(instance, internal, adjusted.node);
+        internal.pointer_before_reference = adjusted.before;
     }
-
-    // Check if to_be_removed is an inclusive ancestor of reference
-    const reference = internal.reference orelse return;
-    if (!isInclusiveAncestor(to_be_removed, reference)) return;
-
-    // Step 2: If pointer before reference is true
-    if (internal.pointer_before_reference) {
-        // Step 2.1: Let next be toBeRemovedNode's first following node that is
-        // an inclusive descendant of root and is not an inclusive descendant of toBeRemovedNode
-        const next = getNextNodeNotInSubtree(to_be_removed, internal.root);
-
-        // Step 2.2: If next is non-null, set reference to next and return
-        if (next) |next_node| {
-            setReference(instance, internal, next_node);
-            return;
-        }
-
-        // Step 2.3: Otherwise, set pointer before reference to false
-        internal.pointer_before_reference = false;
+    if (internal.candidate) |candidate| {
+        const adjusted = adjustNodePointer(.{ .node = candidate, .before = internal.pointer_before_candidate }, internal.root, to_be_removed);
+        setCandidate(instance, internal, adjusted.node);
+        internal.pointer_before_candidate = adjusted.before;
     }
+}
 
-    // Step 3: Set reference to the first preceding node of toBeRemovedNode
-    // that is an inclusive descendant of root and is not an inclusive descendant of toBeRemovedNode,
-    // or null if there is no such node
+const NodePointer = struct { node: *runtime.Instance, before: bool };
 
-    // Use instance_bridge to get NodeBase for tree navigation
-    const to_be_removed_base = instance_bridge.getNodeBase(to_be_removed) orelse return;
-
-    // Find previous sibling's last descendant, or parent
-    if (to_be_removed_base.previous_sibling) |prev_sibling| {
-        // Get the runtime.Instance for the previous sibling's last inclusive descendant
-        const last_desc = getLastInclusiveDescendantBase(prev_sibling);
-        setReference(instance, internal, instance_bridge.getInstanceTyped(runtime.Instance, last_desc));
-    } else {
-        // Use parent if no previous sibling
-        if (to_be_removed_base.parent_node) |parent_base| {
-            setReference(instance, internal, instance_bridge.getInstanceTyped(runtime.Instance, parent_base));
-        } else {
-            setReference(instance, internal, null);
-        }
+/// DOM adjust a node pointer, steps 1-4.
+fn adjustNodePointer(pointer: NodePointer, root: ?*runtime.Instance, removed: *runtime.Instance) NodePointer {
+    // Step 1: removing any inclusive ancestor of root leaves the pointer.
+    if (!isInclusiveAncestor(removed, pointer.node)) return pointer;
+    if (root) |r| if (isInclusiveAncestor(removed, r)) return pointer;
+    // Step 2: when before, prefer the first following node outside the subtree.
+    if (pointer.before) {
+        if (getNextNodeNotInSubtree(removed, root)) |next| return .{ .node = next, .before = true };
     }
+    // Steps 3-4: previous sibling's last descendant, or parent, then after.
+    if (interfaces.Node.get_previousSibling(removed) catch null) |previous|
+        return .{ .node = getLastInclusiveDescendant(previous), .before = false };
+    const parent = (interfaces.Node.get_parentNode(removed) catch null) orelse return pointer;
+    return .{ .node = parent, .before = false };
 }
 
 /// Check if potential_ancestor is an inclusive ancestor of node
@@ -565,20 +565,6 @@ fn isInclusiveAncestor(potential_ancestor: *runtime.Instance, node: *runtime.Ins
     }
 
     return false;
-}
-
-/// Check if node is an inclusive descendant of potential_ancestor
-fn isInclusiveDescendant(node: *runtime.Instance, potential_ancestor: *runtime.Instance) bool {
-    return isInclusiveAncestor(potential_ancestor, node);
-}
-
-/// Get the last inclusive descendant of a NodeBase (the deepest last child)
-fn getLastInclusiveDescendantBase(node: *NodeBase) *NodeBase {
-    var current: *NodeBase = node;
-    while (current.last_child) |last| {
-        current = last;
-    }
-    return current;
 }
 
 /// Get the next node after to_be_removed that is an inclusive descendant of root

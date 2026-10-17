@@ -369,6 +369,54 @@ fn queryOptionsOf(options: ?dictionaries.CacheQueryOptions) store_mod.QueryOptio
 }
 
 // ============================================================================
+// Handle Fetch's cache source (static routing)
+// ============================================================================
+
+/// Handle Fetch step 13.3.3.6-13.3.3.7 for the cache source `cache_name`
+/// (null: "cache", any cache), on the fetching thread in `realm` (whose
+/// Browser's Cache Storage it reads): the caches of `storage_key` in order,
+/// those not named `cache_name` skipped; Query Cache with `request` and a
+/// new CacheQueryOptions in the first left - "if requestResponses is an
+/// empty list, return timingInfo" - so only that one is asked. The response
+/// (filtered as the record keeps it, its body with it), OWNED by
+/// `allocator`; null: the network. Step 13.3.3.7.4.6's cross-origin resource
+/// policy check of an opaque response is not made (stated, as the Cache
+/// API's matchAll()).
+pub fn routerMatch(realm: runtime.Context, allocator: Allocator, storage_key: []const u8, cache_name: ?[]const u8, request: *const InternalRequest) ?*InternalResponse {
+    return routerMatchSteps(realm, allocator, storage_key, cache_name, request) catch |err| {
+        log.debug("a router's cache source: {s}", .{@errorName(err)});
+        return null;
+    };
+}
+
+fn routerMatchSteps(realm: runtime.Context, allocator: Allocator, storage_key: []const u8, cache_name: ?[]const u8, request: *const InternalRequest) !?*InternalResponse {
+    const browser_scope = realm.browserScope() orelse return null;
+    const storage = try browser_scope.of(Storage);
+    const browser = html.platform_state.of(realm) orelse return null;
+    // 13.3.3.6. caches: the storage key's name to cache map.
+    const caches = storage.caches(browser, allocator, storage_key) catch return null;
+    defer {
+        for (caches) |c| allocator.free(c.name);
+        allocator.free(caches);
+    }
+    var stored = try storedRequestOf(allocator, request);
+    defer stored.deinit(allocator);
+    for (caches) |c| {
+        // 13.3.3.7.1.
+        if (cache_name) |name| if (!std.mem.eql(u8, name, c.name)) continue;
+        // 13.3.3.7.2. Query Cache.
+        const entries = storage.query(browser, allocator, c.cache, store_mod.Query.of(&stored), .{}) catch return null;
+        defer records.freeEntries(allocator, entries);
+        // 13.3.3.7.3. None: the network.
+        if (entries.len == 0) return null;
+        // 13.3.3.7.4. The first one's response.
+        return try internalResponseOf(allocator, &entries[0].response);
+    }
+    // 13.3.3.8.
+    return null;
+}
+
+// ============================================================================
 // CacheStorage (5.5)
 // ============================================================================
 

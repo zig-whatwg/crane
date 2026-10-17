@@ -263,6 +263,9 @@ pub fn focusedAreaOf(document: *Instance) ?*Instance {
         if (in_document and isFocusableArea(element)) return element;
     }
     dom.focused_area.set(document, null);
+    // HTML removing steps, applied lazily with this focus fixup: removal
+    // clears the navigation flag rather than counting as a focus update.
+    if (windowOf(document)) |window| dom.navigation_api.setFocusChanged(window, false);
     return null;
 }
 
@@ -392,6 +395,13 @@ fn focusUpdateSteps(old_chain_in: Chain, new_chain_in: Chain, new_focus_target: 
     }
     const old_last: ?*Instance = old_chain.last();
     const new_last: ?*Instance = new_chain.last();
+    const target_document = if (new_focus_target) |target| nodeDocument(target) else null;
+    const target_document_generation = if (target_document) |document| runtime.SlabAllocator.generationOf(document) else 0;
+    var expected_target_focus: ?dom.focused_area.Designation = if (target_document) |document| designation: {
+        _ = focusedAreaOf(document);
+        break :designation dom.focused_area.get(document);
+    } else null;
+    const target_had_focus = expected_target_focus != null;
     // Step 2: for each entry in old chain, in order.
     for (0..old_chain.len) |i| {
         if (!old_chain.isLive(i)) continue;
@@ -399,12 +409,33 @@ fn focusUpdateSteps(old_chain_in: Chain, new_chain_in: Chain, new_focus_target: 
         // Step 2.1: a user edit not committed while the control was focused
         // fires change first.
         if (isElement(entry)) commitUserEdit(entry);
+        if (!old_chain.isLive(i)) continue;
+        const document = nodeDocument(entry);
+        const document_generation = if (document) |d| runtime.SlabAllocator.generationOf(d) else 0;
+        // Browsers over the spec's later designation in step 4.1:
+        // Blink Document::SetFocusedElement, WebKit Document::setFocusedElement,
+        // and Gecko nsFocusManager::SetFocusInner/BlurImpl clear focus before
+        // blur and preserve a handler's new focus, even the original element.
+        if (document) |d| {
+            if (isElement(entry) and focusedAreaOf(d) == entry) {
+                dom.focused_area.set(d, null);
+                if (d == target_document) expected_target_focus = null;
+            }
+        }
         // Step 2.2: the blur event target.
         const blur_target: ?*Instance = if (isElement(entry)) entry else if (isDocument(entry)) globalOf(entry) else null;
         // Step 2.3: the related blur target.
         const related: ?*Instance = if (i == old_chain.len - 1 and isElement(entry) and new_last != null and isElement(new_last.?)) new_last else null;
         // Step 2.4.
         if (blur_target) |target| fireFocusEvent(target, "blur", related);
+        if (document) |d| {
+            if (runtime.SlabAllocator.generationOf(d) == document_generation and focusedAreaOf(d) != null) return;
+        }
+    }
+    if (target_document) |document| {
+        if (runtime.SlabAllocator.generationOf(document) != target_document_generation) return;
+        _ = focusedAreaOf(document);
+        if (!std.meta.eql(dom.focused_area.get(document), expected_target_focus)) return;
     }
     // Step 3: no platform conventions.
     // Step 4: for each entry in new chain, in reverse order.
@@ -416,10 +447,16 @@ fn focusUpdateSteps(old_chain_in: Chain, new_chain_in: Chain, new_focus_target: 
         // Step 4.1: designate a focusable area as its document's focused area.
         if (isElement(entry)) {
             if (nodeDocument(entry)) |document| {
-                if (focusedAreaOf(document) != entry) dom.focused_area.set(document, entry);
+                if (focusedAreaOf(document) != entry) {
+                    if (windowOf(document)) |window| dom.navigation_api.setFocusChanged(window, true);
+                    dom.focused_area.set(document, entry);
+                }
             }
         } else if (isDocument(entry)) {
-            if (focusedAreaOf(entry) != null) dom.focused_area.set(entry, null);
+            if (focusedAreaOf(entry) != null or (entry == target_document and target_had_focus)) {
+                if (windowOf(entry)) |window| dom.navigation_api.setFocusChanged(window, true);
+                dom.focused_area.set(entry, null);
+            }
         }
         // Step 4.2: the focus event target.
         const focus_target: ?*Instance = if (isElement(entry)) entry else if (isDocument(entry)) globalOf(entry) else null;
@@ -433,7 +470,12 @@ fn focusUpdateSteps(old_chain_in: Chain, new_chain_in: Chain, new_focus_target: 
     // in both chains): designate it all the same, or the element that lost
     // the focus would stay the document's focused area.
     if (new_focus_target) |target| {
-        if (isDocument(target) and focusedAreaOf(target) != null) dom.focused_area.set(target, null);
+        if (target == target_document and runtime.SlabAllocator.generationOf(target) == target_document_generation and isDocument(target) and
+            (focusedAreaOf(target) != null or target_had_focus))
+        {
+            if (windowOf(target)) |window| dom.navigation_api.setFocusChanged(window, true);
+            dom.focused_area.set(target, null);
+        }
     }
 }
 
@@ -448,6 +490,23 @@ fn getFocusableArea(focus_target: *Instance) ?*Instance {
     // navigable": that navigable's active document.
     if (isNavigableContainer(focus_target)) return contentDocumentOf(focus_target);
     // Area shapes, scrollable regions and delegatesFocus: not implemented.
+    return null;
+}
+
+/// HTML "autofocus delegate": the first suitable autofocus descendant in
+/// tree order. Query the existing focusability rules without new state.
+pub fn autofocusDelegate(focus_target: *Instance, trigger: Trigger) ?*Instance {
+    var descendant = following(focus_target, focus_target);
+    while (descendant) |element| : (descendant = following(element, focus_target)) {
+        // Step 1.1.
+        if (!isElement(element) or !form_associated.hasAttribute(element, "autofocus")) continue;
+        // Steps 1.2-1.3.
+        const area = if (isFocusableArea(element)) element else getFocusableArea(element) orelse continue;
+        // Steps 1.4-1.5.
+        if (trigger == .click and !isClickFocusable(area)) continue;
+        return area;
+    }
+    // Step 2.
     return null;
 }
 

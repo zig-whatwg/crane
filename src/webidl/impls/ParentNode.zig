@@ -216,9 +216,12 @@ pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.P
     // nodes and this's node document."
     const node = try NodeImpl.convertNodesIntoNode(nodes, nodeDocument(instance));
 
-    // Steps 2-3: "Ensure pre-insertion validity of node into this before
-    // null. Replace all with node within this."
-    try NodeImpl.replaceAllChildren(instance, node);
+    // Step 2: ensure pre-insert validity, excluding this's current children.
+    const parent_base = dom.instance_bridge.getNodeBase(instance) orelse return error.InvalidStateError;
+    const node_base = dom.instance_bridge.getNodeBase(node) orelse return error.InvalidStateError;
+    try dom.mutation.ensureReplaceChildrenValidity(node_base, parent_base);
+    // Step 3: replace all with node within this.
+    try dom.mutation.replaceAll(@as(?*NodeBase, node_base), parent_base);
 }
 
 /// moveBefore - Moves a node into this parent before child, preserving state

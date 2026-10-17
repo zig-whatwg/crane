@@ -27,8 +27,8 @@ const dom = @import("dom");
 // which Element installs); written through dom.element_attributes.
 const element_data = dom.element_data;
 
-// Import CSSStyleDeclaration impl for inline style creation
-const CSSStyleDeclarationImpl = @import("CSSStyleDeclaration.zig");
+// [SameObject] children kept for the element's life (element.style).
+const same_object = @import("same_object.zig");
 
 // Platform layout backend for CSSOM View metrics
 const layout_backend = @import("platform").layout_backend;
@@ -90,17 +90,14 @@ pub const InternalState = struct {
     is_dragging: bool = false,
 
     // === Style ===
-    /// Cached inline CSSStyleDeclaration wrapper for this element
-    /// Note: This may be garbage collected by V8, but the declarations are
-    /// kept separately, in `inline_style` below
+    /// element.style ([SameObject]): the CSSStyleProperties over the
+    /// element's inline declaration block. The block is the element's
+    /// (dom.style.inline_style, in its style state), so it outlives this
+    /// object; the object itself is kept for the element's life
+    /// (`style_declaration_kept`).
     /// Spec: https://drafts.csswg.org/cssom/#dom-elementcssinlinestyle-style
     style_declaration: ?*runtime.Instance = null,
-
-    /// The element's inline style declarations (dom.cssom.InlineStyle, which
-    /// the CSSOM reads through `inlineStyleOf`, installed below). Kept here,
-    /// not in the CSSStyleDeclaration, so they survive V8 GC of its wrapper:
-    /// they persist as long as the element exists.
-    inline_style: dom.cssom.InlineStyle,
+    style_declaration_kept: same_object.KeptChild = .{},
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -113,14 +110,15 @@ pub const InternalState = struct {
             .internals_attached = false,
             .is_dragging = false,
             .style_declaration = null,
-            .inline_style = dom.cssom.InlineStyle.init(allocator),
         };
     }
 
     pub fn deinit(self: *InternalState) void {
         if (self.cryptographic_nonce) |nonce| self.allocator.free(nonce);
-        self.inline_style.deinit();
-        // Note: style_declaration runtime.Instance is owned by the GC layer, don't deinit here
+        // element.style is severed from the element (its wrapper, which the
+        // element's traced, goes with the element's).
+        if (self.style_declaration) |style| self.style_declaration_kept.release(style, interfaces.CSSStyleProperties.deinit);
+        self.style_declaration = null;
     }
 };
 
@@ -433,37 +431,24 @@ pub fn get_offsetHeight(instance: *runtime.Instance) anyerror!i32 {
 /// Spec: https://drafts.csswg.org/cssom/#dom-elementcssinlinestyle-style
 /// Returns the inline CSSStyleDeclaration for this element.
 /// Each element has exactly one associated inline CSSStyleDeclaration object.
-/// Note: CSS properties are stored in HTMLElement's InternalState, not in the CSSStyleDeclaration.
-/// This allows properties to survive V8 GC of the CSSStyleDeclaration wrapper.
+/// The declarations are the element's inline block (dom.style), not the
+/// object's, so they survive V8 GC of the object's wrapper.
 pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // Get internal state to check for cached style declaration
     const internal = getInternalState(instance) orelse return error.InvalidStateError;
 
-    // Return cached style declaration if it exists
+    // The same object for the element's whole life.
     if (internal.style_declaration) |style| {
+        internal.style_declaration_kept.handOut(instance, style, .{ .name = "style" });
         return style;
     }
 
-    // Create a new CSSStyleDeclaration for inline styles
-    const allocator = instance.ctx.allocator;
-    const ctx = instance.ctx;
-    const CSSStyleDeclaration = interfaces.CSSStyleDeclaration;
-
-    // Initialize the style declaration using initForInlineStyle
-    // This sets is_inline_style=true and stores the owner element reference
-    // Properties will be delegated to this HTMLElement's InternalState
-    const style = try CSSStyleDeclarationImpl.initForInlineStyle(
-        allocator,
-        CSSStyleDeclaration.State,
-        &CSSStyleDeclaration.vtable,
-        ctx,
-        instance, // owner element
-    );
-    errdefer CSSStyleDeclaration.deinit(style);
-
-    // Cache it in internal state for future access
+    // "A CSSStyleProperties object whose readonly flag is unset, whose parent
+    // CSS rule is null, and whose owner node is this."
+    const style = try interfaces.CSSStyleProperties.initWith(instance.ctx.allocator, instance.ctx, .{ .inline_owner = instance });
     internal.style_declaration = style;
-
+    internal.style_declaration_kept.made(style);
+    internal.style_declaration_kept.handOut(instance, style, .{ .name = "style" });
     return style;
 }
 
@@ -999,8 +984,6 @@ pub fn installHooks() void {
     dom.cloning_steps.install(&nonceCloningSteps);
     // Its states left at its Browser's end (Browser.deinit).
     @import("dom").teardown_sweeps.install(.html_elements, &sweepRemaining);
-    // Its inline style declarations, which the CSSOM reads and writes.
-    dom.cssom.installInlineStyle(.{ .of = &inlineStyleOf });
     @import("dom").html_pseudo_classes.install(.{ .matches = &@import("html").pseudo_classes.matches, .popover_showing = &popoverShowing });
     @import("dom").custom_elements.installHTMLElement(.{ .internals = &attachedInternals, .ensure_internals = &ensureInternals });
 }
@@ -1068,11 +1051,6 @@ fn nonceCloningSteps(node: *runtime.Instance, copy: *runtime.Instance, _: bool) 
         if (target.cryptographic_nonce) |old| target.allocator.free(old);
         target.cryptographic_nonce = null;
     }
-}
-
-/// `dom.cssom.inlineStyleOf`: this element's inline style declarations.
-fn inlineStyleOf(instance: *runtime.Instance) ?*dom.cssom.InlineStyle {
-    return &(getInternalState(instance) orelse return null).inline_style;
 }
 
 fn popoverShowing(instance: *runtime.Instance) bool {

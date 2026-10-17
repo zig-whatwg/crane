@@ -159,6 +159,7 @@ fn resetAlgorithm(instance: *runtime.Instance) void {
 /// `value-defaultValue-textContent.html` asserts in two places.
 pub const InternalState = struct {
     validation: forms.Validation = .{},
+    labels: form_associated.LabelsCache = .{},
     /// Owned by `allocator`. Non-null means the dirty value flag is set.
     raw_value: ?[]u8 = null,
     last_user_edit: bool = false,
@@ -308,6 +309,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     // already been reused.
     if (StateMap.remove(instance)) |taken| {
         var state = taken;
+        state.labels.deinit(instance);
         if (state.validation.validity_traced) @import("engine").forgetTracedChild(instance, .{ .name = "validity" });
         state.deinit();
     }
@@ -493,7 +495,7 @@ pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMSt
 
 /// Getter for labels
 pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    return form_associated.labelsNodeList(instance);
+    return (try StateMap.getOrPut(instance)).labels.get(instance);
 }
 
 /// The API value's length in UTF-16 code units, for clamping the cursor.

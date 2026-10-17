@@ -263,6 +263,9 @@ pub const ScopeSettings = struct {
     /// the global that created it - is a secure context (HTML 8.1.3.5 step
     /// 1.2.1), read on the owner's thread when the worker started.
     owner_is_secure_context: bool = false,
+    /// The owner's mixed-content restriction, read on its thread. Opaque
+    /// data workers inherit it independently of secure-context status.
+    owner_prohibits_mixed_security_contexts: bool = false,
     /// The owner's top-level site (dom.global_settings.topLevelSiteOf), read
     /// on the owner's thread when a DEDICATED worker started. BORROWED from
     /// the host; null for a shared or service worker or an owner with none.
@@ -281,6 +284,7 @@ pub fn scopeSettings(ctx: runtime.Context) ?ScopeSettings {
         .policy_container = &wctx.policy_container,
         .time_origin_ns = wctx.time_origin_ns,
         .owner_is_secure_context = wctx.owner_is_secure_context,
+        .owner_prohibits_mixed_security_contexts = wctx.owner_prohibits_mixed_security_contexts,
         .top_level_site = wctx.top_level_site,
     };
 }
@@ -671,6 +675,9 @@ pub const WorkerHost = struct {
     /// worker (`ScopeSettings.owner_is_secure_context`).
     owner_is_secure_context: bool = false,
 
+    /// The creator's captured mixed-content restriction, by value.
+    owner_prohibits_mixed_security_contexts: bool = false,
+
     /// The owner's top-level site, for a dedicated worker
     /// (`ScopeSettings.top_level_site`). OWNED.
     top_level_site: ?[]u8 = null,
@@ -792,6 +799,7 @@ pub const WorkerHost = struct {
             .cookie_jar = start.cookie_jar,
             .time_origin_ns = start.time_origin_ns,
             .owner_is_secure_context = start.owner_is_secure_context,
+            .owner_prohibits_mixed_security_contexts = start.owner_prohibits_mixed_security_contexts,
         };
         // Taken, not copied: the start's allocator is this one, and a move
         // has no failure to unwind.
@@ -2125,15 +2133,18 @@ const SharedConnect = struct {
         }) catch return self.fireError();
         defer fetched.deinit();
 
+        // The global scope's policy container, from the response - or the
+        // creator's, for a data: or blob: script. Fails closed: a clone that
+        // cannot be made is the start's failure, never a worker without its
+        // creator's policies.
+        const policy_container = workerPolicyContainer(allocator, &fetched, self.owner_realm) catch return self.fireError();
         var start: WorkerStart = .{
             .source = fetched.source,
             .script_url = fetched.final_url,
             .worker_type = self.worker_type,
             // 8. The global scope's name (its SharedScope has it too).
             .name = self.name,
-            // The global scope's policy container, from the response - or
-            // the creator's, for a data: or blob: script.
-            .policy_container = workerPolicyContainer(allocator, &fetched, self.owner_realm),
+            .policy_container = policy_container,
             .cookie_jar = creatorCookieJar(self.owner_realm),
             .owner_realm = self.owner_realm,
             .owner_worker = self.ownerWorker(),
@@ -2280,8 +2291,16 @@ const Connect = struct {
 /// script - for blob:, "create a policy container from a fetch response"
 /// step 1 takes its blob URL entry's environment's, which is the creator's
 /// here: the blob store answers only the creator's origin), else the
-/// response's. A new container when neither can be had.
-pub fn workerPolicyContainer(allocator: Allocator, fetched: *workers.FetchedScript, owner_realm: runtime.Context) fetch_mod.internal.PolicyContainer {
+/// response's. A new container when neither can be had: an owner whose
+/// global has no policy container to give.
+///
+/// Fails closed: a clone that cannot be allocated is OutOfMemory, and the
+/// caller fails the worker's start (an `error` event at the Worker or
+/// SharedWorker). It used to fall back to a NEW container - no CSP list, the
+/// default referrer policy - so a data: or blob: worker whose creator's
+/// container could not be cloned ran without its creator's policies (lane
+/// leaks2; tests/html/worker_policy_container_oom_test.zig).
+pub fn workerPolicyContainer(allocator: Allocator, fetched: *workers.FetchedScript, owner_realm: runtime.Context) error{OutOfMemory}!fetch_mod.internal.PolicyContainer {
     const PolicyContainer = fetch_mod.internal.PolicyContainer;
     // Step 2: the response's, when a network fetch made one. Upgrade
     // Insecure Requests 3.3: a worker inherits its creator's insecure
@@ -2290,13 +2309,17 @@ pub fn workerPolicyContainer(allocator: Allocator, fetched: *workers.FetchedScri
         var result = container;
         if (creatorPolicyContainer(owner_realm)) |owner| {
             if (owner.upgradesInsecureRequests()) result.inherited_upgrade_insecure_requests = true;
+            // UIR 3.3 also inherits navigation tuples. Omitting that copy
+            // here is unobservable: their sole reader (4.1 step 2.4) handles
+            // navigation requests, which a dedicated/shared worker cannot
+            // issue. Local workers below still clone the whole container.
         }
         return result;
     }
     // Step 1: "If workerGlobalScope's url is local but its scheme is not
     // "blob"": a clone of its owner's - the one owner a dedicated worker,
     // or a shared worker's creator, has.
-    if (creatorPolicyContainer(owner_realm)) |owner| return owner.clone(allocator) catch PolicyContainer.init(allocator);
+    if (creatorPolicyContainer(owner_realm)) |owner| return owner.clone(allocator);
     return PolicyContainer.init(allocator);
 }
 
@@ -2318,6 +2341,16 @@ fn ownerIsSecureContext(realm: runtime.Context) bool {
     const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return false));
     const settings = @import("dom").global_settings.of(global) orelse return false;
     return settings.is_secure_context(global);
+}
+
+/// A worker creator's mixed-content answer, read only on its own thread.
+/// A nested data worker captures its owner's already-inherited restriction.
+fn ownerProhibitsMixedSecurityContexts(realm: runtime.Context) error{OutOfMemory}!bool {
+    const record = realm.getRealm() orelse return false;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return false));
+    const settings = @import("dom").global_settings.of(global) orelse return false;
+    const prohibits = settings.prohibits_mixed_security_contexts orelse return false;
+    return try prohibits(global);
 }
 
 /// The owner's top-level site (Fetch "determine the network partition key"),
@@ -2878,6 +2911,8 @@ const ThreadHost = struct {
         time_origin_ns: ?i64,
         /// Whether the owner is a secure context, read on its thread.
         owner_is_secure_context: bool,
+        /// The owner's mixed-content answer, read on that same thread.
+        owner_prohibits_mixed_security_contexts: bool,
         shared: ?SharedScope,
         /// The agent cluster of a DEDICATED worker's agent: its owner's
         /// ("obtain a worker/worklet agent" step 3 - isTopLevel is false, so
@@ -2905,6 +2940,7 @@ const ThreadHost = struct {
         // On the owner's thread, in its realm: its top-level site.
         const top_level_site = if (start.shared == null) try ownerTopLevelSite(allocator, start.owner_realm) else null;
         errdefer if (top_level_site) |site| allocator.free(site);
+        const owner_prohibits_mixed_security_contexts = try ownerProhibitsMixedSecurityContexts(start.owner_realm);
         const self = try allocator.create(ThreadHost);
         self.* = .{
             .allocator = allocator,
@@ -2922,6 +2958,7 @@ const ThreadHost = struct {
                 // On the owner's thread, in its realm: HTML 8.1.3.5 step
                 // 1.2.1 asks owner set[0]'s relevant settings object.
                 .owner_is_secure_context = ownerIsSecureContext(start.owner_realm),
+                .owner_prohibits_mixed_security_contexts = owner_prohibits_mixed_security_contexts,
                 .shared = start.shared,
                 // On the owner's thread, in its realm: the owner's agent
                 // cluster, for a dedicated worker.
@@ -3111,8 +3148,11 @@ pub const ServiceScope = struct {
 pub const ServiceHooks = struct {
     /// Run Service Worker step 9: the script has been evaluated - `ok` false
     /// when it was not, or threw (its start status an abrupt completion), or
-    /// its global scope could not be set up.
-    evaluated: *const fn (manager: *anyopaque, worker_id: u64, ok: bool) void,
+    /// its global scope could not be set up. `global` is the worker's
+    /// ServiceWorkerGlobalScope (null when none was made), on this thread for
+    /// the call: whose event listeners make the service worker's set of
+    /// event types to handle.
+    evaluated: *const fn (manager: *anyopaque, worker_id: u64, ok: bool, global: ?*runtime.Instance) void,
     /// importScripts() in the service worker (Service Workers 6.3.2): the
     /// fetch hook's steps - answered from its script resource map, or
     /// fetched and recorded there. NetworkError for a network error.
@@ -3335,7 +3375,8 @@ const ServiceThreadHost = struct {
         };
         // Step 9.7: its start status, for its owner. A worker whose script
         // was not evaluated, or threw, does not stay: its owner terminates it.
-        service.hooks.evaluated(service.manager, service.worker_id, ok);
+        const global: ?*runtime.Instance = if (self.host) |h| h.global_scope else null;
+        service.hooks.evaluated(service.manager, service.worker_id, ok, global);
         return ok;
     }
 

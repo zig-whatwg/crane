@@ -70,6 +70,12 @@ pub const HttpFetchNext = union(enum) {
     /// recursive true, then `httpRedirectFetchFinish` on what it returns -
     /// which HTTP fetch then returns.
     recursive_main_fetch,
+    /// Step 6 "manual" for a navigate request: this redirect response (taken)
+    /// is HTTP fetch's response, as it is, and the fetch controller's next
+    /// manual redirect steps are to run HTTP-redirect fetch given fetchParams
+    /// and it - the caller keeps what they need (FetchJob
+    /// .processNextManualRedirect, which HTML's navigation calls).
+    manual_redirect: *InternalResponse,
 };
 
 /// HTTP fetch, from the point HTTP-network-or-cache fetch has returned
@@ -140,9 +146,15 @@ fn redirectSteps(allocator: Allocator, params: *FetchParams, response: *Internal
                 return .{ .response = try internal_response.networkError(allocator) };
             },
             .manual => {
-                // Return an opaque-redirect filtered response
-                // For manual mode, we return the redirect response as-is
-                // but mark it as opaque-redirect type
+                // 1. A navigate request: the controller's next manual
+                // redirect steps run HTTP-redirect fetch given fetchParams
+                // and response - HTML "create navigation params by fetching"
+                // step 21.6 asks for them, hop by hop, so every hop's main
+                // fetch reaches HTTP fetch step 3 (a service worker) again.
+                // The response is handed over as it is.
+                if (request.mode == .navigate) return .{ .manual_redirect = final_response };
+                // 2. Otherwise an opaque-redirect filtered response: Crane
+                // marks the filter on the response itself.
                 final_response.response_type = .opaqueredirect;
                 return .{ .response = final_response };
             },
@@ -219,8 +231,12 @@ pub fn serviceWorkerResponse(allocator: Allocator, params: *FetchParams, respons
         return .{ .response = try internal_response.networkError(allocator) };
     }
     // An opaque-redirect response is what step 6's "manual" makes: it is
-    // handed on as it is.
-    if (kind == .opaqueredirect) return .{ .response = response };
+    // handed on as it is - but for a navigation, whose step 6 reads its
+    // internal response's redirect status (3.5.5's internalResponse, which a
+    // service worker's opaque-redirect carries: fetch_event.potentialResponse)
+    // and sets the next manual redirect steps (a worker's
+    // respondWith(fetch(event.request)) of a navigation's redirect hop).
+    if (kind == .opaqueredirect and request.mode != .navigate) return .{ .response = response };
     return redirectSteps(allocator, params, response);
 }
 
@@ -492,7 +508,7 @@ fn splitOrigin(serialized: []const u8) ?OriginParts {
     return .{ .scheme = serialized[0..sep], .host_port = authority[host_start..] };
 }
 
-const LocationError = error{ OutOfMemory, InvalidLocation };
+pub const LocationError = error{ OutOfMemory, InvalidLocation };
 
 /// A response's location URL.
 ///
@@ -501,7 +517,7 @@ const LocationError = error{ OutOfMemory, InvalidLocation };
 /// Returns null when there is no `Location` header, an owned serialized URL
 /// otherwise, and `error.InvalidLocation` for the spec's "failure": more than
 /// one `Location` value, or one that does not parse against the response's URL.
-fn locationUrl(allocator: Allocator, response: *InternalResponse, request_url: []const u8) LocationError!?[]u8 {
+pub fn locationUrl(allocator: Allocator, response: *InternalResponse, request_url: []const u8) LocationError!?[]u8 {
     // Step 1: If response's status is not a redirect status, return null.
     if (!internal_response.isRedirectStatus(response.status)) return null;
 
@@ -869,6 +885,11 @@ fn httpRequestHeaders(allocator: Allocator, request: *InternalRequest, added: *s
     //       append (`User-Agent`, the environment default `User-Agent`
     //       value).
     if (!list.contains("User-Agent")) try addHeader(allocator, added, "User-Agent", userAgentOf(request));
+    // Browser-selected HTTP/1.1 header (permitted by Fetch 4.6 step 8.20):
+    // Chrome 154, Firefox 157 and Safari 27 pass all eight referrer-policy
+    // generic/subresource-test header checks at WPT cc74d2669f. Add it only
+    // to the network headers; libcurl filters Connection for HTTP/2 and /3.
+    if (!list.contains("Connection")) try addHeader(allocator, added, "Connection", "keep-alive");
     // 8.16. A conditional request in cache mode "default" is "no-store".
     var cache_mode = request.cache_mode;
     if (cache_mode == .default) {
@@ -2177,6 +2198,7 @@ test "HTTP-network-or-cache fetch step 8: User-Agent, a null body's Content-Leng
     const want = [_][2][]const u8{
         .{ "Content-Length", "0" },
         .{ "User-Agent", default_user_agent },
+        .{ "Connection", "keep-alive" },
         .{ "Pragma", "no-cache" },
         .{ "Cache-Control", "no-cache" },
         .{ "Accept-Encoding", "identity" },
@@ -2197,9 +2219,11 @@ test "HTTP-network-or-cache fetch step 8: User-Agent, a null body's Content-Leng
     try request.header_list.append("User-Agent", "mine");
     try request.header_list.append("If-None-Match", "x");
     try httpRequestHeaders(allocator, request, &added);
-    try std.testing.expectEqual(2, added.items.len);
-    try std.testing.expectEqualStrings("Pragma", added.items[0].name);
-    try std.testing.expectEqualStrings("Cache-Control", added.items[1].name);
+    try std.testing.expectEqual(3, added.items.len);
+    try std.testing.expectEqualStrings("Connection", added.items[0].name);
+    try std.testing.expectEqualStrings("keep-alive", added.items[0].value);
+    try std.testing.expectEqualStrings("Pragma", added.items[1].name);
+    try std.testing.expectEqualStrings("Cache-Control", added.items[2].name);
 }
 
 test "HTTP fetch step 4.5: the TAO check - basic tainting, `*`, the request's origin - else the timing allow failed flag" {

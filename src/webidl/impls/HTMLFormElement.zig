@@ -22,6 +22,7 @@ const log = std.log.scoped(.forms);
 
 const dom = @import("dom");
 const form_associated = @import("html").form_associated;
+const forms = @import("html").forms;
 const attributeValue = form_associated.attributeValue;
 const hasAttribute = form_associated.hasAttribute;
 const isElementNamed = form_associated.isElementNamed;
@@ -1456,17 +1457,11 @@ fn submit(form: *runtime.Instance, submitter: *runtime.Instance, options: Submit
     defer if (action_attribute) |a| allocator.free(a);
     const action: []const u8 = if (action_attribute) |a| (if (a.len > 0) a else document_url) else document_url;
 
-    // 14-15: "encoding-parsing a URL given action, relative to submitter's
-    // node document" - its document base URL, which for an about:blank
-    // document is its creator's (an initial about:blank frame's form has no
-    // other). (The document's encoding does not reach the URL parser; see
-    // encoding-parse.)
-    const base_url = interfaces.Node.get_baseURI(document) catch null;
-    defer if (base_url) |b| document.ctx.allocator.free(b);
-    var base = basic_parser.parse(allocator, base_url orelse document_url, null) catch null;
-    defer if (base) |*b| b.deinit();
-    // Deviation, stated (encoding-parse-utf8): the query is encoded as UTF-8, not with the document's encoding - queued.
-    var parsed_action = basic_parser.parse(allocator, action, if (base) |*b| b else null) catch return;
+    // 14–15: encoding-parse relative to the SUBMITTER's node document.
+    // The existing shared algorithm preserves legacy query encodings.
+    const encoded_action = (try @import("dom").encoding_parse.encodingParseAndSerialize(submitter, action)) orelse return;
+    defer submitter.ctx.allocator.free(encoded_action);
+    var parsed_action = basic_parser.parse(allocator, encoded_action, null) catch return;
     defer parsed_action.deinit();
 
     // 17. Let enctype be the submitter element's enctype.
@@ -1490,6 +1485,12 @@ fn submit(form: *runtime.Instance, submitter: *runtime.Instance, options: Submit
     const target = try elementTarget(allocator, form, form_target, document);
     errdefer allocator.free(target);
 
+    // 21 and "plan to navigate": capture the form's link types now. Later
+    // rel/target mutations cannot change an already planned navigation.
+    const rel = try attributeValue(allocator, form, "rel");
+    defer if (rel) |value| allocator.free(value);
+    const policy = forms.targetPolicy(rel orelse "", target);
+
     // 26. The scheme and method pick the behaviour.
     const scheme = parsed_action.scheme();
     const is_get = eql(method, "get");
@@ -1510,7 +1511,7 @@ fn submit(form: *runtime.Instance, submitter: *runtime.Instance, options: Submit
         errdefer post.deinit(allocator);
         errdefer form_data.releaseIfUnwrapped(form_data_generation);
         const url = try url_serializer.serialize(allocator, &parsed_action, false);
-        planNavigationWith(form, url, target, post, form_data);
+        planNavigationWith(form, url, target, post, form_data, policy, options.user_involvement);
         return;
     }
     if (eql(scheme, "mailto")) {
@@ -1527,7 +1528,7 @@ fn submit(form: *runtime.Instance, submitter: *runtime.Instance, options: Submit
     // Otherwise "get action URL": parsed action as it is.
 
     const url = try url_serializer.serialize(allocator, &parsed_action, false);
-    planNavigation(form, url, target);
+    planNavigation(form, url, target, policy, options.user_involvement);
 }
 
 /// HTML "get an element's target" given the form and a target override
@@ -1641,6 +1642,9 @@ const PlannedNavigation = struct {
     token: u64,
     url: []const u8,
     target: []const u8,
+    noopener: bool,
+    noreferrer: bool,
+    user_involvement: @import("dom").navigation_api.UserInvolvement,
     /// Submit step 22's condition, taken when the form was submitted: the
     /// form document had not completely loaded.
     source_not_completely_loaded: bool,
@@ -1672,14 +1676,14 @@ const PlannedNavigation = struct {
 threadlocal var next_navigation_token: u64 = 1;
 
 /// "Plan to navigate" to `url`. Takes ownership of `url` and `target`.
-fn planNavigation(form: *runtime.Instance, url: []const u8, target: []const u8) void {
-    planNavigationWith(form, url, target, null, null);
+fn planNavigation(form: *runtime.Instance, url: []const u8, target: []const u8, policy: forms.TargetPolicy, user_involvement: @import("dom").form_submission.UserInvolvement) void {
+    planNavigationWith(form, url, target, null, null, policy, user_involvement);
 }
 
 /// "Plan to navigate" to `url`, given a POST resource and the entry list's
 /// FormData, or neither. Takes ownership of `url`, `target` and `post`; a
 /// `form_data` nothing else holds goes with the task.
-fn planNavigationWith(form: *runtime.Instance, url: []const u8, target: []const u8, post: ?PostResource, form_data: ?*runtime.Instance) void {
+fn planNavigationWith(form: *runtime.Instance, url: []const u8, target: []const u8, post: ?PostResource, form_data: ?*runtime.Instance, policy: forms.TargetPolicy, user_involvement: @import("dom").form_submission.UserInvolvement) void {
     const allocator = form.ctx.allocator;
     const task = allocator.create(PlannedNavigation) catch {
         allocator.free(url);
@@ -1702,6 +1706,13 @@ fn planNavigationWith(form: *runtime.Instance, url: []const u8, target: []const 
         .token = next_navigation_token,
         .url = url,
         .target = target,
+        .noopener = policy.noopener,
+        .noreferrer = policy.noreferrer,
+        .user_involvement = switch (user_involvement) {
+            .none => .none,
+            .activation => .activation,
+            .browser_ui => .browser_ui,
+        },
         .source_not_completely_loaded = not_loaded,
         .form_document = document,
         .form_document_generation = if (document) |d| runtime.SlabAllocator.generationOf(d) else 0,
@@ -1743,7 +1754,14 @@ fn planNavigationWith(form: *runtime.Instance, url: []const u8, target: []const 
     internal.pending_navigations.append(internal.pending_allocator.?, .{ .token = task.token, .navigable = navigable }) catch return task.destroy();
     internal.planned_navigation = task.token;
     // Step 4: queue a task that navigates.
-    event_loop.queueTask(.{ .callback = &runPlannedNavigation, .context = task });
+    event_loop.queueTask(.{ .callback = &runPlannedNavigation, .context = task, .drop = &dropPlannedNavigation });
+}
+
+/// A closing queue still releases everything the task owns. No form or
+/// submitter is accessed here; their unwrapped native hold is separate debt.
+fn dropPlannedNavigation(data: ?*anyopaque) void {
+    const task: *PlannedNavigation = @ptrCast(@alignCast(data orelse return));
+    task.destroy();
 }
 
 /// Removes the planned navigation `token` from the form's queued ones;
@@ -1838,10 +1856,13 @@ fn navigateSteps(data: ?*anyopaque) void {
     const navigables = @import("dom").navigables;
     navigables.navigateByTarget(document, .{
         .target = task.target,
+        .noopener = task.noopener,
+        .noreferrer = task.noreferrer,
         .current_document = if (form_document != document) form_document else null,
         .url = task.url,
         .source_not_completely_loaded = task.source_not_completely_loaded,
         .source_element = task.form,
+        .user_involvement = task.user_involvement,
         .post_resource = if (task.post) |post| .{ .body = post.body, .content_type = post.content_type } else null,
         .form_data = task.form_data,
         // "Navigate" with cspNavigationType "form-submission".

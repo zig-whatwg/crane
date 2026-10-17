@@ -54,7 +54,7 @@ test "cloning character data creates it in the destination document context" {
     const destination = try interfaces.Document.call_constructor(&destination_context);
     defer dom.node_creation.destroyUninserted(destination);
     inline for (.{ interfaces.Text, interfaces.Comment }) |Interface| {
-        const source = try Interface.call_constructor(&fixture.context, .{ .was_passed = true, .value = runtime.DOMString.initInterned("x") });
+        const source = try Interface.initWith(fixture.context.allocator, &fixture.context, .{ .data = "x" });
         defer dom.node_creation.destroyUninserted(source);
         try dom.node_document.set(source, fixture.document);
         const copy = try dom.node_creation.clone(source, destination, false, null);

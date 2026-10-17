@@ -15,7 +15,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
-const clock = @import("clock");
+const performance_timeline = @import("dom").performance_timeline;
 const CloseEvent = interfaces.CloseEvent;
 
 pub const State = CloseEvent.State;
@@ -68,7 +68,8 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // Initialize base Event attributes (Event fields are in state.base.own)
 
     state.base.own.type = try @"type".clone(ctx.allocator);
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
+    // DOM inner event creation step 3: relative to the relevant global.
+    state.base.own.timeStamp = performance_timeline.now(instance.ctx) orelse 0;
 
     // Get init dict values with defaults per spec
     if (eventInitDict.was_passed) {
@@ -171,7 +172,8 @@ pub fn createCloseEvent(
 
     // Set event type to "close" (Event fields in state.base.own)
     state.base.own.type = try allocator.dupe(u8, "close");
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
+    // DOM inner event creation step 3 applies to native event creation too.
+    state.base.own.timeStamp = performance_timeline.now(instance.ctx) orelse 0;
 
     // Event doesn't bubble and isn't cancelable
     state.base.own.bubbles = false;

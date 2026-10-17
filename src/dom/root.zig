@@ -145,6 +145,7 @@ pub const text_stream = @import("text_stream.zig");
 pub const character_data = @import("character_data.zig");
 pub const geometry_storage = @import("geometry_storage.zig");
 pub const names = @import("names.zig");
+pub const pi_attributes = @import("pi_attributes.zig");
 /// HTML's document-relative URL parsing with its character encoding.
 pub const encoding_parse = @import("encoding_parse.zig");
 pub const element_attributes = @import("element_attributes.zig");
@@ -183,6 +184,8 @@ pub const document_internals = @import("document_internals.zig");
 /// The CSSOM's model: what CSSStyleSheet, CSSRuleList and the CSSRule
 /// objects wrap.
 pub const cssom = @import("cssom.zig");
+/// The style engine: cascade and computed style (src/dom/style/).
+pub const style = @import("style/root.zig");
 /// A Document's script lists, currentScript and what the script processing
 /// model asks of it - its ScriptRunner - and its module and import maps.
 pub const document_scripts = @import("document_scripts.zig");
@@ -261,6 +264,12 @@ pub const declarative_shadow = @import("declarative_shadow.zig");
 pub const indexeddb = @import("indexeddb.zig");
 pub const string_lists = @import("string_lists.zig");
 pub const event_handlers = @import("event_handlers.zig");
+/// Whether an event target has a listener of a type (EventTarget's step):
+/// a service worker's set of event types to handle.
+pub const event_listener_types = @import("event_listener_types.zig");
+/// A URLPattern object's associated URL pattern (URLPattern's step): a
+/// router condition's urlPattern.
+pub const url_patterns = @import("url_patterns.zig");
 /// HTML 7.1.5 sandboxing flag sets: parsing, CSP-derived and creation flags.
 pub const sandboxing = @import("sandboxing.zig");
 

@@ -884,6 +884,9 @@ const Navigation = struct {
     /// (dom.service_worker_clients' handle), until the new document's realm
     /// takes it; one no document took is discarded.
     reserved_client: ?*anyopaque = null,
+    /// That reserved client's creation URL (owned): the hop it was reserved
+    /// for, whose origin a redirect's next hop is compared with (step 21.1).
+    reserved_url: ?[]u8 = null,
     /// Navigate step 8's target snapshot params' sandboxing flags: "determine
     /// the creation sandboxing flags" for the navigable's active browsing
     /// context given its container, as the navigation starts - the iframe's
@@ -907,6 +910,7 @@ const Navigation = struct {
         // Terminating a fetch runs neither `done` nor `gone`.
         if (self.fetch) |f| f.terminate();
         dom_module.service_worker_clients.release(self.reserved_client);
+        if (self.reserved_url) |u| self.allocator.free(u);
         if (self.response) |*r| r.deinit();
         if (self.srcdoc) |s| self.allocator.free(s);
         if (self.javascript_result) |r| self.allocator.free(r);
@@ -1558,7 +1562,10 @@ fn startFetch(record: *Navigation) void {
                 .embed => .embed,
             } else .document,
             .mode = .navigate,
-            .redirect = .follow,
+            // Step 3: redirect mode "manual" - the navigation follows each
+            // redirect itself (step 21, `followManualRedirect`), so every
+            // hop's request goes through main fetch and Handle Fetch.
+            .redirect = .manual,
             // "Create navigation params by fetching" step 3: a POST
             // resource's request is a POST.
             .method = if (record.post_body != null) "POST" else "GET",
@@ -1588,6 +1595,8 @@ fn startFetch(record: *Navigation) void {
         // destroy terminates it.
         if (record.csp_reporter) |*reporter| request.csp_violation_reporter = reporter.reporter();
         request.prohibits_mixed_security_contexts = record.prohibits_mixed_security_contexts;
+        // UIR 4.1 step 2.1: GET and POST form navigations both qualify.
+        request.form_submission = record.csp_navigation_type == .form_submission;
         // "Create navigation params by fetching" step 3: "If
         // sourceSnapshotParams's fetch client is navigable's container
         // document's relevant settings object, then set request's initiator
@@ -1628,7 +1637,10 @@ fn startFetch(record: *Navigation) void {
         // "Create navigation params by fetching": the request's reserved
         // client, a new environment - which Handle Fetch may make controlled
         // (Service Workers 2.5.1) and the new document's realm adopts.
-        if (navigationRealmOf(record.integration)) |creator| record.reserved_client = dom_module.service_worker_clients.reserve(creator, .window, url);
+        if (navigationRealmOf(record.integration)) |creator| {
+            record.reserved_client = dom_module.service_worker_clients.reserve(creator, .window, url);
+            if (record.reserved_client != null) record.reserved_url = allocator.dupe(u8, url) catch null;
+        }
         request.reserved_client = record.reserved_client;
         request.service_worker = dom_module.service_worker_clients.routeOfReserved(record.reserved_client);
         const client: fetch_mod.algorithms.AsyncFetch.Client = .{
@@ -1639,7 +1651,8 @@ fn startFetch(record: *Navigation) void {
         };
         // The request's final referrer comes back with the result, for the
         // new document's referrer (fetchDone frees it with the result).
-        record.fetch = fetch_mod.algorithms.AsyncFetch.start(allocator, request, .{ .report_referrer = true }, agentFetchesOf(record.integration), client) catch {
+        // The navigation follows its redirects itself (`followManualRedirect`).
+        record.fetch = fetch_mod.algorithms.AsyncFetch.start(allocator, request, .{ .report_referrer = true, .follows_manual_redirects = true }, agentFetchesOf(record.integration), client) catch {
             // The fetch owned the request, and freed it.
             record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
@@ -1768,11 +1781,28 @@ fn fetchDone(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch
     var result = outcome catch null;
     defer if (result) |*r| r.deinit();
     const record = navigationById(id) orelse return;
+    // "Create navigation params by fetching" step 21: a redirect the
+    // navigation follows by hand goes on to its next hop.
+    if (record.fetch) |f| if (result != null and f.hasNextManualRedirect()) return followManualRedirect(record, f);
+    // "Create and initialize a Document object" step 3: creationURL is the
+    // request's current URL - the last hop's - not the response's URL: a
+    // service worker's response fetched from another URL still makes the
+    // document of the URL navigated to (navigation-redirect.https.html,
+    // "SW-fetched response from different URL"). Every other response's URL
+    // is that URL already.
+    const current_url: ?[]u8 = if (record.fetch) |f| record.allocator.dupe(u8, f.requestCurrentUrl()) catch null else null;
+    defer if (current_url) |u| record.allocator.free(u);
     record.fetch = null;
     record.response = if (result) |r|
         navigation_fetch.resultFromResponse(record.allocator, record.url, r.response, .{}) catch null
     else
         null;
+    if (record.response) |*response| if (current_url) |url| if (!response.is_network_error and !std.mem.eql(u8, response.final_url, url)) {
+        if (record.allocator.dupe(u8, url)) |owned| {
+            if (response.final_url.len > 0) record.allocator.free(response.final_url);
+            response.final_url = owned;
+        } else |_| {}
+    };
     // The request's referrer as main fetch left it, for the new document.
     if (record.response) |*response| {
         if (result) |r| {
@@ -1798,6 +1828,43 @@ fn fetchDone(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch
         record.response = navigation_fetch.networkErrorResult(record.allocator, record.url) catch return endNavigation(id);
     }
     queueNavigationTask(record.integration, id, &runCommit);
+}
+
+/// HTML "create navigation params by fetching" steps 21.14-21.21 for a
+/// redirect response the fetch handed over (redirect mode "manual"), then -
+/// for the next turn of the loop - steps 21.1-21.2 and 21.6: a hop to
+/// another origin than the reserved client's creation URL's discards that
+/// client and reserves a new one for the new URL, and the fetch processes
+/// the next manual redirect, through main fetch (its CSP, mixed content and
+/// integrity checks, as a redirect fetch follows itself) and Handle Fetch.
+/// A location that is failure, or not HTTP(S), ends the fetch with a network
+/// error there (step 23: "redirects to fetch scheme URLs that aren't HTTP(S)
+/// are treated like network errors"; a non-fetch scheme's navigation params
+/// are not made - stated, as before).
+fn followManualRedirect(record: *Navigation, f: *fetch_mod.algorithms.AsyncFetch) void {
+    // 21.14. locationURL.
+    if (f.nextManualRedirectUrl()) |location| {
+        const scheme = navigate_steps.schemeOf(location);
+        const http = std.mem.eql(u8, scheme, "http") or std.mem.eql(u8, scheme, "https");
+        // 21.1. Another origin than the reserved client's creation URL's.
+        if (http) if (record.reserved_url) |reserved_url| {
+            const same = fetch_mod.internal.origins.sameOrigin(record.allocator, reserved_url, location) catch false;
+            if (!same) {
+                // 21.1.1-21.1.2. The environment discarding steps.
+                dom_module.service_worker_clients.release(record.reserved_client);
+                record.reserved_client = null;
+                record.allocator.free(reserved_url);
+                record.reserved_url = null;
+                // 21.2. A new reserved client, for the new URL.
+                if (navigationRealmOf(record.integration)) |creator| {
+                    record.reserved_client = dom_module.service_worker_clients.reserve(creator, .window, location);
+                    if (record.reserved_client != null) record.reserved_url = record.allocator.dupe(u8, location) catch null;
+                }
+            }
+        };
+    }
+    // 21.6. Process the next manual redirect.
+    f.processNextManualRedirect(record.reserved_client, dom_module.service_worker_clients.routeOfReserved(record.reserved_client));
 }
 
 /// The task that ends a navigation with a response: HTML "finalize a
@@ -1847,6 +1914,13 @@ fn runCommit(context: ?*anyopaque) void {
     // A network error's document is "inline content that doesn't have a
     // DOM", whose final sandboxing flag set is empty.
     var params_container = navigationParamsPolicyContainer(integration, record, response);
+    // Fail closed: no document may commit without its security policies.
+    // The record's existing defer releases it before any unload or realm
+    // change can occur, and the old document stays active.
+    if (params_container == null) {
+        integration.ongoing_navigation = .none;
+        return endLoadDelay(integration);
+    }
     var params_container_taken = false;
     defer if (!params_container_taken) {
         if (params_container) |*container| container.deinit();
@@ -2055,7 +2129,7 @@ fn reservedEnvironmentIsSecure(browsing_context: *html_core.BrowsingContext, url
 
 /// HTML "determine navigation params policy container" for the document
 /// `record`'s navigation makes from `response`, owned by the caller; null
-/// when it could not be made (out of memory: the document keeps a new one).
+/// on out of memory - the navigation is abandoned.
 ///
 /// Step 1's history policy container is the traversed entry's document
 /// state's (about: and data: documents keep one); step 3's initiator is the
@@ -2137,6 +2211,13 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
     if (containerDocumentOf(integration)) |parent| {
         if (dom_module.policy_containers.of(parent)) |container| {
             if (container.upgradesInsecureRequests()) result.inherited_upgrade_insecure_requests = true;
+            // UIR 3.3: the new document owns a snapshot of the parent's
+            // inherited and own navigation opt-ins, independent of later
+            // policy changes in that parent.
+            result.inheritUpgradeInsecureNavigations(container) catch {
+                result.deinit();
+                return null;
+            };
         }
     }
     return result;
@@ -3474,7 +3555,7 @@ fn frameWindowByName(current_document: *runtime.Instance, name: []const u8) ?*ru
 /// stated: the top-level page cannot be replaced - navigating it does only
 /// what its Location can (a fragment navigation).
 fn navigateByTarget(source_document: *runtime.Instance, request: dom_module.navigables.Request) void {
-    navigateByTargetWithReferrerPolicy(source_document, request, .empty);
+    navigateByTargetWithReferrerPolicy(source_document, request, if (request.noreferrer) .no_referrer else .empty);
 }
 
 /// `navigateByTarget`, with navigate's referrerPolicy - a hyperlink's. It

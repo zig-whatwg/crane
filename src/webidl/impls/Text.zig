@@ -19,9 +19,6 @@ const webidl = @import("webidl");
 const infra = @import("infra");
 const Text = interfaces.Text;
 
-// Import related impls
-const NodeImpl = @import("Node.zig");
-
 // Import DOM algorithms
 const dom = @import("dom");
 
@@ -121,7 +118,14 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 pub fn call_constructor(ctx: runtime.Context, data: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
     // The data is CharacterData's construction argument.
     const data_slice = if (data.was_passed) data.value.asSlice() else "";
-    return Text.initWith(ctx.allocator, ctx, .{ .data = data_slice });
+    const realm = ctx.realm orelse return error.InvalidStateError;
+    const global: *runtime.Instance = @ptrCast(@alignCast(realm.global_object orelse return error.InvalidStateError));
+    const document = try interfaces.Window.get_document(global);
+    const instance = try Text.initWith(ctx.allocator, ctx, .{ .data = data_slice });
+    errdefer Text.deinit(instance);
+    // Constructor steps: node document is the current global's document.
+    try @import("dom").node_document.set(instance, document);
+    return instance;
 }
 
 // =============================================================================
@@ -228,14 +232,13 @@ pub fn call_splitText(instance: *runtime.Instance, offset: u32) anyerror!*runtim
     // `.data` read on the returned node segfaulted inside the allocator
     // vtable. Everything a Text node does later - `get_data`, `substringData`,
     // `wholeText` - allocates through `ctx.allocator`.
-    const new_node = try call_constructor(
-        instance.ctx,
-        webidl.Opt(runtime.DOMString).passed(new_data),
-    );
+    const new_node = try interfaces.Text.initWith(instance.ctx.allocator, instance.ctx, .{
+        .data = new_data.asSlice(),
+    });
     errdefer Text.deinit(new_node);
 
     if (interfaces.Node.get_ownerDocument(instance) catch null) |doc| {
-        try NodeImpl.setOwnerDocument(new_node, doc);
+        try dom.node_document.set(new_node, doc);
     }
 
     // Step 6: parent

@@ -471,6 +471,20 @@ fn memberHandleIsSafe(comptime T: type) bool {
     if (argHandleIsCopied(T)) return true;
     if (T == runtime.JSValue) return true;
     if (argumentHandleIsKeptInValue(T)) return true;
+    // A callback function member - a function pointer, codegen's type for a
+    // callback function - adopts the handle Get made for IT: conv.fromV8Value's
+    // function-pointer branch hands that Global over as the value, and the
+    // impl takes it over (engine.takeCallbackFunction). Never the
+    // dictionary's. QueuingStrategy's `size` (`?callbacks.QueuingStrategySize`)
+    // made every strategy keep its argument's handle: one Global per
+    // `new WritableStream(sink, strategy)`, `new ReadableStream(...)` and
+    // TransformStream strategy (lane leaks2). Blink's bindings read the
+    // dictionary and its members as Locals of the callback's HandleScope, so
+    // nothing of the dictionary outlives the call; a callback member is a
+    // CallbackFunctionBase holding a reference of its own made from its
+    // member's Local (platform/bindings/callback_function_base.h,
+    // `TraceWrapperV8Reference<v8::Object> callback_function_`).
+    if (isCallbackFunctionType(T)) return true;
     const info = @typeInfo(T);
     if (info == .optional) return memberHandleIsSafe(info.optional.child);
     // A sequence<any> / sequence<object> member reads each element through
@@ -482,6 +496,15 @@ fn memberHandleIsSafe(comptime T: type) bool {
     // copied (argHandleIsCopied).
     if (info == .pointer and info.pointer.size == .slice and info.pointer.child == runtime.JSValue) return true;
     return false;
+}
+
+/// `T` is a callback function as codegen types one: a pointer to a Zig
+/// function (`callbacks.X = *const fn (...) R`), the type conv.fromV8Value's
+/// function-pointer branch converts by handing over the handle it was given.
+/// Not `*anyopaque` (a union's Function arm), which stays unknown here.
+fn isCallbackFunctionType(comptime T: type) bool {
+    const info = @typeInfo(T);
+    return info == .pointer and info.pointer.size == .one and @typeInfo(info.pointer.child) == .@"fn";
 }
 
 /// Does `conv.toV8Value(T, ...)` make a fresh Global for every value of `T` -
@@ -546,10 +569,48 @@ pub fn getterValueIsOwned(comptime T: type) bool {
 /// Everything else keeps the conservative answer (false: the value may
 /// refer to the handle). An object assigned to an `any` attribute is one
 /// here; `setterValueIsBorrowed` releases it once the setter has returned.
+///
+/// The rule every converted value is held to: `conversionLeavesHandle`.
 pub fn setterValueLeavesHandle(comptime T: type, value: T) bool {
+    return conversionLeavesHandle(T, value);
+}
+
+/// Whether `value`, converted from a handle as a `T` that `argHandleIsCopied`
+/// does not accept, leaves that handle referred to by nothing - so that
+/// whoever owns the handle (the binding, for an argument `info.get` made or
+/// a member Get made) releases it now. Read off the VALUE, mirroring the
+/// converter's branches in its order (conv.fromV8ValueAs,
+/// fromV8ValueInteger):
+///
+/// 1. A copied type: false - the copied rule releases it, whatever the value.
+/// 2. A type `argumentHandleIsKeptInValue` accepts (an `any`, an `object`
+///    union arm, a buffer source): when `keptArgumentHandle` finds none - a
+///    primitive, a string copied out, null.
+/// 3. A nullable type: when the value is null. The optional branch answers
+///    null for null and undefined, and an optional callback for a value that
+///    is not a function, BEFORE converting anything; any other value is its
+///    payload's conversion, which the payload's rule decides.
+/// 4. A `webidl.Opt`: when not passed - undefined, read before anything is
+///    converted - and otherwise as its value.
+///
+/// Everything else keeps the conservative answer (false: the value may refer
+/// to the handle) - a callback function's value IS the handle, a callback
+/// interface's wrapper took it over. Kept, a null optional callback was one
+/// Global per call: QueuingStrategy's absent `size` member (one Get handle
+/// per `new WritableStream(sink, {highWaterMark: 0})`) and
+/// `addEventListener(type, null)`'s argument (lane leaks2).
+pub fn conversionLeavesHandle(comptime T: type, value: T) bool {
     if (comptime argHandleIsCopied(T)) return false;
     if (comptime argumentHandleIsKeptInValue(T)) return keptArgumentHandle(T, value) == null;
-    if (comptime @typeInfo(T) == .optional) return value == null;
+    const info = @typeInfo(T);
+    if (comptime info == .optional) {
+        const payload = value orelse return true;
+        return conversionLeavesHandle(info.optional.child, payload);
+    }
+    if (comptime isOptWrapper(T)) {
+        if (!value.was_passed) return true;
+        return conversionLeavesHandle(@FieldType(T, "value"), value.value);
+    }
     return false;
 }
 
@@ -743,12 +804,15 @@ pub const non_owning_arg_types = struct {
 };
 
 /// `conv.fromV8Value`, releasing the argument handle afterwards when
-/// `argHandleIsCopied` can prove that is safe - or, for a type whose value
-/// says whether it still refers to the handle (`argumentHandleIsKeptInValue`:
-/// an `any`, an `object` union arm, a buffer source), when the value it
-/// converted to proves it (`keptArgumentHandle` is null). The release fires
-/// on the error path too, which is where the handle would otherwise be lost
-/// silently: a failed conversion made nothing that refers to it.
+/// `argHandleIsCopied` can prove that is safe - or, for any other type, when
+/// the value it converted to proves nothing refers to the handle
+/// (`conversionLeavesHandle`: an `any` or `object` arm with no `.handle`, a
+/// buffer source that is none, a null optional, an Opt not passed). For a
+/// type whose value says whether it still refers to the handle
+/// (`argumentHandleIsKeptInValue`: an `any`, an `object` union arm, a buffer
+/// source) the release fires on the error path too, which is where the
+/// handle would otherwise be lost silently: a failed conversion made nothing
+/// that refers to it.
 pub fn convertArgReleasing(
     comptime T: type,
     allocator: std.mem.Allocator,
@@ -792,9 +856,10 @@ pub fn convertArgReleasingWith(
         if (comptime argumentHandleIsKeptInValue(T)) v8.v8_Value_Dispose(arg);
         return err;
     };
-    if (comptime argumentHandleIsKeptInValue(T)) {
-        if (keptArgumentHandle(T, value) == null) v8.v8_Value_Dispose(arg);
-    }
+    // A value that refers to nothing - an `any`'s primitive, a null optional
+    // callback, an optional argument not passed - leaves the handle to the
+    // binding (`conversionLeavesHandle`).
+    if (conversionLeavesHandle(T, value)) v8.v8_Value_Dispose(arg);
     return value;
 }
 
@@ -6804,7 +6869,7 @@ pub fn V8Interface(comptime Interface: type) type {
         /// CSSStyleDeclaration's named properties are Crane's camel-cased CSS
         /// attributes (crane_css_properties): every CSS property name, not
         /// only the set ones, and the interceptor masks the prototype.
-        const is_css_style_declaration = std.mem.endsWith(u8, interface_name, "CSSStyleDeclaration");
+        const is_css_style_declaration = std.mem.endsWith(u8, interface_name, "CSSStyleDeclaration") or std.mem.endsWith(u8, interface_name, "CSSStyleProperties");
 
         /// Whether named properties shadow the prototype chain: WebIDL 3.4.7
         /// [LegacyOverrideBuiltIns] (the named property visibility
@@ -7135,7 +7200,12 @@ pub fn V8Interface(comptime Interface: type) type {
             // Crane's CSS attributes: CSSStyleDeclaration takes every CSS
             // property name, the other declaration interfaces their set ones.
             if (comptime special.crane_css_properties) {
-                if (!is_css_style_declaration and !isSupportedPropertyName(instance, key)) return .kNo;
+                // A name that is no CSS property - cssText, length, an
+                // expando - is the ordinary [[Set]]'s, so the masking
+                // interceptor does not swallow it (lane style1). Stated: the
+                // CSS names are then own keys of the object, where browsers
+                // have prototype accessors (Object.keys lists them).
+                if (!isSupportedPropertyName(instance, key)) return .kNo;
             }
             const isolate = info.getIsolate();
             // V8 hands an interceptor the value as a LOCAL; fromV8Value reads

@@ -13,9 +13,13 @@ pub const RouterCondition = struct {
     requestDestination: ?enums.RequestDestination = null,
     runningStatus: ?enums.RunningStatus = null,
     @"or": ?[]const RouterCondition = null,
-    not: ?RouterCondition = null,
+    not: ?*const RouterCondition = null,
 
     /// WebIDL ByteString members: a code unit above 0xFF throws a TypeError
     /// when the dictionary is converted.
     pub const byte_string_members = .{"requestMethod"};
+
+    /// Members whose type is this dictionary, boxed: a converter allocates
+    /// the pointee and frees it with the dictionary.
+    pub const boxed_members = .{"not"};
 };

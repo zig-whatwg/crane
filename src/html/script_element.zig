@@ -80,6 +80,8 @@ pub const ClassicScript = struct {
     parse_error: bool,
     /// Muted errors flag (for cross-origin scripts)
     muted_errors: bool,
+    /// Prepare step 25's value, retained across fetching and attribute changes.
+    credentials_mode: @import("fetch").internal.CredentialsMode = .same_origin,
 
     pub fn init(source: []const u8, base: []const u8) ClassicScript {
         return .{

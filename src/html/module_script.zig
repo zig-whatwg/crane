@@ -104,9 +104,10 @@ pub const ModuleScript = struct {
 
     /// The script's fetch options, as far as an import() from it reads them
     /// (HTML "new descendant script fetch options"): its cryptographic nonce
-    /// (OWNED when not empty), referrer policy and render-blocking state.
+    /// (OWNED when not empty), referrer policy, credentials and render-blocking.
     nonce: []const u8 = "",
     referrer_policy: fetch.internal.ReferrerPolicy = .empty,
+    credentials_mode: fetch.internal.CredentialsMode = .same_origin,
     render_blocking: bool = false,
 
     /// Depth-first walk state. `visiting` is set while this script's requests
@@ -146,6 +147,7 @@ pub const ModuleScript = struct {
             .base_url = owned_base_url,
             .nonce = if (options.nonce.len > 0) try allocator.dupe(u8, options.nonce) else "",
             .referrer_policy = options.referrer_policy,
+            .credentials_mode = options.credentials_mode,
             .render_blocking = options.render_blocking,
         };
         track(self);
@@ -153,11 +155,11 @@ pub const ModuleScript = struct {
     }
 
     /// HTML "new descendant script fetch options" for this script's fetch
-    /// options: its cryptographic nonce, referrer policy and render-blocking;
-    /// integrity metadata "", parser metadata "not-parser-inserted". Borrowed from the
-    /// script.
+    /// options: nonce, referrer policy, credentials and render-blocking;
+    /// integrity metadata "", parser metadata "not-parser-inserted".
+    /// Borrowed from the script.
     pub fn descendantFetchOptions(self: *const ModuleScript) FetchOptions {
-        return .{ .nonce = self.nonce, .referrer_policy = self.referrer_policy, .render_blocking = self.render_blocking };
+        return .{ .nonce = self.nonce, .referrer_policy = self.referrer_policy, .credentials_mode = self.credentials_mode, .render_blocking = self.render_blocking };
     }
 
     /// Release the script, its record and values, and its edge list.
@@ -216,17 +218,18 @@ pub fn disposeEntry(value: *anyopaque) void {
 }
 
 /// HTML's script fetch options, as far as a module graph's requests use
-/// them: cryptographic nonce, integrity, parser metadata, render-blocking and
-/// referrer policy (the credentials mode stays "same-origin", as before).
+/// them: cryptographic nonce, integrity, parser metadata, render-blocking,
+/// referrer policy and credentials mode.
 /// Borrowed for as long as the graph is fetched.
 pub const FetchOptions = struct {
     nonce: []const u8 = "",
-    /// The root's: a descendant's comes from the import map's integrity
-    /// section, which is not modelled, so descendants have none.
+    /// The root request's integrity; each descendant obtains its metadata
+    /// from the import map's integrity section.
     integrity: []const u8 = "",
     parser_inserted: bool = false,
     render_blocking: bool = false,
     referrer_policy: fetch.internal.ReferrerPolicy = .empty,
+    credentials_mode: fetch.internal.CredentialsMode = .same_origin,
 };
 
 /// Everything the loader needs from the document it loads for.
@@ -256,6 +259,9 @@ pub const Environment = struct {
     /// - "fetch the descendants of a module script" gets the descendant
     /// script fetch options from the referrer script's - its descendants'.
     fetch_options: FetchOptions = .{},
+    /// Borrowed for a synchronous fetch. Empty means the client referrer;
+    /// an imported script otherwise uses the referencing script's base URL.
+    referrer: []const u8 = "",
 
     /// HTML resolve a module integrity metadata: absent entries give "".
     pub fn resolveIntegrity(self: *const Environment, url: []const u8) []const u8 {
@@ -361,15 +367,16 @@ pub fn scriptOf(host_defined: *anyopaque) ?*ModuleScript {
 pub const ClassicScript = struct {
     base_url: []const u8,
     /// Its fetch options, as far as an import() from it reads them (HTML
-    /// "new descendant script fetch options"): the cryptographic nonce and
-    /// referrer policy and render-blocking. Owned by whoever owns the script.
+    /// "new descendant script fetch options"): nonce, referrer policy,
+    /// credentials and render-blocking. Owned by whoever owns the script.
     nonce: []const u8 = "",
     referrer_policy: fetch.internal.ReferrerPolicy = .empty,
+    credentials_mode: fetch.internal.CredentialsMode = .same_origin,
     render_blocking: bool = false,
 
     /// HTML "new descendant script fetch options" for this script's.
     pub fn descendantFetchOptions(self: *const ClassicScript) FetchOptions {
-        return .{ .nonce = self.nonce, .referrer_policy = self.referrer_policy, .render_blocking = self.render_blocking };
+        return .{ .nonce = self.nonce, .referrer_policy = self.referrer_policy, .credentials_mode = self.credentials_mode, .render_blocking = self.render_blocking };
     }
 };
 
@@ -502,13 +509,11 @@ fn fetchAndCreate(env: *const Environment, url: []const u8, module_type: ModuleT
     //
     // "Set up the module script request given request and options": its
     // cryptographic nonce metadata, integrity metadata, parser metadata and
-    // referrer policy are the options'. Deviation, stated: the credentials
-    // mode is always "same-origin" - a module script with
-    // crossorigin=use-credentials fetches without credentials.
+    // referrer policy and credentials mode are the options'.
     const request = script_request.InternalRequest.init(env.allocator, url) catch return null;
     defer request.deinit();
     request.mode = .cors;
-    request.credentials_mode = .same_origin;
+    request.credentials_mode = env.fetch_options.credentials_mode;
     const options = env.fetch_options;
     if (options.nonce.len > 0) request.setCryptographicNonceMetadata(options.nonce) catch return null;
     request.setIntegrityMetadata(options.integrity) catch return null;
@@ -522,6 +527,7 @@ fn fetchAndCreate(env: *const Environment, url: []const u8, module_type: ModuleT
     };
     request.initiator_type = .script;
     script_request.populateRequestFromClient(request, env.context_instance.ctx) catch return null;
+    if (env.referrer.len > 0) request.setReferrerUrl(env.referrer) catch return null;
 
     // Step 13: fetch. A failure - transport, CORS, or main fetch step 19's MIME
     // type / nosniff block, which keys on the destination - comes back
@@ -531,40 +537,9 @@ fn fetchAndCreate(env: *const Environment, url: []const u8, module_type: ModuleT
     const response = fetched.response;
     defer response.deinit();
 
-    // Step 13.1: bodyBytes null, or not an ok status (200-299).
-    if (response.response_type == .@"error") return null;
-    if (response.status < 200 or response.status >= 300) return null;
-
-    const body: []const u8 = if (response.body) |b| b.data.items else "";
-    const content_type = response.header_list.getFirstValue("content-type") orelse "";
-    const essence = mimeEssence(content_type);
-
-    // The base URL of a fetched module script is the RESPONSE's URL - after
-    // redirects - while the map stays keyed by the request URL (step 13.8's note).
-    const base_url = response.url() orelse url;
-
-    switch (module_type) {
-        // Step 13.7.2: a JavaScript MIME type and moduleType "javascript-or-wasm".
-        .javascript => {
-            if (!isJavaScriptMimeTypeEssence(essence)) return null;
-            return createJavaScriptModuleScript(env, body, base_url) catch null;
-        },
-        // Step 13.7.4: a JSON MIME type and moduleType "json".
-        .json => {
-            if (!isJsonMimeTypeEssence(essence)) return null;
-            return createJsonModuleScript(env, body, base_url) catch null;
-        },
-        // Step 13.7.3: "If the MIME type essence of mimeType is "text/css"
-        // and moduleType is "css"": a CSS module script of the body UTF-8
-        // decoded - whatever charset the response or the document names, and
-        // a BOM other than UTF-8's is text.
-        .css => {
-            if (!std.mem.eql(u8, essence, "text/css")) return null;
-            const text = css_rules.decodeUtf8(env.allocator, body) catch return null;
-            defer env.allocator.free(text);
-            return createCssModuleScript(env, text, base_url) catch null;
-        },
-    }
+    // The same response steps as the async loader, including a response's
+    // Referrer-Policy for subsequent static and dynamic imports.
+    return createFromResponse(env, url, module_type, response);
 }
 
 /// The essence of the MIME type Fetch's "extract a MIME type" finds in a
@@ -689,16 +664,20 @@ fn isJsonMimeTypeEssence(essence: []const u8) bool {
 /// Returns an owned URL (env.context_instance.ctx.allocator), or null where
 /// the spec throws its TypeError.
 fn resolveModuleSpecifier(env: *const Environment, specifier: []const u8, base_url: []const u8) ?[]const u8 {
-    // Steps 6-8: the import map. Crane's lookup takes the raw specifier; a
-    // mapping for a bare specifier is the case it serves.
+    // Steps 4-5: URL-like specifiers are normalized before the map lookup.
+    // In particular, importing import.meta.resolve()'s result applies the map
+    // again, using that absolute URL as the normalized specifier.
+    const as_url = resolveUrlLikeModuleSpecifier(env, specifier, base_url);
+    const normalized = as_url orelse specifier;
     if (env.resolveImportFn) |resolveImport| {
-        if (resolveImport(env.map.context, specifier, base_url)) |mapped| {
+        if (resolveImport(env.map.context, normalized, base_url)) |mapped| {
+            defer if (as_url) |url| env.context_instance.ctx.allocator.free(url);
             return parseUrl(env, mapped, "");
         }
     }
 
-    // Steps 4 and 9: a URL-like specifier resolves against the base URL.
-    return resolveUrlLikeModuleSpecifier(env, specifier, base_url);
+    // Step 9: with no mapping, use the URL-like resolution, if any.
+    return as_url;
 }
 
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#resolving-a-url-like-module-specifier
@@ -938,6 +917,7 @@ pub const AsyncModuleLoader = struct {
         // Resolution and request client data must survive the source element.
         self.env.context_instance = document;
         self.env.fetch_options = .{};
+        self.env.referrer = "";
         return self;
     }
 
@@ -989,6 +969,13 @@ pub const AsyncModuleLoader = struct {
     /// Starts the root fetch now, but completes only through queued tasks,
     /// after the element has joined its execution queue.
     pub fn start(self: *AsyncModuleLoader, url: []const u8, module_type: ModuleType, inline_script: ?*ModuleScript, options: FetchOptions, client: Client) !void {
+        return self.startWithReferrer(url, module_type, inline_script, options, "", client);
+    }
+
+    /// HostLoadImportedModule step 14 supplies the referencing script's base
+    /// URL as referrer. Borrow it only until startSingle makes its existing
+    /// owned copy; the graph and its queued tasks keep no additional string.
+    pub fn startWithReferrer(self: *AsyncModuleLoader, url: []const u8, module_type: ModuleType, inline_script: ?*ModuleScript, options: FetchOptions, referrer: []const u8, client: Client) !void {
         if (!supported) return error.NotSupported;
         const loop = self.env.realm().getOptionalEventLoop() orelse return error.NotSupported;
         const graph = try self.allocator.create(Graph);
@@ -1012,7 +999,7 @@ pub const AsyncModuleLoader = struct {
         graph.options.nonce = nonce;
         graph.options.integrity = integrity;
         try self.graphs.append(self.allocator, graph);
-        graph.startRoot();
+        graph.startRoot(referrer);
         graph.task_queued = true;
         // queueTask may drop and destroy the graph on allocation failure.
         loop.queueTask(.{ .callback = Graph.runTask, .context = graph, .drop = Graph.dropTask });
@@ -1108,7 +1095,7 @@ pub const AsyncModuleLoader = struct {
             };
         }
 
-        fn startRoot(self: *Graph) void {
+        fn startRoot(self: *Graph, referrer: []const u8) void {
             const loader = self.loader.?;
             const root = self.addNode(self.url, self.module_type) catch {
                 self.failed = true;
@@ -1119,7 +1106,7 @@ pub const AsyncModuleLoader = struct {
             // blob URL request. AsyncFetch.start never delivers client callbacks.
             if (self.inline_script) |script| {
                 self.receive(root, script);
-            } else loader.fetchSingle(self, root, self.options);
+            } else loader.fetchSingle(self, root, self.options, referrer);
             // Fetch-inline step 2 and fetch-descendants step 5 start known
             // imports through LoadRequestedModules before returning. A cached
             // root (fetch-single step 5) has the same immediate continuation.
@@ -1172,16 +1159,6 @@ pub const AsyncModuleLoader = struct {
             node.script = script;
             _ = self.progress.completeOne();
             if (script == null) self.failed = true;
-        }
-
-        fn referrerFor(self: *const Graph, node: *Node) []const u8 {
-            if (self.nodes.items.len == 0 or self.nodes.items[0] == node) return "";
-            for (self.nodes.items) |parent| {
-                for (parent.children.items) |child| {
-                    if (child == node) return if (parent.script) |script| script.base_url else "";
-                }
-            }
-            return "";
         }
 
         fn expand(self: *Graph, node: *Node) !void {
@@ -1237,7 +1214,7 @@ pub const AsyncModuleLoader = struct {
                 if (!child.settled and loader.pending.get(child.key) == null) {
                     var options = script.descendantFetchOptions();
                     options.integrity = env.resolveIntegrity(request.url);
-                    loader.fetchSingle(self, child, options);
+                    loader.fetchSingle(self, child, options, script.base_url);
                 } else if (!child.settled) {
                     try loader.pending.get(child.key).?.addWaiter(self, child);
                 }
@@ -1439,7 +1416,7 @@ pub const AsyncModuleLoader = struct {
         }
     };
 
-    fn fetchSingle(self: *AsyncModuleLoader, graph: *Graph, node: *Node, options: FetchOptions) void {
+    fn fetchSingle(self: *AsyncModuleLoader, graph: *Graph, node: *Node, options: FetchOptions, referrer: []const u8) void {
         // HTML fetch-single steps 5-6: completed script or callback list.
         if (self.env.map.get(node.key)) |entry| {
             if (entry != fetch_failed) {
@@ -1453,12 +1430,12 @@ pub const AsyncModuleLoader = struct {
             };
             return;
         }
-        self.startSingle(graph, node, options) catch {
+        self.startSingle(graph, node, options, referrer) catch {
             graph.failed = true;
         };
     }
 
-    fn startSingle(self: *AsyncModuleLoader, graph: *Graph, node: *Node, options: FetchOptions) !void {
+    fn startSingle(self: *AsyncModuleLoader, graph: *Graph, node: *Node, options: FetchOptions, referring_url: []const u8) !void {
         const single = try self.allocator.create(SingleFetch);
         errdefer self.allocator.destroy(single);
         const key = try self.allocator.dupe(u8, node.key);
@@ -1469,7 +1446,7 @@ pub const AsyncModuleLoader = struct {
         errdefer self.allocator.free(nonce);
         const integrity = try self.allocator.dupe(u8, options.integrity);
         errdefer self.allocator.free(integrity);
-        const referrer = try self.allocator.dupe(u8, graph.referrerFor(node));
+        const referrer = try self.allocator.dupe(u8, referring_url);
         errdefer self.allocator.free(referrer);
         single.* = .{ .allocator = self.allocator, .loader = self, .key = key, .url = url, .module_type = node.module_type, .options = options, .referrer = referrer };
         single.options.nonce = nonce;
@@ -1483,7 +1460,7 @@ pub const AsyncModuleLoader = struct {
         var request_owned = true;
         defer if (request_owned) request.deinit();
         request.mode = .cors;
-        request.credentials_mode = .same_origin;
+        request.credentials_mode = options.credentials_mode;
         request.destination = switch (node.module_type) {
             .javascript => .script,
             .json => .json,
@@ -1587,7 +1564,9 @@ fn loadRequestedModules(env: *const Environment, script: *ModuleScript) ?LoadFai
     for (requests.items) |*request| {
         // Step 14: fetch a single imported module script.
         var descendant = env.*;
+        descendant.fetch_options = script.descendantFetchOptions();
         descendant.fetch_options.integrity = env.resolveIntegrity(request.url);
+        descendant.referrer = script.base_url;
         const child = fetchSingleModuleScript(&descendant, request.url, request.module_type) orelse return .fetch_failed;
 
         // onSingleFetchComplete step 3: a child that did not parse fails the

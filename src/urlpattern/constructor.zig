@@ -80,6 +80,39 @@ pub const Component = struct {
     _owned_regex_string: ?[]u8,
     _owned_group_names: ?[][]u8,
 
+    /// A deep copy, made with `allocator`: its strings and group names its
+    /// own, its regexp the same expression with the same flags (the engine
+    /// keeps compiled regexps per agent by their string, regexp.zig).
+    pub fn clone(self: *const Component, allocator: Allocator) Allocator.Error!Component {
+        const pattern_string = try allocator.dupe(u8, self.pattern_string);
+        errdefer allocator.free(pattern_string);
+        const regex_string = try allocator.dupe(u8, self.regex_string);
+        errdefer allocator.free(regex_string);
+        const names = try allocator.alloc([]u8, self.group_names.len);
+        var made: usize = 0;
+        errdefer {
+            for (names[0..made]) |name| allocator.free(name);
+            allocator.free(names);
+        }
+        for (self.group_names) |name| {
+            names[made] = try allocator.dupe(u8, name);
+            made += 1;
+        }
+        const group_names = try allocator.alloc([]const u8, names.len);
+        for (names, group_names) |name, *slot| slot.* = name;
+        return .{
+            .pattern_string = pattern_string,
+            .regexp = .{ .source = regex_string, .ignore_case = self.regexp.ignore_case },
+            .regex_string = regex_string,
+            .group_names = group_names,
+            .has_regexp_groups = self.has_regexp_groups,
+            ._allocator = allocator,
+            ._owned_pattern_string = pattern_string,
+            ._owned_regex_string = regex_string,
+            ._owned_group_names = names,
+        };
+    }
+
     pub fn deinit(self: *Component) void {
         if (self._owned_pattern_string) |s| self._allocator.free(s);
         if (self._owned_regex_string) |s| self._allocator.free(s);
@@ -203,6 +236,38 @@ pub const URLPattern = struct {
             .search = search,
             .hash = hash,
             .ignore_case = options.ignore_case,
+        };
+    }
+
+    /// A deep copy of the pattern, made with `allocator`, that lives on its
+    /// own: what a Service Workers router rule keeps of a URLPattern object
+    /// (Parse URL Pattern: "its associated URL pattern").
+    pub fn clone(self: *const Self, allocator: Allocator) Allocator.Error!Self {
+        var protocol = try self.protocol.clone(allocator);
+        errdefer protocol.deinit();
+        var username = try self.username.clone(allocator);
+        errdefer username.deinit();
+        var password = try self.password.clone(allocator);
+        errdefer password.deinit();
+        var hostname = try self.hostname.clone(allocator);
+        errdefer hostname.deinit();
+        var port = try self.port.clone(allocator);
+        errdefer port.deinit();
+        var pathname = try self.pathname.clone(allocator);
+        errdefer pathname.deinit();
+        var search = try self.search.clone(allocator);
+        errdefer search.deinit();
+        const hash = try self.hash.clone(allocator);
+        return .{
+            .protocol = protocol,
+            .username = username,
+            .password = password,
+            .hostname = hostname,
+            .port = port,
+            .pathname = pathname,
+            .search = search,
+            .hash = hash,
+            .ignore_case = self.ignore_case,
         };
     }
 

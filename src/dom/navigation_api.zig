@@ -100,6 +100,8 @@ pub const PageSwap = struct {
 
 pub const Implementation = struct {
     same_document_navigation: *const fn (window: *runtime.Instance, kind: Kind) void,
+    /// HTML's focus-changed flag, set by focus updates and cleared by fixup.
+    set_focus_changed: *const fn (window: *runtime.Instance, changed: bool) void,
     /// "Fire the pageswap event" step 4's activation for `window`'s
     /// navigation API, in its realm; null when none can be made.
     page_swap_activation: *const fn (window: *runtime.Instance, swap: *const PageSwap) ?*runtime.Instance,
@@ -132,6 +134,12 @@ pub fn install(impl: Implementation) void {
 pub fn sameDocumentNavigation(window: *runtime.Instance, kind: Kind) void {
     const impl = implementation orelse return;
     impl.same_document_navigation(window, kind);
+}
+
+/// Update the existing navigation focus flag without creating a Navigation.
+pub fn setFocusChanged(window: *runtime.Instance, changed: bool) void {
+    const impl = implementation orelse return;
+    impl.set_focus_changed(window, changed);
 }
 
 /// HTML "fire a push/replace/reload navigate event" at `window`'s

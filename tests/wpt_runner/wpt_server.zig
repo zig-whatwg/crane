@@ -75,6 +75,26 @@ pub const Listener = enum {
     }
 };
 
+/// WPT's manifest joins filename flags with the decoded `wpt_flags` query
+/// values (tools/manifest/item.py, URLManifestItem._flags and .https).
+fn hasHttpsQueryFlag(variant: []const u8) bool {
+    const before_fragment = variant[0 .. std.mem.indexOfScalar(u8, variant, '#') orelse variant.len];
+    const query_start = std.mem.indexOfScalar(u8, before_fragment, '?') orelse return false;
+    var fields = std.mem.splitScalar(u8, before_fragment[query_start + 1 ..], '&');
+    while (fields.next()) |field| {
+        const equals = std.mem.indexOfScalar(u8, field, '=') orelse continue;
+        var key_buffer: ["wpt_flags".len]u8 = undefined;
+        const key = (std.Uri.Component{ .percent_encoded = field[0..equals] }).toRaw(&key_buffer) catch continue;
+        if (!std.mem.eql(u8, key, "wpt_flags")) continue;
+        var value_buffer: ["https".len]u8 = undefined;
+        const value = (std.Uri.Component{ .percent_encoded = field[equals + 1 ..] }).toRaw(&value_buffer) catch continue;
+        // Form decoding also maps '+' to space; neither target contains a
+        // space, so a '+' cannot match either target even without that step.
+        if (std.mem.eql(u8, value, "https")) return true;
+    }
+    return false;
+}
+
 /// The origin a test's document has, on `wpt serve`'s default ports: the
 /// HTTP/2 listener's (9000), the TLS one's (8443) or the plain one's (8000).
 /// Every place that builds a test's URL starts from this, so the three
@@ -359,7 +379,7 @@ pub const WptServer = struct {
     /// - Window context: test.any.html (runs test directly in window)
     /// - Worker context: test.any.worker.html (uses fetch_tests_from_worker)
     ///
-    /// A `.https.` test is routed to the TLS listener; see `isHttpsTest`.
+    /// A `.https.` filename or `wpt_flags=https` query selects the TLS listener.
     ///
     /// `variant` is one of the file's `<meta name="variant">` values, appended
     /// verbatim after the wrapper suffix because it already carries its own `?`
@@ -399,10 +419,11 @@ pub const WptServer = struct {
         // name says (WPT's manifest: its URL's "serviceworker" flag makes
         // it https, tools/manifest/item.py) - a service worker needs a
         // secure context.
-        const listener: Listener = switch (context) {
+        var listener: Listener = switch (context) {
             .serviceworker, .serviceworker_module => if (Listener.of(test_path) == .h2) .h2 else .https,
             else => Listener.of(test_path),
         };
+        if (listener == .http and hasHttpsQueryFlag(variant)) listener = .https;
         return std.fmt.allocPrint(allocator, "{s}://{s}:{d}/{s}{s}{s}", .{
             listener.scheme(),
             WPT_HOST,
@@ -702,6 +723,48 @@ test "a .https. test is fetched over TLS on the HTTPS port" {
             url,
         );
     }
+}
+
+test "HTTPS query flags select the TLS listener without matching other parameters" {
+    const allocator = std.testing.allocator;
+    const server = try WptServer.init(allocator, "tests/wpt");
+    defer server.deinit();
+    server.port = 8001;
+    server.https_port = 8444;
+
+    const cases = [_]struct {
+        path: []const u8 = "websockets/cookies/006.html",
+        variant: []const u8 = "",
+        origin: []const u8,
+    }{
+        .{ .path = "crane/ws3-secure-cookie.https.html", .origin = "https://web-platform.test:8444" },
+        .{ .variant = "?wss&wpt_flags=https", .origin = "https://web-platform.test:8444" },
+        .{ .origin = "http://web-platform.test:8001" },
+        .{ .variant = "?wpt_flags=www&wpt_flags=https#fragment", .origin = "https://web-platform.test:8444" },
+        .{ .variant = "?wpt%5Fflags=h%74tps", .origin = "https://web-platform.test:8444" },
+        .{ .variant = "?not_wpt_flags=https", .origin = "http://web-platform.test:8001" },
+        .{ .variant = "?wpt_flags=https-extra", .origin = "http://web-platform.test:8001" },
+        .{ .variant = "?wpt_flags=HTTPS", .origin = "http://web-platform.test:8001" },
+        .{ .variant = "?other=wpt_flags%3Dhttps", .origin = "http://web-platform.test:8001" },
+        .{ .variant = "#?wpt_flags=https", .origin = "http://web-platform.test:8001" },
+        .{ .variant = "?other=1#wpt_flags=https", .origin = "http://web-platform.test:8001" },
+    };
+    for (cases) |case| {
+        const built = try server.buildTestUrl(allocator, case.path, .window, case.variant);
+        defer allocator.free(built);
+        try std.testing.expectEqualStrings(case.origin, originOfUrl(built).?);
+        const expected = try std.mem.concat(allocator, u8, &.{ case.origin, "/", case.path, case.variant });
+        defer allocator.free(expected);
+        try std.testing.expectEqualStrings(expected, built);
+    }
+
+    const worker_url = try server.buildTestUrl(allocator, "crane/ws3-flag.any.js", .worker, "?wpt_flags=https");
+    defer allocator.free(worker_url);
+    try std.testing.expectEqualStrings("https://web-platform.test:8444/crane/ws3-flag.any.worker.html?wpt_flags=https", worker_url);
+
+    const h2_url = try server.buildTestUrl(allocator, "example.h2.html", .window, "?wpt_flags=https");
+    defer allocator.free(h2_url);
+    try std.testing.expectEqualStrings("https://web-platform.test:9000/example.h2.html?wpt_flags=https", h2_url);
 }
 
 test "a .h2. test is fetched from the HTTP/2 listener, and every URL builder agrees" {
