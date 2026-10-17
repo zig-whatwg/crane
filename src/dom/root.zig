@@ -131,6 +131,7 @@ pub const policy_containers = @import("policy_containers.zig");
 /// CSP 5.5 report a violation: the securitypolicyviolation event at the
 /// global's side.
 pub const csp_violations = @import("csp_violations.zig");
+pub const sri_reporting = @import("sri_reporting.zig");
 pub const reporting = @import("reporting.zig");
 /// Trusted Types enforcement: get trusted type compliant string, the
 /// default policy, compliant attribute values.

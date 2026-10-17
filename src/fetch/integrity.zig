@@ -19,6 +19,7 @@
 const std = @import("std");
 const platform = @import("platform");
 const base64 = @import("infra").base64;
+const request_mod = @import("internal/request.zig");
 
 const Algorithm = enum(u8) {
     sha256,
@@ -108,4 +109,49 @@ pub fn matches(allocator: std.mem.Allocator, metadata: []const u8, bytes: []cons
         if (std.mem.eql(u8, digest, decoded)) return true;
     }
     return false;
+}
+
+/// SRI §3.8.2, called by main fetch step 7 before dispatch. Policies are
+/// the concrete client snapshot populated on the request. Empty policies
+/// and unsupported destinations do not parse metadata or allocate.
+pub fn shouldRequestBeBlocked(request: *const request_mod.InternalRequest) bool {
+    // Browser majority currently ships only the script policy destination
+    // (see PolicyContainer's parser); stylesheet SRI matching is separate.
+    if (request.destination != .script) return false;
+    const container = switch (request.policy_container) {
+        .client => return false,
+        .container => |*value| value,
+    };
+    // Steps 5-7 and 12-13: compute whether either policy applies first.
+    // Parsing metadata is pure, so the empty-policy fast path is equivalent
+    // to the spec's later early return and performs no unnecessary work.
+    const block = if (container.integrity_policy) |policy| policy.inline_source and policy.block_script else false;
+    const report_block = if (container.integrity_policy_report_only) |policy| policy.inline_source and policy.block_script else false;
+    if (!block and !report_block) return false;
+    // Steps 2-3: syntactically accepted metadata plus a CORS-readable mode.
+    if ((request.mode == .cors or request.mode == .same_origin) and strongest(request.integrity_metadata) != null) return false;
+    // Step 4: Fetch's local schemes are about, blob and data (not file).
+    const url = request.getUrl();
+    if (std.mem.indexOfScalar(u8, url, ':')) |colon| {
+        const scheme = url[0..colon];
+        if (std.ascii.eqlIgnoreCase(scheme, "about") or std.ascii.eqlIgnoreCase(scheme, "blob") or std.ascii.eqlIgnoreCase(scheme, "data")) return false;
+    }
+    // Steps 8-9, 14: the client supplies its global's borrowed reporter.
+    // A native caller may omit it; enforcement still fails closed.
+    if (request.integrity_violation_reporter) |reporter| {
+        if (block) reporter.report(reporter.context, &.{
+            .blocked_url = url,
+            .destination = request.destination,
+            .report_only = false,
+            .endpoints = container.integrity_policy.?.endpoints.items,
+        });
+        if (report_block) reporter.report(reporter.context, &.{
+            .blocked_url = url,
+            .destination = request.destination,
+            .report_only = true,
+            .endpoints = container.integrity_policy_report_only.?.endpoints.items,
+        });
+    }
+    // Step 15: report-only never blocks.
+    return block;
 }

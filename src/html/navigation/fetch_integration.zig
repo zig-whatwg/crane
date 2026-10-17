@@ -487,8 +487,11 @@ pub fn resultFromResponse(
         "allow-csp-from",
         "reporting-endpoints",
         "x-frame-options",
-        // HTML "create a policy container from a fetch response" step 5.
+        // HTML "create a policy container from a fetch response" steps 5-6,
+        // including the SRI §3.8 integrity policies.
         "referrer-policy",
+        "integrity-policy",
+        "integrity-policy-report-only",
         // HTML "create and initialize a Document object" step 17.
         "refresh",
         // Its step 7.1: the document's requestsOAC (dom.agent_cluster_keys).

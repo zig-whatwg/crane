@@ -57,6 +57,8 @@ pub const RequestClient = struct {
     /// (Resource Timing "mark resource timing"). BORROWED, as
     /// csp_violation_reporter is. Null for a global that reports none.
     timing_reporter: ?request_mod.TimingReporter = null,
+    /// SRI §3.8.3. BORROWED with the CSP reporter's client lifetime.
+    integrity_violation_reporter: ?request_mod.IntegrityViolationReporter = null,
 };
 
 /// Fetch "populate request from client", for a request whose client is the
@@ -129,6 +131,7 @@ pub fn populateRequestFromClient(request: *InternalRequest, client: RequestClien
     // Fetch "fetch response handover" step 4.3: the report timing steps run
     // given the request's client's global.
     if (request.timing_reporter == null) request.timing_reporter = client.timing_reporter;
+    if (request.integrity_violation_reporter == null) request.integrity_violation_reporter = client.integrity_violation_reporter;
 }
 
 test "populate request from client: traversable, origin, referrer and jar" {

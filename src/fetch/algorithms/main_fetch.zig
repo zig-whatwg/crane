@@ -214,6 +214,12 @@ pub fn mainFetchStart(
         return .{ .response = try internal_response.networkError(allocator) };
     }
 
+    // Step 7 (Integrity Policy): reject before dispatch, while reporting
+    // report-only violations without changing the request's outcome.
+    if (integrity.shouldRequestBeBlocked(request)) {
+        return .{ .response = try internal_response.networkError(allocator) };
+    }
+
     // Step 7: Check MIME type blocking (stubbed - requires nosniff implementation)
     // TODO: Implement MIME type blocking
 
