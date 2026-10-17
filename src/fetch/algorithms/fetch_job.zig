@@ -102,6 +102,8 @@ pub const FetchJob = struct {
     network_request_is_preflight: bool = false,
     /// Set once the job is `.done`.
     response: ?*InternalResponse = null,
+    /// Main fetch step 23's response, owned until its full body is checked.
+    pending_response: ?*InternalResponse = null,
     is_authentication_fetch: bool = false,
     authentication_realm: ?[]u8 = null,
 
@@ -110,6 +112,9 @@ pub const FetchJob = struct {
         /// HTTP-network fetch's request, for the network to answer. Hand the
         /// answer to `resumeNetwork`. Borrowed from the job until then.
         network: NetworkStep,
+        /// Main fetch step 23 needs the whole response body. Resume with
+        /// resumeBody once its pipe has ended (finished or failed).
+        body,
         /// Fetch has its response; `takeResult` hands it over.
         done,
     };
@@ -152,6 +157,7 @@ pub const FetchJob = struct {
         if (self.authentication_realm) |realm| allocator.free(realm);
         if (self.network_request) |request| http_fetch.freeNetworkRequest(allocator, request);
         if (self.response) |response| response.deinit();
+        if (self.pending_response) |response| response.deinit();
         self.params.deinit();
         self.controller.deinit();
         self.timing_info.deinit();
@@ -414,7 +420,24 @@ pub const FetchJob = struct {
                 return FetchError.OutOfMemory;
             };
         }
-        return self.finish(main_fetch.mainFetchFinish(self.params, false, r));
+        const final_response = main_fetch.mainFetchFinish(self.params, false, r);
+        // Main fetch step 23 precedes handover only when integrity is set.
+        // Recursive redirect fetches return at step 13, above this branch.
+        if (self.request.integrity_metadata.len != 0) {
+            if (!main_fetch.integrityBodyEligible(final_response))
+                return self.finish(main_fetch.mainFetchIntegrity(self.params, final_response));
+            self.pending_response = final_response;
+            return .body;
+        }
+        return self.finish(final_response);
+    }
+
+    /// Resume main fetch step 23 after the complete body (or its error).
+    /// Timing and process_response remain in finish, after verification.
+    pub fn resumeBody(self: *FetchJob) FetchError!Step {
+        const response = self.pending_response orelse return FetchError.NetworkError;
+        self.pending_response = null;
+        return self.finish(main_fetch.mainFetchIntegrity(self.params, response));
     }
 
     /// Fetch's steps after main fetch returned `response`.

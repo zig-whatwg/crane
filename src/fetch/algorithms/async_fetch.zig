@@ -66,6 +66,7 @@ pub const AsyncFetch = struct {
     transfer: ?*NetworkScheduler.Job = null,
     /// The transfer has not delivered its headers yet.
     awaiting_head: bool = false,
+    awaiting_body: bool = false,
     /// The network end of the body arriving now: this fetch is its producer
     /// until the body ends, or until nobody reads it.
     source: ?*PipeSource = null,
@@ -134,6 +135,9 @@ pub const AsyncFetch = struct {
             request.deinit();
             return FetchError.NetworkError;
         };
+        // SRI must fully read before handover. Existing collect mode gives
+        // the source a producer that never pauses waiting for a reader.
+        const collect_body = collect or request.integrity_metadata.len != 0;
         const job = FetchJob.create(allocator, request, true, options) catch |err| {
             request.deinit();
             return err;
@@ -146,7 +150,7 @@ pub const AsyncFetch = struct {
             .allocator = allocator,
             .job = job,
             .fetches = fetches,
-            .collect = collect,
+            .collect = collect_body,
             .client = client,
         };
         fetches.live.append(fetches.allocator, self) catch return FetchError.OutOfMemory;
@@ -230,6 +234,14 @@ pub const AsyncFetch = struct {
                 return;
             };
             switch (s) {
+                .body => {
+                    if (self.source == null) {
+                        next = self.job.resumeBody();
+                        continue;
+                    }
+                    self.awaiting_body = true;
+                    return;
+                },
                 .done => {
                     self.outcome = self.job.takeResult();
                     return;
@@ -302,6 +314,10 @@ pub const AsyncFetch = struct {
         const source = self.source orelse return;
         self.source = null;
         if (result) |_| source.finish() else |_| source.fail(.{ .kind = .network });
+        if (self.awaiting_body) {
+            self.awaiting_body = false;
+            self.advance(self.job.resumeBody());
+        }
     }
 
     /// The body's source has no reader left: stop the transfer. The source is

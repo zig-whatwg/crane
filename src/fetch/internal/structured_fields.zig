@@ -1,6 +1,6 @@
 //! RFC 9651 §4.2 parsing, projected onto what its callers consume: a
-//! Dictionary's String values (Reporting §3.3), and an Item's Boolean
-//! (HTML's `Origin-Agent-Cluster`). Other item types, inner lists and
+//! Dictionary's String values (Reporting §3.3), token inner lists (SRI
+//! §3.8), and an Item's Boolean (HTML's `Origin-Agent-Cluster`). Other items and
 //! parameters are fully validated before being discarded; one malformed
 //! value rejects the entire field. Keys borrow the input; String values are
 //! owned.
@@ -19,34 +19,66 @@ pub const Dictionary = struct {
     }
 };
 
+/// Keys and tokens borrow the input; each non-null token array is owned.
+/// null distinguishes a scalar member from an empty inner list.
+pub const TokenListMember = struct { key: []const u8, tokens: ?[]const []const u8 };
+pub const TokenListDictionary = struct {
+    members: std.ArrayListUnmanaged(TokenListMember) = .empty,
+
+    pub fn deinit(self: *TokenListDictionary, allocator: Allocator) void {
+        for (self.members.items) |member| if (member.tokens) |tokens| allocator.free(tokens);
+        self.members.deinit(allocator);
+    }
+};
+
 pub fn parseDictionary(allocator: Allocator, input: []const u8) Error!Dictionary {
+    return parseDictionaryAs(Dictionary, allocator, input);
+}
+
+/// SRI §3.8 consumes inner-list tokens only. Non-token items are validated
+/// and skipped, as Blink HandleKeyValue and WebKit parseInnerList do.
+pub fn parseTokenListDictionary(allocator: Allocator, input: []const u8) Error!TokenListDictionary {
+    return parseDictionaryAs(TokenListDictionary, allocator, input);
+}
+
+fn parseDictionaryAs(comptime T: type, allocator: Allocator, input: []const u8) Error!T {
+    const value_field = if (T == Dictionary) "string" else "tokens";
+    const Entry = if (T == Dictionary) Member else TokenListMember;
+    const Value = if (T == Dictionary) ?[]u8 else ?[]const []const u8;
     // §4.2 steps 1-2: ASCII, then leading SP (not HTAB).
     for (input) |c| if (c > 127) return error.InvalidField;
     var parser: Parser = .{ .allocator = allocator, .input = input };
     parser.spaces();
-    var result: Dictionary = .{};
+    var result: T = .{};
     errdefer result.deinit(allocator);
     while (parser.peek() != null) {
         const key = try parser.key();
-        const string = if (parser.consume('=')) try parser.member() else blk: {
+        const value: Value = if (parser.consume('=')) blk: {
+            break :blk if (T == Dictionary) try parser.member() else try parser.tokenMember();
+        } else blk: {
             try parser.parameters();
             break :blk null;
         };
-        var string_owned = true;
-        defer if (string_owned) {
-            if (string) |s| allocator.free(s);
+        var value_owned = true;
+        defer if (value_owned) {
+            if (value) |v| allocator.free(v);
         };
         // §4.2.2 steps 2.4-5: replacement preserves the original position.
         var replaced = false;
         for (result.members.items) |*entry| {
             if (!std.mem.eql(u8, entry.key, key)) continue;
-            if (entry.string) |s| allocator.free(s);
-            entry.string = string;
+            if (@field(entry.*, value_field)) |v| allocator.free(v);
+            @field(entry.*, value_field) = value;
             replaced = true;
             break;
         }
-        if (!replaced) try result.members.append(allocator, .{ .key = key, .string = string });
-        string_owned = false;
+        if (!replaced) {
+            var entry: Entry = undefined;
+            entry.key = key;
+            @field(entry, value_field) = value;
+            try result.members.append(allocator, entry);
+        }
+        value_owned = false;
         parser.ows();
         if (parser.peek() == null) break;
         if (!parser.consume(',')) return error.InvalidField;
@@ -119,21 +151,39 @@ const Parser = struct {
 
     // §4.2.1.1-2: no nested lists, only SP between inner items.
     fn member(self: *Parser) Error!?[]u8 {
-        if (self.consume('(')) {
-            while (true) {
-                self.spaces();
-                if (self.consume(')')) break;
-                if (try self.bare()) |s| self.allocator.free(s);
-                try self.parameters();
-                if (self.peek() != ' ' and self.peek() != ')') return error.InvalidField;
-            }
-            try self.parameters();
+        if (self.peek() == '(') {
+            self.allocator.free(try self.innerList(false));
             return null;
         }
         const parsed_string = try self.bare();
         errdefer if (parsed_string) |s| self.allocator.free(s);
         try self.parameters();
         return parsed_string;
+    }
+
+    fn tokenMember(self: *Parser) Error!?[]const []const u8 {
+        if (self.peek() == '(') return try self.innerList(true);
+        if (try self.member()) |s| self.allocator.free(s);
+        return null;
+    }
+
+    fn innerList(self: *Parser, comptime retain_tokens: bool) Error![]const []const u8 {
+        if (!self.consume('(')) return error.InvalidField;
+        var tokens: std.ArrayListUnmanaged([]const u8) = .empty;
+        errdefer tokens.deinit(self.allocator);
+        while (true) {
+            self.spaces();
+            if (self.consume(')')) break;
+            const item = try self.bareItem();
+            defer if (item.string) |s| self.allocator.free(s);
+            if (retain_tokens) {
+                if (item.token) |token| try tokens.append(self.allocator, token);
+            }
+            try self.parameters();
+            if (self.peek() != ' ' and self.peek() != ')') return error.InvalidField;
+        }
+        try self.parameters();
+        return tokens.toOwnedSlice(self.allocator);
     }
     fn parameters(self: *Parser) Error!void {
         while (self.consume(';')) {
@@ -145,9 +195,13 @@ const Parser = struct {
         }
     }
     fn bare(self: *Parser) Error!?[]u8 {
+        return (try self.bareItem()).string;
+    }
+    const BareItem = struct { string: ?[]u8 = null, token: ?[]const u8 = null };
+    fn bareItem(self: *Parser) Error!BareItem {
         const c = self.peek() orelse return error.InvalidField;
         switch (c) {
-            '"' => return try self.string(false),
+            '"' => return .{ .string = try self.string(false) },
             '%' => {
                 self.position += 1;
                 const s = try self.string(true);
@@ -165,14 +219,16 @@ const Parser = struct {
             ':' => try self.bytes(),
             'A'...'Z', 'a'...'z', '*' => {
                 // §4.2.6: tchar plus ':' and '/'.
+                const start = self.position;
                 while (self.peek()) |ch| {
                     if (!std.ascii.isAlphanumeric(ch) and std.mem.indexOfScalar(u8, "!#$%&'*+-.^_`|~:/", ch) == null) break;
                     self.position += 1;
                 }
+                return .{ .token = self.input[start..self.position] };
             },
             else => return error.InvalidField,
         }
-        return null;
+        return .{};
     }
     /// §4.2.4: return true for Decimal (Date requires Integer).
     fn number(self: *Parser) Error!bool {

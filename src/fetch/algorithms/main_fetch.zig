@@ -34,6 +34,7 @@ const csp_check = @import("csp_check.zig");
 const mixed_content = @import("../mixed_content.zig");
 const origins = @import("../internal/origins.zig");
 const clock = @import("clock");
+const integrity = @import("../integrity.zig");
 
 /// Bad ports that should be blocked per Fetch spec.
 /// These are ports commonly associated with protocols that shouldn't
@@ -210,6 +211,12 @@ pub fn mainFetchStart(
     // error." Each redirect runs main fetch again, so a redirect to a URL
     // the policy does not allow is blocked too.
     if (csp_check.shouldRequestBeBlocked(request)) {
+        return .{ .response = try internal_response.networkError(allocator) };
+    }
+
+    // Step 7 (Integrity Policy): reject before dispatch, while reporting
+    // report-only violations without changing the request's outcome.
+    if (integrity.shouldRequestBeBlocked(request)) {
         return .{ .response = try internal_response.networkError(allocator) };
     }
 
@@ -535,6 +542,44 @@ pub fn mainFetchFinish(
 
     // Step 17-18: Process callbacks (handled by caller)
 
+    return response;
+}
+
+/// Main fetch step 23.2 reads the FILTERED body's nullness. Crane retains
+/// internal bytes on an opaque response, but those are never eligible for
+/// SRI. Reject at headers so an ineligible stream need not end first.
+pub fn integrityBodyEligible(response: *const InternalResponse) bool {
+    return response.response_type != .@"error" and
+        response.response_type != .@"opaque" and
+        response.response_type != .opaqueredirect and response.body != null;
+}
+
+/// Main fetch step 23.1-23.4, called only for nonempty integrity metadata,
+/// before handover. Eligible pipes have ended; settle their full bytes into
+/// the existing body. A null/errored body or a mismatch is a network error.
+pub fn mainFetchIntegrity(params: *FetchParams, response: *InternalResponse) *InternalResponse {
+    if (isNetworkError(response)) return response;
+    if (!integrityBodyEligible(response)) return integrityError(response);
+    const body = response.body.?;
+    if (body.pipe) |pipe| {
+        if (pipe.state != .closed) return integrityError(response);
+        body.settlePipe() catch return integrityError(response);
+    }
+    if (!(integrity.matches(response.allocator, params.request.integrity_metadata, body.getBytes()) catch false))
+        return integrityError(response);
+    return response;
+}
+
+/// processBodyError: fail closed without allocating, including on OOM.
+/// Clearing the internal body releases its reader and cancels its source.
+fn integrityError(response: *InternalResponse) *InternalResponse {
+    response.response_type = .@"opaque";
+    response.applyFilter();
+    response.response_type = .@"error";
+    response.network_error_cause = .unspecified;
+    response.timing_allow_passed = false;
+    response.body_info = .{};
+    response.cache_state = .empty;
     return response;
 }
 
