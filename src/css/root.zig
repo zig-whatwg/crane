@@ -110,6 +110,8 @@ pub const style_values = @import("style_values.zig");
 pub const properties = @import("properties.zig");
 pub const declarations = @import("declarations.zig");
 pub const media_queries = @import("media_queries.zig");
+pub const computed_style = @import("computed_style.zig");
+pub const cascade = @import("cascade.zig");
 
 // ============================================================================
 // Tests
