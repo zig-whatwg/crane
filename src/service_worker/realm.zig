@@ -931,9 +931,11 @@ fn windowDataOf(allocator: std.mem.Allocator, realm: runtime.Context) !?WindowDa
     if (!dom.document_activity.fullyActive(global, runtime.SlabAllocator.generationOf(global))) return null;
     const document = try interfaces.Window.get_document(global);
     var data: WindowData = .{};
-    // visibilityState, and the has focus steps.
+    // visibilityState, and the has focus steps (html.focus: the focused
+    // areas from the top-level traversable's active document down). Not
+    // document.hasFocus(), whose impl answers true for every document.
     data.visible = (try interfaces.Document.get_visibilityState(document)) == ._visible_;
-    data.focused = try interfaces.Document.call_hasFocus(document);
+    data.focused = html.focus.hasFocus(document);
     // The active document's ancestor origins list.
     const location = try interfaces.Window.get_location(global);
     const list = try interfaces.Location.get_ancestorOrigins(location);
