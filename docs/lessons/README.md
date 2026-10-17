@@ -456,6 +456,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A handler form scope requires a form-associated element](spec-compliance-a-handler-form-scope-requires-a-form-associated-element.md) - Form ancestry alone does not establish a form owner, and supplying the right scope does not establish the right compilation time.
 - [Binary strings still need UTF-8 transport](spec-compliance-binary-strings-still-need-utf8-transport.md) - The string's specified code units and its internal transport encoding are separate contracts; satisfy both.
 - [Blob URL lookup excludes fragments, but revocation does not](spec-compliance-blob-url-lookup-excludes-fragments-but-revocation-does-not.md) - Normalize for the specific algorithm, then compare the entire key; a matching UUID suffix is insufficient.
+- [A byte-color quantizer may preserve floating-point alpha](spec-compliance-byte-color-quantizers-may-preserve-alpha.md) - Check the precision of alpha separately from RGB; apply the caller's required rounding at its own boundary.
+- [Input stepping uses the signed count](spec-compliance-input-stepping-uses-the-signed-count.md) - Preserve decimal inputs through arithmetic, and test direction as a signed count rather than a method name.
 
 ### Codegen
 
