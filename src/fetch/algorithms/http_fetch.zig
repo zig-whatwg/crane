@@ -796,6 +796,11 @@ fn httpRequestHeaders(allocator: Allocator, request: *InternalRequest, added: *s
     //       append (`User-Agent`, the environment default `User-Agent`
     //       value).
     if (!list.contains("User-Agent")) try addHeader(allocator, added, "User-Agent", userAgentOf(request));
+    // Browser-selected HTTP/1.1 header (permitted by Fetch 4.6 step 8.20):
+    // Chrome 154, Firefox 157 and Safari 27 pass all eight referrer-policy
+    // generic/subresource-test header checks at WPT cc74d2669f. Add it only
+    // to the network headers; libcurl filters Connection for HTTP/2 and /3.
+    if (!list.contains("Connection")) try addHeader(allocator, added, "Connection", "keep-alive");
     // 8.16. A conditional request in cache mode "default" is "no-store".
     var cache_mode = request.cache_mode;
     if (cache_mode == .default) {
@@ -2104,6 +2109,7 @@ test "HTTP-network-or-cache fetch step 8: User-Agent, a null body's Content-Leng
     const want = [_][2][]const u8{
         .{ "Content-Length", "0" },
         .{ "User-Agent", default_user_agent },
+        .{ "Connection", "keep-alive" },
         .{ "Pragma", "no-cache" },
         .{ "Cache-Control", "no-cache" },
         .{ "Accept-Encoding", "identity" },
@@ -2124,9 +2130,11 @@ test "HTTP-network-or-cache fetch step 8: User-Agent, a null body's Content-Leng
     try request.header_list.append("User-Agent", "mine");
     try request.header_list.append("If-None-Match", "x");
     try httpRequestHeaders(allocator, request, &added);
-    try std.testing.expectEqual(2, added.items.len);
-    try std.testing.expectEqualStrings("Pragma", added.items[0].name);
-    try std.testing.expectEqualStrings("Cache-Control", added.items[1].name);
+    try std.testing.expectEqual(3, added.items.len);
+    try std.testing.expectEqualStrings("Connection", added.items[0].name);
+    try std.testing.expectEqualStrings("keep-alive", added.items[0].value);
+    try std.testing.expectEqualStrings("Pragma", added.items[1].name);
+    try std.testing.expectEqualStrings("Cache-Control", added.items[2].name);
 }
 
 test "HTTP fetch step 4.5: the TAO check - basic tainting, `*`, the request's origin - else the timing allow failed flag" {

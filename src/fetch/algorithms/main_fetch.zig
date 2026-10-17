@@ -596,6 +596,8 @@ fn blockedByMixedContent(request: *const InternalRequest, response: *InternalRes
     response.response_type = .@"error";
     response.network_error_cause = .unspecified;
     response.timing_allow_passed = false;
+    response.body_info = .{};
+    response.cache_state = .empty;
     return response;
 }
 
