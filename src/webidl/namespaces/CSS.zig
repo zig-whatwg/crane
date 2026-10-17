@@ -93,6 +93,15 @@ pub const CSS = struct {
 
         pub const has_constructor = false;
         pub const properties = .{};
+
+        /// Attribute binding hints (JS name, getter, implemented by the impl)
+        pub const attributes = .{
+            .{ "animationWorklet", "get_animationWorklet", @hasDecl(CSS_impl, "get_animationWorklet") },
+            .{ "highlights", "get_highlights", @hasDecl(CSS_impl, "get_highlights") },
+            .{ "elementSources", "get_elementSources", @hasDecl(CSS_impl, "get_elementSources") },
+            .{ "layoutWorklet", "get_layoutWorklet", @hasDecl(CSS_impl, "get_layoutWorklet") },
+            .{ "paintWorklet", "get_paintWorklet", @hasDecl(CSS_impl, "get_paintWorklet") },
+        };
     };
 
     pub const State = struct {};
@@ -412,13 +421,43 @@ pub const CSS = struct {
         } },
     };
 
-    pub const animationWorklet: runtime.JSValue = undefined;
+    pub fn get_animationWorklet(ctx: runtime.Context) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(CSS_impl, "get_animationWorklet")) {
+            return try CSS_impl.get_animationWorklet(ctx);
+        } else {
+            return error.NotImplemented;
+        }
+    }
 
-    pub const highlights: runtime.JSValue = undefined;
+    pub fn get_highlights(ctx: runtime.Context) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(CSS_impl, "get_highlights")) {
+            return try CSS_impl.get_highlights(ctx);
+        } else {
+            return error.NotImplemented;
+        }
+    }
 
-    pub const elementSources: runtime.JSValue = undefined;
+    pub fn get_elementSources(ctx: runtime.Context) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(CSS_impl, "get_elementSources")) {
+            return try CSS_impl.get_elementSources(ctx);
+        } else {
+            return error.NotImplemented;
+        }
+    }
 
-    pub const layoutWorklet: runtime.JSValue = undefined;
+    pub fn get_layoutWorklet(ctx: runtime.Context) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(CSS_impl, "get_layoutWorklet")) {
+            return try CSS_impl.get_layoutWorklet(ctx);
+        } else {
+            return error.NotImplemented;
+        }
+    }
 
-    pub const paintWorklet: runtime.JSValue = undefined;
+    pub fn get_paintWorklet(ctx: runtime.Context) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(CSS_impl, "get_paintWorklet")) {
+            return try CSS_impl.get_paintWorklet(ctx);
+        } else {
+            return error.NotImplemented;
+        }
+    }
 };

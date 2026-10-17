@@ -3388,6 +3388,25 @@ pub fn generateNamespace(
     try w.writeAll("        \n");
     try w.writeAll("        pub const has_constructor = false;\n");
     try w.writeAll("        pub const properties = .{};\n");
+    // The regular attributes (WebIDL 3.13.1: accessor properties of the
+    // namespace object; a namespace's are readonly): JS name, getter, and
+    // whether the impl implements it - the binding installs only those, so
+    // an attribute nothing implements yet is no property, as before.
+    var any_attribute = false;
+    for (namespace.members) |member| {
+        if (member.type == .attribute and member.attribute != null) any_attribute = true;
+    }
+    if (any_attribute) {
+        try w.writeAll("        \n");
+        try w.writeAll("        /// Attribute binding hints (JS name, getter, implemented by the impl)\n");
+        try w.writeAll("        pub const attributes = .{\n");
+        for (namespace.members) |member| {
+            if (member.type != .attribute) continue;
+            const attr = member.attribute orelse continue;
+            try w.print("            .{{ \"{s}\", \"get_{s}\", @hasDecl({s}_impl, \"get_{s}\") }},\n", .{ attr.name, attr.name, namespace.name, attr.name });
+        }
+        try w.writeAll("        };\n");
+    }
     try w.writeAll("    };\n\n");
 
     // Generate empty State for V8Interface compatibility
@@ -3437,19 +3456,23 @@ pub fn generateNamespace(
         try w.writeAll("    };\n\n");
     }
 
-    // Generate attributes
+    // Generate attributes: each readonly regular attribute's getter, which
+    // runs the impl's getter steps with the current realm - answering
+    // NotImplemented until the impl declares `get_<name>` (Meta.attributes
+    // tells the binding which ones it does).
     for (namespace.members) |member| {
         if (member.type == .attribute) {
             if (member.attribute) |attr| {
-                // Namespace attributes are typically read-only
-                // Escape Zig keywords in attribute names
-                if (isZigKeyword(attr.name)) {
-                    try w.print("    pub const @\"{s}\": ", .{attr.name});
-                } else {
-                    try w.print("    pub const {s}: ", .{attr.name});
-                }
+                try w.print("    pub fn get_{s}(ctx: runtime.Context) anyerror!", .{attr.name});
                 try writeTypeSimple(w, attr.idlType, null);
-                try w.writeAll(" = undefined;\n\n");
+                try w.writeAll(" {\n");
+                try w.print("        if (comptime @hasDecl({s}_impl, \"get_{s}\")) {{\n", .{ namespace.name, attr.name });
+                try w.print("            return try {s}_impl.get_{s}(ctx);\n", .{ namespace.name, attr.name });
+                // No discard: `ctx` is used in the branch above.
+                try w.writeAll("        } else {\n");
+                try w.writeAll("            return error.NotImplemented;\n");
+                try w.writeAll("        }\n");
+                try w.writeAll("    }\n\n");
             }
         }
     }

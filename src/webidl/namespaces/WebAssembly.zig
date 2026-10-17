@@ -24,6 +24,11 @@ pub const WebAssembly = struct {
 
         pub const has_constructor = false;
         pub const properties = .{};
+
+        /// Attribute binding hints (JS name, getter, implemented by the impl)
+        pub const attributes = .{
+            .{ "JSTag", "get_JSTag", @hasDecl(WebAssembly_impl, "get_JSTag") },
+        };
     };
 
     pub const State = struct {};
@@ -67,5 +72,11 @@ pub const WebAssembly = struct {
         } },
     };
 
-    pub const JSTag: runtime.JSValue = undefined;
+    pub fn get_JSTag(ctx: runtime.Context) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(WebAssembly_impl, "get_JSTag")) {
+            return try WebAssembly_impl.get_JSTag(ctx);
+        } else {
+            return error.NotImplemented;
+        }
+    }
 };

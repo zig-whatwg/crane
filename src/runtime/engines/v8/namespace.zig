@@ -154,6 +154,13 @@ fn isFurtherOverload(comptime decl_name: []const u8) bool {
 /// A type with methods to register the namespace in V8:
 /// - `registerGlobal(isolate, context, name)` - Register as global object
 /// - `createObject(isolate, context)` - Create namespace object
+/// One regular attribute of a namespace: its JavaScript name and the
+/// generated getter (`get_<name>`).
+const AttributeInfo = struct {
+    name: []const u8,
+    zig_name: []const u8,
+};
+
 pub fn V8Namespace(comptime Namespace: type) type {
     // Method metadata extracted at compile time
     const MethodInfo = struct {
@@ -195,6 +202,23 @@ pub fn V8Namespace(comptime Namespace: type) type {
         break :blk method_list;
     };
 
+    // The regular attributes the namespace's impl implements (WebIDL 3.13.1:
+    // each is an accessor property of the namespace object, its getter
+    // running the attribute's getter steps). Codegen lists every attribute
+    // in `Meta.attributes` with whether the impl declares its getter; one
+    // that is not implemented gets no property, as before attributes were
+    // bound.
+    const attributes = comptime blk: {
+        var list: []const AttributeInfo = &.{};
+        if (@hasDecl(Namespace, "Meta") and @hasDecl(Namespace.Meta, "attributes")) {
+            for (Namespace.Meta.attributes) |entry| {
+                if (!entry[2]) continue;
+                list = list ++ [_]AttributeInfo{.{ .name = entry[0], .zig_name = entry[1] }};
+            }
+        }
+        break :blk list;
+    };
+
     return struct {
         const Self = @This();
 
@@ -225,6 +249,9 @@ pub fn V8Namespace(comptime Namespace: type) type {
             inline for (all_methods) |method| {
                 const callback = generateCallback(method);
                 ext_refs.registerCallbackRuntime(callback);
+            }
+            inline for (attributes) |attribute| {
+                ext_refs.registerCallbackRuntime(generateGetter(attribute));
             }
         }
 
@@ -280,16 +307,64 @@ pub fn V8Namespace(comptime Namespace: type) type {
             isolate: *v8.Isolate,
             context: *v8.Context,
         ) ?*v8.Object {
-            _ = context;
-
             const object = v8.v8_Object_New(isolate) orelse return null;
 
             // Register all methods at compile time
             inline for (all_methods) |method| {
                 registerMethod(isolate, object, method);
             }
+            // WebIDL 3.13.1: each regular attribute an accessor property -
+            // [[Enumerable]] and [[Configurable]] true, a getter and no
+            // setter (a namespace attribute is readonly).
+            inline for (attributes) |attribute| {
+                const name_str = v8.v8_String_NewFromUtf8(isolate, attribute.name.ptr, @intCast(attribute.name.len)) orelse continue;
+                defer v8.v8_String_Dispose(name_str);
+                _ = v8.v8_Object_SetAccessorProperty(object, context, name_str, comptime generateGetter(attribute), null);
+            }
 
             return object;
+        }
+
+        /// The getter of a namespace attribute: its getter steps, run with the
+        /// current realm - the namespace object's, which V8 enters for its
+        /// functions (current_realm.zig) - and the value converted as an
+        /// operation's result is.
+        fn generateGetter(comptime attribute: AttributeInfo) v8.FunctionCallback {
+            const getter_fn = @field(Namespace, attribute.zig_name);
+            const return_type = @typeInfo(@typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?).error_union.payload;
+
+            const Wrapper = struct {
+                fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                    const isolate = info.getIsolate();
+                    // OWNED, released on the way out: a Global<Context> keeps
+                    // its realm alive.
+                    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                        conv.throwTypeError(isolate, "Failed to get current context");
+                        return;
+                    };
+                    defer v8.v8_Context_Dispose(context);
+                    var call_realm: CallRealm = .{};
+                    defer call_realm.end();
+                    const realm = call_realm.of(isolate, context) catch {
+                        conv.throwTypeError(isolate, "Failed to create runtime context");
+                        return;
+                    };
+                    const result = getter_fn(realm) catch |err| {
+                        conv.throwWebIDLErrorFromContext(isolate, context, @errorName(err));
+                        return;
+                    };
+                    defer freeStringResult(return_type, realm.getAllocator(), result);
+                    const v8_value = conv.toV8Value(return_type, isolate, context, result) catch {
+                        conv.throwError(isolate, "Failed to convert return value");
+                        return;
+                    };
+                    info.setReturnValue(v8_value);
+                    // As an operation's result: a platform object's wrapper is
+                    // the wrapper cache's; what was made for the call goes.
+                    if (resultIsOwned(return_type, result)) v8.v8_Global_Dispose(v8_value);
+                }
+            };
+            return Wrapper.callback;
         }
 
         /// Register a single method on the namespace object
