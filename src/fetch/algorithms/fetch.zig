@@ -51,7 +51,11 @@ pub fn fetch(
         .body => step = try job.resumeBody(),
         .done => return job.takeResult(),
         .network => |needed| step = try job.resumeNetwork(sendBlocking(allocator, needed)),
-        .service_worker => |call| step = try job.resumeServiceWorker(try settleBlocking(call.wait())),
+        .service_worker => |call| step = try job.resumeServiceWorker(try settleBlocking(call.wait(service_worker_fetch.blocking_wait_limit_ms) orelse blk: {
+            // No answer within the limit: given up on, a network error.
+            call.abandon();
+            break :blk .network_error;
+        })),
     };
 }
 
@@ -66,7 +70,7 @@ fn settleBlocking(answer: service_worker_fetch.Call.Answer) FetchError!FetchJob.
             const relay = r.body orelse break :blk .{ .response = r.response };
             defer relay.release();
             const response = r.response;
-            const bytes = relay.collect(response.allocator) catch |err| {
+            const bytes = relay.collect(response.allocator, service_worker_fetch.blocking_wait_limit_ms) catch |err| {
                 relay.cancel();
                 response.deinit();
                 break :blk switch (err) {

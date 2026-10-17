@@ -292,7 +292,7 @@ test "a controlled client's subresource request goes to its service worker, and 
     kept.dispatch.destroy();
     fixture.harness.done(kept);
 
-    const answer = call.wait();
+    const answer = call.wait(5_000) orelse return error.TestUnexpectedTimeout;
     try testing.expect(answer == .response);
     defer answer.response.response.deinit();
     try testing.expectEqual(@as(u16, 203), answer.response.response.status);
@@ -340,7 +340,7 @@ test "a navigation's reserved client is made and controlled by Handle Fetch, the
     kept.dispatch.call.answer(.fallback);
     kept.dispatch.destroy();
     fixture.harness.done(kept);
-    try testing.expect(call.wait() == .fallback);
+    try testing.expect((call.wait(5_000) orelse return error.TestUnexpectedTimeout) == .fallback);
 
     // The document's realm comes: it adopts the reserved client - its id,
     // its controller - and the waiting get() is answered with it.
@@ -398,7 +398,7 @@ test "a reserved client the document is not of its origin, or that no document c
         kept.dispatch.call.answer(.fallback);
         kept.dispatch.destroy();
         fixture.harness.done(kept);
-        _ = call.wait();
+        _ = call.wait(5_000) orelse return error.TestUnexpectedTimeout;
 
         var other_tag: u8 = 0;
         var other = TestEndpoint.create(a, fixture.sink, &other_tag);
@@ -493,7 +493,7 @@ test "a thread blocked in a synchronous fetch still has its window clients' data
     };
     const thread = try std.Thread.spawn(.{}, Worker.run, .{ &fixture, manager });
     // The page's thread blocks until the worker answers.
-    try testing.expect(call.wait() == .fallback);
+    try testing.expect((call.wait(5_000) orelse return error.TestUnexpectedTimeout) == .fallback);
     thread.join();
     try testing.expectEqual(@as(u32, 1), fixture.page.read_now.load(.seq_cst));
     var answered: u32 = 0;

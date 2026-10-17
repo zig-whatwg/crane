@@ -28,6 +28,37 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const InternalRequest = @import("request.zig").InternalRequest;
 const InternalResponse = @import("response.zig").InternalResponse;
+const platform = @import("platform");
+
+/// How long a blocking fetch (fetch.zig: a synchronous XMLHttpRequest, a
+/// parser-blocking script, importScripts()) waits for a service worker's
+/// answer, and then for the rest of its body. The waiting thread runs
+/// nothing meanwhile, so a fetch handler that needs it - a reply to a
+/// message it posted to the page, which only a task there can send - is
+/// never answered: the wait ends here and the request is a network error,
+/// instead of the page's thread hanging for good
+/// (postmessage-to-client-message-queue.https.html, whose worker answers a
+/// parser-blocking script only after the page replies). A hang guard, not
+/// behaviour to rely on: long enough that a slow handler on a loaded
+/// machine does not trip it. Stated deviation: browsers never block the
+/// page's thread for a parser-blocking script - HTML's parser waits for it
+/// while the event loop spins ("spin the event loop until ... the script is
+/// ready to be parser-executed"), which is the real fix and the parser's to
+/// make - and Chromium bounds a fetch event only at 5 minutes
+/// (ServiceWorkerVersion's request timeout).
+pub const blocking_wait_limit_ms: u64 = 10_000;
+
+/// The time left until `deadline` (the platform's monotonic clock, in
+/// nanoseconds), or null once it has passed.
+fn remaining(deadline: i128) ?std.Io.Timeout {
+    const now: i128 = platform.monotonicNow().ns;
+    if (now >= deadline) return null;
+    return .{ .duration = .{ .raw = .fromNanoseconds(@intCast(deadline - now)), .clock = .awake } };
+}
+
+fn deadlineAfter(limit_ms: u64) i128 {
+    return @as(i128, platform.monotonicNow().ns) + @as(i128, limit_ms) * std.time.ns_per_ms;
+}
 const body_pipe = @import("body_pipe.zig");
 const PipeSource = body_pipe.PipeSource;
 
@@ -138,16 +169,20 @@ pub const Call = struct {
         return value;
     }
 
-    /// The fetching side, blocking until the answer comes.
-    pub fn wait(self: *Call) Answer {
+    /// The fetching side, blocking until the answer comes - for at most
+    /// `limit_ms` (`blocking_wait_limit_ms`). Null: none came in time; the
+    /// caller gives up on the call (`abandon`).
+    pub fn wait(self: *Call, limit_ms: u64) ?Answer {
         if (self.blocking) |b| b.before_wait(b.context, b.data);
         defer if (self.blocking) |b| b.after_wait(b.context, b.data);
+        const deadline = deadlineAfter(limit_ms);
         while (true) {
             // Read the word before asking: an answer that lands after the
             // ask has bumped it, and the wait returns at once.
             const seen = self.wake.load(.acquire);
             if (self.take()) |value| return value;
-            futexIo().futexWaitTimeout(u32, &self.wake.raw, seen, .none) catch {};
+            const left = remaining(deadline) orelse return null;
+            futexIo().futexWaitTimeout(u32, &self.wake.raw, seen, left) catch {};
         }
     }
 
@@ -285,11 +320,14 @@ pub const BodyRelay = struct {
         return end;
     }
 
-    /// Wait for the whole body (the blocking fetch's driver). OWNED by
-    /// `allocator`; error.NetworkError when it failed.
-    pub fn collect(self: *BodyRelay, allocator: Allocator) error{ OutOfMemory, NetworkError }![]u8 {
+    /// Wait for the whole body (the blocking fetch's driver) - for at most
+    /// `limit_ms` (`blocking_wait_limit_ms`). OWNED by `allocator`;
+    /// error.NetworkError when it failed or had not ended in time (the
+    /// caller cancels the relay).
+    pub fn collect(self: *BodyRelay, allocator: Allocator, limit_ms: u64) error{ OutOfMemory, NetworkError }![]u8 {
         var bytes: std.ArrayListUnmanaged(u8) = .empty;
         errdefer bytes.deinit(allocator);
+        const deadline = deadlineAfter(limit_ms);
         while (true) {
             const seen = self.wake.load(.acquire);
             lock(&self.mutex);
@@ -304,7 +342,8 @@ pub const BodyRelay = struct {
                 .errored => return error.NetworkError,
                 .open => {},
             }
-            futexIo().futexWaitTimeout(u32, &self.wake.raw, seen, .none) catch {};
+            const left = remaining(deadline) orelse return error.NetworkError;
+            futexIo().futexWaitTimeout(u32, &self.wake.raw, seen, left) catch {};
         }
     }
 
@@ -424,7 +463,7 @@ test "a blocking wait sleeps until another thread answers, with the owner's step
             c.release();
         }
     }.run, .{call});
-    const value = call.wait();
+    const value = call.wait(5_000) orelse return error.TestUnexpectedTimeout;
     thread.join();
     try testing.expect(value == .network_error);
     try testing.expectEqual(@as(u32, 1), waiting.before);
@@ -488,8 +527,41 @@ test "the blocking driver collects a relay written from another thread, chunk by
             r.release();
         }
     }.run, .{relay});
-    const bytes = try relay.collect(testing.allocator);
+    const bytes = try relay.collect(testing.allocator, 5_000);
     defer testing.allocator.free(bytes);
     thread.join();
     try testing.expectEqualStrings("abcdef", bytes);
+}
+
+test "a blocking wait no answer reaches within its limit gives up, with the owner's steps around it; the late answer is freed" {
+    const call = try Call.create(testing.allocator);
+    defer call.release();
+    var waiting: Waiting = .{};
+    call.blocking = .{ .context = &waiting, .data = 1, .before_wait = Waiting.beforeWait, .after_wait = Waiting.afterWait };
+    // The service worker side answers long after the limit.
+    const thread = try std.Thread.spawn(.{}, struct {
+        fn run(c: *Call) void {
+            sleepMs(60);
+            const late = InternalResponse.init(testing.allocator) catch unreachable;
+            c.answer(.{ .response = .{ .response = late } });
+            c.release();
+        }
+    }.run, .{call});
+    try testing.expect(call.wait(10) == null);
+    // The fetching side gives up on it: the late answer is freed, not kept.
+    call.abandon();
+    thread.join();
+    try testing.expectEqual(@as(u32, 1), waiting.before);
+    try testing.expectEqual(@as(u32, 1), waiting.after);
+}
+
+test "the blocking driver gives up on a body that has not ended within its limit" {
+    const relay = try BodyRelay.create(testing.allocator);
+    defer relay.release();
+    try testing.expect(relay.write("part"));
+    try testing.expectError(error.NetworkError, relay.collect(testing.allocator, 10));
+    // The writer that never ended it lets go.
+    relay.cancel();
+    try testing.expect(!relay.write("late"));
+    relay.release();
 }
