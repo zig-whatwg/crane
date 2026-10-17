@@ -1894,8 +1894,16 @@ pub fn get_width(instance: *runtime.Instance) anyerror!u32 {
 
 /// Getter for list
 pub fn get_list(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
+    // HTML 4.10.5.3.9: only the states to which list applies have a
+    // suggestions source. Resolve the FIRST matching ID in this tree.
+    switch (typeOf(instance)) {
+        .text, .search, .url, .tel, .email, .date, .month, .week, .time, .@"datetime-local", .number, .range, .color => {},
+        else => return null,
+    }
+    const data = dom.element_data.of(instance) orelse return null;
+    const list = dom.element_data.getAttributeByNamespaceAndLocalName(data, null, "list") orelse return null;
+    const source = form_associated.firstElementWithId(form_associated.rootOf(instance), list.value) orelse return null;
+    return if (source.stateAs(interfaces.HTMLDataListElement.State) != null) source else null;
 }
 
 /// Getter for size
