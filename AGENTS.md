@@ -34,7 +34,8 @@ was used by mistake early in this work and produced two real defects: an
 a bubble listener when the spec says capture; and `navigation-api/` excluded
 from the WPT worklist on the grounds that React and Phoenix do not need it.
 When in doubt, implement what the spec says and let WPT report the gap - and
-where the spec text and the browsers disagree, the browsers win (golden rule 2).
+where the spec text and the browsers disagree, golden rule 2 decides: the
+browsers win, unless they are only behind a newer spec.
 
 **Not everything has a spec.** V8 handle ownership, allocator lifetimes and
 teardown order are engine concerns — read the code, not `specs/`.
@@ -749,15 +750,30 @@ generation check is only a teardown net. Collected trees are freed in slices fro
    Implement exactly as specified, step by step, with numbered comments. Small
    deviations break browser compatibility. Where the browsers do otherwise,
    rule 2 wins.
-2. **Browsers decide.** Where the browsers and the spec text disagree, Crane
-   does what the browsers do - in all cases (the user, 2026-10-08). Check
-   wpt.fyi (Chrome, Firefox, Safari) and the engines' source, implement their
-   behaviour, and state the deviation from the spec text in a comment citing
-   the evidence: the wpt.fyi results, the engine code, the upstream issue if
-   one exists. Where the browsers split, follow the majority of Chrome,
-   Firefox and Safari and say so; with no majority, ask the integrator. Not a
-   licence to skip spec work: where they agree with the spec, the spec's steps
-   are the implementation.
+2. **Browsers decide - unless they are only behind the spec.** Where the
+   browsers and the spec text disagree, find out WHY before choosing (the
+   user, 2026-10-08, refined 2026-10-17):
+   - **The browsers have not caught up yet** - the spec changed and they still
+     ship the older behaviour, with no sign they reject the change:
+     implement the NEWER spec. Evidence of a lag: the spec change was merged
+     with implementer support (WHATWG PRs list an implementation bug per
+     engine), those engine bugs are open, not WontFix, and WPT was updated to
+     the new behaviour.
+   - **The browsers have intentionally not implemented it** - a negative or
+     deferred standards position (mozilla/standards-positions,
+     WebKit/standards-positions), a WontFix engine bug, an implementer's
+     objection on the spec PR or issue, or long-standing behaviour all three
+     keep on purpose: do what the browsers do. That intent weighs heavily.
+   - **Neither applies, or the spec text never said otherwise** - the
+     browsers simply differ from the spec: do what the browsers do.
+
+   Whichever you choose, state it in a comment citing the evidence: the
+   wpt.fyi results (Chrome, Firefox, Safari), the engine code, the spec
+   change and its implementation bugs, the standards positions. Where the
+   browsers split, follow the majority of Chrome, Firefox and Safari and say
+   so; with no majority, ask the integrator. A browser that does not ship the
+   feature at all does not count. Not a licence to skip spec work: where they
+   agree with the spec, the spec's steps are the implementation.
 3. **Performance matters**, but spec compliance comes first. Never sacrifice
    correctness for speed.
 4. **Commit after every logical unit of work.** A feature, a fix, a passing
