@@ -549,13 +549,7 @@ pub fn get_nodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         NodeType.PROCESSING_INSTRUCTION_NODE => interfaces.ProcessingInstruction.get_target(instance) catch runtime.DOMString.initEmpty(),
         NodeType.COMMENT_NODE => runtime.DOMString.initInterned("#comment"),
         NodeType.DOCUMENT_NODE => runtime.DOMString.initInterned("#document"),
-        NodeType.DOCUMENT_TYPE_NODE => blk: {
-            // For DocumentType: its name
-            if (internal.local_name) |name| {
-                break :blk name;
-            }
-            break :blk runtime.DOMString.initEmpty();
-        },
+        NodeType.DOCUMENT_TYPE_NODE => interfaces.DocumentType.get_name(instance) catch runtime.DOMString.initEmpty(),
         NodeType.DOCUMENT_FRAGMENT_NODE => runtime.DOMString.initInterned("#document-fragment"),
         else => runtime.DOMString.initEmpty(),
     };
@@ -919,7 +913,7 @@ pub fn get_textContent(instance: *runtime.Instance) anyerror!?runtime.DOMString 
     return switch (internal.node_type) {
         NodeType.DOCUMENT_NODE, NodeType.DOCUMENT_TYPE_NODE => {
             // Returns null
-            return runtime.DOMString.initEmpty();
+            return null;
         },
         NodeType.TEXT_NODE,
         NodeType.CDATA_SECTION_NODE,
@@ -1204,55 +1198,52 @@ pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: ?*runtime.Instan
     // Must be same node type
     if (self_internal.node_type != other_internal.node_type) return false;
 
-    // Check type-specific equality
+    // DOM "equals": compare the interface's own fields, not Node's legacy
+    // copies. Like WebKit Node::isEqualNode, compare attributes independent
+    // of their list order (and without their namespace prefixes).
     switch (self_internal.node_type) {
         NodeType.DOCUMENT_TYPE_NODE => {
-            // Check name, publicId, systemId
-            // TODO: Compare DocumentType specific fields
+            if (!try equalStringMember(interfaces.DocumentType.get_name, instance, other_node) or
+                !try equalStringMember(interfaces.DocumentType.get_publicId, instance, other_node) or
+                !try equalStringMember(interfaces.DocumentType.get_systemId, instance, other_node)) return false;
         },
         NodeType.ELEMENT_NODE => {
-            // Check namespace, prefix, localName, attributes count, attributes
-            const self_ns = self_internal.namespace_uri;
-            const other_ns = other_internal.namespace_uri;
-            if (self_ns == null and other_ns != null) return false;
-            if (self_ns != null and other_ns == null) return false;
-            if (self_ns != null and other_ns != null) {
-                if (!std.mem.eql(u8, self_ns.?.asSlice(), other_ns.?.asSlice())) return false;
+            const a = dom_module.node_creation.elementNames(instance) orelse return false;
+            const b = dom_module.node_creation.elementNames(other_node) orelse return false;
+            if (!equalOptionalBytes(a.namespace, b.namespace) or !equalOptionalBytes(a.prefix, b.prefix) or
+                !std.mem.eql(u8, a.local_name, b.local_name)) return false;
+            if (dom_module.element_attributes.count(instance) != dom_module.element_attributes.count(other_node)) return false;
+            var i: usize = 0;
+            while (dom_module.element_attributes.at(instance, i)) |attribute| : (i += 1) {
+                var j: usize = 0;
+                var found = false;
+                while (dom_module.element_attributes.at(other_node, j)) |other| : (j += 1) {
+                    if (equalOptionalBytes(attribute.namespace, other.namespace) and
+                        std.mem.eql(u8, attribute.local_name, other.local_name) and
+                        std.mem.eql(u8, attribute.value, other.value))
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) return false;
             }
-
-            const self_name = self_internal.local_name;
-            const other_name = other_internal.local_name;
-            if (self_name == null and other_name != null) return false;
-            if (self_name != null and other_name == null) return false;
-            if (self_name != null and other_name != null) {
-                if (!std.mem.eql(u8, self_name.?.asSlice(), other_name.?.asSlice())) return false;
-            }
-            // TODO: Compare attributes
         },
         NodeType.ATTRIBUTE_NODE => {
-            // Check namespace, localName, value
-            // TODO: Compare Attr specific fields
+            var a = try interfaces.Attr.get_namespaceURI(instance);
+            defer if (a) |*value| value.deinit(instance.ctx.allocator);
+            var b = try interfaces.Attr.get_namespaceURI(other_node);
+            defer if (b) |*value| value.deinit(other_node.ctx.allocator);
+            if (!equalOptionalBytes(if (a) |value| value.asSlice() else null, if (b) |value| value.asSlice() else null)) return false;
+            if (!try equalStringMember(interfaces.Attr.get_localName, instance, other_node) or
+                !try equalStringMember(interfaces.Attr.get_value, instance, other_node)) return false;
         },
         NodeType.PROCESSING_INSTRUCTION_NODE => {
-            // Check target, data
-            const self_name = self_internal.local_name;
-            const other_name = other_internal.local_name;
-            if (self_name == null and other_name != null) return false;
-            if (self_name != null and other_name == null) return false;
-            if (self_name != null and other_name != null) {
-                if (!std.mem.eql(u8, self_name.?.asSlice(), other_name.?.asSlice())) return false;
-            }
-
-            // DOM 4.4 "equals": data lives in CharacterData, not node_value.
-            const self_data = dom_module.character_data.dataOf(instance) orelse "";
-            const other_data = dom_module.character_data.dataOf(other_node) orelse "";
-            if (!std.mem.eql(u8, self_data, other_data)) return false;
+            if (!try equalStringMember(interfaces.ProcessingInstruction.get_target, instance, other_node)) return false;
+            if (!std.mem.eql(u8, dom_module.character_data.dataOf(instance) orelse "", dom_module.character_data.dataOf(other_node) orelse "")) return false;
         },
         NodeType.TEXT_NODE, NodeType.CDATA_SECTION_NODE, NodeType.COMMENT_NODE => {
-            // DOM 4.4 "equals": their data is equal.
-            const self_data = dom_module.character_data.dataOf(instance) orelse "";
-            const other_data = dom_module.character_data.dataOf(other_node) orelse "";
-            if (!std.mem.eql(u8, self_data, other_data)) return false;
+            if (!std.mem.eql(u8, dom_module.character_data.dataOf(instance) orelse "", dom_module.character_data.dataOf(other_node) orelse "")) return false;
         },
         else => {},
     }
@@ -1279,6 +1270,15 @@ pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: ?*runtime.Instan
 
     // Both should be null (same number of children)
     return self_child == null and other_child == null;
+}
+
+/// IDL getters transfer their strings to the caller, including native callers.
+fn equalStringMember(comptime getter: anytype, a: *runtime.Instance, b: *runtime.Instance) !bool {
+    var left = try getter(a);
+    defer left.deinit(a.ctx.allocator);
+    var right = try getter(b);
+    defer right.deinit(b.ctx.allocator);
+    return std.mem.eql(u8, left.asSlice(), right.asSlice());
 }
 
 /// Operation: cloneNode
@@ -1878,132 +1878,85 @@ pub fn call_replaceChild(instance: *runtime.Instance, node: *runtime.Instance, c
 /// Operation: lookupPrefix
 /// https://dom.spec.whatwg.org/#dom-node-lookupprefix
 pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: ?runtime.DOMString) anyerror!?runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const node_base = internal.node_base;
-
-    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
-    if (ns_slice.len == 0) {
-        return runtime.DOMString.initEmpty();
+    // lookupPrefix step 1: an absent/empty namespace has no prefix.
+    const ns = namespace orelse return null;
+    if (ns.len() == 0) return null;
+    var element = try namespaceElement(instance);
+    while (element) |e| : (element = try interfaces.Node.get_parentElement(e)) {
+        const names = dom_module.node_creation.elementNames(e) orelse return null;
+        // Locate a namespace prefix, steps 1-2: own prefix, then the first
+        // xmlns-prefixed attribute whose value matches.
+        if (equalOptionalBytes(names.namespace, ns.asSlice())) {
+            if (names.prefix) |prefix| return try runtime.DOMString.initDupe(instance.ctx.allocator, prefix);
+        }
+        var i: usize = 0;
+        while (dom_module.element_attributes.at(e, i)) |attribute| : (i += 1) {
+            if (equalOptionalBytes(attribute.prefix, "xmlns") and std.mem.eql(u8, attribute.value, ns.asSlice()))
+                return try runtime.DOMString.initDupe(instance.ctx.allocator, attribute.local_name);
+        }
+        // Step 3: continue at the parent element. Step 4: null at the root.
     }
-
-    switch (internal.node_type) {
-        NodeType.ELEMENT_NODE => {
-            // Check this element's namespace
-            if (internal.namespace_uri) |ns| {
-                if (std.mem.eql(u8, ns.asSlice(), ns_slice)) {
-                    if (internal.prefix) |prefix| {
-                        return prefix;
-                    }
-                }
-            }
-            // TODO: Check attributes and walk up tree
-        },
-        NodeType.DOCUMENT_NODE => {
-            // Get document element and lookup on it (using NodeBase)
-            if (node_base) |base| {
-                if (base.first_child) |first_base| {
-                    const first_opaque = instance_bridge.getInstance(first_base) orelse return runtime.DOMString.initEmpty();
-                    const doc_el: *runtime.Instance = @ptrCast(@alignCast(first_opaque));
-                    return call_lookupPrefix(doc_el, namespace);
-                }
-            }
-        },
-        NodeType.DOCUMENT_TYPE_NODE, NodeType.DOCUMENT_FRAGMENT_NODE => {
-            return runtime.DOMString.initEmpty();
-        },
-        NodeType.ATTRIBUTE_NODE => {
-            // Lookup on owner element
-            // TODO: Get ownerElement
-        },
-        else => {
-            // Lookup on parent element (using NodeBase)
-            if (node_base) |base| {
-                if (base.parent_node) |parent_base| {
-                    if (parent_base.node_type == NodeType.ELEMENT_NODE) {
-                        const parent_opaque = instance_bridge.getInstance(parent_base) orelse return runtime.DOMString.initEmpty();
-                        const parent: *runtime.Instance = @ptrCast(@alignCast(parent_opaque));
-                        return call_lookupPrefix(parent, namespace);
-                    }
-                }
-            }
-        },
-    }
-
-    return runtime.DOMString.initEmpty();
+    return null;
 }
 
-/// Operation: lookupNamespaceURI
+/// The interface switch shared by locate-a-namespace and lookupPrefix.
+/// A Document's *element* matters: a preceding PI/comment must not recurse
+/// back into the Document. Attr starts at its owner, other nodes at a parent
+/// element, and fragments/doctypes have no namespace context.
+fn namespaceElement(instance: *runtime.Instance) !?*runtime.Instance {
+    return switch (try get_nodeType(instance)) {
+        NodeType.ELEMENT_NODE => instance,
+        NodeType.DOCUMENT_NODE => try interfaces.Document.get_documentElement(instance),
+        NodeType.ATTRIBUTE_NODE => try interfaces.Attr.get_ownerElement(instance),
+        NodeType.DOCUMENT_TYPE_NODE, NodeType.DOCUMENT_FRAGMENT_NODE => null,
+        else => try interfaces.Node.get_parentElement(instance),
+    };
+}
+
+fn equalOptionalBytes(a: ?[]const u8, b: ?[]const u8) bool {
+    if (a) |left| return if (b) |right| std.mem.eql(u8, left, right) else false;
+    return b == null;
+}
+
+/// DOM locate-a-namespace. The result is borrowed; neither walking nor
+/// isDefaultNamespace needs to allocate. Only the IDL string getter copies.
+fn locateNamespace(instance: *runtime.Instance, prefix: ?[]const u8) !?[]const u8 {
+    var element = try namespaceElement(instance);
+    while (element) |e| : (element = try interfaces.Node.get_parentElement(e)) {
+        // Element steps 1-2: reserved prefixes (on an element context only).
+        if (equalOptionalBytes(prefix, "xml")) return "http://www.w3.org/XML/1998/namespace";
+        if (equalOptionalBytes(prefix, "xmlns")) return "http://www.w3.org/2000/xmlns/";
+        const names = dom_module.node_creation.elementNames(e) orelse return null;
+        // Step 3: the element's own non-null namespace and matching prefix.
+        if (names.namespace != null and equalOptionalBytes(names.prefix, prefix)) return names.namespace;
+        // Step 4: an xmlns attribute, including an explicit undeclaration.
+        var i: usize = 0;
+        while (dom_module.element_attributes.at(e, i)) |attribute| : (i += 1) {
+            if (!equalOptionalBytes(attribute.namespace, "http://www.w3.org/2000/xmlns/")) continue;
+            const matches = if (prefix) |p|
+                equalOptionalBytes(attribute.prefix, "xmlns") and std.mem.eql(u8, attribute.local_name, p)
+            else
+                attribute.prefix == null and std.mem.eql(u8, attribute.local_name, "xmlns");
+            if (matches) return if (attribute.value.len == 0) null else attribute.value;
+        }
+        // Steps 5-6: continue at the parent element, or return null.
+    }
+    return null;
+}
+
 /// https://dom.spec.whatwg.org/#dom-node-lookupnamespaceuri
 pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?runtime.DOMString) anyerror!?runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const node_base = internal.node_base;
-
-    const prefix_slice = if (prefix) |p| p.asSlice() else "";
-
-    switch (internal.node_type) {
-        NodeType.ELEMENT_NODE => {
-            // Check this element's namespace
-            if (internal.namespace_uri) |ns| {
-                const has_prefix = internal.prefix != null;
-                const prefix_matches = if (internal.prefix) |p|
-                    std.mem.eql(u8, p.asSlice(), prefix_slice)
-                else
-                    false;
-
-                if (has_prefix and prefix_matches) {
-                    return ns;
-                }
-                if (!has_prefix and prefix_slice.len == 0) {
-                    return ns;
-                }
-            }
-            // TODO: Check xmlns attributes and walk up tree
-        },
-        NodeType.DOCUMENT_NODE => {
-            // Get document element and lookup on it (using NodeBase)
-            if (node_base) |base| {
-                if (base.first_child) |first_base| {
-                    const first_opaque = instance_bridge.getInstance(first_base) orelse return runtime.DOMString.initEmpty();
-                    const doc_el: *runtime.Instance = @ptrCast(@alignCast(first_opaque));
-                    return call_lookupNamespaceURI(doc_el, prefix);
-                }
-            }
-        },
-        NodeType.DOCUMENT_TYPE_NODE, NodeType.DOCUMENT_FRAGMENT_NODE => {
-            return runtime.DOMString.initEmpty();
-        },
-        NodeType.ATTRIBUTE_NODE => {
-            // Lookup on owner element
-            // TODO: Get ownerElement
-        },
-        else => {
-            // Lookup on parent element (using NodeBase)
-            if (node_base) |base| {
-                if (base.parent_node) |parent_base| {
-                    const parent_opaque = instance_bridge.getInstance(parent_base) orelse return runtime.DOMString.initEmpty();
-                    const parent: *runtime.Instance = @ptrCast(@alignCast(parent_opaque));
-                    return call_lookupNamespaceURI(parent, prefix);
-                }
-            }
-        },
-    }
-
-    return runtime.DOMString.initEmpty();
+    // Step 1 normalizes the empty prefix to null; step 2 locates it.
+    const p: ?[]const u8 = if (prefix) |value| (if (value.len() == 0) null else value.asSlice()) else null;
+    const namespace = try locateNamespace(instance, p) orelse return null;
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, namespace);
 }
 
-/// Operation: isDefaultNamespace
 /// https://dom.spec.whatwg.org/#dom-node-isdefaultnamespace
 pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: ?runtime.DOMString) anyerror!bool {
-    const default_ns = try call_lookupNamespaceURI(instance, runtime.DOMString.initEmpty());
-
-    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
-    if (ns_slice.len == 0) {
-        const default_slice = if (default_ns) |dns| dns.asSlice() else "";
-        return default_slice.len == 0;
-    }
-
-    const default_slice = if (default_ns) |dns| dns.asSlice() else "";
-    return std.mem.eql(u8, default_slice, ns_slice);
+    // Steps 1-3: normalize, locate the null prefix, compare the namespaces.
+    const ns: ?[]const u8 = if (namespace) |value| (if (value.len() == 0) null else value.asSlice()) else null;
+    return equalOptionalBytes(try locateNamespace(instance, null), ns);
 }
 
 // =============================================================================
