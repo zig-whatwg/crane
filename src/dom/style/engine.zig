@@ -710,9 +710,9 @@ pub fn isBeingRendered(element: *runtime.Instance) Error!bool {
     }
 }
 
-/// CSSOM 7.2 step 5's condition on `element`: connected, in the flat tree,
-/// and its shadow-including root has a browsing context whose container,
-/// if any, is being rendered.
+/// CSSOM 7.2 step 5's condition on `element`, but the flat tree's (which
+/// computedStyle's null answers): connected, and its shadow-including root
+/// has a browsing context whose container, if any, is being rendered.
 pub fn hasComputedStyle(element: *runtime.Instance) Error!bool {
     const node = instance_bridge.getNodeBase(element) orelse return false;
     if (!node.is_connected) return false;
@@ -721,7 +721,9 @@ pub fn hasComputedStyle(element: *runtime.Instance) Error!bool {
     if (navigable_container.of(window)) |container| {
         if (container != element and !try isBeingRendered(container)) return false;
     }
-    return (try computedStyle(element, null)) != null;
+    // In the flat tree: computedStyle answers null otherwise, without this
+    // resolving the style twice.
+    return true;
 }
 
 /// The engine of `document`, for the owners' registration.
