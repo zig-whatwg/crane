@@ -55,95 +55,54 @@ pub fn decode(
     is_last: bool,
 ) streaming.DecodeResult {
     std.debug.assert(decoder.state == .euc_kr or decoder.state == .neutral);
-
     if (decoder.state == .neutral) {
-        decoder.state = .{ .euc_kr = .{ .euc_kr_lead = 0x00 } };
+        decoder.state = .{ .euc_kr = .{ .euc_kr_lead = 0 } };
     }
-
-    var state = &decoder.state.euc_kr;
+    const state = &decoder.state.euc_kr;
     var byte_decoder = euc_kr_impl.Decoder{
         .euc_kr_lead = state.euc_kr_lead,
     };
-
+    defer {
+        state.euc_kr_lead = byte_decoder.euc_kr_lead;
+    }
     var in_pos: usize = 0;
     var out_pos: usize = 0;
-
     while (in_pos < input.len) {
-        // Prefetch next cache line for large buffers (64-byte cache lines)
         if (in_pos + 64 < input.len) {
             @prefetch(&input[in_pos + 64], .{ .rw = .read, .locality = 3 });
         }
-
-        if (out_pos >= output.len) {
-            state.euc_kr_lead = byte_decoder.euc_kr_lead;
-            return .{
-                .status = .output_full,
-                .bytes_consumed = in_pos,
-                .code_units_written = out_pos,
-            };
-        }
-
+        if (out_pos == output.len) return .{ .status = .output_full, .bytes_consumed = in_pos, .code_units_written = out_pos };
         const byte = input[in_pos];
-
-        const result = byte_decoder.decode(byte) catch {
-            @branchHint(.unlikely); // Decode errors are rare in valid EUC-KR
-            output[out_pos] = 0xFFFD;
-            out_pos += 1;
-            in_pos += 1;
-
-            byte_decoder.euc_kr_lead = 0x00;
-            continue;
+        const before = byte_decoder;
+        const point_or_continue = byte_decoder.decode(byte) catch {
+            @branchHint(.unlikely);
+            // §13.1.1 step 3.7: restore an ASCII trail. The handler's
+            // resulting state belongs to it; replacement mode must retain it.
+            return .{ .status = .malformed, .bytes_consumed = in_pos, .code_units_written = out_pos, .error_length = if (before.euc_kr_lead != 0 and byte < 0x80) 0 else 1 };
         };
-
-        in_pos += 1;
-
-        if (result) |code_point| {
-            if (code_point <= 0xFFFF) {
-                output[out_pos] = @intCast(code_point);
+        if (point_or_continue) |point| {
+            if (point <= 0xffff) {
+                output[out_pos] = @intCast(point);
                 out_pos += 1;
             } else {
-                if (out_pos + 1 >= output.len) {
-                    in_pos -= 1;
-                    state.euc_kr_lead = byte_decoder.euc_kr_lead;
-                    return .{
-                        .status = .output_full,
-                        .bytes_consumed = in_pos,
-                        .code_units_written = out_pos,
-                    };
+                if (output.len - out_pos < 2) {
+                    byte_decoder = before;
+                    return .{ .status = .output_full, .bytes_consumed = in_pos, .code_units_written = out_pos };
                 }
-
-                const adjusted = code_point - 0x10000;
-                const high: u16 = @intCast(0xD800 + (adjusted >> 10));
-                const low: u16 = @intCast(0xDC00 + (adjusted & 0x3FF));
-                output[out_pos] = high;
-                output[out_pos + 1] = low;
+                const adjusted = point - 0x10000;
+                output[out_pos] = @intCast(0xd800 + (adjusted >> 10));
+                output[out_pos + 1] = @intCast(0xdc00 + (adjusted & 0x3ff));
                 out_pos += 2;
             }
         }
+        in_pos += 1;
     }
-
-    state.euc_kr_lead = byte_decoder.euc_kr_lead;
-
-    if (is_last and state.euc_kr_lead != 0x00) {
-        @branchHint(.unlikely); // Incomplete sequences at EOF are rare
-        if (out_pos < output.len) {
-            output[out_pos] = 0xFFFD;
-            out_pos += 1;
-            state.euc_kr_lead = 0x00;
-        } else {
-            return .{
-                .status = .output_full,
-                .bytes_consumed = in_pos,
-                .code_units_written = out_pos,
-            };
-        }
+    if (is_last and byte_decoder.euc_kr_lead != 0) {
+        if (out_pos == output.len) return .{ .status = .output_full, .bytes_consumed = in_pos, .code_units_written = out_pos };
+        // §13.1.1 step 1: clear the pending lead and report one EOF error.
+        _ = byte_decoder.decode(null) catch return .{ .status = .malformed, .bytes_consumed = in_pos, .code_units_written = out_pos, .error_length = 0 };
     }
-
-    return .{
-        .status = .input_empty,
-        .bytes_consumed = in_pos,
-        .code_units_written = out_pos,
-    };
+    return .{ .status = .input_empty, .bytes_consumed = in_pos, .code_units_written = out_pos };
 }
 
 pub fn encode(
@@ -277,88 +236,45 @@ pub fn decodeToUtf8(
     is_last: bool,
 ) streaming.DecodeToUtf8Result {
     std.debug.assert(decoder.state == .euc_kr or decoder.state == .neutral);
-
     if (decoder.state == .neutral) {
-        decoder.state = .{ .euc_kr = .{ .euc_kr_lead = 0x00 } };
+        decoder.state = .{ .euc_kr = .{ .euc_kr_lead = 0 } };
     }
-
-    var state = &decoder.state.euc_kr;
+    const state = &decoder.state.euc_kr;
     var byte_decoder = euc_kr_impl.Decoder{
         .euc_kr_lead = state.euc_kr_lead,
     };
-
+    defer {
+        state.euc_kr_lead = byte_decoder.euc_kr_lead;
+    }
     var in_pos: usize = 0;
     var out_pos: usize = 0;
-
     while (in_pos < input.len) {
-        // Prefetch next cache line for large buffers (64-byte cache lines)
         if (in_pos + 64 < input.len) {
             @prefetch(&input[in_pos + 64], .{ .rw = .read, .locality = 3 });
         }
-
+        if (out_pos == output.len) return .{ .status = .output_full, .bytes_consumed = in_pos, .bytes_written = out_pos };
         const byte = input[in_pos];
-
-        const result = byte_decoder.decode(byte) catch {
-            @branchHint(.unlikely); // Decode errors are rare in valid EUC-KR
-            // Write replacement character (U+FFFD = 0xEF 0xBF 0xBD in UTF-8)
-            if (out_pos + 2 >= output.len) {
-                state.euc_kr_lead = byte_decoder.euc_kr_lead;
-                return .{
-                    .status = .output_full,
-                    .bytes_consumed = in_pos,
-                    .bytes_written = out_pos,
-                };
-            }
-            output[out_pos] = 0xEF;
-            output[out_pos + 1] = 0xBF;
-            output[out_pos + 2] = 0xBD;
-            out_pos += 3;
-            in_pos += 1;
-            byte_decoder.euc_kr_lead = 0x00;
-            continue;
+        const before = byte_decoder;
+        const point_or_continue = byte_decoder.decode(byte) catch {
+            @branchHint(.unlikely);
+            // §13.1.1 step 3.7: restore an ASCII trail. The handler's
+            // resulting state belongs to it; replacement mode must retain it.
+            return .{ .status = .malformed, .bytes_consumed = in_pos, .bytes_written = out_pos, .error_length = if (before.euc_kr_lead != 0 and byte < 0x80) 0 else 1 };
         };
-
-        in_pos += 1;
-
-        if (result) |code_point| {
-            if (writeUtf8CodePoint(output, out_pos, code_point)) |bytes_written| {
-                out_pos += bytes_written;
+        if (point_or_continue) |point| {
+            if (writeUtf8CodePoint(output, out_pos, point)) |written| {
+                out_pos += written;
             } else {
-                // Output buffer full - back up
-                in_pos -= 1;
-                state.euc_kr_lead = byte_decoder.euc_kr_lead;
-                return .{
-                    .status = .output_full,
-                    .bytes_consumed = in_pos,
-                    .bytes_written = out_pos,
-                };
+                byte_decoder = before;
+                return .{ .status = .output_full, .bytes_consumed = in_pos, .bytes_written = out_pos };
             }
         }
+        in_pos += 1;
     }
-
-    state.euc_kr_lead = byte_decoder.euc_kr_lead;
-
-    if (is_last and state.euc_kr_lead != 0x00) {
-        @branchHint(.unlikely); // Incomplete sequences at EOF are rare
-        // Write replacement character for incomplete sequence
-        if (out_pos + 2 < output.len) {
-            output[out_pos] = 0xEF;
-            output[out_pos + 1] = 0xBF;
-            output[out_pos + 2] = 0xBD;
-            out_pos += 3;
-            state.euc_kr_lead = 0x00;
-        } else {
-            return .{
-                .status = .output_full,
-                .bytes_consumed = in_pos,
-                .bytes_written = out_pos,
-            };
-        }
+    if (is_last and byte_decoder.euc_kr_lead != 0) {
+        if (out_pos == output.len) return .{ .status = .output_full, .bytes_consumed = in_pos, .bytes_written = out_pos };
+        // §13.1.1 step 1: clear the pending lead and report one EOF error.
+        _ = byte_decoder.decode(null) catch return .{ .status = .malformed, .bytes_consumed = in_pos, .bytes_written = out_pos, .error_length = 0 };
     }
-
-    return .{
-        .status = .input_empty,
-        .bytes_consumed = in_pos,
-        .bytes_written = out_pos,
-    };
+    return .{ .status = .input_empty, .bytes_consumed = in_pos, .bytes_written = out_pos };
 }

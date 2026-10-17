@@ -186,6 +186,29 @@ pub const Decoder = struct {
         return self.encoding.decode_fn(self, input, output, is_last);
     }
 
+    /// Discard input restored by the last malformed result, retaining the
+    /// handler's mode. Only call immediately after a fatal decoding error.
+    /// Replacement callers instead continue reading the restored input.
+    pub fn discardRestoredInputAfterError(self: *Decoder) void {
+        switch (self.state) {
+            .gb18030 => |*state| {
+                if (state.pending_ascii != null) {
+                    state.pending_ascii = null;
+                    // The failed four-byte handler cleared its fields; this
+                    // lead represents its restored third byte, not its mode.
+                    state.gb18030_first = 0;
+                }
+            },
+            .iso_2022_jp => |*state| state.prepended_len = 0,
+            // The shared UTF-16 handler clears both fields before returning
+            // malformed. A wrapper's leading byte at this boundary is the
+            // first byte of the restored code unit (§14.2.1 step 6.7).
+            .utf16le => |*state| state.utf16_leading_byte = null,
+            .utf16be => |*state| state.utf16_leading_byte = null,
+            else => {},
+        }
+    }
+
     /// Decode with the REPLACEMENT error mode: every error the handler reports
     /// becomes one U+FFFD and decoding continues.
     ///
@@ -471,6 +494,8 @@ pub const DecoderState = union(enum) {
         gb18030_second: u8,
         gb18030_third: u8,
         is_gbk: bool,
+        // ASCII second byte restored after a malformed four-byte sequence.
+        pending_ascii: ?u8 = null,
     },
     euc_kr: struct {
         euc_kr_lead: u8,
@@ -840,7 +865,10 @@ pub const GBK: Encoding = .{
     .whatwg_name = "gbk",
     .decode_fn = chinese.decode,
     .encode_fn = chinese.encode,
-    .max_utf8_length_fn = MaxUtf8Length.gb18030, // GBK is subset of GB18030
+    // Encoding §10.1.1: GBK uses the gb18030 decoder, including its direct
+    // UTF-8 path so output-full retries preserve the same handler state.
+    .decode_to_utf8_fn = chinese.decodeToUtf8,
+    .max_utf8_length_fn = MaxUtf8Length.gb18030, // The decoders are identical.
 };
 
 pub const EUC_KR: Encoding = .{

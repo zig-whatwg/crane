@@ -106,7 +106,8 @@ fn decodeUnits(comptime Unit: type, decoder: *Decoder, input: []const u8, output
             result.bytes_consumed += 1;
             break :blk b;
         } else null;
-        const point = byte_decoder.decode(byte) catch {
+        // Keep the per-byte handler in this loop without changing its state machine.
+        const point = @call(.always_inline, iso_2022_jp_impl.Decoder.decode, .{ &byte_decoder, byte }) catch {
             // The handler has consumed this item; any restored bytes are in
             // its two-byte queue. There are no external bytes to skip.
             result.status = .malformed;

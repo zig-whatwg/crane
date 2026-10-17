@@ -280,7 +280,24 @@ pub fn call_decode(instance: *runtime.Instance, input: webidl.Opt(typedefs.Allow
     const is_last = !stream;
     // IMPORTANT: Use instance.ctx.allocator for returned strings, not internal.allocator
     // The V8 binding layer expects to free returned strings with instance.ctx.allocator
-    return try processAndSerialize(internal, instance.ctx.allocator, bytes, state.own.fatal, state.own.ignoreBOM, is_last);
+    return processAndSerialize(internal, instance.ctx.allocator, bytes, state.own.fatal, state.own.ignoreBOM, is_last) catch |err| {
+        if (state.own.fatal and err == ImplError.DecodingError) {
+            // Browsers over Encoding decode() step 5.3.3: discard the failed
+            // call's unread and restored input, while retaining handler mode.
+            // WPT "fatal stream: utf-8" (cc74d2669f) covers unread input.
+            // For restored CJK input the per-mechanism majority matches
+            // WebKit PAL TextCodecCJK::decodeCommon (clears m_prependedByte):
+            // Blink TextCodecCJK's Gb18030Decoder::ParseByte replays the older
+            // bytes before Decoder::Decode stops; Gecko TextDecoder::DecodeNative
+            // abandons encoding_rs gb18030's unread() byte, though pending_ascii
+            // survives. Thus two engines drop each restored component, even
+            // though their complete outcomes differ (row 49 Q8 ruling).
+            // Keep fatal-only state cleanup outside the ordinary decode path.
+            @call(.never_inline, Decoder.discardRestoredInputAfterError, .{&internal.decoder.?});
+            internal.pending_len = 0;
+        }
+        return err;
+    };
 }
 
 /// Extract bytes from AllowSharedBufferSource
