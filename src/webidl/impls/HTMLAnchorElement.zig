@@ -319,6 +319,9 @@ fn hasActivationBehavior(target: *runtime.Instance) bool {
 /// request navigate event). The image map coordinates of an ismap image are
 /// not modelled.
 fn runActivationBehavior(target: *runtime.Instance, event: *runtime.Instance) void {
+    // Browser rule: editable links do not activate (Blink IsLiveLink;
+    // Chrome/Firefox/Safari pass anchor-contenteditable-navigate.html).
+    if (interfaces.HTMLElement.get_isContentEditable(target) catch false) return;
     const data = element_data.of(target) orelse return;
     if (element_data.getAttributeByNamespaceAndLocalName(data, null, "href") == null) return;
     const navigables = @import("dom").navigables;
