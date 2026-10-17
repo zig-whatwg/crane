@@ -34,9 +34,6 @@ const editing_exec_command = "The editing spec (https://w3c.github.io/editing/do
     "specs/supplementary/execcommand.idl restates the editing spec's declaration";
 
 pub const table = [_]Override{
-    .{ .interface = "Element", .member = "setHTMLUnsafe", .file = "sanitizer-integration.idl", .reason = "HTML 8.5.2 adds sanitizer options to setHTMLUnsafe; the pinned html.idl predates the options argument" },
-    .{ .interface = "ShadowRoot", .member = "setHTMLUnsafe", .file = "sanitizer-integration.idl", .reason = "HTML 8.5.2 adds sanitizer options to ShadowRoot.setHTMLUnsafe; the pinned html.idl predates the options argument" },
-    .{ .interface = "Document", .member = "parseHTMLUnsafe", .file = "sanitizer-integration.idl", .reason = "HTML 8.5.2 adds ParseHTMLUnsafeOptions to Document.parseHTMLUnsafe; the pinned html.idl predates the options argument" },
     .{ .interface = "HTMLScriptElement", .member = "src", .file = "trusted-types-script.idl", .reason = trusted_types_script },
     .{ .interface = "HTMLScriptElement", .member = "text", .file = "trusted-types-script.idl", .reason = trusted_types_script },
     .{ .interface = "Document", .member = "execCommand", .file = "execcommand.idl", .reason = editing_exec_command },
