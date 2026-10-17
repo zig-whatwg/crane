@@ -398,8 +398,9 @@ pub fn setOrigin(instance: *runtime.Instance, origin: []const u8) !void {
 /// HTML "create and initialize a Document object" gives a document fetched
 /// from a URL that URL's origin, except that about:blank, about:srcdoc and
 /// the result of a javascript: URL inherit their creator's - which is what
-/// `internal.origin` holds. A browsing context sandboxed without
-/// allow-same-origin is opaque whatever it loads.
+/// `internal.origin` holds. A document whose active sandboxing flag set has
+/// the sandboxed origin browsing context flag was made with a new opaque
+/// origin, which its record says.
 ///
 /// `internal.origin` alone used to be the answer, and for an iframe that was
 /// its PARENT's origin even after the frame loaded a document from another
@@ -409,9 +410,6 @@ pub fn setOrigin(instance: *runtime.Instance, origin: []const u8) !void {
 ///
 /// The slice lives until the document's URL next changes; copy it to keep it.
 fn effectiveOrigin(instance: *runtime.Instance, internal: *InternalState) []const u8 {
-    if (internal.browsing_context.sandbox_flags) |flags| {
-        if (flags.sandboxesSameOrigin()) return "null";
-    }
     const document = internal.document orelse return internal.origin;
     // A Window's origin is its associated Document's (HTML 7.1.6: the
     // relevant settings object's origin is the document's). A document made
@@ -557,6 +555,16 @@ fn settingsProhibitsMixedSecurityContexts(instance: *runtime.Instance) error{Out
     const mixed = @import("fetch").mixed_content;
     // 1. Check this environment settings object's origin.
     if (try mixed.isOriginAuthenticated(instance.ctx.allocator, effectiveOrigin(instance, internal))) return true;
+    // Deviation, stated (golden rule 2): an origin made opaque by the
+    // document's sandboxed origin browsing context flag is judged by its
+    // precursor, the tuple origin of the document's URL, as Blink does
+    // (MixedContentChecker::IsMixedContent asks
+    // GetOriginOrPrecursorOriginIfOpaque). The text's opaque origin is never
+    // potentially trustworthy, which would let an https page under a CSP
+    // sandbox load http subresources; Chrome 154, Firefox 157 and Safari 27
+    // each pass mixed-content/csp.https.window.html 3/3 (aligned wpt.fyi
+    // revision cc74d2669f), whose top-level page is exactly that.
+    if (try sandboxedPrecursorIsAuthenticated(internal)) return true;
     // 2.2.1. Check each ancestor navigable's active document origin. This is not
     // isSecureContext: one authenticated ancestor is sufficient.
     const navigable = navigableOf(instance, internal) orelse return false;
@@ -575,6 +583,22 @@ fn settingsProhibitsMixedSecurityContexts(instance: *runtime.Instance) error{Out
     }
     // 3. Does not restrict mixed security contexts.
     return false;
+}
+
+/// Whether the window's document is sandboxed into an opaque origin (its
+/// active sandboxing flag set has the sandboxed origin browsing context flag)
+/// and its URL's origin - the opaque origin's precursor - is potentially
+/// trustworthy.
+fn sandboxedPrecursorIsAuthenticated(internal: *InternalState) error{OutOfMemory}!bool {
+    const document = internal.document orelse return false;
+    if (!@import("dom").document_scripts.activeSandboxingFlags(document).origin) return false;
+    const url = interfaces.Document.get_URL(document) catch return false;
+    defer document.ctx.allocator.free(url);
+    const allocator = internal.allocator;
+    // An unreadable precursor must not authorize a downgrade.
+    const precursor = @import("fetch").internal.origins.serializedOriginOf(allocator, url) catch return true;
+    defer allocator.free(precursor);
+    return @import("fetch").mixed_content.isOriginAuthenticated(allocator, precursor);
 }
 
 /// The user agent's cookie jar, which a window reaches through its browsing
@@ -1854,8 +1878,22 @@ pub fn call_print(instance: *runtime.Instance) anyerror!void {
         return; // No-op if window is closed
     }
 
+    // The printing steps, step 1: "If the active sandboxing flag set of
+    // this's associated Document has the sandboxed modals flag set, then
+    // return."
+    if (sandboxedModals(internal)) return;
+
     // Use the UI backend to show print dialog
     internal.ui_backend.showPrint();
+}
+
+/// HTML "cannot show simple dialogs" step 1 (and the printing steps' step
+/// 1): the window's associated Document's active sandboxing flag set has the
+/// sandboxed modals flag set.
+/// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#cannot-show-simple-dialogs
+fn sandboxedModals(internal: *InternalState) bool {
+    const document = internal.document orelse return false;
+    return @import("dom").document_scripts.activeSandboxingFlags(document).modals;
 }
 
 /// Operation: confirm
@@ -1867,6 +1905,9 @@ pub fn call_confirm(instance: *runtime.Instance, message: webidl.Opt(runtime.DOM
     if (internal.closed) {
         return false; // Return false if window is closed
     }
+
+    // Step 1: "If we cannot show simple dialogs for this, then return false."
+    if (sandboxedModals(internal)) return false;
 
     // Get message string (default to empty)
     const msg = if (message.wasPassed()) message.getValue().asSlice() else "";
@@ -2476,6 +2517,9 @@ pub fn call_alert(instance: *runtime.Instance) anyerror!void {
         return; // No-op if window is closed
     }
 
+    // Step 1: "If we cannot show simple dialogs for this, then return."
+    if (sandboxedModals(internal)) return;
+
     // Show alert with empty message
     internal.ui_backend.showAlert("");
 }
@@ -2874,10 +2918,24 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
     if (bc.parent != null or bc.is_closed) return;
     // "3. If thisTraversable's is closing is true, then return."
     if (bc.is_closing or internal.closed) return;
-    // Steps 4-6. Not modelled, stated: step 6's other two conditions - the
-    // incumbent global's browsing context familiar with browsingContext,
-    // and its navigable allowed by sandboxing to navigate thisTraversable.
+    // Steps 4-6. Not modelled, stated: step 6's second condition - the
+    // incumbent global's browsing context familiar with browsingContext.
     if (!bc.isScriptClosable()) return;
+    // Step 5: "Let sourceSnapshotParams be the result of snapshotting source
+    // snapshot params given thisTraversable's active document." Step 6's
+    // third condition: "the incumbent global object's navigable is allowed
+    // by sandboxing to navigate thisTraversable, given sourceSnapshotParams".
+    if (windowOfRealm(engine.incumbentRealm())) |incumbent| {
+        if (getInternal(incumbent)) |incumbent_internal| {
+            if (internal.document) |document| {
+                const flags = @import("dom").document_scripts.activeSandboxingFlags(document);
+                if (!html_core.navigation.sandbox_navigation.allowedBySandboxingToNavigate(incumbent_internal.browsing_context, bc, .{
+                    .sandboxing_flags = flags,
+                    .has_transient_activation = @import("html").user_activation.hasTransientActivation(instance),
+                })) return;
+            }
+        }
+    }
     // Step 6.1: "Set thisTraversable's is closing to true."
     bc.is_closing = true;
     internal.closed = true;
@@ -3090,6 +3148,15 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
         }
     }
 
+    // "The rules for choosing a navigable" step 3: "Let sandboxingFlagSet be
+    // currentNavigable's active document's active sandboxing flag set" -
+    // this's navigable's, which the rules are given (step 13) whatever the
+    // entry global. Step 8: with its sandboxed auxiliary navigation browsing
+    // context flag set no new top-level traversable is made, and (step 14)
+    // "if targetNavigable is null, then return null".
+    const current_flags = sandboxingFlagsOfWindow(this);
+    if (current_flags.auxiliary_navigation) return null;
+
     // Step 15: a new top-level traversable, auxiliary unless noopener.
     // Step 15.1: "Set targetNavigable's active browsing context's is popup
     // to the result of checking if a popup window is requested". Deviation,
@@ -3097,7 +3164,7 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // 51/51 in both; Firefox follows the text): a window opened with noopener
     // or noreferrer is never a popup, whatever its features.
     const is_popup = window_features.popup and !noopener;
-    const created = try newTopLevelTraversable(instance, target_str, noopener, is_popup) orelse return null;
+    const created = try newTopLevelTraversable(instance, target_str, noopener, is_popup, this) orelse return null;
     const integration = created.integration;
     // Step 15.2: "Set up browsing context features for targetNavigable's
     // active browsing context given tokenizedFeatures" - the window's
@@ -3156,11 +3223,18 @@ fn popupByName(window: *runtime.Instance, name: []const u8) ?NamedPopup {
 /// about:blank document. The popup is `window`'s: it goes with `window`'s
 /// page. The machinery is HTMLIFrameElement's (dom.auxiliary_navigables).
 /// Null when none can be made.
-fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopener: bool, is_popup: bool) error{OutOfMemory}!?NamedPopup {
+fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopener: bool, is_popup: bool, current_window: *runtime.Instance) error{OutOfMemory}!?NamedPopup {
     const internal = getInternal(window) orelse return null;
     const allocator = internal.allocator;
     const auxiliary_navigables = @import("dom").auxiliary_navigables;
-    const created = auxiliary_navigables.create(allocator, @ptrCast(internal.browsing_context), internal.origin, is_popup) orelse return null;
+    // Step 3's sandboxingFlagSet: the current navigable's active document's.
+    // Step 9: "If sandboxingFlagSet's sandbox propagates to auxiliary
+    // browsing contexts flag is set, then all the flags that are set in
+    // sandboxingFlagSet must be set in chosen's active browsing context's
+    // popup sandboxing flag set."
+    const current_flags = sandboxingFlagsOfWindow(current_window);
+    const popup_flags = @import("dom").sandboxing.popupSandboxingFlags(current_flags);
+    const created = auxiliary_navigables.create(allocator, @ptrCast(internal.browsing_context), internal.origin, is_popup, popup_flags) orelse return null;
     const integration: *html_core.IFrameIntegration = @ptrCast(@alignCast(created.integration));
     internal.auxiliary_navigables.append(allocator, integration) catch {
         integration.deinit();
@@ -3182,8 +3256,32 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
     if (noopener) {
         setOpenerNoopener(created.window) catch {};
         if (integration.browsing_context) |bc| bc.startOwnGroup();
-    } else setOpener(created.window, window) catch {};
+    } else {
+        setOpener(created.window, window) catch {};
+        // Step 8.8.2: "If sandboxingFlagSet's sandboxed navigation browsing
+        // context flag is set, then set chosen's active browsing context's
+        // one permitted sandboxed navigator to currentNavigable's active
+        // browsing context" - the context it was created given, its opener:
+        // "which allows the browsing context that created them to actually
+        // navigate them". Crane's opener is `window`'s (the entry global's,
+        // as call_open states), which then navigates it; Blink's
+        // LocalFrame::CanNavigate lets a sandboxed frame navigate a popup
+        // whose opener it is (popup-from-initial-empty-sandboxed-document:
+        // `iframe_name.open(url)` from the sandboxed frame).
+        if (current_flags.navigation) {
+            if (integration.browsing_context) |bc| bc.one_permitted_sandboxed_navigator = internal.browsing_context;
+        }
+    }
     return .{ .integration = integration, .window = created.window };
+}
+
+/// `window`'s associated Document's active sandboxing flag set: what "the
+/// rules for choosing a navigable" read as sandboxingFlagSet for the
+/// navigable whose active window `window` is. Empty with no document.
+fn sandboxingFlagsOfWindow(window: *runtime.Instance) @import("dom").sandboxing.SandboxingFlagSet {
+    const internal = getInternal(window) orelse return .empty;
+    const document = internal.document orelse return .empty;
+    return @import("dom").document_scripts.activeSandboxingFlags(document);
 }
 
 /// dom.auxiliary_navigables: the rest of "the rules for choosing a navigable"
@@ -3194,7 +3292,11 @@ fn chooseTopLevelTraversable(current_window: *runtime.Instance, target: []const 
     if (!std.ascii.eqlIgnoreCase(target, "_blank")) {
         if (popupByName(current_window, target)) |found| return .{ .integration = @ptrCast(found.integration), .window = found.window };
     }
-    const created = (newTopLevelTraversable(current_window, target, noopener, false) catch null) orelse return null;
+    // Step 8: no new top-level traversable for a document whose active
+    // sandboxing flag set has the sandboxed auxiliary navigation browsing
+    // context flag set.
+    if (sandboxingFlagsOfWindow(current_window).auxiliary_navigation) return null;
+    const created = (newTopLevelTraversable(current_window, target, noopener, false, current_window) catch null) orelse return null;
     return .{ .integration = @ptrCast(created.integration), .window = created.window };
 }
 
@@ -3463,6 +3565,9 @@ pub fn call_prompt(instance: *runtime.Instance, message: webidl.Opt(runtime.DOMS
     if (internal.closed) {
         return null; // Return null if window is closed
     }
+
+    // Step 1: "If we cannot show simple dialogs for this, then return null."
+    if (sandboxedModals(internal)) return null;
 
     // Get message and default strings
     const msg = if (message.wasPassed()) message.getValue().asSlice() else "";

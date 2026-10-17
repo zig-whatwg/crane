@@ -55,6 +55,7 @@ const attr_nodes = @import("dom").attr_nodes;
 const traversal = @import("dom").traversal;
 const live_collections = @import("dom").live_collections;
 const OriginRecord = @import("dom").origin_record.OriginRecord;
+const SandboxingFlagSet = @import("dom").sandboxing.SandboxingFlagSet;
 const StylesheetBlockingTracker = html_core.StylesheetBlockingTracker;
 const editing = html_core.editing;
 
@@ -310,9 +311,21 @@ pub const InternalState = struct {
     /// This is set when parsing starts and cleared when parsing finishes
     input_stream_manager: ?*html_core.parser.document_write.InputStreamManager,
 
-    /// Whether scripting is enabled for this document
+    /// Whether scripting is enabled for this document, before its sandbox:
+    /// false for a document whose parser runs no script (DOMParser's,
+    /// XMLHttpRequest's, a template's contents owner). `isScriptingEnabled`
+    /// is the answer, which also asks the active sandboxing flag set.
     /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#concept-n-noscript
     scripting_enabled: bool,
+
+    /// HTML's active sandboxing flag set: empty when the document is
+    /// created, populated by the navigation that made it ("create and
+    /// initialize a Document object" step 9: navigationParams's final
+    /// sandboxing flag set) - the `sandboxing_flags` construction argument -
+    /// and never changed after. Its sandboxed scripts browsing context flag
+    /// disables scripting for the document (HTML 8.1.3.4).
+    /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#active-sandboxing-flag-set
+    active_sandboxing_flags: SandboxingFlagSet = .empty,
 
     // === Module Map (HTML Standard §8.1.3.10) ===
 
@@ -859,12 +872,18 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
     internal.origin = origin;
+    // HTML "create and initialize a Document object" step 9, and "create a
+    // new browsing context and document" step 15: the active sandboxing flag
+    // set the navigation (or the creation flags) gave it - empty otherwise.
+    if (@hasField(@TypeOf(args), "sandboxing_flags")) internal.active_sandboxing_flags = args.sandboxing_flags;
 }
 
 /// What a Document is given at construction (`initWith`): `origin`, the
 /// record of the document whose origin it takes (BORROWED - the document
-/// retains it), or null for an origin of its own.
-pub const construction_args = .{"origin"};
+/// retains it), or null for an origin of its own; `sandboxing_flags`, its
+/// active sandboxing flag set (a `dom.sandboxing.SandboxingFlagSet`), empty
+/// when not given.
+pub const construction_args = .{ "origin", "sandboxing_flags" };
 
 /// dom.target_element: `document`'s target element, or null once the
 /// element it names has been freed.
@@ -2195,13 +2214,6 @@ pub fn setActiveElement(instance: *runtime.Instance, element: ?*runtime.Instance
 
 /// HTML document.domain's setter.
 /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#dom-document-domain
-///
-/// Deviation, stated: step 2 needs the document's ACTIVE sandboxing flag
-/// set, captured at creation, including CSP sandbox. The browsing context's
-/// live iframe flags can change without navigating and cannot substitute
-/// for it. The routed active-sandbox-state lane owns that missing state.
-/// Without allow-same-origin, step 4 rejects the opaque origin; with it,
-/// setting a sandboxed document's domain is still incorrectly permitted.
 pub fn set_domain(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const allocator = instance.ctx.allocator;
@@ -2209,6 +2221,13 @@ pub fn set_domain(instance: *runtime.Instance, value: runtime.USVString) anyerro
     // 1. "If this's browsing context is null, then throw a SecurityError." A
     // document has one here exactly when it has a window.
     if (internal.default_view == null) return error.SecurityError;
+
+    // 2. "If this's active sandboxing flag set has its sandboxed
+    // document.domain browsing context flag set, then throw a
+    // SecurityError." Every sandbox sets it - no keyword lifts it - and it
+    // is the set the document was created with, whatever its iframe's
+    // sandbox attribute says now.
+    if (internal.active_sandboxing_flags.document_domain) return error.SecurityError;
 
     // 3-4. "Let effectiveDomain be this's origin's effective domain. If
     // effectiveDomain is null, then throw a SecurityError."
@@ -2823,7 +2842,7 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
         instance,
         // HTML 8.1.3.4: scripting is disabled for a node whose document's
         // browsing context is null, including a retained destroyed document.
-        internal.default_view != null and !internal.destroyed and internal.scripting_enabled,
+        internal.default_view != null and !internal.destroyed and isScriptingEnabled(instance),
         &activeParserFinished,
     );
     internal.parser_epoch +%= 1;
@@ -4625,11 +4644,6 @@ const DeclarativeRefresh = struct {
 /// the meta element's insertion is `time` seconds from now for a document
 /// that has completely loaded - the element was inserted just now - and
 /// `time` seconds from the completely loaded time otherwise.
-///
-/// Not modelled, stated: the document's active sandboxing flag set is not
-/// recorded, so step 13's sandboxed automatic features browsing context flag
-/// is read from its navigable's sandboxing flags when the steps run; the
-/// flag is set exactly when allow-scripts is absent.
 fn lifecycleDeclarativeRefresh(document: *runtime.Instance, input: []const u8, meta: ?*runtime.Instance) void {
     const internal = getInternal(document) orelse return;
     // Step 1: "If document's will declaratively refresh is true, then
@@ -4733,12 +4747,12 @@ fn refreshComesDue(data: ?*anyopaque) void {
     dom.top_level_navigation.navigate(window, refresh.url, .{ .history_behavior = .replace, .source_document = document });
 }
 
-/// Whether `document`'s navigable is sandboxed without allow-scripts - which
-/// sets the sandboxed automatic features browsing context flag.
+/// Whether `document`'s active sandboxing flag set has the sandboxed
+/// automatic features browsing context flag (set by a sandbox without
+/// allow-scripts).
 fn automaticFeaturesSandboxed(document: *runtime.Instance) bool {
-    const window = (get_defaultView(document) catch null) orelse return false;
-    const browsing_context = @import("dom").browser_state.browsingContextOf(window) orelse return false;
-    return !browsing_context.allowsScripts();
+    const internal = getInternal(document) orelse return false;
+    return internal.active_sandboxing_flags.automatic_features;
 }
 
 /// `url_string` encoding-parsed relative to `document` and serialized,
@@ -5155,6 +5169,7 @@ fn installScriptHooks() void {
     dom_document_scripts.install(.{
         .scripts = &scriptsOf,
         .scripting_enabled = &isScriptingEnabled,
+        .sandboxing_flags = &activeSandboxingFlags,
         .has_style_sheet_blocking_scripts = &hasStyleSheetBlockingScripts,
         .inline_script_allowed_by_csp = &isInlineScriptAllowedByCSP,
         .add_prefetch_hint = &addPrefetchHintStep,
@@ -5330,11 +5345,23 @@ pub fn getWriteBuffer(instance: *runtime.Instance) []const u8 {
     return stream.buffer.items;
 }
 
-/// Check if scripting is enabled
+/// HTML 8.1.3.4 "scripting is enabled" for a node of `instance`: the
+/// document runs script at all (`scripting_enabled`), and its active
+/// sandboxing flag set does not have the sandboxed scripts browsing context
+/// flag set - "settings's global object's associated Document's active
+/// sandboxing flag set does not have its sandboxed scripts browsing context
+/// flag set".
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#concept-n-noscript
 pub fn isScriptingEnabled(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
-    return internal.scripting_enabled;
+    return internal.scripting_enabled and !internal.active_sandboxing_flags.scripts;
+}
+
+/// `instance`'s active sandboxing flag set (dom.document_scripts); empty for
+/// an object that is no Document.
+fn activeSandboxingFlags(instance: *runtime.Instance) SandboxingFlagSet {
+    const internal = getInternal(instance) orelse return .empty;
+    return internal.active_sandboxing_flags;
 }
 
 /// Set scripting enabled flag

@@ -201,6 +201,25 @@ pub fn topNavigationBlocked(source_document: ?*Instance, target: *BrowsingContex
     return true;
 }
 
+/// HTML "navigate" step 6.2: whether `source_document` - the navigation's
+/// sourceDocument - is NOT allowed by sandboxing to navigate `target`, given
+/// the source snapshot params taken now: the document's active sandboxing
+/// flag set, and whether its window has transient activation. A document
+/// with no sandbox may navigate anything (every step returns true for an
+/// empty set), and so may no source, or one without a navigable.
+/// Spec: https://html.spec.whatwg.org/multipage/browsing-the-web.html#allowed-to-navigate
+pub fn sandboxBlocksNavigation(source_document: ?*Instance, target: *const BrowsingContext) bool {
+    const source = source_document orelse return false;
+    const flags = dom.document_scripts.activeSandboxingFlags(source);
+    if (flags.isEmpty()) return false;
+    const window = (interfaces.Document.get_defaultView(source) catch null) orelse return false;
+    const source_context = browsingContextOf(window) orelse return false;
+    return !html_core.navigation.sandbox_navigation.allowedBySandboxingToNavigate(source_context, target, .{
+        .sandboxing_flags = flags,
+        .has_transient_activation = hasTransientActivation(window),
+    });
+}
+
 /// Gecko's ComputeIsFramebustingAllowed for `context` under `top`: it is
 /// top, it is same origin with top, or it is sandboxed with
 /// allow-top-navigation and its parent is allowed.
@@ -211,8 +230,12 @@ fn framebustingAllowed(context: *BrowsingContext, top: *BrowsingContext) bool {
         const parent = current.parent orelse return true;
         if (current == top) return true;
         if (sameOriginWith(current, top)) return true;
-        const flags = current.sandbox_flags orelse return false;
-        if (!flags.allow_top_navigation) return false;
+        // Sandboxed with allow-top-navigation: its active document's active
+        // sandboxing flag set is not empty, and lacks the sandboxed top-level
+        // navigation without user activation browsing context flag.
+        const document: *Instance = @ptrCast(@alignCast(current.getActiveDocument() orelse return false));
+        const flags = dom.document_scripts.activeSandboxingFlags(document);
+        if (flags.isEmpty() or flags.top_level_navigation_without_user_activation) return false;
         current = parent;
     }
     return false;
