@@ -97,6 +97,13 @@ pub const WorkerScriptFetchOptions = struct {
     /// is this blob even once the URL has been revoked. BORROWED; null: the
     /// store is asked now.
     blob_entry: ?*const FetchedScript = null,
+    /// The worker's reserved client - "run a worker" step 7's inside
+    /// settings, made before its script is fetched (Service Workers 2.5.2):
+    /// the request's reserved client, opaque here, and the route Handle
+    /// Fetch takes for it (dom.service_worker_clients). BORROWED: the caller
+    /// owns the handle. Null: no service worker sees the fetch.
+    reserved_client: ?*anyopaque = null,
+    service_worker: ?fetch.internal.ServiceWorkerRoute = null,
 
     pub const CredentialsMode = enum {
         omit,
@@ -402,6 +409,12 @@ pub fn workerScriptRequest(
     };
     internal_request.initiator_type = .other;
     internal_request.use_url_credentials = true;
+    // A worker's script goes to the service worker its reserved client's URL
+    // matches (Handle Fetch step 9); importScripts() asks none here.
+    if (!options.is_import_scripts) {
+        internal_request.reserved_client = options.reserved_client;
+        internal_request.service_worker = options.service_worker;
+    }
     // The client's policy container, for main fetch step 7 (and 8).
     if (options.policy_container) |container| {
         internal_request.setPolicyContainer(container.clone(allocator) catch return WorkerScriptError.OutOfMemory);

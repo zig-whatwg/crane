@@ -42,6 +42,15 @@ pub fn installHooks() void {
     // HTML "the end" step 6.4: the client message queue is enabled after
     // DOMContentLoaded.
     @import("dom").client_message_queues.install(&service_worker.realm.enableClientMessageQueueOf);
+    // Service Workers 2.5: frames, popups and workers are clients from their
+    // creation, their active service worker decided then.
+    @import("dom").service_worker_clients.install(.{
+        .reserve = &service_worker.realm.reserveClient,
+        .route_of_reserved = &service_worker.realm.routeOfReserved,
+        .created = &service_worker.realm.clientCreated,
+        .release = &service_worker.realm.releaseReserved,
+        .route_for_global = &service_worker.realm.routeForGlobal,
+    });
 }
 
 /// ServiceWorkerContainer's own construction steps: the generated chain runs

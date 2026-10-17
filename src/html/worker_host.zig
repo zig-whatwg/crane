@@ -2095,6 +2095,11 @@ const SharedConnect = struct {
     /// global's to report), then the worker started on a thread of its own.
     fn runSharedWorker(self: *SharedConnect, manager: *SharedWorkerManager, key: SharedWorkerManager.Key) void {
         const allocator = self.allocator;
+        // 7. The worker's environment, as its reserved client until its
+        // realm adopts it (Service Workers 2.5.2). Released unless the
+        // worker's thread takes it.
+        var reserved_client = @import("dom").service_worker_clients.reserve(self.owner_realm, .shared_worker, self.url);
+        defer @import("dom").service_worker_clients.release(reserved_client);
         // 12. Fetch a classic worker script, or - for a module worker - the
         // root of its module worker script graph (the rest is fetched in the
         // worker's realm). A failed fetch is a null script: onComplete 1.
@@ -2115,6 +2120,8 @@ const SharedConnect = struct {
             // A blob: script is urlRecord's blob URL entry's blob, resolved
             // when the constructor parsed it - revoked since or not.
             .blob_entry = if (self.blob_entry) |*entry| entry else null,
+            .reserved_client = reserved_client,
+            .service_worker = @import("dom").service_worker_clients.routeOfReserved(reserved_client),
         }) catch return self.fireError();
         defer fetched.deinit();
 
@@ -2134,6 +2141,7 @@ const SharedConnect = struct {
             // 3. The unsafe worker creation time: the global scope's time
             // origin.
             .time_origin_ns = self.creation_time_ns,
+            .service_worker_client = reserved_client,
         };
         defer if (start.policy_container) |*container| container.deinit();
         defer if (start.shared) |*shared| shared.deinit(allocator);
@@ -2144,6 +2152,8 @@ const SharedConnect = struct {
             log.debug("the shared worker's thread did not start: {}", .{err});
             return self.fireError();
         };
+        // The worker's thread took the reserved client.
+        reserved_client = start.service_worker_client;
         // The worker's loop has the inside end now, and the SharedWorker's
         // pending activity is the worker's start's: its outcome - started,
         // or `error` - ends it (`OwnerSteps.started`, `.start_failed`).
@@ -2220,6 +2230,7 @@ fn startSharedWorker(
     // The thread has them now.
     start.policy_container = null;
     start.shared = null;
+    start.service_worker_client = null;
     postConnect(allocator, link, thread_host, inside_end);
 }
 
@@ -2768,6 +2779,9 @@ pub const WorkerStart = struct {
     /// A shared worker's constructor key, type and credentials ("run a
     /// worker" step 10); null for a dedicated worker. Taken on success.
     shared: ?SharedScope = null,
+    /// The worker's reserved client (dom.service_worker_clients), which its
+    /// realm adopts as it becomes a service worker client. Taken on success.
+    service_worker_client: ?*anyopaque = null,
 };
 
 /// Start a dedicated worker on a thread of its own: a link shared with the
@@ -2798,6 +2812,7 @@ pub fn startDedicatedWorker(allocator: Allocator, start: *WorkerStart) !*WorkerL
     // The thread has them now.
     start.policy_container = null;
     start.inside_end = null;
+    start.service_worker_client = null;
     return link;
 }
 
@@ -2876,6 +2891,8 @@ const ThreadHost = struct {
         /// shared worker: HTML leaves its top-level origin to the user agent,
         /// and Crane does not partition SharedWorker matching.
         top_level_site: ?[]u8,
+        /// The worker's reserved client, until its realm adopts it.
+        service_worker_client: ?*anyopaque,
     };
 
     fn create(allocator: Allocator, start: *const WorkerStart) !*ThreadHost {
@@ -2910,6 +2927,7 @@ const ThreadHost = struct {
                 // cluster, for a dedicated worker.
                 .agent_cluster = if (start.shared == null) agent_clusters.ofRealm(start.owner_realm) else 0,
                 .top_level_site = top_level_site,
+                .service_worker_client = start.service_worker_client,
             },
         };
         return self;
@@ -2921,6 +2939,7 @@ const ThreadHost = struct {
         self.start.policy_container = null;
         self.start.inside_end = null;
         self.start.shared = null;
+        self.start.service_worker_client = null;
         self.freeStart();
         self.allocator.destroy(self);
     }
@@ -2937,6 +2956,27 @@ const ThreadHost = struct {
         self.start.shared = null;
         if (self.start.top_level_site) |site| self.allocator.free(site);
         self.start.top_level_site = null;
+        @import("dom").service_worker_clients.release(self.start.service_worker_client);
+        self.start.service_worker_client = null;
+    }
+
+    /// The worker's realm is a service worker client: it takes the reserved
+    /// client its script's fetch went with (dom.service_worker_clients).
+    fn becomeServiceWorkerClient(self: *ThreadHost, worker_host: *WorkerHost) void {
+        const reserved = self.start.service_worker_client;
+        self.start.service_worker_client = null;
+        const realm = worker_host.realm orelse return @import("dom").service_worker_clients.release(reserved);
+        const global = worker_host.global_scope orelse return @import("dom").service_worker_clients.release(reserved);
+        const settings = @import("dom").global_settings.of(global) orelse return @import("dom").service_worker_clients.release(reserved);
+        const origin = settings.origin(global) catch return @import("dom").service_worker_clients.release(reserved);
+        defer realm.allocator.free(origin);
+        @import("dom").service_worker_clients.created(realm, .{
+            .kind = if (self.start.shared != null or worker_host.shared != null) .shared_worker else .dedicated_worker,
+            .creation_url = self.start.script_url,
+            .origin = origin,
+            .secure_context = realm.secure_context,
+            .reserved = reserved,
+        });
     }
 
     fn asHost(self: *ThreadHost) WorkerThread.Host {
@@ -2965,6 +3005,9 @@ const ThreadHost = struct {
             self.reportStartFailure(thread.link);
             return false;
         };
+        // Service Workers 2.5.2: the worker is a service worker client from
+        // here - before its script runs - adopting its reserved client.
+        self.becomeServiceWorkerClient(worker_host);
         // onComplete 3-5 for a dedicated worker: the inside port, its message
         // event target the global scope, entangled with the Worker's outside
         // port (they are one channel already) - bound to this thread's loop.

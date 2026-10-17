@@ -127,6 +127,10 @@ pub const Worker = struct {
     run_generation: u64 = 0,
     /// What waits for Run Service Worker's answer.
     start_waiters: std.ArrayListUnmanaged(Waiter) = .empty,
+    /// Fetch events waiting for this worker, while it is "activating", to
+    /// become "activated" (Create Fetch Event and Dispatch step 15) before
+    /// Run Service Worker. A worker that goes redundant instead fails them.
+    activation_waiters: std.ArrayListUnmanaged(Waiter) = .empty,
     /// Its global object's force bypass cache for import scripts flag (Run
     /// Service Worker step 9.1), for the run now started.
     force_bypass_cache_for_imports: bool = false,
@@ -223,8 +227,15 @@ pub const Environment = struct {
     focused: bool = false,
     /// For a service worker's own global: which worker it runs.
     service_worker_id: u64 = 0,
-    /// The owner's handle on the realm (its sink, its objects). Opaque.
-    endpoint: *anyopaque,
+    /// A window client's browsing context, as an identity only (0: none):
+    /// the next window client of the same one is what a navigation of this
+    /// one made (WindowClient.navigate()).
+    navigable: usize = 0,
+    /// The owner's handle on the realm (its sink, its objects). Opaque. Null
+    /// for a reserved client (a navigation's or a worker's, HTML "reserved
+    /// client"), whose realm does not exist yet: nothing is posted to it until
+    /// it is adopted (`adoptEnvironment`).
+    endpoint: ?*anyopaque,
 };
 
 /// A job (Appendix A).
@@ -592,7 +603,8 @@ pub const Registry = struct {
         secure_context: bool = true,
         frame_type: FrameType = .none,
         service_worker_id: u64 = 0,
-        endpoint: *anyopaque,
+        navigable: usize = 0,
+        endpoint: ?*anyopaque,
     };
 
     /// A new environment, its strings copied.
@@ -612,11 +624,62 @@ pub const Registry = struct {
             .secure_context = init_values.secure_context,
             .frame_type = init_values.frame_type,
             .service_worker_id = init_values.service_worker_id,
+            .navigable = init_values.navigable,
             .endpoint = init_values.endpoint,
         };
         self.makeUuid(&environment.client_id);
         try self.environments.append(self.allocator, environment);
         return environment;
+    }
+
+    /// What a reserved client is made with: an environment whose realm does
+    /// not exist yet (HTML "create navigation params by fetching"'s reserved
+    /// client, "run a worker" step 7's inside settings before the fetch).
+    /// `origin` is its storage key - its creation URL's origin.
+    pub const ReserveInit = struct {
+        kind: EnvironmentKind,
+        origin: []const u8,
+        creation_url: []const u8,
+        secure_context: bool = true,
+    };
+
+    /// A reserved client: an environment that is not execution ready and has
+    /// no realm. Its id is a client id from now on - a fetch event's
+    /// resultingClientId names it - but it is no target of claim(),
+    /// matchAll() or a realm's messages until `adoptEnvironment`. One that is
+    /// never adopted is discarded (`removeEnvironment`).
+    pub fn reserveEnvironment(self: *Registry, init_values: ReserveInit) Allocator.Error!*Environment {
+        const environment = try self.addEnvironment(.{
+            .kind = init_values.kind,
+            .origin = init_values.origin,
+            .creation_url = init_values.creation_url,
+            .secure_context = init_values.secure_context,
+            .endpoint = null,
+        });
+        environment.execution_ready = false;
+        return environment;
+    }
+
+    /// What a realm brings to the reserved client it becomes.
+    pub const AdoptInit = struct {
+        endpoint: *anyopaque,
+        /// Its creation URL: the response's (a navigation's redirects).
+        creation_url: []const u8,
+        frame_type: FrameType = .none,
+    };
+
+    /// The realm the reserved client `environment` was reserved for exists:
+    /// HTML "set up a window environment settings object" step 4 (and a
+    /// worker's adoption of its inside settings) - the settings object takes
+    /// the reserved environment's id and active service worker, and is
+    /// execution ready.
+    pub fn adoptEnvironment(self: *Registry, environment: *Environment, init_values: AdoptInit) Allocator.Error!void {
+        const creation_url = try self.allocator.dupe(u8, init_values.creation_url);
+        self.allocator.free(environment.creation_url);
+        environment.creation_url = creation_url;
+        environment.endpoint = init_values.endpoint;
+        environment.frame_type = init_values.frame_type;
+        environment.execution_ready = true;
     }
 
     /// The environment has ended: Handle Service Worker Client Unload, then
@@ -746,6 +809,7 @@ pub const Registry = struct {
         for (worker.used_scripts.items) |url| self.allocator.free(url);
         worker.used_scripts.deinit(self.allocator);
         worker.start_waiters.deinit(self.allocator);
+        worker.activation_waiters.deinit(self.allocator);
         if (worker.policy) |policy| self.effects.free_policy(self.effects.ctx, policy);
         self.allocator.free(worker.script_url);
         self.allocator.destroy(worker);
@@ -920,7 +984,7 @@ pub const Registry = struct {
         // resolve its promise with the registration's object there.
         if (job.client) |client| {
             if (self.findEnvironment(client.environment)) |environment| {
-                self.effects.notify(self.effects.ctx, environment, .{ .resolve_registration = .{ .promise = client.promise, .registration = snapshot } });
+                self.notifyEnvironment(environment, .{ .resolve_registration = .{ .promise = client.promise, .registration = snapshot } });
             }
         }
         // 2. The same for each equivalent job's client.
@@ -928,7 +992,7 @@ pub const Registry = struct {
             equivalent.promise_settled = true;
             const client = equivalent.client orelse continue;
             const environment = self.findEnvironment(client.environment) orelse continue;
-            self.effects.notify(self.effects.ctx, environment, .{ .resolve_registration = .{ .promise = client.promise, .registration = snapshot } });
+            self.notifyEnvironment(environment, .{ .resolve_registration = .{ .promise = client.promise, .registration = snapshot } });
         }
     }
 
@@ -937,14 +1001,14 @@ pub const Registry = struct {
         job.promise_settled = true;
         if (job.client) |client| {
             if (self.findEnvironment(client.environment)) |environment| {
-                self.effects.notify(self.effects.ctx, environment, .{ .resolve_boolean = .{ .promise = client.promise, .value = value } });
+                self.notifyEnvironment(environment, .{ .resolve_boolean = .{ .promise = client.promise, .value = value } });
             }
         }
         for (job.equivalent.items) |equivalent| {
             equivalent.promise_settled = true;
             const client = equivalent.client orelse continue;
             const environment = self.findEnvironment(client.environment) orelse continue;
-            self.effects.notify(self.effects.ctx, environment, .{ .resolve_boolean = .{ .promise = client.promise, .value = value } });
+            self.notifyEnvironment(environment, .{ .resolve_boolean = .{ .promise = client.promise, .value = value } });
         }
     }
 
@@ -954,7 +1018,7 @@ pub const Registry = struct {
         if (!job.promise_settled) {
             if (job.client) |client| {
                 if (self.findEnvironment(client.environment)) |environment| {
-                    self.effects.notify(self.effects.ctx, environment, .{ .reject = .{ .promise = client.promise, .kind = kind, .message = message } });
+                    self.notifyEnvironment(environment, .{ .reject = .{ .promise = client.promise, .kind = kind, .message = message } });
                 }
             }
         }
@@ -964,7 +1028,7 @@ pub const Registry = struct {
             equivalent.promise_settled = true;
             const client = equivalent.client orelse continue;
             const environment = self.findEnvironment(client.environment) orelse continue;
-            self.effects.notify(self.effects.ctx, environment, .{ .reject = .{ .promise = client.promise, .kind = kind, .message = message } });
+            self.notifyEnvironment(environment, .{ .reject = .{ .promise = client.promise, .kind = kind, .message = message } });
         }
     }
 
@@ -1214,6 +1278,99 @@ pub const Registry = struct {
             if (queue.items.len > 0 and queue.items[0].id == job_id) return queue.items[0];
         }
         return null;
+    }
+
+    // ------------------------------------------------------------------
+    // Handle Fetch's decision (steps 9-12)
+    // ------------------------------------------------------------------
+
+    /// Who handles a fetch: the registration's active worker, and whether
+    /// Soft Update runs once the event was dispatched (step 12).
+    pub const FetchMatch = struct {
+        worker: *Worker,
+        soft_update: bool,
+        /// A non-subresource request's reserved client, made (or found) by
+        /// step 9.8 - null for a report.
+        reserved: ?*Environment = null,
+    };
+
+    /// Handle Fetch for a non-subresource request (navigation, worker).
+    pub const NonSubresourceFetch = struct {
+        /// The request's URL, serialized.
+        url: []const u8,
+        /// The reserved client, as it is made if the request is handled: its
+        /// origin is the storage key step 9.5 obtains.
+        reserve: ReserveInit,
+        /// The reserved client an earlier call made for the same request.
+        reserved: ?*Environment = null,
+        /// The request's destination is "report" (step 9.8).
+        destination_is_report: bool = false,
+    };
+
+    /// Handle Fetch steps 9.5-9.8 and 11-12 for a non-subresource request
+    /// (9.1-9.4 are the caller's: secure context, shift+reload). Null:
+    /// Handle Fetch returns null - no registration, or none active - and no
+    /// reserved environment is made. Otherwise the reserved client is made
+    /// now, if it was not, and controlled by the active worker (9.8: "From
+    /// this point, the service worker client starts to use its active service
+    /// worker's containing service worker registration").
+    pub fn handleFetchNonSubresource(self: *Registry, fetch: NonSubresourceFetch) Allocator.Error!?FetchMatch {
+        // 6. Match Service Worker Registration given storage key and url.
+        const registration = self.matchRegistration(fetch.reserve.origin, fetch.url) orelse return null;
+        // 7. A registration with no active worker: null.
+        const active = registration.active orelse return null;
+        // 8. Unless the destination is "report", the reserved client's
+        // active service worker is the registration's active worker.
+        var reserved = fetch.reserved;
+        if (!fetch.destination_is_report) {
+            if (reserved == null) reserved = try self.reserveEnvironment(fetch.reserve);
+            self.setActiveWorker(reserved.?, active);
+        }
+        // 11-12. activeWorker; a non-subresource request soft-updates.
+        return .{ .worker = active, .soft_update = true, .reserved = reserved };
+    }
+
+    /// Handle Fetch steps 10-12 for a subresource request whose client is
+    /// `client`: its active service worker's containing registration's
+    /// active worker - null when the client is not controlled - and Soft
+    /// Update only for a stale registration.
+    pub fn handleFetchSubresource(self: *const Registry, client: *const Environment) ?FetchMatch {
+        // 10.1-10.2.
+        const controller = client.active_worker orelse return null;
+        const registration = controller.registration;
+        // 11. activeWorker: the registration's active worker.
+        const active = registration.active orelse return null;
+        // 12.
+        const now = self.effects.now_ms(self.effects.ctx);
+        return .{ .worker = active, .soft_update = registration.isStale(now) };
+    }
+
+    /// Create Fetch Event and Dispatch steps 15-16: wait for an "activating"
+    /// worker to become "activated", then Run Service Worker for `waiter`. A
+    /// worker that goes redundant meanwhile fails the waiter.
+    pub fn runServiceWorkerForFetch(self: *Registry, worker: *Worker, waiter: Waiter) Allocator.Error!void {
+        if (worker.state == .activating) return worker.activation_waiters.append(self.allocator, waiter);
+        return self.runServiceWorker(worker, false, waiter);
+    }
+
+    /// The worker's state left "activating": its fetch events go on (to
+    /// Run Service Worker) or fail.
+    fn releaseActivationWaiters(self: *Registry, worker: *Worker) void {
+        if (worker.activation_waiters.items.len == 0) return;
+        var waiters = worker.activation_waiters;
+        worker.activation_waiters = .empty;
+        defer waiters.deinit(self.allocator);
+        worker.refs += 1;
+        defer self.releaseWorker(worker);
+        for (waiters.items) |waiter| {
+            if (worker.state == .activated) {
+                self.runServiceWorker(worker, false, waiter) catch {
+                    self.answer(worker, waiter, false) catch {};
+                };
+            } else {
+                self.answer(worker, waiter, false) catch {};
+            }
+        }
     }
 
     // ------------------------------------------------------------------
@@ -1539,7 +1696,7 @@ pub const Registry = struct {
         for (self.environments.items) |environment| {
             if (!environment.kind.isClient()) continue;
             if (!self.creationUrlMatches(environment, registration)) continue;
-            self.effects.notify(self.effects.ctx, environment, .{ .ready = snapshot });
+            self.notifyEnvironment(environment, .{ .ready = snapshot });
         }
         // 8. Every client using the registration: its active worker is the
         // new one, and it hears controllerchange.
@@ -1705,14 +1862,23 @@ pub const Registry = struct {
         std.debug.assert(state != .parsed);
         // 2. Set worker's state.
         worker.state = state;
+        // Fetch events waiting for "activated" go on, or fail.
+        if (state == .activated or state == .redundant) self.releaseActivationWaiters(worker);
         // 3-4. Every settings object of the script url's origin: set its
         // ServiceWorker object's state and fire statechange.
         self.notifySameOrigin(worker.script_url, .{ .worker_state = .{ .worker = worker.id, .state = state } });
     }
 
+    /// Post `message` to `environment`'s realm - none for a reserved client,
+    /// whose realm does not exist yet.
+    fn notifyEnvironment(self: *Registry, environment: *Environment, message: Message) void {
+        if (environment.endpoint == null) return;
+        self.effects.notify(self.effects.ctx, environment, message);
+    }
+
     /// Notify Controller Change.
     fn notifyControllerChange(self: *Registry, environment: *Environment) void {
-        self.effects.notify(self.effects.ctx, environment, .controller_change);
+        self.notifyEnvironment(environment, .controller_change);
     }
 
     /// Post `message` to every environment whose origin is `url`'s.
@@ -1721,7 +1887,7 @@ pub const Registry = struct {
         defer self.allocator.free(origin);
         for (self.environments.items) |environment| {
             if (!std.mem.eql(u8, environment.origin, origin)) continue;
-            self.effects.notify(self.effects.ctx, environment, message);
+            self.notifyEnvironment(environment, message);
         }
     }
 

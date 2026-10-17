@@ -48,6 +48,10 @@ const Registry = registry_mod.Registry;
 const TaskSink = runtime.TaskSink;
 const WorkerLink = html.WorkerLink;
 const PortMessage = @import("dom").port_channels.PortMessage;
+const fetch = @import("fetch");
+const InternalRequest = fetch.internal.InternalRequest;
+const service_worker_fetch = fetch.internal.service_worker_fetch;
+const Call = service_worker_fetch.Call;
 
 const log = std.log.scoped(.service_worker);
 
@@ -280,6 +284,10 @@ pub const Delivery = union(enum) {
     /// Clients' get(id): the client (Resolve Get Client Promise), or
     /// undefined.
     resolve_client: struct { promise: u64, client: ?ClientInfo },
+    /// WindowClient.navigate() step 7: navigate the window client's
+    /// browsing context to `url` (OWNED) from its own event loop; the
+    /// manager's navigate `id` hears how it went.
+    navigate: struct { id: u64, url: []u8 },
 
     /// `message`, copied - with the registry's lock held (its borrowed
     /// strings are valid until then). `registration`: the record a
@@ -321,6 +329,7 @@ pub const Delivery = union(enum) {
                 allocator.free(m.clients);
             },
             .resolve_client => |*m| if (m.client) |*info| info.deinit(allocator),
+            .navigate => |m| allocator.free(m.url),
             else => {},
         }
     }
@@ -332,6 +341,13 @@ pub const Delivery = union(enum) {
 fn infoOfSnapshot(allocator: Allocator, registry: *const Registry, snapshot: registry_mod.RegistrationSnapshot) Allocator.Error!RegistrationInfo {
     const registration = registry.findRegistration(snapshot.id) orelse return error.OutOfMemory;
     return RegistrationInfo.of(allocator, registration);
+}
+
+/// The realm side of `environment`, or null for a reserved client (no realm
+/// yet). Locked.
+fn endpointOfEnvironment(environment: *const registry_mod.Environment) ?*Endpoint {
+    const opaque_endpoint = environment.endpoint orelse return null;
+    return @ptrCast(@alignCast(opaque_endpoint));
 }
 
 /// A realm's side of an environment: where Deliveries for it go. The realm
@@ -353,7 +369,119 @@ pub const Endpoint = struct {
     /// is not enumerable (its document is no longer its browsing context's
     /// active document).
     window_data: *const fn (endpoint: *Endpoint, allocator: Allocator) ?WindowData,
+    /// The same, read at once on the realm's thread from inside script (no
+    /// task): what a thread about to block in a synchronous fetch leaves for
+    /// the manager to answer from while it cannot run a task.
+    window_data_now: *const fn (endpoint: *Endpoint, allocator: Allocator) ?WindowData,
 };
+
+/// A navigation's or a worker's reserved client (HTML "create navigation
+/// params by fetching"'s, "run a worker" step 7's inside settings before the
+/// fetch), as its creator holds it - dom.service_worker_clients' opaque
+/// handle. OWNED by the creator until `createClient` or `releaseReserved`.
+pub const ReservedClient = struct {
+    manager: *Manager,
+    kind: registry_mod.EnvironmentKind,
+    /// The reserved environment, once Handle Fetch made one (0: none - no
+    /// registration matched, or no fetch has asked).
+    environment: u64 = 0,
+    /// The creator's environment (0: none): a navigation request's client
+    /// (its fetch event's clientId), and the thread a blocking fetch blocks.
+    creator: u64 = 0,
+    /// A worker whose script is a blob: URL of its owner's origin: the
+    /// owner's active service worker when it was reserved (SW 2.5.2).
+    inherited_worker: u64 = 0,
+};
+
+/// A fetch Handle Fetch hands to a service worker (Create Fetch Event and
+/// Dispatch's inputs): the request as the worker's thread makes its Request
+/// object from, the client ids its FetchEvent names, the worker, and the
+/// call its answer goes to. OWNED by whoever holds it last - the job
+/// thread, then the worker's task; `fail` answers handleFetchFailed.
+pub const FetchDispatch = struct {
+    allocator: Allocator,
+    /// The service worker side's reference.
+    call: *Call,
+    /// requestForServiceWorker (HTTP fetch step 3.1), its body's bytes
+    /// copied. OWNED, made with `allocator`.
+    request: *InternalRequest,
+    /// The request's client's id: clientId.
+    client_id: ?[36]u8 = null,
+    /// The reserved client's id: resultingClientId.
+    resulting_client_id: ?[36]u8 = null,
+    /// The request's replaces client id. OWNED.
+    replaces_client_id: []u8,
+    worker_id: u64,
+    registration_id: u64,
+    /// Handle Fetch step 12: Soft Update once the event was dispatched.
+    soft_update: bool,
+
+    pub fn destroy(self: *FetchDispatch) void {
+        self.request.deinit();
+        self.allocator.free(self.replaces_client_id);
+        self.call.release();
+        self.allocator.destroy(self);
+    }
+
+    /// The event never ran: Handle Fetch returns a network error
+    /// (handleFetchFailed), and the dispatch goes.
+    pub fn fail(self: *FetchDispatch) void {
+        self.call.answer(.network_error);
+        self.destroy();
+    }
+};
+
+/// A copy of `request` for another thread (HTTP fetch step 3.1's
+/// requestForServiceWorker): what a Request object reads of it, nothing that
+/// points back at its client. Its body's bytes are copied and owned. Null:
+/// a body this thread cannot copy (a stream's), which goes to the network.
+pub fn copyRequestForWorker(allocator: Allocator, request: *const InternalRequest) Allocator.Error!?*InternalRequest {
+    const body_bytes: ?[]const u8 = if (request.body) |b| switch (b) {
+        .bytes => |bytes| bytes,
+        // A body still arriving through a pipe: its bytes are not here.
+        .body => |body| if (body.pipe != null) null else body.getBytes(),
+    } else &.{};
+    const bytes = body_bytes orelse return null;
+    const copy = try InternalRequest.init(allocator, request.url_list.items[0]);
+    errdefer copy.deinit();
+    for (request.url_list.items[1..]) |url| try copy.addUrl(url);
+    try copy.setMethod(request.method);
+    copy.header_list.deinit();
+    copy.header_list = try request.header_list.clone(allocator);
+    if (request.body != null) {
+        const body = try allocator.create(fetch.internal.Body);
+        body.* = fetch.internal.Body.init(allocator);
+        body.data.appendSlice(allocator, bytes) catch |err| {
+            body.deinit();
+            return err;
+        };
+        body.length = bytes.len;
+        copy.body = .{ .body = body };
+    }
+    copy.mode = request.mode;
+    copy.credentials_mode = request.credentials_mode;
+    copy.cache_mode = request.cache_mode;
+    copy.redirect_mode = request.redirect_mode;
+    copy.destination = request.destination;
+    copy.initiator = request.initiator;
+    copy.keepalive = request.keepalive;
+    copy.priority = request.priority;
+    copy.reload_navigation = request.reload_navigation;
+    copy.history_navigation = request.history_navigation;
+    copy.referrer_policy = request.referrer_policy;
+    copy.service_workers_mode = request.service_workers_mode;
+    switch (request.referrer) {
+        .url => |url| try copy.setReferrerUrl(url),
+        .no_referrer => copy.setReferrer(.no_referrer),
+        .client => copy.setReferrer(.client),
+    }
+    switch (request.origin) {
+        .origin => |origin| try copy.setOrigin(origin),
+        .client => {},
+    }
+    if (request.integrity_metadata.len > 0) copy.integrity_metadata = try allocator.dupe(u8, request.integrity_metadata);
+    return copy;
+}
 
 /// What a service worker's thread starts with (Run Service Worker steps 7-9,
 /// Setup ServiceWorkerGlobalScope). Every slice BORROWED for the call.
@@ -401,6 +529,13 @@ pub const Host = struct {
     /// worker reports `.message_done` with `worker_id` and `generation`.
     /// Called with the lock held: it only posts.
     post_message: *const fn (manager: *Manager, started: Started, message: *WorkerMessage, worker_id: u64, generation: u64) void,
+    /// Create Fetch Event and Dispatch step 17.4: queue the task that fires
+    /// `dispatch`'s fetch event (taken) at the worker's global object; its
+    /// answer goes to the dispatch's call, and once the event is no longer
+    /// active - or its task is discarded - the worker reports `.fetch_done`
+    /// with `worker_id` and `generation`. Called with the lock held: it only
+    /// posts.
+    dispatch_fetch: *const fn (manager: *Manager, started: Started, dispatch: *FetchDispatch, worker_id: u64, generation: u64) void,
 };
 
 /// A service worker the manager started, until its thread has ended.
@@ -468,10 +603,74 @@ pub const Manager = struct {
     /// clients' window data.
     client_queries: std.ArrayListUnmanaged(*ClientQuery) = .empty,
     next_query: u64 = 1,
+    /// Fetch events waiting for their service worker to start (Create Fetch
+    /// Event and Dispatch steps 15-16), by the registry `other` waiter that
+    /// will answer for them.
+    pending_fetches: std.ArrayListUnmanaged(PendingFetch) = .empty,
+    /// get() calls for a reserved client, waiting for it to be execution
+    /// ready or discarded (4.3.1 step 2.1.2).
+    parked_gets: std.ArrayListUnmanaged(ParkedGet) = .empty,
+    /// Threads blocked in a synchronous fetch a service worker answers, by
+    /// their loop's sink: their window clients' data, read before they
+    /// blocked, which a client query is answered from meanwhile.
+    blocked: std.ArrayListUnmanaged(BlockedThread) = .empty,
+    /// Registrations whose Soft Update waits out `soft_update_delay_ms`.
+    soft_updates: std.ArrayListUnmanaged(PendingSoftUpdate) = .empty,
+    /// WindowClient.navigate() calls waiting for the browsing context they
+    /// navigate to have its next window client.
+    navigates: std.ArrayListUnmanaged(PendingNavigate) = .empty,
+    next_navigate: u64 = 1,
+    /// How long a fetch's Soft Update waits for the burst it is part of to
+    /// end (`scheduleSoftUpdate`).
+    soft_update_delay_ms: u64 = 1000,
 
     const PendingMessage = struct {
         waiter: u64,
         message: *WorkerMessage,
+    };
+
+    const PendingNavigate = struct {
+        id: u64,
+        /// The navigated client's browsing context (identity).
+        navigable: usize,
+        /// The service worker's environment, whose promise it settles, and
+        /// its origin (step 7.9.1). OWNED.
+        environment: u64,
+        promise: u64,
+        origin: []u8,
+    };
+
+    const PendingFetch = struct {
+        waiter: u64,
+        dispatch: *FetchDispatch,
+    };
+
+    const ParkedGet = struct {
+        /// The service worker's environment, whose promise it settles.
+        environment: u64,
+        worker: u64,
+        /// The reserved client's environment.
+        client: u64,
+        promise: u64,
+    };
+
+    const BlockedThread = struct {
+        /// BORROWED (each snapshot's realm holds its sink).
+        sink: *TaskSink,
+        /// How many blocking waits on that thread are under way (nested
+        /// ones cannot be; counted for safety).
+        depth: u32 = 1,
+        snapshots: std.ArrayListUnmanaged(Snapshot) = .empty,
+
+        const Snapshot = struct {
+            environment: u64,
+            data: WindowData,
+        };
+
+        fn deinit(self: *BlockedThread, allocator: Allocator) void {
+            for (self.snapshots.items) |*snapshot| snapshot.data.deinit(allocator);
+            self.snapshots.deinit(allocator);
+        }
     };
 
     /// A BrowserScope supplement's init: called with the scope's lock held,
@@ -509,6 +708,14 @@ pub const Manager = struct {
         self.pending_messages.deinit(self.allocator);
         for (self.client_queries.items) |query| query.destroy(self.allocator);
         self.client_queries.deinit(self.allocator);
+        for (self.pending_fetches.items) |pending| pending.dispatch.fail();
+        self.pending_fetches.deinit(self.allocator);
+        self.parked_gets.deinit(self.allocator);
+        for (self.blocked.items) |*thread| thread.deinit(self.allocator);
+        self.blocked.deinit(self.allocator);
+        self.soft_updates.deinit(self.allocator);
+        for (self.navigates.items) |pending| self.allocator.free(pending.origin);
+        self.navigates.deinit(self.allocator);
         if (self.owner_sink) |sink| {
             sink.close();
             sink.release();
@@ -596,7 +803,7 @@ pub const Manager = struct {
         self.lock();
         defer self.unlock();
         for (self.registry.environments.items) |environment| {
-            const endpoint: *Endpoint = @ptrCast(@alignCast(environment.endpoint));
+            const endpoint = endpointOfEnvironment(environment) orelse continue;
             if (endpoint.realm == realm) return endpoint;
         }
         return null;
@@ -611,7 +818,7 @@ pub const Manager = struct {
         self.lock();
         defer self.unlock();
         const environment = self.registry.findEnvironment(id) orelse return owned.deinit(self.allocator);
-        const endpoint: *Endpoint = @ptrCast(@alignCast(environment.endpoint));
+        const endpoint = endpointOfEnvironment(environment) orelse return owned.deinit(self.allocator);
         const task = self.allocator.create(DeliveryTask) catch return owned.deinit(self.allocator);
         task.* = .{ .manager = self, .environment = id, .delivery = owned };
         _ = endpoint.sink.post(.{ .run = DeliveryTask.run, .drop = DeliveryTask.drop, .data = task });
@@ -800,10 +1007,19 @@ pub const Manager = struct {
         /// The window data task for `slot` of the client query `query` was
         /// discarded: that client is not enumerable.
         window_data_missing: struct { query: u64, slot: usize },
+        /// Handle Fetch handed a request to a service worker: Create Fetch
+        /// Event and Dispatch from step 15. OWNED.
+        fetch: *FetchDispatch,
+        /// A fetch event handed to `worker` in its run `generation` is done:
+        /// dispatched and no longer active, or its task discarded. Its
+        /// registration `soft_update` (0: none) is to be soft-updated
+        /// (Create Fetch Event and Dispatch step 19).
+        fetch_done: struct { worker: u64, generation: u64, soft_update: u64 = 0 },
 
         fn deinit(self: *Report) void {
             switch (self.*) {
                 .post_message => |r| r.message.destroy(),
+                .fetch => |dispatch| dispatch.fail(),
                 else => {},
             }
         }
@@ -872,6 +1088,473 @@ pub const Manager = struct {
                 const query = self.findQuery(r.query) orelse return;
                 self.queryAnswered(query, r.slot, null);
             },
+            .fetch => |dispatch| try self.fetchNow(dispatch),
+            .fetch_done => |r| {
+                try self.registry.functionalEventDone(r.worker, r.generation);
+                if (r.soft_update != 0) self.scheduleSoftUpdate(r.soft_update);
+            },
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Clients at creation (a realm's own thread)
+    // ------------------------------------------------------------------
+
+    /// A reserved client for a fetch made from the environment `creator`
+    /// (0: none), for a client of `kind`; `inherited_worker` is a worker's
+    /// owner's active service worker it inherits (a blob: script). OWNED by
+    /// the caller (`createClient` or `releaseReserved`).
+    pub fn reserveClient(self: *Manager, kind: registry_mod.EnvironmentKind, creator: u64, inherited_worker: u64) ?*ReservedClient {
+        const handle = self.allocator.create(ReservedClient) catch return null;
+        handle.* = .{ .manager = self, .kind = kind, .creator = creator, .inherited_worker = inherited_worker };
+        return handle;
+    }
+
+    /// The active service worker of the environment `id` when its origin
+    /// is `origin` (0: none, or another origin).
+    pub fn controllerOfSameOrigin(self: *Manager, id: u64, origin: []const u8) u64 {
+        self.lock();
+        defer self.unlock();
+        const environment = self.registry.findEnvironment(id) orelse return 0;
+        if (!std.mem.eql(u8, environment.origin, origin)) return 0;
+        const worker = environment.active_worker orelse return 0;
+        return worker.id;
+    }
+
+    /// What a realm becoming a client brings (`createClient`).
+    pub const ClientValues = struct {
+        kind: registry_mod.EnvironmentKind,
+        /// Serialized; its storage key.
+        origin: []const u8,
+        creation_url: []const u8,
+        secure_context: bool,
+        frame_type: registry_mod.FrameType = .none,
+        endpoint: *Endpoint,
+        /// TAKEN: the reserved client of the fetch that made the realm's
+        /// document or script, if one went through HTTP fetch.
+        reserved: ?*ReservedClient = null,
+        /// A window's creator's environment (0: none).
+        creator: u64 = 0,
+        /// A window client's browsing context, as an identity (0: none).
+        navigable: usize = 0,
+    };
+
+    /// A realm is a service worker client from now on (Service Workers 2.5;
+    /// HTML "set up a window environment settings object" step 4, "run a
+    /// worker" step 7). It takes over its reserved environment - the id and
+    /// active service worker Handle Fetch gave it - when there is one of the
+    /// same origin; a reserved environment of another origin (a cross-origin
+    /// redirect, a sandboxed opaque document) is discarded. Otherwise its
+    /// active service worker is what it inherits: a window's creator's, same
+    /// origin, when no fetch went through HTTP for it (2.5.1); a worker's,
+    /// what its reservation decided (2.5.2). Its id.
+    pub fn createClient(self: *Manager, values: ClientValues) Allocator.Error!u64 {
+        var requests: std.ArrayListUnmanaged(WindowDataRequest) = .empty;
+        defer requests.deinit(self.allocator);
+        defer if (values.reserved) |reserved| self.allocator.destroy(reserved);
+        const id = blk: {
+            self.lock();
+            defer self.unlock();
+            if (values.reserved) |reserved| if (reserved.environment != 0) {
+                if (self.registry.findEnvironment(reserved.environment)) |environment| {
+                    if (environment.endpoint == null and std.mem.eql(u8, environment.origin, values.origin)) {
+                        try self.registry.adoptEnvironment(environment, .{
+                            .endpoint = values.endpoint,
+                            .creation_url = values.creation_url,
+                            .frame_type = values.frame_type,
+                        });
+                        environment.secure_context = values.secure_context;
+                        environment.navigable = values.navigable;
+                        // 4.3.1 step 2.1.2: a get() that waited for it.
+                        self.resumeParkedGets(&requests, environment.id) catch {};
+                        self.navigated(&requests, values.navigable, environment) catch {};
+                        break :blk environment.id;
+                    }
+                    if (environment.endpoint == null) {
+                        const discarded = environment.id;
+                        self.registry.removeEnvironment(environment);
+                        self.resumeParkedGets(&requests, discarded) catch {};
+                    }
+                }
+            };
+            const environment = try self.registry.addEnvironment(.{
+                .kind = values.kind,
+                .origin = values.origin,
+                .creation_url = values.creation_url,
+                .secure_context = values.secure_context,
+                .frame_type = values.frame_type,
+                .navigable = values.navigable,
+                .endpoint = values.endpoint,
+            });
+            const inherited: ?*registry_mod.Worker = if (values.reserved) |reserved|
+                (if (reserved.inherited_worker != 0) self.registry.findWorker(reserved.inherited_worker) else null)
+            else if (values.creator != 0) inherit: {
+                const creator = self.registry.findEnvironment(values.creator) orelse break :inherit null;
+                if (!std.mem.eql(u8, creator.origin, values.origin)) break :inherit null;
+                break :inherit creator.active_worker;
+            } else null;
+            if (inherited) |worker| self.registry.setActiveWorker(environment, worker);
+            self.navigated(&requests, values.navigable, environment) catch {};
+            break :blk environment.id;
+        };
+        self.postWindowDataRequests(requests.items);
+        return id;
+    }
+
+    /// A reserved client never handed to `createClient` (taken): its
+    /// reserved environment, if Handle Fetch made one, is discarded - HTML's
+    /// environment discarding steps (SW 2.4: its discarded flag) - and a
+    /// get() that waited for it resolves with undefined.
+    pub fn releaseReserved(self: *Manager, reserved: *ReservedClient) void {
+        var requests: std.ArrayListUnmanaged(WindowDataRequest) = .empty;
+        defer requests.deinit(self.allocator);
+        {
+            self.lock();
+            defer self.unlock();
+            if (reserved.environment != 0) {
+                if (self.registry.findEnvironment(reserved.environment)) |environment| {
+                    if (environment.endpoint == null) {
+                        const discarded = environment.id;
+                        self.registry.removeEnvironment(environment);
+                        self.resumeParkedGets(&requests, discarded) catch {};
+                    }
+                }
+            }
+        }
+        self.postWindowDataRequests(requests.items);
+        self.allocator.destroy(reserved);
+    }
+
+    // ------------------------------------------------------------------
+    // WindowClient.navigate() (steps 5-7.9)
+    // ------------------------------------------------------------------
+
+    /// WindowClient.navigate() steps 5-7 for the service worker whose
+    /// environment is `environment_id` (its origin `origin`), settling its
+    /// promise `promise`: the window client `client_id` navigates its
+    /// browsing context to `url` (serialized) as a task of its own loop; the
+    /// next window client of that browsing context settles the promise
+    /// (`navigated`). A client gone, or no window, rejects with a TypeError.
+    pub fn navigateClient(self: *Manager, client_id: []const u8, url: []const u8, environment_id: u64, origin: []const u8, promise: u64) Allocator.Error!void {
+        self.lock();
+        defer self.unlock();
+        const client = self.registry.findClient(client_id) orelse return self.navigateFailed(environment_id, promise);
+        if (client.kind != .window or client.navigable == 0 or client.endpoint == null) return self.navigateFailed(environment_id, promise);
+        const owned_origin = try self.allocator.dupe(u8, origin);
+        errdefer self.allocator.free(owned_origin);
+        const owned_url = try self.allocator.dupe(u8, url);
+        errdefer self.allocator.free(owned_url);
+        const id = self.next_navigate;
+        self.next_navigate += 1;
+        try self.navigates.append(self.allocator, .{ .id = id, .navigable = client.navigable, .environment = environment_id, .promise = promise, .origin = owned_origin });
+        self.postDelivery(client, .{ .navigate = .{ .id = id, .url = owned_url } });
+    }
+
+    fn navigateFailed(self: *Manager, environment_id: u64, promise: u64) void {
+        self.postDeliveryTo(environment_id, .{ .reject = .{ .promise = promise, .kind = .type_error, .message = "The client could not be navigated" } });
+    }
+
+    /// Step 7.2/7.4 from the client's thread: the navigation `id` could not
+    /// start (the document is not fully active, or navigating threw) - a
+    /// TypeError.
+    pub fn navigateEnded(self: *Manager, id: u64) void {
+        self.lock();
+        defer self.unlock();
+        for (self.navigates.items, 0..) |pending, i| {
+            if (pending.id != id) continue;
+            _ = self.navigates.swapRemove(i);
+            self.allocator.free(pending.origin);
+            return self.navigateFailed(pending.environment, pending.promise);
+        }
+    }
+
+    /// The browsing context `navigable` has a new window client,
+    /// `environment` (null: one of an opaque origin, which is none): each
+    /// navigate() waiting for it resolves - with null for another origin
+    /// than the service worker's (7.9.1), with the client otherwise (7.9.2:
+    /// Create Window Client, its window data from its loop). Locked.
+    fn navigated(self: *Manager, requests: *std.ArrayListUnmanaged(WindowDataRequest), navigable: usize, environment: ?*registry_mod.Environment) Allocator.Error!void {
+        if (navigable == 0) return;
+        var index: usize = 0;
+        while (index < self.navigates.items.len) {
+            const pending = self.navigates.items[index];
+            if (pending.navigable != navigable) {
+                index += 1;
+                continue;
+            }
+            _ = self.navigates.swapRemove(index);
+            defer self.allocator.free(pending.origin);
+            const client = environment orelse {
+                self.postDeliveryTo(pending.environment, .{ .resolve_client = .{ .promise = pending.promise, .client = null } });
+                continue;
+            };
+            if (!std.mem.eql(u8, client.origin, pending.origin)) {
+                self.postDeliveryTo(pending.environment, .{ .resolve_client = .{ .promise = pending.promise, .client = null } });
+                continue;
+            }
+            try self.resolveGetClient(requests, pending.environment, client, pending.promise);
+        }
+    }
+
+    /// The browsing context `navigable` has a new document of an opaque
+    /// origin, which is no client: a navigate() waiting for it resolves with
+    /// null.
+    pub fn navigatedToOpaque(self: *Manager, navigable: usize) void {
+        var requests: std.ArrayListUnmanaged(WindowDataRequest) = .empty;
+        defer requests.deinit(self.allocator);
+        {
+            self.lock();
+            defer self.unlock();
+            self.navigated(&requests, navigable, null) catch {};
+        }
+        self.postWindowDataRequests(requests.items);
+    }
+
+    /// The route the requests of the client whose realm is `realm` take to
+    /// Handle Fetch - only while a service worker controls it (step 10).
+    pub fn routeForRealm(self: *Manager, realm: *const anyopaque) ?service_worker_fetch.Route {
+        self.lock();
+        defer self.unlock();
+        for (self.registry.environments.items) |environment| {
+            const endpoint = endpointOfEnvironment(environment) orelse continue;
+            if (endpoint.realm != realm) continue;
+            if (environment.active_worker == null) return null;
+            return .{ .context = self, .client = environment.id, .handle = handleFetchRoute };
+        }
+        return null;
+    }
+
+    /// The route a reserved client's request takes to Handle Fetch.
+    pub fn routeOfReserved(self: *Manager) service_worker_fetch.Route {
+        return .{ .context = self, .client = 0, .handle = handleFetchRoute };
+    }
+
+    // ------------------------------------------------------------------
+    // Handle Fetch (the fetching thread)
+    // ------------------------------------------------------------------
+
+    fn handleFetchRoute(context: *anyopaque, request: *const InternalRequest, client: u64) Allocator.Error!service_worker_fetch.Route.Start {
+        const self: *Manager = @ptrCast(@alignCast(context));
+        return self.handleFetch(request, client);
+    }
+
+    /// Handle Fetch steps 1-12, on the fetching thread: whether a service
+    /// worker handles `request` - and, if one does, Create Fetch Event and
+    /// Dispatch begins on the job thread with requestForServiceWorker, and
+    /// the call its answer comes on goes back to fetch.
+    pub fn handleFetch(self: *Manager, request: *const InternalRequest, client: u64) Allocator.Error!service_worker_fetch.Route.Start {
+        // 7-8. A service worker's own script never comes here (its fetch's
+        // service-workers mode is "none"); embed and object are not handled.
+        switch (request.destination) {
+            .serviceworker, .embed, .object => return .network,
+            else => {},
+        }
+        var worker_id: u64 = 0;
+        var registration_id: u64 = 0;
+        var soft_update = false;
+        var client_id: ?[36]u8 = null;
+        var resulting_client_id: ?[36]u8 = null;
+        var blocked: u64 = 0;
+        if (request.isNonSubresourceRequest()) {
+            // 9. A navigation's or a worker's: its reserved client decides.
+            const opaque_reserved = request.reserved_client orelse return .network;
+            const reserved: *ReservedClient = @ptrCast(@alignCast(opaque_reserved));
+            const url = request.currentUrl();
+            const origin = try @import("scope.zig").originOf(self.allocator, url);
+            defer self.allocator.free(origin);
+            // 9.1-9.2. The reserved client is no settings object yet: the
+            // request's URL must be potentially trustworthy.
+            if (!(try fetch.mixed_content.isOriginAuthenticated(self.allocator, origin))) return .network;
+            // 9.3. Crane's navigations are never shift+reload.
+            self.lock();
+            defer self.unlock();
+            const existing = if (reserved.environment != 0) self.registry.findEnvironment(reserved.environment) else null;
+            // 9.5-9.8, 11-12.
+            const matched = (try self.registry.handleFetchNonSubresource(.{
+                .url = url,
+                .reserve = .{ .kind = reserved.kind, .origin = origin, .creation_url = url },
+                .reserved = existing,
+                .destination_is_report = request.destination == .report,
+            })) orelse return .network;
+            if (matched.reserved) |environment| {
+                reserved.environment = environment.id;
+                // Create Fetch Event and Dispatch step 17.4.9: resultingClientId.
+                resulting_client_id = environment.client_id;
+            }
+            // 17.4.8: clientId, the request's client's - its initiator's.
+            if (reserved.creator != 0) if (self.registry.findEnvironment(reserved.creator)) |creator| {
+                client_id = creator.client_id;
+            };
+            worker_id = matched.worker.id;
+            registration_id = matched.worker.registration.id;
+            soft_update = matched.soft_update;
+            blocked = reserved.creator;
+        } else {
+            // 10. A subresource request: its client's active service worker.
+            if (client == 0) return .network;
+            self.lock();
+            defer self.unlock();
+            const environment = self.registry.findEnvironment(client) orelse return .network;
+            const matched = self.registry.handleFetchSubresource(environment) orelse return .network;
+            client_id = environment.client_id;
+            worker_id = matched.worker.id;
+            registration_id = matched.worker.registration.id;
+            soft_update = matched.soft_update;
+            blocked = client;
+        }
+        // 3.1-3.2 (HTTP fetch): requestForServiceWorker, for the worker's
+        // thread. A body only a stream holds goes to the network (stated).
+        const copy = (try copyRequestForWorker(self.allocator, request)) orelse return .network;
+        errdefer copy.deinit();
+        const replaces = try self.allocator.dupe(u8, request.replaces_client_id);
+        errdefer self.allocator.free(replaces);
+        const call = try Call.create(self.allocator);
+        errdefer self.allocator.destroy(call);
+        const dispatch = try self.allocator.create(FetchDispatch);
+        dispatch.* = .{
+            .allocator = self.allocator,
+            .call = call,
+            .request = copy,
+            .client_id = client_id,
+            .resulting_client_id = resulting_client_id,
+            .replaces_client_id = replaces,
+            .worker_id = worker_id,
+            .registration_id = registration_id,
+            .soft_update = soft_update,
+        };
+        // A fetch that blocks its thread leaves that thread's window data
+        // answerable meanwhile (`beforeBlockingWait`).
+        call.blocking = .{ .context = self, .data = blocked, .before_wait = beforeBlockingWait, .after_wait = afterBlockingWait };
+        // 17. Create Fetch Event and Dispatch, from step 15, on the job
+        // thread.
+        self.report(.{ .fetch = dispatch });
+        return .{ .call = call };
+    }
+
+    /// Steps 15-16 on the job thread, locked: wait for "activated", then Run
+    /// Service Worker; its answer is `startAnswered`.
+    fn fetchNow(self: *Manager, dispatch: *FetchDispatch) Allocator.Error!void {
+        const worker = self.registry.findWorker(dispatch.worker_id) orelse return dispatch.fail();
+        const waiter = self.next_waiter;
+        self.next_waiter += 1;
+        self.pending_fetches.append(self.allocator, .{ .waiter = waiter, .dispatch = dispatch }) catch |err| {
+            dispatch.fail();
+            return err;
+        };
+        self.registry.runServiceWorkerForFetch(worker, .{ .other = waiter }) catch |err| {
+            if (self.takePendingFetch(waiter)) |pending| pending.fail();
+            return err;
+        };
+    }
+
+    fn takePendingFetch(self: *Manager, waiter: u64) ?*FetchDispatch {
+        for (self.pending_fetches.items, 0..) |pending, i| {
+            if (pending.waiter != waiter) continue;
+            _ = self.pending_fetches.swapRemove(i);
+            return pending.dispatch;
+        }
+        return null;
+    }
+
+    // ------------------------------------------------------------------
+    // A thread blocked in a synchronous fetch
+    // ------------------------------------------------------------------
+
+    /// Before a blocking fetch's thread sleeps until a service worker
+    /// answers (Call.wait), on that thread: the window data of every window
+    /// client its loop runs - which it cannot answer as a task while it
+    /// sleeps - read now, and what client queries wait for answered from it.
+    /// A fetch handler that asks clients.matchAll() or clients.get() then
+    /// finishes, instead of waiting on a thread that waits on it.
+    fn beforeBlockingWait(context: *anyopaque, environment_id: u64) void {
+        const self: *Manager = @ptrCast(@alignCast(context));
+        if (environment_id == 0) return;
+        const Window = struct { id: u64, endpoint: *Endpoint };
+        var windows: std.ArrayListUnmanaged(Window) = .empty;
+        defer windows.deinit(self.allocator);
+        const sink = blk: {
+            self.lock();
+            defer self.unlock();
+            const blocked = self.registry.findEnvironment(environment_id) orelse return;
+            const own = endpointOfEnvironment(blocked) orelse return;
+            for (self.blocked.items) |*thread| if (thread.sink == own.sink) {
+                thread.depth += 1;
+                return;
+            };
+            for (self.registry.environments.items) |environment| {
+                if (environment.kind != .window) continue;
+                const endpoint = endpointOfEnvironment(environment) orelse continue;
+                if (endpoint.sink != own.sink) continue;
+                windows.append(self.allocator, .{ .id = environment.id, .endpoint = endpoint }) catch return;
+            }
+            break :blk own.sink;
+        };
+        // On this thread, outside the lock: an environment of this loop ends
+        // only on this thread, so each endpoint is there for the read.
+        var thread: BlockedThread = .{ .sink = sink };
+        for (windows.items) |window| {
+            const data = window.endpoint.window_data_now(window.endpoint, self.allocator) orelse continue;
+            thread.snapshots.append(self.allocator, .{ .environment = window.id, .data = data }) catch {
+                var lost = data;
+                lost.deinit(self.allocator);
+            };
+        }
+        self.lock();
+        defer self.unlock();
+        self.blocked.append(self.allocator, thread) catch {
+            thread.deinit(self.allocator);
+            return;
+        };
+        self.answerFromSnapshots(&self.blocked.items[self.blocked.items.len - 1]);
+    }
+
+    /// After the blocking wait: the thread answers its window data as tasks
+    /// again.
+    fn afterBlockingWait(context: *anyopaque, environment_id: u64) void {
+        const self: *Manager = @ptrCast(@alignCast(context));
+        if (environment_id == 0) return;
+        self.lock();
+        defer self.unlock();
+        const blocked = self.registry.findEnvironment(environment_id) orelse return;
+        const own = endpointOfEnvironment(blocked) orelse return;
+        for (self.blocked.items, 0..) |*thread, i| {
+            if (thread.sink != own.sink) continue;
+            thread.depth -= 1;
+            if (thread.depth > 0) return;
+            thread.deinit(self.allocator);
+            _ = self.blocked.swapRemove(i);
+            return;
+        }
+    }
+
+    /// The snapshot of a blocked thread's window client `id`, if any.
+    /// Locked.
+    fn blockedWindowData(self: *Manager, id: u64) ?*const WindowData {
+        for (self.blocked.items) |*thread| {
+            for (thread.snapshots.items) |*snapshot| if (snapshot.environment == id) return &snapshot.data;
+        }
+        return null;
+    }
+
+    /// Answer every slot of every client query that waits for a window
+    /// client of `thread`. Locked.
+    fn answerFromSnapshots(self: *Manager, thread: *const BlockedThread) void {
+        var index: usize = 0;
+        next_query: while (index < self.client_queries.items.len) {
+            const query = self.client_queries.items[index];
+            for (query.slots, 0..) |slot, slot_index| {
+                if (slot.answered) continue;
+                const data = for (thread.snapshots.items) |*snapshot| {
+                    if (snapshot.environment == slot.environment) break &snapshot.data;
+                } else continue;
+                const copy = data.clone(self.allocator) catch continue;
+                const before = self.client_queries.items.len;
+                self.queryAnswered(query, slot_index, copy);
+                // The query finished and went: what is at this index now is
+                // another.
+                if (self.client_queries.items.len != before) continue :next_query;
+            }
+            index += 1;
         }
     }
 
@@ -931,7 +1614,7 @@ pub const Manager = struct {
     /// Post `delivery` (taken) to `environment`'s realm. Locked.
     fn postDelivery(self: *Manager, environment: *registry_mod.Environment, delivery: Delivery) void {
         var owned = delivery;
-        const endpoint: *Endpoint = @ptrCast(@alignCast(environment.endpoint));
+        const endpoint = endpointOfEnvironment(environment) orelse return owned.deinit(self.allocator);
         const task = self.allocator.create(DeliveryTask) catch return owned.deinit(self.allocator);
         task.* = .{ .manager = self, .environment = environment.id, .delivery = owned };
         // A closed sink - the realm's loop has ended - drops it.
@@ -1054,27 +1737,63 @@ pub const Manager = struct {
                 self.postDeliveryTo(environment_id, .{ .resolve_client = .{ .promise = promise, .client = null } });
                 return;
             };
-            // Resolve Get Client Promise step 1.1: not a secure context.
-            if (!client.secure_context) {
-                self.postDeliveryTo(environment_id, .{ .reject = .{
-                    .promise = promise,
-                    .kind = .security_error,
-                    .message = "The client is not a secure context",
-                } });
+            // 2.1.2. Wait for its execution ready flag or its discarded flag:
+            // a reserved client is asked again once it is either.
+            if (!client.execution_ready) {
+                try self.parked_gets.append(self.allocator, .{ .environment = environment_id, .worker = worker_id, .client = client.id, .promise = promise });
                 return;
             }
-            // Step 3: a worker client - Create Client.
-            if (client.kind != .window) {
-                self.postDeliveryTo(environment_id, .{ .resolve_client = .{ .promise = promise, .client = try ClientInfo.of(self.allocator, client) } });
-                return;
-            }
-            // Step 4: a window client - its window data, on its event loop.
-            const query = try self.newQuery(environment_id, promise, .get, 1);
-            errdefer self.dropQuery(query);
-            query.slots[0].environment = client.id;
-            try self.requestWindowData(&requests, query, client, &query.slots[0]);
+            try self.resolveGetClient(&requests, environment_id, client, promise);
         }
         self.postWindowDataRequests(requests.items);
+    }
+
+    /// Clients' get(id) step 2.1.3 for the execution ready `client`:
+    /// Resolve Get Client Promise. Window data requests go to `requests`.
+    /// Locked.
+    fn resolveGetClient(self: *Manager, requests: *std.ArrayListUnmanaged(WindowDataRequest), environment_id: u64, client: *registry_mod.Environment, promise: u64) Allocator.Error!void {
+        // Resolve Get Client Promise step 1.1: not a secure context.
+        if (!client.secure_context) {
+            self.postDeliveryTo(environment_id, .{ .reject = .{
+                .promise = promise,
+                .kind = .security_error,
+                .message = "The client is not a secure context",
+            } });
+            return;
+        }
+        // Step 3: a worker client - Create Client.
+        if (client.kind != .window) {
+            self.postDeliveryTo(environment_id, .{ .resolve_client = .{ .promise = promise, .client = try ClientInfo.of(self.allocator, client) } });
+            return;
+        }
+        // Step 4: a window client - its window data, on its event loop.
+        const query = try self.newQuery(environment_id, promise, .get, 1);
+        errdefer self.dropQuery(query);
+        query.slots[0].environment = client.id;
+        try self.requestWindowData(requests, query, client, &query.slots[0]);
+        // A blocked thread's window answered at once.
+        if (query.outstanding == 0) self.finishQuery(query);
+    }
+
+    /// get() calls that waited for the reserved client `client`: it is
+    /// execution ready now, or gone (undefined). Locked.
+    fn resumeParkedGets(self: *Manager, requests: *std.ArrayListUnmanaged(WindowDataRequest), client: u64) Allocator.Error!void {
+        var index: usize = 0;
+        while (index < self.parked_gets.items.len) {
+            const parked = self.parked_gets.items[index];
+            if (parked.client != client) {
+                index += 1;
+                continue;
+            }
+            _ = self.parked_gets.swapRemove(index);
+            if (self.registry.findEnvironment(parked.client)) |environment| {
+                if (environment.execution_ready and !environment.discarded) {
+                    try self.resolveGetClient(requests, parked.environment, environment, parked.promise);
+                    continue;
+                }
+            }
+            self.postDeliveryTo(parked.environment, .{ .resolve_client = .{ .promise = parked.promise, .client = null } });
+        }
     }
 
     fn newQuery(self: *Manager, environment_id: u64, promise: u64, kind: @FieldType(ClientQuery, "kind"), slots: usize) Allocator.Error!*ClientQuery {
@@ -1104,7 +1823,21 @@ pub const Manager = struct {
     /// `query`: a task of its realm's loop, posted once the lock is let go.
     /// Locked.
     fn requestWindowData(self: *Manager, requests: *std.ArrayListUnmanaged(WindowDataRequest), query: *ClientQuery, client: *const registry_mod.Environment, slot: *ClientQuery.QuerySlot) Allocator.Error!void {
-        const endpoint: *Endpoint = @ptrCast(@alignCast(client.endpoint));
+        // A window of a thread blocked in a synchronous fetch: answered from
+        // what it left before it blocked (`beforeBlockingWait`).
+        if (self.blockedWindowData(client.id)) |data| {
+            var info = try ClientInfo.of(self.allocator, client);
+            errdefer info.deinit(self.allocator);
+            info.window = try data.clone(self.allocator);
+            slot.info = info;
+            slot.answered = true;
+            return;
+        }
+        // A client with no realm is not enumerable.
+        const endpoint = endpointOfEnvironment(client) orelse {
+            slot.answered = true;
+            return;
+        };
         const task = try self.allocator.create(WindowDataTask);
         errdefer self.allocator.destroy(task);
         task.* = .{
@@ -1532,6 +2265,68 @@ pub const Manager = struct {
         }
     };
 
+    /// Soft Update for the registration `id`, once `soft_update_delay_ms`
+    /// has passed without another asking (Handle Fetch step 12, Create Fetch
+    /// Event and Dispatch step 19). On the job thread, locked. Chromium's
+    /// delay: ServiceWorkerVersion::ScheduleUpdate starts its update timer
+    /// with ServiceWorkerContext::kUpdateDelay (1000 ms) and resets it while
+    /// it runs, so a page's burst of navigations makes one update check.
+    fn scheduleSoftUpdate(self: *Manager, id: u64) void {
+        for (self.soft_updates.items) |*pending| if (pending.registration == id) {
+            pending.epoch +%= 1;
+            SoftUpdateTimer.arm(self, id, pending.epoch);
+            return;
+        };
+        self.soft_updates.append(self.allocator, .{ .registration = id }) catch return;
+        SoftUpdateTimer.arm(self, id, 0);
+    }
+
+    const PendingSoftUpdate = struct {
+        registration: u64,
+        /// Bumped by every later ask: an earlier timer finds another.
+        epoch: u64 = 0,
+    };
+
+    const SoftUpdateTimer = struct {
+        manager: *Manager,
+        registration: u64,
+        epoch: u64,
+
+        /// On the job thread.
+        fn arm(manager: *Manager, registration: u64, epoch: u64) void {
+            const loop = manager.job_loop orelse return;
+            const self = manager.allocator.create(SoftUpdateTimer) catch return;
+            self.* = .{ .manager = manager, .registration = registration, .epoch = epoch };
+            if (loop.timerInterface().setTimeoutOwned(manager.soft_update_delay_ms, fire, self, drop) == 0) {
+                manager.allocator.destroy(self);
+            }
+        }
+
+        fn drop(data: ?*anyopaque) void {
+            const self: *SoftUpdateTimer = @ptrCast(@alignCast(data.?));
+            self.manager.allocator.destroy(self);
+        }
+
+        fn fire(data: ?*anyopaque) void {
+            const self: *SoftUpdateTimer = @ptrCast(@alignCast(data.?));
+            const manager = self.manager;
+            const registration_id = self.registration;
+            const epoch = self.epoch;
+            manager.allocator.destroy(self);
+            manager.lock();
+            defer manager.unlock();
+            for (manager.soft_updates.items, 0..) |pending, i| {
+                if (pending.registration != registration_id) continue;
+                if (pending.epoch != epoch) return;
+                _ = manager.soft_updates.swapRemove(i);
+                break;
+            } else return;
+            const registration = manager.registry.findRegistration(registration_id) orelse return;
+            if (!registration.in_map) return;
+            manager.registry.softUpdate(registration, false) catch |err| log.debug("a soft update: {s}", .{@errorName(err)});
+        }
+    };
+
     /// An install or activate event's timeout (`lifecycle_timeout_ms`).
     const LifecycleTimeout = struct {
         manager: *Manager,
@@ -1579,7 +2374,7 @@ pub const Manager = struct {
 
     fn notify(ctx: *anyopaque, environment: *registry_mod.Environment, message: registry_mod.Message) void {
         const self = ofCtx(ctx);
-        const endpoint: *Endpoint = @ptrCast(@alignCast(environment.endpoint));
+        const endpoint = endpointOfEnvironment(environment) orelse return;
         const task = self.allocator.create(DeliveryTask) catch return;
         task.* = .{
             .manager = self,
@@ -1646,6 +2441,21 @@ pub const Manager = struct {
     fn startAnswered(ctx: *anyopaque, worker: *registry_mod.Worker, waiter: u64, ok: bool) void {
         const self = ofCtx(ctx);
         const generation = worker.run_generation;
+        if (self.takePendingFetch(waiter)) |dispatch| {
+            // Create Fetch Event and Dispatch step 16: Run Service Worker
+            // failed - handleFetchFailed.
+            if (!ok) return dispatch.fail();
+            const entry = self.findRunning(worker.id);
+            const started = if (entry) |e| e.started else null;
+            if (started == null) {
+                dispatch.fail();
+                self.report(.{ .fetch_done = .{ .worker = worker.id, .generation = generation } });
+                return;
+            }
+            entry.?.epoch +%= 1;
+            self.host.dispatch_fetch(self, started.?, dispatch, worker.id, generation);
+            return;
+        }
         const message = self.takePendingMessage(waiter) orelse {
             if (ok) self.report(.{ .message_done = .{ .worker = worker.id, .generation = generation } });
             return;
@@ -1701,7 +2511,7 @@ const DeliveryTask = struct {
             manager.lock();
             defer manager.unlock();
             const environment = manager.registry.findEnvironment(self.environment) orelse return;
-            break :blk @as(*Endpoint, @ptrCast(@alignCast(environment.endpoint)));
+            break :blk endpointOfEnvironment(environment) orelse return;
         };
         // The environment ends only on this thread: it is there for the call
         // (the realm side guards its own end inside it).
@@ -1738,7 +2548,7 @@ const WindowDataTask = struct {
             manager.lock();
             defer manager.unlock();
             const environment = manager.registry.findEnvironment(self.environment) orelse break :blk null;
-            break :blk @as(*Endpoint, @ptrCast(@alignCast(environment.endpoint)));
+            break :blk endpointOfEnvironment(environment);
         };
         // The environment ends only on this thread: it is there for the
         // call. One that has ended is not enumerable.
