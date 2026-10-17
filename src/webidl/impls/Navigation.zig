@@ -1499,6 +1499,15 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
     // The tracker's info, read back from the navigation's wrapper.
     const info = trackerInfo(internal, api_tracker);
     defer if (info) |i| i.release();
+    // Browsers over step 16's unfiltered sourceElement: Chrome and Safari
+    // hide a cross-origin source node. Blink NavigationApi::DispatchNavigateEvent
+    // uses BindingSecurity::ShouldAllowAccessTo(window, node), which checks
+    // the node's DOCUMENT's Window (including document.domain), not its realm.
+    const source_element: ?*runtime.Instance = if (firing.source_element) |source| visible_source: {
+        const document = (interfaces.Node.get_ownerDocument(source) catch null) orelse break :visible_source null;
+        const window = (interfaces.Document.get_defaultView(document) catch null) orelse break :visible_source null;
+        break :visible_source if (dom.global_settings.sameOriginDomain(scope.window, window)) source else null;
+    } else null;
     // Steps 1, 12-24: the event.
     const event = interfaces.NavigateEvent.call_constructor(realm, runtime.DOMString.initInterned("navigate"), .{
         .base = .{ .cancelable = cancelable },
@@ -1512,7 +1521,7 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
         .downloadRequest = if (firing.download_request) |filename| runtime.DOMString.initInterned(filename) else null,
         .info = if (info) |i| i.borrow() else null,
         .hasUAVisualTransition = false,
-        .sourceElement = firing.source_element,
+        .sourceElement = source_element,
     }) catch |err| {
         log.debug("[navigation] no navigate event: {s}", .{@errorName(err)});
         controller.releaseIfUnwrapped(controller_generation);
@@ -2155,9 +2164,9 @@ fn abortOngoingNavigation(instance: *runtime.Instance, internal: *InternalState,
         break :blk made.?.value;
     };
     // 6. "If event's dispatch flag is set, then set event's canceled flag to
-    // true." Deviation, stated: through preventDefault(), which leaves a
-    // non-cancelable event (a traversal of a frame) uncanceled.
-    if (record.dispatching) interfaces.Event.call_preventDefault(record.event) catch {};
+    // true." This directly sets the flag even for a noncancelable traversal
+    // event; preventDefault() runs a different, guarded DOM algorithm.
+    if (dom.event_construction.dispatchFlag(record.event)) dom.event_construction.forceCanceledFlag(record.event);
     // 7. "Abort event given error."
     abortEvent(instance, internal, record, reason);
 }
