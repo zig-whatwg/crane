@@ -913,11 +913,11 @@ fn createTextNode(
 ) ParseError!*runtime.Instance {
     const text_data = tree_node.text_content.toSlice();
 
-    // Create Text node using constructor
-    const dom_string = runtime.DOMString.initInterned(text_data);
-    const text = interfaces.Text.call_constructor(
+    // Create the parser's Text node without the script constructor's global.
+    const text = interfaces.Text.initWith(
+        ctx.allocator,
         ctx,
-        webidl.Opt(runtime.DOMString).passed(dom_string),
+        .{ .data = text_data },
     ) catch return error.OutOfMemory;
     errdefer dom.node_creation.destroyUninserted(text);
 
@@ -939,10 +939,10 @@ fn createCommentNode(
     const comment_data = tree_node.text_content.toSlice();
 
     // Create Comment node
-    const dom_string = runtime.DOMString.initInterned(comment_data);
-    const comment = interfaces.Comment.call_constructor(
+    const comment = interfaces.Comment.initWith(
+        ctx.allocator,
         ctx,
-        webidl.Opt(runtime.DOMString).passed(dom_string),
+        .{ .data = comment_data },
     ) catch return error.OutOfMemory;
     errdefer dom.node_creation.destroyUninserted(comment);
 

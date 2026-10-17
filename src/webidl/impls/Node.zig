@@ -1026,9 +1026,10 @@ pub fn set_textContent(instance: *runtime.Instance, value: ?runtime.DOMString) a
             const slice = if (value) |v| v.asSlice() else "";
             var text_base: ?*NodeBase = null;
             if (slice.len > 0) {
-                const text_node = try interfaces.Text.call_constructor(
+                const text_node = try interfaces.Text.initWith(
+                    instance.ctx.allocator,
                     instance.ctx,
-                    webidl.Opt(runtime.DOMString).passed(value.?),
+                    .{ .data = slice },
                 );
                 errdefer interfaces.Text.deinit(text_node);
                 if (internal.owner_document) |owner_doc| {

@@ -2263,10 +2263,11 @@ pub fn call_removeAttributeNS(instance: *runtime.Instance, namespace: ?runtime.D
 pub fn call_insertAdjacentText(instance: *runtime.Instance, where: runtime.DOMString, data: runtime.DOMString) anyerror!void {
     _ = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Step 1: Create a new Text node with the given data
-    // Use interface instead of impl (per Golden Rule #13)
-    const text_node = interfaces.Text.call_constructor(instance.ctx, webidl.Opt(runtime.DOMString).passed(data)) catch return error.OutOfMemory;
+    // Step 1: create Text with the given data and this's node document.
+    const text_node = interfaces.Text.initWith(instance.ctx.allocator, instance.ctx, .{ .data = data.asSlice() }) catch return error.OutOfMemory;
     errdefer interfaces.Text.deinit(text_node);
+    const owner = (try interfaces.Node.get_ownerDocument(instance)) orelse return error.InvalidStateError;
+    try dom.node_document.set(text_node, owner);
 
     // Step 2: Run insert adjacent algorithm
     _ = insertAdjacent(instance, where.asSlice(), text_node) catch |err| {

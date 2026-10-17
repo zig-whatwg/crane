@@ -330,7 +330,7 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
             _ = try interfaces.Node.call_appendChild(head, title_elem);
 
             // Step 6.2: Create Text node with title data and append to title element (use interface per Golden Rule #13)
-            const text_node = try interfaces.Text.call_constructor(ctx, webidl.Opt(runtime.DOMString).passed(title_val));
+            const text_node = try interfaces.Text.initWith(ctx.allocator, ctx, .{ .data = title_val.asSlice() });
             errdefer interfaces.Text.deinit(text_node);
             try node_document.set(text_node, doc);
             // Use interface instead of impl (per Golden Rule #13)

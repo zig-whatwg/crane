@@ -3718,12 +3718,13 @@ pub fn call_adoptNode(instance: *runtime.Instance, node: *runtime.Instance) anye
 pub fn call_createTextNode(instance: *runtime.Instance, data: runtime.DOMString) anyerror!*runtime.Instance {
     _ = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Use interface instead of impl (per Golden Rule #13)
-    const text = try interfaces.Text.call_constructor(instance.ctx, webidl.Opt(runtime.DOMString).passed(data));
+    // Create-text-node steps: copy data without the script constructor's
+    // current-global requirement, then assign this node document.
+    const text = try interfaces.Text.initWith(instance.ctx.allocator, instance.ctx, .{ .data = data.asSlice() });
     errdefer interfaces.Text.deinit(text);
 
     // Set owner document
-    try NodeImpl.setOwnerDocument(text, instance);
+    try @import("dom").node_document.set(text, instance);
 
     return text;
 }
@@ -3834,12 +3835,12 @@ pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: we
 pub fn call_createComment(instance: *runtime.Instance, data: runtime.DOMString) anyerror!*runtime.Instance {
     _ = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Use interface instead of impl (per Golden Rule #13)
-    const comment = try interfaces.Comment.call_constructor(instance.ctx, webidl.Opt(runtime.DOMString).passed(data));
+    // Create-comment-node steps: data and node document come from this call.
+    const comment = try interfaces.Comment.initWith(instance.ctx.allocator, instance.ctx, .{ .data = data.asSlice() });
     errdefer interfaces.Comment.deinit(comment);
 
     // Set owner document
-    try NodeImpl.setOwnerDocument(comment, instance);
+    try @import("dom").node_document.set(comment, instance);
 
     return comment;
 }
