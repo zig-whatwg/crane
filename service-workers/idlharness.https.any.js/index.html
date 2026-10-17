@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../service-workers/"><code>service-<wbr>workers/</code></a></li><li aria-current="page"><code>idlharness.<wbr>https.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>idlharness.<wbr>https.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="service-workers/idlharness.https.any.js">
-<p class="figures-main"><span class="fg-pass">613</span><span class="fg-of"> / 632</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>19</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">619</span><span class="fg-of"> / 632</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>13</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-f6d12bfd63</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/f6d12bfd63"><code>f6d12bfd63</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-709fb9ae28</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/709fb9ae28"><code>709fb9ae28</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/service-workers/idlharness.https.any.js"><code>service-<wbr>workers/<wbr>idlharness.<wbr>https.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -49,19 +49,13 @@
 <p class="omitted">166 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/service-workers/idlharness.https.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>293</b> / 302</span></h3>
+<h3 class="run-head"><code>/service-workers/idlharness.https.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>299</b> / 302</span></h3>
 <ol class="subtests">
 <li class="sub s-fail" id="s-430c740c"><details><summary><span class="mark">FAIL</span><span class="sub-name">ServiceWorkerContainer interface: attribute ready</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-430c740c" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-91b372e6"><details><summary><span class="mark">FAIL</span><span class="sub-name">FetchEvent interface: attribute preloadResponse</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-91b372e6" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-0f99a776"><details><summary><span class="mark">FAIL</span><span class="sub-name">FetchEvent interface: attribute handled</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-0f99a776" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d0281f72"><details><summary><span class="mark">FAIL</span><span class="sub-name">FetchEvent interface: new FetchEvent(&quot;type&quot;, { request: new Request(&quot;&quot;) }) must inherit property &quot;request&quot; with the proper type</span></summary><pre class="msg">assert_true: wrong type: not a Request expected true got false</pre></details><a class="self" href="#s-d0281f72" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-cd808771"><details><summary><span class="mark">FAIL</span><span class="sub-name">FetchEvent interface: new FetchEvent(&quot;type&quot;, { request: new Request(&quot;&quot;) }) must inherit property &quot;preloadResponse&quot; with the proper type</span></summary><pre class="msg">Cannot use &#39;in&#39; operator to search for &#39;then&#39; in undefined</pre></details><a class="self" href="#s-cd808771" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f9a0a319"><details><summary><span class="mark">FAIL</span><span class="sub-name">FetchEvent interface: new FetchEvent(&quot;type&quot;, { request: new Request(&quot;&quot;) }) must inherit property &quot;clientId&quot; with the proper type</span></summary><pre class="msg">assert_equals: expected &quot;string&quot; but got &quot;undefined&quot;</pre></details><a class="self" href="#s-f9a0a319" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c527a3af"><details><summary><span class="mark">FAIL</span><span class="sub-name">FetchEvent interface: new FetchEvent(&quot;type&quot;, { request: new Request(&quot;&quot;) }) must inherit property &quot;resultingClientId&quot; with the proper type</span></summary><pre class="msg">assert_equals: expected &quot;string&quot; but got &quot;undefined&quot;</pre></details><a class="self" href="#s-c527a3af" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-fef36014"><details><summary><span class="mark">FAIL</span><span class="sub-name">FetchEvent interface: new FetchEvent(&quot;type&quot;, { request: new Request(&quot;&quot;) }) must inherit property &quot;replacesClientId&quot; with the proper type</span></summary><pre class="msg">assert_equals: expected &quot;string&quot; but got &quot;undefined&quot;</pre></details><a class="self" href="#s-fef36014" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b8ab3b86"><details><summary><span class="mark">FAIL</span><span class="sub-name">FetchEvent interface: new FetchEvent(&quot;type&quot;, { request: new Request(&quot;&quot;) }) must inherit property &quot;handled&quot; with the proper type</span></summary><pre class="msg">Cannot use &#39;in&#39; operator to search for &#39;then&#39; in undefined</pre></details><a class="self" href="#s-b8ab3b86" aria-label="Link to this subtest">&para;</a></li>
 </ol>
-<p class="omitted">293 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+<p class="omitted">299 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
 </div>
 <div class="run">
 <h3 class="run-head"><code>/service-workers/idlharness.https.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>154</b> / 155</span></h3>
