@@ -260,6 +260,12 @@ pub const declarative_shadow = @import("declarative_shadow.zig");
 pub const indexeddb = @import("indexeddb.zig");
 pub const string_lists = @import("string_lists.zig");
 pub const event_handlers = @import("event_handlers.zig");
+/// Whether an event target has a listener of a type (EventTarget's step):
+/// a service worker's set of event types to handle.
+pub const event_listener_types = @import("event_listener_types.zig");
+/// A URLPattern object's associated URL pattern (URLPattern's step): a
+/// router condition's urlPattern.
+pub const url_patterns = @import("url_patterns.zig");
 /// HTML 7.1.5 sandboxing flag sets: parsing, CSP-derived and creation flags.
 pub const sandboxing = @import("sandboxing.zig");
 

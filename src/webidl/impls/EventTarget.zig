@@ -231,6 +231,7 @@ pub fn installHooks() void {
         .erase = eraseAllEventListenersAndHandlers,
         .has_listeners = hasListeners,
     });
+    dom_module.event_listener_types.install(hasListenersOfType);
 }
 
 /// EventTarget's own construction steps, the first of every EventTarget's
@@ -1841,6 +1842,18 @@ fn hasListeners(instance: *runtime.Instance) bool {
     const list = internal.event_listener_list orelse return false;
     for (list.toSlice()) |listener| {
         if (!listener.removed) return true;
+    }
+    return false;
+}
+
+/// dom.event_listener_types: whether `instance`'s event listener list holds
+/// a listener of `event_type` whose removed is false - an activated event
+/// handler's included.
+fn hasListenersOfType(instance: *runtime.Instance, event_type: []const u8) bool {
+    const internal = getInternalFromRegistry(instance) orelse return false;
+    const list = internal.event_listener_list orelse return false;
+    for (list.toSlice()) |listener| {
+        if (!listener.removed and std.mem.eql(u8, listener.type.asSlice(), event_type)) return true;
     }
     return false;
 }
