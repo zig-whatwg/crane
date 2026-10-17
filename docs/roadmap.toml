@@ -321,6 +321,7 @@ progress = [
   "e11f10cd02 - Document-owned scoped registries across DOM creation, cloning, adoption and fragment parsing; form-associated ElementInternals ownership, values, validity and callbacks; ordered custom states and selector matching. Set iterator binding and optional UA restoration triggers remain follow-ups",
   "5b7aa161d9, 5bf24ee0ea - preserve absent versus null customElementRegistry in ShadowRootInit and publish inherited indexed getter/length facades; other nullable dictionary members and HTMLOptionsCollection's missing setter remain follow-ups",
   "7eb7d4aa552 (merge, binding3 batch 1) - a dictionary member present as null converts by its type; [Global] members are the global's own; [SecureContext] exposure per realm; callbacks of a Window whose Document is not fully active do not run; structuredClone transfer handle leak and native [SameObject] reads traced",
+  "65ba206e671, b7cdedccdc5, 5bc3b68c535 (lane bindtype) - codegen names the interface of every interface-typed value (interface_arguments, constructor_interface_arguments, interface_members); the binding converts one only from a platform object that implements it, and an uncovered position is a compile error",
 ]
 
   [[infra.items]]
