@@ -1837,29 +1837,28 @@ pub fn set_status(instance: *runtime.Instance, value: runtime.DOMString) anyerro
     internal.status = try internal.allocator.dupe(u8, str_slice);
 }
 
-/// Setter for opener
-/// Per HTML spec §7.2.1:
-/// - Setting window.opener to null disowns the opener relationship
-/// - The opener browsing context is no longer accessible
-/// - This cannot be undone
-///
-/// Note: Per spec, setting to non-null values is allowed but has no effect
-/// (the attribute is marked as settable but browsers ignore non-null assignments)
+/// HTML opener setter: null disowns the browsing context's opener; a
+/// non-null value replaces this accessor with an own data property.
 pub fn set_opener(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Check if value represents null
-    // In WebIDL `any` type, null is represented by the .null variant
+    // Step 1 applies only when this's browsing context is non-null.
     if (value.isNull()) {
-        // Setting opener to null disowns the relationship
-        // Per spec: "If the given value is null, then set this's browsing context's
-        // disowned to true."
+        if (navigableOf(instance, internal) == null) return;
         internal.browsing_context.disown();
         internal.opener = null;
         internal.opener_any = null;
+        return;
     }
-    // Non-null assignments are silently ignored per browser behavior
-    // (The attribute is technically settable but browsers don't honor non-null values)
+
+    // Step 2: DefinePropertyOrThrow. The engine owns the data property's
+    // value; the native opener relationship stays unchanged. WebKit's
+    // JSDOMWindowCustom::setOpener likewise uses createDataProperty here.
+    try engine.defineOwnProperty(instance.ctx, .{ .instance = instance }, "opener", value, .{
+        .writable = true,
+        .enumerable = true,
+        .configurable = true,
+    });
 }
 
 // ============================================================================
