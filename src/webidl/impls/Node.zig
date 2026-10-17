@@ -1401,13 +1401,15 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
             defer data_str.deinit(node.ctx.allocator);
 
             const copy = switch (node_internal.node_type) {
-                NodeType.TEXT_NODE => try interfaces.Text.call_constructor(
+                NodeType.TEXT_NODE => try interfaces.Text.initWith(
+                    copy_ctx.allocator,
                     copy_ctx,
-                    webidl.Opt(runtime.DOMString).passed(data_str),
+                    .{ .data = data_str.asSlice() },
                 ),
-                NodeType.COMMENT_NODE => try interfaces.Comment.call_constructor(
+                NodeType.COMMENT_NODE => try interfaces.Comment.initWith(
+                    copy_ctx.allocator,
                     copy_ctx,
-                    webidl.Opt(runtime.DOMString).passed(data_str),
+                    .{ .data = data_str.asSlice() },
                 ),
                 NodeType.CDATA_SECTION_NODE => blk: {
                     const cdata = try interfaces.CDATASection.init(copy_ctx.allocator, copy_ctx);
@@ -1415,21 +1417,18 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
                     try interfaces.CharacterData.set_data(cdata, data_str);
                     break :blk cdata;
                 },
-                // A ProcessingInstruction's target is readonly, so it can only be
-                // set at creation; the owning document's factory does that.
+                // Clone-a-single-node step 5 copies target/data without the
+                // factory's validation: later data mutations can contain ?>.
                 else => blk: {
                     // These getters CLONE and hand ownership to the caller (the
                     // interface layer frees them when script is the caller), so
                     // calling one from Zig means freeing it here.
                     var target = try interfaces.ProcessingInstruction.get_target(node);
                     defer target.deinit(node.ctx.allocator);
-                    const owner = document orelse node_internal.owner_document orelse
-                        return error.InvalidStateError;
-                    break :blk try interfaces.Document.call_createProcessingInstruction(
-                        owner,
-                        target,
-                        data_str,
-                    );
+                    break :blk try interfaces.ProcessingInstruction.initWith(copy_ctx.allocator, copy_ctx, .{
+                        .target = target.asSlice(),
+                        .data = data_str.asSlice(),
+                    });
                 },
             };
             errdefer runtime.Instance.deinit(copy);

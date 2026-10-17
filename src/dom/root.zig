@@ -143,6 +143,7 @@ pub const blob_bytes = @import("blob_bytes.zig");
 pub const character_data = @import("character_data.zig");
 pub const geometry_storage = @import("geometry_storage.zig");
 pub const names = @import("names.zig");
+pub const pi_attributes = @import("pi_attributes.zig");
 /// HTML's document-relative URL parsing with its character encoding.
 pub const encoding_parse = @import("encoding_parse.zig");
 pub const element_attributes = @import("element_attributes.zig");

@@ -362,7 +362,8 @@ pub fn call_replaceData(instance: *runtime.Instance, offset: u32, count: u32, da
 /// 6. Let delete offset be offset + data's length.
 /// 7. Remove count code units from node's data, starting at delete offset.
 /// 8-11. For each live range whose start/end node is node, update start/end offset.
-/// 12. If node's parent is non-null, then run the children changed steps for node's parent.
+/// 12. Update a ProcessingInstruction's attributes unless already updated.
+/// 13. If node's parent is non-null, run its parent's children changed steps.
 fn replaceDataInternal(instance: *runtime.Instance, internal: *InternalState, offset: u32, count_param: u32, data: []const u8) !void {
     const length = internal.getLength();
 
@@ -398,7 +399,12 @@ fn replaceDataInternal(instance: *runtime.Instance, internal: *InternalState, of
     // by data's length in code units.
     dom.mutation.runLiveRangeReplaceDataSteps(instance, offset, count, data_units);
 
-    // Step 12: "If node's parent is non-null, then run the children changed
+    // Step 12: only a PI updates attributes from data. A brand check leaves
+    // ordinary Text/Comment mutation without parsing or map allocation.
+    if (instance.stateAs(interfaces.ProcessingInstruction.State) != null)
+        dom.character_data.processingInstructionDataChanged(instance);
+
+    // Step 13: "If node's parent is non-null, then run the children changed
     // steps for node's parent."
     if (interfaces.Node.get_parentNode(instance) catch null) |parent| {
         if (dom.instance_bridge.getNodeBase(@ptrCast(parent))) |parent_base| {

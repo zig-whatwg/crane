@@ -36,7 +36,6 @@ const Registry = runtime.InstanceRegistry(.document, InternalState);
 
 // Import impls ONLY for internal initialization methods not exposed via interfaces
 const NodeImpl = @import("Node.zig");
-const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
 const RangeImpl = @import("Range.zig");
 const same_object = @import("same_object.zig");
 
@@ -3310,19 +3309,16 @@ pub fn call_elementsFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyer
 pub fn call_createProcessingInstruction(instance: *runtime.Instance, target: runtime.DOMString, data: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // DOM 4.5: return a new ProcessingInstruction with target `target`, data
-    // `data` and node document this. The target is readonly on the interface,
-    // so it can only be set at creation.
-    const pi = try ProcessingInstructionImpl.createProcessingInstruction(
-        internal.allocator,
-        instance.ctx,
-        target.asSlice(),
-        data.asSlice(),
-    );
+    // Create/initialize a processing instruction, steps 1-2: validate XML
+    // Name and forbid ?> in data (the constructor shares these conditions).
+    if (!@import("dom").pi_attributes.isXmlName(target.asSlice()) or std.mem.indexOf(u8, data.asSlice(), "?>") != null)
+        return error.InvalidCharacterError;
+    const pi = try interfaces.ProcessingInstruction.initWith(internal.allocator, instance.ctx, .{
+        .target = target.asSlice(),
+        .data = data.asSlice(),
+    });
     errdefer interfaces.ProcessingInstruction.deinit(pi);
-
-    // Set owner document
-    try NodeImpl.setOwnerDocument(pi, instance);
+    try @import("dom").node_document.set(pi, instance);
 
     return pi;
 }
