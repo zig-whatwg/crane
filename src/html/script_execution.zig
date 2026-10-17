@@ -3499,6 +3499,63 @@ const ImportMapParseResult = struct {
     }
 };
 
+/// Normalize a specifier key, steps 1-4. URL-like spellings become serialized
+/// absolute URLs; bare names remain names. Empty names are ignored.
+/// Design: WebKit JavaScriptCore ImportMap::normalizeSpecifierKey.
+fn normalizeSpecifierKey(allocator: std.mem.Allocator, key: []const u8, base_url: []const u8) ?[]const u8 {
+    if (key.len == 0) return null;
+    const relative = std.mem.startsWith(u8, key, "/") or
+        std.mem.startsWith(u8, key, "./") or std.mem.startsWith(u8, key, "../");
+    const url = @import("api_parser").encodingParseAndSerialize(
+        allocator,
+        key,
+        if (relative) base_url else null,
+        html_core.parser.encoding_sniffing.utf_8,
+    ) catch return null;
+    return url orelse (allocator.dupe(u8, key) catch return null);
+}
+
+fn deinitImportMapEntries(allocator: std.mem.Allocator, map: *std.StringHashMap([]const u8)) void {
+    var it = map.iterator();
+    while (it.next()) |entry| {
+        allocator.free(entry.key_ptr.*);
+        allocator.free(entry.value_ptr.*);
+    }
+    map.deinit();
+}
+
+/// Normalize-specifier-map steps 2.1-2.3: keep normalized keys, with the last
+/// equivalent spelling replacing the earlier value. All stored strings are owned.
+fn normalizeImportMapEntries(allocator: std.mem.Allocator, value: std.json.Value, base_url: []const u8) std.StringHashMap([]const u8) {
+    var result = std.StringHashMap([]const u8).init(allocator);
+    if (value != .object) return result;
+    var it = value.object.iterator();
+    while (it.next()) |entry| {
+        if (entry.value_ptr.* != .string) continue;
+        const key = normalizeSpecifierKey(allocator, entry.key_ptr.*, base_url) orelse continue;
+        const target = entry.value_ptr.string;
+        const resolved = resolveUrl(allocator, target, base_url) catch {
+            allocator.free(key);
+            continue;
+        };
+        const url = if (resolved.ptr != target.ptr) resolved else allocator.dupe(u8, resolved) catch {
+            allocator.free(key);
+            continue;
+        };
+        const slot = result.getOrPut(key) catch {
+            allocator.free(key);
+            allocator.free(url);
+            continue;
+        };
+        if (slot.found_existing) {
+            allocator.free(key);
+            allocator.free(slot.value_ptr.*);
+        }
+        slot.value_ptr.* = url;
+    }
+    return result;
+}
+
 /// Parse an import map JSON
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#parse-an-import-map-string
 fn parseImportMap(
@@ -3527,86 +3584,37 @@ fn parseImportMap(
 
     const root_obj = root.object;
 
-    // Process "imports" if present
+    // Parse-import-map steps 5-6: normalize URL-like keys before storing
+    // them. A later import may supply either the relative spelling or the
+    // absolute URL returned by import.meta.resolve().
     if (root_obj.get("imports")) |imports_value| {
-        if (imports_value == .object) {
-            var imp_it = imports_value.object.iterator();
-            while (imp_it.next()) |entry| {
-                const specifier = entry.key_ptr.*;
-                if (entry.value_ptr.* == .string) {
-                    const target = entry.value_ptr.string;
-
-                    // Resolve target URL relative to base URL
-                    const resolved = resolveUrl(allocator, target, base_url) catch continue;
-
-                    // Store owned copies
-                    const owned_specifier = allocator.dupe(u8, specifier) catch continue;
-                    const owned_url = if (resolved.ptr != target.ptr)
-                        resolved
-                    else
-                        allocator.dupe(u8, resolved) catch continue;
-
-                    result.imports.put(owned_specifier, owned_url) catch {
-                        allocator.free(owned_specifier);
-                        if (resolved.ptr != target.ptr) allocator.free(resolved);
-                        continue;
-                    };
-                }
-            }
-        }
+        result.imports = normalizeImportMapEntries(allocator, imports_value, base_url);
     }
 
-    // Process "scopes" if present
     if (root_obj.get("scopes")) |scopes_value| {
         if (scopes_value == .object) {
             var scope_it = scopes_value.object.iterator();
-            while (scope_it.next()) |scope_entry| {
-                const scope_prefix = scope_entry.key_ptr.*;
-                if (scope_entry.value_ptr.* == .object) {
-                    // Resolve scope prefix URL
-                    const resolved_scope = resolveUrl(allocator, scope_prefix, base_url) catch continue;
-                    const owned_scope = if (resolved_scope.ptr != scope_prefix.ptr)
-                        resolved_scope
-                    else
-                        allocator.dupe(u8, resolved_scope) catch continue;
-
-                    var scope_imports = std.StringHashMap([]const u8).init(allocator);
-
-                    var inner_it = scope_entry.value_ptr.object.iterator();
-                    while (inner_it.next()) |inner_entry| {
-                        const specifier = inner_entry.key_ptr.*;
-                        if (inner_entry.value_ptr.* == .string) {
-                            const target = inner_entry.value_ptr.string;
-
-                            // Resolve target URL relative to base URL
-                            const resolved = resolveUrl(allocator, target, base_url) catch continue;
-
-                            const owned_specifier = allocator.dupe(u8, specifier) catch continue;
-                            const owned_url = if (resolved.ptr != target.ptr)
-                                resolved
-                            else
-                                allocator.dupe(u8, resolved) catch continue;
-
-                            scope_imports.put(owned_specifier, owned_url) catch {
-                                allocator.free(owned_specifier);
-                                if (resolved.ptr != target.ptr) allocator.free(resolved);
-                                continue;
-                            };
-                        }
-                    }
-
-                    result.scopes.put(owned_scope, scope_imports) catch {
-                        allocator.free(owned_scope);
-                        // Free scope_imports contents
-                        var cleanup_it = scope_imports.iterator();
-                        while (cleanup_it.next()) |cleanup_entry| {
-                            allocator.free(cleanup_entry.key_ptr.*);
-                            allocator.free(cleanup_entry.value_ptr.*);
-                        }
-                        scope_imports.deinit();
-                        continue;
-                    };
+            while (scope_it.next()) |entry| {
+                if (entry.value_ptr.* != .object) continue;
+                // Normalize-scopes step 2.2: parse the scope URL against the
+                // base even when its spelling is a bare relative path.
+                const scope = (@import("api_parser").encodingParseAndSerialize(
+                    allocator,
+                    entry.key_ptr.*,
+                    base_url,
+                    html_core.parser.encoding_sniffing.utf_8,
+                ) catch continue) orelse continue;
+                var imports = normalizeImportMapEntries(allocator, entry.value_ptr.*, base_url);
+                const slot = result.scopes.getOrPut(scope) catch {
+                    allocator.free(scope);
+                    deinitImportMapEntries(allocator, &imports);
+                    continue;
+                };
+                if (slot.found_existing) {
+                    allocator.free(scope);
+                    deinitImportMapEntries(allocator, slot.value_ptr);
                 }
+                slot.value_ptr.* = imports;
             }
         }
     }
@@ -4856,3 +4864,34 @@ pub const delivery_drop_test_cases = if (@import("builtin").is_test) struct {
 
     fn preserveStackLoader(_: *anyopaque) void {}
 } else struct {};
+
+test "import map normalizes URL-like keys before exact matching" {
+    const allocator = std.testing.allocator;
+    var parsed = parseImportMap(allocator,
+        \\{"imports":{"./unused/../name":"https://example.test/one.js", "name":"https://example.test/bare.js", "":"https://example.test/ignored.js"},
+        \\ "scopes":{"./":{"./name":"https://example.test/scoped.js"}}}
+    , "https://example.test/app/page.html");
+    defer parsed.deinit(allocator);
+    try std.testing.expect(parsed.error_message == null);
+    try std.testing.expectEqual(@as(usize, 2), parsed.imports.count());
+    try std.testing.expectEqualStrings("https://example.test/one.js", parsed.imports.get("https://example.test/app/name") orelse "missing");
+    try std.testing.expectEqualStrings("https://example.test/bare.js", parsed.imports.get("name") orelse "missing");
+    const scoped = parsed.scopes.get("https://example.test/app/") orelse return error.MissingScope;
+    try std.testing.expectEqualStrings("https://example.test/scoped.js", scoped.get("https://example.test/app/name") orelse "missing");
+}
+
+test "normalization collisions replace import-map values without leaking" {
+    const allocator = std.testing.allocator;
+    var parsed = parseImportMap(allocator,
+        \\{"imports":{"./name":"https://example.test/one.js", "https://example.test:443/app/name":"https://example.test/two.js"},
+        \\ "scopes":{"/app/":{"old":"https://example.test/old.js"}, "/app/./":{"new":"https://example.test/new.js"}}}
+    , "https://example.test/app/page.html");
+    defer parsed.deinit(allocator);
+    try std.testing.expect(parsed.error_message == null);
+    try std.testing.expectEqual(@as(usize, 1), parsed.imports.count());
+    try std.testing.expectEqualStrings("https://example.test/two.js", parsed.imports.get("https://example.test/app/name") orelse "missing");
+    try std.testing.expectEqual(@as(usize, 1), parsed.scopes.count());
+    const scoped = parsed.scopes.get("https://example.test/app/") orelse return error.MissingScope;
+    try std.testing.expect(scoped.get("old") == null);
+    try std.testing.expectEqualStrings("https://example.test/new.js", scoped.get("new") orelse "missing");
+}

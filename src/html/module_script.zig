@@ -689,16 +689,20 @@ fn isJsonMimeTypeEssence(essence: []const u8) bool {
 /// Returns an owned URL (env.context_instance.ctx.allocator), or null where
 /// the spec throws its TypeError.
 fn resolveModuleSpecifier(env: *const Environment, specifier: []const u8, base_url: []const u8) ?[]const u8 {
-    // Steps 6-8: the import map. Crane's lookup takes the raw specifier; a
-    // mapping for a bare specifier is the case it serves.
+    // Steps 4-5: URL-like specifiers are normalized before the map lookup.
+    // In particular, importing import.meta.resolve()'s result applies the map
+    // again, using that absolute URL as the normalized specifier.
+    const as_url = resolveUrlLikeModuleSpecifier(env, specifier, base_url);
+    const normalized = as_url orelse specifier;
     if (env.resolveImportFn) |resolveImport| {
-        if (resolveImport(env.map.context, specifier, base_url)) |mapped| {
+        if (resolveImport(env.map.context, normalized, base_url)) |mapped| {
+            defer if (as_url) |url| env.context_instance.ctx.allocator.free(url);
             return parseUrl(env, mapped, "");
         }
     }
 
-    // Steps 4 and 9: a URL-like specifier resolves against the base URL.
-    return resolveUrlLikeModuleSpecifier(env, specifier, base_url);
+    // Step 9: with no mapping, use the URL-like resolution, if any.
+    return as_url;
 }
 
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#resolving-a-url-like-module-specifier
