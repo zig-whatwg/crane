@@ -464,6 +464,28 @@ pub fn getCopyOfAllowSharedBufferSourceBytes(realm: Context, value: JSValue, all
     return webidl_conversions.getCopyOfAllowSharedBufferSourceBytes(realm, value, allocator) catch |err| protocolError(err);
 }
 
+/// engine.borrowBufferSourceBytes: what v8_AllowSharedBufferSource_Bytes
+/// reads - an ArrayBuffer's backing store, or a view's window of it (a view
+/// over an on-heap typed array is given an off-heap store by its Buffer()
+/// first, so the address holds) - for a buffer that is not shared.
+pub fn borrowBufferSourceBytes(realm: Context, value: JSValue) ?[]const u8 {
+    const target = handleOf(value) orelse return null;
+    const entered = enter(realm) catch return null;
+    defer entered.leave();
+    // V8's IsArrayBuffer is false for a SharedArrayBuffer; a view says
+    // whether its buffer is shared.
+    if (!ffi.v8_Value_IsArrayBuffer(target)) {
+        var info: ffi.ViewInfo = undefined;
+        if (!ffi.v8_ArrayBufferView_Describe(target, &info)) return null;
+        if (info.buffer_shared) return null;
+    }
+    var data: ?*anyopaque = null;
+    var length: usize = 0;
+    if (!ffi.v8_AllowSharedBufferSource_Bytes(target, &data, &length)) return null;
+    if (length == 0 or data == null) return &.{};
+    return @as([*]const u8, @ptrCast(data.?))[0..length];
+}
+
 const protocol_conversions = @import("protocol_conversions.zig");
 pub const convertToSequence = protocol_conversions.convertToSequence;
 pub const convertToSequenceOfStringPairs = protocol_conversions.convertToSequenceOfStringPairs;

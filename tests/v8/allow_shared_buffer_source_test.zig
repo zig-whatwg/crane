@@ -211,6 +211,95 @@ test "null and undefined hold no bytes and no reference" {
     }
 }
 
+// ---------------------------------------------------------------------------
+// engine.borrowBufferSourceBytes: the same bytes read in place, for a
+// non-shared buffer only
+// ---------------------------------------------------------------------------
+
+/// `code`'s value converted as the binding converts an argument; `check`
+/// runs on it, and the value is freed after.
+fn withConverted(code: []const u8, check: *const fn (AllowSharedBufferSource, *ffi.Value) anyerror!void) !void {
+    try setUp();
+    const handle = try eval(code);
+    const source = try convert(handle);
+    defer iface.freeConvertedArg(AllowSharedBufferSource, testing_allocator, source);
+    try check(source, handle);
+}
+
+/// Borrowed bytes equal to `expected`, at the address the object's own
+/// bytes are at: read in place, not copied.
+fn expectBorrowed(code: []const u8, comptime expected: []const u8) !void {
+    try withConverted(code, struct {
+        fn check(source: AllowSharedBufferSource, handle: *ffi.Value) !void {
+            const bytes = engine.borrowBufferSourceBytes(realm_once.?, source.jsValue(runtime.JSValue).?) orelse return error.NotBorrowed;
+            try std.testing.expectEqualSlices(u8, expected, bytes);
+            if (expected.len == 0) return;
+            var data: ?*anyopaque = null;
+            var length: usize = 0;
+            try std.testing.expect(ffi.v8_AllowSharedBufferSource_Bytes(handle, &data, &length));
+            try std.testing.expectEqual(@as([*]const u8, @ptrCast(data.?)), bytes.ptr);
+        }
+    }.check);
+}
+
+test "borrowBufferSourceBytes reads an ArrayBuffer and a view's window in place" {
+    try expectBorrowed("new Uint8Array([104, 105]).buffer", "hi");
+    try expectBorrowed("new Uint8Array([1, 2, 3, 4, 5]).subarray(1, 4)", &.{ 2, 3, 4 });
+    try expectBorrowed("new Uint16Array([0x0201, 0x0403, 0x0605]).subarray(1)", &.{ 3, 4, 5, 6 });
+    try expectBorrowed("new DataView(new Uint8Array([1, 2, 3, 4, 5]).buffer, 1, 3)", &.{ 2, 3, 4 });
+    // A small typed array V8 keeps on its own heap: Buffer() moves it off
+    // first, so the address the borrow gives is the one the object keeps.
+    try expectBorrowed("new Uint8Array([7])", &.{7});
+}
+
+test "borrowBufferSourceBytes reads a detached buffer as empty" {
+    try expectBorrowed("(() => { const b = new Uint8Array([1, 2]).buffer; b.transfer(); return b; })()", &.{});
+    try expectBorrowed("(() => { const v = new Uint8Array([1, 2]); v.buffer.transfer(); return v; })()", &.{});
+    try expectBorrowed("(() => { const v = new DataView(new Uint8Array([1, 2]).buffer); v.buffer.transfer(); return v; })()", &.{});
+}
+
+// Shared memory is never borrowed: another agent can write it while it is
+// read. The copy still reads it.
+test "borrowBufferSourceBytes refuses a SharedArrayBuffer and a view over one; the copy takes them" {
+    const shared = [_][]const u8{
+        "(() => { const s = new SharedArrayBuffer(2); new Uint8Array(s).set([1, 2]); return s; })()",
+        "(() => { const s = new SharedArrayBuffer(2); new Uint8Array(s).set([1, 2]); return new Uint8Array(s); })()",
+        "(() => { const s = new SharedArrayBuffer(2); new Uint8Array(s).set([1, 2]); return new DataView(s); })()",
+    };
+    for (shared) |code| {
+        try withConverted(code, struct {
+            fn check(source: AllowSharedBufferSource, _: *ffi.Value) !void {
+                try std.testing.expectEqual(@as(?[]const u8, null), engine.borrowBufferSourceBytes(realm_once.?, source.jsValue(runtime.JSValue).?));
+                const bytes = try bytesAtTheStep(source);
+                defer testing_allocator.free(bytes);
+                try std.testing.expectEqualSlices(u8, &.{ 1, 2 }, bytes);
+            }
+        }.check);
+    }
+}
+
+test "borrowBufferSourceBytes answers null for anything that is not a buffer source" {
+    try setUp();
+    try std.testing.expectEqual(@as(?[]const u8, null), engine.borrowBufferSourceBytes(realm_once.?, .{ .number = 1 }));
+    try std.testing.expectEqual(@as(?[]const u8, null), engine.borrowBufferSourceBytes(realm_once.?, runtime.JSValue.jsNull));
+    const object = try eval("({ byteLength: 2 })");
+    defer ffi.v8_Value_Dispose(object);
+    try std.testing.expectEqual(@as(?[]const u8, null), engine.borrowBufferSourceBytes(realm_once.?, runtime.JSValue.fromHandle(object)));
+}
+
+// What decode() relies on: borrowed at its step, after a getter detached the
+// buffer, the bytes are none - never the freed store.
+test "a buffer detached after its conversion borrows as empty" {
+    try withConverted("globalThis.input = new Uint8Array(10000).fill(42)", struct {
+        fn check(source: AllowSharedBufferSource, _: *ffi.Value) !void {
+            const detach = try eval("input.buffer.transfer(0), 0");
+            ffi.v8_Value_Dispose(detach);
+            const bytes = engine.borrowBufferSourceBytes(realm_once.?, source.jsValue(runtime.JSValue).?) orelse return error.NotBorrowed;
+            try std.testing.expectEqual(@as(usize, 0), bytes.len);
+        }
+    }.check);
+}
+
 test "anything else is a TypeError" {
     try setUp();
     const cases = [_][]const u8{ "({ byteLength: 2 })", "'hi'", "4", "[1, 2]", "Symbol()" };

@@ -358,6 +358,9 @@ pub fn getCopyOfBufferSourceBytes(_: Context, _: JSValue, _: Allocator) Error!?[
 pub fn getCopyOfAllowSharedBufferSourceBytes(_: Context, _: JSValue, _: Allocator) Error!?[]u8 {
     return error.NotSupported;
 }
+pub fn borrowBufferSourceBytes(_: Context, _: JSValue) ?[]const u8 {
+    return null;
+}
 pub fn convertToSequence(_: Context, _: JSValue, _: Allocator) Error![]Owned {
     return error.NotSupported;
 }
