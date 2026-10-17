@@ -859,6 +859,13 @@ pub const WorkerHost = struct {
             .link = thread.link,
             .cookie_jar = start.cookie_jar,
             .time_origin_ns = start.time_origin_ns,
+            // HTML 8.1.3.5 step 1.2 asks owner set[0], and a service worker
+            // has none: Service Workers 6.1 runs every service worker in a
+            // secure context (Start Register step 4 refused a script URL that
+            // is not potentially trustworthy), as Blink starts each one. Its
+            // realm's [SecureContext] exposure and isSecureContext still read
+            // its own URL through secure_context.ofWorker.
+            .owner_is_secure_context = true,
             .service = start.service,
         };
         thread_host.host = self;
