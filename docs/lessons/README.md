@@ -443,6 +443,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Nonce hiding changes the security reader](spec-compliance-nonce-hiding-changes-the-security-reader.md) - The content attribute is not the authorization value; audit every nonce consumer when moving the value into a private slot.
 - [A report endpoint belongs to the policy's delivery URL](spec-compliance-a-report-endpoint-belongs-to-the-policy-delivery-url.md) - A violation's document URL, its blocked resource URL, and its report endpoint base are separate inputs. Preserve each input through inheritance instead of deriving one from another.
 - [A new token kind falls into every `else` branch](spec-compliance-a-new-token-kind-falls-into-every-else-branch.md) - When a union gains a kind, the compiler finds the exhaustive switches; the `else` branches are yours to find - map every spec rule for the new kind to its switch before trusting a green build.
+- [Integrity checks precede response handover](spec-compliance-sri-checks-before-response-handover.md) - Put a security check before the operation that exposes its result, and preserve both streaming cancellation and the empty-metadata fast path.
 
 ### Codegen
 
@@ -597,6 +598,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A partition test needs a cross-site top level](testing-a-partition-test-needs-a-cross-site-top-level.md) - Partitioning is by site: a cross-site test needs HTTP_NOTSAMESITE_ORIGIN; a www1 subdomain is the same site and only passes while partitioning is off.
 - [A file that times out leaves state the next file inherits](testing-a-file-that-times-out-leaves-state-the-next-file-inherits.md) - When a runner shares one browser across files, a file that times out is the one most likely to leave state behind. Restart after it, as wptrunner does, and test that the browser's end copes with whatever a stuck file can leave.
 - [A service worker variant is https whatever the file's name says](testing-a-service-worker-variant-is-https-whatever-the-file-name-says.md) - A runner's URL for a variant must follow every rule the manifest applies to it, not only the file name's markers - measure a sample before and after turning a variant on, and read the failure messages, not just the counts.
+- [A matching hash does not prove the algorithm was recognized](testing-a-matching-hash-does-not-prove-recognition.md) - Before trusting a passing parser test, ask whether ignoring its input would pass it too.
 
 ### Debugging
 - [A per-call allocation in a lonely size class maps a page every call](debugging-a-per-call-allocation-in-a-lonely-size-class-maps-a-page.md) - Count allocations AND look at where they land: a per-call allocation that empties a DebugAllocator page costs a syscall pair; put call-lifetime data on the stack.

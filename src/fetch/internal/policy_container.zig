@@ -80,8 +80,12 @@ pub const PolicyContainer = struct {
         // 4. Set clone's referrer policy to policyContainer's referrer policy.
         copy.referrer_policy = self.referrer_policy;
         copy.inherited_upgrade_insecure_requests = self.inherited_upgrade_insecure_requests;
-        // 5. Copy the integrity policy. The request snapshot carries the
-        // report-only policy too: SRI §3.8.2 reads both from the request.
+        // 5. Copy the integrity policy. DEVIATION from HTML's clone step 5,
+        // which copies only the enforced policy: the report-only policy is
+        // copied too, because SRI §3.8.2 step 6 reads it from the request's
+        // clone and could otherwise never report. A srcdoc or about:blank
+        // document that inherits a container inherits it as well (row 48
+        // review S2).
         if (self.integrity_policy) |policy| copy.integrity_policy = try policy.clone(allocator);
         if (self.integrity_policy_report_only) |policy| copy.integrity_policy_report_only = try policy.clone(allocator);
         // 6. Return clone.
