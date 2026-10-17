@@ -48,8 +48,16 @@ test "sri policy accepts only known destination/source tokens and validates the 
     try check(enforced, false, .cors, "unknown-AAAA", .script, true);
     try check(enforced, false, .cors, "SHA256-AAAA", .script, true);
     try check(enforced, false, .cors, "sha256-...", .script, true);
-    // Browser majority only ships the script policy destination.
-    try check(enforced, false, .cors, "", .style, false);
+    // SRI 3.8 step 4.2 (w3c/webappsec-subresource-integrity PR #146,
+    // 2025-07-07): "style" is a blocked destination too (gr2audit D8).
+    try check(enforced, false, .cors, "", .style, true);
+    try check(enforced, false, .cors, "sha384-AAAA", .style, false);
+    try check(enforced, false, .no_cors, "sha384-AAAA", .style, true);
+    try check(enforced, true, .cors, "", .style, false);
+    try check("blocked-destinations=(script)", false, .cors, "", .style, false);
+    try check("blocked-destinations=(style)", false, .cors, "", .style, true);
+    try check("blocked-destinations=(style)", false, .cors, "", .script, false);
+    try check("blocked-destinations=(style), sources=()", false, .cors, "", .style, false);
     try check(enforced, false, .cors, "", .json, false);
     try check(enforced, false, .cors, "", .image, false);
     try check(enforced, false, .cors, "", .empty, false);
@@ -59,6 +67,7 @@ test "sri policy accepts only known destination/source tokens and validates the 
     }
     try check("blocked-destinations=(script), blocked-destinations=(style)", false, .cors, "", .script, false);
     try check("blocked-destinations=(style), blocked-destinations=(script)", false, .cors, "", .script, true);
+    try check("blocked-destinations=(style), blocked-destinations=(script)", false, .cors, "", .style, false);
     try check("blocked-destinations=(\"style\" script 3), sources=(?1 inline)", false, .cors, "", .script, true);
     try check("blocked-destinations=(script), sources=elsewhere", false, .cors, "", .script, true);
     try check("blocked-destinations=(script), sources=\"elsewhere\"", false, .cors, "", .script, true);
