@@ -92,47 +92,48 @@ fn insertionSteps(node: *NodeBase) void {
 /// The Content Security Policy state (`http-equiv="content-security-policy"`):
 /// it "enforces a Content Security Policy on a Document".
 ///
+/// Fails CLOSED: a policy that cannot be read, parsed or recorded - out of
+/// memory in any of its steps - leaves the document's CSP list
+/// unenforceable (csp.CSPList.unenforceable), and every CSP decision against
+/// it is "Blocked" (csp.integration.enforceMetaPolicy). The policy used to be
+/// dropped (`csp_list.append(policy) catch policy.deinit()`, the parse
+/// `catch return`), and the document ran as if its `<meta>` CSP were not
+/// there (lane leaks2).
+///
 /// Spec: https://html.spec.whatwg.org/multipage/semantics.html#attr-meta-http-equiv-content-security-policy
 fn contentSecurityPolicyState(meta: *runtime.Instance, node: *NodeBase) void {
-    // 1. "If the meta element is not a child of a head element, return."
-    const parent = node.parent_node orelse return;
-    if (parent.node_type != 1) return;
-    const parent_instance: *runtime.Instance = @ptrCast(@alignCast(instance_bridge.getInstance(parent) orelse return));
-    var parent_name = interfaces.Element.get_localName(parent_instance) catch return;
-    defer parent_name.deinit(parent_instance.ctx.allocator);
-    if (!std.mem.eql(u8, parent_name.asSlice(), "head")) return;
-    // 2. "If the meta element has no content attribute, or if that
-    // attribute's value is the empty string, then return."
-    const content = (interfaces.Element.call_getAttribute(meta, runtime.DOMString.initInterned("content")) catch return) orelse return;
-    if (content.asSlice().len == 0) return;
     const document = (interfaces.Node.get_ownerDocument(meta) catch return) orelse return;
     const container = dom_module.policy_containers.of(document) orelse return;
-    const allocator = container.allocator;
-    // 3. Parse a serialized CSP, with a source of "meta" and a disposition of
-    // "enforce".
-    var policy = @import("csp").parsing.parseSerializedCSP(allocator, content.asSlice(), .meta, .enforce) catch return;
-    // 4. "Remove all occurrences of the report-uri, frame-ancestors, and
-    // sandbox directives from policy."
-    for ([_][]const u8{ "report-uri", "frame-ancestors", "sandbox" }) |name| {
-        if (policy.directive_set.items.fetchOrderedRemove(name)) |removed| {
-            var directive = removed.value;
-            directive.deinit();
-        }
-    }
-    // The policy's self-origin: its CSP list's (CSP 2.2) - the URL origin of
-    // the response the document was created from, which a sandboxed
-    // document's opaque origin does not change - else, for a list that came
-    // from no response, the document's origin.
-    policy.self_origin = if (container.csp_list.self_origin) |*origin|
-        @import("csp").Origin.create(allocator, origin.scheme, origin.host, origin.port) catch null
-    else
-        documentSelfOrigin(document, allocator);
-    if (interfaces.Document.get_URL(document)) |delivery_url| {
-        defer document.ctx.allocator.free(delivery_url);
-        policy.delivery_url = allocator.dupe(u8, delivery_url) catch null;
-    } else |_| {}
-    // 5. "Enforce the policy policy": it joins the document's CSP list.
-    container.csp_list.append(policy) catch policy.deinit();
+    // Steps 1-2: whether the element has a policy to enforce. Not knowing
+    // (out of memory reading its parent or its content) fails closed too.
+    const content = metaPolicyContent(node, meta) catch {
+        container.csp_list.markUnenforceable();
+        return;
+    } orelse return;
+    // Steps 3-5, with the document's origin for a list that came from no
+    // response and the document's URL for its reports.
+    const self_origin = if (container.csp_list.self_origin == null) documentSelfOrigin(document, container.allocator) else null;
+    const delivery_url: ?[]const u8 = interfaces.Document.get_URL(document) catch null;
+    defer if (delivery_url) |url| document.ctx.allocator.free(url);
+    @import("csp").integration.enforceMetaPolicy(&container.csp_list, content, self_origin, delivery_url);
+}
+
+/// Steps 1-2 of the Content Security Policy state: the meta element's
+/// content attribute's value, when it is a child of a head element and the
+/// value is not empty; null when there is nothing to enforce. BORROWED.
+fn metaPolicyContent(node: *NodeBase, meta: *runtime.Instance) anyerror!?[]const u8 {
+    // 1. "If the meta element is not a child of a head element, return."
+    const parent = node.parent_node orelse return null;
+    if (parent.node_type != 1) return null;
+    const parent_instance: *runtime.Instance = @ptrCast(@alignCast(instance_bridge.getInstance(parent) orelse return null));
+    var parent_name = try interfaces.Element.get_localName(parent_instance);
+    defer parent_name.deinit(parent_instance.ctx.allocator);
+    if (!std.mem.eql(u8, parent_name.asSlice(), "head")) return null;
+    // 2. "If the meta element has no content attribute, or if that
+    // attribute's value is the empty string, then return."
+    const content = (try interfaces.Element.call_getAttribute(meta, runtime.DOMString.initInterned("content"))) orelse return null;
+    if (content.asSlice().len == 0) return null;
+    return content.asSlice();
 }
 
 /// `document`'s origin as a CSP self-origin, through its window's settings

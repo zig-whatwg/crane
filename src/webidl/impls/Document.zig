@@ -5614,7 +5614,7 @@ pub fn isInlineScriptAllowedByCSP(
     parser_inserted: bool,
 ) bool {
     const internal = getInternal(instance) orelse return true; // No document = allow
-    if (internal.policy_container.csp_list.policies.items.len == 0) return true;
+    if (internal.policy_container.csp_list.isEmpty()) return true;
     // CSP §4.2.3 uses the same nonce eligibility and violation-reporting
     // algorithm for inline scripts as for the other inline behaviors.
     return !@import("dom").csp_violations.shouldBlockInline(element, .script, source, .{

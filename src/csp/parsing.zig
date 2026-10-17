@@ -323,6 +323,8 @@ pub fn copyPolicy(allocator: std.mem.Allocator, policy: *const types.Policy) !ty
 pub fn copyList(allocator: std.mem.Allocator, list: *const types.CSPList) !types.CSPList {
     var copy = types.CSPList.init(allocator);
     errdefer copy.deinit();
+    // A list that failed closed stays failed closed in its copy.
+    copy.unenforceable = list.unenforceable;
     if (list.self_origin) |*origin| {
         copy.self_origin = try types.Origin.create(allocator, origin.scheme, origin.host, origin.port);
     }
