@@ -865,7 +865,7 @@ pub const GBK: Encoding = .{
     .name = "gbk",
     .whatwg_name = "gbk",
     .decode_fn = chinese.decode,
-    .encode_fn = chinese.encode,
+    .encode_fn = chinese.encodeGbk,
     // Encoding §10.1.1: GBK uses the gb18030 decoder, including its direct
     // UTF-8 path so output-full retries preserve the same handler state.
     .decode_to_utf8_fn = chinese.decodeToUtf8,

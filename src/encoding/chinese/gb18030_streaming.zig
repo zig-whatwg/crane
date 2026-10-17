@@ -128,6 +128,24 @@ fn restoreAfterError(
     return if (before.gb18030_first != 0 and byte < 0x80) 0 else 1;
 }
 
+/// Encoding §10.1.2: GBK's encoder is gb18030's with its is GBK flag set.
+/// Select the mode at the entry point, without relying on Encoding addresses
+/// (equal constants can share an address in optimized builds).
+pub fn encodeGbk(
+    encoder: *Encoder,
+    input: []const u16,
+    output: []u8,
+    is_last: bool,
+) streaming.EncodeResult {
+    if (encoder.state == .neutral) {
+        encoder.state = .{ .gb18030 = .{
+            .is_gbk = true,
+            .pending_high_surrogate = null,
+        } };
+    }
+    return encode(encoder, input, output, is_last);
+}
+
 /// gb18030 streaming encode implementation
 ///
 /// WHATWG spec §10.2.2 - gb18030 encoder
