@@ -1,7 +1,7 @@
 // GENERATED CONTENT - DO NOT EDIT
 // Content was automatically extracted by Reffy into webref
 // (https://github.com/w3c/webref)
-// Source: Payment Handler API (https://w3c.github.io/payment-handler/)
+// Source: Web-based Payment Handler API (https://w3c.github.io/web-based-payment-handler/)
 
 partial interface ServiceWorkerRegistration {
   [SameObject] readonly attribute PaymentManager paymentManager;
@@ -80,4 +80,17 @@ DOMString? payerEmail;
 DOMString? payerPhone;
 AddressInit shippingAddress;
 DOMString? shippingOption;
+};
+
+dictionary AddressInit {
+  DOMString country = "";
+  sequence<DOMString> addressLine = [];
+  DOMString region = "";
+  DOMString city = "";
+  DOMString dependentLocality = "";
+  DOMString postalCode = "";
+  DOMString sortingCode = "";
+  DOMString organization = "";
+  DOMString recipient = "";
+  DOMString phone = "";
 };

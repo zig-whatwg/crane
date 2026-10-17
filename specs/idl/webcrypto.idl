@@ -28,8 +28,6 @@ dictionary KeyAlgorithm {
 
 enum KeyType { "public", "private", "secret" };
 
-enum KeyUsage { "encrypt", "decrypt", "sign", "verify", "deriveKey", "deriveBits", "wrapKey", "unwrapKey" };
-
 [SecureContext,Exposed=(Window,Worker),Serializable]
 interface CryptoKey {
   readonly attribute KeyType type;
@@ -37,8 +35,6 @@ interface CryptoKey {
   readonly attribute object algorithm;
   readonly attribute object usages;
 };
-
-enum KeyFormat { "raw", "spki", "pkcs8", "jwk" };
 
 [SecureContext,Exposed=(Window,Worker)]
 interface SubtleCrypto {
@@ -83,7 +79,7 @@ interface SubtleCrypto {
   Promise<ArrayBuffer> deriveBits(
     AlgorithmIdentifier algorithm,
     CryptoKey baseKey,
-    optional unsigned long? length = null
+    optional [EnforceRange] unsigned long? length = null
   );
 
   Promise<CryptoKey> importKey(
@@ -165,7 +161,7 @@ dictionary RsaHashedKeyGenParams : RsaKeyGenParams {
 };
 
 dictionary RsaKeyAlgorithm : KeyAlgorithm {
-  required unsigned long modulusLength;
+  required [EnforceRange] unsigned long modulusLength;
   required BigInteger publicExponent;
 };
 
@@ -213,7 +209,7 @@ dictionary AesCtrParams : Algorithm {
 };
 
 dictionary AesKeyAlgorithm : KeyAlgorithm {
-  required unsigned short length;
+  required [EnforceRange] unsigned short length;
 };
 
 dictionary AesKeyGenParams : Algorithm {
@@ -241,7 +237,7 @@ dictionary HmacImportParams : Algorithm {
 
 dictionary HmacKeyAlgorithm : KeyAlgorithm {
   required KeyAlgorithm hash;
-  required unsigned long length;
+  required [EnforceRange] unsigned long length;
 };
 
 dictionary HmacKeyGenParams : Algorithm {
