@@ -57,6 +57,6 @@ pub fn deliverSheet(owner: *@import("runtime").Instance, path: []const u16, byte
     sheetsChanged(document);
 }
 
-test {
-    @import("std").testing.refAllDecls(@This());
-}
+// No refAllDecls here: the dom module's own tests are not V8-linked, and
+// the resolver's functions reach the engine. Each file's tests run as it
+// is imported; tests/v8/style_engine_test.zig drives the resolver.
