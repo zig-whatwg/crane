@@ -3575,36 +3575,55 @@ pub fn call_prompt(instance: *runtime.Instance, message: webidl.Opt(runtime.DOMS
     return null;
 }
 
-/// Operation: getComputedStyle
-/// Per CSSOM spec: Returns the computed style of an element.
-/// https://drafts.csswg.org/cssom/#dom-window-getcomputedstyle
+/// Operation: getComputedStyle (CSSOM 7.2)
+/// https://drafts.csswg.org/cssom-1/#dom-window-getcomputedstyle
 ///
-/// Returns a CSSStyleDeclaration that reflects computed values based on
-/// the element type. This is a minimal implementation for WPT tests.
+/// Steps 1-3 here; steps 4-5 - which declarations, and their resolved
+/// values - are the returned object's, which reads them live on every
+/// access (CSSStyleDeclaration's `computed` kind, through dom.style).
 pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance, pseudoElt: webidl.Opt(?typedefs.CSSOMString)) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    _ = pseudoElt; // Would be used for pseudo-element computed styles
+    // 2. "Let obj be elt."
+    var target: @import("dom").style.ComputedFor = .{ .element = elt };
+    var name_buffer: [64]u8 = undefined;
+    // 3. "If pseudoElt is provided, is not the empty string, and starts with
+    // a colon": parse it as a <pseudo-element-selector>; failure, ::slotted()
+    // or ::part() makes obj null; otherwise obj is that pseudo-element.
+    if (pseudoElt.wasPassed()) if (pseudoElt.getValue()) |given| {
+        const text = given.asSlice();
+        if (text.len > 0 and text[0] == ':') {
+            if (pseudoElementName(internal.allocator, text, &name_buffer)) |name| {
+                target.pseudo = name;
+            } else target.no_object = true;
+        }
+    };
+    // 6. "Return a live CSSStyleProperties object" - computed and readonly,
+    // its owner node obj.
+    return interfaces.CSSStyleProperties.initWith(internal.allocator, instance.ctx, .{ .computed_for = target });
+}
 
-    // Create a CSSStyleDeclaration instance for the computed style
-    // Per CSSOM spec, getComputedStyle returns a live CSSStyleDeclaration
-    // that reflects the computed values of an element.
-    //
-    // We use initForComputedStyle to associate the element with the style
-    // declaration, enabling element-type-based default values for properties
-    // like 'display'.
-    const CSSStyleDeclaration = interfaces.CSSStyleDeclaration;
-    const CSSStyleDeclarationImpl = @import("CSSStyleDeclaration.zig");
-
-    const css_instance = try CSSStyleDeclarationImpl.initForComputedStyle(
-        internal.allocator,
-        CSSStyleDeclaration.State,
-        &CSSStyleDeclaration.vtable,
-        instance.ctx,
-        elt,
-    );
-
-    log.debug("[DEBUG] getComputedStyle returning instance={*}\n", .{css_instance});
-    return css_instance;
+/// The pseudo-element `text` names when it parses as a
+/// <pseudo-element-selector> - lowercase, no colons, into `buffer` - or
+/// null (and for ::slotted() and ::part(), which getComputedStyle does not
+/// take). CSS 2's single-colon forms count (CSSOM 7.2 step 3's note).
+fn pseudoElementName(allocator: std.mem.Allocator, text: []const u8, buffer: []u8) ?[]const u8 {
+    const selector = @import("selector");
+    var list = selector.parse(allocator, text) catch return null;
+    defer list.deinit();
+    if (list.selectors.len != 1) return null;
+    const complex = &list.selectors[0];
+    if (complex.combinators.len != 0) return null;
+    var name: ?[]const u8 = null;
+    for (complex.compound.simple_selectors) |*simple| switch (simple.*) {
+        .PseudoElement => |p| name = p.name,
+        // Only the implicit universal selector may stand beside it.
+        .Universal => {},
+        else => return null,
+    };
+    const found = name orelse return null;
+    if (std.ascii.eqlIgnoreCase(found, "slotted") or std.ascii.eqlIgnoreCase(found, "part")) return null;
+    if (found.len > buffer.len) return null;
+    return std.ascii.lowerString(buffer[0..found.len], found);
 }
 
 /// Operation: cancelAnimationFrame

@@ -6804,7 +6804,7 @@ pub fn V8Interface(comptime Interface: type) type {
         /// CSSStyleDeclaration's named properties are Crane's camel-cased CSS
         /// attributes (crane_css_properties): every CSS property name, not
         /// only the set ones, and the interceptor masks the prototype.
-        const is_css_style_declaration = std.mem.endsWith(u8, interface_name, "CSSStyleDeclaration");
+        const is_css_style_declaration = std.mem.endsWith(u8, interface_name, "CSSStyleDeclaration") or std.mem.endsWith(u8, interface_name, "CSSStyleProperties");
 
         /// Whether named properties shadow the prototype chain: WebIDL 3.4.7
         /// [LegacyOverrideBuiltIns] (the named property visibility
@@ -7135,7 +7135,12 @@ pub fn V8Interface(comptime Interface: type) type {
             // Crane's CSS attributes: CSSStyleDeclaration takes every CSS
             // property name, the other declaration interfaces their set ones.
             if (comptime special.crane_css_properties) {
-                if (!is_css_style_declaration and !isSupportedPropertyName(instance, key)) return .kNo;
+                // A name that is no CSS property - cssText, length, an
+                // expando - is the ordinary [[Set]]'s, so the masking
+                // interceptor does not swallow it (lane style1). Stated: the
+                // CSS names are then own keys of the object, where browsers
+                // have prototype accessors (Object.keys lists them).
+                if (!isSupportedPropertyName(instance, key)) return .kNo;
             }
             const isolate = info.getIsolate();
             // V8 hands an interceptor the value as a LOCAL; fromV8Value reads
