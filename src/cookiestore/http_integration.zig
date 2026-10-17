@@ -54,9 +54,7 @@ pub fn parseCookie(allocator: std.mem.Allocator, input: []const u8, request_path
     // 7-10 / RFC 6265bis 5.6 step 3: no `=` means a nameless cookie whose
     // value is the whole pair. Chrome is nameless, Firefox uses the token
     // as a name with an empty value, Safari stores nothing: three-way
-    // split, spec wins (cookies lane Q5, 2026-10-12). This deliberately
-    // differs from the explicit-empty-name case below; each follows the
-    // browsers-decide rule independently.
+    // split, spec wins (cookies lane Q5, 2026-10-12).
     var name: []const u8 = "";
     var value: []const u8 = name_value_input;
     const equals = std.mem.indexOfScalar(u8, name_value_input, '=');
@@ -67,11 +65,14 @@ pub fn parseCookie(allocator: std.mem.Allocator, input: []const u8, request_path
     // 11. Remove leading and trailing WSP from both.
     name = trimWsp(name);
     value = trimWsp(value);
-    // Deliberate deviation from 5.6 step 3: Firefox and Safari reject an
-    // explicitly empty name (`=value`); Chrome accepts it. Their aligned
-    // cookies/name/name.html assertions decide this independent case
-    // (cookies lane Q5, 2026-10-12). Do not reject the no-`=` case above.
-    if (equals != null and name.len == 0) return null;
+    // An explicitly empty name (`=value`) is a nameless cookie too: steps
+    // 7-12 accept a name of length 0 whenever the value is not empty. That
+    // is RFC 6265bis since httpwg/http-extensions PR #1018 ("Accept
+    // nameless cookies", 2020-01-10), and Chrome ships it (wpt.fyi
+    // cc74d2669f cookies/name/name.html: Chrome 43/45, Firefox 33/45,
+    // Safari 0/45). Golden rule 2 as refined 2026-10-17: a newer spec one
+    // browser ships wins, so this replaces cookies lane Q5's browser-majority
+    // rejection (2026-10-12; gr2audit).
     // 12. Empty, or longer than 4096 bytes together: failure.
     if (name.len + value.len == 0 or name.len + value.len > max_name_value_size) return null;
 
@@ -700,7 +701,11 @@ test "Parse a Cookie: CTLs, the name-value pair, and nameless cookies" {
     try std.testing.expectEqualStrings("", nameless.cookie.name);
     try std.testing.expectEqualStrings("just-a-value", nameless.cookie.value);
 
-    try std.testing.expect(try parseCookie(allocator, "=value", "/") == null);
+    // An explicitly empty name is nameless too (RFC 6265bis PR #1018).
+    var explicit = (try parseCookie(allocator, "=value", "/")).?;
+    defer explicit.deinit();
+    try std.testing.expectEqualStrings("", explicit.cookie.name);
+    try std.testing.expectEqualStrings("value", explicit.cookie.value);
 
     // 1 + 4095 bytes fit; 1 + 4096 do not.
     const long = "a=" ++ "x" ** 4095;

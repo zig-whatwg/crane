@@ -293,6 +293,7 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     }) catch {
         return null;
     };
+    browsing_ctx_ptr.ancestor_origins_policy = takeIframeReferrerPolicy(browsing_ctx_ptr);
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
     givePolicyContainer(document_instance, browsing_ctx_ptr);
     giveReferrer(document_instance, browsing_ctx_ptr);
@@ -499,6 +500,7 @@ fn createNavigationDocument(
         interfaces.Document.initWith(allocator, runtime_ctx, .{ .origin = origin, .sandboxing_flags = sandboxing_flags })) catch return null;
     document_internals.setDocumentType(document_instance, kind) catch {};
     document_internals.setContentType(document_instance, content_type) catch {};
+    browsing_ctx_ptr.ancestor_origins_policy = takeIframeReferrerPolicy(browsing_ctx_ptr);
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
     givePolicyContainer(document_instance, browsing_ctx_ptr);
     giveReferrer(document_instance, browsing_ctx_ptr);
@@ -886,6 +888,12 @@ const Navigation = struct {
     /// sandbox attribute as it is then, united with its container document's
     /// active sandboxing flag set; a popup's popup sandboxing flag set.
     target_sandboxing_flags: SandboxingFlagSet = .empty,
+    /// Navigate step 8's target snapshot params' `iframe` element referrer
+    /// policy: "determining the iframe element referrer policy" given the
+    /// navigable's container, as the navigation starts - an iframe's
+    /// referrerpolicy attribute then, empty for any other container. A later
+    /// change to the attribute, or a redirect, does not reach it.
+    target_iframe_referrer_policy: fetch_mod.internal.ReferrerPolicy = .empty,
     /// navigationParams's final sandboxing flag set, decided as the response
     /// commits: the target snapshot's flags united with the policy
     /// container's CSP-derived sandboxing flags. The new document's active
@@ -938,6 +946,28 @@ fn giveAboutBaseUrl(document: *runtime.Instance, browsing_context: *html_core.Br
 fn takeNextSandboxingFlags(browsing_context: *html_core.BrowsingContext) SandboxingFlagSet {
     const integration = integrationOfBrowsingContext(browsing_context) orelse return .empty;
     return integration.takeNextSandboxingFlags();
+}
+
+/// HTML "determine the iframe element referrer policy" given `integration`'s
+/// container: an iframe element's referrerpolicy attribute state, else the
+/// empty string (whatwg/html#11560).
+fn iframeElementReferrerPolicy(integration: *IFrameIntegration) fetch_mod.internal.ReferrerPolicy {
+    const raw = integration.iframe_element orelse return .empty;
+    const element: *runtime.Instance = @ptrCast(@alignCast(raw));
+    var local_name = interfaces.Element.get_localName(element) catch return .empty;
+    defer local_name.deinit(element.ctx.allocator);
+    if (!std.mem.eql(u8, local_name.asSlice(), "iframe")) return .empty;
+    const attr = interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("referrerpolicy")) catch null;
+    return fetch_mod.internal.policy_container.referrerPolicyFromAttribute(if (attr) |a| a.asSlice() else null);
+}
+
+/// The `iframe` element referrer policy of the document `browsing_context`'s
+/// navigable is making: navigationParams's, when a navigation set one, else
+/// - the initial about:blank document - its embedder's attribute now
+/// ("create a new browsing context and document" step 16).
+fn takeIframeReferrerPolicy(browsing_context: *html_core.BrowsingContext) fetch_mod.internal.ReferrerPolicy {
+    const integration = integrationOfBrowsingContext(browsing_context) orelse return .empty;
+    return integration.takeNextIframeReferrerPolicy() orelse iframeElementReferrerPolicy(integration);
 }
 
 /// "Create and initialize a Document object": the origin record
@@ -1209,6 +1239,8 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         // Step 8: "Let targetSnapshotParams be the result of snapshotting
         // target snapshot params given navigable": its sandboxing flags.
         .target_sandboxing_flags = creationSandboxingFlagsOf(integration),
+        // Its iframe element referrer policy (whatwg/html#11560).
+        .target_iframe_referrer_policy = iframeElementReferrerPolicy(integration),
     };
     record.required_csp = determineRequiredCSP(integration, url) catch {
         record.destroy();
@@ -1970,6 +2002,8 @@ fn runCommit(context: ?*anyopaque) void {
     // Step 9's active sandboxing flag set, for whatever makes the document.
     integration.setNextSandboxingFlags(record.final_sandboxing_flags);
     defer integration.setNextSandboxingFlags(.empty);
+    integration.setNextIframeReferrerPolicy(record.target_iframe_referrer_policy);
+    defer integration.setNextIframeReferrerPolicy(null);
     // Step 14: its referrer, the request's as main fetch left it.
     integration.setNextReferrer(response.referrer);
     defer integration.setNextReferrer(null);
@@ -3075,6 +3109,8 @@ fn runJavascriptNavigation(context: ?*anyopaque) void {
     // Step 16's final sandboxing flag set (taken in javascriptNavigation).
     integration.setNextSandboxingFlags(record.final_sandboxing_flags);
     defer integration.setNextSandboxingFlags(.empty);
+    integration.setNextIframeReferrerPolicy(record.target_iframe_referrer_policy);
+    defer integration.setNextIframeReferrerPolicy(null);
     const ctx = navigableContext(integration) orelse return endLoadDelay(integration);
     if (!inRealm(ctx, commitJavascriptResult, .{ integration, record, url, html })) endLoadDelay(integration);
 }

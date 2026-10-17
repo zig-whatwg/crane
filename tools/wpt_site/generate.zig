@@ -50,6 +50,11 @@ pub const Inputs = struct {
     /// The Crane commits between consecutive generations (main asks git;
     /// see rangePairs). A generation with none shows its head alone.
     ranges: []const Range = &.{},
+    /// tools/wpt_gate_exemptions.txt (model.parseExemptions); "" exempts nothing.
+    exemptions_text: []const u8 = "",
+    /// Set when the exemptions are invalid (generate then fails with
+    /// error.InvalidExemption): where, and why.
+    exemption_diag: ?*model.ExemptionDiag = null,
 };
 
 /// The Crane commits from one generation's head to the next's:
@@ -550,6 +555,14 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
     var known: std.StringHashMapUnmanaged(void) = .empty;
     for (worklist) |p| try known.put(arena, p, {});
 
+    // The gate's exemptions: invalid ones stop the site, never exempt silently.
+    var local_diag: model.ExemptionDiag = .{};
+    const diag = in.exemption_diag orelse &local_diag;
+    const exemptions = try model.parseExemptions(arena, in.exemptions_text, diag);
+    try model.checkExemptionPaths(exemptions, &known, diag);
+    var exempt_of: std.StringHashMapUnmanaged(*const model.Exemption) = .empty;
+    for (exemptions) |*e| try exempt_of.put(arena, e.path, e);
+
     // Each in-scope record's run.
     var files = try arena.alloc(pages_mod.FileView, worklist.len);
     var used = try arena.alloc(bool, journals.len);
@@ -567,7 +580,9 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
             .gate = model.gateOf(if (rec) |r| r.status else null, c),
             .run = null,
             .has_detail = false,
+            .exemption = exempt_of.get(p),
         };
+        if (files[i].exemption != null) files[i].gate = files[i].gate.exempted();
         const r = rec orelse continue;
         const located = locate(journals, r);
         if (located) |ji| {
@@ -669,6 +684,7 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
         .detail_files = summary.detail_files,
         .site_url = in.site_url,
         .card_ref = card_ref,
+        .exemptions = exemptions,
     };
 
     var o: Output = .{ .gpa = gpa, .io = io, .dir = out, .arena = arena, .summary = &summary };
@@ -720,11 +736,13 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
 fn usage() noreturn {
     std.debug.print(
         \\usage: wpt_site [--state=<json>] [--history=<json>] [--worklist=<txt>] [--results=<dir>]
-        \\                [--assets=<dir>] [--out=<dir>] [--wpt-root=<dir>] [--site-url=<url>] [--no-commit]
+        \\                [--assets=<dir>] [--out=<dir>] [--wpt-root=<dir>] [--site-url=<url>]
+        \\                [--exemptions=<txt>] [--no-commit]
         \\
         \\Defaults are the repository's: tmp/wpt-progress-state.json, wpt-results/progress-history.json,
         \\tests/wpt_0_1_worklist.txt, wpt-results/, tools/wpt_site/assets/, wpt-results/site/, tests/wpt/,
-        \\https://zig-whatwg.github.io/crane/ (the absolute URL the social tags name).
+        \\https://zig-whatwg.github.io/crane/ (the absolute URL the social tags name),
+        \\tools/wpt_gate_exemptions.txt.
         \\When --out is a git worktree on the gh-pages branch and anything changed, the output is committed
         \\there ("results: generation <n>, Crane <sha>"). Nothing is ever pushed.
         \\
@@ -807,6 +825,7 @@ pub fn main(init: std.process.Init) !void {
     var out_path: []const u8 = "wpt-results/site";
     var wpt_root: []const u8 = "tests/wpt";
     var site_url: []const u8 = default_site_url;
+    var exemptions_path: []const u8 = "tools/wpt_gate_exemptions.txt";
     var commit = true;
 
     var args = try init.minimal.args.iterateAllocator(arena);
@@ -816,13 +835,14 @@ pub fn main(init: std.process.Init) !void {
         const eq = std.mem.indexOfScalar(u8, a, '=');
         const key = a[0 .. eq orelse a.len];
         const val = if (eq) |i| a[i + 1 ..] else "";
-        if (std.mem.eql(u8, key, "--no-commit")) commit = false else if (eq == null) usage() else if (std.mem.eql(u8, key, "--state")) state_path = val else if (std.mem.eql(u8, key, "--history")) history_path = val else if (std.mem.eql(u8, key, "--worklist")) worklist_path = val else if (std.mem.eql(u8, key, "--results")) results_path = val else if (std.mem.eql(u8, key, "--assets")) assets_path = val else if (std.mem.eql(u8, key, "--out")) out_path = val else if (std.mem.eql(u8, key, "--wpt-root")) wpt_root = val else if (std.mem.eql(u8, key, "--site-url")) site_url = val else usage();
+        if (std.mem.eql(u8, key, "--no-commit")) commit = false else if (eq == null) usage() else if (std.mem.eql(u8, key, "--state")) state_path = val else if (std.mem.eql(u8, key, "--history")) history_path = val else if (std.mem.eql(u8, key, "--worklist")) worklist_path = val else if (std.mem.eql(u8, key, "--results")) results_path = val else if (std.mem.eql(u8, key, "--assets")) assets_path = val else if (std.mem.eql(u8, key, "--out")) out_path = val else if (std.mem.eql(u8, key, "--wpt-root")) wpt_root = val else if (std.mem.eql(u8, key, "--site-url")) site_url = val else if (std.mem.eql(u8, key, "--exemptions")) exemptions_path = val else usage();
     }
 
     const cwd = Dir.cwd();
     const state = try cwd.readFileAlloc(io, state_path, arena, .limited(1 << 31));
     const history = try cwd.readFileAlloc(io, history_path, arena, .limited(1 << 31));
     const worklist = try cwd.readFileAlloc(io, worklist_path, arena, .limited(1 << 28));
+    const exemptions = try cwd.readFileAlloc(io, exemptions_path, arena, .limited(1 << 24));
     var results = try cwd.openDir(io, results_path, .{ .iterate = true });
     defer results.close(io);
     var assets = try cwd.openDir(io, assets_path, .{ .iterate = true });
@@ -844,7 +864,10 @@ pub fn main(init: std.process.Init) !void {
         try ranges.append(arena, try parseRange(arena, pair.since, pair.head, log));
     }
 
-    const summary = try generate(init.gpa, io, .{
+    var diag: model.ExemptionDiag = .{};
+    const summary = generate(init.gpa, io, .{
+        .exemptions_text = exemptions,
+        .exemption_diag = &diag,
         .ranges = ranges.items,
         .state_json = state,
         .history_json = history,
@@ -854,7 +877,16 @@ pub fn main(init: std.process.Init) !void {
         .assets = assets,
         .wpt = detectRevision(arena, io, wpt_root),
         .site_url = site_url,
-    }, out);
+    }, out) catch |e| switch (e) {
+        error.InvalidExemption => {
+            if (diag.line > 0)
+                std.debug.print("wpt-site: {s}:{d}: {s}\n", .{ exemptions_path, diag.line, diag.message })
+            else
+                std.debug.print("wpt-site: {s}: {s}: {s}\n", .{ exemptions_path, diag.path, diag.message });
+            std.process.exit(1);
+        },
+        else => |err| return err,
+    };
     std.debug.print(
         "wpt-site: generation {d} (Crane {s}): {d} test files, {d} with subtest detail; {d} directory pages, {d} file pages; " ++
             "{d} files in the site, {d} bytes (largest {s}, {d} bytes); {d} written, {d} unchanged, {d} removed, in {s}\n",
@@ -1406,4 +1438,102 @@ test "site: a generation names the commits since the previous one, and the merge
     try expectHas(index, "<td><a href=\"https://github.com/zig-whatwg/crane/compare/5c8dd64da...6d9ee75eb\"><code>5c8dd64da</code>&hellip;<code>6d9ee75eb</code></a><span class=\"landed\">merged <code>lane/a</code>, <code>lane/b</code></span></td>");
     // A generation with no range keeps its single commit.
     try expectHas(index, "<td><code>5c8dd64da</code></td>");
+}
+
+fn runFixtureExempt(gpa: Allocator, f: *Fixture, out_name: []const u8, exemptions: []const u8, diag: *model.ExemptionDiag) !Summary {
+    const st = try f.state(gpa);
+    defer gpa.free(st);
+    var out = try f.tmp.dir.createDirPathOpen(testing.io, out_name, .{ .open_options = .{ .iterate = true } });
+    defer out.close(testing.io);
+    return generate(gpa, testing.io, .{
+        .state_json = st,
+        .history_json = fixture_history,
+        .worklist_text = fixture_worklist,
+        .results = f.results,
+        .assets = null,
+        .wpt = fixture_wpt,
+        .exemptions_text = exemptions,
+        .exemption_diag = diag,
+    }, out);
+}
+
+fn fixtureExemption(comptime path: []const u8) []const u8 {
+    return "[" ++ path ++ "]\n" ++
+        \\why = all three browsers keep the old behaviour on purpose
+        \\spec = https://example.org/spec#step
+        \\chrome.result = wpt.fyi run 6218298311311360: 0/2
+        \\chrome.intent = https://issues.chromium.org/issues/11
+        \\firefox.result = wpt.fyi run 4877098740350976: 0/2
+        \\firefox.intent = https://bugzilla.mozilla.org/show_bug.cgi?id=22
+        \\safari.result = wpt.fyi run 5164107446878208: 0/2
+        \\safari.intent = https://github.com/WebKit/standards-positions/issues/33
+        \\
+    ;
+}
+
+test "site: an exempt file that would block is its own group, with its evidence, never blocking" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    // c.any.js is NONE-PASSED (blocks); url/u.html is clean (does not).
+    const text = comptime fixtureExemption("dom/nodes/c.any.js") ++ fixtureExemption("url/u.html");
+    _ = try runFixtureExempt(gpa, &f, "out", text, &diag);
+
+    const index = try readOut(gpa, &f, "out/index.html");
+    defer gpa.free(index);
+    // Blocking drops from 2 (b.html TIMEOUT, c.any.js NONE-PASSED) to 1.
+    try expectHas(index, "<div class=\"blk\"><dt>Blocking files</dt><dd>1</dd>");
+    try expectHas(index, "<dt><span class=\"key key-exempt\"></span>Exempt</dt><dd>1</dd>");
+    // The group, after the status and before the contents, with every browser's evidence.
+    try expectBefore(index, "id=\"status\"", "id=\"exempt\"");
+    try expectBefore(index, "id=\"exempt\"", "id=\"contents\"");
+    try expectHas(index, "<a href=\"dom/nodes/c.any.js/\"><code>dom/nodes/c.any.js</code></a> <span class=\"gate gate-exempt\">Exempt</span>");
+    try expectHas(index, "all three browsers keep the old behaviour on purpose");
+    try expectHas(index, "<dt>Chrome</dt><dd>wpt.fyi run 6218298311311360: 0/2; intent: <a href=\"https://issues.chromium.org/issues/11\">");
+    try expectHas(index, "<dt>Firefox</dt><dd>wpt.fyi run 4877098740350976: 0/2; intent: <a href=\"https://bugzilla.mozilla.org/show_bug.cgi?id=22\">");
+    try expectHas(index, "<dt>Safari</dt><dd>wpt.fyi run 5164107446878208: 0/2; intent: <a href=\"https://github.com/WebKit/standards-positions/issues/33\">");
+    // A listed file that does not block keeps its standing.
+    try expectHas(index, "<a href=\"url/u.html/\"><code>url/u.html</code></a> <span class=\"gate gate-clean\">Clean</span>");
+    try expectHas(index, "Not counted among them: 1 file that would block is <a href=\"#exempt\">exempt</a>");
+
+    // The file's own page says so, with the evidence.
+    const page = try readOut(gpa, &f, "out/dom/nodes/c.any.js/index.html");
+    defer gpa.free(page);
+    try expectHas(page, "<span class=\"gate gate-exempt\">Exempt</span>");
+    try expectHas(page, "Exempt from the 0.1 gate");
+    try expectHas(page, "https://github.com/WebKit/standards-positions/issues/33");
+    // Its directory counts it as exempt, not blocking.
+    const dir = try readOut(gpa, &f, "out/dom/nodes/index.html");
+    defer gpa.free(dir);
+    try testing.expect(std.mem.indexOf(u8, dir, "Blocking files</dt><dd>1") == null);
+    try expectHas(dir, "<tr data-gate=\"exempt\"");
+}
+
+test "site: no exemptions write the same bytes as before; an invalid one stops the site" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    _ = try runFixture(gpa, &f, "plain", fixture_worklist);
+    _ = try runFixtureExempt(gpa, &f, "empty", "# no entries\n", &diag);
+    const a = try readOut(gpa, &f, "plain/index.html");
+    defer gpa.free(a);
+    const b = try readOut(gpa, &f, "empty/index.html");
+    defer gpa.free(b);
+    try testing.expectEqualStrings(a, b);
+    try testing.expect(std.mem.indexOf(u8, a, "exempt") == null);
+
+    // Missing a browser's evidence.
+    const no_safari = comptime blk: {
+        const full = fixtureExemption("dom/b.html");
+        const cut = std.mem.indexOf(u8, full, "safari.intent").?;
+        break :blk full[0..cut];
+    };
+    try testing.expectError(error.InvalidExemption, runFixtureExempt(gpa, &f, "bad1", no_safari, &diag));
+    try testing.expect(std.mem.indexOf(u8, diag.message, "safari.intent") != null);
+    // A path the worklist does not have.
+    diag = .{};
+    try testing.expectError(error.InvalidExemption, runFixtureExempt(gpa, &f, "bad2", fixtureExemption("dom/typo.html"), &diag));
+    try testing.expectEqualStrings("dom/typo.html", diag.path);
 }

@@ -759,10 +759,10 @@ pub fn getResponseData(instance: *runtime.Instance) ResponseData {
 
 /// Operation: textStream
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-textstream
-/// Step 1 only: steps 2-6 (an empty stream for a null body, else the body's
-/// stream piped through a UTF-8 TextDecoderStream) are not implemented yet.
+/// Newer spec shipped by Chrome; Firefox/Safari lag Fetch PR 1862
+/// (wpt.fyi cc74d2669f, fetch/api/body/textstream.any.js).
 pub fn call_textStream(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // Step 1: If this is unusable, throw a TypeError.
     if (isUnusable(instance)) return error.TypeError;
-    return error.NotImplemented;
+    return fetch_body.textStream(bodyOwner(instance).?);
 }

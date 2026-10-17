@@ -40,7 +40,13 @@ const log = std.log.scoped(.protocol_agents);
 
 /// V8's bytes of the snapshot initializeEngine was given (its stamp split
 /// off), BORROWED until deinitializeEngine. Read by createAgent on any
-/// thread, written only while no agent is being made.
+/// thread, written only while no agent is being made. Every agent restored
+/// from it reads these bytes IN PLACE for its whole life - no copy per
+/// isolate (v8_Isolate_NewFromSnapshot) - which the protocol allows: the
+/// host lends them until deinitializeEngine, and that comes after every
+/// agent is destroyed (engine_protocol.zig). One blob for every isolate of
+/// the process, as Chromium points every isolate's StartupData into its one
+/// snapshot mapping (gin/v8_initializer.cc, GetMappedFileData).
 var engine_snapshot: ?[]const u8 = null;
 
 /// Prepare V8 for agents: its flags and platform - once per process: V8
@@ -90,7 +96,17 @@ fn usableSnapshot(stamped_data: []const u8) Error![]const u8 {
 /// The end of the engine for the host: the snapshot is forgotten (the host
 /// may free it). V8's platform is kept - a V8 process cannot initialize it
 /// again - so a later initializeEngine starts from where this left off.
+///
+/// The protocol calls this after every agent is destroyed. An agent restored
+/// from the snapshot that is still alive reads the host's bytes in place, so
+/// freeing them now would leave it a dangling blob for its next realm: said
+/// loudly here, where the host broke the order, rather than as a crash in
+/// whatever realm that agent makes next.
 pub fn deinitializeEngine() void {
+    if (engine_snapshot != null) {
+        const live = liveSnapshotAgents();
+        if (live != 0) log.err("deinitializeEngine with {d} agent(s) restored from the snapshot still alive: they read its bytes in place, so the host must destroy them before it frees the snapshot", .{live});
+    }
     engine_snapshot = null;
 }
 
@@ -116,6 +132,11 @@ const AgentRecord = struct {
     /// the host's took the thread's context manager and templates down under
     /// the page.
     host_agent: bool,
+    /// The isolate was restored from the engine's snapshot, whose bytes it
+    /// reads in place for its whole life (v8_Isolate_NewFromSnapshot): the
+    /// host may free them only after the agent is destroyed
+    /// (`liveSnapshotAgents`, deinitializeEngine).
+    from_snapshot: bool = false,
     /// The agent's ShadowRealms (shadow_realm.zig): made with the agent,
     /// freed by its end. Null when ShadowRealm support was not installed.
     shadow_realms: ?*shadow_realm.ShadowRealmCallbackData = null,
@@ -174,6 +195,20 @@ pub fn observableArraysOf(isolate: *ffi.Isolate) ?*observable_array.Registry {
 var agents_lock: std.Io.Mutex = .init;
 /// Every agent made by createAgent and not yet destroyed, by isolate.
 var agents: std.AutoHashMapUnmanaged(*ffi.Isolate, *AgentRecord) = .empty;
+
+/// How many agents createAgent restored from the engine's snapshot and that
+/// are not yet ended - each reads the snapshot's bytes in place, so the host
+/// may free them only when this is 0 (deinitializeEngine checks it).
+pub fn liveSnapshotAgents() usize {
+    std.Io.Threaded.mutexLock(&agents_lock);
+    defer std.Io.Threaded.mutexUnlock(&agents_lock);
+    var count: usize = 0;
+    var records = agents.valueIterator();
+    while (records.next()) |record| {
+        if (record.*.from_snapshot) count += 1;
+    }
+    return count;
+}
 
 /// The hooks of the agent whose isolate this is; null for an isolate
 /// createAgent did not make (a test's own).
@@ -265,7 +300,7 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
 
     const record = std.heap.c_allocator.create(AgentRecord) catch return error.OutOfMemory;
     errdefer std.heap.c_allocator.destroy(record);
-    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .host_agent = host_agent, .deferred_teardown = options.deferred_teardown };
+    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .host_agent = host_agent, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .deferred_teardown = options.deferred_teardown };
     {
         std.Io.Threaded.mutexLock(&agents_lock);
         defer std.Io.Threaded.mutexUnlock(&agents_lock);

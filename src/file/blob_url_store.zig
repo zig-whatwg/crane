@@ -170,15 +170,15 @@ pub const BlobURLStore = struct {
 
     /// Revoke a blob URL.
     ///
-    /// Per spec §8.3.2 (revokeObjectURL):
-    /// 1. Parse the URL to extract UUID
-    /// 2. If entry exists, mark it as invalid
-    /// 3. Remove entry from store
+    /// File API §8.2, remove an entry: serialize the URL WITH its fragment,
+    /// then remove that exact key. A URL with a fragment revokes no entry.
     pub fn revokeObjectURL(self: *BlobURLStore, url: []const u8) void {
         std.Io.Threaded.mutexLock(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         // Extract UUID from URL (after last '/')
         const uuid = self.extractUUID(url) orelse return;
+        const entry = self.entries.get(uuid) orelse return;
+        if (!matchesEntryURL(url, uuid, entry.origin)) return;
 
         self.removeEntry(uuid);
     }
@@ -229,11 +229,9 @@ pub const BlobURLStore = struct {
 
     /// Resolve a blob URL to its associated blob.
     ///
-    /// Per spec §8.4:
-    /// 1. Parse URL to extract UUID
-    /// 2. Look up in store
-    /// 3. Verify origin matches
-    /// 4. Return blob if valid
+    /// File API §8.3, resolve a blob URL: step 3 serializes with the exclude
+    /// fragment flag; step 4 looks up the complete resulting URL key. The
+    /// existing caller-origin check then authorizes access to the data.
     ///
     /// RETAINED: the caller holds a reference of its own and releases it
     /// (`deinit`) when done with the bytes. A borrowed pointer could be freed
@@ -241,9 +239,15 @@ pub const BlobURLStore = struct {
     pub fn resolve(self: *BlobURLStore, url: []const u8, requesting_origin: []const u8) ?*BlobData {
         std.Io.Threaded.mutexLock(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        const uuid = self.extractUUID(url) orelse return null;
+        // Step 3. Input is a serialized URL; the first '#' begins its
+        // fragment, including any slashes or query characters after it.
+        const key = url[0 .. std.mem.indexOfScalar(u8, url, '#') orelse url.len];
+        const uuid = self.extractUUID(key) orelse return null;
 
         const entry = self.entries.get(uuid) orelse return null;
+        // Step 4. Keep the UUID index, but match the full key, as Chromium's
+        // BlobUrlRegistry::GetBlobFromUrl does after ClearUrlFragment.
+        if (!matchesEntryURL(key, uuid, entry.origin)) return null;
 
         // Verify origin matches (same-origin policy)
         if (!std.mem.eql(u8, entry.origin, requesting_origin)) {
@@ -287,6 +291,11 @@ pub const BlobURLStore = struct {
         if (!std.mem.startsWith(u8, url, "blob:")) {
             return null;
         }
+        // Neither a query nor a fragment is part of a generated entry's
+        // key. Resolution removes its fragment before coming here; revoke
+        // deliberately does not. Reject before finding '/', since either
+        // suffix could itself contain a slash followed by a live UUID.
+        if (std.mem.indexOfAny(u8, url, "?#") != null) return null;
 
         // Find the last '/'
         const last_slash = std.mem.lastIndexOf(u8, url, "/") orelse return null;
@@ -296,6 +305,13 @@ pub const BlobURLStore = struct {
         }
 
         return url[last_slash + 1 ..];
+    }
+
+    /// UUIDs are unique, but a matching suffix alone is not a matching URL.
+    /// The rest of the generated key is "blob:" + the stored origin + "/".
+    fn matchesEntryURL(url: []const u8, uuid: []const u8, origin: []const u8) bool {
+        const origin_end = url.len - uuid.len - 1;
+        return std.mem.eql(u8, url["blob:".len..origin_end], origin);
     }
 };
 
