@@ -5089,6 +5089,12 @@ pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime
 /// 7. Return iterator
 pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // Removal runs pre-removing steps for iterators whose root's node
+    // document is the removed node's document, even across factory documents.
+    const root_document = if (try interfaces.Node.get_nodeType(root) == interfaces.Node.get_DOCUMENT_NODE())
+        root
+    else
+        (try interfaces.Node.get_ownerDocument(root)) orelse return error.InvalidStateError;
     // The filter argument, borrowed for the call: the iterator takes its own.
     const filter_wrapper: ?*runtime.CallbackWrapper = if (filter.was_passed) (filter.value orelse null) else null;
 
@@ -5099,10 +5105,10 @@ pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Insta
 
     // Steps 2-6: the iterator's own state, set through dom.traversal.
     const what_to_show: u32 = if (whatToShow.was_passed) whatToShow.value else 0xFFFFFFFF;
-    try traversal.setUpNodeIterator(iterator, root, what_to_show, filter_wrapper, instance);
+    try traversal.setUpNodeIterator(iterator, root, what_to_show, filter_wrapper, root_document);
 
-    // Register this iterator with the document
-    try registerNodeIterator(instance, iterator);
+    // Register in the same document recorded for generation-safe teardown.
+    try registerNodeIterator(root_document, iterator);
 
     // Step 7: Return iterator
     return iterator;

@@ -1304,77 +1304,27 @@ fn existingAttrNodeAtHook(element: *runtime.Instance, index: usize) ?*runtime.In
 // Insert Adjacent Algorithm (DOM §4.10.7)
 // =============================================================================
 
-/// InsertAdjacent error type
-const InsertAdjacentError = error{
-    SyntaxError,
-    InvalidStateError,
-};
-
-/// Insert adjacent algorithm - shared by insertAdjacentElement and insertAdjacentText
-/// Spec: https://dom.spec.whatwg.org/#insert-adjacent
-///
-/// To insert adjacent, given an element element, string where, and a node node:
-/// 1. If where is "beforebegin": If element's parent is null, return null.
-///    Otherwise, return pre-insert node into element's parent before element.
-/// 2. If where is "afterbegin": Return pre-insert node into element before element's first child.
-/// 3. If where is "beforeend": Return pre-insert node into element before null.
-/// 4. If where is "afterend": If element's parent is null, return null.
-///    Otherwise, return pre-insert node into element's parent before element's next sibling.
-/// 5. Otherwise: Throw a "SyntaxError" DOMException.
-fn insertAdjacent(
-    element: *runtime.Instance,
-    where: []const u8,
-    node: *runtime.Instance,
-) InsertAdjacentError!?*runtime.Instance {
-    // Case-insensitive comparison per spec
+/// DOM insert adjacent, shared by insertAdjacentElement and insertAdjacentText.
+/// https://dom.spec.whatwg.org/#insert-adjacent
+fn insertAdjacent(element: *runtime.Instance, where: []const u8, node: *runtime.Instance) anyerror!?*runtime.Instance {
+    // Each case returns pre-insert's result, including its hierarchy errors.
     if (std.ascii.eqlIgnoreCase(where, "beforebegin")) {
-        // Insert before this element (requires parent)
-        const parent = (interfaces.Node.get_parentNode(element) catch null) orelse return null;
-
-        // Insert node into parent before element
-        _ = interfaces.Node.call_insertBefore(parent, node, element) catch {
-            return error.InvalidStateError;
-        };
-        return node;
+        // Step 1: before element in its parent, or null without a parent.
+        const parent = (try interfaces.Node.get_parentNode(element)) orelse return null;
+        return try interfaces.Node.call_insertBefore(parent, node, element);
     } else if (std.ascii.eqlIgnoreCase(where, "afterbegin")) {
-        // Insert as first child of this element
-        const first_child = interfaces.Node.get_firstChild(element) catch null;
-
-        if (first_child) |fc| {
-            _ = interfaces.Node.call_insertBefore(element, node, fc) catch {
-                return error.InvalidStateError;
-            };
-        } else {
-            _ = interfaces.Node.call_appendChild(element, node) catch {
-                return error.InvalidStateError;
-            };
-        }
-        return node;
+        // Step 2: before element's first child.
+        return try interfaces.Node.call_insertBefore(element, node, try interfaces.Node.get_firstChild(element));
     } else if (std.ascii.eqlIgnoreCase(where, "beforeend")) {
-        // Insert as last child of this element
-        _ = interfaces.Node.call_appendChild(element, node) catch {
-            return error.InvalidStateError;
-        };
-        return node;
+        // Step 3: before null in element.
+        return try interfaces.Node.call_insertBefore(element, node, null);
     } else if (std.ascii.eqlIgnoreCase(where, "afterend")) {
-        // Insert after this element (requires parent)
-        const parent = (interfaces.Node.get_parentNode(element) catch null) orelse return null;
-        const next_sibling = interfaces.Node.get_nextSibling(element) catch null;
-
-        if (next_sibling) |ns| {
-            _ = interfaces.Node.call_insertBefore(parent, node, ns) catch {
-                return error.InvalidStateError;
-            };
-        } else {
-            _ = interfaces.Node.call_appendChild(parent, node) catch {
-                return error.InvalidStateError;
-            };
-        }
-        return node;
-    } else {
-        // Invalid position - throw SyntaxError
-        return error.SyntaxError;
+        // Step 4: before the next sibling, or null without a parent.
+        const parent = (try interfaces.Node.get_parentNode(element)) orelse return null;
+        return try interfaces.Node.call_insertBefore(parent, node, try interfaces.Node.get_nextSibling(element));
     }
+    // Step 5: any other position is invalid.
+    return error.SyntaxError;
 }
 
 // =============================================================================
@@ -2127,15 +2077,8 @@ pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runt
 /// - "beforeend": Inside this element, after last child
 /// - "afterend": After this element (as a sibling)
 pub fn call_insertAdjacentElement(instance: *runtime.Instance, where: runtime.DOMString, element: *runtime.Instance) anyerror!?*runtime.Instance {
-    const result = insertAdjacent(instance, where.asSlice(), element) catch |err| {
-        return switch (err) {
-            error.SyntaxError => error.SyntaxError,
-            error.InvalidStateError => error.InvalidStateError,
-        };
-    };
-
     // insertAdjacent returns null if parent is null for beforebegin/afterend positions
-    return result;
+    return insertAdjacent(instance, where.asSlice(), element);
 }
 
 /// Operation: webkitMatchesSelector
@@ -2270,12 +2213,7 @@ pub fn call_insertAdjacentText(instance: *runtime.Instance, where: runtime.DOMSt
     try dom.node_document.set(text_node, owner);
 
     // Step 2: Run insert adjacent algorithm
-    _ = insertAdjacent(instance, where.asSlice(), text_node) catch |err| {
-        return switch (err) {
-            error.SyntaxError => error.SyntaxError,
-            error.InvalidStateError => error.InvalidStateError,
-        };
-    };
+    _ = try insertAdjacent(instance, where.asSlice(), text_node);
 }
 
 /// Operation: requestFullscreen

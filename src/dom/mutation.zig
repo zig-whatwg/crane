@@ -54,7 +54,6 @@ const Document = interfaces.Document;
 const impls = @import("impls");
 const NodeListImpl = impls.NodeList;
 const RangeImpl = impls.Range;
-const NodeIteratorImpl = impls.NodeIterator;
 
 /// DOM Exception types as defined in WebIDL
 pub const DOMException = error{
@@ -467,7 +466,9 @@ fn isDocumentType(node: anytype) bool {
 
 /// Helper to check if node is a Text node
 fn isText(node: anytype) bool {
-    return getNodeType(node) == TEXT_NODE;
+    // DOM's "Text" interface includes CDATASection in all mutation checks.
+    const kind = getNodeType(node);
+    return kind == TEXT_NODE or kind == CDATA_SECTION_NODE;
 }
 
 /// Queue a tree mutation record for MutationObserver notifications
@@ -639,6 +640,21 @@ pub fn ensurePreInsertValidity(
     parent: anytype,
     child: anytype,
 ) DOMException!void {
+    return ensurePreInsertValidityExcluding(node, parent, child, .none);
+}
+
+/// replaceChildren step 2 excludes the children that step 3 will remove.
+/// Rule 2: newer spec, browsers lagging (whatwg/dom ea2a74edc2 / #1487,
+/// WPT #61154, with Gecko/WebKit implementer interest).
+pub fn ensureReplaceChildrenValidity(node: anytype, parent: anytype) DOMException!void {
+    return ensurePreInsertValidityExcluding(node, parent, @as(?*NodeBase, null), .parent_children);
+}
+
+const ExcludedChildren = enum { none, parent_children };
+
+/// A comptime choice: ordinary pre-insert retains its existing checks and
+/// pays no runtime cost for replaceChildren's excluded list.
+fn ensurePreInsertValidityExcluding(node: anytype, parent: anytype, child: anytype, comptime excluded: ExcludedChildren) DOMException!void {
     // Step 1: Check parent is Document, DocumentFragment, or Element
     if (!isDocument(parent) and !isDocumentFragment(parent) and !isElement(parent)) {
         return error.HierarchyRequestError;
@@ -663,7 +679,7 @@ pub fn ensurePreInsertValidity(
         return error.HierarchyRequestError;
     }
 
-    // Step 5: Check Text/doctype constraints
+    // Steps 5-7: doctype only under Document; Text (including CDATA) never under it.
     if (isText(node) and isDocument(parent)) {
         return error.HierarchyRequestError;
     }
@@ -671,10 +687,10 @@ pub fn ensurePreInsertValidity(
         return error.HierarchyRequestError;
     }
 
-    // Step 6: If parent is a document, check additional constraints
+    // Steps 8-11: Document-specific checks.
     if (isDocument(parent)) {
         if (isDocumentFragment(node)) {
-            // Check DocumentFragment constraints
+            // Step 8: validate the fragment itself; its own children are not excluded.
             const element_count = countElementChildren(node);
 
             if (element_count > 1 or hasTextChild(node)) {
@@ -682,26 +698,26 @@ pub fn ensurePreInsertValidity(
             }
 
             if (element_count == 1) {
-                if (hasElementChild(parent, null) or
+                if ((excluded == .none and hasElementChild(parent, null)) or
                     isDoctypeFollowing(parent, child) or
-                    (child != null and isDocumentType(child.?)))
+                    (excluded == .none and child != null and isDocumentType(child.?)))
                 {
                     return error.HierarchyRequestError;
                 }
             }
         } else if (isElement(node)) {
-            // Check Element constraints
-            if (hasElementChild(parent, null) or
+            // Step 9: no other element or following doctype.
+            if ((excluded == .none and hasElementChild(parent, null)) or
                 isDoctypeFollowing(parent, child) or
-                (child != null and isDocumentType(child.?)))
+                (excluded == .none and child != null and isDocumentType(child.?)))
             {
                 return error.HierarchyRequestError;
             }
         } else if (isDocumentType(node)) {
-            // Check DocumentType constraints
-            if (hasDoctypeChild(parent) or
-                isElementPreceding(parent, child) or
-                (child == null and hasElementChild(parent, null)))
+            // Steps 10-11: no other doctype or preceding element.
+            if ((excluded == .none and hasDoctypeChild(parent)) or
+                (excluded == .none and isElementPreceding(parent, child)) or
+                (excluded == .none and child == null and hasElementChild(parent, null)))
             {
                 return error.HierarchyRequestError;
             }
@@ -2219,7 +2235,7 @@ fn runNodeIteratorPreRemoveSteps(node: anytype) void {
     // For each NodeIterator object iterator whose root's node document is node's node document,
     // run the NodeIterator pre-removing steps given node and iterator.
     for (internal.node_iterators.items) |iterator| {
-        NodeIteratorImpl.preRemoveSteps(iterator, node_runtime);
+        @import("traversal.zig").preRemoveNodeIterator(iterator, node_runtime);
     }
 }
 

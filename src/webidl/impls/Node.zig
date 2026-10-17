@@ -1764,18 +1764,6 @@ fn nodeOrText(item: mixins.ParentNode.NodeOrString, document: *runtime.Instance)
     };
 }
 
-/// The replaceChildren() method's steps 2-3 (DOM §4.2.6): "Ensure
-/// pre-insertion validity of node into this before null", then "replace all
-/// with node within this" - in that order, so an invalid node leaves the
-/// children in place.
-/// Spec: https://dom.spec.whatwg.org/#dom-parentnode-replacechildren
-pub fn replaceAllChildren(parent: *runtime.Instance, node: *runtime.Instance) !void {
-    const parent_base = (getInternal(parent) orelse return error.InvalidStateError).node_base orelse return error.InvalidStateError;
-    const node_base = (getInternal(node) orelse return error.InvalidStateError).node_base orelse return error.InvalidStateError;
-    try dom_module.mutation.ensurePreInsertValidity(node_base, parent_base, @as(?*NodeBase, null));
-    try dom_module.mutation.replaceAll(@as(?*NodeBase, node_base), parent_base);
-}
-
 /// Operation: appendChild
 /// https://dom.spec.whatwg.org/#dom-node-appendchild
 /// Delegates to src/dom/mutation.zig - THE single source of truth for tree operations
