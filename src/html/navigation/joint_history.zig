@@ -525,6 +525,21 @@ pub const JointHistory = struct {
         entry.api_state = owned;
     }
 
+    /// updateCurrentEntry() step 4 writes the entry captured before
+    /// serialization, which can run script that changes the current entry.
+    /// Takes `api_state` on every path, including a removed entry.
+    pub fn setEntryApiState(self: *JointHistory, entry_id: u64, api_state: SerializedState) void {
+        var owned = api_state;
+        const entry = self.entryById(entry_id) orelse {
+            // Disposed NavigationHistoryEntries currently expose undefined
+            // state; retaining their serialized state is separate work.
+            owned.deinit(self.allocator);
+            return;
+        };
+        entry.api_state.deinit(self.allocator);
+        entry.api_state = owned;
+    }
+
     /// HTML "get session history entries for the navigation API" for
     /// `navigable` at the current step: its entries, by step, that are
     /// contiguous with its current one and same origin with it, into `out`.

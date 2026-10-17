@@ -1168,6 +1168,26 @@ pub const IFrameIntegration = struct {
     pub fn responseMakesDocument(self: *IFrameIntegration, response: *const navigation_fetch.NavigationFetchResult) bool {
         if (response.is_network_error) return true;
         if (!navigation_fetch.shouldNavigationProceed(response.status)) return false;
+        if (response.headers) |headers| {
+            if (headers.get("content-disposition")) |disposition| {
+                // HTML "attempt to populate the history entry's document"
+                // handles an attachment as a download. No download backend
+                // exists here: finish inertly, without making a Document.
+                // RFC 6266 sections 3/4.2, as Chromium's
+                // HttpContentDisposition::ConsumeDispositionType: unknown
+                // valid tokens mean attachment; malformed tokens are ignored.
+                const end = std.mem.indexOfScalar(u8, disposition, ';') orelse disposition.len;
+                const token = std.mem.trim(u8, disposition[0..end], " \t");
+                var valid = token.len > 0;
+                for (token) |c| {
+                    if (!std.ascii.isAlphanumeric(c) and std.mem.indexOfScalar(u8, "!#$%&'*+-.^_`|~", c) == null) {
+                        valid = false;
+                        break;
+                    }
+                }
+                if (valid and !std.ascii.eqlIgnoreCase(token, "inline")) return false;
+            }
+        }
         const computed = document_type.essence(self.allocator, response.content_type orelse "text/html") catch return true;
         defer self.allocator.free(computed);
         return switch (document_type.classify(computed)) {

@@ -43,7 +43,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 pub fn installHooks() void {
     // The constructing steps every subclass runs (dom.event_construction);
     // each subclass's init chains through this one.
-    @import("dom").event_construction.installEvent(.{ .inner_event_creation_steps = &innerEventCreationStepsHook, .dispatch_flag = &dispatchFlag });
+    @import("dom").event_construction.installEvent(.{ .inner_event_creation_steps = &innerEventCreationStepsHook, .dispatch_flag = &dispatchFlag, .force_canceled_flag = &forceCanceledFlag });
     // The state dispatch works on, and what it does to an event that no IDL
     // member does (dom.event_dispatch).
     event_dispatch.install(.{ .state = &stateOf, .swap_type = &swapTypeHook });
@@ -285,6 +285,13 @@ fn setCanceledFlag(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     const internal = getInternal(instance) orelse return;
     internal.setCanceledFlag(state.own.cancelable);
+}
+
+/// HTML "abort the ongoing navigation" step 6 assigns the flag even when
+/// the navigate event is not cancelable. Script keeps the guarded path above.
+fn forceCanceledFlag(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    internal.canceled_flag = true;
 }
 
 /// Operation: stopPropagation
