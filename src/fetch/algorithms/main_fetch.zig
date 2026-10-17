@@ -496,10 +496,14 @@ pub fn mainFetchFinish(
     }
 
     // Step 14: If response is not a network error and response is not a
-    // filtered response - HTTP fetch's "manual" redirect mode made an
-    // opaque-redirect filtered response, the only one that reaches here -
-    // then:
-    if (!isNetworkError(response) and response.response_type != .opaqueredirect) {
+    // filtered response, then: a response is filtered here when HTTP fetch's
+    // "manual" redirect mode made it an opaque-redirect one, or when a
+    // service worker answered with one (a basic, CORS or opaque response
+    // its fetch() got: Handle Fetch hands the type on). Scheme fetch and
+    // the network hand on type "default" (pinned below), and so does a
+    // service worker's `new Response()` - which the request's tainting
+    // filters here, as any other.
+    if (!isNetworkError(response) and response.response_type == .default) {
         // 1. If request's response tainting is "cors", its CORS-exposed
         //    header-name list: the `Access-Control-Expose-Headers` names, or -
         //    for a request without credentials that exposes `*` - every
@@ -943,6 +947,96 @@ test "main fetch step 14: tainting marks the response, and an opaque-redirect on
     _ = mainFetchFinish(params, false, redirect);
     try std.testing.expectEqual(ResponseType.opaqueredirect, redirect.response_type);
     try std.testing.expectEqual(0, redirect.cors_exposed_header_name_list.items.len);
+}
+
+test "main fetch step 14: a service worker's filtered response keeps its type; its new Response() is filtered" {
+    const allocator = std.testing.allocator;
+    const FetchController = @import("../internal/fetch_controller.zig").FetchController;
+    const FetchTimingInfo = @import("../internal/fetch_timing.zig").FetchTimingInfo;
+
+    const request = try InternalRequest.init(allocator, "http://b.test/x");
+    defer request.deinit();
+    request.response_tainting = .cors;
+    const controller = try FetchController.init(allocator);
+    defer controller.deinit();
+    var timing = FetchTimingInfo.init(allocator);
+    defer timing.deinit();
+    const params = try FetchParams.init(allocator, request, controller, &timing);
+    defer params.deinit();
+
+    // fetch() in the service worker made it basic (or opaque): it stays so.
+    for ([_]ResponseType{ .basic, .@"opaque" }) |kind| {
+        const filtered = try InternalResponse.init(allocator);
+        defer filtered.deinit();
+        filtered.response_type = kind;
+        _ = mainFetchFinish(params, false, filtered);
+        try std.testing.expectEqual(kind, filtered.response_type);
+    }
+    // new Response(): type default, filtered by the request's tainting.
+    const made = try InternalResponse.init(allocator);
+    defer made.deinit();
+    _ = mainFetchFinish(params, false, made);
+    try std.testing.expectEqual(ResponseType.cors, made.response_type);
+}
+
+const PinnedBlobStore = struct {
+    const store: u8 = 0;
+
+    /// Answers for its own store only: left installed, it resolves nothing
+    /// another test's store holds.
+    fn resolve(in: *anyopaque, allocator: std.mem.Allocator, _: []const u8, _: []const u8) error{OutOfMemory}!?scheme_fetch.ResolvedBlob {
+        if (in != @as(*anyopaque, @constCast(&store))) return null;
+        return .{ .bytes = try allocator.dupe(u8, "b"), .content_type = try allocator.dupe(u8, "text/plain") };
+    }
+};
+
+test "main fetch step 12's fetches hand step 14 unfiltered responses: data:, about:, blob: and the network's are type default" {
+    // Step 14 filters only a "default" response (a filtered one is a service
+    // worker's, or an opaque redirect): every other way a response reaches
+    // it must be "default", or it would go out unfiltered.
+    const allocator = std.testing.allocator;
+    scheme_fetch.installBlobResolver(&PinnedBlobStore.resolve);
+    for ([_][]const u8{ "data:,x", "about:blank", "blob:http://a.test/1" }) |url| {
+        const request = try InternalRequest.init(allocator, url);
+        defer request.deinit();
+        try request.setOrigin("http://a.test");
+        request.blob_url_store = @constCast(&PinnedBlobStore.store);
+        const fetched = try scheme_fetch.schemeFetchRequest(allocator, request);
+        const response = fetched.response;
+        defer response.deinit();
+        try std.testing.expectEqual(ResponseType.default, response.response_type);
+    }
+    // The network's: HTTP-network fetch's response.
+    const FetchController = @import("../internal/fetch_controller.zig").FetchController;
+    const FetchTimingInfo = @import("../internal/fetch_timing.zig").FetchTimingInfo;
+    const http_fetch = @import("http_fetch.zig");
+    const network = @import("../network/root.zig");
+    const request = try InternalRequest.init(allocator, "http://a.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    const controller = try FetchController.init(allocator);
+    defer controller.deinit();
+    var timing = FetchTimingInfo.init(allocator);
+    defer timing.deinit();
+    const params = try FetchParams.init(allocator, request, controller, &timing);
+    defer params.deinit();
+    var answer: network.NetworkResponse = .{
+        .allocator = allocator,
+        .status = 200,
+        .http_version = .http_1_1,
+        .headers = try allocator.alloc(network.NetworkResponse.Header, 0),
+        .body = null,
+        .final_url = null,
+        .total_time_ms = 0,
+        .time_to_first_byte_ms = 0,
+        .redirect_count = 0,
+        .remote_ip = null,
+        .remote_port = null,
+    };
+    defer answer.deinit();
+    const response = try http_fetch.httpNetworkFetchFinish(allocator, params, &answer, 0, null);
+    defer response.deinit();
+    try std.testing.expectEqual(ResponseType.default, response.response_type);
 }
 
 test "main fetch step 12: an unsafe cross-origin request needs a CORS-preflight" {

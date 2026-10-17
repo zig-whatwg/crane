@@ -81,6 +81,11 @@ pub const PolicyContainer = policy_container.PolicyContainer;
 pub const structured_fields = @import("structured_fields.zig");
 
 pub const request_client = @import("request_client.zig");
+
+/// Service Workers "Handle Fetch", as fetch reaches it: the request's route,
+/// the call its answer arrives on, the relay a response body crosses on.
+pub const service_worker_fetch = @import("service_worker_fetch.zig");
+pub const ServiceWorkerRoute = service_worker_fetch.Route;
 pub const RequestClient = request_client.RequestClient;
 pub const populateRequestFromClient = request_client.populateRequestFromClient;
 pub const ServiceWorkersMode = request.ServiceWorkersMode;
@@ -156,6 +161,7 @@ test {
     _ = fetch_timing;
     _ = request;
     _ = request_client;
+    _ = service_worker_fetch;
     _ = policy_container;
     _ = response;
     _ = fetch_controller;

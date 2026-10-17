@@ -58,6 +58,9 @@ pub const TimingReporter = struct {
     context: *anyopaque,
     report: *const fn (context: *anyopaque, timing: *const TimingReport) void,
 };
+/// How a request reaches its Browser's service workers (Service Workers
+/// "Handle Fetch"; service_worker_fetch.zig).
+pub const ServiceWorkerRoute = @import("service_worker_fetch.zig").Route;
 const Body = body_mod.Body;
 
 // =============================================================================
@@ -391,6 +394,14 @@ pub const InternalRequest = struct {
     /// with csp_violation_reporter's lifetime: a fetch whose client is gone
     /// is terminated before it reports. Null: a request with no client.
     timing_reporter: ?TimingReporter = null,
+
+    /// Where HTTP fetch step 3 hands the request to a service worker: its
+    /// Browser's service workers, reached through the request's controlled
+    /// client ("populate request from client") or through the reserved client
+    /// a navigation or worker made (`reserved_client`). BORROWED: the Browser
+    /// outlives every fetch. Null: no service worker sees the request, and
+    /// step 3 costs one check.
+    service_worker: ?ServiceWorkerRoute = null,
 
     /// Top-level navigation initiator origin
     top_level_navigation_initiator_origin: ?[]const u8 = null,
@@ -764,6 +775,7 @@ pub const InternalRequest = struct {
             .network = self.network,
             .csp_violation_reporter = self.csp_violation_reporter,
             .timing_reporter = self.timing_reporter,
+            .service_worker = self.service_worker,
             // Cloned below: each request owns its own.
             .policy_container = .client,
             // Copied below when it is an owned URL.

@@ -51,6 +51,9 @@ const FetchJob = fetch_job.FetchJob;
 const FetchError = fetch_job.FetchError;
 const FetchResult = fetch_job.FetchResult;
 const FetchOptions = fetch_job.FetchOptions;
+const service_worker_fetch = @import("../internal/service_worker_fetch.zig");
+const BodyRelay = service_worker_fetch.BodyRelay;
+const Body = @import("../internal/body.zig").Body;
 
 pub const Failure = body_pipe.Failure;
 
@@ -69,6 +72,16 @@ pub const AsyncFetch = struct {
     /// The network end of the body arriving now: this fetch is its producer
     /// until the body ends, or until nobody reads it.
     source: ?*PipeSource = null,
+    /// HTTP fetch step 3's call to a service worker, while its answer is
+    /// awaited: `AgentFetches.pump` asks it every turn. BORROWED from the job,
+    /// which holds it.
+    service_worker_call: ?*service_worker_fetch.Call = null,
+    /// A service worker's response body arriving from its thread (this
+    /// fetch's reference), and the source it is drained into each turn - the
+    /// one its response's body reads. Both null once the body has ended or
+    /// nobody reads it.
+    relay: ?*BodyRelay = null,
+    relay_source: ?*PipeSource = null,
     /// Fetch's outcome, from the moment the job ends until `pump` hands it to
     /// the client.
     outcome: ?(FetchError!FetchResult) = null,
@@ -171,6 +184,9 @@ pub const AsyncFetch = struct {
         if (self.source) |source| {
             self.source = null;
             source.fail(failure);
+        } else if (self.relay_source) |source| {
+            self.relay_source = null;
+            source.fail(failure);
         } else if (failure.reason) |reason| {
             if (failure.release_reason) |release| release(reason);
         }
@@ -187,6 +203,10 @@ pub const AsyncFetch = struct {
         }
         if (self.transfer) |transfer| self.fetches.scheduler.cancel(transfer);
         if (self.source) |source| source.fail(.{ .kind = .network });
+        if (self.relay_source) |source| source.fail(.{ .kind = .network });
+        self.letRelayGo();
+        // The job abandons a service worker call still unanswered.
+        self.service_worker_call = null;
         if (self.outcome) |outcome| {
             var result = outcome catch null;
             if (result) |*r| r.deinit();
@@ -199,13 +219,15 @@ pub const AsyncFetch = struct {
     /// body has to have arrived first.
     fn deliverable(self: *const AsyncFetch) bool {
         if (self.outcome == null) return false;
-        return !self.collect or self.source == null;
+        return !self.collect or (self.source == null and self.relay == null);
     }
 
     /// Whether this fetch's response has started arriving and not ended:
     /// lines of its header block are in, or its head is and its body is still
     /// coming off a transfer that is not paused. What `catchUp` waits on.
     pub fn isArriving(self: *const AsyncFetch) bool {
+        // A service worker's body comes off no socket: catching up with the
+        // network does nothing for it.
         const job = self.transfer orelse return false;
         if (job.paused) return false;
         if (!self.awaiting_head) return self.source != null;
@@ -217,7 +239,7 @@ pub const AsyncFetch = struct {
     /// Whether the fetch is over: its response delivered, and no body left
     /// arriving.
     fn over(self: *const AsyncFetch) bool {
-        return self.delivered and self.source == null and self.transfer == null;
+        return self.delivered and self.source == null and self.transfer == null and self.relay == null;
     }
 
     /// Take the job's next step: hand its request to the network, or keep
@@ -232,6 +254,11 @@ pub const AsyncFetch = struct {
             switch (s) {
                 .done => {
                     self.outcome = self.job.takeResult();
+                    return;
+                },
+                .service_worker => |call| {
+                    // Asked again at every turn of the loop (`pump`).
+                    self.service_worker_call = call;
                     return;
                 },
                 .network => |needed| {
@@ -323,6 +350,78 @@ pub const AsyncFetch = struct {
         if (self.transfer) |transfer| self.fetches.scheduler.unpause(transfer);
     }
 
+    /// `pump`: the service worker's answer, if it has come.
+    fn askServiceWorker(self: *AsyncFetch) bool {
+        const call = self.service_worker_call orelse return false;
+        const answer = call.take() orelse return false;
+        self.service_worker_call = null;
+        self.advance(self.job.resumeServiceWorker(self.attachRelay(answer)));
+        return true;
+    }
+
+    /// The answer as the job takes it: a response's body is a pipe of a
+    /// source this fetch fills from the relay (`drainRelay`), as the
+    /// network's is filled from its transfer.
+    fn attachRelay(self: *AsyncFetch, answer: service_worker_fetch.Call.Answer) FetchJob.ServiceWorkerAnswer {
+        return switch (answer) {
+            .fallback => .fallback,
+            .network_error => .network_error,
+            .response => |r| blk: {
+                const relay = r.body orelse break :blk .{ .response = r.response };
+                const failed: FetchJob.ServiceWorkerAnswer = .network_error;
+                const source = PipeSource.create(self.allocator) catch {
+                    service_worker_fetch.freeAnswer(answer);
+                    break :blk failed;
+                };
+                // No pause: the service worker's side keeps no backpressure
+                // (BodyRelay).
+                source.producer = .{ .context = self, .cancel = stopRelay };
+                const pipe = source.branch() catch {
+                    source.producer = null;
+                    source.fail(.{ .kind = .network });
+                    service_worker_fetch.freeAnswer(answer);
+                    break :blk failed;
+                };
+                const body = Body.fromPipe(self.allocator, pipe) catch {
+                    pipe.release();
+                    service_worker_fetch.freeAnswer(answer);
+                    break :blk failed;
+                };
+                r.response.body = body;
+                self.relay = relay;
+                self.relay_source = source;
+                break :blk .{ .response = r.response };
+            },
+        };
+    }
+
+    /// `pump`: what the service worker wrote since the last turn, into the
+    /// response's body; its end once it has ended.
+    fn drainRelay(self: *AsyncFetch) bool {
+        const relay = self.relay orelse return false;
+        const source = self.relay_source orelse return false;
+        if (relay.drainInto(source) == .open) return true;
+        self.relay_source = null;
+        relay.release();
+        self.relay = null;
+        return true;
+    }
+
+    /// The body's source has no reader left: the service worker's writer is
+    /// told to stop.
+    fn stopRelay(context: *anyopaque) void {
+        const self: *AsyncFetch = @ptrCast(@alignCast(context));
+        self.relay_source = null;
+        self.letRelayGo();
+    }
+
+    fn letRelayGo(self: *AsyncFetch) void {
+        const relay = self.relay orelse return;
+        self.relay = null;
+        relay.cancel();
+        relay.release();
+    }
+
     fn cancelTransfer(self: *AsyncFetch) void {
         if (self.transfer) |transfer| self.fetches.scheduler.cancel(transfer);
         self.transfer = null;
@@ -388,6 +487,19 @@ pub const AgentFetches = struct {
         var progressed = self.sweep();
 
         if (self.scheduler.pump()) progressed = true;
+
+        // Service workers answer from their own threads: each fetch waiting
+        // on one asks its call, and each response body coming from one takes
+        // what was written. Asked here, once a turn, as the transfers are
+        // pumped: the loop slices its waits at 1 ms while a fetch is in
+        // flight (browser/event_loop.zig step 2c, worker_event_loop.zig), so
+        // an answer waits at most that long, with no wake-up of its own.
+        var i: usize = 0;
+        while (i < self.live.items.len) : (i += 1) {
+            const f = self.live.items[i];
+            if (f.askServiceWorker()) progressed = true;
+            if (f.drainRelay()) progressed = true;
+        }
 
         // One at a time, from the front afresh: a client may start or
         // terminate fetches from its callbacks.

@@ -32,6 +32,7 @@ const NetworkResponse = network.NetworkResponse;
 const NetworkError = network.NetworkError;
 const clock = @import("clock");
 const BodyPipe = @import("../internal/body_pipe.zig").BodyPipe;
+const service_worker_fetch = @import("../internal/service_worker_fetch.zig");
 const cookies = @import("cookies.zig");
 
 // URL Standard, for a redirect's location URL. The same three modules `xhr`
@@ -95,12 +96,10 @@ pub fn httpFetchFinish(
     response: *InternalResponse,
 ) HttpFetchError!HttpFetchNext {
     const request = params.request;
-    var final_response = response;
+    const final_response = response;
 
-    // Step 3: Service worker handling
-    // If request's service-workers mode is "all", handle service worker interception
-    // TODO: Implement service worker interception when service worker module is available
-    // For now, skip service worker and proceed directly to network fetch
+    // Step 3 - a service worker - ran before the network was asked
+    // (`handleFetchStart`); this response is the network's.
 
     // Step 4.4: If request's response tainting is "cors" and a CORS check
     // for request and response returns failure, then return a network
@@ -123,7 +122,15 @@ pub fn httpFetchFinish(
         request.timing_allow_failed = true;
     }
 
-    // Step 5: If response's status is a redirect status, handle based on redirect mode
+    return redirectSteps(allocator, params, final_response);
+}
+
+/// HTTP fetch step 6, for `response` (taken) - the network's, or a service
+/// worker's: a redirect status is handled by the request's redirect mode.
+fn redirectSteps(allocator: Allocator, params: *FetchParams, response: *InternalResponse) HttpFetchError!HttpFetchNext {
+    const request = params.request;
+    const final_response = response;
+    // Step 6: If response's status is a redirect status, handle based on redirect mode
     // Per WHATWG Fetch spec: check redirect status AFTER getting response
     if (!isNetworkError(final_response) and internal_response.isRedirectStatus(final_response.status)) {
         switch (request.redirect_mode) {
@@ -149,6 +156,68 @@ pub fn httpFetchFinish(
     }
 
     return .{ .response = final_response };
+}
+
+/// HTTP fetch step 3, handed to a service worker: the call its answer comes
+/// on, and step 3.3's serviceWorkerStartTime.
+pub const ServiceWorkerStep = struct {
+    call: *service_worker_fetch.Call,
+    start_time: f64,
+};
+
+/// HTTP fetch step 3: "If request's service-workers mode is "all"", hand it
+/// to Service Workers' Handle Fetch through its route (`InternalRequest.
+/// service_worker`). Null when it has no route - no service worker can see
+/// it - or Handle Fetch returned null: step 4, the network, is next. Steps
+/// 3.1-3.2's requestForServiceWorker (a clone, its body copied) is what the
+/// route's owner makes of the request for the service worker's thread.
+pub fn handleFetchStart(params: *FetchParams) HttpFetchError!?ServiceWorkerStep {
+    const request = params.request;
+    if (request.service_workers_mode != .all) return null;
+    const route = request.service_worker orelse return null;
+    // 3.3. serviceWorkerStartTime: the coarsened shared current time (the
+    // fetch timing info's clock; Resource Timing coarsens on conversion).
+    const start_time = getCurrentTimeMs();
+    // 3.4. fetchResponse: the result of Handle Fetch.
+    const started = route.handle(route.context, request, route.client) catch return HttpFetchError.OutOfMemory;
+    return switch (started) {
+        .network => null,
+        .call => |call| .{ .call = call, .start_time = start_time },
+    };
+}
+
+/// HTTP fetch step 3.5, for the response (taken) a service worker answered
+/// with, then step 6 (its redirect status, by the request's redirect mode:
+/// a redirect followed runs main fetch again - and, the service-workers
+/// mode still "all", the service worker again). Step 5's cross-origin
+/// resource policy check is not done here, as it is not for the network's
+/// responses either (HTTP fetch has none yet).
+pub fn serviceWorkerResponse(allocator: Allocator, params: *FetchParams, response: *InternalResponse, start_time: f64) HttpFetchError!HttpFetchNext {
+    const request = params.request;
+    // 3.5.2. The fetch timing info's final service worker start time.
+    params.timing_info.final_service_worker_start_time = start_time;
+    // 3.5.3. Its service worker timing info: Crane has no static routing,
+    // so there is none to set (Service Workers 2.2's router fields).
+    // 3.5.4. A request body goes no further: a byte body is borrowed and
+    // needs no cancel; a stream body was never handed to the service worker
+    // (its route sends such a request to the network).
+    // 3.5.5. internalResponse: the response itself - Crane marks the filter
+    // on the response and applies it where script reads it.
+    // 3.5.7. The response may not be used for this request: a network error.
+    const kind = response.response_type;
+    if (kind == .@"error" or
+        (request.mode == .same_origin and kind == .cors) or
+        (request.mode != .no_cors and kind == .@"opaque") or
+        (request.redirect_mode != .manual and kind == .opaqueredirect) or
+        (request.redirect_mode != .follow and response.url_list.items.len > 1))
+    {
+        response.deinit();
+        return .{ .response = try internal_response.networkError(allocator) };
+    }
+    // An opaque-redirect response is what step 6's "manual" makes: it is
+    // handed on as it is.
+    if (kind == .opaqueredirect) return .{ .response = response };
+    return redirectSteps(allocator, params, response);
 }
 
 /// Fetch 4.11 "TAO check" for `request` and `response`.
