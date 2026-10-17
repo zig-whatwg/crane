@@ -453,6 +453,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Restored decoder bytes outlive the input chunk](spec-compliance-restored-decoder-bytes-outlive-the-input-chunk.md) - Input consumption and output capacity are separate boundaries: preserve both the restored queue prefix and the state needed to retry unwritten output.
 - [A fatal decode drops input, not handler mode](spec-compliance-a-fatal-decode-drops-input-not-handler-state.md) - When whole browser outcomes split three ways, compare mechanism by mechanism; take the component majorities only if their combination is a shipping browser's behaviour, otherwise the spec.
 - [A handler form scope requires a form-associated element](spec-compliance-a-handler-form-scope-requires-a-form-associated-element.md) - Form ancestry alone does not establish a form owner, and supplying the right scope does not establish the right compilation time.
+- [Binary strings still need UTF-8 transport](spec-compliance-binary-strings-still-need-utf8-transport.md) - The string's specified code units and its internal transport encoding are separate contracts; satisfy both.
+- [Blob URL lookup excludes fragments, but revocation does not](spec-compliance-blob-url-lookup-excludes-fragments-but-revocation-does-not.md) - Normalize for the specific algorithm, then compare the entire key; a matching UUID suffix is insufficient.
 
 ### Codegen
 
