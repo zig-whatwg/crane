@@ -466,6 +466,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Data workers inherit a mixed-content restriction](spec-compliance-data-workers-inherit-a-mixed-content-restriction.md) - Treat worker origin, secure-context status and inherited mixed-content restriction as separate facts; measure opaque-origin behavior in browsers.
 - [Policy inheritance allocation failure must abort navigation](spec-compliance-policy-inheritance-allocation-failure-must-abort-navigation.md) - Trace an allocation failure through its caller before adding security state to an existing optional snapshot.
 - [A fetch event shows the hop's URL, not the redirect chain's first](spec-compliance-a-fetch-event-shows-the-hop-not-the-first-url.md) - A request handed to another party (a service worker, a preload) is the hop being fetched: its URL is the current URL - check what "clone" carries before trusting it to mean that.
+- [Import map lookups use normalized URLs](spec-compliance-import-map-lookups-use-normalized-urls.md) - Canonicalize both sides of a lookup, and audit replacement ownership when canonicalization creates collisions.
+- [Script options belong to preparation](spec-compliance-script-options-belong-to-preparation.md) - An attribute at execution time is not the fetch option of the script that was prepared earlier.
 
 ### Codegen
 
@@ -624,6 +626,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [A leak total that grows with the Browsers a run makes is a per-Browser leak](testing-a-leak-total-that-grows-with-the-browsers-a-run-makes-is-a-per-browser-leak.md) - A leak total is a sum of per-something leaks; find the something before reading the total as the change's - group by stack, and divide by the Browsers, isolates or calls each run made.
 - [A matching hash does not prove the algorithm was recognized](testing-a-matching-hash-does-not-prove-recognition.md) - Before trusting a passing parser test, ask whether ignoring its input would pass it too.
 - [WPT query flags choose the test origin](testing-wpt-query-flags-choose-the-test-origin.md) - A test's query flags can change its origin; verify that origin before diagnosing a secure-context or cookie failure.
+- [A runner hash can change with only build metadata](testing-a-runner-hash-can-change-with-only-build-metadata.md) - Prove what differs before reusing measurements; a test-only source change is a reason to investigate, not evidence two executables behave identically.
+- [WPT result URLs are not runner input paths](testing-wpt-result-urls-are-not-runner-inputs.md) - Match the runner's input contract before comparing results; changing the test list is not a conformance gain.
+- [WPT sweep chunks may use different stream layouts](testing-wpt-sweep-chunks-may-use-different-stream-layouts.md) - Complete source counts do not prove complete subtest evidence; account for every chunk's actual stream layout.
 
 ### Debugging
 - [A parsed selector borrows its source text](debugging-a-parsed-selector-borrows-its-source-text.md) - Before keeping a parse result, find out what it borrows: an AST of slices lives no longer than its source.
