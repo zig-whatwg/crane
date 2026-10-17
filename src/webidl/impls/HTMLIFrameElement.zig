@@ -1592,6 +1592,28 @@ fn startFetch(record: *Navigation) void {
         request.prohibits_mixed_security_contexts = record.prohibits_mixed_security_contexts;
         // UIR 4.1 step 2.1: GET and POST form navigations both qualify.
         request.form_submission = record.csp_navigation_type == .form_submission;
+        // "Create navigation params by fetching" steps 7-8: a traversal to the
+        // entry the navigable is on is a reload - its document state's reload
+        // pending - and the request's reload-navigation flag is set; any other
+        // traversal goes to an entry whose document state was populated
+        // before (ever populated: no entry is traversed to that never was),
+        // and its history-navigation flag is set. (Chrome ships both flags as
+        // Request.isReloadNavigation/isHistoryNavigation; Firefox and Safari
+        // do not ship the attributes.)
+        if (record.traversal_entry != 0) {
+            if (record.traversal_entry == record.traversal_from) {
+                request.reload_navigation = true;
+                // A reload revalidates what it fetches: cache mode
+                // "no-cache". No spec sets it; Chrome and Firefox do
+                // (fetch-event.https.html "Service Worker responds to fetch
+                // event with the correct cache types", wpt.fyi df642c4142:
+                // Chrome 155 and Firefox 158 pass, Safari 27 fails) - golden
+                // rule 2, the majority.
+                request.cache_mode = .no_cache;
+            } else {
+                request.history_navigation = true;
+            }
+        }
         // "Create navigation params by fetching" step 3: "If
         // sourceSnapshotParams's fetch client is navigable's container
         // document's relevant settings object, then set request's initiator
