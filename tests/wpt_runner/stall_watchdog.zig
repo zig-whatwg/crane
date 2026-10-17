@@ -580,16 +580,17 @@ test "a four-variant file whose runs each fit their ceiling is not killed; a sta
     const beat_path = try heartbeatPath(allocator, journal);
     defer allocator.free(beat_path);
 
-    // Scaled down: a 250 ms limit stands for 150 s, a 100 ms run for a 60 s
-    // variant. Four runs are 400 ms with no journal record - past the limit
-    // as a whole, inside it run by run (with room for a loaded machine's
-    // late wake-ups).
+    // Scaled down: a 500 ms limit stands for 150 s, a 200 ms run for a 60 s
+    // variant. Four runs are 800 ms with no journal record - past the limit
+    // as a whole, inside it run by run, with 300 ms of room per run for a
+    // loaded machine's late wake-ups (the old 250/100 ms pair left 150 ms and
+    // failed at load ~8-10 on chat: feature-queue "FLAKY TEST stall_watchdog").
     SeenKill.calls.store(0, .release);
     var w: Watchdog = .{
         .journal_path = journal,
         .heartbeat_path = beat_path,
         .child_id = 0,
-        .stall_limit_ms = 250,
+        .stall_limit_ms = 500,
         .poll_ms = 5,
         .on_stall = SeenKill.action,
     };
@@ -600,13 +601,13 @@ test "a four-variant file whose runs each fit their ceiling is not killed; a sta
     var run: usize = 0;
     while (run < 4) : (run += 1) {
         beat.beat();
-        clock.sleep(100 * std.time.ns_per_ms);
+        clock.sleep(200 * std.time.ns_per_ms);
     }
     try std.testing.expectEqual(@as(u32, 0), SeenKill.calls.load(.acquire));
     try std.testing.expect(!w.killedChild());
 
     // The fifth run hangs: no beat, no record. The limit still ends it.
-    clock.sleep(1_000 * std.time.ns_per_ms);
+    clock.sleep(2_000 * std.time.ns_per_ms);
     w.stop();
     try std.testing.expectEqual(@as(u32, 1), SeenKill.calls.load(.acquire));
     try std.testing.expect(w.killedChild());
