@@ -253,6 +253,14 @@ pub const FetchJob = struct {
             self.params.process_response = callback;
         }
 
+        // Step 12: a request whose header list does not contain `Accept`
+        // gets one, before main fetch - and so before a service worker sees
+        // the request (fetch-event.https.html "Service Worker headers in the
+        // request of a fetch event": Chrome, Firefox and Safari all pass).
+        if (!self.request.header_list.contains("Accept")) {
+            self.request.header_list.append("Accept", acceptValue(self.request)) catch return FetchError.OutOfMemory;
+        }
+
         // Step 13: main fetch - for every scheme. Its step 12 decides
         // between scheme fetch (data:, about:, blob:, with the tainting and
         // filtering that come with it) and HTTP fetch, and turns any other
@@ -804,6 +812,24 @@ pub const FetchJob = struct {
 
 fn networkError(allocator: Allocator) FetchError!*InternalResponse {
     return internal_response.networkError(allocator) catch FetchError.OutOfMemory;
+}
+
+/// Fetch: the document `Accept` header value.
+const document_accept_value = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
+
+/// Fetch "fetch" steps 12.1-12.3: the `Accept` value for `request`. (Step
+/// 12.3's "text" destination is not one Crane's requests have.)
+fn acceptValue(request: *const InternalRequest) []const u8 {
+    // 12.2. A prefetch: the document `Accept` header value.
+    if (request.initiator == .prefetch) return document_accept_value;
+    // 12.3. By destination; 12.1 otherwise.
+    return switch (request.destination) {
+        .document, .frame, .iframe => document_accept_value,
+        .image => "image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
+        .json => "application/json,*/*;q=0.5",
+        .style => "text/css,*/*;q=0.1",
+        else => "*/*",
+    };
 }
 
 /// Extract scheme from URL string.
