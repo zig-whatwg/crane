@@ -7,6 +7,29 @@ pub const options = @import("options.zig");
 pub const picker = @import("picker.zig");
 pub const color_values = @import("color_values.zig");
 
+pub const TargetPolicy = struct { noopener: bool, noreferrer: bool };
+
+/// HTML "get an element's noopener", steps 1–2, and form submission's
+/// referrerPolicy: compute once at submission, before queuing navigation.
+pub fn targetPolicy(rel: []const u8, target: []const u8) TargetPolicy {
+    var opener = false;
+    var noopener = false;
+    var noreferrer = false;
+    var tokens = std.mem.tokenizeAny(u8, rel, " \t\n\r\x0c");
+    while (tokens.next()) |token| {
+        if (std.ascii.eqlIgnoreCase(token, "opener")) opener = true;
+        if (std.ascii.eqlIgnoreCase(token, "noopener")) noopener = true;
+        if (std.ascii.eqlIgnoreCase(token, "noreferrer")) noreferrer = true;
+    }
+    // Step 3 (blob entry environment's origin/site) awaits the URL parser's
+    // blob_url_entry capture: basic_url_parser initializes it to null and
+    // BlobURLEntry.getOrigin is opaque. followHyperlink states the same gap.
+    return .{
+        .noopener = noopener or noreferrer or (!opener and std.ascii.eqlIgnoreCase(target, "_blank")),
+        .noreferrer = noreferrer,
+    };
+}
+
 /// HTML 4.10.5.1.14, update/serialize a color well control: parse without
 /// an element context (steps 3–4), make it opaque (serialization step 3),
 /// then clamp/round the limited-sRGB destination and serialize lower hex.
