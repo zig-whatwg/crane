@@ -1,0 +1,8 @@
+// No IDL file declares DOMString, USVString or ByteString as a typedef; the
+// generated interfaces import them from typedefs all the same.
+[Exposed=Window]
+interface Strings {
+  attribute DOMString text;
+  attribute USVString url;
+  attribute ByteString bytes;
+};

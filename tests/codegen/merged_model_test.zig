@@ -79,7 +79,8 @@ test "a run over the supplementary source alone resolves WindowProxy against its
     const typedefs_root = try out.read("typedefs/root.zig");
     defer testing.allocator.free(typedefs_root);
     try testing.expect(!contains(typedefs_root, "Label"));
-    try testing.expectEqual(@as(usize, 1), rootEntries(typedefs_root));
+    // WindowProxy, and the string typedefs every run writes.
+    try testing.expectEqual(1 + codegen.generator.string_typedef_names.len, rootEntries(typedefs_root));
 }
 
 test "one invocation over both sources resolves WindowProxy as Window's instance" {
@@ -101,7 +102,8 @@ test "one invocation over both sources lists both sources' entries in every root
     defer testing.allocator.free(typedefs_root);
     try testing.expect(contains(typedefs_root, "pub const Label = "));
     try testing.expect(contains(typedefs_root, "pub const WindowProxy = "));
-    try testing.expectEqual(@as(usize, 2), rootEntries(typedefs_root));
+    // Label and WindowProxy, and the string typedefs every run writes.
+    try testing.expectEqual(2 + codegen.generator.string_typedef_names.len, rootEntries(typedefs_root));
 
     const dictionaries_root = try out.read("dictionaries/root.zig");
     defer testing.allocator.free(dictionaries_root);

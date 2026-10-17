@@ -842,6 +842,35 @@ const special_typedef_files = std.StaticStringMap([]const u8).initComptime(.{
     },
 });
 
+/// The string types the generated files import from the typedefs module
+/// (writer.zig's getImportModule sends DOMString, USVString and ByteString
+/// there). Each is a re-export of the runtime string type. Codegen writes
+/// these files whether or not an IDL file declares the name; webref's
+/// DOM-Style.idl used to declare `typedef dom::DOMString DOMString`, and its
+/// removal showed that nothing else did.
+pub const string_typedef_names = [_][]const u8{ "DOMString", "USVString", "ByteString" };
+
+/// Write a string typedef's file (see string_typedef_names).
+pub fn generateStringTypedef(name: []const u8, typedefs_path: []const u8) !void {
+    const io = host.io();
+    var dir = try host.cwd().createDirPathOpen(io, typedefs_path, .{});
+    defer dir.close(io);
+    var path_buffer: [64]u8 = undefined;
+    const file_name = try std.fmt.bufPrint(&path_buffer, "{s}.zig", .{name});
+    var content_buffer: [256]u8 = undefined;
+    const content = try std.fmt.bufPrint(&content_buffer,
+        \\//! WebIDL typedef: {s}
+        \\//!
+        \\//! This file is AUTO-GENERATED. Do not edit manually.
+        \\
+        \\const runtime = @import("runtime");
+        \\
+        \\pub const {s} = runtime.{s};
+        \\
+    , .{ name, name, name });
+    try dir.writeFile(io, .{ .sub_path = file_name, .data = content });
+}
+
 /// Write a buffer source typedef's file (see special_typedef_files).
 pub fn generateSpecialTypedef(name: []const u8, typedefs_path: []const u8) !void {
     const content = special_typedef_files.get(name) orelse return error.NotASpecialTypedef;
