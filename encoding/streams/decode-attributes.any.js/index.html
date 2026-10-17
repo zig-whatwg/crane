@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../encoding/"><code>encoding/</code></a></li><li><a href="../../../encoding/streams/"><code>streams/</code></a></li><li aria-current="page"><code>decode-<wbr>attributes.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>decode-<wbr>attributes.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="encoding/streams/decode-attributes.any.js">
-<p class="figures-main"><span class="fg-pass">56</span><span class="fg-of"> / 56</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">84</span><span class="fg-of"> / 84</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-a781ab209a</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/a781ab209a"><code>a781ab209a</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-e5ef1b9a95</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/e5ef1b9a95"><code>e5ef1b9a95</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/encoding/streams/decode-attributes.any.js"><code>encoding/<wbr>streams/<wbr>decode-<wbr>attributes.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -64,6 +64,39 @@
 <li class="sub s-pass" id="s-d8524481"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">constructing with a non-stringifiable encoding should throw</span></div><a class="self" href="#s-d8524481" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-8276b931"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a throwing fatal member should cause the constructor to throw</span></div><a class="self" href="#s-8276b931" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-6caed6f3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a throwing ignoreBOM member should cause the constructor to throw</span></div><a class="self" href="#s-6caed6f3" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/encoding/streams/decode-attributes.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>28</b> / 28</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-cfb28dc9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">encoding attribute should have correct value for &#39;unicode-1-1-utf-8&#39;</span></div><a class="self" href="#s-cfb28dc9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d6cfc94d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">encoding attribute should have correct value for &#39;iso-8859-2&#39;</span></div><a class="self" href="#s-d6cfc94d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-12ba81ad"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">encoding attribute should have correct value for &#39;ascii&#39;</span></div><a class="self" href="#s-12ba81ad" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f9ca75c2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">encoding attribute should have correct value for &#39;utf-16&#39;</span></div><a class="self" href="#s-f9ca75c2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fc12b0e9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setting fatal to &#39;false&#39; should set the attribute to false</span></div><a class="self" href="#s-fc12b0e9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1dfdafa7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setting ignoreBOM to &#39;false&#39; should set the attribute to false</span></div><a class="self" href="#s-1dfdafa7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5e007ee2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setting fatal to &#39;0&#39; should set the attribute to false</span></div><a class="self" href="#s-5e007ee2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ede3705a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setting ignoreBOM to &#39;0&#39; should set the attribute to false</span></div><a class="self" href="#s-ede3705a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-71b65d24"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setting fatal to &#39;&#39; should set the attribute to false</span></div><a class="self" href="#s-71b65d24" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d74edead"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setting ignoreBOM to &#39;&#39; should set the attribute to false</span></div><a class="self" href="#s-d74edead" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-602aa1c4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setting fatal to &#39;undefined&#39; should set the attribute to false</span></div><a class="self" href="#s-602aa1c4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d166d483"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setting ignoreBOM to &#39;undefined&#39; should set the attribute to false</span></div><a class="self" href="#s-d166d483" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-713c8ae9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setting fatal to &#39;null&#39; should set the attribute to false</span></div><a class="self" href="#s-713c8ae9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a450b0e6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setting ignoreBOM to &#39;null&#39; should set the attribute to false</span></div><a class="self" href="#s-a450b0e6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-385db9b1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setting fatal to &#39;true&#39; should set the attribute to true</span></div><a class="self" href="#s-385db9b1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f509d8b4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setting ignoreBOM to &#39;true&#39; should set the attribute to true</span></div><a class="self" href="#s-f509d8b4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3fef575f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setting fatal to &#39;1&#39; should set the attribute to true</span></div><a class="self" href="#s-3fef575f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-529b72b2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setting ignoreBOM to &#39;1&#39; should set the attribute to true</span></div><a class="self" href="#s-529b72b2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-adfe81ac"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setting fatal to &#39;[object Object]&#39; should set the attribute to true</span></div><a class="self" href="#s-adfe81ac" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0abbafb4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setting ignoreBOM to &#39;[object Object]&#39; should set the attribute to true</span></div><a class="self" href="#s-0abbafb4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1a222b66"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setting fatal to &#39;&#39; should set the attribute to true</span></div><a class="self" href="#s-1a222b66" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7aea0a01"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setting ignoreBOM to &#39;&#39; should set the attribute to true</span></div><a class="self" href="#s-7aea0a01" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e57811ad"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setting fatal to &#39;yes&#39; should set the attribute to true</span></div><a class="self" href="#s-e57811ad" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-824e96b1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setting ignoreBOM to &#39;yes&#39; should set the attribute to true</span></div><a class="self" href="#s-824e96b1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-34d5583f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">constructing with an invalid encoding should throw</span></div><a class="self" href="#s-34d5583f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-750203ec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">constructing with a non-stringifiable encoding should throw</span></div><a class="self" href="#s-750203ec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-031f9f4a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a throwing fatal member should cause the constructor to throw</span></div><a class="self" href="#s-031f9f4a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c5fc8e4a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a throwing ignoreBOM member should cause the constructor to throw</span></div><a class="self" href="#s-c5fc8e4a" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

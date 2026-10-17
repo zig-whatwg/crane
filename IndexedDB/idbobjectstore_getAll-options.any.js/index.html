@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../IndexedDB/"><code>IndexedDB/</code></a></li><li aria-current="page"><code>idbobjectstore_<wbr>getAll-<wbr>options.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>idbobjectstore_<wbr>getAll-<wbr>options.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="IndexedDB/idbobjectstore_getAll-options.any.js">
-<p class="figures-main"><span class="fg-pass">48</span><span class="fg-of"> / 48</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">72</span><span class="fg-of"> / 72</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-a781ab209a</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/a781ab209a"><code>a781ab209a</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-e5ef1b9a95</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/e5ef1b9a95"><code>e5ef1b9a95</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/IndexedDB/idbobjectstore_getAll-options.any.js"><code>IndexedDB/<wbr>idbobjectstore_<wbr>getAll-<wbr>options.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -60,6 +60,35 @@
 <li class="sub s-pass" id="s-004ff336"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Direction, query and count</span></div><a class="self" href="#s-004ff336" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-88ec4832"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Get all values with both options and count</span></div><a class="self" href="#s-88ec4832" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-1f5364cc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Get all values with invalid query keys</span></div><a class="self" href="#s-1f5364cc" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idbobjectstore_getAll-options.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>24</b> / 24</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-d511e04c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Single item get</span></div><a class="self" href="#s-d511e04c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-74916993"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Single item get (generated key)</span></div><a class="self" href="#s-74916993" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-79dcc0d0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getAll on empty object store</span></div><a class="self" href="#s-79dcc0d0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5bd68bf4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Get all values</span></div><a class="self" href="#s-5bd68bf4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-52e35f17"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Get all with large values</span></div><a class="self" href="#s-52e35f17" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-34345a3e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Test maxCount</span></div><a class="self" href="#s-34345a3e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4150dd13"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Get bound range</span></div><a class="self" href="#s-4150dd13" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-62845648"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Get bound range with maxCount</span></div><a class="self" href="#s-62845648" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-656fdbf4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Get upper excluded</span></div><a class="self" href="#s-656fdbf4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-34e08964"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Get lower excluded</span></div><a class="self" href="#s-34e08964" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bc371db0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Get bound range (generated) with maxCount</span></div><a class="self" href="#s-bc371db0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-05c49793"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Non existent key</span></div><a class="self" href="#s-05c49793" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-57b2fea0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">zero maxCount</span></div><a class="self" href="#s-57b2fea0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2fe8747c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Max value count</span></div><a class="self" href="#s-2fe8747c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-567d10b3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Query with empty range where  first key &lt; upperBound</span></div><a class="self" href="#s-567d10b3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0467a0ae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Query with empty range where lowerBound &lt; last key</span></div><a class="self" href="#s-0467a0ae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b0a66d92"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Direction: next</span></div><a class="self" href="#s-b0a66d92" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-30701726"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Direction: prev</span></div><a class="self" href="#s-30701726" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-749b7a34"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Direction: nextunique</span></div><a class="self" href="#s-749b7a34" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5c875340"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Direction: prevunique</span></div><a class="self" href="#s-5c875340" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2a2363ea"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Direction and query</span></div><a class="self" href="#s-2a2363ea" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3fb7921b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Direction, query and count</span></div><a class="self" href="#s-3fb7921b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a9df76cc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Get all values with both options and count</span></div><a class="self" href="#s-a9df76cc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-97fb1a6a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Get all values with invalid query keys</span></div><a class="self" href="#s-97fb1a6a" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

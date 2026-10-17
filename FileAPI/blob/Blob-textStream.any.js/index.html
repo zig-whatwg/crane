@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../FileAPI/"><code>FileAPI/</code></a></li><li><a href="../../../FileAPI/blob/"><code>blob/</code></a></li><li aria-current="page"><code>Blob-<wbr>textStream.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>Blob-<wbr>textStream.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="FileAPI/blob/Blob-textStream.any.js">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 16</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>16</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 24</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>24</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-a781ab209a</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/a781ab209a"><code>a781ab209a</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-e5ef1b9a95</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/e5ef1b9a95"><code>e5ef1b9a95</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/FileAPI/blob/Blob-textStream.any.js"><code>FileAPI/<wbr>blob/<wbr>Blob-<wbr>textStream.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -44,6 +44,19 @@
 <li class="sub s-fail" id="s-9ab95e96"><details><summary><span class="mark">FAIL</span><span class="sub-name">Blob.textStream() ignores invalid type charset (invalid-charset)</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: blob.textStream is not a function&quot;</pre></details><a class="self" href="#s-9ab95e96" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-fbf3642c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Blob.textStream() ignores type charset (iso-8859-1)</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: blob.textStream is not a function&quot;</pre></details><a class="self" href="#s-fbf3642c" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-90aad836"><details><summary><span class="mark">FAIL</span><span class="sub-name">Blob.textStream() can be called multiple times</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: blob.textStream is not a function&quot;</pre></details><a class="self" href="#s-90aad836" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/FileAPI/blob/Blob-textStream.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 8</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-91f369ef"><details><summary><span class="mark">FAIL</span><span class="sub-name">textStream method existence</span></summary><pre class="msg">assert_true: textStream exists on Blob.prototype expected true got false</pre></details><a class="self" href="#s-91f369ef" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c9e3f42a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Blob.textStream() basic functionality</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: blob.textStream is not a function&quot;</pre></details><a class="self" href="#s-c9e3f42a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f6680e9b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Blob.textStream() with empty blob</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: blob.textStream is not a function&quot;</pre></details><a class="self" href="#s-f6680e9b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0e8ab47c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Blob.textStream() with multi-part blob</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: blob.textStream is not a function&quot;</pre></details><a class="self" href="#s-0e8ab47c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-be8d7515"><details><summary><span class="mark">FAIL</span><span class="sub-name">Blob.textStream() ignores type charset (UTF-16LE)</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: blob.textStream is not a function&quot;</pre></details><a class="self" href="#s-be8d7515" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-10faedc2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Blob.textStream() ignores invalid type charset (invalid-charset)</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: blob.textStream is not a function&quot;</pre></details><a class="self" href="#s-10faedc2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-520aeca3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Blob.textStream() ignores type charset (iso-8859-1)</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: blob.textStream is not a function&quot;</pre></details><a class="self" href="#s-520aeca3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7f486bec"><details><summary><span class="mark">FAIL</span><span class="sub-name">Blob.textStream() can be called multiple times</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: blob.textStream is not a function&quot;</pre></details><a class="self" href="#s-7f486bec" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

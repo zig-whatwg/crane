@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../IndexedDB/"><code>IndexedDB/</code></a></li><li aria-current="page"><code>idbindex_<wbr>getAllRecords.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>idbindex_<wbr>getAllRecords.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="IndexedDB/idbindex_getAllRecords.any.js">
-<p class="figures-main"><span class="fg-pass">58</span><span class="fg-of"> / 58</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">87</span><span class="fg-of"> / 87</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-a781ab209a</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/a781ab209a"><code>a781ab209a</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-e5ef1b9a95</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/e5ef1b9a95"><code>e5ef1b9a95</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/IndexedDB/idbindex_getAllRecords.any.js"><code>IndexedDB/<wbr>idbindex_<wbr>getAllRecords.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -65,6 +65,40 @@
 <li class="sub s-pass" id="s-d586cd66"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Direction and query</span></div><a class="self" href="#s-d586cd66" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-a98e1c92"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Direction, query and count</span></div><a class="self" href="#s-a98e1c92" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-d1b83725"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Get all records with invalid query keys</span></div><a class="self" href="#s-d1b83725" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idbindex_getAllRecords.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>29</b> / 29</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-0a99d95f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Single item</span></div><a class="self" href="#s-0a99d95f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-de9a247b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Empty index</span></div><a class="self" href="#s-de9a247b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c9c875be"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Get all records</span></div><a class="self" href="#s-c9c875be" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4439f7de"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Get all records with empty options</span></div><a class="self" href="#s-4439f7de" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0ecf9a98"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Get all records with large value</span></div><a class="self" href="#s-0ecf9a98" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-938d1651"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Count</span></div><a class="self" href="#s-938d1651" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8c02589d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Query with bound range</span></div><a class="self" href="#s-8c02589d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d9c4e74b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Query with bound range and count</span></div><a class="self" href="#s-d9c4e74b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3cb3a19f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Query with upper excluded bound range</span></div><a class="self" href="#s-3cb3a19f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8dbfbf4a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Query with lower excluded bound range</span></div><a class="self" href="#s-8dbfbf4a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cf8f04ce"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Query with bound range and count for generated keys</span></div><a class="self" href="#s-cf8f04ce" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f91a7ce1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Query with Nonexistent key</span></div><a class="self" href="#s-f91a7ce1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d30cb77a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Zero count</span></div><a class="self" href="#s-d30cb77a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3e16c880"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Max value count</span></div><a class="self" href="#s-3e16c880" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3fcacad2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Query with empty range where first key &lt; upperBound</span></div><a class="self" href="#s-3fcacad2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-42e1888d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Query with empty range where lowerBound &lt; last key</span></div><a class="self" href="#s-42e1888d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-187f191a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Query index key that matches multiple records</span></div><a class="self" href="#s-187f191a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8215a282"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Query with multiEntry index</span></div><a class="self" href="#s-8215a282" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-20d7852e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Direction: next</span></div><a class="self" href="#s-20d7852e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f97e68ed"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Direction: prev</span></div><a class="self" href="#s-f97e68ed" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8a163cb7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Direction: nextunique</span></div><a class="self" href="#s-8a163cb7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-93c666b7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Direction: prevunique</span></div><a class="self" href="#s-93c666b7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-68e08f4e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Direction: nextunique with duplicate index keys</span></div><a class="self" href="#s-68e08f4e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-73f820a8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Direction: prevunique with duplicate index keys</span></div><a class="self" href="#s-73f820a8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-634fb392"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Direction: nextunique with multi-entry index</span></div><a class="self" href="#s-634fb392" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-13fa3a68"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Direction: prevunique with multi-entry index</span></div><a class="self" href="#s-13fa3a68" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bcfd7533"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Direction and query</span></div><a class="self" href="#s-bcfd7533" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ab979a9f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Direction, query and count</span></div><a class="self" href="#s-ab979a9f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6f2b204c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Get all records with invalid query keys</span></div><a class="self" href="#s-6f2b204c" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

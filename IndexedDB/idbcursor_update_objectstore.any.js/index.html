@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../IndexedDB/"><code>IndexedDB/</code></a></li><li aria-current="page"><code>idbcursor_<wbr>update_<wbr>objectstore.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>idbcursor_<wbr>update_<wbr>objectstore.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="IndexedDB/idbcursor_update_objectstore.any.js">
-<p class="figures-main"><span class="fg-pass">18</span><span class="fg-of"> / 18</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">27</span><span class="fg-of"> / 27</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-a781ab209a</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/a781ab209a"><code>a781ab209a</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-e5ef1b9a95</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/e5ef1b9a95"><code>e5ef1b9a95</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/IndexedDB/idbcursor_update_objectstore.any.js"><code>IndexedDB/<wbr>idbcursor_<wbr>update_<wbr>objectstore.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -45,6 +45,20 @@
 <li class="sub s-pass" id="s-fe3f2ab4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">No argument</span></div><a class="self" href="#s-fe3f2ab4" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-f6191456"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Throw DataError</span></div><a class="self" href="#s-f6191456" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ccff66a0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Throw InvalidStateError when the cursor is being iterated</span></div><a class="self" href="#s-ccff66a0" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idbcursor_update_objectstore.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>9</b> / 9</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-45ac6fc2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Modify a record in the object store </span></div><a class="self" href="#s-45ac6fc2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5ffa9c70"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Attempt to modify a record in a read-only transaction</span></div><a class="self" href="#s-5ffa9c70" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c78e90de"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Object store - attempt to modify a record in an inactive transaction</span></div><a class="self" href="#s-c78e90de" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4c601c9a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Index - modify a record in the object store </span></div><a class="self" href="#s-4c601c9a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-478e107c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Attempt to modify a record after the cursor&#39;s source or effective object store has been deleted. The implementation MUST throw a DOMException of type InvalidStateError</span></div><a class="self" href="#s-478e107c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bb15f3b4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Throw DataCloneError</span></div><a class="self" href="#s-bb15f3b4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6249ac4c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">No argument</span></div><a class="self" href="#s-6249ac4c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c8f018af"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Throw DataError</span></div><a class="self" href="#s-c8f018af" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-334b8028"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Throw InvalidStateError when the cursor is being iterated</span></div><a class="self" href="#s-334b8028" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

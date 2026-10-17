@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../webidl/"><code>webidl/</code></a></li><li><a href="../../../webidl/ecmascript-binding/"><code>ecmascript-<wbr>binding/</code></a></li><li aria-current="page"><code>global-<wbr>object-<wbr>implicit-<wbr>this-<wbr>value.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>global-<wbr>object-<wbr>implicit-<wbr>this-<wbr>value.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="webidl/ecmascript-binding/global-object-implicit-this-value.any.js">
-<p class="figures-main"><span class="fg-pass">9</span><span class="fg-of"> / 15</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>6</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">12</span><span class="fg-of"> / 21</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>9</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-a781ab209a</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/a781ab209a"><code>a781ab209a</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-e5ef1b9a95</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/e5ef1b9a95"><code>e5ef1b9a95</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/webidl/ecmascript-binding/global-object-implicit-this-value.any.js"><code>webidl/<wbr>ecmascript-<wbr>binding/<wbr>global-<wbr>object-<wbr>implicit-<wbr>this-<wbr>value.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -45,6 +45,17 @@
 <li class="sub s-fail" id="s-5fb33116"><details><summary><span class="mark">FAIL</span><span class="sub-name">Global object&#39;s getter works when called on null / undefined</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;call&#39;)</pre></details><a class="self" href="#s-5fb33116" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-f0373f6d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Global object&#39;s setter works when called on null / undefined</span></div><a class="self" href="#s-f0373f6d" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-bfa3a9b0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Global object&#39;s operation works when called on null / undefined</span></div><a class="self" href="#s-bfa3a9b0" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/webidl/ecmascript-binding/global-object-implicit-this-value.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 6</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-d0ada8af"><details><summary><span class="mark">FAIL</span><span class="sub-name">Global object&#39;s getter throws when called on incompatible object</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; { new Proxy(globalThis, {}).onerror; }&quot; did not throw</pre></details><a class="self" href="#s-d0ada8af" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9a28a299"><details><summary><span class="mark">FAIL</span><span class="sub-name">Global object&#39;s setter throws when called on incompatible object</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; { new Proxy(globalThis, {}).ononline = ononline; }&quot; did not throw</pre></details><a class="self" href="#s-9a28a299" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d7aa90c7"><details><summary><span class="mark">FAIL</span><span class="sub-name">Global object&#39;s operation throws when called on incompatible object</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; { Object.create(globalThis).setInterval(() =&gt; {}, 100); }&quot; did not throw</pre></details><a class="self" href="#s-d7aa90c7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-95341517"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Global object&#39;s getter works when called on null / undefined</span></div><a class="self" href="#s-95341517" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6d7c1091"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Global object&#39;s setter works when called on null / undefined</span></div><a class="self" href="#s-6d7c1091" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-79d80393"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Global object&#39;s operation works when called on null / undefined</span></div><a class="self" href="#s-79d80393" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
