@@ -459,9 +459,21 @@ pub fn call_updateCurrentEntry(instance: *runtime.Instance, options: dictionarie
     if (options.state == .undefined) return error.TypeError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const current = (try currentEntryObject(instance, internal)) orelse return error.InvalidStateError;
-    const scope = scopeOf(instance, internal) orelse return error.InvalidStateError;
-    const serialized = try navigation_entries.serialize(engine.currentRealm() orelse instance.ctx, internal.allocator, options.state);
-    try scope.history.setCurrentApiState(scope.navigable.id, serialized);
+    // Steps 1-3: serialization can replace the entry and collect its wrapper.
+    // Keep the captured object through step 5's currententrychange dispatch.
+    const owned = try engine.retainValue(current.ctx, .{ .instance = current });
+    defer owned.release();
+    const entry_id = dom.navigation_history_entries.entryId(current);
+    const allocator = internal.allocator;
+    var serialized = try navigation_entries.serialize(engine.currentRealm() orelse instance.ctx, allocator, options.state);
+    // Step 4: ask for the history again after script; detaching the frame
+    // can destroy it. As for a removed entry, disposed entry state is not
+    // retained yet, but step 5 still fires with the captured `current`.
+    if (scopeOf(instance, internal)) |scope| {
+        scope.history.setEntryApiState(entry_id, serialized);
+    } else {
+        serialized.deinit(allocator);
+    }
     fireCurrentEntryChange(instance, null, current);
 }
 
