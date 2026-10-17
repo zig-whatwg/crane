@@ -9,4 +9,10 @@ pub const TCPServerSocketOpenInfo = struct {
     readable: ?*runtime.Instance = null,
     localAddress: ?runtime.DOMString = null,
     localPort: ?u16 = null,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "readable", "ReadableStream" },
+    };
 };

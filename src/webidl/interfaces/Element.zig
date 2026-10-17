@@ -2295,6 +2295,28 @@ pub const Element = struct {
         .{ "set_outerHTML", 0b1 },
     };
 
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "set_ariaActiveDescendantElement", 0, "Element" },
+        .{ "set_ariaControlsElements", 0, "Element" },
+        .{ "set_ariaDescribedByElements", 0, "Element" },
+        .{ "set_ariaDetailsElements", 0, "Element" },
+        .{ "set_ariaErrorMessageElements", 0, "Element" },
+        .{ "set_ariaFlowToElements", 0, "Element" },
+        .{ "set_ariaLabelledByElements", 0, "Element" },
+        .{ "set_ariaOwnsElements", 0, "Element" },
+        .{ "call_moveBefore", 0, "Node" },
+        .{ "call_moveBefore", 1, "Node" },
+        .{ "call_insertAdjacentElement", 1, "Element" },
+        .{ "call_setAttributeNode", 0, "Attr" },
+        .{ "call_setAttributeNodeNS", 0, "Attr" },
+        .{ "call_convertRectFromNode", 0, "DOMRectReadOnly" },
+        .{ "call_removeAttributeNode", 0, "Attr" },
+    };
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{

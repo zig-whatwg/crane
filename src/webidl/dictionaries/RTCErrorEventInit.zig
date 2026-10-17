@@ -10,4 +10,10 @@ pub const RTCErrorEventInit = struct {
     base: EventInit,
 
     @"error": *runtime.Instance,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "error", "RTCError" },
+    };
 };

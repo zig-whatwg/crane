@@ -187,6 +187,14 @@ pub const FormData = struct {
         return try FormDataImpl.call_constructor(ctx, form, submitter);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "HTMLFormElement" },
+        .{ "", 1, "HTMLElement" },
+    };
+
     pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerror!void {
         return try FormDataImpl.call_delete(instance, name);
     }
@@ -240,6 +248,15 @@ pub const FormData = struct {
             .{ .function = "call_append", .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{.string} } } },
             .{ .function = "call_append__1", .implemented = @hasDecl(FormDataImpl, "call_append__1"), .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Blob")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Blob.State) } else .other)} }, .{ .kinds = &.{.string}, .optionality = .optional } } },
         } },
+    };
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_set__1", 1, "Blob" },
+        .{ "call_append__1", 1, "Blob" },
     };
 
     /// Get entries for pair iterable support (used by V8 for iteration)

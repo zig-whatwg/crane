@@ -12,4 +12,12 @@ pub const XRInputSourcesChangeEventInit = struct {
     session: *runtime.Instance,
     added: []const *runtime.Instance,
     removed: []const *runtime.Instance,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "session", "XRSession" },
+        .{ "added", "XRInputSource" },
+        .{ "removed", "XRInputSource" },
+    };
 };

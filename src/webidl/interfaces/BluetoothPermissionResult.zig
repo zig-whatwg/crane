@@ -179,4 +179,12 @@ pub const BluetoothPermissionResult = struct {
     pub fn set_devices(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         try BluetoothPermissionResultImpl.set_devices(instance, value);
     }
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "set_devices", 0, "BluetoothDevice" },
+    };
 };

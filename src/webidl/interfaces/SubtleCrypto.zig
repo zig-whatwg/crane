@@ -312,6 +312,28 @@ pub const SubtleCrypto = struct {
         return try SubtleCryptoImpl.call_exportKey(instance, format, key);
     }
 
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_deriveBits", 1, "CryptoKey" },
+        .{ "call_encrypt", 1, "CryptoKey" },
+        .{ "call_decapsulateKey", 1, "CryptoKey" },
+        .{ "call_wrapKey", 1, "CryptoKey" },
+        .{ "call_wrapKey", 2, "CryptoKey" },
+        .{ "call_decapsulateBits", 1, "CryptoKey" },
+        .{ "call_sign", 1, "CryptoKey" },
+        .{ "call_deriveKey", 1, "CryptoKey" },
+        .{ "call_verify", 1, "CryptoKey" },
+        .{ "call_encapsulateKey", 1, "CryptoKey" },
+        .{ "call_getPublicKey", 0, "CryptoKey" },
+        .{ "call_decrypt", 1, "CryptoKey" },
+        .{ "call_encapsulateBits", 1, "CryptoKey" },
+        .{ "call_unwrapKey", 2, "CryptoKey" },
+        .{ "call_exportKey", 1, "CryptoKey" },
+    };
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{

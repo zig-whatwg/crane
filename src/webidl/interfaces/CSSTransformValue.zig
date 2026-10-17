@@ -199,6 +199,13 @@ pub const CSSTransformValue = struct {
         return try CSSTransformValueImpl.call_constructor(ctx, transforms);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "CSSTransformComponent" },
+    };
+
     pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
         return try CSSTransformValueImpl.get_length(instance);
     }
@@ -226,4 +233,12 @@ pub const CSSTransformValue = struct {
     pub fn call_toMatrix(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSTransformValueImpl.call_toMatrix(instance);
     }
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_setter", 1, "CSSTransformComponent" },
+    };
 };

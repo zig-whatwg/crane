@@ -11,4 +11,11 @@ pub const ContactInfo = struct {
     icon: ?[]const *runtime.Instance = null,
     name: ?[]const runtime.DOMString = null,
     tel: ?[]const runtime.DOMString = null,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "address", "ContactAddress" },
+        .{ "icon", "Blob" },
+    };
 };

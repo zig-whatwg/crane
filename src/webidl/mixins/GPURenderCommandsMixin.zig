@@ -56,3 +56,15 @@ pub fn call_drawIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.I
 pub fn call_setPipeline(instance: *runtime.Instance, pipeline: *runtime.Instance) anyerror!void {
     return try GPURenderCommandsMixinImpl.call_setPipeline(instance, pipeline);
 }
+
+/// WebIDL interface types: the interface each interface-typed argument
+/// and attribute value converts to - a TypeError unless the value implements
+/// it (function, argument index - an attribute setter's value is 0 -,
+/// interface; a nullable, sequence or record value by its elements').
+pub const interface_arguments = .{
+    .{ "call_setVertexBuffer", 1, "GPUBuffer" },
+    .{ "call_setIndexBuffer", 0, "GPUBuffer" },
+    .{ "call_drawIndexedIndirect", 0, "GPUBuffer" },
+    .{ "call_drawIndirect", 0, "GPUBuffer" },
+    .{ "call_setPipeline", 0, "GPURenderPipeline" },
+};

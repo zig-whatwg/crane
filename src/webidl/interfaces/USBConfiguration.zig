@@ -174,6 +174,13 @@ pub const USBConfiguration = struct {
         return try USBConfigurationImpl.call_constructor(ctx, device, configurationValue);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "USBDevice" },
+    };
+
     pub fn get_configurationValue(instance: *runtime.Instance) anyerror!u8 {
         return try USBConfigurationImpl.get_configurationValue(instance);
     }

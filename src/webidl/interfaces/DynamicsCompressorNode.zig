@@ -209,6 +209,13 @@ pub const DynamicsCompressorNode = struct {
         return try DynamicsCompressorNodeImpl.call_constructor(ctx, context, options);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "BaseAudioContext" },
+    };
+
     pub fn get_threshold(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DynamicsCompressorNodeImpl.get_threshold(instance);
     }

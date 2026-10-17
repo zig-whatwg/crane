@@ -10,4 +10,10 @@ pub const MediaStreamTrackProcessorInit = struct {
 
     /// [EnforceRange] members: converted with that branch of ConvertToInt.
     pub const enforce_range_members = .{"maxBufferSize"};
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "track", "MediaStreamTrack" },
+    };
 };

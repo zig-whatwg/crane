@@ -186,6 +186,13 @@ pub const USBAlternateInterface = struct {
         return try USBAlternateInterfaceImpl.call_constructor(ctx, deviceInterface, alternateSetting);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "USBInterface" },
+    };
+
     pub fn get_alternateSetting(instance: *runtime.Instance) anyerror!u8 {
         return try USBAlternateInterfaceImpl.get_alternateSetting(instance);
     }

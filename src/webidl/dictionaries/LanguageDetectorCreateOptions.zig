@@ -12,4 +12,10 @@ pub const LanguageDetectorCreateOptions = struct {
 
     signal: ?*runtime.Instance = null,
     monitor: ?callbacks.CreateMonitorCallback = null,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "signal", "AbortSignal" },
+    };
 };

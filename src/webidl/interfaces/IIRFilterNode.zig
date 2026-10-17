@@ -188,6 +188,13 @@ pub const IIRFilterNode = struct {
         return try IIRFilterNodeImpl.call_constructor(ctx, context, options);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "BaseAudioContext" },
+    };
+
     pub fn call_getFrequencyResponse(instance: *runtime.Instance, frequencyHz: runtime.JSValue, magResponse: runtime.JSValue, phaseResponse: runtime.JSValue) anyerror!void {
         return try IIRFilterNodeImpl.call_getFrequencyResponse(instance, frequencyHz, magResponse, phaseResponse);
     }

@@ -9,4 +9,10 @@ pub const GPUBufferBinding = struct {
     buffer: *runtime.Instance,
     offset: ?typedefs.GPUSize64 = null,
     size: ?typedefs.GPUSize64 = null,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "buffer", "GPUBuffer" },
+    };
 };

@@ -87,4 +87,14 @@ pub const CanvasUserInterface = struct {
             .{ .function = "call_drawFocusIfNeeded__1", .implemented = @hasDecl(CanvasUserInterfaceImpl, "call_drawFocusIfNeeded__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Path2D")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Path2D.State) } else .other)} }, .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Element")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Element.State) } else .other)} } } },
         } },
     };
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_drawFocusIfNeeded", 0, "Element" },
+        .{ "call_drawFocusIfNeeded__1", 0, "Path2D" },
+        .{ "call_drawFocusIfNeeded__1", 1, "Element" },
+    };
 };

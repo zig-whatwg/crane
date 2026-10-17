@@ -225,4 +225,12 @@ pub const ViewTransition = struct {
     pub fn call_waitUntil(instance: *runtime.Instance, promise: runtime.JSValue) anyerror!void {
         return try ViewTransitionImpl.call_waitUntil(instance, promise);
     }
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "set_types", 0, "ViewTransitionTypeSet" },
+    };
 };

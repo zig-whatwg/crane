@@ -178,6 +178,13 @@ pub const CSSParserAtRule = struct {
         return try CSSParserAtRuleImpl.call_constructor(ctx, name, prelude, body);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 2, "CSSParserRule" },
+    };
+
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         return try CSSParserAtRuleImpl.get_name(instance);
     }

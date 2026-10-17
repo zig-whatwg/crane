@@ -322,6 +322,27 @@ pub const XRFrame = struct {
         return try XRFrameImpl.call_getJointPose(instance, joint, baseSpace);
     }
 
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_fillJointRadii", 0, "XRJointSpace" },
+        .{ "call_getHitTestResultsForTransientInput", 0, "XRTransientInputHitTestSource" },
+        .{ "call_getLightEstimate", 0, "XRLightProbe" },
+        .{ "call_createAnchor", 0, "XRRigidTransform" },
+        .{ "call_createAnchor", 1, "XRSpace" },
+        .{ "call_getDepthInformation", 0, "XRView" },
+        .{ "call_getHitTestResults", 0, "XRHitTestSource" },
+        .{ "call_getPose", 0, "XRSpace" },
+        .{ "call_getPose", 1, "XRSpace" },
+        .{ "call_fillPoses", 0, "XRSpace" },
+        .{ "call_fillPoses", 1, "XRSpace" },
+        .{ "call_getViewerPose", 0, "XRReferenceSpace" },
+        .{ "call_getJointPose", 0, "XRJointSpace" },
+        .{ "call_getJointPose", 1, "XRSpace" },
+    };
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{

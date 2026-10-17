@@ -240,4 +240,15 @@ pub const GPUComputePassEncoder = struct {
             .{ .function = "call_setBindGroup__1", .implemented = @hasDecl(mixins.GPUBindingCommandsMixin.impl, "call_setBindGroup__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "GPUBindGroup")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").GPUBindGroup.State) } else .other)}, .nullable = true }, .{ .kinds = &.{.{ .typed_array = "Uint32Array" }} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
         } },
     };
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_dispatchWorkgroupsIndirect", 0, "GPUBuffer" },
+        .{ "call_setBindGroup", 1, "GPUBindGroup" },
+        .{ "call_setBindGroup__1", 1, "GPUBindGroup" },
+        .{ "call_setPipeline", 0, "GPUComputePipeline" },
+    };
 };

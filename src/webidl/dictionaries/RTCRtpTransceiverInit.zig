@@ -10,4 +10,10 @@ pub const RTCRtpTransceiverInit = struct {
     direction: ?enums.RTCRtpTransceiverDirection = null,
     streams: ?[]const *runtime.Instance = null,
     sendEncodings: ?[]const RTCRtpEncodingParameters = null,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "streams", "MediaStream" },
+    };
 };

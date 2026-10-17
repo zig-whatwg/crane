@@ -10,4 +10,10 @@ pub const PresentationConnectionAvailableEventInit = struct {
     base: EventInit,
 
     connection: *runtime.Instance,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "connection", "PresentationConnection" },
+    };
 };

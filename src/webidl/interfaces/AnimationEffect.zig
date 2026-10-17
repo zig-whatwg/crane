@@ -226,4 +226,14 @@ pub const AnimationEffect = struct {
     pub fn call_getTiming(instance: *runtime.Instance) anyerror!EffectTiming {
         return try AnimationEffectImpl.call_getTiming(instance);
     }
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_before", 0, "AnimationEffect" },
+        .{ "call_replace", 0, "AnimationEffect" },
+        .{ "call_after", 0, "AnimationEffect" },
+    };
 };

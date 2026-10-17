@@ -11,4 +11,10 @@ pub const SpeechRecognitionEventInit = struct {
 
     resultIndex: ?u32 = null,
     results: *runtime.Instance,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "results", "SpeechRecognitionResultList" },
+    };
 };

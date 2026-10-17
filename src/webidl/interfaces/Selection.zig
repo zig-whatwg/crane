@@ -342,6 +342,22 @@ pub const Selection = struct {
         return try SelectionImpl.call_removeAllRanges(instance);
     }
 
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_setBaseAndExtent", 0, "Node" },
+        .{ "call_setBaseAndExtent", 2, "Node" },
+        .{ "call_setPosition", 0, "Node" },
+        .{ "call_addRange", 0, "Range" },
+        .{ "call_extend", 0, "Node" },
+        .{ "call_selectAllChildren", 0, "Node" },
+        .{ "call_containsNode", 0, "Node" },
+        .{ "call_collapse", 0, "Node" },
+        .{ "call_removeRange", 0, "Range" },
+    };
+
     /// HTML [CEReactions]: the functions that run a custom element reactions
     /// bracket - the binding dispatches each in a catch scope, where
     /// engine.withPendingExceptionSetAside sets aside what the member leaves

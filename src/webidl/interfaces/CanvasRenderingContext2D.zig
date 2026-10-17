@@ -820,6 +820,24 @@ pub const CanvasRenderingContext2D = struct {
         .{ "call_createLinearGradient", 0b1111 },
     };
 
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_createImageData__1", 0, "ImageData" },
+        .{ "call_stroke__1", 0, "Path2D" },
+        .{ "call_drawFocusIfNeeded", 0, "Element" },
+        .{ "call_drawFocusIfNeeded__1", 0, "Path2D" },
+        .{ "call_drawFocusIfNeeded__1", 1, "Element" },
+        .{ "call_isPointInPath__1", 0, "Path2D" },
+        .{ "call_putImageData", 0, "ImageData" },
+        .{ "call_putImageData__1", 0, "ImageData" },
+        .{ "call_fill__1", 0, "Path2D" },
+        .{ "call_isPointInStroke__1", 0, "Path2D" },
+        .{ "call_clip__1", 0, "Path2D" },
+    };
+
     /// WebIDL [EnforceRange]: the integer arguments and attribute values
     /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
     /// an attribute setter's value is bit 0).

@@ -161,6 +161,13 @@ pub const Instance = struct {
         return try InstanceImpl.call_constructor(ctx, module, importObject);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "Module" },
+    };
+
     pub fn get_exports(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try InstanceImpl.get_exports(instance);
     }

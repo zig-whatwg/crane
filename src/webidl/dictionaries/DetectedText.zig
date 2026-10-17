@@ -10,4 +10,10 @@ pub const DetectedText = struct {
     boundingBox: *runtime.Instance,
     rawValue: runtime.DOMString,
     cornerPoints: []const Point2D,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "boundingBox", "DOMRectReadOnly" },
+    };
 };

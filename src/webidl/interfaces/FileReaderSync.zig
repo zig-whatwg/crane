@@ -187,4 +187,15 @@ pub const FileReaderSync = struct {
     pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: webidl.Opt(DOMString)) anyerror!DOMString {
         return try FileReaderSyncImpl.call_readAsText(instance, blob, encoding);
     }
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_readAsDataURL", 0, "Blob" },
+        .{ "call_readAsArrayBuffer", 0, "Blob" },
+        .{ "call_readAsBinaryString", 0, "Blob" },
+        .{ "call_readAsText", 0, "Blob" },
+    };
 };

@@ -215,6 +215,13 @@ pub const RTCEncodedVideoFrame = struct {
         return try RTCEncodedVideoFrameImpl.call_constructor(ctx, originalFrame, options);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "RTCEncodedVideoFrame" },
+    };
+
     pub fn get_type(instance: *runtime.Instance) anyerror!EncodedVideoChunkType {
         return try RTCEncodedVideoFrameImpl.get_type(instance);
     }

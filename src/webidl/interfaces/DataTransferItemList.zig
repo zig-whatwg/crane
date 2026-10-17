@@ -215,4 +215,12 @@ pub const DataTransferItemList = struct {
             .{ .function = "call_add__1", .implemented = @hasDecl(DataTransferItemListImpl, "call_add__1"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "File")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").File.State) } else .other)} }} },
         } },
     };
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_add__1", 0, "File" },
+    };
 };

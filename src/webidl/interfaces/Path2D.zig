@@ -240,4 +240,12 @@ pub const Path2D = struct {
     pub fn call_arcTo(instance: *runtime.Instance, x1: f64, y1: f64, x2: f64, y2: f64, radius: f64) anyerror!void {
         return try Path2DImpl.call_arcTo(instance, x1, y1, x2, y2, radius);
     }
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_addPath", 0, "Path2D" },
+    };
 };

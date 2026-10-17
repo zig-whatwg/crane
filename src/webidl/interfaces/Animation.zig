@@ -303,6 +303,14 @@ pub const Animation = struct {
         return try AnimationImpl.call_constructor(ctx, effect, timeline);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "AnimationEffect" },
+        .{ "", 1, "AnimationTimeline" },
+    };
+
     pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
         return try AnimationImpl.get_id(instance);
     }
@@ -476,6 +484,16 @@ pub const Animation = struct {
         .{ "set_currentTime", 0b1 },
         .{ "set_playbackRate", 0b1 },
         .{ "call_updatePlaybackRate", 0b1 },
+    };
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "set_effect", 0, "AnimationEffect" },
+        .{ "set_timeline", 0, "AnimationTimeline" },
+        .{ "set_trigger", 0, "AnimationTrigger" },
     };
 
     /// HTML [CEReactions]: the functions that run a custom element reactions

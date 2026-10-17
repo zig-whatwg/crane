@@ -223,4 +223,22 @@ pub const WebGLRenderingContextOverloads = struct {
             .{ .function = "call_bufferData__1", .implemented = @hasDecl(WebGLRenderingContextOverloadsImpl, "call_bufferData__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .array_buffer, .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view }, .nullable = true }, .{ .kinds = &.{.numeric} } } },
         } },
     };
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_uniformMatrix4fv", 0, "WebGLUniformLocation" },
+        .{ "call_uniform4iv", 0, "WebGLUniformLocation" },
+        .{ "call_uniformMatrix3fv", 0, "WebGLUniformLocation" },
+        .{ "call_uniform4fv", 0, "WebGLUniformLocation" },
+        .{ "call_uniform3iv", 0, "WebGLUniformLocation" },
+        .{ "call_uniform3fv", 0, "WebGLUniformLocation" },
+        .{ "call_uniform1iv", 0, "WebGLUniformLocation" },
+        .{ "call_uniformMatrix2fv", 0, "WebGLUniformLocation" },
+        .{ "call_uniform2iv", 0, "WebGLUniformLocation" },
+        .{ "call_uniform2fv", 0, "WebGLUniformLocation" },
+        .{ "call_uniform1fv", 0, "WebGLUniformLocation" },
+    };
 };

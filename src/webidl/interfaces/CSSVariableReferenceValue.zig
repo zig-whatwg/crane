@@ -172,6 +172,13 @@ pub const CSSVariableReferenceValue = struct {
         return try CSSVariableReferenceValueImpl.call_constructor(ctx, variable, fallback);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 1, "CSSUnparsedValue" },
+    };
+
     pub fn get_variable(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try CSSVariableReferenceValueImpl.get_variable(instance);
     }

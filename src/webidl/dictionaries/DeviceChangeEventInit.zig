@@ -10,4 +10,10 @@ pub const DeviceChangeEventInit = struct {
     base: EventInit,
 
     devices: ?[]const *runtime.Instance = null,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "devices", "MediaDeviceInfo" },
+    };
 };

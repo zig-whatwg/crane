@@ -364,4 +364,12 @@ pub const SVGPathElement = struct {
         .{ "call_getPathSegmentAtLength", 0b1 },
         .{ "call_getPointAtLength", 0b1 },
     };
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_setPathData", 0, "SVGPathSegment" },
+    };
 };

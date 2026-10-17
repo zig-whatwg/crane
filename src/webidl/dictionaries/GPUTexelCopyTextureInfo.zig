@@ -11,4 +11,10 @@ pub const GPUTexelCopyTextureInfo = struct {
     mipLevel: ?typedefs.GPUIntegerCoordinate = null,
     origin: ?typedefs.GPUOrigin3D = null,
     aspect: ?enums.GPUTextureAspect = null,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "texture", "GPUTexture" },
+    };
 };

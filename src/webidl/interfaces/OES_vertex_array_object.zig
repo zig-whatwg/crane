@@ -198,4 +198,14 @@ pub const OES_vertex_array_object = struct {
     pub fn call_bindVertexArrayOES(instance: *runtime.Instance, arrayObject: ?*runtime.Instance) anyerror!void {
         return try OES_vertex_array_objectImpl.call_bindVertexArrayOES(instance, arrayObject);
     }
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_isVertexArrayOES", 0, "WebGLVertexArrayObjectOES" },
+        .{ "call_deleteVertexArrayOES", 0, "WebGLVertexArrayObjectOES" },
+        .{ "call_bindVertexArrayOES", 0, "WebGLVertexArrayObjectOES" },
+    };
 };

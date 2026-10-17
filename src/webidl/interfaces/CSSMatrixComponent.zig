@@ -176,6 +176,13 @@ pub const CSSMatrixComponent = struct {
         return try CSSMatrixComponentImpl.call_constructor(ctx, matrix, options);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "DOMMatrixReadOnly" },
+    };
+
     pub fn get_matrix(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSMatrixComponentImpl.get_matrix(instance);
     }
@@ -183,4 +190,12 @@ pub const CSSMatrixComponent = struct {
     pub fn set_matrix(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try CSSMatrixComponentImpl.set_matrix(instance, value);
     }
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "set_matrix", 0, "DOMMatrix" },
+    };
 };

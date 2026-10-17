@@ -2619,6 +2619,26 @@ pub const Document = struct {
         .{ "call_caretPositionFromPoint", 0b11 },
     };
 
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "set_body", 0, "HTMLElement" },
+        .{ "call_createTreeWalker", 0, "Node" },
+        .{ "call_createNSResolver", 0, "Node" },
+        .{ "call_measureElement", 0, "Element" },
+        .{ "call_measureText", 1, "StylePropertyMapReadOnly" },
+        .{ "call_adoptNode", 0, "Node" },
+        .{ "call_createNodeIterator", 0, "Node" },
+        .{ "call_convertRectFromNode", 0, "DOMRectReadOnly" },
+        .{ "call_importNode", 0, "Node" },
+        .{ "call_evaluate", 1, "Node" },
+        .{ "call_evaluate", 4, "XPathResult" },
+        .{ "call_moveBefore", 0, "Node" },
+        .{ "call_moveBefore", 1, "Node" },
+    };
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{

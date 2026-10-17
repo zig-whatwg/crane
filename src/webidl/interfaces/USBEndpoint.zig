@@ -178,6 +178,13 @@ pub const USBEndpoint = struct {
         return try USBEndpointImpl.call_constructor(ctx, alternate, endpointNumber, direction);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "USBAlternateInterface" },
+    };
+
     pub fn get_endpointNumber(instance: *runtime.Instance) anyerror!u8 {
         return try USBEndpointImpl.get_endpointNumber(instance);
     }

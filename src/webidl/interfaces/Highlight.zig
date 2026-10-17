@@ -172,6 +172,13 @@ pub const Highlight = struct {
         return try HighlightImpl.call_constructor(ctx, initialRanges);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "AbstractRange" },
+    };
+
     pub fn get_priority(instance: *runtime.Instance) anyerror!i32 {
         return try HighlightImpl.get_priority(instance);
     }

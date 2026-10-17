@@ -174,6 +174,13 @@ pub const CSSParserQualifiedRule = struct {
         return try CSSParserQualifiedRuleImpl.call_constructor(ctx, prelude, body);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 1, "CSSParserRule" },
+    };
+
     pub fn get_prelude(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CSSParserQualifiedRuleImpl.get_prelude(instance);
     }

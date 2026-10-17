@@ -19,4 +19,14 @@ pub const MLLstmOptions = struct {
     direction: ?enums.MLRecurrentNetworkDirection = null,
     layout: ?enums.MLLstmWeightLayout = null,
     activations: ?[]const enums.MLRecurrentNetworkActivation = null,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "bias", "MLOperand" },
+        .{ "recurrentBias", "MLOperand" },
+        .{ "peepholeWeight", "MLOperand" },
+        .{ "initialHiddenState", "MLOperand" },
+        .{ "initialCellState", "MLOperand" },
+    };
 };

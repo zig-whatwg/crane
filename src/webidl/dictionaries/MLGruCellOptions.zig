@@ -15,4 +15,11 @@ pub const MLGruCellOptions = struct {
     resetAfter: ?bool = null,
     layout: ?enums.MLGruWeightLayout = null,
     activations: ?[]const enums.MLRecurrentNetworkActivation = null,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "bias", "MLOperand" },
+        .{ "recurrentBias", "MLOperand" },
+    };
 };
