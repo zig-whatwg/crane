@@ -132,6 +132,10 @@ pub fn encode(
     var out_pos: usize = 0;
 
     while (in_pos < input.len) {
+        // A scalar may start in the previous call. Retry from this call's
+        // cursor and carried high surrogate, never by indexing before input.
+        const input_before = in_pos;
+        const pending_before = state.pending_high_surrogate;
         const code_unit = input[in_pos];
 
         var code_point: u21 = undefined;
@@ -163,14 +167,14 @@ pub fn encode(
             if (err == error.InvalidCodePoint) {
                 return .{
                     .status = .unmappable,
-                    .code_units_consumed = in_pos - 1,
+                    .code_units_consumed = input_before,
                     .bytes_written = out_pos,
                     .error_code_point = code_point,
                 };
             }
             return .{
                 .status = .unmappable,
-                .code_units_consumed = in_pos - 1,
+                .code_units_consumed = input_before,
                 .bytes_written = out_pos,
                 .error_code_point = code_point,
             };
@@ -179,13 +183,10 @@ pub fn encode(
         const encoded_len: usize = if (encoded.?[1] == 0) 1 else 2;
 
         if (out_pos + encoded_len > output.len) {
-            in_pos -= 1;
-            if (code_point >= 0x10000) {
-                state.pending_high_surrogate = input[in_pos - 1];
-            }
+            state.pending_high_surrogate = pending_before;
             return .{
                 .status = .output_full,
-                .code_units_consumed = in_pos,
+                .code_units_consumed = input_before,
                 .bytes_written = out_pos,
             };
         }
@@ -200,6 +201,8 @@ pub fn encode(
 
     if (is_last and state.pending_high_surrogate != null) {
         const encoded = byte_encoder.encode(0xFFFD) catch {
+            // The final surrogate error consumes its pending input once.
+            state.pending_high_surrogate = null;
             return .{
                 .status = .unmappable,
                 .code_units_consumed = in_pos,

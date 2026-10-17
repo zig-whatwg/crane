@@ -177,6 +177,10 @@ pub fn encode(
     const allocator = fba.allocator();
 
     while (in_pos < input.len) {
+        // A scalar may start in the previous call. Retry from this call's
+        // cursor and carried high surrogate, never by indexing before input.
+        const input_before = in_pos;
+        const pending_before = state.pending_high_surrogate;
         const code_unit = input[in_pos];
 
         // Handle surrogate pairs
@@ -219,7 +223,7 @@ pub fn encode(
                 // Can't encode this code point
                 return .{
                     .status = .unmappable,
-                    .code_units_consumed = in_pos - 1,
+                    .code_units_consumed = input_before,
                     .bytes_written = out_pos,
                     .error_code_point = code_point,
                 };
@@ -227,7 +231,7 @@ pub fn encode(
             // Other error (OutOfMemory shouldn't happen with fixed buffer)
             return .{
                 .status = .unmappable,
-                .code_units_consumed = in_pos - 1,
+                .code_units_consumed = input_before,
                 .bytes_written = out_pos,
                 .error_code_point = code_point,
             };
@@ -236,14 +240,10 @@ pub fn encode(
         // Check if we have room in output
         if (out_pos + encoded.len > output.len) {
             // Not enough space - back up
-            in_pos -= 1;
-            if (code_point >= 0x10000) {
-                // Was a surrogate pair - restore high surrogate
-                state.pending_high_surrogate = input[in_pos - 1];
-            }
+            state.pending_high_surrogate = pending_before;
             return .{
                 .status = .output_full,
-                .code_units_consumed = in_pos,
+                .code_units_consumed = input_before,
                 .bytes_written = out_pos,
             };
         }
@@ -258,6 +258,8 @@ pub fn encode(
         // Unpaired high surrogate at end - emit replacement
         fba.reset();
         const encoded = byte_encoder.encode(allocator, 0xFFFD) catch {
+            // The final surrogate error consumes its pending input once.
+            state.pending_high_surrogate = null;
             return .{
                 .status = .unmappable,
                 .code_units_consumed = in_pos,

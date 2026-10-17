@@ -438,38 +438,9 @@ pub fn encodeOrFail(
     // Step 1: Encode with fatal mode
     const result = encoder.encode(code_units, output, true);
 
-    // Step 2-3: If unmappable, return the code point that failed
-    // Note: Current encoder API doesn't expose the failing code point
-    // For now, we return null on success, or a placeholder on error
-    if (result.status == streaming.EncodeResult.Status.unmappable) {
-        // Find the code unit that failed
-        if (result.code_units_consumed < code_units.len) {
-            const failed_cu = code_units[result.code_units_consumed];
-
-            // Use webidl code point predicates for surrogate handling
-            // If it's not a surrogate, return it as code point
-            if (!code_points.isSurrogate(failed_cu)) {
-                return @as(u21, failed_cu);
-            }
-
-            // If it's a lead surrogate, try to decode surrogate pair
-            if (code_points.isLeadSurrogate(failed_cu)) {
-                if (result.code_units_consumed + 1 < code_units.len) {
-                    const low = code_units[result.code_units_consumed + 1];
-                    if (code_points.isTrailSurrogate(low)) {
-                        // Decode surrogate pair
-                        return code_points.decodeSurrogatePair(failed_cu, low) catch {
-                            // Invalid pair, return replacement character
-                            return 0xFFFD;
-                        };
-                    }
-                }
-            }
-
-            // Unpaired surrogate
-            return 0xFFFD;
-        }
-    }
+    // Steps 2-3: return the handler's scalar, not a UTF-16 code unit at
+    // its input cursor. A supplementary error can span two input calls.
+    if (result.status == .unmappable) return result.error_code_point;
 
     // Step 4: Success
     return null;
