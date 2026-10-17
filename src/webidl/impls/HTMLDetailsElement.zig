@@ -57,9 +57,43 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     dom_module.attribute_change_steps.install("details", &attributeChangeSteps);
+    dom_module.activation.install(.{ .has = &hasSummaryActivation, .run = &runSummaryActivation });
     dom_module.mutation.registerInsertionStepsCallback(&insertionStepsCallback) catch |err| {
         log.warn("details insertion steps not registered: {}", .{err});
     };
+}
+
+/// HTML 4.11.2: every HTML summary has activation behavior. The behavior
+/// itself decides whether it is the summary for its parent details.
+fn hasSummaryActivation(target: *runtime.Instance) bool {
+    const names = dom_module.node_creation.elementNames(target) orelse return false;
+    return std.mem.eql(u8, names.local_name, "summary") and
+        std.mem.eql(u8, names.namespace orelse "", "http://www.w3.org/1999/xhtml");
+}
+
+fn runSummaryActivation(summary: *runtime.Instance, event: *runtime.Instance) void {
+    _ = event;
+    // Step 1: summary-for-its-parent-details steps 1-4. Only the first
+    // summary child of a details element can toggle it; other children
+    // before that summary do not matter. Chrome/Firefox agree (Safari
+    // still misses two nested activation cases).
+    const parent = (interfaces.Node.get_parentNode(summary) catch null) orelse return;
+    if (getInternal(parent) == null) return;
+    var child = interfaces.Node.get_firstChild(parent) catch null;
+    while (child) |node| : (child = interfaces.Node.get_nextSibling(node) catch null) {
+        if (hasSummaryActivation(node)) {
+            if (node != summary) return;
+            break;
+        }
+    }
+    if (child == null) return;
+    // Steps 2-3: set/remove the parent's open attribute through the DOM
+    // algorithms, which run its existing details notification steps.
+    if (hasOpen(parent)) {
+        removeOpen(parent);
+    } else {
+        dom_module.element_attributes.set(parent, "open", "", .{}) catch {};
+    }
 }
 
 /// HTMLDetailsElement's own construction steps: the generated chain runs HTMLElement's first.

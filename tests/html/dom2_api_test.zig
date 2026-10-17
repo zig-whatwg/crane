@@ -1,4 +1,4 @@
-//! DOM 4.13 algorithm regressions with a fresh Browser thread.
+//! DOM 4.13 / HTML 4.11.2 algorithm regressions with a fresh Browser thread.
 const std = @import("std");
 const browser_mod = @import("browser");
 
@@ -19,6 +19,10 @@ fn runIsolated(comptime exercise: fn () anyerror!void) !void {
 // Native-only: Blink still skips serialization for an absent name (Q12).
 test "removing a missing PI attribute serializes data and queues characterData" {
     try runIsolated(exerciseMissingPiAttribute);
+}
+
+test "summary activation requires a details parent and its first summary child" {
+    try runIsolated(exerciseSummaryActivation);
 }
 
 test "cloning a PI copies data without factory validation" {
@@ -64,4 +68,32 @@ fn exerciseMissingPiAttribute() !void {
     , allocator);
     defer allocator.free(result);
     try std.testing.expectEqualStrings("a=\"b\"|1|characterData|a='b'|true", result);
+}
+
+fn exerciseSummaryActivation() !void {
+    const allocator = std.testing.allocator;
+    const browser = try browser_mod.Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.NoPage;
+    const result = try page.evaluateScriptToString(
+        \\(() => {
+        \\  const details = document.createElement('details');
+        \\  details.innerHTML = '<p>intro</p><summary>first</summary><summary>second</summary><div><summary>nested</summary></div>';
+        \\  const summaries = details.querySelectorAll('summary');
+        \\  summaries[1].click();
+        \\  const secondIgnored = !details.open;
+        \\  summaries[2].click();
+        \\  const nestedIgnored = !details.open;
+        \\  summaries[0].click();
+        \\  const firstOpened = details.open;
+        \\  summaries[0].click();
+        \\  const firstClosed = !details.open;
+        \\  summaries[0].remove();
+        \\  summaries[1].click();
+        \\  return [secondIgnored, nestedIgnored, firstOpened, firstClosed, details.open].join(',');
+        \\})()
+    , allocator);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("true,true,true,true,true", result);
 }
