@@ -83,6 +83,9 @@ const Shaped = struct {
 
     pub const nullable_members = .{"nullable_text"};
     pub const any_members = .{"value"};
+    /// The interface `object` converts to, as codegen lists one
+    /// (`interface_members`): without it the member could not convert.
+    pub const interface_members = .{.{ "object", "Node" }};
 };
 
 test "a present null converts by type only for a non-nullable member with a scalar type - the default is not present" {

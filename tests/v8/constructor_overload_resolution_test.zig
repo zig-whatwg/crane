@@ -122,7 +122,7 @@ fn Probe(comptime U: type, comptime overloads: []const Overload) type {
     return struct {
         fn callback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
             const e = env_once.?;
-            const args = resolver.resolveConstructorOverload(U, overloads, info, testing.allocator, e.isolate, e.context) catch {
+            const args = resolver.resolveConstructorOverload(U, overloads, .{}, info, testing.allocator, e.isolate, e.context) catch {
                 chosen = -1;
                 return;
             };

@@ -368,6 +368,10 @@ progress = [
   status = "doing"
 
   [[infra.items]]
+  name = "Interface-typed values type-checked at the binding (WebIDL 3.2.15): arguments, setter and special-setter values, constructor arguments, dictionary members and sequence elements convert only from a platform object that implements the interface codegen names"
+  status = "done"
+
+  [[infra.items]]
   name = "The runtime restores the snapshot its own build generated (a January one is tracked in git and loaded first), with the global built as Window's"
   status = "done"
 

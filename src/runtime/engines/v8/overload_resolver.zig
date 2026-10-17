@@ -35,6 +35,13 @@ pub const Kind = webidl.overload_resolution.Kind;
 /// `UnionType`, one entry per variant in its order - with the call's
 /// arguments, and the chosen variant built from them.
 ///
+/// `interface_arguments` is the interface's `constructor_interface_arguments`
+/// (`.{}` for none): the interface each interface-typed argument of each
+/// variant converts to - a TypeError unless the value implements it. Step 12
+/// picks a variant by the TYPE at the distinguishing index alone, so a
+/// variant chosen by its argument count alone (FormData's three-argument
+/// append, CSSRotate's one-argument constructor) is checked only here.
+///
 /// Errors: `error.TypeError` where the algorithm throws one (no constructor
 /// takes this many arguments, or none takes the value at the distinguishing
 /// index); `error.ExceptionPending` where script threw - a GetMethod during
@@ -42,6 +49,7 @@ pub const Kind = webidl.overload_resolution.Kind;
 pub fn resolveConstructorOverload(
     comptime UnionType: type,
     comptime overloads: []const Overload,
+    comptime interface_arguments: anytype,
     info: *const v8.FunctionCallbackInfo,
     allocator: std.mem.Allocator,
     isolate: *v8.Isolate,
@@ -61,7 +69,7 @@ pub fn resolveConstructorOverload(
             // arguments before the distinguishing index - and an exception
             // one of those conversions throws is the one script sees.
             if (webidl.overload_resolution.distinguishingPrefix(overloads, arg_count)) |prefix| {
-                try convertPrefix(UnionType, overloads, prefix, info, allocator, isolate, context);
+                try convertPrefix(UnionType, overloads, interface_arguments, prefix, info, allocator, isolate, context);
             }
             return error.TypeError;
         },
@@ -75,7 +83,7 @@ pub fn resolveConstructorOverload(
     // the distinguishing index, so converting them as the chosen one's is
     // step 11.
     inline for (fields, 0..) |field, k| {
-        if (k == chosen) return buildVariant(UnionType, field, overloads[k].args.len, info, allocator, isolate, context);
+        if (k == chosen) return buildVariant(UnionType, field, overloads[k].args.len, interface_arguments, info, allocator, isolate, context);
     }
     unreachable;
 }
@@ -87,6 +95,7 @@ pub fn resolveConstructorOverload(
 fn convertPrefix(
     comptime UnionType: type,
     comptime overloads: []const Overload,
+    comptime interface_arguments: anytype,
     prefix: webidl.overload_resolution.Prefix,
     info: *const v8.FunctionCallbackInfo,
     allocator: std.mem.Allocator,
@@ -99,7 +108,7 @@ fn convertPrefix(
             if (k == prefix.entry) {
                 inline for (@typeInfo(field.type).@"struct".fields, 0..) |arg_field, i| {
                     if (i < prefix.d) {
-                        const value = try interface_mod.convertArgReleasing(arg_field.type, allocator, isolate, context, info.get(@intCast(i)));
+                        const value = try interface_mod.convertArgReleasingWith(arg_field.type, .{ .interface = comptime variantArgumentInterface(interface_arguments, field.name, i) }, allocator, isolate, context, info.get(@intCast(i)));
                         interface_mod.freeArgument(arg_field.type, allocator, value);
                     }
                 }
@@ -145,6 +154,7 @@ fn buildVariant(
     comptime UnionType: type,
     comptime field: std.builtin.Type.UnionField,
     comptime arity: usize,
+    comptime interface_arguments: anytype,
     info: *const v8.FunctionCallbackInfo,
     allocator: std.mem.Allocator,
     isolate: *v8.Isolate,
@@ -166,8 +176,9 @@ fn buildVariant(
         // argument rule (interface.convertArgReleasing), or every call
         // leaked one.
         const v8_arg = info.get(0);
-        const arg_value = try interface_mod.convertArgReleasing(
+        const arg_value = try interface_mod.convertArgReleasingWith(
             VariantType,
+            .{ .interface = comptime variantArgumentInterface(interface_arguments, field.name, 0) },
             allocator,
             isolate,
             context,
@@ -192,8 +203,9 @@ fn buildVariant(
     // Convert each JavaScript argument to corresponding struct field
     inline for (type_info.@"struct".fields, 0..) |struct_field, i| {
         const v8_arg = info.get(@intCast(i));
-        const field_value = try interface_mod.convertArgReleasing(
+        const field_value = try interface_mod.convertArgReleasingWith(
             struct_field.type,
+            .{ .interface = comptime variantArgumentInterface(interface_arguments, field.name, i) },
             allocator,
             isolate,
             context,
@@ -205,6 +217,19 @@ fn buildVariant(
 
     // Build union with the populated struct
     return @unionInit(UnionType, field.name, variant_struct);
+}
+
+/// The interface argument `index` of the variant `variant` converts to, from
+/// a `constructor_interface_arguments` table; null for one of no interface
+/// type.
+fn variantArgumentInterface(comptime interface_arguments: anytype, comptime variant: []const u8, comptime index: usize) ?type {
+    comptime {
+        @setEvalBranchQuota(100_000);
+        for (interface_arguments) |entry| {
+            if (entry[1] == index and std.mem.eql(u8, entry[0], variant)) return @import("conversions.zig").interfaceNamed(entry[2]);
+        }
+        return null;
+    }
 }
 
 // ============================================================================

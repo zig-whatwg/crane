@@ -158,9 +158,10 @@ pub fn convertToSequenceOfPlatformObjects(
     errdefer allocator.free(instances);
     for (items, 0..) |item, i| {
         // Step 3.3 of "create a sequence": the item converted to T - an
-        // interface type: it must implement an interface, or TypeError. The
-        // binding's own unwrap rule.
-        instances[i] = conversions.fromV8Value(*runtime.Instance, allocator, isolate, context, item) catch
+        // interface type: it must be a platform object, or TypeError. WHICH
+        // interface it implements the caller checks (`stateAs`), as it names
+        // T: AbortSignal.any asks each item for AbortSignal's state.
+        instances[i] = conversions.platformObjectOf(item) orelse
             return EngineError.TypeError;
     }
     return instances;
@@ -374,8 +375,9 @@ pub fn convertToPlatformObject(realm: runtime.Context, value: runtime.JSValue) ?
     const handle = ownHandle(entered.isolate, entered.scope.context, value) catch return null;
     defer ffi.v8_Global_Dispose(handle);
     if (!ffi.v8_Value_IsObject(handle) or ffi.v8_Value_IsFunction(handle)) return null;
-    // The binding's own unwrap rule for an interface-typed value.
-    return conversions.fromV8Value(*runtime.Instance, std.heap.page_allocator, entered.isolate, entered.scope.context, handle) catch null;
+    // The binding's own unwrap rule for a platform object; which interface
+    // it implements, the caller asks (`stateAs`).
+    return conversions.platformObjectOf(handle);
 }
 
 /// Engine table `getCopyOfBufferSourceBytes`: WebIDL "get a copy of the
