@@ -730,6 +730,9 @@ pub extern fn v8_Isolate_New() ?*Isolate;
 pub extern fn v8_Isolate_Dispose(isolate: *Isolate) void;
 /// Whether `isolate` was restored from a snapshot (v8_Isolate_NewFromSnapshot).
 pub extern fn v8_Isolate_IsFromSnapshot(isolate: *Isolate) bool;
+/// The bytes V8 restores `isolate` from (its StartupData's data) and their
+/// size; null, size 0, for an isolate made afresh. For tests.
+pub extern fn v8_Isolate_SnapshotBlob(isolate: *Isolate, out_size: *usize) ?[*]const u8;
 /// How many of `isolate`'s JSON (and default-export) modules wait for
 /// evaluation - the adapter's per-isolate record holds their parsed values
 /// until then. For tests.
@@ -2675,7 +2678,12 @@ pub extern fn v8_Snapshot_ClearGlobalHandles() void;
 /// CRITICAL: external_references MUST be the same array (same order)
 /// as was used when creating the snapshot.
 ///
-/// @param snapshot_data - Pointer to snapshot blob data
+/// The blob is read in place, never copied: V8 reads it again for every
+/// context restored from it, so `snapshot_data` is BORROWED until
+/// v8_Isolate_Dispose of the returned isolate returns (v8_wrapper.cpp says
+/// why every caller's blob outlives its isolates).
+///
+/// @param snapshot_data - Snapshot blob data, BORROWED for the isolate's life
 /// @param snapshot_size - Size of snapshot blob in bytes
 /// @param external_references - Null-terminated array of external references
 ///                              (must match snapshot creation order exactly)
