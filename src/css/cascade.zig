@@ -308,12 +308,20 @@ const Builder = struct {
             .font_weight => return .{ .number = self.computeFontWeight(v) },
             // CSS Color 4 6.4: "if currentcolor is the specified value of
             // the color property, it is treated as if it were inherit."
-            .color => if (v == .color and v.color == .current) {
-                const p = self.parentValue(.color);
-                p.retain();
-                return p;
+            .color => if (v == .color) switch (v.color) {
+                .current => {
+                    const p = self.parentValue(.color);
+                    p.retain();
+                    return p;
+                },
+                .named => |n| return .{ .color = .{ .rgba = n.rgba } },
+                .rgba => {},
             },
             .opacity => return .{ .number = std.math.clamp(v.number, 0, 1) },
+            // A named or system color computes to its color.
+            .background_color, .border_top_color, .border_right_color, .border_bottom_color, .border_left_color => if (v == .color and v.color == .named) {
+                return .{ .color = .{ .rgba = v.color.named.rgba } };
+            },
             .line_height => switch (v) {
                 .length => |len| if (len.unit == .percent) return Value.px(len.value / 100 * self.fontSize()),
                 else => {},
@@ -337,11 +345,10 @@ const Builder = struct {
                 if (len.unit == .percent) return v;
                 return Value.px(self.absolute(len));
             },
-            .text => |t| {
-                t.ref();
+            else => {
+                v.retain();
                 return v;
             },
-            else => return v,
         }
     }
 

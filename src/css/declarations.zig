@@ -257,15 +257,11 @@ pub const DeclarationBlock = struct {
         //    case-insensitive match for the string "important", then return."
         if (priority.len != 0 and !std.ascii.eqlIgnoreCase(priority, "important")) return false;
         const important = priority.len != 0;
-        const property = properties.lookup(property_name) orelse {
-            // 2. "If property is not a case-sensitive match for a supported
-            //    CSS property, then return" - kept as written instead, for
-            //    read-back (stated, design 6.2).
-            if (!isPlausiblePropertyName(property_name)) return false;
-            if (!isPlausibleValue(value_text)) return false;
-            try self.setUnparsed(property_name, value_text, important);
-            return true;
-        };
+        // 2. "If property is not a case-sensitive match for a supported CSS
+        //    property, then return." (Parsing keeps an unsupported
+        //    declaration for read-back; setProperty, as the spec says, does
+        //    not - ruling Q7.)
+        const property = properties.lookup(property_name) orelse return false;
         // 5. "Let component value list be the result of parsing value for
         //    property property. If component value list is null, then return."
         var assignments: std.ArrayList(Assignment) = .empty;
@@ -520,18 +516,6 @@ fn assignedEql(a: Assigned, b: Assigned) bool {
     };
 }
 
-/// A name CSS could parse as a property: an identifier (CSSOM keeps an
-/// unsupported one for read-back only if it could be a declaration).
-fn isPlausiblePropertyName(name: []const u8) bool {
-    if (name.len == 0) return false;
-    for (name) |c| if (!(std.ascii.isAlphanumeric(c) or c == '-' or c == '_' or c >= 0x80)) return false;
-    return true;
-}
-
-fn isPlausibleValue(text: []const u8) bool {
-    return std.mem.indexOfAny(u8, text, ";{}") == null;
-}
-
 // ============================================================================
 // Tests
 // ============================================================================
@@ -559,7 +543,7 @@ fn expectValue(block: *const DeclarationBlock, property: []const u8, expected: [
 test "parse: invalid declarations dropped, duplicates keep the last, important wins" {
     var block = try DeclarationBlock.parse(testOptions(), "color: red; width: -1px; color: blue; margin-left: 2px !important; margin-left: 3px");
     defer block.deinit();
-    try expectCssText(&block, "color: rgb(0, 0, 255); margin-left: 2px !important;");
+    try expectCssText(&block, "color: blue; margin-left: 2px !important;");
     try testing.expect(block.getPropertyPriority("margin-left"));
     try testing.expectEqual(@as(usize, 2), block.length());
     try testing.expectEqualStrings("color", block.item(0).?);
@@ -571,8 +555,8 @@ test "shorthands expand into longhands and serialize back" {
     try testing.expectEqual(@as(usize, 7), block.length());
     try expectValue(&block, "margin", "1px 2px");
     try expectValue(&block, "margin-right", "2px");
-    try expectValue(&block, "border-top", "1px solid rgb(255, 0, 0)");
-    try expectCssText(&block, "margin: 1px 2px; border-top: 1px solid rgb(255, 0, 0);");
+    try expectValue(&block, "border-top", "1px solid red");
+    try expectCssText(&block, "margin: 1px 2px; border-top: 1px solid red;");
 }
 
 test "a shorthand with mixed importance or a missing longhand reads as empty" {
@@ -600,8 +584,9 @@ test "setProperty and removeProperty (CSSOM 6.6.1)" {
     try testing.expect(!try block.setProperty(testOptions(), "color", "red", ""));
     try testing.expect(!try block.setProperty(testOptions(), "color", "nope", ""));
     try testing.expect(!try block.setProperty(testOptions(), "color", "blue", "bogus"));
+    try testing.expect(!try block.setProperty(testOptions(), "animation", "spin 1s", ""));
     try testing.expect(try block.setProperty(testOptions(), "Margin", "1px", "IMPORTANT"));
-    try expectCssText(&block, "color: rgb(255, 0, 0); margin: 1px !important;");
+    try expectCssText(&block, "color: red; margin: 1px !important;");
     var old: std.ArrayList(u8) = .empty;
     defer old.deinit(testing.allocator);
     try testing.expect(try block.removeProperty("margin", &old));

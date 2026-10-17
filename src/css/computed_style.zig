@@ -60,13 +60,7 @@ pub const ComputedStyle = struct {
     pub fn usedColor(self: *const ComputedStyle, l: Longhand) values.RgbaColor {
         const v = self.get(l);
         const c = if (v == .color) v.color else Color.black;
-        return switch (c) {
-            .rgba => |rgba| rgba,
-            .current => switch (self.get(.color).color) {
-                .rgba => |rgba| rgba,
-                .current => values.RgbaColor.black,
-            },
-        };
+        return c.absolute() orelse (self.get(.color).color.absolute() orelse values.RgbaColor.black);
     }
 
     /// CSSOM section 9: the resolved value of `l`, serialized into `out`.

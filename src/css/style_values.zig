@@ -334,6 +334,16 @@ pub const Display = struct {
 pub const Color = union(enum) {
     rgba: RgbaColor,
     current,
+    /// A <named-color> or <system-color> keyword: its color, and the
+    /// keyword (lowercase), which a specified value serializes as written
+    /// (CSS Color 4 15 "Serializing <color> Values": "the keyword ...
+    /// converted to ASCII lowercase"). A computed value is its color.
+    named: Named,
+
+    pub const Named = struct {
+        rgba: RgbaColor,
+        name: *SharedText,
+    };
 
     pub const transparent: Color = .{ .rgba = RgbaColor.transparent };
     pub const black: Color = .{ .rgba = RgbaColor.black };
@@ -342,9 +352,22 @@ pub const Color = union(enum) {
         return switch (a) {
             .current => b == .current,
             .rgba => |x| switch (b) {
-                .current => false,
                 .rgba => |y| x.eql(y),
+                else => false,
             },
+            .named => |x| switch (b) {
+                .named => |y| x.rgba.eql(y.rgba) and std.mem.eql(u8, x.name.bytes, y.name.bytes),
+                else => false,
+            },
+        };
+    }
+
+    /// The color itself; currentcolor has none of its own.
+    pub fn absolute(self: Color) ?RgbaColor {
+        return switch (self) {
+            .rgba => |c| c,
+            .named => |n| n.rgba,
+            .current => null,
         };
     }
 };
@@ -436,12 +459,21 @@ pub const Value = union(enum) {
 
     /// Take a reference to what the value holds (a copy of it is kept).
     pub fn retain(self: Value) void {
-        if (self == .text) self.text.ref();
+        if (self.sharedText()) |t| t.ref();
     }
 
     /// Drop the reference `retain` took.
     pub fn release(self: Value) void {
-        if (self == .text) self.text.unref();
+        if (self.sharedText()) |t| t.unref();
+    }
+
+    /// The counted text the value holds, if any.
+    pub fn sharedText(self: Value) ?*SharedText {
+        return switch (self) {
+            .text => |t| t,
+            .color => |c| if (c == .named) c.named.name else null,
+            else => null,
+        };
     }
 
     pub fn eql(a: Value, b: Value) bool {

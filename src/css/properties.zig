@@ -823,17 +823,29 @@ fn colorValue(options: ParseOptions, stream: *Stream, def: *const Info) ?Value {
     const property_name = def.longhand.name();
     if (color_mod.ColorParser.parse(&tok, property_name, &ctx)) |c| {
         advanceTo(stream, rest, &tok);
+        // A <named-color> keeps its keyword; a hashless hex color (the
+        // quirk) does not.
+        if (t.token_type == .ident and !(options.quirks and def.quirky_color and tokenizer_mod.isHexColor(t.value))) {
+            return namedColor(options, t.value, c) catch null;
+        }
         return .{ .color = .{ .rgba = c } };
     } else |_| {}
-    // A <system-color> (CSS Color 4 6.2), resolved to the light palette at
-    // parse time (stated: color-scheme is a later batch).
+    // A <system-color> (CSS Color 4 6.2), its color the light palette's
+    // (stated: color-scheme is a later batch).
     if (t.token_type == .ident) {
         if (color_mod.ColorParser.parseWithoutContext(t.value, options.allocator)) |fc| {
             _ = stream.next();
-            return .{ .color = .{ .rgba = fc.quantize() } };
+            return namedColor(options, t.value, fc.quantize()) catch null;
         } else |_| {}
     }
     return null;
+}
+
+fn namedColor(options: ParseOptions, raw: []const u8, rgba: values.RgbaColor) Allocator.Error!Value {
+    const decoded = try tokenizer_mod.decode(options.allocator, raw);
+    defer options.allocator.free(decoded);
+    _ = std.ascii.lowerString(decoded, decoded);
+    return .{ .color = .{ .named = .{ .rgba = rgba, .name = try SharedText.create(options.allocator, decoded) } } };
 }
 
 /// Move `stream` to where `tok`, which read `rest` (a suffix of the
@@ -1389,6 +1401,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .color => |c| switch (c) {
             .current => try out.appendSlice(allocator, "currentcolor"),
             .rgba => |rgba| try values.serializeRgba(rgba, out, allocator),
+            .named => |n| try out.appendSlice(allocator, n.name.bytes),
         },
         .display => |d| try d.serialize(out, allocator),
         .text => |t| try out.appendSlice(allocator, t.bytes),
@@ -1607,11 +1620,13 @@ test "the quirks mode unitless length applies only in quirks mode and only to it
 }
 
 test "colors: named, hex, rgb(), currentcolor, system colors" {
-    try expectSerialized("color", "red", "rgb(255, 0, 0)");
+    try expectSerialized("color", "red", "red");
+    try expectSerialized("color", "RED", "red");
+    try expectSerialized("color", "#f00", "rgb(255, 0, 0)");
     try expectSerialized("color", "#00ff0080", "rgba(0, 255, 0, 0.5)");
-    try expectSerialized("background-color", "transparent", "rgba(0, 0, 0, 0)");
+    try expectSerialized("background-color", "transparent", "transparent");
     try expectSerialized("border-top-color", "currentColor", "currentcolor");
-    try expectSerialized("color", "CanvasText", "rgb(0, 0, 0)");
+    try expectSerialized("color", "CanvasText", "canvastext");
     try expectInvalid("color", "notacolor");
     try expectInvalid("color", "red blue");
 }
@@ -1680,8 +1695,8 @@ test "box shorthands expand 1-4 values and serialize back to the shortest" {
 
 test "border shorthands: any order, omitted parts initial" {
     try expectSerialized("border", "solid", "solid");
-    try expectSerialized("border-top", "1px solid red", "1px solid rgb(255, 0, 0)");
-    try expectSerialized("border-left", "red 2px", "2px rgb(255, 0, 0)");
+    try expectSerialized("border-top", "1px solid red", "1px solid red");
+    try expectSerialized("border-left", "red 2px", "2px red");
     try expectSerialized("border-style", "solid none", "solid none");
     try expectInvalid("border", "solid solid");
     try expectInvalid("border", "1px 2px");
@@ -1699,9 +1714,9 @@ test "white-space and overflow" {
 }
 
 test "background: every component parses, image and color are kept" {
-    try expectSerialized("background", "green", "rgb(0, 128, 0)");
-    try expectSerialized("background", "url(x.png) no-repeat center / cover red", "url(\"x.png\") rgb(255, 0, 0)");
-    try expectSerialized("background", "url(a.png), url(b.png) blue", "url(\"a.png\"), url(\"b.png\") rgb(0, 0, 255)");
+    try expectSerialized("background", "green", "green");
+    try expectSerialized("background", "url(x.png) no-repeat center / cover red", "url(\"x.png\") red");
+    try expectSerialized("background", "url(a.png), url(b.png) blue", "url(\"a.png\"), url(\"b.png\") blue");
     try expectInvalid("background", "red, blue");
     try expectInvalid("background", "bogus");
 }
