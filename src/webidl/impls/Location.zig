@@ -617,23 +617,20 @@ pub fn get_ancestorOrigins(instance: *runtime.Instance) anyerror!*runtime.Instan
         }
     }
 
+    // HTML 3.1.3: the document's internal ancestor origin objects list,
+    // masked by each frame's iframe element referrer policy
+    // (whatwg/html#11560, 2026-03-11; Firefox 157 ships it, 16/16 in
+    // location-ancestor-origins.sub.html at wpt.fyi cc74d2669f, where Chrome
+    // and Safari are 9/16). Golden rule 2 as refined 2026-10-17: a newer spec
+    // one browser ships wins (gr2audit A19).
+    var origins: std.ArrayList(?dom.origin_record.Origin) = .empty;
+    defer origins.deinit(internal.allocator);
+    try internalAncestorOrigins(internal.allocator, context.?, &origins);
     var strings: std.ArrayList([]const u8) = .empty;
     defer strings.deinit(internal.allocator);
-    // Browser deviation from HTML 3.1.3, internal ancestor origin objects
-    // list creation steps 7-12: do not mask by the iframe's referrerpolicy.
-    // Aligned stable WPT (2026-10-06) has Chrome 154 and Safari 27 at 9/16,
-    // Firefox 157 at 16/16; the seven differences are container masking. The
-    // browser majority also fails both referrerpolicy-snapshot subtests and
-    // the twelve redirect-still-mask cases that expect masking. Blink
-    // Location::ancestorOrigins and WebKit's counterpart walk parent frames
-    // and serialize their security origins.
-    var ancestor = context.?.parent;
-    while (ancestor) |parent| : (ancestor = parent.parent) {
-        const raw_parent_document = parent.active_document orelse return error.InvalidStateError;
-        const parent_document: *runtime.Instance = @ptrCast(@alignCast(raw_parent_document));
-        const ancestor_origin = (try dom.document_origin.shareable(parent_document)) orelse return error.InvalidStateError;
-        try strings.append(internal.allocator, ancestor_origin.serialized orelse "null");
-    }
+    // Ancestor origins list creation step 4: each origin's serialization; a
+    // masked entry is a new opaque origin, "null".
+    for (origins.items) |entry| try strings.append(internal.allocator, if (entry) |o| o.serialized else "null");
 
     // Ancestor origins list creation steps 3-5: a DOMStringList that owns
     // copies of the serializations. A traced edge preserves script state
@@ -644,6 +641,78 @@ pub fn get_ancestorOrigins(instance: *runtime.Instance) anyerror!*runtime.Instan
     internal.ancestor_origins = list;
     internal.ancestor_origins_document = @import("same_object.zig").Link.to(document);
     return list;
+}
+
+/// `document`'s origin as a security check reads it: its record, with the
+/// serialization resolved. Borrowed for the computation that asks.
+fn documentOriginOf(document: *runtime.Instance) !dom.origin_record.Origin {
+    const record = (try dom.document_origin.shareable(document)) orelse return error.InvalidStateError;
+    return .{ .serialized = record.serialized orelse "null", .record = record };
+}
+
+/// HTML 3.1.3 "internal ancestor origin objects list creation steps" for the
+/// active document of `context`, into `out` (null: a new opaque origin, a
+/// masked entry). The spec runs them as each document is created, from its
+/// parent document's list; a document's container chain and the policy it
+/// was created with (BrowsingContext.ancestor_origins_policy) cannot change
+/// while it is fully active, so running them now, top-down over the chain,
+/// gives the same list. The origins are borrowed from the chain's active
+/// documents for the caller's synchronous use.
+/// Spec: https://html.spec.whatwg.org/multipage/document-sequences.html#internal-ancestor-origin-objects-list-creation-steps
+fn internalAncestorOrigins(allocator: Allocator, context: *html_core.BrowsingContext, out: *std.ArrayList(?dom.origin_record.Origin)) !void {
+    // The chain, innermost first: context, its parent, ..., the top.
+    var chain: std.ArrayList(*html_core.BrowsingContext) = .empty;
+    defer chain.deinit(allocator);
+    var at: ?*html_core.BrowsingContext = context;
+    while (at) |c| : (at = c.parent) try chain.append(allocator, c);
+
+    // The top-level document's list is empty (step 3); each child's is made
+    // from its parent document's (step 5).
+    var parent_list: std.ArrayList(?dom.origin_record.Origin) = .empty;
+    defer parent_list.deinit(allocator);
+    var index = chain.items.len - 1;
+    while (index > 0) {
+        index -= 1;
+        const child = chain.items[index];
+        const parent = chain.items[index + 1];
+        const raw_document = child.active_document orelse return error.InvalidStateError;
+        const raw_parent_document = parent.active_document orelse return error.InvalidStateError;
+        const document_origin = try documentOriginOf(@ptrCast(@alignCast(raw_document)));
+        // Steps 2 and 4: parentDoc, the container document.
+        const parent_origin = try documentOriginOf(@ptrCast(@alignCast(raw_parent_document)));
+
+        // Step 1: output.
+        var output: std.ArrayList(?dom.origin_record.Origin) = .empty;
+        errdefer output.deinit(allocator);
+        // Steps 7-9: masked by "no-referrer", or by "same-origin" when the
+        // parent document is of another origin.
+        var masked = switch (child.ancestor_origins_policy) {
+            .no_referrer => true,
+            .same_origin => !dom.origin_record.sameOrigin(parent_origin, document_origin),
+            else => false,
+        };
+        // Steps 10-11: a new opaque origin, or parentDoc's origin.
+        try output.append(allocator, if (masked) null else parent_origin);
+        // Step 12: parentDoc's own list (step 5).
+        for (parent_list.items) |ancestor_origin| {
+            // 12.1. A masked run hides the origins equal to parentDoc's.
+            if (masked) {
+                if (ancestor_origin) |o| {
+                    if (dom.origin_record.sameOrigin(o, parent_origin)) {
+                        try output.append(allocator, null);
+                        continue;
+                    }
+                }
+            }
+            // 12.2.
+            try output.append(allocator, ancestor_origin);
+            masked = false;
+        }
+        parent_list.deinit(allocator);
+        parent_list = output;
+    }
+    // Step 13: the innermost document's list.
+    try out.appendSlice(allocator, parent_list.items);
 }
 
 // =============================================================================

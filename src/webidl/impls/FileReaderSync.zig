@@ -14,14 +14,11 @@ const std = @import("std");
 const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
 const file = @import("file");
+const engine = @import("engine");
+const blob_bytes = @import("dom").blob_bytes;
 const FileReaderSync = interfaces.FileReaderSync;
 const Blob = interfaces.Blob;
-const BlobImpl = @import("Blob.zig");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = FileReaderSync.State;
@@ -95,125 +92,44 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
 }
 
-/// Get blob internal state
-fn getBlobInternal(blob: *runtime.Instance) ?*BlobImpl.InternalState {
-    return BlobImpl.getInternal(blob);
-}
-
-/// Operation: readAsArrayBuffer
-///
-/// Spec: https://www.w3.org/TR/FileAPI/#readAsArrayBufferSync
-///
-/// Synchronously reads the entire Blob contents as an ArrayBuffer.
-/// This method blocks until the read completes.
+/// File API §6.5.1.4, readAsArrayBuffer.
 pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!runtime.JSValue {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-    const blob_internal = getBlobInternal(blob) orelse return error.InvalidState;
-
-    // Get blob bytes
-    const bytes = blob_internal.blob_data.bytes;
-
-    // Package as ArrayBuffer using package data algorithm
-    const result = file.algorithms.packageData(
-        internal.allocator,
-        bytes,
-        .ArrayBuffer,
-        blob_internal.blob_data.getType(),
-        null,
-    ) catch return error.OutOfMemory;
-
-    // TODO: Return proper V8 ArrayBuffer - need typed array creation utility
-    // result.array_buffer contains the raw bytes that should be wrapped
-    _ = result;
-    return runtime.JSValue.jsUndefined;
+    _ = getInternal(instance) orelse return error.InvalidState;
+    // 1–4. Blob data is immutable and already in memory; reading all of its
+    // stream produces these same bytes, as in Blob.text()/arrayBuffer().
+    const bytes = blob_bytes.bytesOf(blob) orelse return error.InvalidState;
+    // 5. Package as a new ArrayBuffer. The engine copies the contents once;
+    // do not allocate and discard an intermediate native buffer.
+    const buffer = try engine.createArrayBuffer(engine.currentRealm() orelse instance.ctx, bytes);
+    return buffer.take();
 }
 
-/// Operation: readAsBinaryString
-///
-/// Spec: https://www.w3.org/TR/FileAPI/#readAsBinaryStringSync
-///
-/// Synchronously reads the entire Blob contents as a binary string.
-/// Each byte becomes a character with code point equal to the byte value.
+/// File API §6.5.1.5, readAsBinaryString: each byte is an equal code unit.
 pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-    const blob_internal = getBlobInternal(blob) orelse return error.InvalidState;
-
-    // Get blob bytes
-    const bytes = blob_internal.blob_data.bytes;
-
-    // Package as BinaryString
-    const result = file.algorithms.packageData(
-        internal.allocator,
-        bytes,
-        .BinaryString,
-        blob_internal.blob_data.getType(),
-        null,
-    ) catch return error.OutOfMemory;
-
-    // Return as DOMString
-    return runtime.DOMString.initInterned(result.string);
+    return packageString(instance, blob, .BinaryString, null);
 }
 
-/// Operation: readAsDataURL
-///
-/// Spec: https://www.w3.org/TR/FileAPI/#readAsDataURLSync
-///
-/// Synchronously reads the entire Blob contents as a data URL.
-/// Returns a data: URL with base64-encoded blob data.
+/// File API §6.5.1.3, readAsDataURL.
 pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-    const blob_internal = getBlobInternal(blob) orelse return error.InvalidState;
-
-    // Get blob bytes
-    const bytes = blob_internal.blob_data.bytes;
-
-    // Package as DataURL
-    const result = file.algorithms.packageData(
-        internal.allocator,
-        bytes,
-        .DataURL,
-        blob_internal.blob_data.getType(),
-        null,
-    ) catch return error.OutOfMemory;
-
-    // Return as DOMString
-    return runtime.DOMString.initInterned(result.string);
+    return packageString(instance, blob, .DataURL, null);
 }
 
-/// Operation: readAsText
-///
-/// Spec: https://www.w3.org/TR/FileAPI/#readAsTextSync
-///
-/// Synchronously reads the entire Blob contents as text.
-/// Uses the specified encoding or defaults to UTF-8.
-///
-/// Parameters:
-/// - blob: The blob to read
-/// - encoding: Optional encoding label (default "UTF-8")
+/// File API §6.5.1.2, readAsText: explicit label, MIME charset, then UTF-8;
+/// the legacy decode algorithm lets a BOM override every fallback.
 pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: webidl.Opt(runtime.DOMString)) anyerror!runtime.DOMString {
+    return packageString(instance, blob, .Text, if (encoding.wasPassed()) encoding.getValue().asSlice() else null);
+}
+
+fn packageString(instance: *runtime.Instance, blob: *runtime.Instance, comptime read_type: file.algorithms.PackageReadType, encoding_label: ?[]const u8) !runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    const blob_internal = getBlobInternal(blob) orelse return error.InvalidState;
-
-    // Get blob bytes
-    const bytes = blob_internal.blob_data.bytes;
-
-    // Get encoding name (default to UTF-8) - unwrap Opt
-    const encoding_name: ?[]const u8 = if (encoding.wasPassed()) blk: {
-        const enc_slice = encoding.value.asSlice();
-        break :blk if (enc_slice.len > 0) enc_slice else null;
-    } else null;
-
-    // Package as Text with encoding
-    const result = file.algorithms.packageData(
-        internal.allocator,
-        bytes,
-        .Text,
-        blob_internal.blob_data.getType(),
-        encoding_name,
-    ) catch return error.OutOfMemory;
-
-    // Return as DOMString
-    return runtime.DOMString.initInterned(result.string);
+    // 1–4. Read the immutable in-memory Blob through its owning hook.
+    const bytes = blob_bytes.bytesOf(blob) orelse return error.InvalidState;
+    var mime_type = try Blob.get_type(blob);
+    defer mime_type.deinit(blob.ctx.allocator);
+    // 5. Both readers use File API's package data algorithm. Its string is
+    // allocated, so return an owned DOMString for the binding to release.
+    const result = try file.algorithms.packageData(internal.allocator, bytes, read_type, mime_type.asSlice(), encoding_label);
+    return runtime.DOMString.initOwned(result.string);
 }
 
 // ============================================================================
@@ -228,8 +144,8 @@ test "FileReaderSync - constructor" {
     defer ctx_data.deinit();
     const ctx: runtime.Context = &ctx_data;
 
-    const reader = try call_constructor(allocator, ctx);
-    defer deinit(reader);
+    const reader = try call_constructor(ctx);
+    defer runtime.Instance.deinit(reader);
 
     // Verify internal state was created
     const internal = getInternal(reader);

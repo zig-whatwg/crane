@@ -1,0 +1,38 @@
+# The 0.1 gate's exemptions: worklist files omitted from the blocking count
+# because ALL THREE of Chrome, Firefox and Safari intentionally deviate from the
+# spec the file tests (the user, 2026-10-17; AGENTS.md "The 0.1 gate" and golden
+# rule 2's "all three intentionally declined" case).
+#
+# Read by tools/wpt_progress.py (the progress page) and tools/wpt_site/
+# (the public results site). A listed file that would block is counted in its
+# own group, "exempt (all three browsers intentionally deviate)", never as
+# blocking; a listed file that does not block keeps its own standing. Both tools
+# stop with an error on an invalid entry - never a silent exemption.
+#
+# NOT exempt: a file every browser merely fails, a file only some browsers
+# decline, a file the browsers fail because they lag a newer spec, and a file
+# where the spec text is old and simply never implemented (golden rule 2's
+# "no newer spec" case: Crane follows the browsers there, and the file blocks).
+#
+# Format: one entry per worklist path, a [path] line followed by key = value
+# lines. Blank lines and lines starting with # are ignored. Every key below is
+# required, exactly once per entry:
+#
+#   [content-security-policy/example/file.html]
+#   why             = one line: what the browsers do instead of the spec, and why it is intentional
+#   spec            = https://... the spec text (and the change) the browsers decline
+#   chrome.result   = wpt.fyi run <run id>: <passes>/<total>
+#   chrome.intent   = https://... standards position, WontFix bug or implementer objection
+#   firefox.result  = wpt.fyi run <run id>: <passes>/<total>
+#   firefox.intent  = https://...
+#   safari.result   = wpt.fyi run <run id>: <passes>/<total>
+#   safari.intent   = https://...
+#
+# Rules the tools check: the path is in tests/wpt_0_1_worklist.txt and is
+# listed once; spec and every *.intent value is an http(s) URL; every *.result
+# value names a wpt.fyi run ("wpt.fyi run <id>: <passes>/<total>"); no other
+# key appears.
+#
+# Entries: none. The 2026-10-17 audit of every stated browser deviation (lane
+# gr2audit, 108 deviations) found none that all three browsers intentionally
+# declined with evidence. Add an entry only with that evidence for all three.

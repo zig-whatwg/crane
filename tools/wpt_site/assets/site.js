@@ -328,7 +328,7 @@
   // ==========================================================================
 
   // Most severe first. Blocking standings, then not run, then the rest.
-  const SEVERITY = { crash: 7, error: 6, timeout: 5, "none-passed": 4, unrun: 3, partial: 2, empty: 1, clean: 0 };
+  const SEVERITY = { crash: 7, error: 6, timeout: 5, "none-passed": 4, exempt: 3.5, unrun: 3, partial: 2, empty: 1, clean: 0 };
 
   function sortKey(table, row, col) {
     const cell = row.cells[col];
@@ -390,6 +390,7 @@
     ["clean", "Clean", (g) => g === "clean"],
     ["empty", "No subtests", (g) => g === "empty"],
     ["unrun", "Not run", (g) => g === "unrun"],
+    ["exempt", "Exempt", (g) => g === "exempt"],
   ];
 
   function directoryTools() {

@@ -145,9 +145,8 @@ pub fn setRequestContentType(allocator: Allocator, state: *XMLHttpRequestState, 
     defer if (original) |o| allocator.free(o);
     // 4.5. If originalAuthorContentType is non-null, then:
     if (original) |author_type| {
-        // 4.5.1. If body is a Document or a USVString, then:
-        // Browser deviation: Blink, Gecko and WebKit also reconcile a
-        // URLSearchParams body (wpt.fyi cc74d2669f, send-usp.any.html).
+        // 4.5.1. If body is a Document object, a URLSearchParams object, or a
+        // string, then:
         if (kind == .other) return;
         // 1. Let contentTypeRecord be the result of parsing
         //    originalAuthorContentType.

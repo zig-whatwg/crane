@@ -1,133 +1,81 @@
-//! W3C File API - Package Data Algorithm
+//! File API §6.3, package data for synchronous and asynchronous readers.
+//! https://w3c.github.io/FileAPI/#blob-package-data
 //!
-//! This module implements the `package data` algorithm per W3C File API spec §6.1.
-//!
-//! Spec: https://www.w3.org/TR/FileAPI/#readOperation
-//!
-//! ## Algorithm Overview
-//!
-//! The package data algorithm converts raw bytes into the format requested
-//! by the FileReader read operation:
-//!
-//! - ArrayBuffer: Return bytes as-is
-//! - BinaryString: Convert bytes to binary string (one char per byte)
-//! - Text: Decode bytes using specified encoding (default UTF-8)
-//! - DataURL: Encode as base64 data URL
-//!
-//! ## DataURL Format
-//!
-//! Per spec, data URLs have the format:
-//! data:<mediatype>;base64,<data>
-//!
-//! If the blob has no type, the mediatype is omitted.
+//! Strings are owned UTF-8, including BinaryString's isomorphic decoding.
+//! ArrayBuffer bytes are an owned copy for callers that need native storage;
+//! callers creating an engine ArrayBuffer directly need not copy them here.
 
 const std = @import("std");
-const base64 = std.base64.standard;
+const infra = @import("infra");
+const encoding = @import("encoding");
+const mimesniff = @import("mimesniff");
 
-/// The type of read operation (determines output format).
-pub const ReadType = enum {
-    /// Return bytes as ArrayBuffer
-    ArrayBuffer,
-    /// Return bytes as binary string (legacy)
-    BinaryString,
-    /// Return bytes as decoded text
-    Text,
-    /// Return bytes as base64 data URL
-    DataURL,
-};
+pub const ReadType = enum { ArrayBuffer, BinaryString, Text, DataURL };
 
-/// Package data result.
+/// Caller owns the returned allocation and frees it with the given allocator.
 pub const PackageResult = union(enum) {
-    /// ArrayBuffer result (raw bytes)
-    array_buffer: []const u8,
-    /// String result (text or binary string)
-    string: []const u8,
+    array_buffer: []u8,
+    string: []u8,
 };
 
-/// Package data algorithm per W3C File API spec §6.1.
-///
-/// Converts raw bytes into the format specified by readType.
-///
-/// Parameters:
-/// - allocator: Memory allocator
-/// - bytes: The raw bytes to package
-/// - read_type: The desired output format
-/// - mime_type: The MIME type (for DataURL)
-/// - encoding: The text encoding (for Text, default UTF-8)
-///
-/// Returns the packaged result (caller owns any allocated memory).
 pub fn packageData(
     allocator: std.mem.Allocator,
     bytes: []const u8,
     read_type: ReadType,
     mime_type: []const u8,
-    encoding: ?[]const u8,
+    encoding_label: ?[]const u8,
 ) !PackageResult {
-    switch (read_type) {
-        .ArrayBuffer => {
-            // Return bytes as-is (copy for ownership)
-            const result = try allocator.dupe(u8, bytes);
-            return .{ .array_buffer = result };
+    return switch (read_type) {
+        // ArrayBuffer: a new buffer whose contents are bytes.
+        .ArrayBuffer => .{ .array_buffer = try allocator.dupe(u8, bytes) },
+        // BinaryString: each byte becomes a code unit of equal value.
+        .BinaryString => .{ .string = try infra.bytes.isomorphicDecodeToUtf8(allocator, bytes) },
+        .Text => .{ .string = try decodeText(allocator, bytes, mime_type, encoding_label) },
+        .DataURL => blk: {
+            // FileAPI issue 104 leaves this underspecified: all three browsers
+            // use application/octet-stream when the type is empty. Match them,
+            // as FileReader and filereader_readAsDataURL.any.js already do.
+            // https://github.com/w3c/FileAPI/issues/104
+            const media_type = if (mime_type.len > 0) mime_type else "application/octet-stream";
+            const encoder = std.base64.standard.Encoder;
+            const prefix = try std.fmt.allocPrint(allocator, "data:{s};base64,", .{media_type});
+            defer allocator.free(prefix);
+            const result = try allocator.alloc(u8, prefix.len + encoder.calcSize(bytes.len));
+            @memcpy(result[0..prefix.len], prefix);
+            _ = encoder.encode(result[prefix.len..], bytes);
+            break :blk .{ .string = result };
         },
+    };
+}
 
-        .BinaryString => {
-            // Binary string: one character per byte (Latin-1 encoding)
-            // In JavaScript, this is a string where charCodeAt(i) === bytes[i]
-            // In Zig, we just return the bytes as a string
-            const result = try allocator.dupe(u8, bytes);
-            return .{ .string = result };
-        },
-
-        .Text => {
-            // Decode using specified encoding (default UTF-8)
-            const enc = encoding orelse "utf-8";
-
-            // TODO: Integrate with encoding module for full encoding support
-            // For now, only UTF-8 is supported
-            if (!std.ascii.eqlIgnoreCase(enc, "utf-8") and
-                !std.ascii.eqlIgnoreCase(enc, "utf8"))
-            {
-                // Return bytes as-is for unsupported encodings
-                // Real implementation would use encoding module
-                const result = try allocator.dupe(u8, bytes);
-                return .{ .string = result };
+fn decodeText(allocator: std.mem.Allocator, bytes: []const u8, mime_type: []const u8, label: ?[]const u8) ![]u8 {
+    // Text 1–2: get an encoding from encodingLabel, if supplied.
+    var charset: ?*const encoding.Encoding = if (label) |name| encoding.getEncoding(name) else null;
+    // Text 3: an absent or unrecognized label falls back to the MIME charset.
+    if (charset == null) {
+        if (try mimesniff.parseMimeType(allocator, mime_type)) |parsed| {
+            var mime = parsed;
+            defer mime.deinit();
+            const charset_name = std.unicode.utf8ToUtf16LeStringLiteral("charset");
+            // This map compares slice keys by address; compare their contents.
+            for (mime.parameters.entries.items()) |entry| {
+                if (!std.mem.eql(u16, entry.key, charset_name)) continue;
+                const name = try std.unicode.utf16LeToUtf8Alloc(allocator, entry.value);
+                defer allocator.free(name);
+                charset = encoding.getEncoding(name);
+                break;
             }
-
-            // UTF-8: return as-is (already UTF-8)
-            const result = try allocator.dupe(u8, bytes);
-            return .{ .string = result };
-        },
-
-        .DataURL => {
-            // Format: data:<mediatype>;base64,<data>
-            const encoded_len = base64.Encoder.calcSize(bytes.len);
-
-            // Calculate total URL length
-            const has_type = mime_type.len > 0;
-
-            // Build the data URL
-            var url: []u8 = undefined;
-            if (has_type) {
-                url = try std.fmt.allocPrint(
-                    allocator,
-                    "data:{s};base64,",
-                    .{mime_type},
-                );
-            } else {
-                url = try allocator.dupe(u8, "data:;base64,");
-            }
-            errdefer allocator.free(url);
-
-            // Allocate space for base64 data
-            const result = try allocator.realloc(url, url.len + encoded_len);
-            errdefer allocator.free(result);
-
-            // Encode to base64
-            _ = base64.Encoder.encode(result[result.len - encoded_len ..], bytes);
-
-            return .{ .string = result };
-        },
+        }
     }
+    // Text 4–5: UTF-8 is the final fallback; Encoding's legacy decode lets
+    // a BOM override it (and every explicit or MIME encoding).
+    const code_units = try encoding.hooks.decode(allocator, bytes, charset orelse encoding.UTF_8);
+    defer allocator.free(code_units);
+    // Decoder output consists of scalar values, never unpaired surrogates.
+    return std.unicode.utf16LeToUtf8Alloc(allocator, code_units) catch |err| switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        else => unreachable,
+    };
 }
 
 test "package - ArrayBuffer" {
@@ -147,7 +95,7 @@ test "package - BinaryString" {
     const result = try packageData(allocator, bytes, .BinaryString, "", null);
     defer allocator.free(result.string);
 
-    try std.testing.expectEqualSlices(u8, &[_]u8{ 0, 1, 2, 255 }, result.string);
+    try std.testing.expectEqualStrings("\x00\x01\x02\xc3\xbf", result.string);
 }
 
 test "package - Text UTF-8" {
@@ -177,7 +125,7 @@ test "package - DataURL without type" {
     const result = try packageData(allocator, bytes, .DataURL, "", null);
     defer allocator.free(result.string);
 
-    try std.testing.expectEqualStrings("data:;base64,SGVsbG8=", result.string);
+    try std.testing.expectEqualStrings("data:application/octet-stream;base64,SGVsbG8=", result.string);
 }
 
 test "package - empty bytes" {
