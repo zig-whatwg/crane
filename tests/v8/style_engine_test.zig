@@ -168,36 +168,32 @@ test "getComputedStyle: the same interceptor, read-only, empty without a browsin
     try page.expect("String(cs.anotherExpando)", "1");
 }
 
-test "the cascade: UA sheet, a style element, the style attribute, inheritance" {
+test "the cascade: the UA sheet, the style attribute, inheritance" {
     dom.style.ua_sheet.build();
     const page = try Page.open();
     defer page.close();
     try page.eval(html_page);
+    // A <style> element's sheet is tested through the WPT runner
+    // (crane/style1-cascade.html): its load needs an event loop this
+    // harness's document has not.
     try page.eval(
         \\globalThis.span = d.createElement('span'); div.appendChild(span);
-        \\globalThis.sheet = d.createElement('style');
-        \\sheet.textContent = '#x { margin-left: 2px } .a { margin-left: 9px; color: red } div { color: blue } @media print { div { width: 1px } }';
-        \\d.head.appendChild(sheet);
+        \\div.setAttribute('style', 'color: rgb(1, 2, 3); margin-left: 2px');
     );
     try expectComputed(page, "d.documentElement", "display", "block");
+    try expectComputed(page, "d.head", "display", "none");
     try expectComputed(page, "div", "display", "block");
     try expectComputed(page, "span", "display", "inline");
-    try expectComputed(page, "div", "color", "rgb(0, 0, 255)");
-    try page.eval("div.id = 'x'; div.className = 'a';");
     try expectComputed(page, "div", "margin-left", "2px");
-    try expectComputed(page, "div", "color", "rgb(255, 0, 0)");
-    try expectComputed(page, "span", "color", "rgb(255, 0, 0)");
-    try expectComputed(page, "div", "width", "auto");
+    try expectComputed(page, "div", "color", "rgb(1, 2, 3)");
+    try expectComputed(page, "span", "color", "rgb(1, 2, 3)");
+    try expectComputed(page, "span", "margin-left", "0px");
     try page.eval("span.hidden = true");
     try expectComputed(page, "span", "display", "none");
     try page.eval("div.style.color = 'navy'");
     try expectComputed(page, "span", "color", "rgb(0, 0, 128)");
-    try page.eval("sheet.media = 'print'");
-    try expectComputed(page, "div", "margin-left", "0px");
-    try page.eval("sheet.media = ''; sheet.disabled = true");
-    try expectComputed(page, "div", "margin-left", "0px");
-    try page.eval("sheet.disabled = false; sheet.remove()");
-    try expectComputed(page, "div", "margin-left", "0px");
+    try page.eval("div.removeAttribute('style')");
+    try expectComputed(page, "span", "color", "rgb(0, 0, 0)");
 }
 
 test "a cached style is reused until an input moves" {

@@ -176,6 +176,10 @@ pub const SheetRecord = struct {
 
 /// One style rule's selectors and declarations, kept at a stable address.
 pub const StyleRule = struct {
+    /// The selector's text, owned: the parsed selectors' names are slices
+    /// of it (selector.parse decodes only escaped tokens), so it lives as
+    /// long as they do.
+    prelude: []u8,
     selectors: selector.SelectorList,
     block: DeclarationBlock,
 };
@@ -257,6 +261,7 @@ pub const Contents = struct {
         for (self.style_rules.items) |rule| {
             rule.selectors.deinit();
             rule.block.deinit();
+            a.free(rule.prelude);
             a.destroy(rule);
         }
         self.style_rules.deinit(a);
@@ -469,16 +474,21 @@ const Compiler = struct {
     fn styleRule(self: *Compiler, rule: *const css.rules.Rule, condition: ?u32, layer: ?u16) Allocator.Error!void {
         const a = self.contents.allocator;
         if (rule.prelude.len == 0) return;
-        var selectors = selector.parse(a, rule.prelude) catch |err| switch (err) {
+        const prelude = try a.dupe(u8, rule.prelude);
+        errdefer a.free(prelude);
+        var selectors = selector.parse(a, prelude) catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
             // "a style rule whose selector is invalid is dropped"
-            else => return,
+            else => {
+                a.free(prelude);
+                return;
+            },
         };
         errdefer selectors.deinit();
         var block = try DeclarationBlock.fromDeclarations(self.options, rule.declarations);
         errdefer block.deinit();
         const stored = try a.create(StyleRule);
-        stored.* = .{ .selectors = selectors, .block = block };
+        stored.* = .{ .prelude = prelude, .selectors = selectors, .block = block };
         self.contents.style_rules.append(a, stored) catch |err| {
             a.destroy(stored);
             return err;
