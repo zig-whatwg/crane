@@ -3106,9 +3106,9 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
             const this_document = interfaces.Window.get_document(this) catch source_document;
             navigables.navigateByTarget(source_document, .{ .target = target_str, .url = u, .noopener = noopener, .current_document = this_document });
         }
-        // Step 18: "Return targetNavigable's active WindowProxy" - this's,
-        // its parent's or its top's.
-        if (noopener) return null;
+        // Steps 18-19: these special targets return their WindowProxy even
+        // with noopener. Chrome/Firefox pass all three targets; Safari also
+        // passes _parent and _top (window-open-noopener.html).
         if (std.ascii.eqlIgnoreCase(target_str, "_parent")) return (interfaces.Window.get_parent(this) catch null) orelse getWindowProxy(this);
         if (std.ascii.eqlIgnoreCase(target_str, "_top")) return (interfaces.Window.get_top(this) catch null) orelse getWindowProxy(this);
         return getWindowProxy(this);
