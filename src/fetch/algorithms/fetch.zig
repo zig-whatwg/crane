@@ -46,6 +46,7 @@ pub fn fetch(
 
     var step = try job.start();
     while (true) switch (step) {
+        .body => step = try job.resumeBody(),
         .done => return job.takeResult(),
         .network => |needed| step = try job.resumeNetwork(sendBlocking(allocator, needed)),
     };

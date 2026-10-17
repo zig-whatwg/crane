@@ -1,4 +1,4 @@
-//! HTML's policy container (7.1.6): the policies that apply to a Document or
+//! HTML's policy container (7.1.7): the policies that apply to a Document or
 //! a WorkerGlobalScope.
 //!
 //! The container is HTML's, but every request carries one: Fetch "populate
@@ -8,8 +8,7 @@
 //! and a WorkerGlobalScope each own theirs (src/dom/policy_containers.zig
 //! reaches them); a request owns its clone.
 //!
-//! Not modelled, stated: the embedder policy, and the integrity and
-//! report-only integrity policies - nothing reads them yet.
+//! Not modelled, stated: the embedder policy.
 //!
 //! The CSP list is a list of parsed policies; "a copy of policy" (clone step
 //! 2) is csp.parsing.copyPolicy, the policy's serialization parsed again.
@@ -30,7 +29,7 @@ const url_serializer = @import("url_serializer");
 pub const ReferrerPolicy = request_mod.ReferrerPolicy;
 
 pub const PolicyContainer = struct {
-    /// Allocates what the container owns: the CSP list.
+    /// Allocates the container's owned policies and header values.
     allocator: Allocator,
 
     /// "A CSP list, which is a CSP list. It is initially empty." Owned.
@@ -39,6 +38,10 @@ pub const PolicyContainer = struct {
     /// Reporting §3.3: the response's endpoints, owned by this global's
     /// container. A request/inherited-document clone does not copy them.
     endpoints: ?*Endpoints = null,
+
+    /// SRI §3.8: owned policies; absent headers allocate nothing.
+    integrity_policy: ?*IntegrityPolicy = null,
+    integrity_policy_report_only: ?*IntegrityPolicy = null,
 
     /// CSPEE §2.4 item 2: the serialized requirement for nested navigations.
     /// Owned. HTML's clone algorithm copies enforced policies, not this item.
@@ -64,8 +67,7 @@ pub const PolicyContainer = struct {
         return .{ .allocator = allocator, .csp_list = csp.CSPList.init(allocator) };
     }
 
-    /// HTML "clone a policy container" (steps 1, 4 and 6; the policies not
-    /// modelled have nothing to copy).
+    /// HTML "clone a policy container"; each request owns its snapshot.
     pub fn clone(self: *const PolicyContainer, allocator: Allocator) error{OutOfMemory}!PolicyContainer {
         // 1. Let clone be a new policy container, and 2. "for each policy in
         // policyContainer's CSP list, append a copy of policy into clone's
@@ -74,17 +76,24 @@ pub const PolicyContainer = struct {
             .allocator = allocator,
             .csp_list = csp.parsing.copyList(allocator, &self.csp_list) catch return error.OutOfMemory,
         };
+        errdefer copy.deinit();
         // 4. Set clone's referrer policy to policyContainer's referrer policy.
         copy.referrer_policy = self.referrer_policy;
         copy.inherited_upgrade_insecure_requests = self.inherited_upgrade_insecure_requests;
+        // 5. Copy the integrity policy. The request snapshot carries the
+        // report-only policy too: SRI §3.8.2 reads both from the request.
+        if (self.integrity_policy) |policy| copy.integrity_policy = try policy.clone(allocator);
+        if (self.integrity_policy_report_only) |policy| copy.integrity_policy_report_only = try policy.clone(allocator);
         // 6. Return clone.
         return copy;
     }
 
-    /// Release what the container owns: its CSP list.
+    /// Release the container's owned policies and header values.
     pub fn deinit(self: *PolicyContainer) void {
         self.csp_list.deinit();
         if (self.endpoints) |endpoints| endpoints.deinit();
+        if (self.integrity_policy) |policy| policy.deinit();
+        if (self.integrity_policy_report_only) |policy| policy.deinit();
         if (self.required_csp) |required| self.allocator.free(required);
         self.* = undefined;
     }
@@ -99,9 +108,9 @@ pub const PolicyContainer = struct {
     }
 
     /// HTML "create a policy container from a fetch response", steps 2-3 and
-    /// 5, given what it reads of the response: its URL and its combined
+    /// 5-6, given what it reads of the response: its URL and its combined
     /// `Content-Security-Policy`, `Content-Security-Policy-Report-Only` and
-    /// `Referrer-Policy` header values.
+    /// `Referrer-Policy` and Integrity-Policy header values.
     pub fn fromResponseHeaders(allocator: Allocator, response: ResponseHeaders) error{OutOfMemory}!PolicyContainer {
         // 2. Let result be a new policy container.
         var result = PolicyContainer.init(allocator);
@@ -114,6 +123,9 @@ pub const PolicyContainer = struct {
         // `Referrer-Policy` header given response: the last token that is a
         // referrer policy, or the empty string when none is.
         result.referrer_policy = parseReferrerPolicyHeader(response.referrer_policy);
+        // 6. SRI §3.8.1: parse each present Integrity-Policy header.
+        if (response.integrity_policy) |header| result.integrity_policy = try IntegrityPolicy.fromHeader(allocator, header);
+        if (response.integrity_policy_report_only) |header| result.integrity_policy_report_only = try IntegrityPolicy.fromHeader(allocator, header);
         try result.applyRequiredCSP(response.required_csp, response.url, response.blanket_csp_acceptance);
         // 7. Return result.
         return result;
@@ -163,8 +175,79 @@ pub const ResponseHeaders = struct {
     csp_report_only: ?[]const u8 = null,
     referrer_policy: ?[]const u8 = null,
     reporting_endpoints: ?[]const u8 = null,
+    integrity_policy: ?[]const u8 = null,
+    integrity_policy_report_only: ?[]const u8 = null,
     required_csp: ?[]const u8 = null,
     blanket_csp_acceptance: bool = false,
+};
+
+/// SRI §3.8's policy, projected onto the source and destination browsers
+/// ship. Endpoint names are owned independently of the response's headers.
+pub const IntegrityPolicy = struct {
+    allocator: Allocator,
+    inline_source: bool = true,
+    block_script: bool = false,
+    endpoints: std.ArrayListUnmanaged([]const u8) = .empty,
+
+    pub fn deinit(self: *IntegrityPolicy) void {
+        const allocator = self.allocator;
+        for (self.endpoints.items) |name| allocator.free(name);
+        self.endpoints.deinit(allocator);
+        allocator.destroy(self);
+    }
+
+    fn copyEndpoints(self: *IntegrityPolicy, names: []const []const u8) error{OutOfMemory}!void {
+        try self.endpoints.ensureUnusedCapacity(self.allocator, names.len);
+        for (names) |name| self.endpoints.appendAssumeCapacity(try self.allocator.dupe(u8, name));
+    }
+
+    fn clone(self: *const IntegrityPolicy, allocator: Allocator) error{OutOfMemory}!*IntegrityPolicy {
+        const copy = try allocator.create(IntegrityPolicy);
+        copy.* = .{ .allocator = allocator, .inline_source = self.inline_source, .block_script = self.block_script };
+        errdefer copy.deinit();
+        try copy.copyEndpoints(self.endpoints.items);
+        return copy;
+    }
+
+    fn fromHeader(allocator: Allocator, header: []const u8) error{OutOfMemory}!?*IntegrityPolicy {
+        // Processing steps 1-2: a malformed dictionary invalidates the
+        // whole field. Allocation failures remain failures.
+        var dictionary = structured_fields.parseTokenListDictionary(allocator, header) catch |err| switch (err) {
+            error.InvalidField => return null,
+            error.OutOfMemory => return error.OutOfMemory,
+        };
+        defer dictionary.deinit(allocator);
+        const result = try allocator.create(IntegrityPolicy);
+        result.* = .{ .allocator = allocator };
+        errdefer result.deinit();
+        for (dictionary.members.items) |member| {
+            // WebKit processIntegrityPolicy + Gecko ParseSources treat a
+            // scalar as absent. Thus scalar sources keeps default inline,
+            // whereas an empty inner list disables it (row 48 Q10).
+            const tokens = member.tokens orelse continue;
+            if (std.mem.eql(u8, member.key, "sources")) {
+                // Step 3. Tokens are case-sensitive; ignore unknown ones.
+                result.inline_source = contains(tokens, "inline");
+            } else if (std.mem.eql(u8, member.key, "blocked-destinations")) {
+                // Step 4, browser deviation: only script ships by default.
+                // Blink integrity_policy_parser.cc HandleKeyValue, WebKit
+                // IntegrityPolicy.cpp processIntegrityPolicy, and Gecko
+                // IntegrityPolicy.cpp ParseDestinations (style pref=false).
+                // JSON is likewise not a supported policy destination.
+                result.block_script = contains(tokens, "script");
+            } else if (std.mem.eql(u8, member.key, "endpoints")) {
+                // Step 5. The projection skips non-token items, as Blink
+                // and WebKit do, but validates all their RFC 9651 syntax.
+                try result.copyEndpoints(tokens);
+            }
+        }
+        return result;
+    }
+
+    fn contains(tokens: []const []const u8, expected: []const u8) bool {
+        for (tokens) |token| if (std.mem.eql(u8, token, expected)) return true;
+        return false;
+    }
 };
 
 pub const Endpoint = struct {

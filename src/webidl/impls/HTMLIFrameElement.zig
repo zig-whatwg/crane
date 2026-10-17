@@ -2036,6 +2036,8 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
             .csp_report_only = if (headers) |h| h.get("content-security-policy-report-only") else null,
             .referrer_policy = if (headers) |h| h.get("referrer-policy") else null,
             .reporting_endpoints = if (headers) |h| h.get("reporting-endpoints") else null,
+            .integrity_policy = if (headers) |h| h.get("integrity-policy") else null,
+            .integrity_policy_report_only = if (headers) |h| h.get("integrity-policy-report-only") else null,
         }) catch return null;
     };
     // CSPEE §2.4 items 9-11: after inheritance, apply the target snapshot's
@@ -2141,6 +2143,8 @@ fn frameAncestorsBlock(integration: *IFrameIntegration, record: *Navigation, res
         .csp = csp_value,
         .csp_report_only = report_only,
         .reporting_endpoints = headers.get("reporting-endpoints"),
+        .integrity_policy = headers.get("integrity-policy"),
+        .integrity_policy_report_only = headers.get("integrity-policy-report-only"),
     }) catch return false;
     defer container.deinit();
     const scheme = navigate_steps.schemeOf(response_url);

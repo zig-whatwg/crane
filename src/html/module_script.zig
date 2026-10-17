@@ -241,6 +241,8 @@ pub const Environment = struct {
     /// (borrowed), or null when the import map does not mention it. Called
     /// with `map.context`, the document.
     resolveImportFn: ?*const fn (context: *anyopaque, specifier: []const u8, base_url: []const u8) ?[]const u8 = null,
+    resolveIntegrityFn: ?*const fn (context: *anyopaque, url: []const u8) ?[]const u8 = null,
+
     /// The realm the records are made in, when it is not the document's: a
     /// ShadowRealm's, whose synthetic realm settings object has a module map
     /// of its own and parses URLs against its principal realm's settings
@@ -254,6 +256,12 @@ pub const Environment = struct {
     /// - "fetch the descendants of a module script" gets the descendant
     /// script fetch options from the referrer script's - its descendants'.
     fetch_options: FetchOptions = .{},
+
+    /// HTML resolve a module integrity metadata: absent entries give "".
+    pub fn resolveIntegrity(self: *const Environment, url: []const u8) []const u8 {
+        const lookup = self.resolveIntegrityFn orelse return "";
+        return lookup(self.map.context, url) orelse "";
+    }
 
     /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#module-type-allowed
     pub fn moduleTypeAllowed(self: *const Environment, module_type: ModuleType) bool {
@@ -794,8 +802,10 @@ pub fn resolve(env: *const Environment, specifier: []const u8, base_url: []const
 /// descendants of and link it. Null means "null" - a failed fetch.
 pub fn fetchImportedModuleScriptGraph(env: *const Environment, url: []const u8, module_type: ModuleType) ?*ModuleScript {
     if (!supported) return null;
-    const script = fetchSingleModuleScript(env, url, module_type) orelse return null;
-    return fetchDescendantsAndLink(env, script);
+    var imported = env.*;
+    imported.fetch_options.integrity = env.resolveIntegrity(url);
+    const script = fetchSingleModuleScript(&imported, url, module_type) orelse return null;
+    return fetchDescendantsAndLink(&imported, script);
 }
 
 /// What a failed load leaves behind, mirroring LoadRequestedModules' state:
@@ -1225,7 +1235,9 @@ pub const AsyncModuleLoader = struct {
                 const child = try self.addNode(request.url, request.module_type);
                 try node.children.append(self.allocator, child);
                 if (!child.settled and loader.pending.get(child.key) == null) {
-                    loader.fetchSingle(self, child, script.descendantFetchOptions());
+                    var options = script.descendantFetchOptions();
+                    options.integrity = env.resolveIntegrity(request.url);
+                    loader.fetchSingle(self, child, options);
                 } else if (!child.settled) {
                     try loader.pending.get(child.key).?.addWaiter(self, child);
                 }
@@ -1574,7 +1586,9 @@ fn loadRequestedModules(env: *const Environment, script: *ModuleScript) ?LoadFai
 
     for (requests.items) |*request| {
         // Step 14: fetch a single imported module script.
-        const child = fetchSingleModuleScript(env, request.url, request.module_type) orelse return .fetch_failed;
+        var descendant = env.*;
+        descendant.fetch_options.integrity = env.resolveIntegrity(request.url);
+        const child = fetchSingleModuleScript(&descendant, request.url, request.module_type) orelse return .fetch_failed;
 
         // onSingleFetchComplete step 3: a child that did not parse fails the
         // load, and its parse error is the error to rethrow.

@@ -47,6 +47,8 @@ pub const Implementation = struct {
     add_import_mapping: *const fn (document: *runtime.Instance, specifier: []const u8, resolved_url: []const u8) Error!void,
     add_scoped_import_mapping: *const fn (document: *runtime.Instance, scope_prefix: []const u8, specifier: []const u8, resolved_url: []const u8) Error!void,
     resolve_import_specifier: *const fn (document: *runtime.Instance, specifier: []const u8, referrer_url: []const u8) ?[]const u8,
+    add_integrity_mapping: ?*const fn (document: *runtime.Instance, url: []const u8, integrity: []const u8) Error!void = null,
+    resolve_module_integrity: ?*const fn (document: *runtime.Instance, url: []const u8) ?[]const u8 = null,
     get_loader: ?*const fn (document: *runtime.Instance) ?*anyopaque = null,
     set_loader: ?*const fn (document: *runtime.Instance, loader: *anyopaque, dispose: DisposeFn) Error!void = null,
     visit_realm_loaders: ?*const fn (realm: runtime.Context, visit: VisitLoaderFn, data: ?*anyopaque) void = null,
@@ -139,6 +141,21 @@ pub fn addScopedImportMapping(document: *runtime.Instance, scope_prefix: []const
 pub fn resolveImportSpecifier(document: *runtime.Instance, specifier: []const u8, referrer_url: []const u8) ?[]const u8 {
     const impl = implementation orelse return null;
     return impl.resolve_import_specifier(document, specifier, referrer_url);
+}
+
+/// HTML merge existing and new import maps step 5: existing entries win.
+pub fn addIntegrityMapping(document: *runtime.Instance, url: []const u8, integrity: []const u8) Error!void {
+    const impl = implementation orelse return error.InvalidStateError;
+    const add = impl.add_integrity_mapping orelse return error.InvalidStateError;
+    return add(document, url, integrity);
+}
+
+/// HTML resolve a module integrity metadata. The slice is borrowed for the
+/// Document's life: entries are never replaced. Null means no entry.
+pub fn resolveModuleIntegrity(document: *runtime.Instance, url: []const u8) ?[]const u8 {
+    const impl = implementation orelse return null;
+    const resolve = impl.resolve_module_integrity orelse return null;
+    return resolve(document, url);
 }
 
 test "without an installed implementation a document has no module map" {
