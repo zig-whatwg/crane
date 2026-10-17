@@ -108,6 +108,7 @@ pub const MaxUtf8Length = struct {
 
 pub const Encoding = struct {
     name: []const u8,
+    /// Encoding §7.1: the name exposed by TextDecoder, ASCII lowercased.
     whatwg_name: []const u8,
     decode_fn: DecodeFn,
     encode_fn: ?EncodeFn,
@@ -917,7 +918,7 @@ pub const X_USER_DEFINED: Encoding = .{
 
 pub const BIG5: Encoding = .{
     .name = "Big5",
-    .whatwg_name = "Big5",
+    .whatwg_name = "big5",
     .decode_fn = chinese.big5_streaming_decode,
     .encode_fn = chinese.big5_streaming_encode,
     .decode_to_utf8_fn = chinese.big5_streaming_decodeToUtf8,
@@ -934,7 +935,7 @@ pub const REPLACEMENT: Encoding = .{
 
 pub const UTF_16BE: Encoding = .{
     .name = "UTF-16BE",
-    .whatwg_name = "UTF-16BE",
+    .whatwg_name = "utf-16be",
     .max_utf8_length_fn = MaxUtf8Length.utf16,
     .decode_fn = utf16.utf16be_streaming.decode,
     .encode_fn = null, // UTF-16BE has NO encoder per WHATWG spec
@@ -942,7 +943,7 @@ pub const UTF_16BE: Encoding = .{
 
 pub const UTF_16LE: Encoding = .{
     .name = "UTF-16LE",
-    .whatwg_name = "UTF-16LE",
+    .whatwg_name = "utf-16le",
     .decode_fn = utf16.utf16le_streaming.decode,
     .encode_fn = null, // UTF-16LE has NO encoder per WHATWG spec
     .max_utf8_length_fn = MaxUtf8Length.utf16,
