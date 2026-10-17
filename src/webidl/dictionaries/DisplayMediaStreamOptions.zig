@@ -15,4 +15,5 @@ pub const DisplayMediaStreamOptions = struct {
     windowAudio: ?enums.WindowAudioPreferenceEnum = null,
     surfaceSwitching: ?enums.SurfaceSwitchingPreferenceEnum = null,
     monitorTypeSurfaces: ?enums.MonitorTypeSurfacesEnum = null,
+    audioSelection: ?enums.AudioSelectionPreferenceEnum = null,
 };

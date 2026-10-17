@@ -67,7 +67,7 @@ pub const KeyFrameRequestEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            rid: ?typedefs.DOMString = null,
+            rid: ?runtime.DOMString = null,
             _internal: ?*KeyFrameRequestEventImpl.InternalState = null,
         },
     );
@@ -168,12 +168,12 @@ pub const KeyFrameRequestEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, rid: webidl.Opt(DOMString)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, rid: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try KeyFrameRequestEventImpl.call_constructor(ctx, @"type", rid);
     }
 
-    pub fn get_rid(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_rid(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try KeyFrameRequestEventImpl.get_rid(instance);
     }
 };

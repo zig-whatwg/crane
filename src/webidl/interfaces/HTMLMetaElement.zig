@@ -71,6 +71,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -171,6 +172,7 @@ pub const HTMLMetaElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -178,7 +180,6 @@ pub const HTMLMetaElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -194,6 +195,7 @@ pub const HTMLMetaElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -229,11 +231,11 @@ pub const HTMLMetaElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
-            httpEquiv: typedefs.DOMString = undefined,
-            content: typedefs.DOMString = undefined,
-            media: typedefs.DOMString = undefined,
-            scheme: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
+            httpEquiv: runtime.DOMString = undefined,
+            content: runtime.DOMString = undefined,
+            media: runtime.DOMString = undefined,
+            scheme: runtime.DOMString = undefined,
             _internal: ?*HTMLMetaElementImpl.InternalState = null,
         },
     );
@@ -352,83 +354,83 @@ pub const HTMLMetaElement = struct {
     const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLMetaElementImpl, "get_name")) return try HTMLMetaElementImpl.get_name(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "name" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMetaElementImpl, "set_name")) return try HTMLMetaElementImpl.set_name(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "name" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="http-equiv"]
-    pub fn get_httpEquiv(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_httpEquiv(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLMetaElementImpl, "get_httpEquiv")) return try HTMLMetaElementImpl.get_httpEquiv(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "http-equiv" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "http-equiv" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="http-equiv"]
-    pub fn set_httpEquiv(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_httpEquiv(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMetaElementImpl, "set_httpEquiv")) return try HTMLMetaElementImpl.set_httpEquiv(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "http-equiv" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "http-equiv" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_content(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_content(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLMetaElementImpl, "get_content")) return try HTMLMetaElementImpl.get_content(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "content" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "content" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_content(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_content(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMetaElementImpl, "set_content")) return try HTMLMetaElementImpl.set_content(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "content" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "content" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_media(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_media(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLMetaElementImpl, "get_media")) return try HTMLMetaElementImpl.get_media(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "media" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "media" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_media(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_media(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMetaElementImpl, "set_media")) return try HTMLMetaElementImpl.set_media(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "media" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "media" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_scheme(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_scheme(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLMetaElementImpl, "get_scheme")) return try HTMLMetaElementImpl.get_scheme(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "scheme" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "scheme" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_scheme(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_scheme(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMetaElementImpl, "set_scheme")) return try HTMLMetaElementImpl.set_scheme(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "scheme" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "scheme" }, value);
     }
 
     /// HTML [CEReactions]: the functions that run a custom element reactions

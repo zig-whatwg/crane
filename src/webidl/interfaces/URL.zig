@@ -349,7 +349,7 @@ pub const URL = struct {
         return try URLImpl.call_static_canParse(instance, url, base);
     }
 
-    pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSValue) anyerror!DOMString {
+    pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSValue) anyerror!runtime.DOMString {
         return try URLImpl.call_static_createObjectURL(instance, obj);
     }
 
@@ -357,7 +357,7 @@ pub const URL = struct {
         return try URLImpl.call_static_parse(instance, url, base);
     }
 
-    pub fn call_static_revokeObjectURL(instance: *runtime.Instance, url: DOMString) anyerror!void {
+    pub fn call_static_revokeObjectURL(instance: *runtime.Instance, url: runtime.DOMString) anyerror!void {
         return try URLImpl.call_static_revokeObjectURL(instance, url);
     }
 };

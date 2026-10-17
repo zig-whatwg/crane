@@ -10,6 +10,7 @@ const WebTransportHash = @import("WebTransportHash.zig").WebTransportHash;
 pub const WebTransportOptions = struct {
     allowPooling: ?bool = null,
     requireUnreliable: ?bool = null,
+    headers: ?typedefs.HeadersInit = null,
     serverCertificateHashes: ?[]const WebTransportHash = null,
     congestionControl: ?enums.WebTransportCongestionControl = null,
     anticipatedConcurrentIncomingUnidirectionalStreams: ?u16 = null,

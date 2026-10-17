@@ -172,7 +172,7 @@ pub const FileReaderSync = struct {
         return try FileReaderSyncImpl.call_constructor(ctx);
     }
 
-    pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!DOMString {
+    pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!runtime.DOMString {
         return try FileReaderSyncImpl.call_readAsDataURL(instance, blob);
     }
 
@@ -180,11 +180,11 @@ pub const FileReaderSync = struct {
         return try FileReaderSyncImpl.call_readAsArrayBuffer(instance, blob);
     }
 
-    pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!DOMString {
+    pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!runtime.DOMString {
         return try FileReaderSyncImpl.call_readAsBinaryString(instance, blob);
     }
 
-    pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: webidl.Opt(DOMString)) anyerror!DOMString {
+    pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: webidl.Opt(runtime.DOMString)) anyerror!runtime.DOMString {
         return try FileReaderSyncImpl.call_readAsText(instance, blob, encoding);
     }
 };

@@ -3,7 +3,6 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const typedefs = @import("typedefs");
 const AuthenticationExtensionsPaymentInputs = @import("AuthenticationExtensionsPaymentInputs.zig").AuthenticationExtensionsPaymentInputs;
 const AuthenticationExtensionsPRFInputs = @import("AuthenticationExtensionsPRFInputs.zig").AuthenticationExtensionsPRFInputs;
 const HMACGetSecretInput = @import("HMACGetSecretInput.zig").HMACGetSecretInput;
@@ -15,6 +14,7 @@ pub const AuthenticationExtensionsClientInputs = struct {
     credBlob: ?runtime.JSValue = null,
     getCredBlob: ?bool = null,
     minPinLength: ?bool = null,
+    pinComplexityPolicy: ?bool = null,
     hmacCreateSecret: ?bool = null,
     hmacGetSecret: ?HMACGetSecretInput = null,
     payment: ?AuthenticationExtensionsPaymentInputs = null,
@@ -23,4 +23,5 @@ pub const AuthenticationExtensionsClientInputs = struct {
     credProps: ?bool = null,
     prf: ?AuthenticationExtensionsPRFInputs = null,
     largeBlob: ?AuthenticationExtensionsLargeBlobInputs = null,
+    remoteClientDataJSON: ?runtime.DOMString = null,
 };

@@ -84,11 +84,11 @@ pub const ServiceWorkerGlobalScope = struct {
             .{ "oncookiechange", "get_oncookiechange", "set_oncookiechange" },
             .{ "onnotificationclick", "get_onnotificationclick", "set_onnotificationclick" },
             .{ "onnotificationclose", "get_onnotificationclose", "set_onnotificationclose" },
-            .{ "oncanmakepayment", "get_oncanmakepayment", "set_oncanmakepayment" },
-            .{ "onpaymentrequest", "get_onpaymentrequest", "set_onpaymentrequest" },
             .{ "onperiodicsync", "get_onperiodicsync", "set_onperiodicsync" },
             .{ "onpush", "get_onpush", "set_onpush" },
             .{ "onpushsubscriptionchange", "get_onpushsubscriptionchange", "set_onpushsubscriptionchange" },
+            .{ "oncanmakepayment", "get_oncanmakepayment", "set_oncanmakepayment" },
+            .{ "onpaymentrequest", "get_onpaymentrequest", "set_onpaymentrequest" },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -142,11 +142,11 @@ pub const ServiceWorkerGlobalScope = struct {
             .{ "oncookiechange", "get_oncookiechange", "set_oncookiechange" },
             .{ "onnotificationclick", "get_onnotificationclick", "set_onnotificationclick" },
             .{ "onnotificationclose", "get_onnotificationclose", "set_onnotificationclose" },
-            .{ "oncanmakepayment", "get_oncanmakepayment", "set_oncanmakepayment" },
-            .{ "onpaymentrequest", "get_onpaymentrequest", "set_onpaymentrequest" },
             .{ "onperiodicsync", "get_onperiodicsync", "set_onperiodicsync" },
             .{ "onpush", "get_onpush", "set_onpush" },
             .{ "onpushsubscriptionchange", "get_onpushsubscriptionchange", "set_onpushsubscriptionchange" },
+            .{ "oncanmakepayment", "get_oncanmakepayment", "set_oncanmakepayment" },
+            .{ "onpaymentrequest", "get_onpaymentrequest", "set_onpaymentrequest" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -511,26 +511,6 @@ pub const ServiceWorkerGlobalScope = struct {
         try event_handlers.setValue(EventHandler, instance, "onnotificationclose", value);
     }
 
-    pub fn get_oncanmakepayment(instance: *runtime.Instance) anyerror!EventHandler {
-        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_oncanmakepayment")) return try ServiceWorkerGlobalScopeImpl.get_oncanmakepayment(instance);
-        return event_handlers.value(EventHandler, instance, "oncanmakepayment");
-    }
-
-    pub fn set_oncanmakepayment(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_oncanmakepayment")) return try ServiceWorkerGlobalScopeImpl.set_oncanmakepayment(instance, value);
-        try event_handlers.setValue(EventHandler, instance, "oncanmakepayment", value);
-    }
-
-    pub fn get_onpaymentrequest(instance: *runtime.Instance) anyerror!EventHandler {
-        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onpaymentrequest")) return try ServiceWorkerGlobalScopeImpl.get_onpaymentrequest(instance);
-        return event_handlers.value(EventHandler, instance, "onpaymentrequest");
-    }
-
-    pub fn set_onpaymentrequest(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onpaymentrequest")) return try ServiceWorkerGlobalScopeImpl.set_onpaymentrequest(instance, value);
-        try event_handlers.setValue(EventHandler, instance, "onpaymentrequest", value);
-    }
-
     pub fn get_onperiodicsync(instance: *runtime.Instance) anyerror!EventHandler {
         if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onperiodicsync")) return try ServiceWorkerGlobalScopeImpl.get_onperiodicsync(instance);
         return event_handlers.value(EventHandler, instance, "onperiodicsync");
@@ -563,6 +543,26 @@ pub const ServiceWorkerGlobalScope = struct {
     pub fn set_onpushsubscriptionchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onpushsubscriptionchange")) return try ServiceWorkerGlobalScopeImpl.set_onpushsubscriptionchange(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onpushsubscriptionchange", value);
+    }
+
+    pub fn get_oncanmakepayment(instance: *runtime.Instance) anyerror!EventHandler {
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_oncanmakepayment")) return try ServiceWorkerGlobalScopeImpl.get_oncanmakepayment(instance);
+        return event_handlers.value(EventHandler, instance, "oncanmakepayment");
+    }
+
+    pub fn set_oncanmakepayment(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_oncanmakepayment")) return try ServiceWorkerGlobalScopeImpl.set_oncanmakepayment(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oncanmakepayment", value);
+    }
+
+    pub fn get_onpaymentrequest(instance: *runtime.Instance) anyerror!EventHandler {
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onpaymentrequest")) return try ServiceWorkerGlobalScopeImpl.get_onpaymentrequest(instance);
+        return event_handlers.value(EventHandler, instance, "onpaymentrequest");
+    }
+
+    pub fn set_onpaymentrequest(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onpaymentrequest")) return try ServiceWorkerGlobalScopeImpl.set_onpaymentrequest(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onpaymentrequest", value);
     }
 
     /// Extended attributes: [NewObject]

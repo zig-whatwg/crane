@@ -89,8 +89,8 @@ pub const PerformanceLongAnimationFrameTiming = struct {
         struct {
             startTime: typedefs.DOMHighResTimeStamp = undefined,
             duration: typedefs.DOMHighResTimeStamp = undefined,
-            name: typedefs.DOMString = undefined,
-            entryType: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
+            entryType: runtime.DOMString = undefined,
             renderStart: typedefs.DOMHighResTimeStamp = undefined,
             styleAndLayoutStart: typedefs.DOMHighResTimeStamp = undefined,
             blockingDuration: typedefs.DOMHighResTimeStamp = undefined,
@@ -241,11 +241,11 @@ pub const PerformanceLongAnimationFrameTiming = struct {
         return try PerformanceLongAnimationFrameTimingImpl.get_duration(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceLongAnimationFrameTimingImpl.get_name(instance);
     }
 
-    pub fn get_entryType(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_entryType(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceLongAnimationFrameTimingImpl.get_entryType(instance);
     }
 

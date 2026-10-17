@@ -11,7 +11,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const SVGElement = @import("interfaces").SVGElement;
-const SVGURIReference = @import("mixins").SVGURIReference;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
@@ -49,7 +48,6 @@ const ScrollToOptions = @import("dictionaries").ScrollToOptions;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const SVGUseElement = @import("interfaces").SVGUseElement;
 const DOMRectList = @import("interfaces").DOMRectList;
 const SVGAnimatedEnumeration = @import("interfaces").SVGAnimatedEnumeration;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
@@ -59,10 +57,10 @@ const DOMRect = @import("interfaces").DOMRect;
 const ViewTransition = @import("interfaces").ViewTransition;
 const SpatialNavigationSearchOptions = @import("dictionaries").SpatialNavigationSearchOptions;
 const GetAnimationsOptions = @import("dictionaries").GetAnimationsOptions;
-const SVGAnimatedString = @import("interfaces").SVGAnimatedString;
 const EventHandler = @import("typedefs").EventHandler;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const SVGAnimatedString = @import("interfaces").SVGAnimatedString;
 const SVGAnimatedLength = @import("interfaces").SVGAnimatedLength;
 const SpatialNavigationDirection = @import("enums").SpatialNavigationDirection;
 const StylePropertyMap = @import("interfaces").StylePropertyMap;
@@ -72,6 +70,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -87,9 +86,7 @@ pub const SVGFilterElement = struct {
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = SVGElement.State;
         pub const ParentInterface = SVGElement;
-        pub const MixinTypes = &.{
-            SVGURIReference,
-        };
+        pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
@@ -105,7 +102,6 @@ pub const SVGFilterElement = struct {
             .{ "y", "get_y", null },
             .{ "width", "get_width", null },
             .{ "height", "get_height", null },
-            .{ "href", "get_href", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -177,6 +173,7 @@ pub const SVGFilterElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -184,7 +181,6 @@ pub const SVGFilterElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -200,6 +196,7 @@ pub const SVGFilterElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "focus",
@@ -214,7 +211,6 @@ pub const SVGFilterElement = struct {
             .{ "y", "get_y", null },
             .{ "width", "get_width", null },
             .{ "height", "get_height", null },
-            .{ "href", "get_href", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -233,8 +229,6 @@ pub const SVGFilterElement = struct {
             y: *runtime.Instance = undefined,
             width: *runtime.Instance = undefined,
             height: *runtime.Instance = undefined,
-            href: *runtime.Instance = undefined,
-            cached_href: ?*runtime.Instance = null,
             _internal: ?*SVGFilterElementImpl.InternalState = null,
         },
     );
@@ -242,7 +236,6 @@ pub const SVGFilterElement = struct {
     const delegates = .{
         .get_filterUnits = &get_filterUnits,
         .get_height = &get_height,
-        .get_href = &get_href,
         .get_primitiveUnits = &get_primitiveUnits,
         .get_width = &get_width,
         .get_x = &get_x,
@@ -324,7 +317,6 @@ pub const SVGFilterElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(SVGFilterElementImpl, "deinit") and @hasDecl(SVGFilterElementImpl, "deinitOwn")) @compileError("SVGFilterElementImpl defines both deinit and deinitOwn");
-        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(SVGFilterElementImpl, "deinit")) return SVGFilterElementImpl.deinit(instance);
         if (comptime @hasDecl(SVGFilterElementImpl, "deinitOwn")) SVGFilterElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -361,18 +353,5 @@ pub const SVGFilterElement = struct {
 
     pub fn get_height(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGFilterElementImpl.get_height(instance);
-    }
-
-    /// Extended attributes: [SameObject]
-    pub fn get_href(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_href) |cached| {
-            return cached;
-        }
-        const value = try mixins.SVGURIReference.get_href(instance);
-        state.own.cached_href = value;
-        @import("dom").same_object_cache.made(instance, value, "href");
-        return value;
     }
 };

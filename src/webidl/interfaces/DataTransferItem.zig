@@ -72,8 +72,8 @@ pub const DataTransferItem = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            kind: typedefs.DOMString = undefined,
-            type: typedefs.DOMString = undefined,
+            kind: runtime.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             _internal: ?*DataTransferItemImpl.InternalState = null,
         },
     );
@@ -175,11 +175,11 @@ pub const DataTransferItem = struct {
         }
     }
 
-    pub fn get_kind(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_kind(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DataTransferItemImpl.get_kind(instance);
     }
 
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DataTransferItemImpl.get_type(instance);
     }
 

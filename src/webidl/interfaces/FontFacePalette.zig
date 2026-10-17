@@ -188,7 +188,7 @@ pub const FontFacePalette = struct {
         return try FontFacePaletteImpl.get_usableWithDarkBackground(instance);
     }
 
-    pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!DOMString {
+    pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!runtime.DOMString {
         if (comptime @hasDecl(FontFacePaletteImpl, "call_getter")) {
             return try FontFacePaletteImpl.call_getter(instance, index);
         } else {

@@ -24,11 +24,11 @@ const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
 const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const SVGPathSegment = @import("interfaces").SVGPathSegment;
-const DOMMatrix = @import("interfaces").DOMMatrix;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
 const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
+const SVGRect = @import("typedefs").SVGRect;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
 const SVGStringList = @import("interfaces").SVGStringList;
@@ -55,11 +55,12 @@ const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
-const SVGUseElement = @import("interfaces").SVGUseElement;
+const SVGMatrix = @import("typedefs").SVGMatrix;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
 const DOMRectList = @import("interfaces").DOMRectList;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
+const SVGPoint = @import("typedefs").SVGPoint;
 const DOMRect = @import("interfaces").DOMRect;
 const ViewTransition = @import("interfaces").ViewTransition;
 const SVGPathDataSettings = @import("dictionaries").SVGPathDataSettings;
@@ -77,6 +78,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -96,7 +98,12 @@ pub const SVGPathElement = struct {
         pub const MixinTypes = &.{
             SVGPathData,
         };
-        pub const extended_attributes = .{};
+        pub const extended_attributes = .{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        };
+
+        /// Global contexts where this interface is exposed
+        pub const exposed_in = .{ .Window = true };
 
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
@@ -184,6 +191,7 @@ pub const SVGPathElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -191,7 +199,6 @@ pub const SVGPathElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -207,6 +214,7 @@ pub const SVGPathElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "focus",

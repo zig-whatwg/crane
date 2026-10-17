@@ -109,7 +109,7 @@ pub const VTTCue = struct {
             positionAlign: enums.PositionAlignSetting = undefined,
             size: f64 = undefined,
             @"align": enums.AlignSetting = undefined,
-            text: typedefs.DOMString = undefined,
+            text: runtime.DOMString = undefined,
             _internal: ?*VTTCueImpl.InternalState = null,
         },
     );
@@ -232,7 +232,7 @@ pub const VTTCue = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, startTime: f64, endTime: f64, text: DOMString) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, startTime: f64, endTime: f64, text: runtime.DOMString) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try VTTCueImpl.call_constructor(ctx, startTime, endTime, text);
     }
@@ -309,11 +309,11 @@ pub const VTTCue = struct {
         try VTTCueImpl.set_align(instance, value);
     }
 
-    pub fn get_text(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_text(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try VTTCueImpl.get_text(instance);
     }
 
-    pub fn set_text(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_text(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try VTTCueImpl.set_text(instance, value);
     }
 

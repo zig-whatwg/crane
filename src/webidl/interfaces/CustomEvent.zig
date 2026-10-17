@@ -175,7 +175,7 @@ pub const CustomEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(CustomEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(CustomEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try CustomEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
@@ -184,7 +184,7 @@ pub const CustomEvent = struct {
         return try CustomEventImpl.get_detail(instance);
     }
 
-    pub fn call_initCustomEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), detail: webidl.Opt(runtime.JSValue)) anyerror!void {
+    pub fn call_initCustomEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), detail: webidl.Opt(runtime.JSValue)) anyerror!void {
         return try CustomEventImpl.call_initCustomEvent(instance, @"type", bubbles, cancelable, detail);
     }
 };

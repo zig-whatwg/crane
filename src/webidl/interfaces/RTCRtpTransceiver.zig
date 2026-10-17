@@ -74,7 +74,7 @@ pub const RTCRtpTransceiver = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            mid: ?typedefs.DOMString = null,
+            mid: ?runtime.DOMString = null,
             sender: *runtime.Instance = undefined,
             receiver: *runtime.Instance = undefined,
             direction: enums.RTCRtpTransceiverDirection = undefined,
@@ -186,7 +186,7 @@ pub const RTCRtpTransceiver = struct {
         }
     }
 
-    pub fn get_mid(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_mid(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try RTCRtpTransceiverImpl.get_mid(instance);
     }
 

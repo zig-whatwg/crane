@@ -73,6 +73,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -201,6 +202,7 @@ pub const HTMLFormElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -208,7 +210,6 @@ pub const HTMLFormElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -224,6 +225,7 @@ pub const HTMLFormElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -279,16 +281,16 @@ pub const HTMLFormElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            acceptCharset: typedefs.DOMString = undefined,
+            acceptCharset: runtime.DOMString = undefined,
             action: runtime.USVString = undefined,
-            autocomplete: typedefs.DOMString = undefined,
-            enctype: typedefs.DOMString = undefined,
-            encoding: typedefs.DOMString = undefined,
-            method: typedefs.DOMString = undefined,
-            name: typedefs.DOMString = undefined,
+            autocomplete: runtime.DOMString = undefined,
+            enctype: runtime.DOMString = undefined,
+            encoding: runtime.DOMString = undefined,
+            method: runtime.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             noValidate: bool = undefined,
-            target: typedefs.DOMString = undefined,
-            rel: typedefs.DOMString = undefined,
+            target: runtime.DOMString = undefined,
+            rel: runtime.DOMString = undefined,
             relList: *runtime.Instance = undefined,
             elements: *runtime.Instance = undefined,
             length: u32 = undefined,
@@ -433,19 +435,19 @@ pub const HTMLFormElement = struct {
     const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect="accept-charset"]
-    pub fn get_acceptCharset(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_acceptCharset(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLFormElementImpl, "get_acceptCharset")) return try HTMLFormElementImpl.get_acceptCharset(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "accept-charset" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "accept-charset" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="accept-charset"]
-    pub fn set_acceptCharset(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_acceptCharset(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFormElementImpl, "set_acceptCharset")) return try HTMLFormElementImpl.set_acceptCharset(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "accept-charset" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "accept-charset" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
@@ -464,12 +466,12 @@ pub const HTMLFormElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_autocomplete(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_autocomplete(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLFormElementImpl.get_autocomplete(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_autocomplete(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_autocomplete(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -478,12 +480,12 @@ pub const HTMLFormElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_enctype(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_enctype(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLFormElementImpl.get_enctype(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_enctype(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_enctype(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -492,12 +494,12 @@ pub const HTMLFormElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_encoding(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLFormElementImpl.get_encoding(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_encoding(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_encoding(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -506,12 +508,12 @@ pub const HTMLFormElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_method(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_method(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLFormElementImpl.get_method(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_method(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_method(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -520,19 +522,19 @@ pub const HTMLFormElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLFormElementImpl, "get_name")) return try HTMLFormElementImpl.get_name(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "name" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFormElementImpl, "set_name")) return try HTMLFormElementImpl.set_name(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "name" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -552,35 +554,35 @@ pub const HTMLFormElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_target(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_target(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLFormElementImpl, "get_target")) return try HTMLFormElementImpl.get_target(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "target" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "target" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_target(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_target(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFormElementImpl, "set_target")) return try HTMLFormElementImpl.set_target(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "target" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "target" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_rel(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_rel(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLFormElementImpl, "get_rel")) return try HTMLFormElementImpl.get_rel(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "rel" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "rel" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_rel(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_rel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFormElementImpl, "set_rel")) return try HTMLFormElementImpl.set_rel(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "rel" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "rel" }, value);
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value], [Reflect="rel"]
@@ -632,7 +634,7 @@ pub const HTMLFormElement = struct {
         }
     }
 
-    pub fn call_getter__1(instance: *runtime.Instance, name: DOMString) anyerror!runtime.JSValue {
+    pub fn call_getter__1(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
         if (comptime @hasDecl(HTMLFormElementImpl, "call_getter__1")) {
             return try HTMLFormElementImpl.call_getter__1(instance, name);
         } else {

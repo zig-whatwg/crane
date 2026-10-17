@@ -67,7 +67,7 @@ pub const TextEncoder = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            encoding: typedefs.DOMString = undefined,
+            encoding: runtime.DOMString = undefined,
             _internal: ?*TextEncoderImpl.InternalState = null,
         },
     );
@@ -174,7 +174,7 @@ pub const TextEncoder = struct {
         return try TextEncoderImpl.call_constructor(ctx);
     }
 
-    pub fn get_encoding(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TextEncoderImpl.get_encoding(instance);
     }
 

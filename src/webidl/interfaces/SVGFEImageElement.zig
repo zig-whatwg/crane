@@ -50,7 +50,6 @@ const ScrollToOptions = @import("dictionaries").ScrollToOptions;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const SVGUseElement = @import("interfaces").SVGUseElement;
 const DOMRectList = @import("interfaces").DOMRectList;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
@@ -73,6 +72,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -180,6 +180,7 @@ pub const SVGFEImageElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -187,7 +188,6 @@ pub const SVGFEImageElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -203,6 +203,7 @@ pub const SVGFEImageElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "focus",

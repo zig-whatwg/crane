@@ -3,7 +3,6 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const typedefs = @import("typedefs");
 const ReportBody = @import("ReportBody.zig").ReportBody;
 
 pub const Report = struct {

@@ -63,9 +63,9 @@ pub const MimeType = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: typedefs.DOMString = undefined,
-            description: typedefs.DOMString = undefined,
-            suffixes: typedefs.DOMString = undefined,
+            type: runtime.DOMString = undefined,
+            description: runtime.DOMString = undefined,
+            suffixes: runtime.DOMString = undefined,
             enabledPlugin: *runtime.Instance = undefined,
             _internal: ?*MimeTypeImpl.InternalState = null,
         },
@@ -165,15 +165,15 @@ pub const MimeType = struct {
         }
     }
 
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MimeTypeImpl.get_type(instance);
     }
 
-    pub fn get_description(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_description(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MimeTypeImpl.get_description(instance);
     }
 
-    pub fn get_suffixes(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_suffixes(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MimeTypeImpl.get_suffixes(instance);
     }
 

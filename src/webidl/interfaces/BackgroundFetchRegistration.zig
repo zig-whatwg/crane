@@ -102,7 +102,7 @@ pub const BackgroundFetchRegistration = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: typedefs.DOMString = undefined,
+            id: runtime.DOMString = undefined,
             uploadTotal: u64 = undefined,
             uploaded: u64 = undefined,
             downloadTotal: u64 = undefined,
@@ -222,7 +222,7 @@ pub const BackgroundFetchRegistration = struct {
         }
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try BackgroundFetchRegistrationImpl.get_id(instance);
     }
 

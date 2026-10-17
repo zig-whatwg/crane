@@ -13,6 +13,7 @@ pub const WheelEventInit = struct {
     deltaY: ?f64 = null,
     deltaZ: ?f64 = null,
     deltaMode: ?u32 = null,
+    momentum: ?bool = null,
 
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.

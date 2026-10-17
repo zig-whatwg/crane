@@ -61,7 +61,7 @@ pub const ChapterInformation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            title: typedefs.DOMString = undefined,
+            title: runtime.DOMString = undefined,
             startTime: f64 = undefined,
             artwork: runtime.JSValue = undefined,
             cached_artwork: ?runtime.JSValue = null,
@@ -163,7 +163,7 @@ pub const ChapterInformation = struct {
         }
     }
 
-    pub fn get_title(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_title(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ChapterInformationImpl.get_title(instance);
     }
 

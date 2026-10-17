@@ -24,12 +24,12 @@ pub fn installHooks() void {
 }
 
 /// Extended attributes: [CEReactions]
-pub fn get_contentEditable(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_contentEditable(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try ElementContentEditableImpl.get_contentEditable(instance);
 }
 
 /// Extended attributes: [CEReactions]
-pub fn set_contentEditable(instance: *runtime.Instance, value: DOMString) anyerror!void {
+pub fn set_contentEditable(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     // [CEReactions] - Trigger Custom Element lifecycle callbacks
     const ce_scope = runtime.CEReactions.begin(instance);
     defer runtime.CEReactions.end(ce_scope);
@@ -38,12 +38,12 @@ pub fn set_contentEditable(instance: *runtime.Instance, value: DOMString) anyerr
 }
 
 /// Extended attributes: [CEReactions]
-pub fn get_enterKeyHint(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_enterKeyHint(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try ElementContentEditableImpl.get_enterKeyHint(instance);
 }
 
 /// Extended attributes: [CEReactions]
-pub fn set_enterKeyHint(instance: *runtime.Instance, value: DOMString) anyerror!void {
+pub fn set_enterKeyHint(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     // [CEReactions] - Trigger Custom Element lifecycle callbacks
     const ce_scope = runtime.CEReactions.begin(instance);
     defer runtime.CEReactions.end(ce_scope);
@@ -56,12 +56,12 @@ pub fn get_isContentEditable(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Extended attributes: [CEReactions]
-pub fn get_inputMode(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_inputMode(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try ElementContentEditableImpl.get_inputMode(instance);
 }
 
 /// Extended attributes: [CEReactions]
-pub fn set_inputMode(instance: *runtime.Instance, value: DOMString) anyerror!void {
+pub fn set_inputMode(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     // [CEReactions] - Trigger Custom Element lifecycle callbacks
     const ce_scope = runtime.CEReactions.begin(instance);
     defer runtime.CEReactions.end(ce_scope);
@@ -70,12 +70,12 @@ pub fn set_inputMode(instance: *runtime.Instance, value: DOMString) anyerror!voi
 }
 
 /// Extended attributes: [CEReactions]
-pub fn get_virtualKeyboardPolicy(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_virtualKeyboardPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try ElementContentEditableImpl.get_virtualKeyboardPolicy(instance);
 }
 
 /// Extended attributes: [CEReactions]
-pub fn set_virtualKeyboardPolicy(instance: *runtime.Instance, value: DOMString) anyerror!void {
+pub fn set_virtualKeyboardPolicy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     // [CEReactions] - Trigger Custom Element lifecycle callbacks
     const ce_scope = runtime.CEReactions.begin(instance);
     defer runtime.CEReactions.end(ce_scope);

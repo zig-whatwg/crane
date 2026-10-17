@@ -177,20 +177,20 @@ pub const CustomElementRegistry = struct {
         return try CustomElementRegistryImpl.call_constructor(ctx);
     }
 
-    pub fn call_whenDefined(instance: *runtime.Instance, name: DOMString) anyerror!runtime.JSValue {
+    pub fn call_whenDefined(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
         return try CustomElementRegistryImpl.call_whenDefined(instance, name);
     }
 
-    pub fn call_get(instance: *runtime.Instance, name: DOMString) anyerror!runtime.JSValue {
+    pub fn call_get(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
         return try CustomElementRegistryImpl.call_get(instance, name);
     }
 
-    pub fn call_getName(instance: *runtime.Instance, constructor: CustomElementConstructor) anyerror!?DOMString {
+    pub fn call_getName(instance: *runtime.Instance, constructor: CustomElementConstructor) anyerror!?runtime.DOMString {
         return try CustomElementRegistryImpl.call_getName(instance, constructor);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_define(instance: *runtime.Instance, name: DOMString, constructor: CustomElementConstructor, options: webidl.Opt(ElementDefinitionOptions)) anyerror!void {
+    pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constructor: CustomElementConstructor, options: webidl.Opt(ElementDefinitionOptions)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);

@@ -198,7 +198,7 @@ pub const FencedFrameConfig = struct {
         return try FencedFrameConfigImpl.call_constructor(ctx, url);
     }
 
-    pub fn call_setSharedStorageContext(instance: *runtime.Instance, contextString: DOMString) anyerror!void {
+    pub fn call_setSharedStorageContext(instance: *runtime.Instance, contextString: runtime.DOMString) anyerror!void {
         return try FencedFrameConfigImpl.call_setSharedStorageContext(instance, contextString);
     }
 };

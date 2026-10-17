@@ -81,7 +81,7 @@ pub const SpeechSynthesisEvent = struct {
             charIndex: u32 = undefined,
             charLength: u32 = undefined,
             elapsedTime: f32 = undefined,
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             _internal: ?*SpeechSynthesisEventImpl.InternalState = null,
         },
     );
@@ -186,7 +186,7 @@ pub const SpeechSynthesisEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: SpeechSynthesisEventInit) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: SpeechSynthesisEventInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try SpeechSynthesisEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
@@ -207,7 +207,7 @@ pub const SpeechSynthesisEvent = struct {
         return try SpeechSynthesisEventImpl.get_elapsedTime(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SpeechSynthesisEventImpl.get_name(instance);
     }
 };

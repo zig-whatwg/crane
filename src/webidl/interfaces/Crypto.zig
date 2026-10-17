@@ -184,7 +184,7 @@ pub const Crypto = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn call_randomUUID(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn call_randomUUID(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try CryptoImpl.call_randomUUID(instance);
     }
 };

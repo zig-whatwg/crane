@@ -125,12 +125,12 @@ pub const ParentNode = struct {
         return try ParentNodeImpl.get_childElementCount(instance);
     }
 
-    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!?*runtime.Instance {
         return try ParentNodeImpl.call_querySelector(instance, selectors);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
+    pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try ParentNodeImpl.call_querySelectorAll(instance, selectors);

@@ -365,3 +365,9 @@ pub fn call_resumeDepthSensing(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
+
+/// Getter for maxRenderLayers
+pub fn get_maxRenderLayers(instance: *runtime.Instance) anyerror!u32 {
+    _ = instance;
+    return error.NotImplemented;
+}

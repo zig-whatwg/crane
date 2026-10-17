@@ -10,8 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DOMRect = @import("interfaces").DOMRect;
-const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
+const SVGRect = @import("typedefs").SVGRect;
 
 pub const SVGAnimatedRect = struct {
     pub const Meta = struct {
@@ -59,10 +58,10 @@ pub const SVGAnimatedRect = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            baseVal: *runtime.Instance = undefined,
-            animVal: *runtime.Instance = undefined,
-            cached_baseVal: ?*runtime.Instance = null,
-            cached_animVal: ?*runtime.Instance = null,
+            baseVal: typedefs.SVGRect = undefined,
+            animVal: typedefs.SVGRect = undefined,
+            cached_baseVal: ?SVGRect = null,
+            cached_animVal: ?SVGRect = null,
             _internal: ?*SVGAnimatedRectImpl.InternalState = null,
         },
     );
@@ -161,7 +160,7 @@ pub const SVGAnimatedRect = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_baseVal(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_baseVal(instance: *runtime.Instance) anyerror!SVGRect {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_baseVal) |cached| {
@@ -169,12 +168,11 @@ pub const SVGAnimatedRect = struct {
         }
         const value = try SVGAnimatedRectImpl.get_baseVal(instance);
         state.own.cached_baseVal = value;
-        @import("dom").same_object_cache.made(instance, value, "baseVal");
         return value;
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_animVal(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_animVal(instance: *runtime.Instance) anyerror!SVGRect {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_animVal) |cached| {
@@ -182,7 +180,6 @@ pub const SVGAnimatedRect = struct {
         }
         const value = try SVGAnimatedRectImpl.get_animVal(instance);
         state.own.cached_animVal = value;
-        @import("dom").same_object_cache.made(instance, value, "animVal");
         return value;
     }
 };

@@ -31,10 +31,10 @@ pub fn set_globalAlpha(instance: *runtime.Instance, value: f64) anyerror!void {
     try CanvasCompositingImpl.set_globalAlpha(instance, value);
 }
 
-pub fn get_globalCompositeOperation(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_globalCompositeOperation(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try CanvasCompositingImpl.get_globalCompositeOperation(instance);
 }
 
-pub fn set_globalCompositeOperation(instance: *runtime.Instance, value: DOMString) anyerror!void {
+pub fn set_globalCompositeOperation(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try CanvasCompositingImpl.set_globalCompositeOperation(instance, value);
 }

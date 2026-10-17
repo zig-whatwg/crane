@@ -73,6 +73,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -181,6 +182,7 @@ pub const HTMLStyleElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -188,7 +190,6 @@ pub const HTMLStyleElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -204,6 +205,7 @@ pub const HTMLStyleElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -240,9 +242,9 @@ pub const HTMLStyleElement = struct {
         Meta.MixinTypes,
         struct {
             disabled: bool = undefined,
-            media: typedefs.DOMString = undefined,
+            media: runtime.DOMString = undefined,
             blocking: *runtime.Instance = undefined,
-            type: typedefs.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             sheet: ?*runtime.Instance = null,
             cached_blocking: ?*runtime.Instance = null,
             _internal: ?*HTMLStyleElementImpl.InternalState = null,
@@ -371,19 +373,19 @@ pub const HTMLStyleElement = struct {
     const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_media(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_media(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLStyleElementImpl, "get_media")) return try HTMLStyleElementImpl.get_media(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "media" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "media" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_media(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_media(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLStyleElementImpl, "set_media")) return try HTMLStyleElementImpl.set_media(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "media" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "media" }, value);
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value], [Reflect]
@@ -411,19 +413,19 @@ pub const HTMLStyleElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLStyleElementImpl, "get_type")) return try HTMLStyleElementImpl.get_type(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "type" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "type" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLStyleElementImpl, "set_type")) return try HTMLStyleElementImpl.set_type(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "type" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "type" }, value);
     }
 
     pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {

@@ -74,15 +74,15 @@ pub const MutationRecord = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: typedefs.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             target: *runtime.Instance = undefined,
             addedNodes: *runtime.Instance = undefined,
             removedNodes: *runtime.Instance = undefined,
             previousSibling: ?*runtime.Instance = null,
             nextSibling: ?*runtime.Instance = null,
-            attributeName: ?typedefs.DOMString = null,
-            attributeNamespace: ?typedefs.DOMString = null,
-            oldValue: ?typedefs.DOMString = null,
+            attributeName: ?runtime.DOMString = null,
+            attributeNamespace: ?runtime.DOMString = null,
+            oldValue: ?runtime.DOMString = null,
             cached_target: ?*runtime.Instance = null,
             cached_addedNodes: ?*runtime.Instance = null,
             cached_removedNodes: ?*runtime.Instance = null,
@@ -190,7 +190,7 @@ pub const MutationRecord = struct {
         }
     }
 
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MutationRecordImpl.get_type(instance);
     }
 
@@ -241,15 +241,15 @@ pub const MutationRecord = struct {
         return try MutationRecordImpl.get_nextSibling(instance);
     }
 
-    pub fn get_attributeName(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_attributeName(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try MutationRecordImpl.get_attributeName(instance);
     }
 
-    pub fn get_attributeNamespace(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_attributeNamespace(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try MutationRecordImpl.get_attributeNamespace(instance);
     }
 
-    pub fn get_oldValue(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_oldValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try MutationRecordImpl.get_oldValue(instance);
     }
 };

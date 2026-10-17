@@ -68,7 +68,7 @@ pub fn call_activate(instance: *runtime.Instance, options: webidl.Opt(dictionari
 }
 
 /// Operation: postMessage
-pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(dictionaries.PostMessageOptions)) anyerror!void {
+pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!void {
     _ = instance;
     _ = message;
     _ = options;

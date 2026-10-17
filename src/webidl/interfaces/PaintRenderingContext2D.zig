@@ -195,7 +195,7 @@ pub const PaintRenderingContext2D = struct {
         Meta.MixinTypes,
         struct {
             globalAlpha: f64 = undefined,
-            globalCompositeOperation: typedefs.DOMString = undefined,
+            globalCompositeOperation: runtime.DOMString = undefined,
             imageSmoothingEnabled: bool = undefined,
             imageSmoothingQuality: enums.ImageSmoothingQuality = undefined,
             strokeStyle: union(enum) {
@@ -211,7 +211,7 @@ pub const PaintRenderingContext2D = struct {
             shadowOffsetX: f64 = undefined,
             shadowOffsetY: f64 = undefined,
             shadowBlur: f64 = undefined,
-            shadowColor: typedefs.DOMString = undefined,
+            shadowColor: runtime.DOMString = undefined,
             lineWidth: f64 = undefined,
             lineCap: enums.CanvasLineCap = undefined,
             lineJoin: enums.CanvasLineJoin = undefined,
@@ -546,7 +546,7 @@ pub const PaintRenderingContext2D = struct {
         return try PaintRenderingContext2DImpl.call_closePath(instance);
     }
 
-    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: runtime.DOMString) anyerror!?*runtime.Instance {
         return try PaintRenderingContext2DImpl.call_createPattern(instance, image, repetition);
     }
 

@@ -66,7 +66,7 @@ pub const GeolocationPositionError = struct {
         Meta.MixinTypes,
         struct {
             code: u16 = undefined,
-            message: typedefs.DOMString = undefined,
+            message: runtime.DOMString = undefined,
             _internal: ?*GeolocationPositionErrorImpl.InternalState = null,
         },
     );
@@ -189,7 +189,7 @@ pub const GeolocationPositionError = struct {
         return try GeolocationPositionErrorImpl.get_code(instance);
     }
 
-    pub fn get_message(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try GeolocationPositionErrorImpl.get_message(instance);
     }
 };

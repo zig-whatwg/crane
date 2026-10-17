@@ -82,9 +82,7 @@ pub const PublicKeyCredential = struct {
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-            "willRequestConditionalCreation",
-        };
+        pub const inherited_methods = .{};
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
@@ -105,7 +103,7 @@ pub const PublicKeyCredential = struct {
         struct {
             rawId: runtime.ArrayBuffer = undefined,
             response: *runtime.Instance = undefined,
-            authenticatorAttachment: ?typedefs.DOMString = null,
+            authenticatorAttachment: ?runtime.DOMString = null,
             cached_rawId: ?runtime.JSValue = null,
             cached_response: ?*runtime.Instance = null,
             _internal: ?*PublicKeyCredentialImpl.InternalState = null,
@@ -229,7 +227,7 @@ pub const PublicKeyCredential = struct {
         return value;
     }
 
-    pub fn get_authenticatorAttachment(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_authenticatorAttachment(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try PublicKeyCredentialImpl.get_authenticatorAttachment(instance);
     }
 

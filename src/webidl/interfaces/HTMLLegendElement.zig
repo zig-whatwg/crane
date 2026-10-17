@@ -72,6 +72,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -169,6 +170,7 @@ pub const HTMLLegendElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -176,7 +178,6 @@ pub const HTMLLegendElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -192,6 +193,7 @@ pub const HTMLLegendElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -225,7 +227,7 @@ pub const HTMLLegendElement = struct {
         Meta.MixinTypes,
         struct {
             form: ?*runtime.Instance = null,
-            @"align": typedefs.DOMString = undefined,
+            @"align": runtime.DOMString = undefined,
             _internal: ?*HTMLLegendElementImpl.InternalState = null,
         },
     );
@@ -341,19 +343,19 @@ pub const HTMLLegendElement = struct {
     const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_align(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLLegendElementImpl, "get_align")) return try HTMLLegendElementImpl.get_align(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "align" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "align" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_align(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_align(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLegendElementImpl, "set_align")) return try HTMLLegendElementImpl.set_align(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "align" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "align" }, value);
     }
 
     /// HTML [CEReactions]: the functions that run a custom element reactions

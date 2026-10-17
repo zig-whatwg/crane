@@ -87,8 +87,8 @@ pub const Translator = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sourceLanguage: typedefs.DOMString = undefined,
-            targetLanguage: typedefs.DOMString = undefined,
+            sourceLanguage: runtime.DOMString = undefined,
+            targetLanguage: runtime.DOMString = undefined,
             inputQuota: f64 = undefined,
             _internal: ?*TranslatorImpl.InternalState = null,
         },
@@ -192,11 +192,11 @@ pub const Translator = struct {
         }
     }
 
-    pub fn get_sourceLanguage(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_sourceLanguage(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TranslatorImpl.get_sourceLanguage(instance);
     }
 
-    pub fn get_targetLanguage(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_targetLanguage(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TranslatorImpl.get_targetLanguage(instance);
     }
 
@@ -204,11 +204,11 @@ pub const Translator = struct {
         return try TranslatorImpl.get_inputQuota(instance);
     }
 
-    pub fn call_translate(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(TranslatorTranslateOptions)) anyerror!runtime.JSValue {
+    pub fn call_translate(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(TranslatorTranslateOptions)) anyerror!runtime.JSValue {
         return try TranslatorImpl.call_translate(instance, input, options);
     }
 
-    pub fn call_translateStreaming(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(TranslatorTranslateOptions)) anyerror!*runtime.Instance {
+    pub fn call_translateStreaming(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(TranslatorTranslateOptions)) anyerror!*runtime.Instance {
         return try TranslatorImpl.call_translateStreaming(instance, input, options);
     }
 
@@ -222,7 +222,7 @@ pub const Translator = struct {
         return try TranslatorImpl.call_static_availability(instance, options);
     }
 
-    pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(TranslatorTranslateOptions)) anyerror!runtime.JSValue {
+    pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(TranslatorTranslateOptions)) anyerror!runtime.JSValue {
         return try TranslatorImpl.call_measureInputUsage(instance, input, options);
     }
 

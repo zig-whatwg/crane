@@ -143,12 +143,6 @@ pub fn get_attribution(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return error.NotImplemented;
 }
 
-/// Getter for smartCard
-pub fn get_smartCard(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for usb
 pub fn get_usb(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
@@ -163,18 +157,6 @@ pub fn get_windowControlsOverlay(instance: *runtime.Instance) anyerror!*runtime.
 
 /// Getter for xr
 pub fn get_xr(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for deprecatedRunAdAuctionEnforcesKAnonymity
-pub fn get_deprecatedRunAdAuctionEnforcesKAnonymity(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for protectedAudience
-pub fn get_protectedAudience(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
@@ -453,13 +435,6 @@ pub fn call_adAuctionComponents(instance: *runtime.Instance, numAdComponents: u1
     return error.NotImplemented;
 }
 
-/// Operation: joinAdInterestGroup
-pub fn call_joinAdInterestGroup(instance: *runtime.Instance, group: dictionaries.AuctionAdInterestGroup) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = group;
-    return error.NotImplemented;
-}
-
 /// Operation: vibrate
 pub fn call_vibrate(instance: *runtime.Instance, pattern: typedefs.VibratePattern) anyerror!bool {
     _ = instance;
@@ -474,21 +449,8 @@ pub fn call_createHandwritingRecognizer(instance: *runtime.Instance, constraint:
     return error.NotImplemented;
 }
 
-/// Operation: leaveAdInterestGroup
-pub fn call_leaveAdInterestGroup(instance: *runtime.Instance, group: webidl.Opt(dictionaries.AuctionAdInterestGroupKey)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = group;
-    return error.NotImplemented;
-}
-
 /// Operation: getGamepads
 pub fn call_getGamepads(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: updateAdInterestGroups
-pub fn call_updateAdInterestGroups(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
@@ -501,18 +463,6 @@ pub fn call_getBattery(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
 /// Operation: taintEnabled
 pub fn call_taintEnabled(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: canLoadAdAuctionFencedFrame
-pub fn call_canLoadAdAuctionFencedFrame(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: createAuctionNonce
-pub fn call_createAuctionNonce(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -598,13 +548,6 @@ pub fn call_share(instance: *runtime.Instance, data: webidl.Opt(dictionaries.Sha
     return error.NotImplemented;
 }
 
-/// Operation: runAdAuction
-pub fn call_runAdAuction(instance: *runtime.Instance, config: dictionaries.AuctionAdConfig) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = config;
-    return error.NotImplemented;
-}
-
 /// Operation: deprecatedReplaceInURN
 pub fn call_deprecatedReplaceInURN(instance: *runtime.Instance, urnOrConfig: typedefs.UrnOrConfig, replacements: runtime.JSValue) anyerror!runtime.JSValue {
     _ = instance;
@@ -633,21 +576,6 @@ pub fn call_canShare(instance: *runtime.Instance, data: webidl.Opt(dictionaries.
     return error.NotImplemented;
 }
 
-/// Operation: clearOriginJoinedAdInterestGroups
-pub fn call_clearOriginJoinedAdInterestGroups(instance: *runtime.Instance, owner: runtime.USVString, interestGroupsToKeep: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = owner;
-    _ = interestGroupsToKeep;
-    return error.NotImplemented;
-}
-
-/// Operation: getInterestGroupAdAuctionData
-pub fn call_getInterestGroupAdAuctionData(instance: *runtime.Instance, config: webidl.Opt(dictionaries.AdAuctionDataConfig)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = config;
-    return error.NotImplemented;
-}
-
 /// Operation: requestMediaKeySystemAccess
 pub fn call_requestMediaKeySystemAccess(instance: *runtime.Instance, keySystem: runtime.DOMString, supportedConfigurations: runtime.JSValue) anyerror!runtime.JSValue {
     _ = instance;
@@ -661,5 +589,23 @@ pub fn call_deprecatedURNtoURL(instance: *runtime.Instance, urnOrConfig: typedef
     _ = instance;
     _ = urnOrConfig;
     _ = send_reports;
+    return error.NotImplemented;
+}
+
+/// Getter for cpuPerformance
+pub fn get_cpuPerformance(instance: *runtime.Instance) anyerror!u16 {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for crossOriginStorage
+pub fn get_crossOriginStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: install
+pub fn call_install(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    _ = instance;
     return error.NotImplemented;
 }

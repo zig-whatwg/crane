@@ -3,7 +3,6 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const typedefs = @import("typedefs");
 const enums = @import("enums");
 const ReportBody = @import("ReportBody.zig").ReportBody;
 
@@ -15,4 +14,5 @@ pub const CrashReportBody = struct {
     stack: ?runtime.DOMString = null,
     is_top_level: ?bool = null,
     visibility_state: ?enums.DocumentVisibilityState = null,
+    crash_report_api: ?runtime.JSValue = null,
 };

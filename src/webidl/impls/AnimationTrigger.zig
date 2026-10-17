@@ -65,30 +65,6 @@ pub fn get_behavior(instance: *runtime.Instance) anyerror!enums.AnimationTrigger
     return error.NotImplemented;
 }
 
-/// Getter for rangeStart
-pub fn get_rangeStart(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for rangeEnd
-pub fn get_rangeEnd(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for exitRangeStart
-pub fn get_exitRangeStart(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for exitRangeEnd
-pub fn get_exitRangeEnd(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Setter for timeline
 pub fn set_timeline(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
@@ -103,29 +79,53 @@ pub fn set_behavior(instance: *runtime.Instance, value: enums.AnimationTriggerBe
     return error.NotImplemented;
 }
 
-/// Setter for rangeStart
-pub fn set_rangeStart(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+/// Getter for activationRangeStart
+pub fn get_activationRangeStart(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for activationRangeEnd
+pub fn get_activationRangeEnd(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for activeRangeStart
+pub fn get_activeRangeStart(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for activeRangeEnd
+pub fn get_activeRangeEnd(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Setter for activationRangeStart
+pub fn set_activationRangeStart(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
-/// Setter for rangeEnd
-pub fn set_rangeEnd(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+/// Setter for activationRangeEnd
+pub fn set_activationRangeEnd(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
-/// Setter for exitRangeStart
-pub fn set_exitRangeStart(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+/// Setter for activeRangeStart
+pub fn set_activeRangeStart(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
-/// Setter for exitRangeEnd
-pub fn set_exitRangeEnd(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+/// Setter for activeRangeEnd
+pub fn set_activeRangeEnd(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

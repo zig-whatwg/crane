@@ -1,4 +1,4 @@
-//! Generated from: privacy-preserving-attribution.idl
+//! Generated from: attribution.idl
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

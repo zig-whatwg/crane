@@ -11,6 +11,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -180,4 +181,68 @@ pub fn createProcessingInstruction(
     internal.target = try allocator.dupe(u8, target);
 
     return instance;
+}
+
+/// Constructor implementation
+/// This is called when the interface is constructed from JavaScript
+/// Note: Use ctx.allocator for all allocations to ensure consistency with deinit
+pub fn call_constructor(ctx: runtime.Context, target: runtime.DOMString, data: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
+    // Create the instance through the generated construction chain.
+    const instance = try ProcessingInstruction.init(ctx.allocator, ctx);
+    errdefer ProcessingInstruction.deinit(instance);
+
+    _ = target;
+    _ = data;
+    // TODO: Implement constructor logic with parameters
+
+    return instance;
+}
+
+/// Operation: hasAttributes
+pub fn call_hasAttributes(instance: *runtime.Instance) anyerror!bool {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: toggleAttribute
+pub fn call_toggleAttribute(instance: *runtime.Instance, name: runtime.DOMString, force: webidl.Opt(bool)) anyerror!bool {
+    _ = instance;
+    _ = name;
+    _ = force;
+    return error.NotImplemented;
+}
+
+/// Operation: hasAttribute
+pub fn call_hasAttribute(instance: *runtime.Instance, name: runtime.DOMString) anyerror!bool {
+    _ = instance;
+    _ = name;
+    return error.NotImplemented;
+}
+
+/// Operation: getAttribute
+pub fn call_getAttribute(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.DOMString {
+    _ = instance;
+    _ = name;
+    return error.NotImplemented;
+}
+
+/// Operation: getAttributeNames
+pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: removeAttribute
+pub fn call_removeAttribute(instance: *runtime.Instance, name: runtime.DOMString) anyerror!void {
+    _ = instance;
+    _ = name;
+    return error.NotImplemented;
+}
+
+/// Operation: setAttribute
+pub fn call_setAttribute(instance: *runtime.Instance, name: runtime.DOMString, value: runtime.DOMString) anyerror!void {
+    _ = instance;
+    _ = name;
+    _ = value;
+    return error.NotImplemented;
 }

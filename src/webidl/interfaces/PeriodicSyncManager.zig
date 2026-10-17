@@ -161,7 +161,7 @@ pub const PeriodicSyncManager = struct {
         }
     }
 
-    pub fn call_unregister(instance: *runtime.Instance, tag: DOMString) anyerror!runtime.JSValue {
+    pub fn call_unregister(instance: *runtime.Instance, tag: runtime.DOMString) anyerror!runtime.JSValue {
         return try PeriodicSyncManagerImpl.call_unregister(instance, tag);
     }
 
@@ -169,7 +169,7 @@ pub const PeriodicSyncManager = struct {
         return try PeriodicSyncManagerImpl.call_getTags(instance);
     }
 
-    pub fn call_register(instance: *runtime.Instance, tag: DOMString, options: webidl.Opt(BackgroundSyncOptions)) anyerror!runtime.JSValue {
+    pub fn call_register(instance: *runtime.Instance, tag: runtime.DOMString, options: webidl.Opt(BackgroundSyncOptions)) anyerror!runtime.JSValue {
         return try PeriodicSyncManagerImpl.call_register(instance, tag, options);
     }
 

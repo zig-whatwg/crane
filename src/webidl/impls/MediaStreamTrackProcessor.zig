@@ -57,3 +57,15 @@ pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
+
+/// Getter for discardedFrames
+pub fn get_discardedFrames(instance: *runtime.Instance) anyerror!u64 {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for totalFrames
+pub fn get_totalFrames(instance: *runtime.Instance) anyerror!u64 {
+    _ = instance;
+    return error.NotImplemented;
+}

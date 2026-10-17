@@ -1,4 +1,4 @@
-//! Generated from: payment-handler.idl
+//! Generated from: web-based-payment-handler.idl
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -16,6 +16,7 @@ const WindowClient = @import("interfaces").WindowClient;
 const PaymentShippingOption = @import("dictionaries").PaymentShippingOption;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const PaymentRequestEventInit = @import("dictionaries").PaymentRequestEventInit;
+const AddressInit = @import("dictionaries").AddressInit;
 const USVString = @import("typedefs").USVString;
 const ExtendableEventInit = @import("dictionaries").ExtendableEventInit;
 const EventTarget = @import("interfaces").EventTarget;
@@ -105,7 +106,7 @@ pub const PaymentRequestEvent = struct {
         struct {
             topOrigin: runtime.USVString = undefined,
             paymentRequestOrigin: runtime.USVString = undefined,
-            paymentRequestId: typedefs.DOMString = undefined,
+            paymentRequestId: runtime.DOMString = undefined,
             methodData: runtime.JSValue = undefined,
             total: runtime.JSValue = undefined,
             modifiers: runtime.JSValue = undefined,
@@ -224,7 +225,7 @@ pub const PaymentRequestEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(PaymentRequestEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(PaymentRequestEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try PaymentRequestEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
@@ -237,7 +238,7 @@ pub const PaymentRequestEvent = struct {
         return try PaymentRequestEventImpl.get_paymentRequestOrigin(instance);
     }
 
-    pub fn get_paymentRequestId(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_paymentRequestId(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PaymentRequestEventImpl.get_paymentRequestId(instance);
     }
 
@@ -269,15 +270,15 @@ pub const PaymentRequestEvent = struct {
         return try PaymentRequestEventImpl.call_openWindow(instance, url);
     }
 
-    pub fn call_changeShippingOption(instance: *runtime.Instance, shippingOption: DOMString) anyerror!runtime.JSValue {
+    pub fn call_changeShippingOption(instance: *runtime.Instance, shippingOption: runtime.DOMString) anyerror!runtime.JSValue {
         return try PaymentRequestEventImpl.call_changeShippingOption(instance, shippingOption);
     }
 
-    pub fn call_changeShippingAddress(instance: *runtime.Instance, shippingAddress: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
+    pub fn call_changeShippingAddress(instance: *runtime.Instance, shippingAddress: webidl.Opt(AddressInit)) anyerror!runtime.JSValue {
         return try PaymentRequestEventImpl.call_changeShippingAddress(instance, shippingAddress);
     }
 
-    pub fn call_changePaymentMethod(instance: *runtime.Instance, methodName: DOMString, methodDetails: webidl.Opt(?runtime.JSValue)) anyerror!runtime.JSValue {
+    pub fn call_changePaymentMethod(instance: *runtime.Instance, methodName: runtime.DOMString, methodDetails: webidl.Opt(?runtime.JSValue)) anyerror!runtime.JSValue {
         return try PaymentRequestEventImpl.call_changePaymentMethod(instance, methodName, methodDetails);
     }
 

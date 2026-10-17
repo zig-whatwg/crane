@@ -44,3 +44,18 @@ pub fn get_sourceAnimation(instance: *runtime.Instance) anyerror!*runtime.Instan
     _ = instance;
     return error.NotImplemented;
 }
+
+/// Constructor implementation
+/// This is called when the interface is constructed from JavaScript
+/// Note: Use ctx.allocator for all allocations to ensure consistency with deinit
+pub fn call_constructor(ctx: runtime.Context, source: *runtime.Instance, newTarget: runtime.JSValue) !*runtime.Instance {
+    // Create instance through init() - use ctx.allocator for consistency with deinit
+    const instance = try init(ctx.allocator, State, &ShadowAnimation.vtable, ctx);
+    errdefer deinit(instance);
+
+    _ = source;
+    _ = newTarget;
+    // TODO: Implement constructor logic with parameters
+
+    return instance;
+}

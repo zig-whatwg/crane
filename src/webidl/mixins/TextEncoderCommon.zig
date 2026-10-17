@@ -23,6 +23,6 @@ pub fn installHooks() void {
     }
 }
 
-pub fn get_encoding(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try TextEncoderCommonImpl.get_encoding(instance);
 }

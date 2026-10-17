@@ -4,17 +4,16 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const typedefs = @import("typedefs");
 const enums = @import("enums");
 const TimelineRangeOffset = @import("TimelineRangeOffset.zig").TimelineRangeOffset;
 
 pub const AnimationTriggerOptions = struct {
     timeline: ?*runtime.Instance = null,
     behavior: webidl.Opt(?enums.AnimationTriggerBehavior) = .notPassed(),
-    rangeStart: ?runtime.JSValue = null,
-    rangeEnd: ?runtime.JSValue = null,
-    exitRangeStart: ?runtime.JSValue = null,
-    exitRangeEnd: ?runtime.JSValue = null,
+    activationRangeStart: ?runtime.JSValue = null,
+    activationRangeEnd: ?runtime.JSValue = null,
+    activeRangeStart: ?runtime.JSValue = null,
+    activeRangeEnd: ?runtime.JSValue = null,
 
     /// Optional members whose IDL type is nullable: a present null is the
     /// value null. Any other member's present null converts by its type.

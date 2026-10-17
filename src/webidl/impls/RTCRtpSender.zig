@@ -59,13 +59,13 @@ pub fn get_dtmf(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 }
 
 /// Getter for transform
-pub fn get_transform(instance: *runtime.Instance) anyerror!?typedefs.RTCRtpTransform {
+pub fn get_transform(instance: *runtime.Instance) anyerror!?typedefs.RTCRtpSenderTransform {
     _ = instance;
     return null;
 }
 
 /// Setter for transform
-pub fn set_transform(instance: *runtime.Instance, value: ?typedefs.RTCRtpTransform) anyerror!void {
+pub fn set_transform(instance: *runtime.Instance, value: ?typedefs.RTCRtpSenderTransform) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

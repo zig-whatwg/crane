@@ -248,3 +248,9 @@ pub fn get_maxStorageTexturesInFragmentStage(instance: *runtime.Instance) anyerr
     _ = instance;
     return error.NotImplemented;
 }
+
+/// Getter for maxImmediateSize
+pub fn get_maxImmediateSize(instance: *runtime.Instance) anyerror!u32 {
+    _ = instance;
+    return error.NotImplemented;
+}

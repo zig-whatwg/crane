@@ -79,18 +79,6 @@ pub fn get_attributeStyleMap(instance: *runtime.Instance) anyerror!*runtime.Inst
     return error.NotImplemented;
 }
 
-/// Getter for correspondingElement
-pub fn get_correspondingElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
-}
-
-/// Getter for correspondingUseElement
-pub fn get_correspondingUseElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
-}
-
 /// Getter for dataset
 pub fn get_dataset(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;

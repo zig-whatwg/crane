@@ -72,10 +72,10 @@ pub const GPUAdapterInfo = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            vendor: typedefs.DOMString = undefined,
-            architecture: typedefs.DOMString = undefined,
-            device: typedefs.DOMString = undefined,
-            description: typedefs.DOMString = undefined,
+            vendor: runtime.DOMString = undefined,
+            architecture: runtime.DOMString = undefined,
+            device: runtime.DOMString = undefined,
+            description: runtime.DOMString = undefined,
             subgroupMinSize: u32 = undefined,
             subgroupMaxSize: u32 = undefined,
             isFallbackAdapter: bool = undefined,
@@ -180,19 +180,19 @@ pub const GPUAdapterInfo = struct {
         }
     }
 
-    pub fn get_vendor(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_vendor(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try GPUAdapterInfoImpl.get_vendor(instance);
     }
 
-    pub fn get_architecture(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_architecture(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try GPUAdapterInfoImpl.get_architecture(instance);
     }
 
-    pub fn get_device(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_device(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try GPUAdapterInfoImpl.get_device(instance);
     }
 
-    pub fn get_description(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_description(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try GPUAdapterInfoImpl.get_description(instance);
     }
 

@@ -22,11 +22,11 @@ const USVString = @import("typedefs").USVString;
 const Element = @import("interfaces").Element;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
 const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
-const DOMMatrix = @import("interfaces").DOMMatrix;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
 const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
+const SVGRect = @import("typedefs").SVGRect;
 const EventListener = @import("interfaces").EventListener;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
@@ -49,11 +49,11 @@ const Document = @import("interfaces").Document;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
+const SVGMatrix = @import("typedefs").SVGMatrix;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const SVGUseElement = @import("interfaces").SVGUseElement;
 const DOMRectList = @import("interfaces").DOMRectList;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
@@ -74,6 +74,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -183,6 +184,7 @@ pub const SVGGraphicsElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -190,7 +192,6 @@ pub const SVGGraphicsElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -206,6 +207,7 @@ pub const SVGGraphicsElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "focus",
@@ -378,15 +380,15 @@ pub const SVGGraphicsElement = struct {
         return value;
     }
 
-    pub fn call_getCTM(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+    pub fn call_getCTM(instance: *runtime.Instance) anyerror!?SVGMatrix {
         return try SVGGraphicsElementImpl.call_getCTM(instance);
     }
 
-    pub fn call_getScreenCTM(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+    pub fn call_getScreenCTM(instance: *runtime.Instance) anyerror!?SVGMatrix {
         return try SVGGraphicsElementImpl.call_getScreenCTM(instance);
     }
 
-    pub fn call_getBBox(instance: *runtime.Instance, options: webidl.Opt(SVGBoundingBoxOptions)) anyerror!*runtime.Instance {
+    pub fn call_getBBox(instance: *runtime.Instance, options: webidl.Opt(SVGBoundingBoxOptions)) anyerror!SVGRect {
         return try SVGGraphicsElementImpl.call_getBBox(instance, options);
     }
 };

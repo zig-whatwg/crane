@@ -50,3 +50,9 @@ pub fn get_containerQuery(instance: *runtime.Instance) anyerror!typedefs.CSSOMSt
     _ = instance;
     return error.NotImplemented;
 }
+
+/// Getter for conditions
+pub fn get_conditions(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    _ = instance;
+    return error.NotImplemented;
+}

@@ -142,3 +142,9 @@ pub fn call_static_securePaymentConfirmationAvailability(instance: *runtime.Inst
     _ = instance;
     return error.NotImplemented;
 }
+
+/// Operation: getSecurePaymentConfirmationCapabilities
+pub fn call_static_getSecurePaymentConfirmationCapabilities(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    _ = instance;
+    return error.NotImplemented;
+}

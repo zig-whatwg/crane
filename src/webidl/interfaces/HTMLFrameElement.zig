@@ -72,6 +72,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -177,6 +178,7 @@ pub const HTMLFrameElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -184,7 +186,6 @@ pub const HTMLFrameElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -200,6 +201,7 @@ pub const HTMLFrameElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -240,16 +242,16 @@ pub const HTMLFrameElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
-            scrolling: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
+            scrolling: runtime.DOMString = undefined,
             src: runtime.USVString = undefined,
-            frameBorder: typedefs.DOMString = undefined,
+            frameBorder: runtime.DOMString = undefined,
             longDesc: runtime.USVString = undefined,
             noResize: bool = undefined,
             contentDocument: ?*runtime.Instance = null,
             contentWindow: ?typedefs.WindowProxy = null,
-            marginHeight: typedefs.DOMString = undefined,
-            marginWidth: typedefs.DOMString = undefined,
+            marginHeight: runtime.DOMString = undefined,
+            marginWidth: runtime.DOMString = undefined,
             _internal: ?*HTMLFrameElementImpl.InternalState = null,
         },
     );
@@ -376,35 +378,35 @@ pub const HTMLFrameElement = struct {
     const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLFrameElementImpl, "get_name")) return try HTMLFrameElementImpl.get_name(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "name" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFrameElementImpl, "set_name")) return try HTMLFrameElementImpl.set_name(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "name" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_scrolling(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_scrolling(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLFrameElementImpl, "get_scrolling")) return try HTMLFrameElementImpl.get_scrolling(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "scrolling" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "scrolling" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_scrolling(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_scrolling(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFrameElementImpl, "set_scrolling")) return try HTMLFrameElementImpl.set_scrolling(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "scrolling" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "scrolling" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
@@ -424,19 +426,19 @@ pub const HTMLFrameElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_frameBorder(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_frameBorder(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLFrameElementImpl, "get_frameBorder")) return try HTMLFrameElementImpl.get_frameBorder(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "frameborder" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "frameborder" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_frameBorder(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_frameBorder(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFrameElementImpl, "set_frameBorder")) return try HTMLFrameElementImpl.set_frameBorder(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "frameborder" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "frameborder" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
@@ -480,35 +482,35 @@ pub const HTMLFrameElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
-    pub fn get_marginHeight(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_marginHeight(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLFrameElementImpl, "get_marginHeight")) return try HTMLFrameElementImpl.get_marginHeight(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "marginheight" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "marginheight" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
-    pub fn set_marginHeight(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_marginHeight(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFrameElementImpl, "set_marginHeight")) return try HTMLFrameElementImpl.set_marginHeight(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "marginheight" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "marginheight" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
-    pub fn get_marginWidth(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_marginWidth(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLFrameElementImpl, "get_marginWidth")) return try HTMLFrameElementImpl.get_marginWidth(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "marginwidth" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "marginwidth" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
-    pub fn set_marginWidth(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_marginWidth(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFrameElementImpl, "set_marginWidth")) return try HTMLFrameElementImpl.set_marginWidth(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "marginwidth" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "marginwidth" }, value);
     }
 
     /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for

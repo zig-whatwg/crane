@@ -154,3 +154,9 @@ pub fn call_setSinkId(instance: *runtime.Instance, sinkId: runtime.JSValue) anye
     _ = sinkId;
     return error.NotImplemented;
 }
+
+/// Getter for playbackStats
+pub fn get_playbackStats(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    _ = instance;
+    return error.NotImplemented;
+}

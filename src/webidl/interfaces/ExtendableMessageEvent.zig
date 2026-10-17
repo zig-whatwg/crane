@@ -84,7 +84,7 @@ pub const ExtendableMessageEvent = struct {
         struct {
             data: runtime.JSValue = undefined,
             origin: runtime.USVString = undefined,
-            lastEventId: typedefs.DOMString = undefined,
+            lastEventId: runtime.DOMString = undefined,
             source: ?union(enum) {
                 Client: Client,
                 ServiceWorker: ServiceWorker,
@@ -197,7 +197,7 @@ pub const ExtendableMessageEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(ExtendableMessageEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(ExtendableMessageEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try ExtendableMessageEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
@@ -210,7 +210,7 @@ pub const ExtendableMessageEvent = struct {
         return try ExtendableMessageEventImpl.get_origin(instance);
     }
 
-    pub fn get_lastEventId(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_lastEventId(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ExtendableMessageEventImpl.get_lastEventId(instance);
     }
 

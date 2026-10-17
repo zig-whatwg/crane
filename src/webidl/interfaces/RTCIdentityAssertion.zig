@@ -58,8 +58,8 @@ pub const RTCIdentityAssertion = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            idp: typedefs.DOMString = undefined,
-            name: typedefs.DOMString = undefined,
+            idp: runtime.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             _internal: ?*RTCIdentityAssertionImpl.InternalState = null,
         },
     );
@@ -162,24 +162,24 @@ pub const RTCIdentityAssertion = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, idp: DOMString, name: DOMString) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, idp: runtime.DOMString, name: runtime.DOMString) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try RTCIdentityAssertionImpl.call_constructor(ctx, idp, name);
     }
 
-    pub fn get_idp(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_idp(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try RTCIdentityAssertionImpl.get_idp(instance);
     }
 
-    pub fn set_idp(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_idp(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try RTCIdentityAssertionImpl.set_idp(instance, value);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try RTCIdentityAssertionImpl.get_name(instance);
     }
 
-    pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try RTCIdentityAssertionImpl.set_name(instance, value);
     }
 };

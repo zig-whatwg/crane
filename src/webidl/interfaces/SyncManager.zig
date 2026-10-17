@@ -161,7 +161,7 @@ pub const SyncManager = struct {
         return try SyncManagerImpl.call_getTags(instance);
     }
 
-    pub fn call_register(instance: *runtime.Instance, tag: DOMString) anyerror!runtime.JSValue {
+    pub fn call_register(instance: *runtime.Instance, tag: runtime.DOMString) anyerror!runtime.JSValue {
         return try SyncManagerImpl.call_register(instance, tag);
     }
 

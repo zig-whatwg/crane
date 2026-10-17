@@ -176,7 +176,7 @@ pub const CSSTransformComponent = struct {
         try CSSTransformComponentImpl.set_is2D(instance, value);
     }
 
-    pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn call_stringifier(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try CSSTransformComponentImpl.call_stringifier(instance);
     }
 

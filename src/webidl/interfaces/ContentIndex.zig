@@ -161,7 +161,7 @@ pub const ContentIndex = struct {
         }
     }
 
-    pub fn call_delete(instance: *runtime.Instance, id: DOMString) anyerror!runtime.JSValue {
+    pub fn call_delete(instance: *runtime.Instance, id: runtime.DOMString) anyerror!runtime.JSValue {
         return try ContentIndexImpl.call_delete(instance, id);
     }
 

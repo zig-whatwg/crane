@@ -17,6 +17,7 @@ const ObservableEventListenerOptions = @import("dictionaries").ObservableEventLi
 const AudioOutputOptions = @import("dictionaries").AudioOutputOptions;
 const CaptureHandleConfig = @import("dictionaries").CaptureHandleConfig;
 const MediaTrackSupportedConstraints = @import("dictionaries").MediaTrackSupportedConstraints;
+const GetUserMediaSemantics = @import("enums").GetUserMediaSemantics;
 const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
 const MediaStream = @import("interfaces").MediaStream;
@@ -47,6 +48,7 @@ pub const MediaDevices = struct {
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "ondevicechange", "get_ondevicechange", "set_ondevicechange" },
+            .{ "defaultSemantics", "get_defaultSemantics", null },
             .{ "oncaptureaction", "get_oncaptureaction", "set_oncaptureaction" },
         };
 
@@ -85,6 +87,7 @@ pub const MediaDevices = struct {
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "ondevicechange", "get_ondevicechange", "set_ondevicechange" },
+            .{ "defaultSemantics", "get_defaultSemantics", null },
             .{ "oncaptureaction", "get_oncaptureaction", "set_oncaptureaction" },
         };
 
@@ -99,12 +102,14 @@ pub const MediaDevices = struct {
         Meta.MixinTypes,
         struct {
             ondevicechange: typedefs.EventHandler = undefined,
+            defaultSemantics: enums.GetUserMediaSemantics = undefined,
             oncaptureaction: typedefs.EventHandler = undefined,
             _internal: ?*MediaDevicesImpl.InternalState = null,
         },
     );
 
     const delegates = .{
+        .get_defaultSemantics = &get_defaultSemantics,
         .get_oncaptureaction = &get_oncaptureaction,
         .get_ondevicechange = &get_ondevicechange,
 
@@ -220,6 +225,10 @@ pub const MediaDevices = struct {
     pub fn set_ondevicechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         if (comptime @hasDecl(MediaDevicesImpl, "set_ondevicechange")) return try MediaDevicesImpl.set_ondevicechange(instance, value);
         try event_handlers.setValue(EventHandler, instance, "ondevicechange", value);
+    }
+
+    pub fn get_defaultSemantics(instance: *runtime.Instance) anyerror!GetUserMediaSemantics {
+        return try MediaDevicesImpl.get_defaultSemantics(instance);
     }
 
     pub fn get_oncaptureaction(instance: *runtime.Instance) anyerror!EventHandler {

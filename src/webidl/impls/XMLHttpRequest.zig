@@ -641,14 +641,6 @@ pub fn call_setPrivateToken(instance: *runtime.Instance, privateToken: dictionar
     return error.NotImplemented;
 }
 
-/// Operation: setAttributionReporting
-/// Attribution Reporting API (not part of core XHR spec)
-pub fn call_setAttributionReporting(instance: *runtime.Instance, options: dictionaries.AttributionReportingRequestOptions) anyerror!void {
-    _ = instance;
-    _ = options;
-    return error.NotImplemented;
-}
-
 /// Operation: open(method, url)
 ///
 /// Spec: https://xhr.spec.whatwg.org/#the-open()-method

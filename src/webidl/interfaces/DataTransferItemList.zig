@@ -193,7 +193,7 @@ pub const DataTransferItemList = struct {
         return try DataTransferItemListImpl.call_remove(instance, index);
     }
 
-    pub fn call_add(instance: *runtime.Instance, data: DOMString, @"type": DOMString) anyerror!?*runtime.Instance {
+    pub fn call_add(instance: *runtime.Instance, data: runtime.DOMString, @"type": runtime.DOMString) anyerror!?*runtime.Instance {
         return try DataTransferItemListImpl.call_add(instance, data, @"type");
     }
 

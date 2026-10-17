@@ -86,7 +86,7 @@ pub fn call_deleteQuery(instance: *runtime.Instance, query: ?*runtime.Instance) 
 }
 
 /// Extended attributes: [WebGLHandlesContextLoss]
-pub fn call_getFragDataLocation(instance: *runtime.Instance, program: *runtime.Instance, name: DOMString) anyerror!GLint {
+pub fn call_getFragDataLocation(instance: *runtime.Instance, program: *runtime.Instance, name: runtime.DOMString) anyerror!GLint {
     return try WebGL2RenderingContextBaseImpl.call_getFragDataLocation(instance, program, name);
 }
 
@@ -135,7 +135,7 @@ pub fn call_renderbufferStorageMultisample(instance: *runtime.Instance, target: 
     return try WebGL2RenderingContextBaseImpl.call_renderbufferStorageMultisample(instance, target, samples, internalformat, width, height);
 }
 
-pub fn call_getUniformBlockIndex(instance: *runtime.Instance, program: *runtime.Instance, uniformBlockName: DOMString) anyerror!GLuint {
+pub fn call_getUniformBlockIndex(instance: *runtime.Instance, program: *runtime.Instance, uniformBlockName: runtime.DOMString) anyerror!GLuint {
     return try WebGL2RenderingContextBaseImpl.call_getUniformBlockIndex(instance, program, uniformBlockName);
 }
 
@@ -355,7 +355,7 @@ pub fn call_getIndexedParameter(instance: *runtime.Instance, target: GLenum, ind
     return try WebGL2RenderingContextBaseImpl.call_getIndexedParameter(instance, target, index);
 }
 
-pub fn call_getActiveUniformBlockName(instance: *runtime.Instance, program: *runtime.Instance, uniformBlockIndex: GLuint) anyerror!?DOMString {
+pub fn call_getActiveUniformBlockName(instance: *runtime.Instance, program: *runtime.Instance, uniformBlockIndex: GLuint) anyerror!?runtime.DOMString {
     return try WebGL2RenderingContextBaseImpl.call_getActiveUniformBlockName(instance, program, uniformBlockIndex);
 }
 

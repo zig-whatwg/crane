@@ -22,9 +22,11 @@ const MediaStreamTrackState = @import("enums").MediaStreamTrackState;
 const Event = @import("interfaces").Event;
 const Observable = @import("interfaces").Observable;
 const CaptureAction = @import("enums").CaptureAction;
+const MediaStreamTrackVideoStats = @import("interfaces").MediaStreamTrackVideoStats;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const MediaTrackCapabilities = @import("dictionaries").MediaTrackCapabilities;
 const EventListener = @import("interfaces").EventListener;
+const MediaStreamTrackAudioStats = @import("interfaces").MediaStreamTrackAudioStats;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
 

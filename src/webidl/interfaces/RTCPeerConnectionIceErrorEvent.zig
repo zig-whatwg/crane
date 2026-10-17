@@ -77,7 +77,7 @@ pub const RTCPeerConnectionIceErrorEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            address: ?typedefs.DOMString = null,
+            address: ?runtime.DOMString = null,
             port: ?u16 = null,
             url: runtime.USVString = undefined,
             errorCode: u16 = undefined,
@@ -186,12 +186,12 @@ pub const RTCPeerConnectionIceErrorEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: RTCPeerConnectionIceErrorEventInit) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: RTCPeerConnectionIceErrorEventInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try RTCPeerConnectionIceErrorEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
 
-    pub fn get_address(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_address(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try RTCPeerConnectionIceErrorEventImpl.get_address(instance);
     }
 

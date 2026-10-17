@@ -11,14 +11,15 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
-const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const EventHandler = @import("typedefs").EventHandler;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const PaymentMethodData = @import("dictionaries").PaymentMethodData;
 const PaymentShippingType = @import("enums").PaymentShippingType;
 const SecurePaymentConfirmationAvailability = @import("enums").SecurePaymentConfirmationAvailability;
 const PaymentOptions = @import("dictionaries").PaymentOptions;
 const Observable = @import("interfaces").Observable;
+const SecurePaymentConfirmationCapabilities = @import("typedefs").SecurePaymentConfirmationCapabilities;
 const Event = @import("interfaces").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const PaymentDetailsInit = @import("dictionaries").PaymentDetailsInit;
@@ -66,6 +67,7 @@ pub const PaymentRequest = struct {
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "securePaymentConfirmationAvailability", "call_static_securePaymentConfirmationAvailability", 0 },
+            .{ "getSecurePaymentConfirmationCapabilities", "call_static_getSecurePaymentConfirmationCapabilities", 0 },
         };
 
         /// Methods defined/overridden by this interface
@@ -74,6 +76,7 @@ pub const PaymentRequest = struct {
             "abort",
             "canMakePayment",
             "securePaymentConfirmationAvailability",
+            "getSecurePaymentConfirmationCapabilities",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -105,9 +108,9 @@ pub const PaymentRequest = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: typedefs.DOMString = undefined,
+            id: runtime.DOMString = undefined,
             shippingAddress: ?*runtime.Instance = null,
-            shippingOption: ?typedefs.DOMString = null,
+            shippingOption: ?runtime.DOMString = null,
             shippingType: ?enums.PaymentShippingType = null,
             onshippingaddresschange: typedefs.EventHandler = undefined,
             onshippingoptionchange: typedefs.EventHandler = undefined,
@@ -231,7 +234,7 @@ pub const PaymentRequest = struct {
         return try PaymentRequestImpl.call_constructor(ctx, methodData, details, options);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PaymentRequestImpl.get_id(instance);
     }
 
@@ -239,7 +242,7 @@ pub const PaymentRequest = struct {
         return try PaymentRequestImpl.get_shippingAddress(instance);
     }
 
-    pub fn get_shippingOption(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_shippingOption(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try PaymentRequestImpl.get_shippingOption(instance);
     }
 
@@ -285,6 +288,10 @@ pub const PaymentRequest = struct {
         return try PaymentRequestImpl.call_abort(instance);
     }
 
+    pub fn call_static_getSecurePaymentConfirmationCapabilities(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try PaymentRequestImpl.call_static_getSecurePaymentConfirmationCapabilities(instance);
+    }
+
     /// Extended attributes: [NewObject]
     pub fn call_canMakePayment(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
@@ -306,6 +313,7 @@ pub const PaymentRequest = struct {
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{
         "call_abort",
+        "call_static_getSecurePaymentConfirmationCapabilities",
         "call_canMakePayment",
         "call_show",
         "call_static_securePaymentConfirmationAvailability",

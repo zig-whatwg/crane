@@ -114,9 +114,9 @@ pub const DocumentType = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
-            publicId: typedefs.DOMString = undefined,
-            systemId: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
+            publicId: runtime.DOMString = undefined,
+            systemId: runtime.DOMString = undefined,
             _internal: ?*DocumentTypeImpl.InternalState = null,
         },
     );
@@ -221,15 +221,15 @@ pub const DocumentType = struct {
         }
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DocumentTypeImpl.get_name(instance);
     }
 
-    pub fn get_publicId(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_publicId(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DocumentTypeImpl.get_publicId(instance);
     }
 
-    pub fn get_systemId(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_systemId(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DocumentTypeImpl.get_systemId(instance);
     }
 

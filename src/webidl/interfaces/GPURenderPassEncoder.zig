@@ -15,6 +15,7 @@ const GPUCommandsMixin = @import("mixins").GPUCommandsMixin;
 const GPUDebugCommandsMixin = @import("mixins").GPUDebugCommandsMixin;
 const GPUBindingCommandsMixin = @import("mixins").GPUBindingCommandsMixin;
 const GPURenderCommandsMixin = @import("mixins").GPURenderCommandsMixin;
+const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const GPUIndex32 = @import("typedefs").GPUIndex32;
 const GPUIntegerCoordinate = @import("typedefs").GPUIntegerCoordinate;
 const GPUStencilValue = @import("typedefs").GPUStencilValue;
@@ -74,6 +75,7 @@ pub const GPURenderPassEncoder = struct {
             .{ "popDebugGroup", "call_popDebugGroup", 0 },
             .{ "insertDebugMarker", "call_insertDebugMarker", 1 },
             .{ "setBindGroup", "call_setBindGroup", 2 },
+            .{ "setImmediates", "call_setImmediates", 2 },
             .{ "setPipeline", "call_setPipeline", 1 },
             .{ "setIndexBuffer", "call_setIndexBuffer", 2 },
             .{ "setVertexBuffer", "call_setVertexBuffer", 2 },
@@ -97,6 +99,7 @@ pub const GPURenderPassEncoder = struct {
             "popDebugGroup",
             "insertDebugMarker",
             "setBindGroup",
+            "setImmediates",
             "setPipeline",
             "setIndexBuffer",
             "setVertexBuffer",
@@ -147,6 +150,7 @@ pub const GPURenderPassEncoder = struct {
         .call_pushDebugGroup = &call_pushDebugGroup,
         .call_setBindGroup = &call_setBindGroup,
         .call_setBlendConstant = &call_setBlendConstant,
+        .call_setImmediates = &call_setImmediates,
         .call_setIndexBuffer = &call_setIndexBuffer,
         .call_setPipeline = &call_setPipeline,
         .call_setScissorRect = &call_setScissorRect,
@@ -288,6 +292,8 @@ pub const GPURenderPassEncoder = struct {
     pub fn call_setViewport(instance: *runtime.Instance, x: f32, y: f32, width: f32, height: f32, minDepth: f32, maxDepth: f32) anyerror!void {
         return try GPURenderPassEncoderImpl.call_setViewport(instance, x, y, width, height, minDepth, maxDepth);
     }
+
+    pub const call_setImmediates = mixins.GPUBindingCommandsMixin.call_setImmediates;
 
     pub const call_draw = mixins.GPURenderCommandsMixin.call_draw;
 

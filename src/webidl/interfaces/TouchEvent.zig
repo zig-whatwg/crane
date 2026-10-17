@@ -204,7 +204,7 @@ pub const TouchEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(TouchEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(TouchEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try TouchEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
@@ -237,7 +237,7 @@ pub const TouchEvent = struct {
         return try TouchEventImpl.get_shiftKey(instance);
     }
 
-    pub fn call_getModifierState(instance: *runtime.Instance, keyArg: DOMString) anyerror!bool {
+    pub fn call_getModifierState(instance: *runtime.Instance, keyArg: runtime.DOMString) anyerror!bool {
         return try TouchEventImpl.call_getModifierState(instance, keyArg);
     }
 };

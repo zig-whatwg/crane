@@ -2778,7 +2778,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_uniformMatrix3fv(instance, location, transpose, value);
     }
 
-    pub fn call_bindAttribLocation(instance: *runtime.Instance, program: *runtime.Instance, index: GLuint, name: DOMString) anyerror!void {
+    pub fn call_bindAttribLocation(instance: *runtime.Instance, program: *runtime.Instance, index: GLuint, name: runtime.DOMString) anyerror!void {
         return try WebGLRenderingContextImpl.call_bindAttribLocation(instance, program, index, name);
     }
 
@@ -2824,7 +2824,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_deleteShader(instance, shader);
     }
 
-    pub fn call_getProgramInfoLog(instance: *runtime.Instance, program: *runtime.Instance) anyerror!?DOMString {
+    pub fn call_getProgramInfoLog(instance: *runtime.Instance, program: *runtime.Instance) anyerror!?runtime.DOMString {
         return try WebGLRenderingContextImpl.call_getProgramInfoLog(instance, program);
     }
 
@@ -3011,7 +3011,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_deleteFramebuffer(instance, framebuffer);
     }
 
-    pub fn call_getShaderInfoLog(instance: *runtime.Instance, shader: *runtime.Instance) anyerror!?DOMString {
+    pub fn call_getShaderInfoLog(instance: *runtime.Instance, shader: *runtime.Instance) anyerror!?runtime.DOMString {
         return try WebGLRenderingContextImpl.call_getShaderInfoLog(instance, shader);
     }
 
@@ -3051,7 +3051,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_deleteBuffer(instance, buffer);
     }
 
-    pub fn call_shaderSource(instance: *runtime.Instance, shader: *runtime.Instance, source: DOMString) anyerror!void {
+    pub fn call_shaderSource(instance: *runtime.Instance, shader: *runtime.Instance, source: runtime.DOMString) anyerror!void {
         return try WebGLRenderingContextImpl.call_shaderSource(instance, shader, source);
     }
 
@@ -3135,7 +3135,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_getActiveAttrib(instance, program, index);
     }
 
-    pub fn call_getShaderSource(instance: *runtime.Instance, shader: *runtime.Instance) anyerror!?DOMString {
+    pub fn call_getShaderSource(instance: *runtime.Instance, shader: *runtime.Instance) anyerror!?runtime.DOMString {
         return try WebGLRenderingContextImpl.call_getShaderSource(instance, shader);
     }
 
@@ -3172,7 +3172,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_readPixels(instance, x, y, width, height, format, @"type", pixels);
     }
 
-    pub fn call_getExtension(instance: *runtime.Instance, name: DOMString) anyerror!?runtime.JSValue {
+    pub fn call_getExtension(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.JSValue {
         return try WebGLRenderingContextImpl.call_getExtension(instance, name);
     }
 
@@ -3203,7 +3203,7 @@ pub const WebGLRenderingContext = struct {
     }
 
     /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_getAttribLocation(instance: *runtime.Instance, program: *runtime.Instance, name: DOMString) anyerror!GLint {
+    pub fn call_getAttribLocation(instance: *runtime.Instance, program: *runtime.Instance, name: runtime.DOMString) anyerror!GLint {
         return try WebGLRenderingContextImpl.call_getAttribLocation(instance, program, name);
     }
 
@@ -3276,7 +3276,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_depthFunc(instance, func);
     }
 
-    pub fn call_getUniformLocation(instance: *runtime.Instance, program: *runtime.Instance, name: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_getUniformLocation(instance: *runtime.Instance, program: *runtime.Instance, name: runtime.DOMString) anyerror!?*runtime.Instance {
         return try WebGLRenderingContextImpl.call_getUniformLocation(instance, program, name);
     }
 

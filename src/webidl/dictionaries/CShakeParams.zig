@@ -10,10 +10,10 @@ pub const CShakeParams = struct {
     // Inherited from Algorithm
     base: Algorithm,
 
-    length: u32,
+    outputLength: u32,
     functionName: ?typedefs.BufferSource = null,
     customization: ?typedefs.BufferSource = null,
 
     /// [EnforceRange] members: converted with that branch of ConvertToInt.
-    pub const enforce_range_members = .{"length"};
+    pub const enforce_range_members = .{"outputLength"};
 };

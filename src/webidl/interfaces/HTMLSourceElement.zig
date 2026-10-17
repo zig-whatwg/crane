@@ -71,6 +71,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -173,6 +174,7 @@ pub const HTMLSourceElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -180,7 +182,6 @@ pub const HTMLSourceElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -196,6 +197,7 @@ pub const HTMLSourceElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -234,10 +236,10 @@ pub const HTMLSourceElement = struct {
         Meta.MixinTypes,
         struct {
             src: runtime.USVString = undefined,
-            type: typedefs.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             srcset: runtime.USVString = undefined,
-            sizes: typedefs.DOMString = undefined,
-            media: typedefs.DOMString = undefined,
+            sizes: runtime.DOMString = undefined,
+            media: runtime.DOMString = undefined,
             width: u32 = undefined,
             height: u32 = undefined,
             _internal: ?*HTMLSourceElementImpl.InternalState = null,
@@ -378,19 +380,19 @@ pub const HTMLSourceElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLSourceElementImpl, "get_type")) return try HTMLSourceElementImpl.get_type(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "type" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "type" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLSourceElementImpl, "set_type")) return try HTMLSourceElementImpl.set_type(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "type" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "type" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -410,35 +412,35 @@ pub const HTMLSourceElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_sizes(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_sizes(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLSourceElementImpl, "get_sizes")) return try HTMLSourceElementImpl.get_sizes(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "sizes" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "sizes" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_sizes(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_sizes(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLSourceElementImpl, "set_sizes")) return try HTMLSourceElementImpl.set_sizes(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "sizes" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "sizes" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_media(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_media(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLSourceElementImpl, "get_media")) return try HTMLSourceElementImpl.get_media(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "media" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "media" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_media(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_media(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLSourceElementImpl, "set_media")) return try HTMLSourceElementImpl.set_media(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "media" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "media" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]

@@ -91,9 +91,9 @@ pub const SVGUseElementShadowRoot = struct {
             "moveBefore",
             "querySelector",
             "querySelectorAll",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
-            "setHTML",
             "getAnimations",
         };
 

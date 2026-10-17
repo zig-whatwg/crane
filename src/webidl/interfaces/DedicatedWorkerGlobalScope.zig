@@ -128,7 +128,7 @@ pub const DedicatedWorkerGlobalScope = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             onrtctransform: typedefs.EventHandler = undefined,
             onmessage: typedefs.EventHandler = undefined,
             onmessageerror: typedefs.EventHandler = undefined,
@@ -243,7 +243,7 @@ pub const DedicatedWorkerGlobalScope = struct {
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DedicatedWorkerGlobalScopeImpl.get_name(instance);
     }
 

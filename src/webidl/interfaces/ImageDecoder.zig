@@ -84,7 +84,7 @@ pub const ImageDecoder = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: typedefs.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             complete: bool = undefined,
             completed: runtime.JSValue = undefined,
             tracks: *runtime.Instance = undefined,
@@ -198,7 +198,7 @@ pub const ImageDecoder = struct {
         return try ImageDecoderImpl.call_constructor(ctx, init_data);
     }
 
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ImageDecoderImpl.get_type(instance);
     }
 
@@ -222,7 +222,7 @@ pub const ImageDecoder = struct {
         return try ImageDecoderImpl.call_decode(instance, options);
     }
 
-    pub fn call_static_isTypeSupported(instance: *runtime.Instance, @"type": DOMString) anyerror!runtime.JSValue {
+    pub fn call_static_isTypeSupported(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!runtime.JSValue {
         return try ImageDecoderImpl.call_static_isTypeSupported(instance, @"type");
     }
 

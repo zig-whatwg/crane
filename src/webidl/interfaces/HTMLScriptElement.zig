@@ -11,7 +11,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const HTMLElement = @import("interfaces").HTMLElement;
-const HTMLAttributionSrcElementUtils = @import("mixins").HTMLAttributionSrcElementUtils;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
@@ -74,6 +73,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -88,9 +88,7 @@ pub const HTMLScriptElement = struct {
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = HTMLElement.State;
         pub const ParentInterface = HTMLElement;
-        pub const MixinTypes = &.{
-            HTMLAttributionSrcElementUtils,
-        };
+        pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
@@ -116,7 +114,6 @@ pub const HTMLScriptElement = struct {
             .{ "htmlFor", "get_htmlFor", "set_htmlFor" },
             .{ "innerText", "get_innerText", "set_innerText" },
             .{ "textContent", "get_textContent", "set_textContent" },
-            .{ "attributionSrc", "get_attributionSrc", "set_attributionSrc" },
         };
 
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
@@ -201,6 +198,7 @@ pub const HTMLScriptElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -208,7 +206,6 @@ pub const HTMLScriptElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -224,6 +221,7 @@ pub const HTMLScriptElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -253,20 +251,12 @@ pub const HTMLScriptElement = struct {
             .{ "htmlFor", "get_htmlFor", "set_htmlFor" },
             .{ "innerText", "get_innerText", "set_innerText" },
             .{ "textContent", "get_textContent", "set_textContent" },
-            .{ "attributionSrc", "get_attributionSrc", "set_attributionSrc" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
-
-        /// [SecureContext] members - their own, their partial interface's or
-        /// their mixin's: hidden in a realm that is not a secure context
-        /// (WebIDL 3.3.13).
-        pub const secure_context_members = .{
-            "attributionSrc",
-        };
     };
 
     /// HTML 3.2.3 [HTMLConstructor]: the constructor's steps are HTML's "HTML
@@ -278,7 +268,7 @@ pub const HTMLScriptElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: typedefs.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             src: union(enum) {
                 TrustedScriptURL: TrustedScriptURL,
                 USVString: runtime.USVString,
@@ -287,17 +277,17 @@ pub const HTMLScriptElement = struct {
             async: bool = undefined,
             @"defer": bool = undefined,
             blocking: *runtime.Instance = undefined,
-            crossOrigin: ?typedefs.DOMString = null,
-            referrerPolicy: typedefs.DOMString = undefined,
-            integrity: typedefs.DOMString = undefined,
-            fetchPriority: typedefs.DOMString = undefined,
+            crossOrigin: ?runtime.DOMString = null,
+            referrerPolicy: runtime.DOMString = undefined,
+            integrity: runtime.DOMString = undefined,
+            fetchPriority: runtime.DOMString = undefined,
             text: union(enum) {
                 TrustedScript: TrustedScript,
                 DOMString: runtime.DOMString,
             } = undefined,
-            charset: typedefs.DOMString = undefined,
-            event: typedefs.DOMString = undefined,
-            htmlFor: typedefs.DOMString = undefined,
+            charset: runtime.DOMString = undefined,
+            event: runtime.DOMString = undefined,
+            htmlFor: runtime.DOMString = undefined,
             innerText: union(enum) {
                 TrustedScript: TrustedScript,
                 DOMString: runtime.DOMString,
@@ -306,7 +296,6 @@ pub const HTMLScriptElement = struct {
                 TrustedScript: TrustedScript,
                 DOMString: runtime.DOMString,
             } = null,
-            attributionSrc: runtime.USVString = undefined,
             cached_blocking: ?*runtime.Instance = null,
             _internal: ?*HTMLScriptElementImpl.InternalState = null,
         },
@@ -314,7 +303,6 @@ pub const HTMLScriptElement = struct {
 
     const delegates = .{
         .get_async = &get_async,
-        .get_attributionSrc = &get_attributionSrc,
         .get_blocking = &get_blocking,
         .get_charset = &get_charset,
         .get_crossOrigin = &get_crossOrigin,
@@ -332,7 +320,6 @@ pub const HTMLScriptElement = struct {
         .get_type = &get_type,
 
         .set_async = &set_async,
-        .set_attributionSrc = &set_attributionSrc,
         .set_blocking = &set_blocking,
         .set_charset = &set_charset,
         .set_crossOrigin = &set_crossOrigin,
@@ -451,19 +438,19 @@ pub const HTMLScriptElement = struct {
     const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLScriptElementImpl, "get_type")) return try HTMLScriptElementImpl.get_type(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "type" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "type" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLScriptElementImpl, "set_type")) return try HTMLScriptElementImpl.set_type(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "type" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "type" }, value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -551,12 +538,12 @@ pub const HTMLScriptElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try HTMLScriptElementImpl.get_crossOrigin(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_crossOrigin(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_crossOrigin(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -565,12 +552,12 @@ pub const HTMLScriptElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLScriptElementImpl.get_referrerPolicy(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_referrerPolicy(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_referrerPolicy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -579,28 +566,28 @@ pub const HTMLScriptElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_integrity(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_integrity(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLScriptElementImpl, "get_integrity")) return try HTMLScriptElementImpl.get_integrity(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "integrity" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "integrity" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_integrity(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_integrity(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLScriptElementImpl, "set_integrity")) return try HTMLScriptElementImpl.set_integrity(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "integrity" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "integrity" }, value);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_fetchPriority(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_fetchPriority(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLScriptElementImpl.get_fetchPriority(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_fetchPriority(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_fetchPriority(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -623,51 +610,51 @@ pub const HTMLScriptElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_charset(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_charset(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLScriptElementImpl, "get_charset")) return try HTMLScriptElementImpl.get_charset(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "charset" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "charset" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_charset(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_charset(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLScriptElementImpl, "set_charset")) return try HTMLScriptElementImpl.set_charset(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "charset" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "charset" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_event(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_event(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLScriptElementImpl, "get_event")) return try HTMLScriptElementImpl.get_event(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "event" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "event" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_event(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_event(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLScriptElementImpl, "set_event")) return try HTMLScriptElementImpl.set_event(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "event" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "event" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="for"]
-    pub fn get_htmlFor(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_htmlFor(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLScriptElementImpl, "get_htmlFor")) return try HTMLScriptElementImpl.get_htmlFor(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "for" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "for" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="for"]
-    pub fn set_htmlFor(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_htmlFor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLScriptElementImpl, "set_htmlFor")) return try HTMLScriptElementImpl.set_htmlFor(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "for" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "for" }, value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -698,21 +685,7 @@ pub const HTMLScriptElement = struct {
         try HTMLScriptElementImpl.set_textContent(instance, value);
     }
 
-    /// Extended attributes: [CEReactions], [SecureContext]
-    pub fn get_attributionSrc(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try HTMLScriptElementImpl.get_attributionSrc(instance);
-    }
-
-    /// Extended attributes: [CEReactions], [SecureContext]
-    pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        try HTMLScriptElementImpl.set_attributionSrc(instance, value);
-    }
-
-    pub fn call_static_supports(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
+    pub fn call_static_supports(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
         return try HTMLScriptElementImpl.call_static_supports(instance, @"type");
     }
 
@@ -742,6 +715,5 @@ pub const HTMLScriptElement = struct {
         "set_htmlFor",
         "set_innerText",
         "set_textContent",
-        "set_attributionSrc",
     };
 };

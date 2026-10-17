@@ -100,13 +100,13 @@ pub const Writer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sharedContext: typedefs.DOMString = undefined,
+            sharedContext: runtime.DOMString = undefined,
             tone: enums.WriterTone = undefined,
             format: enums.WriterFormat = undefined,
             length: enums.WriterLength = undefined,
             expectedInputLanguages: ?runtime.JSValue = null,
             expectedContextLanguages: ?runtime.JSValue = null,
-            outputLanguage: ?typedefs.DOMString = null,
+            outputLanguage: ?runtime.DOMString = null,
             inputQuota: f64 = undefined,
             _internal: ?*WriterImpl.InternalState = null,
         },
@@ -215,7 +215,7 @@ pub const Writer = struct {
         }
     }
 
-    pub fn get_sharedContext(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_sharedContext(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WriterImpl.get_sharedContext(instance);
     }
 
@@ -239,7 +239,7 @@ pub const Writer = struct {
         return try WriterImpl.get_expectedContextLanguages(instance);
     }
 
-    pub fn get_outputLanguage(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_outputLanguage(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try WriterImpl.get_outputLanguage(instance);
     }
 
@@ -247,11 +247,11 @@ pub const Writer = struct {
         return try WriterImpl.get_inputQuota(instance);
     }
 
-    pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(WriterWriteOptions)) anyerror!runtime.JSValue {
+    pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(WriterWriteOptions)) anyerror!runtime.JSValue {
         return try WriterImpl.call_measureInputUsage(instance, input, options);
     }
 
-    pub fn call_writeStreaming(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(WriterWriteOptions)) anyerror!*runtime.Instance {
+    pub fn call_writeStreaming(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(WriterWriteOptions)) anyerror!*runtime.Instance {
         return try WriterImpl.call_writeStreaming(instance, input, options);
     }
 
@@ -265,7 +265,7 @@ pub const Writer = struct {
         return try WriterImpl.call_static_availability(instance, options);
     }
 
-    pub fn call_write(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(WriterWriteOptions)) anyerror!runtime.JSValue {
+    pub fn call_write(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(WriterWriteOptions)) anyerror!runtime.JSValue {
         return try WriterImpl.call_write(instance, input, options);
     }
 

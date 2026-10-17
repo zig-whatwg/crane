@@ -82,7 +82,7 @@ pub const RTCSctpTransport = struct {
         struct {
             transport: *runtime.Instance = undefined,
             state: enums.RTCSctpTransportState = undefined,
-            maxMessageSize: f64 = undefined,
+            maxMessageSize: ?f64 = null,
             maxChannels: ?u16 = null,
             onstatechange: typedefs.EventHandler = undefined,
             _internal: ?*RTCSctpTransportImpl.InternalState = null,
@@ -196,7 +196,7 @@ pub const RTCSctpTransport = struct {
         return try RTCSctpTransportImpl.get_state(instance);
     }
 
-    pub fn get_maxMessageSize(instance: *runtime.Instance) anyerror!f64 {
+    pub fn get_maxMessageSize(instance: *runtime.Instance) anyerror!?f64 {
         return try RTCSctpTransportImpl.get_maxMessageSize(instance);
     }
 

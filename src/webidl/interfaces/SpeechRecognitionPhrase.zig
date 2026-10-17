@@ -59,7 +59,7 @@ pub const SpeechRecognitionPhrase = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            phrase: typedefs.DOMString = undefined,
+            phrase: runtime.DOMString = undefined,
             boost: f32 = undefined,
             _internal: ?*SpeechRecognitionPhraseImpl.InternalState = null,
         },
@@ -160,12 +160,12 @@ pub const SpeechRecognitionPhrase = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, phrase: DOMString, boost: webidl.Opt(f32)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, phrase: runtime.DOMString, boost: webidl.Opt(f32)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try SpeechRecognitionPhraseImpl.call_constructor(ctx, phrase, boost);
     }
 
-    pub fn get_phrase(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_phrase(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SpeechRecognitionPhraseImpl.get_phrase(instance);
     }
 

@@ -68,7 +68,7 @@ pub const RadioNodeList = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: typedefs.DOMString = undefined,
+            value: runtime.DOMString = undefined,
             _internal: ?*RadioNodeListImpl.InternalState = null,
         },
     );
@@ -168,11 +168,11 @@ pub const RadioNodeList = struct {
         }
     }
 
-    pub fn get_value(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try RadioNodeListImpl.get_value(instance);
     }
 
-    pub fn set_value(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try RadioNodeListImpl.set_value(instance, value);
     }
 

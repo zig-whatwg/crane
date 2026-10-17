@@ -116,8 +116,8 @@ pub const BluetoothDevice = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: typedefs.DOMString = undefined,
-            name: ?typedefs.DOMString = null,
+            id: runtime.DOMString = undefined,
+            name: ?runtime.DOMString = null,
             gatt: ?*runtime.Instance = null,
             watchingAdvertisements: bool = undefined,
             onadvertisementreceived: typedefs.EventHandler = undefined,
@@ -242,11 +242,11 @@ pub const BluetoothDevice = struct {
         }
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try BluetoothDeviceImpl.get_id(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try BluetoothDeviceImpl.get_name(instance);
     }
 

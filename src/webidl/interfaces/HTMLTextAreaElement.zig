@@ -74,6 +74,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const NodeList = @import("interfaces").NodeList;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -207,6 +208,7 @@ pub const HTMLTextAreaElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -214,7 +216,6 @@ pub const HTMLTextAreaElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -230,6 +231,7 @@ pub const HTMLTextAreaElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -284,30 +286,30 @@ pub const HTMLTextAreaElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            autocomplete: typedefs.DOMString = undefined,
+            autocomplete: runtime.DOMString = undefined,
             cols: u32 = undefined,
-            dirName: typedefs.DOMString = undefined,
+            dirName: runtime.DOMString = undefined,
             disabled: bool = undefined,
             form: ?*runtime.Instance = null,
             maxLength: i32 = undefined,
             minLength: i32 = undefined,
-            name: typedefs.DOMString = undefined,
-            placeholder: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
+            placeholder: runtime.DOMString = undefined,
             readOnly: bool = undefined,
             required: bool = undefined,
             rows: u32 = undefined,
-            wrap: typedefs.DOMString = undefined,
-            type: typedefs.DOMString = undefined,
-            defaultValue: typedefs.DOMString = undefined,
-            value: typedefs.DOMString = undefined,
+            wrap: runtime.DOMString = undefined,
+            type: runtime.DOMString = undefined,
+            defaultValue: runtime.DOMString = undefined,
+            value: runtime.DOMString = undefined,
             textLength: u32 = undefined,
             willValidate: bool = undefined,
             validity: *runtime.Instance = undefined,
-            validationMessage: typedefs.DOMString = undefined,
+            validationMessage: runtime.DOMString = undefined,
             labels: *runtime.Instance = undefined,
             selectionStart: u32 = undefined,
             selectionEnd: u32 = undefined,
-            selectionDirection: typedefs.DOMString = undefined,
+            selectionDirection: runtime.DOMString = undefined,
             _internal: ?*HTMLTextAreaElementImpl.InternalState = null,
         },
     );
@@ -464,18 +466,18 @@ pub const HTMLTextAreaElement = struct {
     const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
-    pub fn get_autocomplete(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_autocomplete(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLTextAreaElementImpl.get_autocomplete(instance);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
-    pub fn set_autocomplete(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_autocomplete(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_autocomplete")) return try HTMLTextAreaElementImpl.set_autocomplete(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "autocomplete" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "autocomplete" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectPositiveWithFallback], [ReflectDefault=20]
@@ -495,19 +497,19 @@ pub const HTMLTextAreaElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_dirName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_dirName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "get_dirName")) return try HTMLTextAreaElementImpl.get_dirName(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "dirname" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "dirname" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_dirName(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_dirName(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_dirName")) return try HTMLTextAreaElementImpl.set_dirName(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "dirname" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "dirname" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -563,35 +565,35 @@ pub const HTMLTextAreaElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "get_name")) return try HTMLTextAreaElementImpl.get_name(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "name" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_name")) return try HTMLTextAreaElementImpl.set_name(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "name" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_placeholder(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_placeholder(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "get_placeholder")) return try HTMLTextAreaElementImpl.get_placeholder(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "placeholder" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "placeholder" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_placeholder(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_placeholder(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_placeholder")) return try HTMLTextAreaElementImpl.set_placeholder(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "placeholder" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "placeholder" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -643,32 +645,32 @@ pub const HTMLTextAreaElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_wrap(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_wrap(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "get_wrap")) return try HTMLTextAreaElementImpl.get_wrap(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "wrap" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "wrap" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_wrap(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_wrap(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_wrap")) return try HTMLTextAreaElementImpl.set_wrap(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "wrap" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "wrap" }, value);
     }
 
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLTextAreaElementImpl.get_type(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_defaultValue(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_defaultValue(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLTextAreaElementImpl.get_defaultValue(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_defaultValue(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_defaultValue(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -677,12 +679,12 @@ pub const HTMLTextAreaElement = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_value(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLTextAreaElementImpl.get_value(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_value(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try HTMLTextAreaElementImpl.set_value(instance, value);
     }
 
@@ -698,7 +700,7 @@ pub const HTMLTextAreaElement = struct {
         return try HTMLTextAreaElementImpl.get_validity(instance);
     }
 
-    pub fn get_validationMessage(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLTextAreaElementImpl.get_validationMessage(instance);
     }
 
@@ -722,15 +724,15 @@ pub const HTMLTextAreaElement = struct {
         try HTMLTextAreaElementImpl.set_selectionEnd(instance, value);
     }
 
-    pub fn get_selectionDirection(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_selectionDirection(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLTextAreaElementImpl.get_selectionDirection(instance);
     }
 
-    pub fn set_selectionDirection(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_selectionDirection(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try HTMLTextAreaElementImpl.set_selectionDirection(instance, value);
     }
 
-    pub fn call_setRangeText(instance: *runtime.Instance, replacement: DOMString) anyerror!void {
+    pub fn call_setRangeText(instance: *runtime.Instance, replacement: runtime.DOMString) anyerror!void {
         return try HTMLTextAreaElementImpl.call_setRangeText(instance, replacement);
     }
 
@@ -738,7 +740,7 @@ pub const HTMLTextAreaElement = struct {
         return try HTMLTextAreaElementImpl.call_select(instance);
     }
 
-    pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": DOMString) anyerror!void {
+    pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOMString) anyerror!void {
         return try HTMLTextAreaElementImpl.call_setCustomValidity(instance, @"error");
     }
 
@@ -746,7 +748,7 @@ pub const HTMLTextAreaElement = struct {
         return try HTMLTextAreaElementImpl.call_reportValidity(instance);
     }
 
-    pub fn call_setSelectionRange(instance: *runtime.Instance, start: u32, end: u32, direction: webidl.Opt(DOMString)) anyerror!void {
+    pub fn call_setSelectionRange(instance: *runtime.Instance, start: u32, end: u32, direction: webidl.Opt(runtime.DOMString)) anyerror!void {
         return try HTMLTextAreaElementImpl.call_setSelectionRange(instance, start, end, direction);
     }
 
@@ -754,7 +756,7 @@ pub const HTMLTextAreaElement = struct {
         return try HTMLTextAreaElementImpl.call_checkValidity(instance);
     }
 
-    pub fn call_setRangeText__1(instance: *runtime.Instance, replacement: DOMString, start: u32, end: u32, selectionMode: webidl.Opt(SelectionMode)) anyerror!void {
+    pub fn call_setRangeText__1(instance: *runtime.Instance, replacement: runtime.DOMString, start: u32, end: u32, selectionMode: webidl.Opt(SelectionMode)) anyerror!void {
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "call_setRangeText__1")) {
             return try HTMLTextAreaElementImpl.call_setRangeText__1(instance, replacement, start, end, selectionMode);
         } else {

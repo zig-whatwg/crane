@@ -326,15 +326,15 @@ pub const Performance = struct {
         return try PerformanceImpl.call_clearResourceTimings(instance);
     }
 
-    pub fn call_clearMeasures(instance: *runtime.Instance, measureName: webidl.Opt(DOMString)) anyerror!void {
+    pub fn call_clearMeasures(instance: *runtime.Instance, measureName: webidl.Opt(runtime.DOMString)) anyerror!void {
         return try PerformanceImpl.call_clearMeasures(instance, measureName);
     }
 
-    pub fn call_mark(instance: *runtime.Instance, markName: DOMString, markOptions: webidl.Opt(PerformanceMarkOptions)) anyerror!*runtime.Instance {
+    pub fn call_mark(instance: *runtime.Instance, markName: runtime.DOMString, markOptions: webidl.Opt(PerformanceMarkOptions)) anyerror!*runtime.Instance {
         return try PerformanceImpl.call_mark(instance, markName, markOptions);
     }
 
-    pub fn call_getEntriesByName(instance: *runtime.Instance, name: DOMString, @"type": webidl.Opt(DOMString)) anyerror!runtime.JSValue {
+    pub fn call_getEntriesByName(instance: *runtime.Instance, name: runtime.DOMString, @"type": webidl.Opt(runtime.DOMString)) anyerror!runtime.JSValue {
         return try PerformanceImpl.call_getEntriesByName(instance, name, @"type");
     }
 
@@ -347,7 +347,7 @@ pub const Performance = struct {
         return try PerformanceImpl.call_toJSON(instance);
     }
 
-    pub fn call_measure(instance: *runtime.Instance, measureName: DOMString, startOrMeasureOptions: webidl.Opt(runtime.JSValue), endMark: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
+    pub fn call_measure(instance: *runtime.Instance, measureName: runtime.DOMString, startOrMeasureOptions: webidl.Opt(runtime.JSValue), endMark: webidl.Opt(runtime.DOMString)) anyerror!*runtime.Instance {
         return try PerformanceImpl.call_measure(instance, measureName, startOrMeasureOptions, endMark);
     }
 
@@ -359,11 +359,11 @@ pub const Performance = struct {
         return try PerformanceImpl.call_getEntries(instance);
     }
 
-    pub fn call_clearMarks(instance: *runtime.Instance, markName: webidl.Opt(DOMString)) anyerror!void {
+    pub fn call_clearMarks(instance: *runtime.Instance, markName: webidl.Opt(runtime.DOMString)) anyerror!void {
         return try PerformanceImpl.call_clearMarks(instance, markName);
     }
 
-    pub fn call_getEntriesByType(instance: *runtime.Instance, @"type": DOMString) anyerror!runtime.JSValue {
+    pub fn call_getEntriesByType(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!runtime.JSValue {
         return try PerformanceImpl.call_getEntriesByType(instance, @"type");
     }
 

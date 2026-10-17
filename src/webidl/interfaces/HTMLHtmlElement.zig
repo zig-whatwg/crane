@@ -71,6 +71,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -167,6 +168,7 @@ pub const HTMLHtmlElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -174,7 +176,6 @@ pub const HTMLHtmlElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -190,6 +191,7 @@ pub const HTMLHtmlElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -221,7 +223,7 @@ pub const HTMLHtmlElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            version: typedefs.DOMString = undefined,
+            version: runtime.DOMString = undefined,
             _internal: ?*HTMLHtmlElementImpl.InternalState = null,
         },
     );
@@ -332,19 +334,19 @@ pub const HTMLHtmlElement = struct {
     const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_version(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_version(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLHtmlElementImpl, "get_version")) return try HTMLHtmlElementImpl.get_version(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "version" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "version" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_version(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_version(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLHtmlElementImpl, "set_version")) return try HTMLHtmlElementImpl.set_version(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "version" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "version" }, value);
     }
 
     /// HTML [CEReactions]: the functions that run a custom element reactions

@@ -71,6 +71,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -167,6 +168,7 @@ pub const HTMLTitleElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -174,7 +176,6 @@ pub const HTMLTitleElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -190,6 +191,7 @@ pub const HTMLTitleElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -221,7 +223,7 @@ pub const HTMLTitleElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            text: typedefs.DOMString = undefined,
+            text: runtime.DOMString = undefined,
             _internal: ?*HTMLTitleElementImpl.InternalState = null,
         },
     );
@@ -330,12 +332,12 @@ pub const HTMLTitleElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_text(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_text(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLTitleElementImpl.get_text(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_text(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_text(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);

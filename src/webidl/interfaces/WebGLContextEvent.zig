@@ -71,7 +71,7 @@ pub const WebGLContextEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            statusMessage: typedefs.DOMString = undefined,
+            statusMessage: runtime.DOMString = undefined,
             _internal: ?*WebGLContextEventImpl.InternalState = null,
         },
     );
@@ -172,12 +172,12 @@ pub const WebGLContextEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInit: webidl.Opt(WebGLContextEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInit: webidl.Opt(WebGLContextEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try WebGLContextEventImpl.call_constructor(ctx, @"type", eventInit);
     }
 
-    pub fn get_statusMessage(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_statusMessage(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WebGLContextEventImpl.get_statusMessage(instance);
     }
 };

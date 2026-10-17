@@ -112,7 +112,7 @@ pub const SharedWorkerGlobalScope = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             onconnect: typedefs.EventHandler = undefined,
             _internal: ?*SharedWorkerGlobalScopeImpl.InternalState = null,
         },
@@ -218,7 +218,7 @@ pub const SharedWorkerGlobalScope = struct {
     }
 
     /// Extended attributes: [Replaceable]
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SharedWorkerGlobalScopeImpl.get_name(instance);
     }
 

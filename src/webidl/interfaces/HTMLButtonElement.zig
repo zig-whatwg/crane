@@ -74,6 +74,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const NodeList = @import("interfaces").NodeList;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -197,6 +198,7 @@ pub const HTMLButtonElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -204,7 +206,6 @@ pub const HTMLButtonElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -220,6 +221,7 @@ pub const HTMLButtonElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -268,24 +270,24 @@ pub const HTMLButtonElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            command: typedefs.DOMString = undefined,
+            command: runtime.DOMString = undefined,
             commandForElement: ?*runtime.Instance = null,
             disabled: bool = undefined,
             form: ?*runtime.Instance = null,
             formAction: runtime.USVString = undefined,
-            formEnctype: typedefs.DOMString = undefined,
-            formMethod: typedefs.DOMString = undefined,
+            formEnctype: runtime.DOMString = undefined,
+            formMethod: runtime.DOMString = undefined,
             formNoValidate: bool = undefined,
-            formTarget: typedefs.DOMString = undefined,
-            name: typedefs.DOMString = undefined,
-            type: typedefs.DOMString = undefined,
-            value: typedefs.DOMString = undefined,
+            formTarget: runtime.DOMString = undefined,
+            name: runtime.DOMString = undefined,
+            type: runtime.DOMString = undefined,
+            value: runtime.DOMString = undefined,
             willValidate: bool = undefined,
             validity: *runtime.Instance = undefined,
-            validationMessage: typedefs.DOMString = undefined,
+            validationMessage: runtime.DOMString = undefined,
             labels: *runtime.Instance = undefined,
             popoverTargetElement: ?*runtime.Instance = null,
-            popoverTargetAction: typedefs.DOMString = undefined,
+            popoverTargetAction: runtime.DOMString = undefined,
             _internal: ?*HTMLButtonElementImpl.InternalState = null,
         },
     );
@@ -429,26 +431,26 @@ pub const HTMLButtonElement = struct {
     const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
-    pub fn get_command(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_command(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLButtonElementImpl.get_command(instance);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
-    pub fn set_command(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_command(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLButtonElementImpl, "set_command")) return try HTMLButtonElementImpl.set_command(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "command" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "command" }, value);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
+    /// Extended attributes: [CEReactions], [Reflect="commandfor"]
     pub fn get_commandForElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLButtonElementImpl.get_commandForElement(instance);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
+    /// Extended attributes: [CEReactions], [Reflect="commandfor"]
     pub fn set_commandForElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
@@ -493,12 +495,12 @@ pub const HTMLButtonElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_formEnctype(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_formEnctype(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLButtonElementImpl.get_formEnctype(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_formEnctype(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_formEnctype(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -507,12 +509,12 @@ pub const HTMLButtonElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_formMethod(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_formMethod(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLButtonElementImpl.get_formMethod(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_formMethod(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_formMethod(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -537,66 +539,66 @@ pub const HTMLButtonElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_formTarget(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_formTarget(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLButtonElementImpl, "get_formTarget")) return try HTMLButtonElementImpl.get_formTarget(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "formtarget" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "formtarget" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_formTarget(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_formTarget(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLButtonElementImpl, "set_formTarget")) return try HTMLButtonElementImpl.set_formTarget(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "formtarget" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "formtarget" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLButtonElementImpl, "get_name")) return try HTMLButtonElementImpl.get_name(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "name" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLButtonElementImpl, "set_name")) return try HTMLButtonElementImpl.set_name(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "name" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLButtonElementImpl.get_type(instance);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
-    pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLButtonElementImpl, "set_type")) return try HTMLButtonElementImpl.set_type(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "type" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "type" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_value(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLButtonElementImpl, "get_value")) return try HTMLButtonElementImpl.get_value(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "value" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "value" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_value(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLButtonElementImpl, "set_value")) return try HTMLButtonElementImpl.set_value(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "value" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "value" }, value);
     }
 
     pub fn get_willValidate(instance: *runtime.Instance) anyerror!bool {
@@ -607,7 +609,7 @@ pub const HTMLButtonElement = struct {
         return try HTMLButtonElementImpl.get_validity(instance);
     }
 
-    pub fn get_validationMessage(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLButtonElementImpl.get_validationMessage(instance);
     }
 
@@ -615,12 +617,12 @@ pub const HTMLButtonElement = struct {
         return try HTMLButtonElementImpl.get_labels(instance);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
+    /// Extended attributes: [CEReactions], [Reflect="popovertarget"]
     pub fn get_popoverTargetElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLButtonElementImpl.get_popoverTargetElement(instance);
     }
 
-    /// Extended attributes: [CEReactions], [Reflect]
+    /// Extended attributes: [CEReactions], [Reflect="popovertarget"]
     pub fn set_popoverTargetElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
@@ -630,12 +632,12 @@ pub const HTMLButtonElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_popoverTargetAction(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_popoverTargetAction(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLButtonElementImpl.get_popoverTargetAction(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_popoverTargetAction(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_popoverTargetAction(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -643,7 +645,7 @@ pub const HTMLButtonElement = struct {
         try HTMLButtonElementImpl.set_popoverTargetAction(instance, value);
     }
 
-    pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": DOMString) anyerror!void {
+    pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOMString) anyerror!void {
         return try HTMLButtonElementImpl.call_setCustomValidity(instance, @"error");
     }
 

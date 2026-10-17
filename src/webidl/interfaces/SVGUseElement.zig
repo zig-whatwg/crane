@@ -23,11 +23,11 @@ const Element = @import("interfaces").Element;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
 const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
-const DOMMatrix = @import("interfaces").DOMMatrix;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
 const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
+const SVGRect = @import("typedefs").SVGRect;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
 const SVGStringList = @import("interfaces").SVGStringList;
@@ -53,6 +53,7 @@ const ScrollToOptions = @import("dictionaries").ScrollToOptions;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
+const SVGMatrix = @import("typedefs").SVGMatrix;
 const DOMRectList = @import("interfaces").DOMRectList;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
@@ -74,13 +75,14 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
 const ShadowRootInit = @import("dictionaries").ShadowRootInit;
-const SVGElement = @import("interfaces").SVGElement;
 const SVGSVGElement = @import("interfaces").SVGSVGElement;
+const SVGElement = @import("interfaces").SVGElement;
 
 pub const SVGUseElement = struct {
     pub const Meta = struct {
@@ -106,8 +108,6 @@ pub const SVGUseElement = struct {
             .{ "y", "get_y", null },
             .{ "width", "get_width", null },
             .{ "height", "get_height", null },
-            .{ "instanceRoot", "get_instanceRoot", null },
-            .{ "animatedInstanceRoot", "get_animatedInstanceRoot", null },
             .{ "href", "get_href", null },
         };
 
@@ -180,6 +180,7 @@ pub const SVGUseElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -187,7 +188,6 @@ pub const SVGUseElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -203,6 +203,7 @@ pub const SVGUseElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "focus",
@@ -218,8 +219,6 @@ pub const SVGUseElement = struct {
             .{ "y", "get_y", null },
             .{ "width", "get_width", null },
             .{ "height", "get_height", null },
-            .{ "instanceRoot", "get_instanceRoot", null },
-            .{ "animatedInstanceRoot", "get_animatedInstanceRoot", null },
             .{ "href", "get_href", null },
         };
 
@@ -237,25 +236,19 @@ pub const SVGUseElement = struct {
             y: *runtime.Instance = undefined,
             width: *runtime.Instance = undefined,
             height: *runtime.Instance = undefined,
-            instanceRoot: ?*runtime.Instance = null,
-            animatedInstanceRoot: ?*runtime.Instance = null,
             href: *runtime.Instance = undefined,
             cached_x: ?*runtime.Instance = null,
             cached_y: ?*runtime.Instance = null,
             cached_width: ?*runtime.Instance = null,
             cached_height: ?*runtime.Instance = null,
-            cached_instanceRoot: ?*runtime.Instance = null,
-            cached_animatedInstanceRoot: ?*runtime.Instance = null,
             cached_href: ?*runtime.Instance = null,
             _internal: ?*SVGUseElementImpl.InternalState = null,
         },
     );
 
     const delegates = .{
-        .get_animatedInstanceRoot = &get_animatedInstanceRoot,
         .get_height = &get_height,
         .get_href = &get_href,
-        .get_instanceRoot = &get_instanceRoot,
         .get_width = &get_width,
         .get_x = &get_x,
         .get_y = &get_y,
@@ -400,32 +393,6 @@ pub const SVGUseElement = struct {
         const value = try SVGUseElementImpl.get_height(instance);
         state.own.cached_height = value;
         @import("dom").same_object_cache.made(instance, value, "height");
-        return value;
-    }
-
-    /// Extended attributes: [SameObject]
-    pub fn get_instanceRoot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_instanceRoot) |cached| {
-            return cached;
-        }
-        const value = try SVGUseElementImpl.get_instanceRoot(instance);
-        state.own.cached_instanceRoot = value;
-        if (value) |child| @import("dom").same_object_cache.made(instance, child, "instanceRoot");
-        return value;
-    }
-
-    /// Extended attributes: [SameObject]
-    pub fn get_animatedInstanceRoot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_animatedInstanceRoot) |cached| {
-            return cached;
-        }
-        const value = try SVGUseElementImpl.get_animatedInstanceRoot(instance);
-        state.own.cached_animatedInstanceRoot = value;
-        if (value) |child| @import("dom").same_object_cache.made(instance, child, "animatedInstanceRoot");
         return value;
     }
 

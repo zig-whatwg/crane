@@ -59,7 +59,7 @@ pub const LaunchParams = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            targetURL: ?typedefs.DOMString = null,
+            targetURL: ?runtime.DOMString = null,
             files: runtime.JSValue = undefined,
             _internal: ?*LaunchParamsImpl.InternalState = null,
         },
@@ -157,7 +157,7 @@ pub const LaunchParams = struct {
         }
     }
 
-    pub fn get_targetURL(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_targetURL(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try LaunchParamsImpl.get_targetURL(instance);
     }
 

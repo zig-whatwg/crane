@@ -69,8 +69,8 @@ pub const BluetoothLEScanFilter = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: ?typedefs.DOMString = null,
-            namePrefix: ?typedefs.DOMString = null,
+            name: ?runtime.DOMString = null,
+            namePrefix: ?runtime.DOMString = null,
             services: runtime.JSValue = undefined,
             manufacturerData: *runtime.Instance = undefined,
             serviceData: *runtime.Instance = undefined,
@@ -181,11 +181,11 @@ pub const BluetoothLEScanFilter = struct {
         return try BluetoothLEScanFilterImpl.call_constructor(ctx, init_data);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try BluetoothLEScanFilterImpl.get_name(instance);
     }
 
-    pub fn get_namePrefix(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_namePrefix(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try BluetoothLEScanFilterImpl.get_namePrefix(instance);
     }
 

@@ -13,6 +13,7 @@ const dictionaries = @import("dictionaries");
 const CSSConditionRule = @import("interfaces").CSSConditionRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
+const CSSContainerCondition = @import("dictionaries").CSSContainerCondition;
 const CSSRule = @import("interfaces").CSSRule;
 const CSSRuleList = @import("interfaces").CSSRuleList;
 
@@ -36,6 +37,7 @@ pub const CSSContainerRule = struct {
         pub const properties = .{
             .{ "containerName", "get_containerName", null },
             .{ "containerQuery", "get_containerQuery", null },
+            .{ "conditions", "get_conditions", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -54,6 +56,7 @@ pub const CSSContainerRule = struct {
         pub const eager_properties = .{
             .{ "containerName", "get_containerName", null },
             .{ "containerQuery", "get_containerQuery", null },
+            .{ "conditions", "get_conditions", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -68,11 +71,13 @@ pub const CSSContainerRule = struct {
         struct {
             containerName: typedefs.CSSOMString = undefined,
             containerQuery: typedefs.CSSOMString = undefined,
+            conditions: runtime.JSValue = undefined,
             _internal: ?*CSSContainerRuleImpl.InternalState = null,
         },
     );
 
     const delegates = .{
+        .get_conditions = &get_conditions,
         .get_containerName = &get_containerName,
         .get_containerQuery = &get_containerQuery,
 
@@ -172,5 +177,9 @@ pub const CSSContainerRule = struct {
 
     pub fn get_containerQuery(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSContainerRuleImpl.get_containerQuery(instance);
+    }
+
+    pub fn get_conditions(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try CSSContainerRuleImpl.get_conditions(instance);
     }
 };

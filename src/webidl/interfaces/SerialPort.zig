@@ -105,8 +105,8 @@ pub const SerialPort = struct {
             onconnect: typedefs.EventHandler = undefined,
             ondisconnect: typedefs.EventHandler = undefined,
             connected: bool = undefined,
-            readable: *runtime.Instance = undefined,
-            writable: *runtime.Instance = undefined,
+            readable: ?*runtime.Instance = null,
+            writable: ?*runtime.Instance = null,
             _internal: ?*SerialPortImpl.InternalState = null,
         },
     );
@@ -244,11 +244,11 @@ pub const SerialPort = struct {
         return try SerialPortImpl.get_connected(instance);
     }
 
-    pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_readable(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try SerialPortImpl.get_readable(instance);
     }
 
-    pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_writable(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try SerialPortImpl.get_writable(instance);
     }
 

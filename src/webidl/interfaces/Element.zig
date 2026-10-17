@@ -18,6 +18,7 @@ const NonDocumentTypeChildNode = @import("mixins").NonDocumentTypeChildNode;
 const ChildNode = @import("mixins").ChildNode;
 const Slottable = @import("mixins").Slottable;
 const ARIAMixin = @import("mixins").ARIAMixin;
+const ARIANotifyMixin = @import("mixins").ARIANotifyMixin;
 const Animatable = @import("mixins").Animatable;
 const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
@@ -68,6 +69,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
 const NodeList = @import("interfaces").NodeList;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -90,6 +92,7 @@ pub const Element = struct {
             ChildNode,
             Slottable,
             ARIAMixin,
+            ARIANotifyMixin,
             Animatable,
         };
         pub const extended_attributes = .{
@@ -238,6 +241,7 @@ pub const Element = struct {
             .{ "scrollTo", "call_scrollTo", 0 },
             .{ "scrollBy", "call_scrollBy", 0 },
             .{ "requestFullscreen", "call_requestFullscreen", 0 },
+            .{ "setHTML", "call_setHTML", 1 },
             .{ "setHTMLUnsafe", "call_setHTMLUnsafe", 1 },
             .{ "getHTML", "call_getHTML", 0 },
             .{ "insertAdjacentHTML", "call_insertAdjacentHTML", 2 },
@@ -245,7 +249,6 @@ pub const Element = struct {
             .{ "releasePointerCapture", "call_releasePointerCapture", 1 },
             .{ "hasPointerCapture", "call_hasPointerCapture", 1 },
             .{ "requestPointerLock", "call_requestPointerLock", 0 },
-            .{ "setHTML", "call_setHTML", 1 },
             .{ "getRegionFlowRanges", "call_getRegionFlowRanges", 0 },
             .{ "getBoxQuads", "call_getBoxQuads", 0 },
             .{ "convertQuadFromNode", "call_convertQuadFromNode", 2 },
@@ -261,6 +264,7 @@ pub const Element = struct {
             .{ "after", "call_after", 0 },
             .{ "replaceWith", "call_replaceWith", 0 },
             .{ "remove", "call_remove", 0 },
+            .{ "ariaNotify", "call_ariaNotify", 1 },
             .{ "animate", "call_animate", 1 },
             .{ "getAnimations", "call_getAnimations", 0 },
         };
@@ -306,6 +310,7 @@ pub const Element = struct {
             "scrollTo",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -313,7 +318,6 @@ pub const Element = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -329,6 +333,7 @@ pub const Element = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
         };
@@ -675,6 +680,7 @@ pub const Element = struct {
         .call_after = &call_after,
         .call_animate = &call_animate,
         .call_append = &call_append,
+        .call_ariaNotify = &call_ariaNotify,
         .call_attachShadow = &call_attachShadow,
         .call_before = &call_before,
         .call_checkVisibility = &call_checkVisibility,
@@ -828,29 +834,29 @@ pub const Element = struct {
         }
     }
 
-    pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try ElementImpl.get_namespaceURI(instance);
     }
 
-    pub fn get_prefix(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_prefix(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try ElementImpl.get_prefix(instance);
     }
 
-    pub fn get_localName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_localName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ElementImpl.get_localName(instance);
     }
 
-    pub fn get_tagName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_tagName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ElementImpl.get_tagName(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ElementImpl.get_id(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_id(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_id(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -859,12 +865,12 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_className(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_className(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ElementImpl.get_className(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_className(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_className(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -897,12 +903,12 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn get_slot(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_slot(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ElementImpl.get_slot(instance);
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn set_slot(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_slot(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -1006,19 +1012,19 @@ pub const Element = struct {
     const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_elementTiming(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_elementTiming(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_elementTiming")) return try ElementImpl.get_elementTiming(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "elementtiming" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "elementtiming" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_elementTiming(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_elementTiming(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_elementTiming")) return try ElementImpl.set_elementTiming(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "elementtiming" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "elementtiming" }, value);
     }
 
     const event_handlers = @import("dom").event_handlers;
@@ -1103,19 +1109,19 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_role(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_role(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_role")) return try ElementImpl.get_role(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "role" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "role" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_role(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_role(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_role")) return try ElementImpl.set_role(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "role" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "role" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-activedescendant"]
@@ -1133,163 +1139,163 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-atomic"]
-    pub fn get_ariaAtomic(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaAtomic(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaAtomic")) return try ElementImpl.get_ariaAtomic(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-atomic" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-atomic" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-atomic"]
-    pub fn set_ariaAtomic(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaAtomic(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaAtomic")) return try ElementImpl.set_ariaAtomic(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-atomic" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-atomic" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-autocomplete"]
-    pub fn get_ariaAutoComplete(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaAutoComplete(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaAutoComplete")) return try ElementImpl.get_ariaAutoComplete(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-autocomplete" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-autocomplete" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-autocomplete"]
-    pub fn set_ariaAutoComplete(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaAutoComplete(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaAutoComplete")) return try ElementImpl.set_ariaAutoComplete(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-autocomplete" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-autocomplete" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-braillelabel"]
-    pub fn get_ariaBrailleLabel(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaBrailleLabel(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaBrailleLabel")) return try ElementImpl.get_ariaBrailleLabel(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-braillelabel" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-braillelabel" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-braillelabel"]
-    pub fn set_ariaBrailleLabel(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaBrailleLabel(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaBrailleLabel")) return try ElementImpl.set_ariaBrailleLabel(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-braillelabel" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-braillelabel" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-brailleroledescription"]
-    pub fn get_ariaBrailleRoleDescription(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaBrailleRoleDescription(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaBrailleRoleDescription")) return try ElementImpl.get_ariaBrailleRoleDescription(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-brailleroledescription" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-brailleroledescription" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-brailleroledescription"]
-    pub fn set_ariaBrailleRoleDescription(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaBrailleRoleDescription(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaBrailleRoleDescription")) return try ElementImpl.set_ariaBrailleRoleDescription(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-brailleroledescription" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-brailleroledescription" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-busy"]
-    pub fn get_ariaBusy(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaBusy(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaBusy")) return try ElementImpl.get_ariaBusy(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-busy" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-busy" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-busy"]
-    pub fn set_ariaBusy(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaBusy(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaBusy")) return try ElementImpl.set_ariaBusy(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-busy" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-busy" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-checked"]
-    pub fn get_ariaChecked(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaChecked(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaChecked")) return try ElementImpl.get_ariaChecked(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-checked" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-checked" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-checked"]
-    pub fn set_ariaChecked(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaChecked(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaChecked")) return try ElementImpl.set_ariaChecked(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-checked" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-checked" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colcount"]
-    pub fn get_ariaColCount(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaColCount(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaColCount")) return try ElementImpl.get_ariaColCount(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-colcount" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-colcount" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colcount"]
-    pub fn set_ariaColCount(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaColCount(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaColCount")) return try ElementImpl.set_ariaColCount(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-colcount" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-colcount" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colindex"]
-    pub fn get_ariaColIndex(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaColIndex(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaColIndex")) return try ElementImpl.get_ariaColIndex(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-colindex" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-colindex" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colindex"]
-    pub fn set_ariaColIndex(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaColIndex(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaColIndex")) return try ElementImpl.set_ariaColIndex(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-colindex" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-colindex" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colindextext"]
-    pub fn get_ariaColIndexText(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaColIndexText(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaColIndexText")) return try ElementImpl.get_ariaColIndexText(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-colindextext" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-colindextext" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colindextext"]
-    pub fn set_ariaColIndexText(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaColIndexText(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaColIndexText")) return try ElementImpl.set_ariaColIndexText(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-colindextext" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-colindextext" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colspan"]
-    pub fn get_ariaColSpan(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaColSpan(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaColSpan")) return try ElementImpl.get_ariaColSpan(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-colspan" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-colspan" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colspan"]
-    pub fn set_ariaColSpan(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaColSpan(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaColSpan")) return try ElementImpl.set_ariaColSpan(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-colspan" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-colspan" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-controls"]
@@ -1307,19 +1313,19 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-current"]
-    pub fn get_ariaCurrent(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaCurrent(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaCurrent")) return try ElementImpl.get_ariaCurrent(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-current" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-current" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-current"]
-    pub fn set_ariaCurrent(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaCurrent(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaCurrent")) return try ElementImpl.set_ariaCurrent(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-current" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-current" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-describedby"]
@@ -1337,19 +1343,19 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-description"]
-    pub fn get_ariaDescription(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaDescription(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaDescription")) return try ElementImpl.get_ariaDescription(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-description" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-description" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-description"]
-    pub fn set_ariaDescription(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaDescription(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaDescription")) return try ElementImpl.set_ariaDescription(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-description" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-description" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-details"]
@@ -1367,19 +1373,19 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-disabled"]
-    pub fn get_ariaDisabled(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaDisabled(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaDisabled")) return try ElementImpl.get_ariaDisabled(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-disabled" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-disabled" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-disabled"]
-    pub fn set_ariaDisabled(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaDisabled(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaDisabled")) return try ElementImpl.set_ariaDisabled(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-disabled" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-disabled" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-errormessage"]
@@ -1397,19 +1403,19 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-expanded"]
-    pub fn get_ariaExpanded(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaExpanded(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaExpanded")) return try ElementImpl.get_ariaExpanded(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-expanded" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-expanded" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-expanded"]
-    pub fn set_ariaExpanded(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaExpanded(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaExpanded")) return try ElementImpl.set_ariaExpanded(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-expanded" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-expanded" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-flowto"]
@@ -1427,83 +1433,83 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-haspopup"]
-    pub fn get_ariaHasPopup(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaHasPopup(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaHasPopup")) return try ElementImpl.get_ariaHasPopup(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-haspopup" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-haspopup" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-haspopup"]
-    pub fn set_ariaHasPopup(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaHasPopup(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaHasPopup")) return try ElementImpl.set_ariaHasPopup(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-haspopup" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-haspopup" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-hidden"]
-    pub fn get_ariaHidden(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaHidden(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaHidden")) return try ElementImpl.get_ariaHidden(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-hidden" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-hidden" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-hidden"]
-    pub fn set_ariaHidden(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaHidden(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaHidden")) return try ElementImpl.set_ariaHidden(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-hidden" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-hidden" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-invalid"]
-    pub fn get_ariaInvalid(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaInvalid(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaInvalid")) return try ElementImpl.get_ariaInvalid(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-invalid" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-invalid" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-invalid"]
-    pub fn set_ariaInvalid(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaInvalid(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaInvalid")) return try ElementImpl.set_ariaInvalid(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-invalid" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-invalid" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-keyshortcuts"]
-    pub fn get_ariaKeyShortcuts(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaKeyShortcuts(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaKeyShortcuts")) return try ElementImpl.get_ariaKeyShortcuts(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-keyshortcuts" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-keyshortcuts" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-keyshortcuts"]
-    pub fn set_ariaKeyShortcuts(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaKeyShortcuts(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaKeyShortcuts")) return try ElementImpl.set_ariaKeyShortcuts(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-keyshortcuts" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-keyshortcuts" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-label"]
-    pub fn get_ariaLabel(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaLabel(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaLabel")) return try ElementImpl.get_ariaLabel(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-label" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-label" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-label"]
-    pub fn set_ariaLabel(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaLabel(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaLabel")) return try ElementImpl.set_ariaLabel(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-label" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-label" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-labelledby"]
@@ -1521,99 +1527,99 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-level"]
-    pub fn get_ariaLevel(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaLevel(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaLevel")) return try ElementImpl.get_ariaLevel(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-level" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-level" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-level"]
-    pub fn set_ariaLevel(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaLevel(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaLevel")) return try ElementImpl.set_ariaLevel(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-level" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-level" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-live"]
-    pub fn get_ariaLive(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaLive(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaLive")) return try ElementImpl.get_ariaLive(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-live" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-live" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-live"]
-    pub fn set_ariaLive(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaLive(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaLive")) return try ElementImpl.set_ariaLive(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-live" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-live" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-modal"]
-    pub fn get_ariaModal(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaModal(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaModal")) return try ElementImpl.get_ariaModal(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-modal" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-modal" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-modal"]
-    pub fn set_ariaModal(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaModal(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaModal")) return try ElementImpl.set_ariaModal(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-modal" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-modal" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-multiline"]
-    pub fn get_ariaMultiLine(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaMultiLine(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaMultiLine")) return try ElementImpl.get_ariaMultiLine(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-multiline" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-multiline" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-multiline"]
-    pub fn set_ariaMultiLine(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaMultiLine(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaMultiLine")) return try ElementImpl.set_ariaMultiLine(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-multiline" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-multiline" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-multiselectable"]
-    pub fn get_ariaMultiSelectable(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaMultiSelectable(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaMultiSelectable")) return try ElementImpl.get_ariaMultiSelectable(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-multiselectable" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-multiselectable" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-multiselectable"]
-    pub fn set_ariaMultiSelectable(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaMultiSelectable(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaMultiSelectable")) return try ElementImpl.set_ariaMultiSelectable(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-multiselectable" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-multiselectable" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-orientation"]
-    pub fn get_ariaOrientation(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaOrientation(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaOrientation")) return try ElementImpl.get_ariaOrientation(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-orientation" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-orientation" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-orientation"]
-    pub fn set_ariaOrientation(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaOrientation(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaOrientation")) return try ElementImpl.set_ariaOrientation(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-orientation" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-orientation" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-owns"]
@@ -1631,291 +1637,291 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-placeholder"]
-    pub fn get_ariaPlaceholder(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaPlaceholder(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaPlaceholder")) return try ElementImpl.get_ariaPlaceholder(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-placeholder" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-placeholder" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-placeholder"]
-    pub fn set_ariaPlaceholder(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaPlaceholder(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaPlaceholder")) return try ElementImpl.set_ariaPlaceholder(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-placeholder" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-placeholder" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-posinset"]
-    pub fn get_ariaPosInSet(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaPosInSet(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaPosInSet")) return try ElementImpl.get_ariaPosInSet(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-posinset" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-posinset" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-posinset"]
-    pub fn set_ariaPosInSet(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaPosInSet(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaPosInSet")) return try ElementImpl.set_ariaPosInSet(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-posinset" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-posinset" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-pressed"]
-    pub fn get_ariaPressed(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaPressed(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaPressed")) return try ElementImpl.get_ariaPressed(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-pressed" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-pressed" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-pressed"]
-    pub fn set_ariaPressed(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaPressed(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaPressed")) return try ElementImpl.set_ariaPressed(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-pressed" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-pressed" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-readonly"]
-    pub fn get_ariaReadOnly(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaReadOnly(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaReadOnly")) return try ElementImpl.get_ariaReadOnly(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-readonly" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-readonly" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-readonly"]
-    pub fn set_ariaReadOnly(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaReadOnly(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaReadOnly")) return try ElementImpl.set_ariaReadOnly(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-readonly" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-readonly" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-relevant"]
-    pub fn get_ariaRelevant(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaRelevant(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaRelevant")) return try ElementImpl.get_ariaRelevant(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-relevant" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-relevant" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-relevant"]
-    pub fn set_ariaRelevant(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaRelevant(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaRelevant")) return try ElementImpl.set_ariaRelevant(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-relevant" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-relevant" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-required"]
-    pub fn get_ariaRequired(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaRequired(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaRequired")) return try ElementImpl.get_ariaRequired(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-required" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-required" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-required"]
-    pub fn set_ariaRequired(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaRequired(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaRequired")) return try ElementImpl.set_ariaRequired(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-required" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-required" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-roledescription"]
-    pub fn get_ariaRoleDescription(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaRoleDescription(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaRoleDescription")) return try ElementImpl.get_ariaRoleDescription(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-roledescription" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-roledescription" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-roledescription"]
-    pub fn set_ariaRoleDescription(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaRoleDescription(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaRoleDescription")) return try ElementImpl.set_ariaRoleDescription(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-roledescription" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-roledescription" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowcount"]
-    pub fn get_ariaRowCount(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaRowCount(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaRowCount")) return try ElementImpl.get_ariaRowCount(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-rowcount" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-rowcount" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowcount"]
-    pub fn set_ariaRowCount(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaRowCount(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaRowCount")) return try ElementImpl.set_ariaRowCount(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-rowcount" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-rowcount" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowindex"]
-    pub fn get_ariaRowIndex(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaRowIndex(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaRowIndex")) return try ElementImpl.get_ariaRowIndex(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-rowindex" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-rowindex" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowindex"]
-    pub fn set_ariaRowIndex(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaRowIndex(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaRowIndex")) return try ElementImpl.set_ariaRowIndex(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-rowindex" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-rowindex" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowindextext"]
-    pub fn get_ariaRowIndexText(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaRowIndexText(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaRowIndexText")) return try ElementImpl.get_ariaRowIndexText(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-rowindextext" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-rowindextext" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowindextext"]
-    pub fn set_ariaRowIndexText(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaRowIndexText(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaRowIndexText")) return try ElementImpl.set_ariaRowIndexText(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-rowindextext" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-rowindextext" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowspan"]
-    pub fn get_ariaRowSpan(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaRowSpan(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaRowSpan")) return try ElementImpl.get_ariaRowSpan(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-rowspan" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-rowspan" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowspan"]
-    pub fn set_ariaRowSpan(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaRowSpan(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaRowSpan")) return try ElementImpl.set_ariaRowSpan(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-rowspan" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-rowspan" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-selected"]
-    pub fn get_ariaSelected(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaSelected(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaSelected")) return try ElementImpl.get_ariaSelected(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-selected" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-selected" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-selected"]
-    pub fn set_ariaSelected(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaSelected(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaSelected")) return try ElementImpl.set_ariaSelected(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-selected" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-selected" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-setsize"]
-    pub fn get_ariaSetSize(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaSetSize(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaSetSize")) return try ElementImpl.get_ariaSetSize(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-setsize" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-setsize" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-setsize"]
-    pub fn set_ariaSetSize(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaSetSize(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaSetSize")) return try ElementImpl.set_ariaSetSize(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-setsize" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-setsize" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-sort"]
-    pub fn get_ariaSort(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaSort(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaSort")) return try ElementImpl.get_ariaSort(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-sort" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-sort" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-sort"]
-    pub fn set_ariaSort(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaSort(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaSort")) return try ElementImpl.set_ariaSort(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-sort" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-sort" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuemax"]
-    pub fn get_ariaValueMax(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaValueMax(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaValueMax")) return try ElementImpl.get_ariaValueMax(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-valuemax" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-valuemax" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuemax"]
-    pub fn set_ariaValueMax(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaValueMax(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaValueMax")) return try ElementImpl.set_ariaValueMax(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-valuemax" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-valuemax" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuemin"]
-    pub fn get_ariaValueMin(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaValueMin(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaValueMin")) return try ElementImpl.get_ariaValueMin(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-valuemin" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-valuemin" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuemin"]
-    pub fn set_ariaValueMin(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaValueMin(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaValueMin")) return try ElementImpl.set_ariaValueMin(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-valuemin" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-valuemin" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuenow"]
-    pub fn get_ariaValueNow(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaValueNow(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaValueNow")) return try ElementImpl.get_ariaValueNow(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-valuenow" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-valuenow" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuenow"]
-    pub fn set_ariaValueNow(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaValueNow(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaValueNow")) return try ElementImpl.set_ariaValueNow(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-valuenow" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-valuenow" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuetext"]
-    pub fn get_ariaValueText(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_ariaValueText(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         if (comptime @hasDecl(ElementImpl, "get_ariaValueText")) return try ElementImpl.get_ariaValueText(instance);
-        return try reflection.get(?DOMString, instance, .{ .name = "aria-valuetext" });
+        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-valuetext" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuetext"]
-    pub fn set_ariaValueText(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_ariaValueText(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(ElementImpl, "set_ariaValueText")) return try ElementImpl.set_ariaValueText(instance, value);
-        try reflection.set(?DOMString, instance, .{ .name = "aria-valuetext" }, value);
+        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-valuetext" }, value);
     }
 
     pub fn call_getSpatialNavigationContainer(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -1926,14 +1932,14 @@ pub const Element = struct {
         return try ElementImpl.call_hasAttributes(instance);
     }
 
-    pub fn call_insertAdjacentText(instance: *runtime.Instance, where: DOMString, data: DOMString) anyerror!void {
+    pub fn call_insertAdjacentText(instance: *runtime.Instance, where: runtime.DOMString, data: runtime.DOMString) anyerror!void {
         return try ElementImpl.call_insertAdjacentText(instance, where, data);
     }
 
     pub const call_moveBefore = mixins.ParentNode.call_moveBefore;
 
     /// Extended attributes: [CEReactions]
-    pub fn call_insertAdjacentElement(instance: *runtime.Instance, where: DOMString, element: *runtime.Instance) anyerror!?*runtime.Instance {
+    pub fn call_insertAdjacentElement(instance: *runtime.Instance, where: runtime.DOMString, element: *runtime.Instance) anyerror!?*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
 
@@ -1958,7 +1964,7 @@ pub const Element = struct {
         return try ElementImpl.call_setPointerCapture(instance, pointerId);
     }
 
-    pub fn call_hasAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!bool {
+    pub fn call_hasAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!bool {
         return try ElementImpl.call_hasAttributeNS(instance, namespace, localName);
     }
 
@@ -1973,7 +1979,7 @@ pub const Element = struct {
     pub const call_before = mixins.ChildNode.call_before;
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString, value: TrustedTypeOrDOMString) anyerror!void {
+    pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, value: TrustedTypeOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -1981,7 +1987,7 @@ pub const Element = struct {
         return try ElementImpl.call_setAttributeNS(instance, namespace, qualifiedName, value);
     }
 
-    pub fn call_closest(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_closest(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!?*runtime.Instance {
         return try ElementImpl.call_closest(instance, selectors);
     }
 
@@ -1993,7 +1999,7 @@ pub const Element = struct {
 
     pub const call_after = mixins.ChildNode.call_after;
 
-    pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: DOMString) anyerror!*runtime.Instance {
+    pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runtime.DOMString) anyerror!*runtime.Instance {
         return try ElementImpl.call_getElementsByClassName(instance, classNames);
     }
 
@@ -2039,7 +2045,7 @@ pub const Element = struct {
         return result;
     }
 
-    pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!?DOMString {
+    pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!?runtime.DOMString {
         return try ElementImpl.call_getAttributeNS(instance, namespace, localName);
     }
 
@@ -2047,15 +2053,15 @@ pub const Element = struct {
         return try ElementImpl.call_startViewTransition(instance, callbackOptions);
     }
 
-    pub fn call_getAttribute(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!?DOMString {
+    pub fn call_getAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!?runtime.DOMString {
         return try ElementImpl.call_getAttribute(instance, qualifiedName);
     }
 
-    pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!?*runtime.Instance {
         return try ElementImpl.call_getAttributeNodeNS(instance, namespace, localName);
     }
 
-    pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!*runtime.Instance {
+    pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!*runtime.Instance {
         return try ElementImpl.call_getElementsByTagName(instance, qualifiedName);
     }
 
@@ -2068,7 +2074,7 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: DOMString, value: TrustedTypeOrDOMString) anyerror!void {
+    pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString, value: TrustedTypeOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -2083,7 +2089,7 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_toggleAttribute(instance: *runtime.Instance, qualifiedName: DOMString, force: webidl.Opt(bool)) anyerror!bool {
+    pub fn call_toggleAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString, force: webidl.Opt(bool)) anyerror!bool {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -2107,15 +2113,15 @@ pub const Element = struct {
         return try ElementImpl.call_setHTMLUnsafe(instance, html, options);
     }
 
-    pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!?*runtime.Instance {
         return try ElementImpl.call_getAttributeNode(instance, qualifiedName);
     }
 
-    pub fn call_matches(instance: *runtime.Instance, selectors: DOMString) anyerror!bool {
+    pub fn call_matches(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!bool {
         return try ElementImpl.call_matches(instance, selectors);
     }
 
-    pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(GetHTMLOptions)) anyerror!DOMString {
+    pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(GetHTMLOptions)) anyerror!runtime.DOMString {
         return try ElementImpl.call_getHTML(instance, options);
     }
 
@@ -2131,11 +2137,11 @@ pub const Element = struct {
         return try ElementImpl.call_convertPointFromNode(instance, point, from, options);
     }
 
-    pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!*runtime.Instance {
+    pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!*runtime.Instance {
         return try ElementImpl.call_getElementsByTagNameNS(instance, namespace, localName);
     }
 
-    pub fn call_webkitMatchesSelector(instance: *runtime.Instance, selectors: DOMString) anyerror!bool {
+    pub fn call_webkitMatchesSelector(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!bool {
         return try ElementImpl.call_webkitMatchesSelector(instance, selectors);
     }
 
@@ -2145,12 +2151,16 @@ pub const Element = struct {
         return try ElementImpl.call_convertRectFromNode(instance, rect, from, options);
     }
 
+    pub fn call_ariaNotify(instance: *runtime.Instance, announcement: runtime.DOMString, options: webidl.Opt(AriaNotificationOptions)) anyerror!void {
+        return try ElementImpl.call_ariaNotify(instance, announcement, options);
+    }
+
     pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
         return try ElementImpl.call_scrollTo(instance, options);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setHTML(instance: *runtime.Instance, html: DOMString, options: webidl.Opt(SetHTMLOptions)) anyerror!void {
+    pub fn call_setHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(SetHTMLOptions)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -2165,7 +2175,7 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_removeAttribute(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!void {
+    pub fn call_removeAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -2193,7 +2203,7 @@ pub const Element = struct {
         return result;
     }
 
-    pub fn call_hasAttribute(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!bool {
+    pub fn call_hasAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!bool {
         return try ElementImpl.call_hasAttribute(instance, qualifiedName);
     }
 
@@ -2202,7 +2212,7 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_insertAdjacentHTML(instance: *runtime.Instance, position: DOMString, string: TrustedHTMLOrDOMString) anyerror!void {
+    pub fn call_insertAdjacentHTML(instance: *runtime.Instance, position: runtime.DOMString, string: TrustedHTMLOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -2233,7 +2243,7 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_removeAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!void {
+    pub fn call_removeAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);

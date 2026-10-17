@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Worker = @import("interfaces").Worker;
+const WorkerOrWorkerAndParameters = @import("typedefs").WorkerOrWorkerAndParameters;
 
 pub const RTCRtpScriptTransform = struct {
     pub const Meta = struct {
@@ -148,8 +148,8 @@ pub const RTCRtpScriptTransform = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, worker: *runtime.Instance, options: webidl.Opt(runtime.JSValue), transfer: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, workerOrWorkerAndParameters: WorkerOrWorkerAndParameters, options: webidl.Opt(runtime.JSValue), transfer: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try RTCRtpScriptTransformImpl.call_constructor(ctx, worker, options, transfer);
+        return try RTCRtpScriptTransformImpl.call_constructor(ctx, workerOrWorkerAndParameters, options, transfer);
     }
 };

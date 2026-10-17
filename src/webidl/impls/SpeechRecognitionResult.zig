@@ -52,7 +52,7 @@ pub fn get_isFinal(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Operation: item
-pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
     _ = instance;
     _ = index;
     return error.NotImplemented;

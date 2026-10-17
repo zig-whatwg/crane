@@ -78,7 +78,7 @@ pub const TextUpdateEvent = struct {
         struct {
             updateRangeStart: u32 = undefined,
             updateRangeEnd: u32 = undefined,
-            text: typedefs.DOMString = undefined,
+            text: runtime.DOMString = undefined,
             selectionStart: u32 = undefined,
             selectionEnd: u32 = undefined,
             _internal: ?*TextUpdateEventImpl.InternalState = null,
@@ -185,7 +185,7 @@ pub const TextUpdateEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, options: webidl.Opt(TextUpdateEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, options: webidl.Opt(TextUpdateEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try TextUpdateEventImpl.call_constructor(ctx, @"type", options);
     }
@@ -198,7 +198,7 @@ pub const TextUpdateEvent = struct {
         return try TextUpdateEventImpl.get_updateRangeEnd(instance);
     }
 
-    pub fn get_text(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_text(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TextUpdateEventImpl.get_text(instance);
     }
 

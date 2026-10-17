@@ -225,7 +225,7 @@ pub const StorageAccessHandle = struct {
         return try StorageAccessHandleImpl.call_getDirectory(instance);
     }
 
-    pub fn call_BroadcastChannel(instance: *runtime.Instance, name: DOMString) anyerror!*runtime.Instance {
+    pub fn call_BroadcastChannel(instance: *runtime.Instance, name: runtime.DOMString) anyerror!*runtime.Instance {
         return try StorageAccessHandleImpl.call_BroadcastChannel(instance, name);
     }
 
@@ -233,7 +233,7 @@ pub const StorageAccessHandle = struct {
         return try StorageAccessHandleImpl.call_SharedWorker(instance, scriptURL, options);
     }
 
-    pub fn call_createObjectURL(instance: *runtime.Instance, obj: runtime.JSValue) anyerror!DOMString {
+    pub fn call_createObjectURL(instance: *runtime.Instance, obj: runtime.JSValue) anyerror!runtime.DOMString {
         return try StorageAccessHandleImpl.call_createObjectURL(instance, obj);
     }
 
@@ -241,7 +241,7 @@ pub const StorageAccessHandle = struct {
         return try StorageAccessHandleImpl.call_estimate(instance);
     }
 
-    pub fn call_revokeObjectURL(instance: *runtime.Instance, url: DOMString) anyerror!void {
+    pub fn call_revokeObjectURL(instance: *runtime.Instance, url: runtime.DOMString) anyerror!void {
         return try StorageAccessHandleImpl.call_revokeObjectURL(instance, url);
     }
 

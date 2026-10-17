@@ -69,13 +69,6 @@ pub fn get_transitionRoot(instance: *runtime.Instance) anyerror!*runtime.Instanc
     return error.NotImplemented;
 }
 
-/// Setter for types
-pub fn set_types(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Operation: waitUntil
 pub fn call_waitUntil(instance: *runtime.Instance, promise: runtime.JSValue) anyerror!void {
     _ = instance;

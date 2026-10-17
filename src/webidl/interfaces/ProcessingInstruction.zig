@@ -52,10 +52,26 @@ pub const ProcessingInstruction = struct {
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
+        pub const methods = .{
+            .{ "hasAttributes", "call_hasAttributes", 0 },
+            .{ "getAttributeNames", "call_getAttributeNames", 0 },
+            .{ "getAttribute", "call_getAttribute", 1 },
+            .{ "setAttribute", "call_setAttribute", 2 },
+            .{ "removeAttribute", "call_removeAttribute", 1 },
+            .{ "toggleAttribute", "call_toggleAttribute", 1 },
+            .{ "hasAttribute", "call_hasAttribute", 1 },
+        };
 
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
+        pub const own_methods = .{
+            "hasAttributes",
+            "getAttributeNames",
+            "getAttribute",
+            "setAttribute",
+            "removeAttribute",
+            "toggleAttribute",
+            "hasAttribute",
+        };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
@@ -98,14 +114,14 @@ pub const ProcessingInstruction = struct {
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{};
 
-        pub const has_constructor = false;
+        pub const has_constructor = true;
     };
 
     pub const State = runtime.FlattenedState(
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            target: typedefs.DOMString = undefined,
+            target: runtime.DOMString = undefined,
             sheet: ?*runtime.Instance = null,
             _internal: ?*ProcessingInstructionImpl.InternalState = null,
         },
@@ -114,6 +130,14 @@ pub const ProcessingInstruction = struct {
     const delegates = .{
         .get_sheet = &get_sheet,
         .get_target = &get_target,
+
+        .call_getAttribute = &call_getAttribute,
+        .call_getAttributeNames = &call_getAttributeNames,
+        .call_hasAttribute = &call_hasAttribute,
+        .call_hasAttributes = &call_hasAttributes,
+        .call_removeAttribute = &call_removeAttribute,
+        .call_setAttribute = &call_setAttribute,
+        .call_toggleAttribute = &call_toggleAttribute,
 
         .deinit = &deinit,
     };
@@ -205,11 +229,47 @@ pub const ProcessingInstruction = struct {
         }
     }
 
-    pub fn get_target(instance: *runtime.Instance) anyerror!DOMString {
+    /// WebIDL constructor
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, target: runtime.DOMString, data: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
+        // Directly return result from impl.call_constructor
+        return try ProcessingInstructionImpl.call_constructor(ctx, target, data);
+    }
+
+    pub fn get_target(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ProcessingInstructionImpl.get_target(instance);
     }
 
     pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try ProcessingInstructionImpl.get_sheet(instance);
+    }
+
+    pub fn call_hasAttributes(instance: *runtime.Instance) anyerror!bool {
+        return try ProcessingInstructionImpl.call_hasAttributes(instance);
+    }
+
+    pub fn call_toggleAttribute(instance: *runtime.Instance, name: runtime.DOMString, force: webidl.Opt(bool)) anyerror!bool {
+        return try ProcessingInstructionImpl.call_toggleAttribute(instance, name, force);
+    }
+
+    pub fn call_hasAttribute(instance: *runtime.Instance, name: runtime.DOMString) anyerror!bool {
+        return try ProcessingInstructionImpl.call_hasAttribute(instance, name);
+    }
+
+    pub fn call_getAttribute(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.DOMString {
+        return try ProcessingInstructionImpl.call_getAttribute(instance, name);
+    }
+
+    pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try ProcessingInstructionImpl.call_getAttributeNames(instance);
+    }
+
+    pub fn call_removeAttribute(instance: *runtime.Instance, name: runtime.DOMString) anyerror!void {
+        return try ProcessingInstructionImpl.call_removeAttribute(instance, name);
+    }
+
+    pub fn call_setAttribute(instance: *runtime.Instance, name: runtime.DOMString, value: runtime.DOMString) anyerror!void {
+        return try ProcessingInstructionImpl.call_setAttribute(instance, name, value);
     }
 };

@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const SVGGraphicsElement = @import("interfaces").SVGGraphicsElement;
 const SVGURIReference = @import("mixins").SVGURIReference;
-const HTMLHyperlinkElementUtils = @import("mixins").HTMLHyperlinkElementUtils;
+const HyperlinkElementUtils = @import("mixins").HyperlinkElementUtils;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
@@ -24,11 +24,11 @@ const Element = @import("interfaces").Element;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
 const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
-const DOMMatrix = @import("interfaces").DOMMatrix;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
 const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
+const SVGRect = @import("typedefs").SVGRect;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
 const SVGStringList = @import("interfaces").SVGStringList;
@@ -54,7 +54,7 @@ const ScrollToOptions = @import("dictionaries").ScrollToOptions;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const SVGUseElement = @import("interfaces").SVGUseElement;
+const SVGMatrix = @import("typedefs").SVGMatrix;
 const DOMRectList = @import("interfaces").DOMRectList;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
@@ -75,6 +75,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -93,7 +94,7 @@ pub const SVGAElement = struct {
         pub const ParentInterface = SVGGraphicsElement;
         pub const MixinTypes = &.{
             SVGURIReference,
-            HTMLHyperlinkElementUtils,
+            HyperlinkElementUtils,
         };
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
@@ -109,8 +110,6 @@ pub const SVGAElement = struct {
             .{ "ping", "get_ping", "set_ping" },
             .{ "rel", "get_rel", "set_rel" },
             .{ "relList", "get_relList", "set_relList" },
-            .{ "hreflang", "get_hreflang", "set_hreflang" },
-            .{ "type", "get_type", "set_type" },
             .{ "referrerPolicy", "get_referrerPolicy", "set_referrerPolicy" },
             .{ "href", "get_href", null },
             .{ "origin", "get_origin", null },
@@ -123,6 +122,8 @@ pub const SVGAElement = struct {
             .{ "pathname", "get_pathname", "set_pathname" },
             .{ "search", "get_search", "set_search" },
             .{ "hash", "get_hash", "set_hash" },
+            .{ "hreflang", "get_hreflang", "set_hreflang" },
+            .{ "type", "get_type", "set_type" },
         };
 
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
@@ -200,6 +201,7 @@ pub const SVGAElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -207,7 +209,6 @@ pub const SVGAElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -223,6 +224,7 @@ pub const SVGAElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "focus",
@@ -239,8 +241,6 @@ pub const SVGAElement = struct {
             .{ "ping", "get_ping", "set_ping" },
             .{ "rel", "get_rel", "set_rel" },
             .{ "relList", "get_relList", "set_relList" },
-            .{ "hreflang", "get_hreflang", "set_hreflang" },
-            .{ "type", "get_type", "set_type" },
             .{ "referrerPolicy", "get_referrerPolicy", "set_referrerPolicy" },
             .{ "href", "get_href", null },
             .{ "origin", "get_origin", null },
@@ -253,6 +253,8 @@ pub const SVGAElement = struct {
             .{ "pathname", "get_pathname", "set_pathname" },
             .{ "search", "get_search", "set_search" },
             .{ "hash", "get_hash", "set_hash" },
+            .{ "hreflang", "get_hreflang", "set_hreflang" },
+            .{ "type", "get_type", "set_type" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -266,13 +268,11 @@ pub const SVGAElement = struct {
         Meta.MixinTypes,
         struct {
             target: *runtime.Instance = undefined,
-            download: typedefs.DOMString = undefined,
+            download: runtime.DOMString = undefined,
             ping: runtime.USVString = undefined,
-            rel: typedefs.DOMString = undefined,
+            rel: runtime.DOMString = undefined,
             relList: *runtime.Instance = undefined,
-            hreflang: typedefs.DOMString = undefined,
-            type: typedefs.DOMString = undefined,
-            referrerPolicy: typedefs.DOMString = undefined,
+            referrerPolicy: runtime.DOMString = undefined,
             href: *runtime.Instance = undefined,
             origin: runtime.USVString = undefined,
             protocol: runtime.USVString = undefined,
@@ -284,6 +284,8 @@ pub const SVGAElement = struct {
             pathname: runtime.USVString = undefined,
             search: runtime.USVString = undefined,
             hash: runtime.USVString = undefined,
+            hreflang: runtime.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             cached_target: ?*runtime.Instance = null,
             cached_relList: ?*runtime.Instance = null,
             cached_href: ?*runtime.Instance = null,
@@ -420,7 +422,7 @@ pub const SVGAElement = struct {
         }
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [Reflect], [SameObject]
     pub fn get_target(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -433,44 +435,58 @@ pub const SVGAElement = struct {
         return value;
     }
 
-    pub fn get_download(instance: *runtime.Instance) anyerror!DOMString {
-        return try SVGAElementImpl.get_download(instance);
+    const reflection = @import("dom").reflection;
+
+    /// Extended attributes: [Reflect]
+    pub fn get_download(instance: *runtime.Instance) anyerror!runtime.DOMString {
+        if (comptime @hasDecl(SVGAElementImpl, "get_download")) return try SVGAElementImpl.get_download(instance);
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "download" });
     }
 
-    pub fn set_download(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        try SVGAElementImpl.set_download(instance, value);
+    /// Extended attributes: [Reflect]
+    pub fn set_download(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        if (comptime @hasDecl(SVGAElementImpl, "set_download")) return try SVGAElementImpl.set_download(instance, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "download" }, value);
     }
 
+    /// Extended attributes: [Reflect]
     pub fn get_ping(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try SVGAElementImpl.get_ping(instance);
+        if (comptime @hasDecl(SVGAElementImpl, "get_ping")) return try SVGAElementImpl.get_ping(instance);
+        return try reflection.get(runtime.USVString, instance, .{ .name = "ping" });
     }
 
+    /// Extended attributes: [Reflect]
     pub fn set_ping(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-        try SVGAElementImpl.set_ping(instance, value);
+        if (comptime @hasDecl(SVGAElementImpl, "set_ping")) return try SVGAElementImpl.set_ping(instance, value);
+        try reflection.set(runtime.USVString, instance, .{ .name = "ping" }, value);
     }
 
-    pub fn get_rel(instance: *runtime.Instance) anyerror!DOMString {
-        return try SVGAElementImpl.get_rel(instance);
+    /// Extended attributes: [Reflect]
+    pub fn get_rel(instance: *runtime.Instance) anyerror!runtime.DOMString {
+        if (comptime @hasDecl(SVGAElementImpl, "get_rel")) return try SVGAElementImpl.get_rel(instance);
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "rel" });
     }
 
-    pub fn set_rel(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        try SVGAElementImpl.set_rel(instance, value);
+    /// Extended attributes: [Reflect]
+    pub fn set_rel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        if (comptime @hasDecl(SVGAElementImpl, "set_rel")) return try SVGAElementImpl.set_rel(instance, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "rel" }, value);
     }
 
-    /// Extended attributes: [SameObject], [PutForwards=value]
+    /// Extended attributes: [Reflect="rel"], [SameObject], [PutForwards=value]
     pub fn get_relList(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_relList) |cached| {
             return cached;
         }
-        const value = try SVGAElementImpl.get_relList(instance);
+        const value = if (comptime @hasDecl(SVGAElementImpl, "get_relList")) try SVGAElementImpl.get_relList(instance) else try reflection.get(*runtime.Instance, instance, .{ .name = "rel" });
         state.own.cached_relList = value;
         @import("dom").same_object_cache.made(instance, value, "relList");
         return value;
     }
 
-    /// Extended attributes: [SameObject], [PutForwards=value]
+    /// Extended attributes: [Reflect="rel"], [SameObject], [PutForwards=value]
     pub fn set_relList(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [PutForwards] - Get target object and set the forwarded property
         // Per WebIDL spec: setting 'relList' forwards to 'value' on the attribute's value
@@ -481,27 +497,11 @@ pub const SVGAElement = struct {
         try runtime.setPropertyOnInstance(target, "value", value);
     }
 
-    pub fn get_hreflang(instance: *runtime.Instance) anyerror!DOMString {
-        return try SVGAElementImpl.get_hreflang(instance);
-    }
-
-    pub fn set_hreflang(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        try SVGAElementImpl.set_hreflang(instance, value);
-    }
-
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
-        return try SVGAElementImpl.get_type(instance);
-    }
-
-    pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        try SVGAElementImpl.set_type(instance, value);
-    }
-
-    pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SVGAElementImpl.get_referrerPolicy(instance);
     }
 
-    pub fn set_referrerPolicy(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_referrerPolicy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try SVGAElementImpl.set_referrerPolicy(instance, value);
     }
 
@@ -518,43 +518,51 @@ pub const SVGAElement = struct {
         return value;
     }
 
-    pub const get_origin = mixins.HTMLHyperlinkElementUtils.get_origin;
+    pub const get_origin = mixins.HyperlinkElementUtils.get_origin;
 
     /// Extended attributes: [CEReactions]
-    pub const get_protocol = mixins.HTMLHyperlinkElementUtils.get_protocol;
-    pub const set_protocol = mixins.HTMLHyperlinkElementUtils.set_protocol;
+    pub const get_protocol = mixins.HyperlinkElementUtils.get_protocol;
+    pub const set_protocol = mixins.HyperlinkElementUtils.set_protocol;
 
     /// Extended attributes: [CEReactions]
-    pub const get_username = mixins.HTMLHyperlinkElementUtils.get_username;
-    pub const set_username = mixins.HTMLHyperlinkElementUtils.set_username;
+    pub const get_username = mixins.HyperlinkElementUtils.get_username;
+    pub const set_username = mixins.HyperlinkElementUtils.set_username;
 
     /// Extended attributes: [CEReactions]
-    pub const get_password = mixins.HTMLHyperlinkElementUtils.get_password;
-    pub const set_password = mixins.HTMLHyperlinkElementUtils.set_password;
+    pub const get_password = mixins.HyperlinkElementUtils.get_password;
+    pub const set_password = mixins.HyperlinkElementUtils.set_password;
 
     /// Extended attributes: [CEReactions]
-    pub const get_host = mixins.HTMLHyperlinkElementUtils.get_host;
-    pub const set_host = mixins.HTMLHyperlinkElementUtils.set_host;
+    pub const get_host = mixins.HyperlinkElementUtils.get_host;
+    pub const set_host = mixins.HyperlinkElementUtils.set_host;
 
     /// Extended attributes: [CEReactions]
-    pub const get_hostname = mixins.HTMLHyperlinkElementUtils.get_hostname;
-    pub const set_hostname = mixins.HTMLHyperlinkElementUtils.set_hostname;
+    pub const get_hostname = mixins.HyperlinkElementUtils.get_hostname;
+    pub const set_hostname = mixins.HyperlinkElementUtils.set_hostname;
 
     /// Extended attributes: [CEReactions]
-    pub const get_port = mixins.HTMLHyperlinkElementUtils.get_port;
-    pub const set_port = mixins.HTMLHyperlinkElementUtils.set_port;
+    pub const get_port = mixins.HyperlinkElementUtils.get_port;
+    pub const set_port = mixins.HyperlinkElementUtils.set_port;
 
     /// Extended attributes: [CEReactions]
-    pub const get_pathname = mixins.HTMLHyperlinkElementUtils.get_pathname;
-    pub const set_pathname = mixins.HTMLHyperlinkElementUtils.set_pathname;
+    pub const get_pathname = mixins.HyperlinkElementUtils.get_pathname;
+    pub const set_pathname = mixins.HyperlinkElementUtils.set_pathname;
 
     /// Extended attributes: [CEReactions]
-    pub const get_search = mixins.HTMLHyperlinkElementUtils.get_search;
-    pub const set_search = mixins.HTMLHyperlinkElementUtils.set_search;
+    pub const get_search = mixins.HyperlinkElementUtils.get_search;
+    pub const set_search = mixins.HyperlinkElementUtils.set_search;
 
     /// Extended attributes: [CEReactions]
-    pub const get_hash = mixins.HTMLHyperlinkElementUtils.get_hash;
-    pub const set_hash = mixins.HTMLHyperlinkElementUtils.set_hash;
+    pub const get_hash = mixins.HyperlinkElementUtils.get_hash;
+    pub const set_hash = mixins.HyperlinkElementUtils.set_hash;
+
+    /// Extended attributes: [CEReactions], [Reflect]
+    pub const get_hreflang = mixins.HyperlinkElementUtils.get_hreflang;
+    pub const set_hreflang = mixins.HyperlinkElementUtils.set_hreflang;
+
+    /// Extended attributes: [CEReactions], [Reflect]
+    pub const get_type = mixins.HyperlinkElementUtils.get_type;
+    pub const set_type = mixins.HyperlinkElementUtils.set_type;
 
     /// HTML [CEReactions]: the functions that run a custom element reactions
     /// bracket - the binding dispatches each in a catch scope, where
@@ -570,5 +578,7 @@ pub const SVGAElement = struct {
         "set_pathname",
         "set_search",
         "set_hash",
+        "set_hreflang",
+        "set_type",
     };
 };

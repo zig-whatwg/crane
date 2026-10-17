@@ -1531,12 +1531,6 @@ pub fn get_orientation(instance: *runtime.Instance) anyerror!i16 {
     return error.NotImplemented;
 }
 
-/// Getter for sharedStorage
-pub fn get_sharedStorage(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
-}
-
 /// Getter for external
 pub fn get_external(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
@@ -3864,4 +3858,41 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
     }
 
     return names.toOwnedSlice(allocator);
+}
+
+/// Getter for crashReport
+pub fn get_crashReport(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: requestResize
+pub fn call_requestResize(instance: *runtime.Instance) anyerror!void {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: setResizable
+pub fn call_setResizable(instance: *runtime.Instance, resizable: bool) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = resizable;
+    return error.NotImplemented;
+}
+
+/// Operation: maximize
+pub fn call_maximize(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: restore
+pub fn call_restore(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: minimize
+pub fn call_minimize(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    _ = instance;
+    return error.NotImplemented;
 }

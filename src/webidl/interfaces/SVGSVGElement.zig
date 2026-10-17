@@ -23,11 +23,11 @@ const USVString = @import("typedefs").USVString;
 const Element = @import("interfaces").Element;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
 const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
-const DOMMatrix = @import("interfaces").DOMMatrix;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const SVGLength = @import("interfaces").SVGLength;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
+const SVGRect = @import("typedefs").SVGRect;
 const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
@@ -55,16 +55,16 @@ const Document = @import("interfaces").Document;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
+const SVGPoint = @import("typedefs").SVGPoint;
+const SVGMatrix = @import("typedefs").SVGMatrix;
 const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
-const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
+const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
-const SVGUseElement = @import("interfaces").SVGUseElement;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
-const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
 const DOMRect = @import("interfaces").DOMRect;
 const ViewTransition = @import("interfaces").ViewTransition;
@@ -85,6 +85,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const NodeList = @import("interfaces").NodeList;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -261,6 +262,7 @@ pub const SVGSVGElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -268,7 +270,6 @@ pub const SVGSVGElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -284,6 +285,7 @@ pub const SVGSVGElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "focus",
@@ -341,7 +343,7 @@ pub const SVGSVGElement = struct {
             width: *runtime.Instance = undefined,
             height: *runtime.Instance = undefined,
             currentScale: f32 = undefined,
-            currentTranslate: *runtime.Instance = undefined,
+            currentTranslate: typedefs.SVGPoint = undefined,
             viewBox: *runtime.Instance = undefined,
             preserveAspectRatio: *runtime.Instance = undefined,
             onbeforeunload: typedefs.OnBeforeUnloadEventHandler = undefined,
@@ -349,7 +351,7 @@ pub const SVGSVGElement = struct {
             cached_y: ?*runtime.Instance = null,
             cached_width: ?*runtime.Instance = null,
             cached_height: ?*runtime.Instance = null,
-            cached_currentTranslate: ?*runtime.Instance = null,
+            cached_currentTranslate: ?SVGPoint = null,
             cached_viewBox: ?*runtime.Instance = null,
             cached_preserveAspectRatio: ?*runtime.Instance = null,
             _internal: ?*SVGSVGElementImpl.InternalState = null,
@@ -586,7 +588,7 @@ pub const SVGSVGElement = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_currentTranslate(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_currentTranslate(instance: *runtime.Instance) anyerror!SVGPoint {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_currentTranslate) |cached| {
@@ -594,7 +596,6 @@ pub const SVGSVGElement = struct {
         }
         const value = try SVGSVGElementImpl.get_currentTranslate(instance);
         state.own.cached_currentTranslate = value;
-        @import("dom").same_object_cache.made(instance, value, "currentTranslate");
         return value;
     }
 
@@ -687,11 +688,11 @@ pub const SVGSVGElement = struct {
     pub const get_onportalactivate = mixins.WindowEventHandlers.get_onportalactivate;
     pub const set_onportalactivate = mixins.WindowEventHandlers.set_onportalactivate;
 
-    pub fn call_getEnclosureList(instance: *runtime.Instance, rect: *runtime.Instance, referenceElement: ?*runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_getEnclosureList(instance: *runtime.Instance, rect: SVGRect, referenceElement: ?*runtime.Instance) anyerror!*runtime.Instance {
         return try SVGSVGElementImpl.call_getEnclosureList(instance, rect, referenceElement);
     }
 
-    pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMString) anyerror!?*runtime.Instance {
         return try SVGSVGElementImpl.call_getElementById(instance, elementId);
     }
 
@@ -703,7 +704,7 @@ pub const SVGSVGElement = struct {
         return try SVGSVGElementImpl.call_suspendRedraw(instance, maxWaitMilliseconds);
     }
 
-    pub fn call_checkEnclosure(instance: *runtime.Instance, element: *runtime.Instance, rect: *runtime.Instance) anyerror!bool {
+    pub fn call_checkEnclosure(instance: *runtime.Instance, element: *runtime.Instance, rect: SVGRect) anyerror!bool {
         return try SVGSVGElementImpl.call_checkEnclosure(instance, element, rect);
     }
 
@@ -714,7 +715,7 @@ pub const SVGSVGElement = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createSVGMatrix(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_createSVGMatrix(instance: *runtime.Instance) anyerror!SVGMatrix {
         // [NewObject] - Caller owns the returned object
         return try SVGSVGElementImpl.call_createSVGMatrix(instance);
     }
@@ -754,7 +755,7 @@ pub const SVGSVGElement = struct {
         return try SVGSVGElementImpl.call_createSVGLength(instance);
     }
 
-    pub fn call_getIntersectionList(instance: *runtime.Instance, rect: *runtime.Instance, referenceElement: ?*runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_getIntersectionList(instance: *runtime.Instance, rect: SVGRect, referenceElement: ?*runtime.Instance) anyerror!*runtime.Instance {
         return try SVGSVGElementImpl.call_getIntersectionList(instance, rect, referenceElement);
     }
 
@@ -781,18 +782,18 @@ pub const SVGSVGElement = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createSVGRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_createSVGRect(instance: *runtime.Instance) anyerror!SVGRect {
         // [NewObject] - Caller owns the returned object
         return try SVGSVGElementImpl.call_createSVGRect(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createSVGPoint(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_createSVGPoint(instance: *runtime.Instance) anyerror!SVGPoint {
         // [NewObject] - Caller owns the returned object
         return try SVGSVGElementImpl.call_createSVGPoint(instance);
     }
 
-    pub fn call_checkIntersection(instance: *runtime.Instance, element: *runtime.Instance, rect: *runtime.Instance) anyerror!bool {
+    pub fn call_checkIntersection(instance: *runtime.Instance, element: *runtime.Instance, rect: SVGRect) anyerror!bool {
         return try SVGSVGElementImpl.call_checkIntersection(instance, element, rect);
     }
 

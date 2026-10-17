@@ -1,18 +1,16 @@
-//! Implementation for the HTMLHyperlinkElementUtils mixin: the URL
-//! decomposition members of `a` and `area` elements.
+//! Implementation for the HTMLHyperlinkElementUtils mixin: href and
+//! target of HTML's `a` and `area` elements, and their hyperlink "extract an
+//! origin" steps. The URL decomposition members (origin ... hash) are
+//! HyperlinkElementUtils', which SVG's and MathML's `a` include too.
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/links.html#api-for-a-and-area-elements
 //!
-//! An element's "url" is its href content attribute parsed relative to its
-//! node document ("set the url"). It is parsed afresh on every access rather
-//! than cached, which is what "reinitialize url" amounts to for everything
-//! but a revoked blob: URL. The components are read and written through a
-//! URL object (the URL interface's getters and setters run the same basic URL
-//! parser state overrides these setters name), and a setter ends with
-//! "update href": the href content attribute becomes the URL, serialized.
+//! The element's "url" is its href content attribute parsed relative to its
+//! node document ("set the url"), parsed afresh on every access.
 //!
 //! Its includers - HTMLAnchorElement, HTMLAreaElement - inherit these members
-//! by alias; `this` is the element.
+//! by alias; `this` is the element. target is [Reflect]: the generated mixin
+//! reflects it.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -83,49 +81,6 @@ fn hrefAttribute(element: *runtime.Instance) ?[]const u8 {
     return entry.value;
 }
 
-/// HTML "set the url": the href attribute encoding-parsed relative to the
-/// element's node document - with the document's character encoding, which
-/// a query is percent-encoded with - as a URL object the caller releases
-/// with `runtime.Instance.deinit`; null when there is no href attribute or
-/// it does not parse.
-///
-/// The URL object holds the parsed URL's serialization, parsed again: every
-/// non-ASCII code point of a serialized URL is percent-encoded already, so
-/// that parse (UTF-8, as the URL API's always is) gives back the same URL.
-fn elementUrl(element: *runtime.Instance) ?*runtime.Instance {
-    const href = hrefAttribute(element) orelse return null;
-    const serialized = (html.encoding_parse.encodingParseAndSerialize(element, href) catch return null) orelse return null;
-    defer element.ctx.allocator.free(serialized);
-    return interfaces.URL.call_static_parse(element, serialized, webidl.Opt(runtime.USVString).notPassed()) catch null;
-}
-
-/// A component of the element's url, or `fallback` (copied) when it has none.
-fn component(
-    element: *runtime.Instance,
-    comptime getter: fn (*runtime.Instance) anyerror!runtime.USVString,
-    fallback: []const u8,
-) !runtime.USVString {
-    const url = elementUrl(element) orelse return element.ctx.allocator.dupe(u8, fallback);
-    defer runtime.Instance.deinit(url);
-    return getter(url);
-}
-
-/// Change a component of the element's url with `setter`, then "update
-/// href". Nothing happens when the element has no url.
-fn updateComponent(
-    element: *runtime.Instance,
-    value: runtime.USVString,
-    comptime setter: fn (*runtime.Instance, runtime.USVString) anyerror!void,
-) !void {
-    const url = elementUrl(element) orelse return;
-    defer runtime.Instance.deinit(url);
-    try setter(url, value);
-    // "Update href": set the href content attribute to the serialized url.
-    const serialized = try interfaces.URL.get_href(url);
-    defer url.ctx.allocator.free(serialized);
-    try interfaces.Element.call_setAttribute(element, runtime.DOMString.initInterned("href"), .{ .domstring = runtime.DOMString.initInterned(serialized) });
-}
-
 // =============================================================================
 // Getters
 // =============================================================================
@@ -134,62 +89,13 @@ fn updateComponent(
 /// is null and this has no href content attribute, return the empty string.
 /// 4. Otherwise, if url is null, return this's href content attribute's
 /// value. 5. Return url, serialized."
+///
+/// The url, serialized, is the href attribute encoding-parsed relative to the
+/// node document and serialized ("set the url" then step 5).
 pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
-    if (elementUrl(instance)) |url| {
-        defer runtime.Instance.deinit(url);
-        return interfaces.URL.get_href(url);
-    }
-    return instance.ctx.allocator.dupe(u8, hrefAttribute(instance) orelse "");
-}
-
-/// Getter for origin: the serialization of the url's origin, or "".
-pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return component(instance, interfaces.URL.get_origin, "");
-}
-
-/// Getter for protocol: the url's scheme followed by ":", or ":".
-pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return component(instance, interfaces.URL.get_protocol, ":");
-}
-
-/// Getter for username.
-pub fn get_username(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return component(instance, interfaces.URL.get_username, "");
-}
-
-/// Getter for password.
-pub fn get_password(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return component(instance, interfaces.URL.get_password, "");
-}
-
-/// Getter for host: host and port, serialized, or "".
-pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return component(instance, interfaces.URL.get_host, "");
-}
-
-/// Getter for hostname.
-pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return component(instance, interfaces.URL.get_hostname, "");
-}
-
-/// Getter for port.
-pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return component(instance, interfaces.URL.get_port, "");
-}
-
-/// Getter for pathname.
-pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return component(instance, interfaces.URL.get_pathname, "");
-}
-
-/// Getter for search: "?" and the query, or "" when it is null or empty.
-pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return component(instance, interfaces.URL.get_search, "");
-}
-
-/// Getter for hash: "#" and the fragment, or "" when it is null or empty.
-pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return component(instance, interfaces.URL.get_hash, "");
+    const href = hrefAttribute(instance) orelse return instance.ctx.allocator.dupe(u8, "");
+    if (html.encoding_parse.encodingParseAndSerialize(instance, href) catch null) |serialized| return serialized;
+    return instance.ctx.allocator.dupe(u8, href);
 }
 
 // =============================================================================
@@ -200,52 +106,4 @@ pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// value."
 pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("href"), .{ .domstring = runtime.DOMString.initInterned(value) });
-}
-
-/// Setter for protocol: basic URL parse the value followed by ":" with the
-/// scheme start state as state override, then update href.
-pub fn set_protocol(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return updateComponent(instance, value, interfaces.URL.set_protocol);
-}
-
-/// Setter for username: nothing when the url cannot have a username.
-pub fn set_username(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return updateComponent(instance, value, interfaces.URL.set_username);
-}
-
-/// Setter for password: nothing when the url cannot have a password.
-pub fn set_password(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return updateComponent(instance, value, interfaces.URL.set_password);
-}
-
-/// Setter for host: nothing when the url has an opaque path.
-pub fn set_host(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return updateComponent(instance, value, interfaces.URL.set_host);
-}
-
-/// Setter for hostname: nothing when the url has an opaque path.
-pub fn set_hostname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return updateComponent(instance, value, interfaces.URL.set_hostname);
-}
-
-/// Setter for port: the empty string removes the port.
-pub fn set_port(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return updateComponent(instance, value, interfaces.URL.set_port);
-}
-
-/// Setter for pathname: nothing when the url has an opaque path.
-pub fn set_pathname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return updateComponent(instance, value, interfaces.URL.set_pathname);
-}
-
-/// Setter for search: the empty string removes the query; a leading "?" is
-/// dropped.
-pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return updateComponent(instance, value, interfaces.URL.set_search);
-}
-
-/// Setter for hash: the empty string removes the fragment; a leading "#" is
-/// dropped.
-pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return updateComponent(instance, value, interfaces.URL.set_hash);
 }

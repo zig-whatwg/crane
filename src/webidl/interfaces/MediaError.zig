@@ -67,7 +67,7 @@ pub const MediaError = struct {
         Meta.MixinTypes,
         struct {
             code: u16 = undefined,
-            message: typedefs.DOMString = undefined,
+            message: runtime.DOMString = undefined,
             _internal: ?*MediaErrorImpl.InternalState = null,
         },
     );
@@ -196,7 +196,7 @@ pub const MediaError = struct {
         return try MediaErrorImpl.get_code(instance);
     }
 
-    pub fn get_message(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MediaErrorImpl.get_message(instance);
     }
 };

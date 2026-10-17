@@ -9,19 +9,19 @@ pub const MouseEventInit = struct {
     // Inherited from EventModifierInit
     base: EventModifierInit,
 
+    screenX: ?i32 = null,
+    screenY: ?i32 = null,
+    clientX: ?i32 = null,
+    clientY: ?i32 = null,
     button: ?i16 = null,
     buttons: ?u16 = null,
     relatedTarget: ?*runtime.Instance = null,
-    screenX: ?f64 = null,
-    screenY: ?f64 = null,
-    clientX: ?f64 = null,
-    clientY: ?f64 = null,
     movementX: ?f64 = null,
     movementY: ?f64 = null,
 
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
-    pub const restricted_members = .{ "screenX", "screenY", "clientX", "clientY", "movementX", "movementY" };
+    pub const restricted_members = .{ "movementX", "movementY" };
 
     /// Optional members whose IDL type is nullable: a present null is the
     /// value null. Any other member's present null converts by its type.

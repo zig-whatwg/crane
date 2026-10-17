@@ -188,11 +188,11 @@ pub const ClipboardItem = struct {
         return try ClipboardItemImpl.get_types(instance);
     }
 
-    pub fn call_getType(instance: *runtime.Instance, @"type": DOMString) anyerror!runtime.JSValue {
+    pub fn call_getType(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!runtime.JSValue {
         return try ClipboardItemImpl.call_getType(instance, @"type");
     }
 
-    pub fn call_static_supports(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
+    pub fn call_static_supports(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
         return try ClipboardItemImpl.call_static_supports(instance, @"type");
     }
 

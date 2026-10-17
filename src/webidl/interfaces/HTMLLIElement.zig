@@ -71,6 +71,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -168,6 +169,7 @@ pub const HTMLLIElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -175,7 +177,6 @@ pub const HTMLLIElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -191,6 +192,7 @@ pub const HTMLLIElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -224,7 +226,7 @@ pub const HTMLLIElement = struct {
         Meta.MixinTypes,
         struct {
             value: i32 = undefined,
-            type: typedefs.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             _internal: ?*HTMLLIElementImpl.InternalState = null,
         },
     );
@@ -353,19 +355,19 @@ pub const HTMLLIElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLLIElementImpl, "get_type")) return try HTMLLIElementImpl.get_type(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "type" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "type" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLIElementImpl, "set_type")) return try HTMLLIElementImpl.set_type(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "type" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "type" }, value);
     }
 
     /// HTML [CEReactions]: the functions that run a custom element reactions

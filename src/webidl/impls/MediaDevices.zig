@@ -119,3 +119,9 @@ pub fn call_setCaptureHandleConfig(instance: *runtime.Instance, config: webidl.O
     _ = config;
     return error.NotImplemented;
 }
+
+/// Getter for defaultSemantics
+pub fn get_defaultSemantics(instance: *runtime.Instance) anyerror!enums.GetUserMediaSemantics {
+    _ = instance;
+    return error.NotImplemented;
+}

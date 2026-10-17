@@ -103,7 +103,7 @@ pub const Event = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: typedefs.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             target: ?*runtime.Instance = null,
             srcElement: ?*runtime.Instance = null,
             currentTarget: ?*runtime.Instance = null,
@@ -263,12 +263,12 @@ pub const Event = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(EventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(EventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try EventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
 
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try EventImpl.get_type(instance);
     }
 
@@ -329,7 +329,7 @@ pub const Event = struct {
         return try EventImpl.get_timeStamp(instance);
     }
 
-    pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool)) anyerror!void {
+    pub fn call_initEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool)) anyerror!void {
         return try EventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 

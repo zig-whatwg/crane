@@ -71,6 +71,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -171,6 +172,7 @@ pub const HTMLHRElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -178,7 +180,6 @@ pub const HTMLHRElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -194,6 +195,7 @@ pub const HTMLHRElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -229,11 +231,11 @@ pub const HTMLHRElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"align": typedefs.DOMString = undefined,
-            color: typedefs.DOMString = undefined,
+            @"align": runtime.DOMString = undefined,
+            color: runtime.DOMString = undefined,
             noShade: bool = undefined,
-            size: typedefs.DOMString = undefined,
-            width: typedefs.DOMString = undefined,
+            size: runtime.DOMString = undefined,
+            width: runtime.DOMString = undefined,
             _internal: ?*HTMLHRElementImpl.InternalState = null,
         },
     );
@@ -352,35 +354,35 @@ pub const HTMLHRElement = struct {
     const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_align(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLHRElementImpl, "get_align")) return try HTMLHRElementImpl.get_align(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "align" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "align" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_align(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_align(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLHRElementImpl, "set_align")) return try HTMLHRElementImpl.set_align(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "align" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "align" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_color(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_color(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLHRElementImpl, "get_color")) return try HTMLHRElementImpl.get_color(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "color" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "color" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_color(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_color(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLHRElementImpl, "set_color")) return try HTMLHRElementImpl.set_color(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "color" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "color" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -400,35 +402,35 @@ pub const HTMLHRElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_size(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_size(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLHRElementImpl, "get_size")) return try HTMLHRElementImpl.get_size(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "size" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "size" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_size(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_size(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLHRElementImpl, "set_size")) return try HTMLHRElementImpl.set_size(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "size" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "size" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_width(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_width(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLHRElementImpl, "get_width")) return try HTMLHRElementImpl.get_width(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "width" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "width" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_width(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_width(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLHRElementImpl, "set_width")) return try HTMLHRElementImpl.set_width(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "width" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "width" }, value);
     }
 
     /// HTML [CEReactions]: the functions that run a custom element reactions

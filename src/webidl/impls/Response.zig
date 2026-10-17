@@ -756,3 +756,9 @@ pub fn getResponseData(instance: *runtime.Instance) ResponseData {
         .body = if (internal.response.body) |body| body.getBytes() else null,
     };
 }
+
+/// Operation: textStream
+pub fn call_textStream(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    _ = instance;
+    return error.NotImplemented;
+}

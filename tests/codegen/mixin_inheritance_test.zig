@@ -135,3 +135,12 @@ test "a mixin module delegates its members to the mixin's impl and keeps no stat
     // A mixin has no instances and so no State of its own.
     try testing.expect(!contains(out, "getState(State)"));
 }
+
+test "HTML's hyperlink URL members are inherited from HyperlinkElementUtils, href and target from HTMLHyperlinkElementUtils" {
+    // HTML 4.6.3 splits the URL decomposition members (origin ... hash,
+    // hreflang, type) into HyperlinkElementUtils, which SVG's and MathML's
+    // `a` include too; href and target stay in HTMLHyperlinkElementUtils.
+    // Both are implemented once, in their mixin's impl.
+    try testing.expect(codegen.inherited_mixins.isInherited("HyperlinkElementUtils"));
+    try testing.expect(codegen.inherited_mixins.isInherited("HTMLHyperlinkElementUtils"));
+}

@@ -55,7 +55,6 @@ pub const IdentityCredential = struct {
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "isConditionalMediationAvailable",
-            "willRequestConditionalCreation",
         };
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties

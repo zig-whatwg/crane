@@ -52,7 +52,6 @@ pub const FederatedCredential = struct {
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "isConditionalMediationAvailable",
-            "willRequestConditionalCreation",
         };
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
@@ -82,7 +81,7 @@ pub const FederatedCredential = struct {
         Meta.MixinTypes,
         struct {
             provider: runtime.USVString = undefined,
-            protocol: ?typedefs.DOMString = null,
+            protocol: ?runtime.DOMString = null,
             name: runtime.USVString = undefined,
             iconURL: runtime.USVString = undefined,
             _internal: ?*FederatedCredentialImpl.InternalState = null,
@@ -197,7 +196,7 @@ pub const FederatedCredential = struct {
         return try FederatedCredentialImpl.get_provider(instance);
     }
 
-    pub fn get_protocol(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_protocol(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try FederatedCredentialImpl.get_protocol(instance);
     }
 

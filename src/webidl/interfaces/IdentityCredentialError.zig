@@ -63,7 +63,7 @@ pub const IdentityCredentialError = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"error": typedefs.DOMString = undefined,
+            @"error": runtime.DOMString = undefined,
             url: runtime.USVString = undefined,
             _internal: ?*IdentityCredentialErrorImpl.InternalState = null,
         },
@@ -166,12 +166,12 @@ pub const IdentityCredentialError = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, message: webidl.Opt(DOMString), options: webidl.Opt(IdentityCredentialErrorInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, message: webidl.Opt(runtime.DOMString), options: webidl.Opt(IdentityCredentialErrorInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try IdentityCredentialErrorImpl.call_constructor(ctx, message, options);
     }
 
-    pub fn get_error(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_error(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try IdentityCredentialErrorImpl.get_error(instance);
     }
 

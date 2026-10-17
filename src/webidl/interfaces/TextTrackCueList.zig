@@ -178,7 +178,7 @@ pub const TextTrackCueList = struct {
         }
     }
 
-    pub fn call_getCueById(instance: *runtime.Instance, id: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_getCueById(instance: *runtime.Instance, id: runtime.DOMString) anyerror!?*runtime.Instance {
         return try TextTrackCueListImpl.call_getCueById(instance, id);
     }
 };

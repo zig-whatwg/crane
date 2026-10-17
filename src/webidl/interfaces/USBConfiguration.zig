@@ -67,7 +67,7 @@ pub const USBConfiguration = struct {
         Meta.MixinTypes,
         struct {
             configurationValue: u8 = undefined,
-            configurationName: ?typedefs.DOMString = null,
+            configurationName: ?runtime.DOMString = null,
             interfaces: runtime.JSValue = undefined,
             _internal: ?*USBConfigurationImpl.InternalState = null,
         },
@@ -178,7 +178,7 @@ pub const USBConfiguration = struct {
         return try USBConfigurationImpl.get_configurationValue(instance);
     }
 
-    pub fn get_configurationName(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_configurationName(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try USBConfigurationImpl.get_configurationName(instance);
     }
 

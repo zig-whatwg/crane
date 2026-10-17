@@ -23,7 +23,6 @@ const Element = @import("interfaces").Element;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
 const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
-const PostMessageOptions = @import("dictionaries").PostMessageOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
 const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
@@ -49,6 +48,7 @@ const ObservableEventListenerOptions = @import("dictionaries").ObservableEventLi
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
+const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
@@ -73,6 +73,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -178,6 +179,7 @@ pub const HTMLPortalElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -185,7 +187,6 @@ pub const HTMLPortalElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -201,6 +202,7 @@ pub const HTMLPortalElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -236,7 +238,7 @@ pub const HTMLPortalElement = struct {
         Meta.MixinTypes,
         struct {
             src: runtime.USVString = undefined,
-            referrerPolicy: typedefs.DOMString = undefined,
+            referrerPolicy: runtime.DOMString = undefined,
             onmessage: typedefs.EventHandler = undefined,
             onmessageerror: typedefs.EventHandler = undefined,
             _internal: ?*HTMLPortalElementImpl.InternalState = null,
@@ -370,12 +372,12 @@ pub const HTMLPortalElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLPortalElementImpl.get_referrerPolicy(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_referrerPolicy(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_referrerPolicy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -405,7 +407,7 @@ pub const HTMLPortalElement = struct {
         try event_handlers.setValue(EventHandler, instance, "onmessageerror", value);
     }
 
-    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(PostMessageOptions)) anyerror!void {
+    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(StructuredSerializeOptions)) anyerror!void {
         return try HTMLPortalElementImpl.call_postMessage(instance, message, options);
     }
 

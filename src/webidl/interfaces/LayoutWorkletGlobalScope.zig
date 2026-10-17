@@ -157,7 +157,7 @@ pub const LayoutWorkletGlobalScope = struct {
         }
     }
 
-    pub fn call_registerLayout(instance: *runtime.Instance, name: DOMString, layoutCtor: VoidFunction) anyerror!void {
+    pub fn call_registerLayout(instance: *runtime.Instance, name: runtime.DOMString, layoutCtor: VoidFunction) anyerror!void {
         return try LayoutWorkletGlobalScopeImpl.call_registerLayout(instance, name, layoutCtor);
     }
 };

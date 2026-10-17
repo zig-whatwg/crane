@@ -71,6 +71,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -179,6 +180,7 @@ pub const HTMLDialogElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -186,7 +188,6 @@ pub const HTMLDialogElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -202,6 +203,7 @@ pub const HTMLDialogElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -236,8 +238,8 @@ pub const HTMLDialogElement = struct {
         Meta.MixinTypes,
         struct {
             open: bool = undefined,
-            returnValue: typedefs.DOMString = undefined,
-            closedBy: typedefs.DOMString = undefined,
+            returnValue: runtime.DOMString = undefined,
+            closedBy: runtime.DOMString = undefined,
             _internal: ?*HTMLDialogElementImpl.InternalState = null,
         },
     );
@@ -372,27 +374,27 @@ pub const HTMLDialogElement = struct {
         try reflection.set(bool, instance, .{ .name = "open" }, value);
     }
 
-    pub fn get_returnValue(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_returnValue(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLDialogElementImpl.get_returnValue(instance);
     }
 
-    pub fn set_returnValue(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_returnValue(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try HTMLDialogElementImpl.set_returnValue(instance, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
-    pub fn get_closedBy(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_closedBy(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLDialogElementImpl.get_closedBy(instance);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
-    pub fn set_closedBy(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_closedBy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLDialogElementImpl, "set_closedBy")) return try HTMLDialogElementImpl.set_closedBy(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "closedby" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "closedby" }, value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -405,7 +407,7 @@ pub const HTMLDialogElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_close(instance: *runtime.Instance, returnValue: webidl.Opt(DOMString)) anyerror!void {
+    pub fn call_close(instance: *runtime.Instance, returnValue: webidl.Opt(runtime.DOMString)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -414,7 +416,7 @@ pub const HTMLDialogElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_requestClose(instance: *runtime.Instance, returnValue: webidl.Opt(DOMString)) anyerror!void {
+    pub fn call_requestClose(instance: *runtime.Instance, returnValue: webidl.Opt(runtime.DOMString)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);

@@ -203,7 +203,7 @@ pub const GPUPipelineError = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, message: webidl.Opt(DOMString), options: GPUPipelineErrorInit) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, message: webidl.Opt(runtime.DOMString), options: GPUPipelineErrorInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try GPUPipelineErrorImpl.call_constructor(ctx, message, options);
     }

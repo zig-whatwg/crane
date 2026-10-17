@@ -59,7 +59,7 @@ pub const SpeechRecognitionAlternative = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            transcript: typedefs.DOMString = undefined,
+            transcript: runtime.DOMString = undefined,
             confidence: f32 = undefined,
             _internal: ?*SpeechRecognitionAlternativeImpl.InternalState = null,
         },
@@ -157,7 +157,7 @@ pub const SpeechRecognitionAlternative = struct {
         }
     }
 
-    pub fn get_transcript(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_transcript(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SpeechRecognitionAlternativeImpl.get_transcript(instance);
     }
 

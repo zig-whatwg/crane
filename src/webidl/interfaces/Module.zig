@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
+const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const ModuleExportDescriptor = @import("dictionaries").ModuleExportDescriptor;
-const BufferSource = @import("typedefs").BufferSource;
 const ModuleImportDescriptor = @import("dictionaries").ModuleImportDescriptor;
 const WebAssemblyCompileOptions = @import("dictionaries").WebAssemblyCompileOptions;
 const DOMString = @import("typedefs").DOMString;
@@ -164,7 +164,7 @@ pub const Module = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, bytes: BufferSource, options: webidl.Opt(WebAssemblyCompileOptions)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, bytes: AllowSharedBufferSource, options: webidl.Opt(WebAssemblyCompileOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try ModuleImpl.call_constructor(ctx, bytes, options);
     }
@@ -173,7 +173,7 @@ pub const Module = struct {
         return try ModuleImpl.call_static_imports(instance, moduleObject);
     }
 
-    pub fn call_static_customSections(instance: *runtime.Instance, moduleObject: *runtime.Instance, sectionName: DOMString) anyerror!runtime.JSValue {
+    pub fn call_static_customSections(instance: *runtime.Instance, moduleObject: *runtime.Instance, sectionName: runtime.DOMString) anyerror!runtime.JSValue {
         return try ModuleImpl.call_static_customSections(instance, moduleObject, sectionName);
     }
 

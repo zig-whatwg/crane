@@ -178,14 +178,14 @@ pub const CacheStorage = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_has(instance: *runtime.Instance, cacheName: DOMString) anyerror!runtime.JSValue {
+    pub fn call_has(instance: *runtime.Instance, cacheName: runtime.DOMString) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
 
         return try CacheStorageImpl.call_has(instance, cacheName);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_delete(instance: *runtime.Instance, cacheName: DOMString) anyerror!runtime.JSValue {
+    pub fn call_delete(instance: *runtime.Instance, cacheName: runtime.DOMString) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
 
         return try CacheStorageImpl.call_delete(instance, cacheName);
@@ -198,7 +198,7 @@ pub const CacheStorage = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_open(instance: *runtime.Instance, cacheName: DOMString) anyerror!runtime.JSValue {
+    pub fn call_open(instance: *runtime.Instance, cacheName: runtime.DOMString) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
 
         return try CacheStorageImpl.call_open(instance, cacheName);

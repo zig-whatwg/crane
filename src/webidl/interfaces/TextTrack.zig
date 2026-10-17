@@ -100,10 +100,10 @@ pub const TextTrack = struct {
         Meta.MixinTypes,
         struct {
             kind: enums.TextTrackKind = undefined,
-            label: typedefs.DOMString = undefined,
-            language: typedefs.DOMString = undefined,
-            id: typedefs.DOMString = undefined,
-            inBandMetadataTrackDispatchType: typedefs.DOMString = undefined,
+            label: runtime.DOMString = undefined,
+            language: runtime.DOMString = undefined,
+            id: runtime.DOMString = undefined,
+            inBandMetadataTrackDispatchType: runtime.DOMString = undefined,
             mode: enums.TextTrackMode = undefined,
             cues: ?*runtime.Instance = null,
             activeCues: ?*runtime.Instance = null,
@@ -225,19 +225,19 @@ pub const TextTrack = struct {
         return try TextTrackImpl.get_kind(instance);
     }
 
-    pub fn get_label(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_label(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TextTrackImpl.get_label(instance);
     }
 
-    pub fn get_language(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TextTrackImpl.get_language(instance);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TextTrackImpl.get_id(instance);
     }
 
-    pub fn get_inBandMetadataTrackDispatchType(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_inBandMetadataTrackDispatchType(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TextTrackImpl.get_inBandMetadataTrackDispatchType(instance);
     }
 

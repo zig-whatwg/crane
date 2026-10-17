@@ -79,7 +79,7 @@ pub const PermissionStatus = struct {
         Meta.MixinTypes,
         struct {
             state: enums.PermissionState = undefined,
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             onchange: typedefs.EventHandler = undefined,
             _internal: ?*PermissionStatusImpl.InternalState = null,
         },
@@ -186,7 +186,7 @@ pub const PermissionStatus = struct {
         return try PermissionStatusImpl.get_state(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PermissionStatusImpl.get_name(instance);
     }
 

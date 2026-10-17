@@ -15,6 +15,7 @@ const GPUCommandsMixin = @import("mixins").GPUCommandsMixin;
 const GPUDebugCommandsMixin = @import("mixins").GPUDebugCommandsMixin;
 const GPUBindingCommandsMixin = @import("mixins").GPUBindingCommandsMixin;
 const GPURenderCommandsMixin = @import("mixins").GPURenderCommandsMixin;
+const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const GPUIndex32 = @import("typedefs").GPUIndex32;
 const GPURenderPipeline = @import("interfaces").GPURenderPipeline;
 const GPUBufferDynamicOffset = @import("typedefs").GPUBufferDynamicOffset;
@@ -65,6 +66,7 @@ pub const GPURenderBundleEncoder = struct {
             .{ "popDebugGroup", "call_popDebugGroup", 0 },
             .{ "insertDebugMarker", "call_insertDebugMarker", 1 },
             .{ "setBindGroup", "call_setBindGroup", 2 },
+            .{ "setImmediates", "call_setImmediates", 2 },
             .{ "setPipeline", "call_setPipeline", 1 },
             .{ "setIndexBuffer", "call_setIndexBuffer", 2 },
             .{ "setVertexBuffer", "call_setVertexBuffer", 2 },
@@ -81,6 +83,7 @@ pub const GPURenderBundleEncoder = struct {
             "popDebugGroup",
             "insertDebugMarker",
             "setBindGroup",
+            "setImmediates",
             "setPipeline",
             "setIndexBuffer",
             "setVertexBuffer",
@@ -127,6 +130,7 @@ pub const GPURenderBundleEncoder = struct {
         .call_popDebugGroup = &call_popDebugGroup,
         .call_pushDebugGroup = &call_pushDebugGroup,
         .call_setBindGroup = &call_setBindGroup,
+        .call_setImmediates = &call_setImmediates,
         .call_setIndexBuffer = &call_setIndexBuffer,
         .call_setPipeline = &call_setPipeline,
         .call_setVertexBuffer = &call_setVertexBuffer,
@@ -228,25 +232,27 @@ pub const GPURenderBundleEncoder = struct {
 
     pub const call_setVertexBuffer = mixins.GPURenderCommandsMixin.call_setVertexBuffer;
 
-    pub const call_setBindGroup = mixins.GPUBindingCommandsMixin.call_setBindGroup;
-
     pub const call_setIndexBuffer = mixins.GPURenderCommandsMixin.call_setIndexBuffer;
 
     pub const call_drawIndexedIndirect = mixins.GPURenderCommandsMixin.call_drawIndexedIndirect;
-
-    pub const call_draw = mixins.GPURenderCommandsMixin.call_draw;
 
     pub const call_drawIndexed = mixins.GPURenderCommandsMixin.call_drawIndexed;
 
     pub const call_insertDebugMarker = mixins.GPUDebugCommandsMixin.call_insertDebugMarker;
 
-    pub const call_pushDebugGroup = mixins.GPUDebugCommandsMixin.call_pushDebugGroup;
-
-    pub const call_setPipeline = mixins.GPURenderCommandsMixin.call_setPipeline;
+    pub const call_drawIndirect = mixins.GPURenderCommandsMixin.call_drawIndirect;
 
     pub const call_popDebugGroup = mixins.GPUDebugCommandsMixin.call_popDebugGroup;
 
-    pub const call_drawIndirect = mixins.GPURenderCommandsMixin.call_drawIndirect;
+    pub const call_setBindGroup = mixins.GPUBindingCommandsMixin.call_setBindGroup;
+
+    pub const call_setImmediates = mixins.GPUBindingCommandsMixin.call_setImmediates;
+
+    pub const call_draw = mixins.GPURenderCommandsMixin.call_draw;
+
+    pub const call_pushDebugGroup = mixins.GPUDebugCommandsMixin.call_pushDebugGroup;
+
+    pub const call_setPipeline = mixins.GPURenderCommandsMixin.call_setPipeline;
 
     pub const call_setBindGroup__1 = mixins.GPUBindingCommandsMixin.call_setBindGroup__1;
 

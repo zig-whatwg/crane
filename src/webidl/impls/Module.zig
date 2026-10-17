@@ -42,8 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, bytes: typedefs.BufferSource, options: webidl.Opt(dictionaries.WebAssemblyCompileOptions)) !*runtime.Instance {
-    // Create instance through init()
+/// Note: Use ctx.allocator for all allocations to ensure consistency with deinit
+pub fn call_constructor(ctx: runtime.Context, bytes: typedefs.AllowSharedBufferSource, options: webidl.Opt(dictionaries.WebAssemblyCompileOptions)) !*runtime.Instance {
+    // Create instance through init() - use ctx.allocator for consistency with deinit
     const instance = try init(ctx.allocator, State, &Module.vtable, ctx);
     errdefer deinit(instance);
 

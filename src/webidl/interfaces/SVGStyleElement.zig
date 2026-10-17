@@ -50,7 +50,6 @@ const ScrollToOptions = @import("dictionaries").ScrollToOptions;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const SVGUseElement = @import("interfaces").SVGUseElement;
 const DOMRectList = @import("interfaces").DOMRectList;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
@@ -71,6 +70,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -174,6 +174,7 @@ pub const SVGStyleElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -181,7 +182,6 @@ pub const SVGStyleElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -197,6 +197,7 @@ pub const SVGStyleElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "focus",
@@ -222,9 +223,9 @@ pub const SVGStyleElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: typedefs.DOMString = undefined,
-            media: typedefs.DOMString = undefined,
-            title: typedefs.DOMString = undefined,
+            type: runtime.DOMString = undefined,
+            media: runtime.DOMString = undefined,
+            title: runtime.DOMString = undefined,
             disabled: bool = undefined,
             sheet: ?*runtime.Instance = null,
             _internal: ?*SVGStyleElementImpl.InternalState = null,
@@ -333,28 +334,42 @@ pub const SVGStyleElement = struct {
         }
     }
 
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
-        return try SVGStyleElementImpl.get_type(instance);
+    const reflection = @import("dom").reflection;
+
+    /// Extended attributes: [Reflect]
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
+        if (comptime @hasDecl(SVGStyleElementImpl, "get_type")) return try SVGStyleElementImpl.get_type(instance);
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "type" });
     }
 
-    pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        try SVGStyleElementImpl.set_type(instance, value);
+    /// Extended attributes: [Reflect]
+    pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        if (comptime @hasDecl(SVGStyleElementImpl, "set_type")) return try SVGStyleElementImpl.set_type(instance, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "type" }, value);
     }
 
-    pub fn get_media(instance: *runtime.Instance) anyerror!DOMString {
-        return try SVGStyleElementImpl.get_media(instance);
+    /// Extended attributes: [Reflect]
+    pub fn get_media(instance: *runtime.Instance) anyerror!runtime.DOMString {
+        if (comptime @hasDecl(SVGStyleElementImpl, "get_media")) return try SVGStyleElementImpl.get_media(instance);
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "media" });
     }
 
-    pub fn set_media(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        try SVGStyleElementImpl.set_media(instance, value);
+    /// Extended attributes: [Reflect]
+    pub fn set_media(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        if (comptime @hasDecl(SVGStyleElementImpl, "set_media")) return try SVGStyleElementImpl.set_media(instance, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "media" }, value);
     }
 
-    pub fn get_title(instance: *runtime.Instance) anyerror!DOMString {
-        return try SVGStyleElementImpl.get_title(instance);
+    /// Extended attributes: [Reflect]
+    pub fn get_title(instance: *runtime.Instance) anyerror!runtime.DOMString {
+        if (comptime @hasDecl(SVGStyleElementImpl, "get_title")) return try SVGStyleElementImpl.get_title(instance);
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "title" });
     }
 
-    pub fn set_title(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        try SVGStyleElementImpl.set_title(instance, value);
+    /// Extended attributes: [Reflect]
+    pub fn set_title(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        if (comptime @hasDecl(SVGStyleElementImpl, "set_title")) return try SVGStyleElementImpl.set_title(instance, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "title" }, value);
     }
 
     pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {

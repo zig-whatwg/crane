@@ -61,9 +61,9 @@ pub const ShadowRoot = struct {
         pub const properties = .{
             .{ "mode", "get_mode", null },
             .{ "delegatesFocus", "get_delegatesFocus", null },
+            .{ "serializable", "get_serializable", null },
             .{ "slotAssignment", "get_slotAssignment", null },
             .{ "clonable", "get_clonable", null },
-            .{ "serializable", "get_serializable", null },
             .{ "host", "get_host", null },
             .{ "onslotchange", "get_onslotchange", "set_onslotchange" },
             .{ "innerHTML", "get_innerHTML", "set_innerHTML" },
@@ -84,17 +84,17 @@ pub const ShadowRoot = struct {
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
+            .{ "setHTML", "call_setHTML", 1 },
             .{ "setHTMLUnsafe", "call_setHTMLUnsafe", 1 },
             .{ "getHTML", "call_getHTML", 0 },
-            .{ "setHTML", "call_setHTML", 1 },
             .{ "getAnimations", "call_getAnimations", 0 },
         };
 
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
-            "setHTML",
             "getAnimations",
         };
 
@@ -132,9 +132,9 @@ pub const ShadowRoot = struct {
         pub const eager_properties = .{
             .{ "mode", "get_mode", null },
             .{ "delegatesFocus", "get_delegatesFocus", null },
+            .{ "serializable", "get_serializable", null },
             .{ "slotAssignment", "get_slotAssignment", null },
             .{ "clonable", "get_clonable", null },
-            .{ "serializable", "get_serializable", null },
             .{ "host", "get_host", null },
             .{ "onslotchange", "get_onslotchange", "set_onslotchange" },
             .{ "innerHTML", "get_innerHTML", "set_innerHTML" },
@@ -159,9 +159,9 @@ pub const ShadowRoot = struct {
         struct {
             mode: enums.ShadowRootMode = undefined,
             delegatesFocus: bool = undefined,
+            serializable: bool = undefined,
             slotAssignment: enums.SlotAssignmentMode = undefined,
             clonable: bool = undefined,
-            serializable: bool = undefined,
             host: *runtime.Instance = undefined,
             onslotchange: typedefs.EventHandler = undefined,
             innerHTML: union(enum) {
@@ -306,16 +306,16 @@ pub const ShadowRoot = struct {
         return try ShadowRootImpl.get_delegatesFocus(instance);
     }
 
+    pub fn get_serializable(instance: *runtime.Instance) anyerror!bool {
+        return try ShadowRootImpl.get_serializable(instance);
+    }
+
     pub fn get_slotAssignment(instance: *runtime.Instance) anyerror!SlotAssignmentMode {
         return try ShadowRootImpl.get_slotAssignment(instance);
     }
 
     pub fn get_clonable(instance: *runtime.Instance) anyerror!bool {
         return try ShadowRootImpl.get_clonable(instance);
-    }
-
-    pub fn get_serializable(instance: *runtime.Instance) anyerror!bool {
-        return try ShadowRootImpl.get_serializable(instance);
     }
 
     pub fn get_host(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -403,6 +403,15 @@ pub const ShadowRoot = struct {
     }
 
     /// Extended attributes: [CEReactions]
+    pub fn call_setHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(SetHTMLOptions)) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
+
+        return try ShadowRootImpl.call_setHTML(instance, html, options);
+    }
+
+    /// Extended attributes: [CEReactions]
     pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString, options: webidl.Opt(SetHTMLUnsafeOptions)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
@@ -411,17 +420,8 @@ pub const ShadowRoot = struct {
         return try ShadowRootImpl.call_setHTMLUnsafe(instance, html, options);
     }
 
-    pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(GetHTMLOptions)) anyerror!DOMString {
+    pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(GetHTMLOptions)) anyerror!runtime.DOMString {
         return try ShadowRootImpl.call_getHTML(instance, options);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn call_setHTML(instance: *runtime.Instance, html: DOMString, options: webidl.Opt(SetHTMLOptions)) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        return try ShadowRootImpl.call_setHTML(instance, html, options);
     }
 
     /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
@@ -436,7 +436,7 @@ pub const ShadowRoot = struct {
     /// pending.
     pub const ce_reactions = .{
         "set_innerHTML",
-        "call_setHTMLUnsafe",
         "call_setHTML",
+        "call_setHTMLUnsafe",
     };
 };

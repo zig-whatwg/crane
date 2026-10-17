@@ -98,3 +98,9 @@ pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Inst
     _ = options;
     return error.NotImplemented;
 }
+
+/// Getter for selectorText
+pub fn get_selectorText(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
+    _ = instance;
+    return error.NotImplemented;
+}

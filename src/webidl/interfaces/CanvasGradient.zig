@@ -154,7 +154,7 @@ pub const CanvasGradient = struct {
         }
     }
 
-    pub fn call_addColorStop(instance: *runtime.Instance, offset: f64, color: DOMString) anyerror!void {
+    pub fn call_addColorStop(instance: *runtime.Instance, offset: f64, color: runtime.DOMString) anyerror!void {
         return try CanvasGradientImpl.call_addColorStop(instance, offset, color);
     }
 

@@ -101,7 +101,7 @@ pub const IDBDatabase = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             version: u64 = undefined,
             objectStoreNames: *runtime.Instance = undefined,
             onabort: typedefs.EventHandler = undefined,
@@ -221,7 +221,7 @@ pub const IDBDatabase = struct {
         }
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try IDBDatabaseImpl.get_name(instance);
     }
 
@@ -276,13 +276,13 @@ pub const IDBDatabase = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createObjectStore(instance: *runtime.Instance, name: DOMString, options: webidl.Opt(IDBObjectStoreParameters)) anyerror!*runtime.Instance {
+    pub fn call_createObjectStore(instance: *runtime.Instance, name: runtime.DOMString, options: webidl.Opt(IDBObjectStoreParameters)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try IDBDatabaseImpl.call_createObjectStore(instance, name, options);
     }
 
-    pub fn call_deleteObjectStore(instance: *runtime.Instance, name: DOMString) anyerror!void {
+    pub fn call_deleteObjectStore(instance: *runtime.Instance, name: runtime.DOMString) anyerror!void {
         return try IDBDatabaseImpl.call_deleteObjectStore(instance, name);
     }
 

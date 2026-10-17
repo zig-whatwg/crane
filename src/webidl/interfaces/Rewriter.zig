@@ -100,13 +100,13 @@ pub const Rewriter = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sharedContext: typedefs.DOMString = undefined,
+            sharedContext: runtime.DOMString = undefined,
             tone: enums.RewriterTone = undefined,
             format: enums.RewriterFormat = undefined,
             length: enums.RewriterLength = undefined,
             expectedInputLanguages: ?runtime.JSValue = null,
             expectedContextLanguages: ?runtime.JSValue = null,
-            outputLanguage: ?typedefs.DOMString = null,
+            outputLanguage: ?runtime.DOMString = null,
             inputQuota: f64 = undefined,
             _internal: ?*RewriterImpl.InternalState = null,
         },
@@ -215,7 +215,7 @@ pub const Rewriter = struct {
         }
     }
 
-    pub fn get_sharedContext(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_sharedContext(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try RewriterImpl.get_sharedContext(instance);
     }
 
@@ -239,7 +239,7 @@ pub const Rewriter = struct {
         return try RewriterImpl.get_expectedContextLanguages(instance);
     }
 
-    pub fn get_outputLanguage(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_outputLanguage(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try RewriterImpl.get_outputLanguage(instance);
     }
 
@@ -247,11 +247,11 @@ pub const Rewriter = struct {
         return try RewriterImpl.get_inputQuota(instance);
     }
 
-    pub fn call_rewriteStreaming(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(RewriterRewriteOptions)) anyerror!*runtime.Instance {
+    pub fn call_rewriteStreaming(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(RewriterRewriteOptions)) anyerror!*runtime.Instance {
         return try RewriterImpl.call_rewriteStreaming(instance, input, options);
     }
 
-    pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(RewriterRewriteOptions)) anyerror!runtime.JSValue {
+    pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(RewriterRewriteOptions)) anyerror!runtime.JSValue {
         return try RewriterImpl.call_measureInputUsage(instance, input, options);
     }
 
@@ -265,7 +265,7 @@ pub const Rewriter = struct {
         return try RewriterImpl.call_static_availability(instance, options);
     }
 
-    pub fn call_rewrite(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(RewriterRewriteOptions)) anyerror!runtime.JSValue {
+    pub fn call_rewrite(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(RewriterRewriteOptions)) anyerror!runtime.JSValue {
         return try RewriterImpl.call_rewrite(instance, input, options);
     }
 

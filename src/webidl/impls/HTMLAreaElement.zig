@@ -99,11 +99,6 @@ pub fn get_shape(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return reflectGet(instance, "shape");
 }
 
-/// Getter for target: reflects the target content attribute.
-pub fn get_target(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return reflectGet(instance, "target");
-}
-
 /// Getter for download: reflects the download content attribute.
 pub fn get_download(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return reflectGet(instance, "download");
@@ -168,12 +163,6 @@ pub fn get_noHref(instance: *runtime.Instance) anyerror!bool {
     return reflectHas(instance, "nohref");
 }
 
-/// Getter for attributionSrc
-pub fn get_attributionSrc(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Setter for alt: sets the alt content attribute.
 pub fn set_alt(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return reflectSet(instance, "alt", value);
@@ -187,11 +176,6 @@ pub fn set_coords(instance: *runtime.Instance, value: runtime.DOMString) anyerro
 /// Setter for shape: sets the shape content attribute.
 pub fn set_shape(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return reflectSet(instance, "shape", value);
-}
-
-/// Setter for target: sets the target content attribute.
-pub fn set_target(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    return reflectSet(instance, "target", value);
 }
 
 /// Setter for download: sets the download content attribute.
@@ -220,13 +204,6 @@ pub fn set_referrerPolicy(instance: *runtime.Instance, value: runtime.DOMString)
 /// Setter for noHref: sets the nohref content attribute.
 pub fn set_noHref(instance: *runtime.Instance, value: bool) anyerror!void {
     return reflectSetBool(instance, "nohref", value);
-}
-
-/// Setter for attributionSrc
-pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
 }
 
 // =============================================================================

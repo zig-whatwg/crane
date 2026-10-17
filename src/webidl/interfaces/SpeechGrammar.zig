@@ -58,7 +58,7 @@ pub const SpeechGrammar = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            src: typedefs.DOMString = undefined,
+            src: runtime.DOMString = undefined,
             weight: f32 = undefined,
             _internal: ?*SpeechGrammarImpl.InternalState = null,
         },
@@ -159,11 +159,11 @@ pub const SpeechGrammar = struct {
         }
     }
 
-    pub fn get_src(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_src(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SpeechGrammarImpl.get_src(instance);
     }
 
-    pub fn set_src(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_src(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try SpeechGrammarImpl.set_src(instance, value);
     }
 

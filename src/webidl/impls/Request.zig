@@ -1106,3 +1106,9 @@ fn normalizeMethod(method: []const u8) []const u8 {
     // Non-standard methods are returned as-is
     return method;
 }
+
+/// Operation: textStream
+pub fn call_textStream(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    _ = instance;
+    return error.NotImplemented;
+}

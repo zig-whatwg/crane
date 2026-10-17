@@ -82,9 +82,9 @@ pub const StorageEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            key: ?typedefs.DOMString = null,
-            oldValue: ?typedefs.DOMString = null,
-            newValue: ?typedefs.DOMString = null,
+            key: ?runtime.DOMString = null,
+            oldValue: ?runtime.DOMString = null,
+            newValue: ?runtime.DOMString = null,
             url: runtime.USVString = undefined,
             storageArea: ?*runtime.Instance = null,
             _internal: ?*StorageEventImpl.InternalState = null,
@@ -193,20 +193,20 @@ pub const StorageEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(StorageEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(StorageEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try StorageEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
 
-    pub fn get_key(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_key(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try StorageEventImpl.get_key(instance);
     }
 
-    pub fn get_oldValue(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_oldValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try StorageEventImpl.get_oldValue(instance);
     }
 
-    pub fn get_newValue(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_newValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try StorageEventImpl.get_newValue(instance);
     }
 
@@ -218,7 +218,7 @@ pub const StorageEvent = struct {
         return try StorageEventImpl.get_storageArea(instance);
     }
 
-    pub fn call_initStorageEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), key: webidl.Opt(?DOMString), oldValue: webidl.Opt(?DOMString), newValue: webidl.Opt(?DOMString), url: webidl.Opt(runtime.USVString), storageArea: webidl.Opt(?*runtime.Instance)) anyerror!void {
+    pub fn call_initStorageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), key: webidl.Opt(?runtime.DOMString), oldValue: webidl.Opt(?runtime.DOMString), newValue: webidl.Opt(?runtime.DOMString), url: webidl.Opt(runtime.USVString), storageArea: webidl.Opt(?*runtime.Instance)) anyerror!void {
         return try StorageEventImpl.call_initStorageEvent(instance, @"type", bubbles, cancelable, key, oldValue, newValue, url, storageArea);
     }
 };

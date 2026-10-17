@@ -1,4 +1,4 @@
-//! Generated from: payment-handler.idl
+//! Generated from: web-based-payment-handler.idl
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -64,7 +64,7 @@ pub const PaymentManager = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            userHint: typedefs.DOMString = undefined,
+            userHint: runtime.DOMString = undefined,
             _internal: ?*PaymentManagerImpl.InternalState = null,
         },
     );
@@ -164,11 +164,11 @@ pub const PaymentManager = struct {
         }
     }
 
-    pub fn get_userHint(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_userHint(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PaymentManagerImpl.get_userHint(instance);
     }
 
-    pub fn set_userHint(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_userHint(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try PaymentManagerImpl.set_userHint(instance, value);
     }
 

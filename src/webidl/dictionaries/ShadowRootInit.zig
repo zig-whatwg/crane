@@ -9,9 +9,9 @@ const enums = @import("enums");
 pub const ShadowRootInit = struct {
     mode: enums.ShadowRootMode,
     delegatesFocus: ?bool = null,
+    serializable: ?bool = null,
     slotAssignment: ?enums.SlotAssignmentMode = null,
     clonable: ?bool = null,
-    serializable: ?bool = null,
     customElementRegistry: webidl.Opt(?*runtime.Instance) = .notPassed(),
 
     /// Optional members whose IDL type is nullable: a present null is the

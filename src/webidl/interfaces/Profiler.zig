@@ -32,11 +32,14 @@ pub const Profiler = struct {
         pub const ParentInterface = EventTarget;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
-            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+            .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
 
         /// Global contexts where this interface is exposed
-        pub const exposed_in = .{ .Window = true };
+        pub const exposed_in = .{
+            .Window = true,
+            .Worker = true,
+        };
 
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{

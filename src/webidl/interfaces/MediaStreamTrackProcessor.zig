@@ -31,6 +31,8 @@ pub const MediaStreamTrackProcessor = struct {
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "readable", "get_readable", null },
+            .{ "discardedFrames", "get_discardedFrames", null },
+            .{ "totalFrames", "get_totalFrames", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -45,6 +47,8 @@ pub const MediaStreamTrackProcessor = struct {
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "readable", "get_readable", null },
+            .{ "discardedFrames", "get_discardedFrames", null },
+            .{ "totalFrames", "get_totalFrames", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -58,12 +62,16 @@ pub const MediaStreamTrackProcessor = struct {
         Meta.MixinTypes,
         struct {
             readable: *runtime.Instance = undefined,
+            discardedFrames: u64 = undefined,
+            totalFrames: u64 = undefined,
             _internal: ?*MediaStreamTrackProcessorImpl.InternalState = null,
         },
     );
 
     const delegates = .{
+        .get_discardedFrames = &get_discardedFrames,
         .get_readable = &get_readable,
+        .get_totalFrames = &get_totalFrames,
 
         .deinit = &deinit,
     };
@@ -163,5 +171,13 @@ pub const MediaStreamTrackProcessor = struct {
 
     pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try MediaStreamTrackProcessorImpl.get_readable(instance);
+    }
+
+    pub fn get_discardedFrames(instance: *runtime.Instance) anyerror!u64 {
+        return try MediaStreamTrackProcessorImpl.get_discardedFrames(instance);
+    }
+
+    pub fn get_totalFrames(instance: *runtime.Instance) anyerror!u64 {
+        return try MediaStreamTrackProcessorImpl.get_totalFrames(instance);
     }
 };

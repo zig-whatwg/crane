@@ -250,7 +250,7 @@ pub const VideoTrackList = struct {
         }
     }
 
-    pub fn call_getTrackById(instance: *runtime.Instance, id: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_getTrackById(instance: *runtime.Instance, id: runtime.DOMString) anyerror!?*runtime.Instance {
         return try VideoTrackListImpl.call_getTrackById(instance, id);
     }
 };

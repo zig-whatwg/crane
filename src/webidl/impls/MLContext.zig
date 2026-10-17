@@ -101,3 +101,18 @@ pub fn call_createConstantTensor(instance: *runtime.Instance, descriptor: dictio
     _ = inputData;
     return error.NotImplemented;
 }
+
+/// Operation: exportToGPU
+pub fn call_exportToGPU(instance: *runtime.Instance, tensor: *runtime.Instance) anyerror!*runtime.Instance {
+    _ = instance;
+    _ = tensor;
+    return error.NotImplemented;
+}
+
+/// Operation: createExportableTensor
+pub fn call_createExportableTensor(instance: *runtime.Instance, descriptor: dictionaries.MLTensorDescriptor, gpuDevice: *runtime.Instance) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = descriptor;
+    _ = gpuDevice;
+    return error.NotImplemented;
+}

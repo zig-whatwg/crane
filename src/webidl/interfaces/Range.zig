@@ -318,7 +318,7 @@ pub const Range = struct {
         return try RangeImpl.call_insertNode(instance, node);
     }
 
-    pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn call_stringifier(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try RangeImpl.call_stringifier(instance);
     }
 

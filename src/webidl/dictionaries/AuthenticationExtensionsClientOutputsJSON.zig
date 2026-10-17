@@ -13,4 +13,5 @@ pub const AuthenticationExtensionsClientOutputsJSON = struct {
     credProps: ?CredentialPropertiesOutput = null,
     prf: ?AuthenticationExtensionsPRFOutputsJSON = null,
     largeBlob: ?AuthenticationExtensionsLargeBlobOutputsJSON = null,
+    remoteClientDataJSON: ?bool = null,
 };

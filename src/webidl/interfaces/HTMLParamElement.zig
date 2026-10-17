@@ -71,6 +71,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -170,6 +171,7 @@ pub const HTMLParamElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -177,7 +179,6 @@ pub const HTMLParamElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -193,6 +194,7 @@ pub const HTMLParamElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -227,10 +229,10 @@ pub const HTMLParamElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
-            value: typedefs.DOMString = undefined,
-            type: typedefs.DOMString = undefined,
-            valueType: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
+            value: runtime.DOMString = undefined,
+            type: runtime.DOMString = undefined,
+            valueType: runtime.DOMString = undefined,
             _internal: ?*HTMLParamElementImpl.InternalState = null,
         },
     );
@@ -347,67 +349,67 @@ pub const HTMLParamElement = struct {
     const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLParamElementImpl, "get_name")) return try HTMLParamElementImpl.get_name(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "name" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLParamElementImpl, "set_name")) return try HTMLParamElementImpl.set_name(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "name" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_value(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLParamElementImpl, "get_value")) return try HTMLParamElementImpl.get_value(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "value" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "value" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_value(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLParamElementImpl, "set_value")) return try HTMLParamElementImpl.set_value(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "value" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "value" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLParamElementImpl, "get_type")) return try HTMLParamElementImpl.get_type(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "type" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "type" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLParamElementImpl, "set_type")) return try HTMLParamElementImpl.set_type(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "type" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "type" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_valueType(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_valueType(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLParamElementImpl, "get_valueType")) return try HTMLParamElementImpl.get_valueType(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "valuetype" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "valuetype" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_valueType(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_valueType(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLParamElementImpl, "set_valueType")) return try HTMLParamElementImpl.set_valueType(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "valuetype" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "valuetype" }, value);
     }
 
     /// HTML [CEReactions]: the functions that run a custom element reactions

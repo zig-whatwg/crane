@@ -12,6 +12,7 @@ const IdentityCredentialRequestOptions = @import("IdentityCredentialRequestOptio
 
 pub const CredentialRequestOptions = struct {
     mediation: ?enums.CredentialMediationRequirement = null,
+    uiMode: ?runtime.DOMString = null,
     signal: ?*runtime.Instance = null,
     password: ?bool = null,
     federated: ?FederatedCredentialRequestOptions = null,

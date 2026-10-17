@@ -68,7 +68,7 @@ pub const CSSParserAtRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             prelude: runtime.JSValue = undefined,
             body: ?runtime.JSValue = null,
             _internal: ?*CSSParserAtRuleImpl.InternalState = null,
@@ -173,12 +173,12 @@ pub const CSSParserAtRule = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, name: DOMString, prelude: runtime.JSValue, body: webidl.Opt(?runtime.JSValue)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, name: runtime.DOMString, prelude: runtime.JSValue, body: webidl.Opt(?runtime.JSValue)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try CSSParserAtRuleImpl.call_constructor(ctx, name, prelude, body);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try CSSParserAtRuleImpl.get_name(instance);
     }
 
@@ -190,7 +190,7 @@ pub const CSSParserAtRule = struct {
         return try CSSParserAtRuleImpl.get_body(instance);
     }
 
-    pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn call_stringifier(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try CSSParserAtRuleImpl.call_stringifier(instance);
     }
 

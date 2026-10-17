@@ -3133,3 +3133,11 @@ pub fn call_setPointerCapture(instance: *runtime.Instance, pointerId: i32) anyer
     _ = pointerId;
     // No-op without pointer event support
 }
+
+/// Operation: ariaNotify
+pub fn call_ariaNotify(instance: *runtime.Instance, announcement: runtime.DOMString, options: webidl.Opt(dictionaries.AriaNotificationOptions)) anyerror!void {
+    _ = instance;
+    _ = announcement;
+    _ = options;
+    return error.NotImplemented;
+}

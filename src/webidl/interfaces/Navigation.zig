@@ -320,7 +320,7 @@ pub const Navigation = struct {
         return try NavigationImpl.call_navigate(instance, url, options);
     }
 
-    pub fn call_traverseTo(instance: *runtime.Instance, key: DOMString, options: webidl.Opt(NavigationOptions)) anyerror!NavigationResult {
+    pub fn call_traverseTo(instance: *runtime.Instance, key: runtime.DOMString, options: webidl.Opt(NavigationOptions)) anyerror!NavigationResult {
         return try NavigationImpl.call_traverseTo(instance, key, options);
     }
 

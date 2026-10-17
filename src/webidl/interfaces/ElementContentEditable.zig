@@ -59,11 +59,11 @@ pub const ElementContentEditable = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            contentEditable: typedefs.DOMString = undefined,
-            enterKeyHint: typedefs.DOMString = undefined,
+            contentEditable: runtime.DOMString = undefined,
+            enterKeyHint: runtime.DOMString = undefined,
             isContentEditable: bool = undefined,
-            inputMode: typedefs.DOMString = undefined,
-            virtualKeyboardPolicy: typedefs.DOMString = undefined,
+            inputMode: runtime.DOMString = undefined,
+            virtualKeyboardPolicy: runtime.DOMString = undefined,
             _internal: ?*ElementContentEditableImpl.InternalState = null,
         },
     );
@@ -78,12 +78,12 @@ pub const ElementContentEditable = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_contentEditable(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_contentEditable(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ElementContentEditableImpl.get_contentEditable(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_contentEditable(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_contentEditable(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -92,12 +92,12 @@ pub const ElementContentEditable = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_enterKeyHint(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_enterKeyHint(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ElementContentEditableImpl.get_enterKeyHint(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_enterKeyHint(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_enterKeyHint(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -110,12 +110,12 @@ pub const ElementContentEditable = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_inputMode(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_inputMode(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ElementContentEditableImpl.get_inputMode(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_inputMode(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_inputMode(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -124,12 +124,12 @@ pub const ElementContentEditable = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_virtualKeyboardPolicy(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_virtualKeyboardPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ElementContentEditableImpl.get_virtualKeyboardPolicy(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_virtualKeyboardPolicy(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_virtualKeyboardPolicy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);

@@ -73,7 +73,7 @@ pub const PresentationConnectionCloseEvent = struct {
         Meta.MixinTypes,
         struct {
             reason: enums.PresentationConnectionCloseReason = undefined,
-            message: typedefs.DOMString = undefined,
+            message: runtime.DOMString = undefined,
             _internal: ?*PresentationConnectionCloseEventImpl.InternalState = null,
         },
     );
@@ -175,7 +175,7 @@ pub const PresentationConnectionCloseEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: PresentationConnectionCloseEventInit) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: PresentationConnectionCloseEventInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try PresentationConnectionCloseEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
@@ -184,7 +184,7 @@ pub const PresentationConnectionCloseEvent = struct {
         return try PresentationConnectionCloseEventImpl.get_reason(instance);
     }
 
-    pub fn get_message(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PresentationConnectionCloseEventImpl.get_message(instance);
     }
 };

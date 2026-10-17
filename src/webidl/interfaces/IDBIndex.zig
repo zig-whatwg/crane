@@ -89,7 +89,7 @@ pub const IDBIndex = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             objectStore: *runtime.Instance = undefined,
             keyPath: runtime.JSValue = undefined,
             multiEntry: bool = undefined,
@@ -206,11 +206,11 @@ pub const IDBIndex = struct {
         }
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try IDBIndexImpl.get_name(instance);
     }
 
-    pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try IDBIndexImpl.set_name(instance, value);
     }
 

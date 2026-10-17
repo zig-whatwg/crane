@@ -77,7 +77,7 @@ pub const ErrorEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            message: typedefs.DOMString = undefined,
+            message: runtime.DOMString = undefined,
             filename: runtime.USVString = undefined,
             lineno: u32 = undefined,
             colno: u32 = undefined,
@@ -186,12 +186,12 @@ pub const ErrorEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(ErrorEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(ErrorEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try ErrorEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
 
-    pub fn get_message(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ErrorEventImpl.get_message(instance);
     }
 

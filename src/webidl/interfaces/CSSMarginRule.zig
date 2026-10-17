@@ -11,8 +11,9 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CSSRule = @import("interfaces").CSSRule;
-const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
+const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const CSSOMString = @import("typedefs").CSSOMString;
+const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 
 pub const CSSMarginRule = struct {
     pub const Meta = struct {
@@ -68,8 +69,8 @@ pub const CSSMarginRule = struct {
         Meta.MixinTypes,
         struct {
             name: typedefs.CSSOMString = undefined,
-            style: runtime.JSValue = undefined,
-            cached_style: ?runtime.JSValue = null,
+            style: *runtime.Instance = undefined,
+            cached_style: ?*runtime.Instance = null,
             _internal: ?*CSSMarginRuleImpl.InternalState = null,
         },
     );
@@ -176,8 +177,16 @@ pub const CSSMarginRule = struct {
     }
 
     /// Extended attributes: [SameObject], [PutForwards=cssText]
-    pub fn get_style(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try CSSMarginRuleImpl.get_style(instance);
+    pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_style) |cached| {
+            return cached;
+        }
+        const value = try CSSMarginRuleImpl.get_style(instance);
+        state.own.cached_style = value;
+        @import("dom").same_object_cache.made(instance, value, "style");
+        return value;
     }
 
     /// Extended attributes: [SameObject], [PutForwards=cssText]
@@ -188,6 +197,6 @@ pub const CSSMarginRule = struct {
 
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
-        try runtime.setPropertyOnJSValue(instance, target, "cssText", value);
+        try runtime.setPropertyOnInstance(target, "cssText", value);
     }
 };

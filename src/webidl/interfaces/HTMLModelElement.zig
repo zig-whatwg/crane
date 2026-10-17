@@ -25,6 +25,7 @@ const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
+const DOMMatrixReadOnly = @import("interfaces").DOMMatrixReadOnly;
 const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
@@ -54,6 +55,7 @@ const DOMRectList = @import("interfaces").DOMRectList;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
+const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
 const EditContext = @import("interfaces").EditContext;
 const DOMRect = @import("interfaces").DOMRect;
 const ElementInternals = @import("interfaces").ElementInternals;
@@ -71,6 +73,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -94,7 +97,15 @@ pub const HTMLModelElement = struct {
         pub const exposed_in = .{ .Window = true };
 
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
+        pub const properties = .{
+            .{ "ready", "get_ready", null },
+            .{ "boundingBoxCenter", "get_boundingBoxCenter", null },
+            .{ "boundingBoxExtents", "get_boundingBoxExtents", null },
+            .{ "entityTransform", "get_entityTransform", "set_entityTransform" },
+            .{ "environmentMap", "get_environmentMap", "set_environmentMap" },
+            .{ "environmentMapReady", "get_environmentMapReady", null },
+            .{ "stageMode", "get_stageMode", "set_stageMode" },
+        };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{};
@@ -165,6 +176,7 @@ pub const HTMLModelElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -172,7 +184,6 @@ pub const HTMLModelElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -188,6 +199,7 @@ pub const HTMLModelElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -200,7 +212,15 @@ pub const HTMLModelElement = struct {
         };
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
+        pub const eager_properties = .{
+            .{ "ready", "get_ready", null },
+            .{ "boundingBoxCenter", "get_boundingBoxCenter", null },
+            .{ "boundingBoxExtents", "get_boundingBoxExtents", null },
+            .{ "entityTransform", "get_entityTransform", "set_entityTransform" },
+            .{ "environmentMap", "get_environmentMap", "set_environmentMap" },
+            .{ "environmentMapReady", "get_environmentMapReady", null },
+            .{ "stageMode", "get_stageMode", "set_stageMode" },
+        };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{};
@@ -212,11 +232,30 @@ pub const HTMLModelElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
+            ready: runtime.JSValue = undefined,
+            boundingBoxCenter: *runtime.Instance = undefined,
+            boundingBoxExtents: *runtime.Instance = undefined,
+            entityTransform: *runtime.Instance = undefined,
+            environmentMap: runtime.USVString = undefined,
+            environmentMapReady: runtime.JSValue = undefined,
+            stageMode: runtime.DOMString = undefined,
             _internal: ?*HTMLModelElementImpl.InternalState = null,
         },
     );
 
     const delegates = .{
+        .get_boundingBoxCenter = &get_boundingBoxCenter,
+        .get_boundingBoxExtents = &get_boundingBoxExtents,
+        .get_entityTransform = &get_entityTransform,
+        .get_environmentMap = &get_environmentMap,
+        .get_environmentMapReady = &get_environmentMapReady,
+        .get_ready = &get_ready,
+        .get_stageMode = &get_stageMode,
+
+        .set_entityTransform = &set_entityTransform,
+        .set_environmentMap = &set_environmentMap,
+        .set_stageMode = &set_stageMode,
+
         .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
@@ -305,5 +344,51 @@ pub const HTMLModelElement = struct {
         if (comptime @hasDecl(impls, "HTMLModelElement")) {
             if (comptime @hasDecl(impls.HTMLModelElement, "installHooks")) impls.HTMLModelElement.installHooks();
         }
+    }
+
+    pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try HTMLModelElementImpl.get_ready(instance);
+    }
+
+    pub fn get_boundingBoxCenter(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try HTMLModelElementImpl.get_boundingBoxCenter(instance);
+    }
+
+    pub fn get_boundingBoxExtents(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try HTMLModelElementImpl.get_boundingBoxExtents(instance);
+    }
+
+    pub fn get_entityTransform(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try HTMLModelElementImpl.get_entityTransform(instance);
+    }
+
+    pub fn set_entityTransform(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+        try HTMLModelElementImpl.set_entityTransform(instance, value);
+    }
+
+    pub fn get_environmentMap(instance: *runtime.Instance) anyerror!runtime.USVString {
+        return try HTMLModelElementImpl.get_environmentMap(instance);
+    }
+
+    pub fn set_environmentMap(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
+        try HTMLModelElementImpl.set_environmentMap(instance, value);
+    }
+
+    pub fn get_environmentMapReady(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try HTMLModelElementImpl.get_environmentMapReady(instance);
+    }
+
+    const reflection = @import("dom").reflection;
+
+    /// Extended attributes: [Reflect=stagemode]
+    pub fn get_stageMode(instance: *runtime.Instance) anyerror!runtime.DOMString {
+        if (comptime @hasDecl(HTMLModelElementImpl, "get_stageMode")) return try HTMLModelElementImpl.get_stageMode(instance);
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "stagemode" });
+    }
+
+    /// Extended attributes: [Reflect=stagemode]
+    pub fn set_stageMode(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        if (comptime @hasDecl(HTMLModelElementImpl, "set_stageMode")) return try HTMLModelElementImpl.set_stageMode(instance, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "stagemode" }, value);
     }
 };

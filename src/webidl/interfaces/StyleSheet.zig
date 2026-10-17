@@ -87,7 +87,7 @@ pub const StyleSheet = struct {
                 ProcessingInstruction: ProcessingInstruction,
             } = null,
             parentStyleSheet: ?*runtime.Instance = null,
-            title: ?typedefs.DOMString = null,
+            title: ?runtime.DOMString = null,
             media: *runtime.Instance = undefined,
             disabled: bool = undefined,
             cached_media: ?*runtime.Instance = null,
@@ -212,7 +212,7 @@ pub const StyleSheet = struct {
         return try StyleSheetImpl.get_parentStyleSheet(instance);
     }
 
-    pub fn get_title(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_title(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try StyleSheetImpl.get_title(instance);
     }
 

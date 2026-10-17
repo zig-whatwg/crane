@@ -201,7 +201,7 @@ pub const AudioWorkletGlobalScope = struct {
         return try AudioWorkletGlobalScopeImpl.get_port(instance);
     }
 
-    pub fn call_registerProcessor(instance: *runtime.Instance, name: DOMString, processorCtor: AudioWorkletProcessorConstructor) anyerror!void {
+    pub fn call_registerProcessor(instance: *runtime.Instance, name: runtime.DOMString, processorCtor: AudioWorkletProcessorConstructor) anyerror!void {
         return try AudioWorkletGlobalScopeImpl.call_registerProcessor(instance, name, processorCtor);
     }
 };

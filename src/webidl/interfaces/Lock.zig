@@ -63,7 +63,7 @@ pub const Lock = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             mode: enums.LockMode = undefined,
             _internal: ?*LockImpl.InternalState = null,
         },
@@ -161,7 +161,7 @@ pub const Lock = struct {
         }
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try LockImpl.get_name(instance);
     }
 

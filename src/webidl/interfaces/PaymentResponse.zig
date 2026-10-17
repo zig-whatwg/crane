@@ -99,14 +99,14 @@ pub const PaymentResponse = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            requestId: typedefs.DOMString = undefined,
-            methodName: typedefs.DOMString = undefined,
+            requestId: runtime.DOMString = undefined,
+            methodName: runtime.DOMString = undefined,
             details: runtime.JSValue = undefined,
             shippingAddress: ?*runtime.Instance = null,
-            shippingOption: ?typedefs.DOMString = null,
-            payerName: ?typedefs.DOMString = null,
-            payerEmail: ?typedefs.DOMString = null,
-            payerPhone: ?typedefs.DOMString = null,
+            shippingOption: ?runtime.DOMString = null,
+            payerName: ?runtime.DOMString = null,
+            payerEmail: ?runtime.DOMString = null,
+            payerPhone: ?runtime.DOMString = null,
             onpayerdetailchange: typedefs.EventHandler = undefined,
             _internal: ?*PaymentResponseImpl.InternalState = null,
         },
@@ -239,11 +239,11 @@ pub const PaymentResponse = struct {
         }
     }
 
-    pub fn get_requestId(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_requestId(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PaymentResponseImpl.get_requestId(instance);
     }
 
-    pub fn get_methodName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_methodName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PaymentResponseImpl.get_methodName(instance);
     }
 
@@ -255,19 +255,19 @@ pub const PaymentResponse = struct {
         return try PaymentResponseImpl.get_shippingAddress(instance);
     }
 
-    pub fn get_shippingOption(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_shippingOption(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try PaymentResponseImpl.get_shippingOption(instance);
     }
 
-    pub fn get_payerName(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_payerName(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try PaymentResponseImpl.get_payerName(instance);
     }
 
-    pub fn get_payerEmail(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_payerEmail(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try PaymentResponseImpl.get_payerEmail(instance);
     }
 
-    pub fn get_payerPhone(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_payerPhone(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try PaymentResponseImpl.get_payerPhone(instance);
     }
 

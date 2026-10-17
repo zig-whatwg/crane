@@ -49,7 +49,6 @@ const ScrollToOptions = @import("dictionaries").ScrollToOptions;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const SVGUseElement = @import("interfaces").SVGUseElement;
 const DOMRectList = @import("interfaces").DOMRectList;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
@@ -70,6 +69,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -171,6 +171,7 @@ pub const SVGScriptElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -178,7 +179,6 @@ pub const SVGScriptElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -194,6 +194,7 @@ pub const SVGScriptElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "focus",
@@ -217,8 +218,8 @@ pub const SVGScriptElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: typedefs.DOMString = undefined,
-            crossOrigin: ?typedefs.DOMString = null,
+            type: runtime.DOMString = undefined,
+            crossOrigin: ?runtime.DOMString = null,
             href: *runtime.Instance = undefined,
             cached_href: ?*runtime.Instance = null,
             _internal: ?*SVGScriptElementImpl.InternalState = null,
@@ -324,19 +325,25 @@ pub const SVGScriptElement = struct {
         }
     }
 
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
-        return try SVGScriptElementImpl.get_type(instance);
+    const reflection = @import("dom").reflection;
+
+    /// Extended attributes: [Reflect]
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
+        if (comptime @hasDecl(SVGScriptElementImpl, "get_type")) return try SVGScriptElementImpl.get_type(instance);
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "type" });
     }
 
-    pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        try SVGScriptElementImpl.set_type(instance, value);
+    /// Extended attributes: [Reflect]
+    pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        if (comptime @hasDecl(SVGScriptElementImpl, "set_type")) return try SVGScriptElementImpl.set_type(instance, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "type" }, value);
     }
 
-    pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try SVGScriptElementImpl.get_crossOrigin(instance);
     }
 
-    pub fn set_crossOrigin(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_crossOrigin(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         try SVGScriptElementImpl.set_crossOrigin(instance, value);
     }
 

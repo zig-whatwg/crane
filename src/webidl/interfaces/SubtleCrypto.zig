@@ -265,7 +265,7 @@ pub const SubtleCrypto = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn call_static_supports(instance: *runtime.Instance, operation: DOMString, algorithm: AlgorithmIdentifier, length: webidl.Opt(?u32)) anyerror!bool {
+    pub fn call_static_supports(instance: *runtime.Instance, operation: runtime.DOMString, algorithm: AlgorithmIdentifier, length: webidl.Opt(?u32)) anyerror!bool {
         return try SubtleCryptoImpl.call_static_supports(instance, operation, algorithm, length);
     }
 
@@ -311,6 +311,13 @@ pub const SubtleCrypto = struct {
     pub fn call_exportKey(instance: *runtime.Instance, format: KeyFormat, key: *runtime.Instance) anyerror!runtime.JSValue {
         return try SubtleCryptoImpl.call_exportKey(instance, format, key);
     }
+
+    /// WebIDL [EnforceRange]: the integer arguments and attribute values
+    /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
+    /// an attribute setter's value is bit 0).
+    pub const enforce_range = .{
+        .{ "call_deriveBits", 0b100 },
+    };
 
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.

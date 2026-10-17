@@ -38,8 +38,9 @@ const RTCLocalSessionDescriptionInit = @import("dictionaries").RTCLocalSessionDe
 const EventHandler = @import("typedefs").EventHandler;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const VoidFunction = @import("callbacks").VoidFunction;
-const RTCStatsReport = @import("interfaces").RTCStatsReport;
+const RTCDiagnosticLoggingOptions = @import("dictionaries").RTCDiagnosticLoggingOptions;
 const RTCSessionDescriptionInit = @import("dictionaries").RTCSessionDescriptionInit;
+const RTCStatsReport = @import("interfaces").RTCStatsReport;
 const RTCSessionDescription = @import("interfaces").RTCSessionDescription;
 const RTCIdentityAssertion = @import("interfaces").RTCIdentityAssertion;
 const Observable = @import("interfaces").Observable;
@@ -119,6 +120,9 @@ pub const RTCPeerConnection = struct {
 
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
+            .{ "startDiagnosticLogging", "call_static_startDiagnosticLogging", 0 },
+            .{ "finishDiagnosticLogging", "call_static_finishDiagnosticLogging", 0 },
+            .{ "discardDiagnosticLogging", "call_static_discardDiagnosticLogging", 0 },
             .{ "generateCertificate", "call_static_generateCertificate", 1 },
         };
 
@@ -133,6 +137,9 @@ pub const RTCPeerConnection = struct {
             "getConfiguration",
             "setConfiguration",
             "close",
+            "startDiagnosticLogging",
+            "finishDiagnosticLogging",
+            "discardDiagnosticLogging",
             "setIdentityProvider",
             "getIdentityAssertion",
             "generateCertificate",
@@ -211,8 +218,8 @@ pub const RTCPeerConnection = struct {
             onicegatheringstatechange: typedefs.EventHandler = undefined,
             onconnectionstatechange: typedefs.EventHandler = undefined,
             peerIdentity: runtime.JSValue = undefined,
-            idpLoginUrl: ?typedefs.DOMString = null,
-            idpErrorInfo: ?typedefs.DOMString = null,
+            idpLoginUrl: ?runtime.DOMString = null,
+            idpErrorInfo: ?runtime.DOMString = null,
             ontrack: typedefs.EventHandler = undefined,
             sctp: ?*runtime.Instance = null,
             ondatachannel: typedefs.EventHandler = undefined,
@@ -494,11 +501,11 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.get_peerIdentity(instance);
     }
 
-    pub fn get_idpLoginUrl(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_idpLoginUrl(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try RTCPeerConnectionImpl.get_idpLoginUrl(instance);
     }
 
-    pub fn get_idpErrorInfo(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_idpErrorInfo(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try RTCPeerConnectionImpl.get_idpErrorInfo(instance);
     }
 
@@ -530,6 +537,10 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.call_getConfiguration(instance);
     }
 
+    pub fn call_static_finishDiagnosticLogging(instance: *runtime.Instance, options: webidl.Opt(RTCDiagnosticLoggingOptions)) anyerror!runtime.JSValue {
+        return try RTCPeerConnectionImpl.call_static_finishDiagnosticLogging(instance, options);
+    }
+
     pub fn call_static_generateCertificate(instance: *runtime.Instance, keygenAlgorithm: AlgorithmIdentifier) anyerror!runtime.JSValue {
         return try RTCPeerConnectionImpl.call_static_generateCertificate(instance, keygenAlgorithm);
     }
@@ -550,15 +561,15 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.call_addIceCandidate(instance, candidate);
     }
 
-    pub fn call_getIdentityAssertion(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try RTCPeerConnectionImpl.call_getIdentityAssertion(instance);
-    }
-
     pub fn call_setConfiguration(instance: *runtime.Instance, configuration: webidl.Opt(RTCConfiguration)) anyerror!void {
         return try RTCPeerConnectionImpl.call_setConfiguration(instance, configuration);
     }
 
-    pub fn call_setIdentityProvider(instance: *runtime.Instance, provider: DOMString, options: webidl.Opt(RTCIdentityProviderOptions)) anyerror!void {
+    pub fn call_static_startDiagnosticLogging(instance: *runtime.Instance, options: webidl.Opt(RTCDiagnosticLoggingOptions)) anyerror!runtime.JSValue {
+        return try RTCPeerConnectionImpl.call_static_startDiagnosticLogging(instance, options);
+    }
+
+    pub fn call_setIdentityProvider(instance: *runtime.Instance, provider: runtime.DOMString, options: webidl.Opt(RTCIdentityProviderOptions)) anyerror!void {
         return try RTCPeerConnectionImpl.call_setIdentityProvider(instance, provider, options);
     }
 
@@ -566,16 +577,24 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.call_createAnswer(instance, options);
     }
 
+    pub fn call_getIdentityAssertion(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try RTCPeerConnectionImpl.call_getIdentityAssertion(instance);
+    }
+
     pub fn call_createDataChannel(instance: *runtime.Instance, label: runtime.USVString, dataChannelDict: webidl.Opt(RTCDataChannelInit)) anyerror!*runtime.Instance {
         return try RTCPeerConnectionImpl.call_createDataChannel(instance, label, dataChannelDict);
     }
 
-    pub fn call_getReceivers(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try RTCPeerConnectionImpl.call_getReceivers(instance);
+    pub fn call_static_discardDiagnosticLogging(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try RTCPeerConnectionImpl.call_static_discardDiagnosticLogging(instance);
     }
 
     pub fn call_createOffer(instance: *runtime.Instance, options: webidl.Opt(RTCOfferOptions)) anyerror!runtime.JSValue {
         return try RTCPeerConnectionImpl.call_createOffer(instance, options);
+    }
+
+    pub fn call_getReceivers(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try RTCPeerConnectionImpl.call_getReceivers(instance);
     }
 
     pub fn call_restartIce(instance: *runtime.Instance) anyerror!void {
@@ -676,15 +695,18 @@ pub const RTCPeerConnection = struct {
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{
+        "call_static_finishDiagnosticLogging",
         "call_static_generateCertificate",
         "call_getStats",
         "call_setRemoteDescription",
         "call_setRemoteDescription__1",
         "call_addIceCandidate",
         "call_addIceCandidate__1",
-        "call_getIdentityAssertion",
+        "call_static_startDiagnosticLogging",
         "call_createAnswer",
         "call_createAnswer__1",
+        "call_getIdentityAssertion",
+        "call_static_discardDiagnosticLogging",
         "call_createOffer",
         "call_createOffer__1",
         "call_setLocalDescription",

@@ -73,8 +73,8 @@ pub const NotRestoredReasons = struct {
         Meta.MixinTypes,
         struct {
             src: ?runtime.USVString = null,
-            id: ?typedefs.DOMString = null,
-            name: ?typedefs.DOMString = null,
+            id: ?runtime.DOMString = null,
+            name: ?runtime.DOMString = null,
             url: ?runtime.USVString = null,
             reasons: ?runtime.JSValue = null,
             children: ?runtime.JSValue = null,
@@ -201,11 +201,11 @@ pub const NotRestoredReasons = struct {
         return try NotRestoredReasonsImpl.get_src(instance);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try NotRestoredReasonsImpl.get_id(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try NotRestoredReasonsImpl.get_name(instance);
     }
 

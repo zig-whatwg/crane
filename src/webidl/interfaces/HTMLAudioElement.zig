@@ -78,10 +78,11 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const AudioTrackList = @import("interfaces").AudioTrackList;
-const MediaKeys = @import("interfaces").MediaKeys;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
+const MediaKeys = @import("interfaces").MediaKeys;
 const RemotePlayback = @import("interfaces").RemotePlayback;
 const TextTrack = @import("interfaces").TextTrack;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -178,6 +179,7 @@ pub const HTMLAudioElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -185,7 +187,6 @@ pub const HTMLAudioElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -201,6 +202,7 @@ pub const HTMLAudioElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",

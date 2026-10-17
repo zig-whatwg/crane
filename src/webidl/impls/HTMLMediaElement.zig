@@ -1517,3 +1517,21 @@ fn selectTracks(self: *InternalState) !void {
     };
     self.tracks.automatic_selected = true; // Step 4. Parser integration is deferred (Q19).
 }
+
+/// Getter for loading: HTML 4.8.11.2 - the IDL attribute reflects the
+/// loading content attribute, limited to only known values ("lazy",
+/// "eager"); its missing and invalid value defaults are both Eager.
+/// Spec: https://html.spec.whatwg.org/multipage/media.html#dom-media-loading
+pub fn get_loading(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    return dom.reflection.getEnumerated(runtime.DOMString, instance, .{
+        .name = "loading",
+        .keywords = &.{ "eager", "lazy" },
+        .missing = "eager",
+        .invalid = "eager",
+    });
+}
+
+/// Setter for loading: reflection sets the content attribute.
+pub fn set_loading(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+    try dom.reflection.set(runtime.DOMString, instance, .{ .name = "loading" }, value);
+}

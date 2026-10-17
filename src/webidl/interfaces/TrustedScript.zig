@@ -156,11 +156,11 @@ pub const TrustedScript = struct {
         }
     }
 
-    pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn call_stringifier(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TrustedScriptImpl.call_stringifier(instance);
     }
 
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TrustedScriptImpl.call_toJSON(instance);
     }
 

@@ -74,7 +74,7 @@ pub const NavigatorUAData = struct {
         struct {
             brands: runtime.JSValue = undefined,
             mobile: bool = undefined,
-            platform: typedefs.DOMString = undefined,
+            platform: runtime.DOMString = undefined,
             _internal: ?*NavigatorUADataImpl.InternalState = null,
         },
     );
@@ -183,7 +183,7 @@ pub const NavigatorUAData = struct {
         return try NavigatorUADataImpl.get_mobile(instance);
     }
 
-    pub fn get_platform(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_platform(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorUADataImpl.get_platform(instance);
     }
 

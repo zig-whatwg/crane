@@ -97,11 +97,19 @@ pub const InternalState = struct {
     /// This is owned by the Document, Location just references it
     url: ?*url_record.URLRecord = null,
 
-    /// Cached ancestor origins (lazily created DOMStringList)
+    /// The relevant Document's ancestor origins list (HTML 7.2.4
+    /// ancestorOrigins getter step 4), made the first time it is asked for:
+    /// the document's ancestor chain cannot change while it is active. Kept
+    /// for `ancestor_origins_document` only; another document gets its own.
     ancestor_origins: ?*runtime.Instance = null,
-    /// The generated SameObject cache keeps a native pointer; this edge
-    /// keeps the list's wrapper and its script properties alive with ours.
+    /// The document `ancestor_origins` was made for.
+    ancestor_origins_document: ?@import("same_object.zig").Link = null,
+    /// Keeps the list's wrapper and its script properties alive with ours.
     ancestor_origins_edge: @import("same_object.zig").Traced = .{ .slot = .{ .name = "Location.ancestorOrigins" } },
+    /// The Location's "empty DOMStringList" (HTML 7.2.4), returned whenever
+    /// there is no relevant Document: one list for the Location's life.
+    empty_ancestor_origins: ?*runtime.Instance = null,
+    empty_ancestor_origins_edge: @import("same_object.zig").Traced = .{ .slot = .{ .name = "Location.emptyAncestorOrigins" } },
 
     /// Cached href for comparison
     cached_href: ?[]const u8 = null,
@@ -333,6 +341,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.ancestor_origins_edge.release(instance);
+        internal.empty_ancestor_origins_edge.release(instance);
         internal.deinit();
         internal.allocator.destroy(internal);
         // Clear the pointer to prevent double-free on subsequent calls
@@ -573,51 +582,67 @@ pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
     return result;
 }
 
-/// HTML ancestorOrigins steps 1-4. The active document's ancestor chain
-/// cannot change while it is active, so its snapshot can be built lazily.
+/// HTML 7.2.4 ancestorOrigins getter steps 1-4. Not [SameObject] (HTML
+/// dropped it; webref bfbec43f44): the getter returns the relevant
+/// Document's list, or the Location's empty list when there is none.
+/// Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-location-ancestororigins
 pub fn get_ancestorOrigins(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    var strings: std.ArrayList([]const u8) = .empty;
-    defer strings.deinit(internal.allocator);
 
-    // Step 1 precedes the access check: no relevant Document means an empty
-    // list, including a detached or superseded Window's Location.
+    // Step 1: no relevant Document - a detached or superseded Window's
+    // Location - returns this's empty DOMStringList, the same one each time.
+    // It precedes the access check.
     const context = if (internal.window) |window| dom.browser_state.browsingContextOf(window) else null;
-    if (context) |current| {
-        if (current.active_document) |raw_document| {
-            const document: *runtime.Instance = @ptrCast(@alignCast(raw_document));
-            if (dom.document_activity.fullyActive(document, runtime.SlabAllocator.generationOf(document))) {
-                try checkGetter(instance); // Step 2: same origin-domain.
-
-                // Browser deviation from HTML 3.1.3, internal ancestor origin
-                // objects list creation steps 7-12: do not mask by the iframe's
-                // referrerpolicy. Aligned stable WPT (2026-10-06) has Chrome
-                // 154 and Safari 27 at 9/16, Firefox 157 at 16/16; the seven
-                // differences are container masking. The browser majority
-                // also fails both referrerpolicy-snapshot subtests and the
-                // twelve redirect-still-mask cases that expect masking.
-                // Blink Location::ancestorOrigins and WebKit's counterpart
-                // walk parent frames and serialize their security origins.
-                var ancestor = current.parent;
-                while (ancestor) |parent| : (ancestor = parent.parent) {
-                    const raw_parent_document = parent.active_document orelse return error.InvalidStateError;
-                    const parent_document: *runtime.Instance = @ptrCast(@alignCast(raw_parent_document));
-                    const ancestor_origin = (try dom.document_origin.shareable(parent_document)) orelse return error.InvalidStateError;
-                    try strings.append(internal.allocator, ancestor_origin.serialized orelse "null");
-                }
+    const document: *runtime.Instance = relevant: {
+        if (context) |current| {
+            if (current.active_document) |raw_document| {
+                const active: *runtime.Instance = @ptrCast(@alignCast(raw_document));
+                if (dom.document_activity.fullyActive(active, runtime.SlabAllocator.generationOf(active))) break :relevant active;
             }
         }
+        if (internal.empty_ancestor_origins) |list| return list;
+        const list = try dom.string_lists.create(instance.ctx, &.{});
+        internal.empty_ancestor_origins_edge.hold(instance, list);
+        internal.empty_ancestor_origins = list;
+        return list;
+    };
+
+    try checkGetter(instance); // Step 2: same origin-domain.
+
+    // Steps 3-4: the relevant Document's ancestor origins list, made once
+    // for that document.
+    if (internal.ancestor_origins) |list| {
+        if (internal.ancestor_origins_document) |made_for| {
+            if (made_for.instance == document and made_for.isLive()) return list;
+        }
+    }
+
+    var strings: std.ArrayList([]const u8) = .empty;
+    defer strings.deinit(internal.allocator);
+    // Browser deviation from HTML 3.1.3, internal ancestor origin objects
+    // list creation steps 7-12: do not mask by the iframe's referrerpolicy.
+    // Aligned stable WPT (2026-10-06) has Chrome 154 and Safari 27 at 9/16,
+    // Firefox 157 at 16/16; the seven differences are container masking. The
+    // browser majority also fails both referrerpolicy-snapshot subtests and
+    // the twelve redirect-still-mask cases that expect masking. Blink
+    // Location::ancestorOrigins and WebKit's counterpart walk parent frames
+    // and serialize their security origins.
+    var ancestor = context.?.parent;
+    while (ancestor) |parent| : (ancestor = parent.parent) {
+        const raw_parent_document = parent.active_document orelse return error.InvalidStateError;
+        const parent_document: *runtime.Instance = @ptrCast(@alignCast(raw_parent_document));
+        const ancestor_origin = (try dom.document_origin.shareable(parent_document)) orelse return error.InvalidStateError;
+        try strings.append(internal.allocator, ancestor_origin.serialized orelse "null");
     }
 
     // Ancestor origins list creation steps 3-5: a DOMStringList that owns
     // copies of the serializations. A traced edge preserves script state
-    // when only the Location still refers to the [SameObject] list.
+    // when only the Location still refers to the list; a list made for an
+    // earlier document stays readable for script that holds it.
     const list = try dom.string_lists.create(instance.ctx, strings.items);
     internal.ancestor_origins_edge.hold(instance, list);
     internal.ancestor_origins = list;
-    // The generated cache currently bypasses this getter after its first
-    // read. binding3 owns the opt-out needed to return a new empty list after
-    // detachment; row 45's handoff describes the impl-owned cache to follow.
+    internal.ancestor_origins_document = @import("same_object.zig").Link.to(document);
     return list;
 }
 

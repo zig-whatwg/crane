@@ -81,6 +81,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const TextTrack = @import("interfaces").TextTrack;
@@ -132,6 +133,7 @@ pub const HTMLMediaElement = struct {
             .{ "volume", "get_volume", "set_volume" },
             .{ "muted", "get_muted", "set_muted" },
             .{ "defaultMuted", "get_defaultMuted", "set_defaultMuted" },
+            .{ "loading", "get_loading", "set_loading" },
             .{ "audioTracks", "get_audioTracks", null },
             .{ "videoTracks", "get_videoTracks", null },
             .{ "textTracks", "get_textTracks", null },
@@ -247,6 +249,7 @@ pub const HTMLMediaElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -254,7 +257,6 @@ pub const HTMLMediaElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -270,6 +272,7 @@ pub const HTMLMediaElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -308,6 +311,7 @@ pub const HTMLMediaElement = struct {
             .{ "volume", "get_volume", "set_volume" },
             .{ "muted", "get_muted", "set_muted" },
             .{ "defaultMuted", "get_defaultMuted", "set_defaultMuted" },
+            .{ "loading", "get_loading", "set_loading" },
             .{ "audioTracks", "get_audioTracks", null },
             .{ "videoTracks", "get_videoTracks", null },
             .{ "textTracks", "get_textTracks", null },
@@ -343,9 +347,9 @@ pub const HTMLMediaElement = struct {
             src: runtime.USVString = undefined,
             srcObject: ?typedefs.MediaProvider = null,
             currentSrc: runtime.USVString = undefined,
-            crossOrigin: ?typedefs.DOMString = null,
+            crossOrigin: ?runtime.DOMString = null,
             networkState: u16 = undefined,
-            preload: typedefs.DOMString = undefined,
+            preload: runtime.DOMString = undefined,
             buffered: *runtime.Instance = undefined,
             readyState: u16 = undefined,
             seeking: bool = undefined,
@@ -364,10 +368,11 @@ pub const HTMLMediaElement = struct {
             volume: f64 = undefined,
             muted: bool = undefined,
             defaultMuted: bool = undefined,
+            loading: runtime.DOMString = undefined,
             audioTracks: *runtime.Instance = undefined,
             videoTracks: *runtime.Instance = undefined,
             textTracks: *runtime.Instance = undefined,
-            sinkId: typedefs.DOMString = undefined,
+            sinkId: runtime.DOMString = undefined,
             mediaKeys: ?*runtime.Instance = null,
             onencrypted: typedefs.EventHandler = undefined,
             onwaitingforkey: typedefs.EventHandler = undefined,
@@ -453,6 +458,7 @@ pub const HTMLMediaElement = struct {
         .get_duration = &get_duration,
         .get_ended = &get_ended,
         .get_error = &get_error,
+        .get_loading = &get_loading,
         .get_loop = &get_loop,
         .get_mediaKeys = &get_mediaKeys,
         .get_muted = &get_muted,
@@ -482,6 +488,7 @@ pub const HTMLMediaElement = struct {
         .set_defaultMuted = &set_defaultMuted,
         .set_defaultPlaybackRate = &set_defaultPlaybackRate,
         .set_disableRemotePlayback = &set_disableRemotePlayback,
+        .set_loading = &set_loading,
         .set_loop = &set_loop,
         .set_muted = &set_muted,
         .set_onencrypted = &set_onencrypted,
@@ -630,12 +637,12 @@ pub const HTMLMediaElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try HTMLMediaElementImpl.get_crossOrigin(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_crossOrigin(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_crossOrigin(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -648,12 +655,12 @@ pub const HTMLMediaElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_preload(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_preload(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLMediaElementImpl.get_preload(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_preload(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_preload(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -805,6 +812,20 @@ pub const HTMLMediaElement = struct {
         try reflection.set(bool, instance, .{ .name = "muted" }, value);
     }
 
+    /// Extended attributes: [CEReactions]
+    pub fn get_loading(instance: *runtime.Instance) anyerror!runtime.DOMString {
+        return try HTMLMediaElementImpl.get_loading(instance);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn set_loading(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
+
+        try HTMLMediaElementImpl.set_loading(instance, value);
+    }
+
     /// Extended attributes: [SameObject]
     pub fn get_audioTracks(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
@@ -845,7 +866,7 @@ pub const HTMLMediaElement = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn get_sinkId(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_sinkId(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLMediaElementImpl.get_sinkId(instance);
     }
 
@@ -903,7 +924,7 @@ pub const HTMLMediaElement = struct {
         try HTMLMediaElementImpl.set_disableRemotePlayback(instance, value);
     }
 
-    pub fn call_canPlayType(instance: *runtime.Instance, @"type": DOMString) anyerror!CanPlayTypeResult {
+    pub fn call_canPlayType(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!CanPlayTypeResult {
         return try HTMLMediaElementImpl.call_canPlayType(instance, @"type");
     }
 
@@ -923,7 +944,7 @@ pub const HTMLMediaElement = struct {
         return try HTMLMediaElementImpl.call_play(instance);
     }
 
-    pub fn call_addTextTrack(instance: *runtime.Instance, kind: TextTrackKind, label: webidl.Opt(DOMString), language: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
+    pub fn call_addTextTrack(instance: *runtime.Instance, kind: TextTrackKind, label: webidl.Opt(runtime.DOMString), language: webidl.Opt(runtime.DOMString)) anyerror!*runtime.Instance {
         return try HTMLMediaElementImpl.call_addTextTrack(instance, kind, label, language);
     }
 
@@ -932,7 +953,7 @@ pub const HTMLMediaElement = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn call_setSinkId(instance: *runtime.Instance, sinkId: DOMString) anyerror!runtime.JSValue {
+    pub fn call_setSinkId(instance: *runtime.Instance, sinkId: runtime.DOMString) anyerror!runtime.JSValue {
         return try HTMLMediaElementImpl.call_setSinkId(instance, sinkId);
     }
 
@@ -976,6 +997,7 @@ pub const HTMLMediaElement = struct {
         "set_loop",
         "set_controls",
         "set_defaultMuted",
+        "set_loading",
         "set_disableRemotePlayback",
     };
 };

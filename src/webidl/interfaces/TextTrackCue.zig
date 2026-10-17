@@ -84,7 +84,7 @@ pub const TextTrackCue = struct {
         Meta.MixinTypes,
         struct {
             track: ?*runtime.Instance = null,
-            id: typedefs.DOMString = undefined,
+            id: runtime.DOMString = undefined,
             startTime: f64 = undefined,
             endTime: f64 = undefined,
             pauseOnExit: bool = undefined,
@@ -204,11 +204,11 @@ pub const TextTrackCue = struct {
         return try TextTrackCueImpl.get_track(instance);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TextTrackCueImpl.get_id(instance);
     }
 
-    pub fn set_id(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_id(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try TextTrackCueImpl.set_id(instance, value);
     }
 

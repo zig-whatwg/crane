@@ -80,9 +80,9 @@ pub const Plugin = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
-            description: typedefs.DOMString = undefined,
-            filename: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
+            description: runtime.DOMString = undefined,
+            filename: runtime.DOMString = undefined,
             length: u32 = undefined,
             _internal: ?*PluginImpl.InternalState = null,
         },
@@ -185,15 +185,15 @@ pub const Plugin = struct {
         }
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PluginImpl.get_name(instance);
     }
 
-    pub fn get_description(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_description(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PluginImpl.get_description(instance);
     }
 
-    pub fn get_filename(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_filename(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PluginImpl.get_filename(instance);
     }
 
@@ -201,7 +201,7 @@ pub const Plugin = struct {
         return try PluginImpl.get_length(instance);
     }
 
-    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?*runtime.Instance {
         return try PluginImpl.call_namedItem(instance, name);
     }
 

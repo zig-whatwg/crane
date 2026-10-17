@@ -63,7 +63,7 @@ pub const SVGAnimatedString = struct {
                 DOMString: runtime.DOMString,
                 TrustedScriptURL: TrustedScriptURL,
             } = undefined,
-            animVal: typedefs.DOMString = undefined,
+            animVal: runtime.DOMString = undefined,
             _internal: ?*SVGAnimatedStringImpl.InternalState = null,
         },
     );
@@ -170,7 +170,7 @@ pub const SVGAnimatedString = struct {
         try SVGAnimatedStringImpl.set_baseVal(instance, value);
     }
 
-    pub fn get_animVal(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_animVal(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SVGAnimatedStringImpl.get_animVal(instance);
     }
 };

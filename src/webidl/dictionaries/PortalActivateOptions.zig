@@ -3,11 +3,11 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const PostMessageOptions = @import("PostMessageOptions.zig").PostMessageOptions;
+const StructuredSerializeOptions = @import("StructuredSerializeOptions.zig").StructuredSerializeOptions;
 
 pub const PortalActivateOptions = struct {
-    // Inherited from PostMessageOptions
-    base: PostMessageOptions,
+    // Inherited from StructuredSerializeOptions
+    base: StructuredSerializeOptions,
 
     data: ?runtime.JSValue = null,
 

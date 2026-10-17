@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -41,8 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.GamepadEventInit) !*runtime.Instance {
-    // Create instance through init()
+/// Note: Use ctx.allocator for all allocations to ensure consistency with deinit
+pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.GamepadEventInit)) !*runtime.Instance {
+    // Create instance through init() - use ctx.allocator for consistency with deinit
     const instance = try init(ctx.allocator, State, &GamepadEvent.vtable, ctx);
     errdefer deinit(instance);
 

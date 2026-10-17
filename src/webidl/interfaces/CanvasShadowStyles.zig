@@ -60,7 +60,7 @@ pub const CanvasShadowStyles = struct {
             shadowOffsetX: f64 = undefined,
             shadowOffsetY: f64 = undefined,
             shadowBlur: f64 = undefined,
-            shadowColor: typedefs.DOMString = undefined,
+            shadowColor: runtime.DOMString = undefined,
             _internal: ?*CanvasShadowStylesImpl.InternalState = null,
         },
     );
@@ -98,11 +98,11 @@ pub const CanvasShadowStyles = struct {
         try CanvasShadowStylesImpl.set_shadowBlur(instance, value);
     }
 
-    pub fn get_shadowColor(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_shadowColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try CanvasShadowStylesImpl.get_shadowColor(instance);
     }
 
-    pub fn set_shadowColor(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_shadowColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try CanvasShadowStylesImpl.set_shadowColor(instance, value);
     }
 };

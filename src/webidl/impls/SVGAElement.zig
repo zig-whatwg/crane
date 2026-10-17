@@ -118,18 +118,6 @@ pub fn get_relList(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return error.NotImplemented;
 }
 
-/// Getter for hreflang
-pub fn get_hreflang(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for type
-pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for referrerPolicy
 pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
@@ -152,20 +140,6 @@ pub fn set_ping(instance: *runtime.Instance, value: runtime.USVString) anyerror!
 
 /// Setter for rel
 pub fn set_rel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for hreflang
-pub fn set_hreflang(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for type
-pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

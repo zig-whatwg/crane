@@ -12,7 +12,7 @@ pub const AudioDataInit = struct {
     numberOfFrames: u32,
     numberOfChannels: u32,
     timestamp: i64,
-    data: typedefs.BufferSource,
+    data: typedefs.AllowSharedBufferSource,
     transfer: ?[]const runtime.JSValue = null,
 
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the

@@ -64,18 +64,6 @@ pub fn get_outgoingMaxAge(instance: *runtime.Instance) anyerror!?f64 {
     return null;
 }
 
-/// Getter for incomingHighWaterMark
-pub fn get_incomingHighWaterMark(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for outgoingHighWaterMark
-pub fn get_outgoingHighWaterMark(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Setter for incomingMaxAge
 pub fn set_incomingMaxAge(instance: *runtime.Instance, value: ?f64) anyerror!void {
     _ = instance;
@@ -90,23 +78,35 @@ pub fn set_outgoingMaxAge(instance: *runtime.Instance, value: ?f64) anyerror!voi
     return error.NotImplemented;
 }
 
-/// Setter for incomingHighWaterMark
-pub fn set_incomingHighWaterMark(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for outgoingHighWaterMark
-pub fn set_outgoingHighWaterMark(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// Operation: createWritable
 pub fn call_createWritable(instance: *runtime.Instance, options: webidl.Opt(dictionaries.WebTransportSendOptions)) anyerror!*runtime.Instance {
     _ = instance;
     _ = options;
+    return error.NotImplemented;
+}
+
+/// Getter for incomingMaxBufferedDatagrams
+pub fn get_incomingMaxBufferedDatagrams(instance: *runtime.Instance) anyerror!u32 {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for outgoingMaxBufferedDatagrams
+pub fn get_outgoingMaxBufferedDatagrams(instance: *runtime.Instance) anyerror!u32 {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Setter for incomingMaxBufferedDatagrams
+pub fn set_incomingMaxBufferedDatagrams(instance: *runtime.Instance, value: u32) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}
+
+/// Setter for outgoingMaxBufferedDatagrams
+pub fn set_outgoingMaxBufferedDatagrams(instance: *runtime.Instance, value: u32) anyerror!void {
+    _ = instance;
+    _ = value;
     return error.NotImplemented;
 }

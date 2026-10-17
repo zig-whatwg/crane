@@ -177,7 +177,7 @@ pub const DeviceChangeEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(DeviceChangeEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(DeviceChangeEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try DeviceChangeEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }

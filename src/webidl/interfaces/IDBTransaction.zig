@@ -288,7 +288,7 @@ pub const IDBTransaction = struct {
         return try IDBTransactionImpl.call_abort(instance);
     }
 
-    pub fn call_objectStore(instance: *runtime.Instance, name: DOMString) anyerror!*runtime.Instance {
+    pub fn call_objectStore(instance: *runtime.Instance, name: runtime.DOMString) anyerror!*runtime.Instance {
         return try IDBTransactionImpl.call_objectStore(instance, name);
     }
 

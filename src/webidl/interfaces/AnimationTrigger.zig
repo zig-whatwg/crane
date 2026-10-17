@@ -1,4 +1,4 @@
-//! Generated from: web-animations-2.idl
+//! Generated from: animation-triggers.idl
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -33,10 +33,10 @@ pub const AnimationTrigger = struct {
         pub const properties = .{
             .{ "timeline", "get_timeline", "set_timeline" },
             .{ "behavior", "get_behavior", "set_behavior" },
-            .{ "rangeStart", "get_rangeStart", "set_rangeStart" },
-            .{ "rangeEnd", "get_rangeEnd", "set_rangeEnd" },
-            .{ "exitRangeStart", "get_exitRangeStart", "set_exitRangeStart" },
-            .{ "exitRangeEnd", "get_exitRangeEnd", "set_exitRangeEnd" },
+            .{ "activationRangeStart", "get_activationRangeStart", "set_activationRangeStart" },
+            .{ "activationRangeEnd", "get_activationRangeEnd", "set_activationRangeEnd" },
+            .{ "activeRangeStart", "get_activeRangeStart", "set_activeRangeStart" },
+            .{ "activeRangeEnd", "get_activeRangeEnd", "set_activeRangeEnd" },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -52,10 +52,10 @@ pub const AnimationTrigger = struct {
         pub const eager_properties = .{
             .{ "timeline", "get_timeline", "set_timeline" },
             .{ "behavior", "get_behavior", "set_behavior" },
-            .{ "rangeStart", "get_rangeStart", "set_rangeStart" },
-            .{ "rangeEnd", "get_rangeEnd", "set_rangeEnd" },
-            .{ "exitRangeStart", "get_exitRangeStart", "set_exitRangeStart" },
-            .{ "exitRangeEnd", "get_exitRangeEnd", "set_exitRangeEnd" },
+            .{ "activationRangeStart", "get_activationRangeStart", "set_activationRangeStart" },
+            .{ "activationRangeEnd", "get_activationRangeEnd", "set_activationRangeEnd" },
+            .{ "activeRangeStart", "get_activeRangeStart", "set_activeRangeStart" },
+            .{ "activeRangeEnd", "get_activeRangeEnd", "set_activeRangeEnd" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -70,27 +70,27 @@ pub const AnimationTrigger = struct {
         struct {
             timeline: *runtime.Instance = undefined,
             behavior: enums.AnimationTriggerBehavior = undefined,
-            rangeStart: runtime.JSValue = undefined,
-            rangeEnd: runtime.JSValue = undefined,
-            exitRangeStart: runtime.JSValue = undefined,
-            exitRangeEnd: runtime.JSValue = undefined,
+            activationRangeStart: runtime.JSValue = undefined,
+            activationRangeEnd: runtime.JSValue = undefined,
+            activeRangeStart: runtime.JSValue = undefined,
+            activeRangeEnd: runtime.JSValue = undefined,
             _internal: ?*AnimationTriggerImpl.InternalState = null,
         },
     );
 
     const delegates = .{
+        .get_activationRangeEnd = &get_activationRangeEnd,
+        .get_activationRangeStart = &get_activationRangeStart,
+        .get_activeRangeEnd = &get_activeRangeEnd,
+        .get_activeRangeStart = &get_activeRangeStart,
         .get_behavior = &get_behavior,
-        .get_exitRangeEnd = &get_exitRangeEnd,
-        .get_exitRangeStart = &get_exitRangeStart,
-        .get_rangeEnd = &get_rangeEnd,
-        .get_rangeStart = &get_rangeStart,
         .get_timeline = &get_timeline,
 
+        .set_activationRangeEnd = &set_activationRangeEnd,
+        .set_activationRangeStart = &set_activationRangeStart,
+        .set_activeRangeEnd = &set_activeRangeEnd,
+        .set_activeRangeStart = &set_activeRangeStart,
         .set_behavior = &set_behavior,
-        .set_exitRangeEnd = &set_exitRangeEnd,
-        .set_exitRangeStart = &set_exitRangeStart,
-        .set_rangeEnd = &set_rangeEnd,
-        .set_rangeStart = &set_rangeStart,
         .set_timeline = &set_timeline,
 
         .deinit = &deinit,
@@ -205,35 +205,35 @@ pub const AnimationTrigger = struct {
         try AnimationTriggerImpl.set_behavior(instance, value);
     }
 
-    pub fn get_rangeStart(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try AnimationTriggerImpl.get_rangeStart(instance);
+    pub fn get_activationRangeStart(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try AnimationTriggerImpl.get_activationRangeStart(instance);
     }
 
-    pub fn set_rangeStart(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-        try AnimationTriggerImpl.set_rangeStart(instance, value);
+    pub fn set_activationRangeStart(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        try AnimationTriggerImpl.set_activationRangeStart(instance, value);
     }
 
-    pub fn get_rangeEnd(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try AnimationTriggerImpl.get_rangeEnd(instance);
+    pub fn get_activationRangeEnd(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try AnimationTriggerImpl.get_activationRangeEnd(instance);
     }
 
-    pub fn set_rangeEnd(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-        try AnimationTriggerImpl.set_rangeEnd(instance, value);
+    pub fn set_activationRangeEnd(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        try AnimationTriggerImpl.set_activationRangeEnd(instance, value);
     }
 
-    pub fn get_exitRangeStart(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try AnimationTriggerImpl.get_exitRangeStart(instance);
+    pub fn get_activeRangeStart(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try AnimationTriggerImpl.get_activeRangeStart(instance);
     }
 
-    pub fn set_exitRangeStart(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-        try AnimationTriggerImpl.set_exitRangeStart(instance, value);
+    pub fn set_activeRangeStart(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        try AnimationTriggerImpl.set_activeRangeStart(instance, value);
     }
 
-    pub fn get_exitRangeEnd(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try AnimationTriggerImpl.get_exitRangeEnd(instance);
+    pub fn get_activeRangeEnd(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try AnimationTriggerImpl.get_activeRangeEnd(instance);
     }
 
-    pub fn set_exitRangeEnd(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-        try AnimationTriggerImpl.set_exitRangeEnd(instance, value);
+    pub fn set_activeRangeEnd(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        try AnimationTriggerImpl.set_activeRangeEnd(instance, value);
     }
 };

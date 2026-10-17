@@ -10,5 +10,6 @@ pub const SharedWorkerOptions = struct {
     // Inherited from WorkerOptions
     base: WorkerOptions,
 
+    extendedLifetime: ?bool = null,
     sameSiteCookies: ?enums.SameSiteCookiesType = null,
 };

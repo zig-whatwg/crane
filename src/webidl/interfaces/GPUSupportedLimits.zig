@@ -38,6 +38,7 @@ pub const GPUSupportedLimits = struct {
             .{ "maxTextureArrayLayers", "get_maxTextureArrayLayers", null },
             .{ "maxBindGroups", "get_maxBindGroups", null },
             .{ "maxBindGroupsPlusVertexBuffers", "get_maxBindGroupsPlusVertexBuffers", null },
+            .{ "maxImmediateSize", "get_maxImmediateSize", null },
             .{ "maxBindingsPerBindGroup", "get_maxBindingsPerBindGroup", null },
             .{ "maxDynamicUniformBuffersPerPipelineLayout", "get_maxDynamicUniformBuffersPerPipelineLayout", null },
             .{ "maxDynamicStorageBuffersPerPipelineLayout", "get_maxDynamicStorageBuffersPerPipelineLayout", null },
@@ -86,6 +87,7 @@ pub const GPUSupportedLimits = struct {
             .{ "maxTextureArrayLayers", "get_maxTextureArrayLayers", null },
             .{ "maxBindGroups", "get_maxBindGroups", null },
             .{ "maxBindGroupsPlusVertexBuffers", "get_maxBindGroupsPlusVertexBuffers", null },
+            .{ "maxImmediateSize", "get_maxImmediateSize", null },
             .{ "maxBindingsPerBindGroup", "get_maxBindingsPerBindGroup", null },
             .{ "maxDynamicUniformBuffersPerPipelineLayout", "get_maxDynamicUniformBuffersPerPipelineLayout", null },
             .{ "maxDynamicStorageBuffersPerPipelineLayout", "get_maxDynamicStorageBuffersPerPipelineLayout", null },
@@ -133,6 +135,7 @@ pub const GPUSupportedLimits = struct {
             maxTextureArrayLayers: u32 = undefined,
             maxBindGroups: u32 = undefined,
             maxBindGroupsPlusVertexBuffers: u32 = undefined,
+            maxImmediateSize: u32 = undefined,
             maxBindingsPerBindGroup: u32 = undefined,
             maxDynamicUniformBuffersPerPipelineLayout: u32 = undefined,
             maxDynamicStorageBuffersPerPipelineLayout: u32 = undefined,
@@ -181,6 +184,7 @@ pub const GPUSupportedLimits = struct {
         .get_maxComputeWorkgroupsPerDimension = &get_maxComputeWorkgroupsPerDimension,
         .get_maxDynamicStorageBuffersPerPipelineLayout = &get_maxDynamicStorageBuffersPerPipelineLayout,
         .get_maxDynamicUniformBuffersPerPipelineLayout = &get_maxDynamicUniformBuffersPerPipelineLayout,
+        .get_maxImmediateSize = &get_maxImmediateSize,
         .get_maxInterStageShaderVariables = &get_maxInterStageShaderVariables,
         .get_maxSampledTexturesPerShaderStage = &get_maxSampledTexturesPerShaderStage,
         .get_maxSamplersPerShaderStage = &get_maxSamplersPerShaderStage,
@@ -313,6 +317,10 @@ pub const GPUSupportedLimits = struct {
 
     pub fn get_maxBindGroupsPlusVertexBuffers(instance: *runtime.Instance) anyerror!u32 {
         return try GPUSupportedLimitsImpl.get_maxBindGroupsPlusVertexBuffers(instance);
+    }
+
+    pub fn get_maxImmediateSize(instance: *runtime.Instance) anyerror!u32 {
+        return try GPUSupportedLimitsImpl.get_maxImmediateSize(instance);
     }
 
     pub fn get_maxBindingsPerBindGroup(instance: *runtime.Instance) anyerror!u32 {

@@ -33,7 +33,7 @@ pub const ViewTransition = struct {
             .{ "updateCallbackDone", "get_updateCallbackDone", null },
             .{ "ready", "get_ready", null },
             .{ "finished", "get_finished", null },
-            .{ "types", "get_types", "set_types" },
+            .{ "types", "get_types", null },
             .{ "transitionRoot", "get_transitionRoot", null },
         };
 
@@ -57,7 +57,7 @@ pub const ViewTransition = struct {
             .{ "updateCallbackDone", "get_updateCallbackDone", null },
             .{ "ready", "get_ready", null },
             .{ "finished", "get_finished", null },
-            .{ "types", "get_types", "set_types" },
+            .{ "types", "get_types", null },
             .{ "transitionRoot", "get_transitionRoot", null },
         };
 
@@ -87,8 +87,6 @@ pub const ViewTransition = struct {
         .get_transitionRoot = &get_transitionRoot,
         .get_types = &get_types,
         .get_updateCallbackDone = &get_updateCallbackDone,
-
-        .set_types = &set_types,
 
         .call_skipTransition = &call_skipTransition,
         .call_waitUntil = &call_waitUntil,
@@ -205,13 +203,6 @@ pub const ViewTransition = struct {
         state.own.cached_types = value;
         @import("dom").same_object_cache.made(instance, value, "types");
         return value;
-    }
-
-    /// Extended attributes: [SameObject]
-    pub fn set_types(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
-        const state = instance.getState(State);
-        state.own.cached_types = null; // Invalidate [SameObject] cache
-        try ViewTransitionImpl.set_types(instance, value);
     }
 
     pub fn get_transitionRoot(instance: *runtime.Instance) anyerror!*runtime.Instance {

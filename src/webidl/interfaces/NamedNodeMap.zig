@@ -192,12 +192,12 @@ pub const NamedNodeMap = struct {
         return try NamedNodeMapImpl.get_length(instance);
     }
 
-    pub fn call_getNamedItem(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_getNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!?*runtime.Instance {
         return try NamedNodeMapImpl.call_getNamedItem(instance, qualifiedName);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_removeNamedItem(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!*runtime.Instance {
+    pub fn call_removeNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
 
@@ -245,7 +245,7 @@ pub const NamedNodeMap = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!*runtime.Instance {
+    pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
 
@@ -260,7 +260,7 @@ pub const NamedNodeMap = struct {
         return result;
     }
 
-    pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!?*runtime.Instance {
         return try NamedNodeMapImpl.call_getNamedItemNS(instance, namespace, localName);
     }
 

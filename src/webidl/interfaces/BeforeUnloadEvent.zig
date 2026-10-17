@@ -67,7 +67,7 @@ pub const BeforeUnloadEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            returnValue: typedefs.DOMString = undefined,
+            returnValue: runtime.DOMString = undefined,
             _internal: ?*BeforeUnloadEventImpl.InternalState = null,
         },
     );
@@ -167,11 +167,11 @@ pub const BeforeUnloadEvent = struct {
         }
     }
 
-    pub fn get_returnValue(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_returnValue(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try BeforeUnloadEventImpl.get_returnValue(instance);
     }
 
-    pub fn set_returnValue(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_returnValue(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try BeforeUnloadEventImpl.set_returnValue(instance, value);
     }
 };

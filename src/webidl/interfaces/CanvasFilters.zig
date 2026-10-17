@@ -51,7 +51,7 @@ pub const CanvasFilters = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            filter: typedefs.DOMString = undefined,
+            filter: runtime.DOMString = undefined,
             _internal: ?*CanvasFiltersImpl.InternalState = null,
         },
     );
@@ -65,11 +65,11 @@ pub const CanvasFilters = struct {
         }
     }
 
-    pub fn get_filter(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_filter(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try CanvasFiltersImpl.get_filter(instance);
     }
 
-    pub fn set_filter(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_filter(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try CanvasFiltersImpl.set_filter(instance, value);
     }
 };

@@ -105,7 +105,7 @@ pub const EditContext = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            text: typedefs.DOMString = undefined,
+            text: runtime.DOMString = undefined,
             selectionStart: u32 = undefined,
             selectionEnd: u32 = undefined,
             characterBoundsRangeStart: u32 = undefined,
@@ -241,7 +241,7 @@ pub const EditContext = struct {
         return try EditContextImpl.call_constructor(ctx, options);
     }
 
-    pub fn get_text(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_text(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try EditContextImpl.get_text(instance);
     }
 
@@ -333,7 +333,7 @@ pub const EditContext = struct {
         return try EditContextImpl.call_characterBounds(instance);
     }
 
-    pub fn call_updateText(instance: *runtime.Instance, rangeStart: u32, rangeEnd: u32, text: DOMString) anyerror!void {
+    pub fn call_updateText(instance: *runtime.Instance, rangeStart: u32, rangeEnd: u32, text: runtime.DOMString) anyerror!void {
         return try EditContextImpl.call_updateText(instance, rangeStart, rangeEnd, text);
     }
 };

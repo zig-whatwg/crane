@@ -1,4 +1,4 @@
-//! Generated from: uievents.idl
+//! Generated from: pointerevents.idl
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -43,6 +43,7 @@ pub const WheelEvent = struct {
             .{ "deltaY", "get_deltaY", null },
             .{ "deltaZ", "get_deltaZ", null },
             .{ "deltaMode", "get_deltaMode", null },
+            .{ "momentum", "get_momentum", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -76,6 +77,7 @@ pub const WheelEvent = struct {
             .{ "deltaY", "get_deltaY", null },
             .{ "deltaZ", "get_deltaZ", null },
             .{ "deltaMode", "get_deltaMode", null },
+            .{ "momentum", "get_momentum", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -92,6 +94,7 @@ pub const WheelEvent = struct {
             deltaY: f64 = undefined,
             deltaZ: f64 = undefined,
             deltaMode: u32 = undefined,
+            momentum: bool = undefined,
             _internal: ?*WheelEventImpl.InternalState = null,
         },
     );
@@ -123,6 +126,7 @@ pub const WheelEvent = struct {
         .get_deltaX = &get_deltaX,
         .get_deltaY = &get_deltaY,
         .get_deltaZ = &get_deltaZ,
+        .get_momentum = &get_momentum,
 
         .deinit = &deinit,
     };
@@ -217,7 +221,7 @@ pub const WheelEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(WheelEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(WheelEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try WheelEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
@@ -236,5 +240,9 @@ pub const WheelEvent = struct {
 
     pub fn get_deltaMode(instance: *runtime.Instance) anyerror!u32 {
         return try WheelEventImpl.get_deltaMode(instance);
+    }
+
+    pub fn get_momentum(instance: *runtime.Instance) anyerror!bool {
+        return try WheelEventImpl.get_momentum(instance);
     }
 };

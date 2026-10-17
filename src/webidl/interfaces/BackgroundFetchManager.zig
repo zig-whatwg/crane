@@ -163,7 +163,7 @@ pub const BackgroundFetchManager = struct {
         }
     }
 
-    pub fn call_get(instance: *runtime.Instance, id: DOMString) anyerror!runtime.JSValue {
+    pub fn call_get(instance: *runtime.Instance, id: runtime.DOMString) anyerror!runtime.JSValue {
         return try BackgroundFetchManagerImpl.call_get(instance, id);
     }
 
@@ -171,7 +171,7 @@ pub const BackgroundFetchManager = struct {
         return try BackgroundFetchManagerImpl.call_getIds(instance);
     }
 
-    pub fn call_fetch(instance: *runtime.Instance, id: DOMString, requests: runtime.JSValue, options: webidl.Opt(BackgroundFetchOptions)) anyerror!runtime.JSValue {
+    pub fn call_fetch(instance: *runtime.Instance, id: runtime.DOMString, requests: runtime.JSValue, options: webidl.Opt(BackgroundFetchOptions)) anyerror!runtime.JSValue {
         return try BackgroundFetchManagerImpl.call_fetch(instance, id, requests, options);
     }
 

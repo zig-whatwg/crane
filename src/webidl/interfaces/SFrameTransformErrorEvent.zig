@@ -12,6 +12,8 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const SFrameTransformErrorEventInit = @import("dictionaries").SFrameTransformErrorEventInit;
+const RTCEncodedAudioFrame = @import("interfaces").RTCEncodedAudioFrame;
+const RTCEncodedVideoFrame = @import("interfaces").RTCEncodedVideoFrame;
 const EventTarget = @import("interfaces").EventTarget;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const SFrameTransformErrorEventType = @import("enums").SFrameTransformErrorEventType;
@@ -79,7 +81,10 @@ pub const SFrameTransformErrorEvent = struct {
         struct {
             errorType: enums.SFrameTransformErrorEventType = undefined,
             keyID: ?typedefs.CryptoKeyID = null,
-            frame: runtime.JSValue = undefined,
+            frame: union(enum) {
+                RTCEncodedVideoFrame: RTCEncodedVideoFrame,
+                RTCEncodedAudioFrame: RTCEncodedAudioFrame,
+            } = undefined,
             _internal: ?*SFrameTransformErrorEventImpl.InternalState = null,
         },
     );
@@ -182,7 +187,7 @@ pub const SFrameTransformErrorEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: SFrameTransformErrorEventInit) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: SFrameTransformErrorEventInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try SFrameTransformErrorEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }

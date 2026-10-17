@@ -174,11 +174,11 @@ pub const CustomStateSet = struct {
         return try CustomStateSetImpl.get_size(instance);
     }
 
-    pub fn call_has(instance: *runtime.Instance, value: DOMString) anyerror!bool {
+    pub fn call_has(instance: *runtime.Instance, value: runtime.DOMString) anyerror!bool {
         return try CustomStateSetImpl.call_has(instance, value);
     }
 
-    pub fn call_delete(instance: *runtime.Instance, value: DOMString) anyerror!bool {
+    pub fn call_delete(instance: *runtime.Instance, value: runtime.DOMString) anyerror!bool {
         return try CustomStateSetImpl.call_delete(instance, value);
     }
 
@@ -190,7 +190,7 @@ pub const CustomStateSet = struct {
         return try CustomStateSetImpl.call_forEach(instance, callback, thisArg);
     }
 
-    pub fn call_add(instance: *runtime.Instance, value: DOMString) anyerror!*runtime.Instance {
+    pub fn call_add(instance: *runtime.Instance, value: runtime.DOMString) anyerror!*runtime.Instance {
         return try CustomStateSetImpl.call_add(instance, value);
     }
 };

@@ -58,7 +58,7 @@ pub const Baseline = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             value: f64 = undefined,
             _internal: ?*BaselineImpl.InternalState = null,
         },
@@ -156,7 +156,7 @@ pub const Baseline = struct {
         }
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try BaselineImpl.get_name(instance);
     }
 

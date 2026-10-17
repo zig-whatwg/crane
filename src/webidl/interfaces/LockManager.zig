@@ -165,11 +165,11 @@ pub const LockManager = struct {
         return try LockManagerImpl.call_query(instance);
     }
 
-    pub fn call_request(instance: *runtime.Instance, name: DOMString, callback: LockGrantedCallback) anyerror!runtime.JSValue {
+    pub fn call_request(instance: *runtime.Instance, name: runtime.DOMString, callback: LockGrantedCallback) anyerror!runtime.JSValue {
         return try LockManagerImpl.call_request(instance, name, callback);
     }
 
-    pub fn call_request__1(instance: *runtime.Instance, name: DOMString, options: LockOptions, callback: LockGrantedCallback) anyerror!runtime.JSValue {
+    pub fn call_request__1(instance: *runtime.Instance, name: runtime.DOMString, options: LockOptions, callback: LockGrantedCallback) anyerror!runtime.JSValue {
         if (comptime @hasDecl(LockManagerImpl, "call_request__1")) {
             return try LockManagerImpl.call_request__1(instance, name, options, callback);
         } else {

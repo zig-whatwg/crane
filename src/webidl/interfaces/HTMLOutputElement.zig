@@ -73,6 +73,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const NodeList = @import("interfaces").NodeList;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -192,6 +193,7 @@ pub const HTMLOutputElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -199,7 +201,6 @@ pub const HTMLOutputElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -215,6 +216,7 @@ pub const HTMLOutputElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -257,13 +259,13 @@ pub const HTMLOutputElement = struct {
         struct {
             htmlFor: *runtime.Instance = undefined,
             form: ?*runtime.Instance = null,
-            name: typedefs.DOMString = undefined,
-            type: typedefs.DOMString = undefined,
-            defaultValue: typedefs.DOMString = undefined,
-            value: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
+            type: runtime.DOMString = undefined,
+            defaultValue: runtime.DOMString = undefined,
+            value: runtime.DOMString = undefined,
             willValidate: bool = undefined,
             validity: *runtime.Instance = undefined,
-            validationMessage: typedefs.DOMString = undefined,
+            validationMessage: runtime.DOMString = undefined,
             labels: *runtime.Instance = undefined,
             cached_htmlFor: ?*runtime.Instance = null,
             _internal: ?*HTMLOutputElementImpl.InternalState = null,
@@ -421,32 +423,32 @@ pub const HTMLOutputElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLOutputElementImpl, "get_name")) return try HTMLOutputElementImpl.get_name(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "name" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLOutputElementImpl, "set_name")) return try HTMLOutputElementImpl.set_name(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "name" }, value);
     }
 
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLOutputElementImpl.get_type(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_defaultValue(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_defaultValue(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLOutputElementImpl.get_defaultValue(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_defaultValue(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_defaultValue(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -455,12 +457,12 @@ pub const HTMLOutputElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_value(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLOutputElementImpl.get_value(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_value(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -476,7 +478,7 @@ pub const HTMLOutputElement = struct {
         return try HTMLOutputElementImpl.get_validity(instance);
     }
 
-    pub fn get_validationMessage(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLOutputElementImpl.get_validationMessage(instance);
     }
 
@@ -484,7 +486,7 @@ pub const HTMLOutputElement = struct {
         return try HTMLOutputElementImpl.get_labels(instance);
     }
 
-    pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": DOMString) anyerror!void {
+    pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOMString) anyerror!void {
         return try HTMLOutputElementImpl.call_setCustomValidity(instance, @"error");
     }
 

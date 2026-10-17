@@ -12,10 +12,11 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const Document = @import("interfaces").Document;
 const HTMLOrSVGScriptElement = @import("typedefs").HTMLOrSVGScriptElement;
+const ModelContext = @import("interfaces").ModelContext;
 const HTMLCollection = @import("interfaces").HTMLCollection;
 const HTMLHeadElement = @import("interfaces").HTMLHeadElement;
-const FontMetrics = @import("interfaces").FontMetrics;
 const NodeIterator = @import("interfaces").NodeIterator;
+const FontMetrics = @import("interfaces").FontMetrics;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const Text = @import("interfaces").Text;
 const GeometryNode = @import("typedefs").GeometryNode;
@@ -35,7 +36,6 @@ const NamedFlowMap = @import("interfaces").NamedFlowMap;
 const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const StorageAccessHandle = @import("interfaces").StorageAccessHandle;
 const ImportNodeOptions = @import("dictionaries").ImportNodeOptions;
 const DOMImplementation = @import("interfaces").DOMImplementation;
 const Node = @import("interfaces").Node;
@@ -53,7 +53,6 @@ const DocumentFragment = @import("interfaces").DocumentFragment;
 const ParseHTMLUnsafeOptions = @import("dictionaries").ParseHTMLUnsafeOptions;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
 const FontFaceSet = @import("interfaces").FontFaceSet;
-const BrowsingTopicsOptions = @import("dictionaries").BrowsingTopicsOptions;
 const DOMQuad = @import("interfaces").DOMQuad;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
@@ -68,10 +67,10 @@ const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
 const HTMLElement = @import("interfaces").HTMLElement;
 const WindowProxy = @import("typedefs").WindowProxy;
-const StorageAccessTypes = @import("dictionaries").StorageAccessTypes;
-const Attr = @import("interfaces").Attr;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
+const Attr = @import("interfaces").Attr;
 const NodeList = @import("interfaces").NodeList;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const ElementCreationOptions = @import("dictionaries").ElementCreationOptions;
 const DOMPoint = @import("interfaces").DOMPoint;
@@ -157,6 +156,7 @@ pub const XMLDocument = struct {
             "measureText",
             "exitFullscreen",
             "parseHTMLUnsafe",
+            "parseHTML",
             "getElementsByName",
             "open",
             "open",
@@ -174,14 +174,10 @@ pub const XMLDocument = struct {
             "releaseEvents",
             "exitPictureInPicture",
             "exitPointerLock",
-            "requestStorageAccessFor",
             "hasUnpartitionedCookieAccess",
-            "requestStorageAccess",
-            "parseHTML",
             "getSelection",
             "hasStorageAccess",
             "requestStorageAccess",
-            "browsingTopics",
             "hasPrivateToken",
             "hasRedemptionRecord",
             "getBoxQuads",
@@ -199,6 +195,7 @@ pub const XMLDocument = struct {
             "createExpression",
             "createNSResolver",
             "evaluate",
+            "ariaNotify",
         };
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties

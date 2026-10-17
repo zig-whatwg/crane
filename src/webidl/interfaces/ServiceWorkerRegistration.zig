@@ -69,8 +69,8 @@ pub const ServiceWorkerRegistration = struct {
             .{ "sync", "get_sync", null },
             .{ "index", "get_index", null },
             .{ "cookies", "get_cookies", null },
-            .{ "paymentManager", "get_paymentManager", null },
             .{ "periodicSync", "get_periodicSync", null },
+            .{ "paymentManager", "get_paymentManager", null },
             .{ "pushManager", "get_pushManager", null },
         };
 
@@ -111,8 +111,8 @@ pub const ServiceWorkerRegistration = struct {
             .{ "sync", "get_sync", null },
             .{ "index", "get_index", null },
             .{ "cookies", "get_cookies", null },
-            .{ "paymentManager", "get_paymentManager", null },
             .{ "periodicSync", "get_periodicSync", null },
+            .{ "paymentManager", "get_paymentManager", null },
             .{ "pushManager", "get_pushManager", null },
         };
 
@@ -144,8 +144,8 @@ pub const ServiceWorkerRegistration = struct {
             sync: *runtime.Instance = undefined,
             index: *runtime.Instance = undefined,
             cookies: *runtime.Instance = undefined,
-            paymentManager: *runtime.Instance = undefined,
             periodicSync: *runtime.Instance = undefined,
+            paymentManager: *runtime.Instance = undefined,
             pushManager: *runtime.Instance = undefined,
             cached_navigationPreload: ?*runtime.Instance = null,
             cached_index: ?*runtime.Instance = null,
@@ -348,6 +348,10 @@ pub const ServiceWorkerRegistration = struct {
         return value;
     }
 
+    pub fn get_periodicSync(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try ServiceWorkerRegistrationImpl.get_periodicSync(instance);
+    }
+
     /// Extended attributes: [SameObject]
     pub fn get_paymentManager(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
@@ -359,10 +363,6 @@ pub const ServiceWorkerRegistration = struct {
         state.own.cached_paymentManager = value;
         @import("dom").same_object_cache.made(instance, value, "paymentManager");
         return value;
-    }
-
-    pub fn get_periodicSync(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try ServiceWorkerRegistrationImpl.get_periodicSync(instance);
     }
 
     /// Extended attributes: [SecureContext]
@@ -384,7 +384,7 @@ pub const ServiceWorkerRegistration = struct {
         return try ServiceWorkerRegistrationImpl.call_update(instance);
     }
 
-    pub fn call_showNotification(instance: *runtime.Instance, title: DOMString, options: webidl.Opt(NotificationOptions)) anyerror!runtime.JSValue {
+    pub fn call_showNotification(instance: *runtime.Instance, title: runtime.DOMString, options: webidl.Opt(NotificationOptions)) anyerror!runtime.JSValue {
         return try ServiceWorkerRegistrationImpl.call_showNotification(instance, title, options);
     }
 

@@ -70,7 +70,7 @@ pub const MediaEncryptedEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            initDataType: typedefs.DOMString = undefined,
+            initDataType: runtime.DOMString = undefined,
             initData: ?runtime.ArrayBuffer = null,
             _internal: ?*MediaEncryptedEventImpl.InternalState = null,
         },
@@ -173,12 +173,12 @@ pub const MediaEncryptedEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(MediaEncryptedEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(MediaEncryptedEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try MediaEncryptedEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
 
-    pub fn get_initDataType(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_initDataType(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MediaEncryptedEventImpl.get_initDataType(instance);
     }
 

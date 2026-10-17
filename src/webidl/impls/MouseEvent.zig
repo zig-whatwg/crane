@@ -136,16 +136,17 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // legacy which.
     event_construction.initializeUIEvent(instance, event_construction.uiEventInitFrom(ui_init));
 
-    // Initialize MouseEvent attributes (in state.own)
-    const screenX_f = event_init.screenX orelse 0.0;
-    const screenY_f = event_init.screenY orelse 0.0;
-    const clientX_f = event_init.clientX orelse 0.0;
-    const clientY_f = event_init.clientY orelse 0.0;
+    // Initialize MouseEvent attributes (in state.own). MouseEventInit's
+    // coordinates are longs (pointerevents.idl, which now defines MouseEvent).
+    const screenX: i32 = event_init.screenX orelse 0;
+    const screenY: i32 = event_init.screenY orelse 0;
+    const clientX: i32 = event_init.clientX orelse 0;
+    const clientY: i32 = event_init.clientY orelse 0;
 
-    state.own.screenX = @intFromFloat(screenX_f);
-    state.own.screenY = @intFromFloat(screenY_f);
-    state.own.clientX = @intFromFloat(clientX_f);
-    state.own.clientY = @intFromFloat(clientY_f);
+    state.own.screenX = screenX;
+    state.own.screenY = screenY;
+    state.own.clientX = clientX;
+    state.own.clientY = clientY;
     state.own.ctrlKey = modifier_init.ctrlKey orelse false;
     state.own.shiftKey = modifier_init.shiftKey orelse false;
     state.own.altKey = modifier_init.altKey orelse false;
@@ -159,14 +160,14 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.own.movementY = event_init.movementY orelse 0.0;
 
     // Computed properties (these might need layout info, default to clientX/Y)
-    state.own.pageX = clientX_f;
-    state.own.pageY = clientY_f;
-    state.own.x = clientX_f;
-    state.own.y = clientY_f;
-    state.own.offsetX = clientX_f;
-    state.own.offsetY = clientY_f;
-    state.own.layerX = @intFromFloat(clientX_f);
-    state.own.layerY = @intFromFloat(clientY_f);
+    state.own.pageX = @floatFromInt(clientX);
+    state.own.pageY = @floatFromInt(clientY);
+    state.own.x = @floatFromInt(clientX);
+    state.own.y = @floatFromInt(clientY);
+    state.own.offsetX = @floatFromInt(clientX);
+    state.own.offsetY = @floatFromInt(clientY);
+    state.own.layerX = clientX;
+    state.own.layerY = clientY;
 
     return instance;
 }

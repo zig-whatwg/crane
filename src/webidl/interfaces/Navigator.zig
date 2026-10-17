@@ -11,6 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const NavigatorBadge = @import("mixins").NavigatorBadge;
+const NavigatorCrossOriginStorage = @import("mixins").NavigatorCrossOriginStorage;
 const NavigatorDeviceMemory = @import("mixins").NavigatorDeviceMemory;
 const GlobalPrivacyControl = @import("mixins").GlobalPrivacyControl;
 const NavigatorID = @import("mixins").NavigatorID;
@@ -34,19 +35,16 @@ const Serial = @import("interfaces").Serial;
 const Presentation = @import("interfaces").Presentation;
 const PreferenceManager = @import("interfaces").PreferenceManager;
 const MediaKeySystemAccess = @import("interfaces").MediaKeySystemAccess;
-const AdAuctionDataConfig = @import("dictionaries").AdAuctionDataConfig;
+const WebInstallResult = @import("dictionaries").WebInstallResult;
 const VibratePattern = @import("typedefs").VibratePattern;
-const AuctionAdConfig = @import("dictionaries").AuctionAdConfig;
-const USVString = @import("typedefs").USVString;
-const SmartCardResourceManager = @import("interfaces").SmartCardResourceManager;
 const HID = @import("interfaces").HID;
-const BatteryManager = @import("interfaces").BatteryManager;
+const USVString = @import("typedefs").USVString;
 const NetworkInformation = @import("interfaces").NetworkInformation;
 const ML = @import("interfaces").ML;
+const BatteryManager = @import("interfaces").BatteryManager;
 const StorageBucketManager = @import("interfaces").StorageBucketManager;
 const BodyInit = @import("typedefs").BodyInit;
 const HandwritingRecognizer = @import("interfaces").HandwritingRecognizer;
-const AuctionAdInterestGroupKey = @import("dictionaries").AuctionAdInterestGroupKey;
 const MIDIAccess = @import("interfaces").MIDIAccess;
 const Attribution = @import("interfaces").Attribution;
 const VirtualKeyboard = @import("interfaces").VirtualKeyboard;
@@ -55,13 +53,14 @@ const Scheduling = @import("interfaces").Scheduling;
 const ShareData = @import("dictionaries").ShareData;
 const Clipboard = @import("interfaces").Clipboard;
 const HandwritingModelConstraint = @import("dictionaries").HandwritingModelConstraint;
+const CrossOriginStorageManager = @import("interfaces").CrossOriginStorageManager;
 const StorageManager = @import("interfaces").StorageManager;
 const MediaKeySystemConfiguration = @import("dictionaries").MediaKeySystemConfiguration;
 const AudioSession = @import("interfaces").AudioSession;
 const CredentialsContainer = @import("interfaces").CredentialsContainer;
 const ServiceWorkerContainer = @import("interfaces").ServiceWorkerContainer;
-const MediaDevices = @import("interfaces").MediaDevices;
 const HTMLMediaElement = @import("interfaces").HTMLMediaElement;
+const MediaDevices = @import("interfaces").MediaDevices;
 const DOMString = @import("typedefs").DOMString;
 const Permissions = @import("interfaces").Permissions;
 const NavigatorManagedData = @import("interfaces").NavigatorManagedData;
@@ -78,19 +77,17 @@ const GPU = @import("interfaces").GPU;
 const MediaSession = @import("interfaces").MediaSession;
 const NavigatorLogin = @import("interfaces").NavigatorLogin;
 const EpubReadingSystem = @import("interfaces").EpubReadingSystem;
-const ProtectedAudience = @import("interfaces").ProtectedAudience;
 const Bluetooth = @import("interfaces").Bluetooth;
 const USB = @import("interfaces").USB;
 const AutoplayPolicyMediaType = @import("enums").AutoplayPolicyMediaType;
-const AdAuctionData = @import("dictionaries").AdAuctionData;
 const MIDIOptions = @import("dictionaries").MIDIOptions;
 const Ink = @import("interfaces").Ink;
 const XRSystem = @import("interfaces").XRSystem;
-const AuctionAdInterestGroup = @import("dictionaries").AuctionAdInterestGroup;
 const Keyboard = @import("interfaces").Keyboard;
 const WindowControlsOverlay = @import("interfaces").WindowControlsOverlay;
 const UserActivation = @import("interfaces").UserActivation;
 const MediaCapabilities = @import("interfaces").MediaCapabilities;
+const InstallParams = @import("dictionaries").InstallParams;
 
 pub const Navigator = struct {
     pub const Meta = struct {
@@ -101,6 +98,7 @@ pub const Navigator = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{
             NavigatorBadge,
+            NavigatorCrossOriginStorage,
             NavigatorDeviceMemory,
             GlobalPrivacyControl,
             NavigatorID,
@@ -128,9 +126,11 @@ pub const Navigator = struct {
 
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
+            .{ "attribution", "get_attribution", null },
             .{ "audioSession", "get_audioSession", null },
             .{ "clipboard", "get_clipboard", null },
             .{ "contacts", "get_contacts", null },
+            .{ "cpuPerformance", "get_cpuPerformance", null },
             .{ "credentials", "get_credentials", null },
             .{ "devicePosture", "get_devicePosture", null },
             .{ "epubReadingSystem", "get_epubReadingSystem", null },
@@ -148,19 +148,16 @@ pub const Navigator = struct {
             .{ "permissions", "get_permissions", null },
             .{ "maxTouchPoints", "get_maxTouchPoints", null },
             .{ "presentation", "get_presentation", null },
-            .{ "attribution", "get_attribution", null },
             .{ "wakeLock", "get_wakeLock", null },
             .{ "serial", "get_serial", null },
             .{ "serviceWorker", "get_serviceWorker", null },
-            .{ "deprecatedRunAdAuctionEnforcesKAnonymity", "get_deprecatedRunAdAuctionEnforcesKAnonymity", null },
-            .{ "protectedAudience", "get_protectedAudience", null },
             .{ "virtualKeyboard", "get_virtualKeyboard", null },
             .{ "bluetooth", "get_bluetooth", null },
-            .{ "smartCard", "get_smartCard", null },
             .{ "hid", "get_hid", null },
             .{ "usb", "get_usb", null },
             .{ "xr", "get_xr", null },
             .{ "windowControlsOverlay", "get_windowControlsOverlay", null },
+            .{ "crossOriginStorage", "get_crossOriginStorage", null },
             .{ "deviceMemory", "get_deviceMemory", null },
             .{ "globalPrivacyControl", "get_globalPrivacyControl", null },
             .{ "appCodeName", "get_appCodeName", null },
@@ -204,14 +201,7 @@ pub const Navigator = struct {
             .{ "getInstalledRelatedApps", "call_getInstalledRelatedApps", 0 },
             .{ "queryHandwritingRecognizer", "call_queryHandwritingRecognizer", 1 },
             .{ "createHandwritingRecognizer", "call_createHandwritingRecognizer", 1 },
-            .{ "joinAdInterestGroup", "call_joinAdInterestGroup", 1 },
-            .{ "leaveAdInterestGroup", "call_leaveAdInterestGroup", 0 },
-            .{ "clearOriginJoinedAdInterestGroups", "call_clearOriginJoinedAdInterestGroups", 1 },
-            .{ "runAdAuction", "call_runAdAuction", 1 },
-            .{ "canLoadAdAuctionFencedFrame", "call_canLoadAdAuctionFencedFrame", 0 },
-            .{ "getInterestGroupAdAuctionData", "call_getInterestGroupAdAuctionData", 0 },
-            .{ "createAuctionNonce", "call_createAuctionNonce", 0 },
-            .{ "updateAdInterestGroups", "call_updateAdInterestGroups", 0 },
+            .{ "install", "call_install", 0 },
             .{ "vibrate", "call_vibrate", 1 },
             .{ "share", "call_share", 0 },
             .{ "canShare", "call_canShare", 0 },
@@ -237,14 +227,7 @@ pub const Navigator = struct {
             "getInstalledRelatedApps",
             "queryHandwritingRecognizer",
             "createHandwritingRecognizer",
-            "joinAdInterestGroup",
-            "leaveAdInterestGroup",
-            "clearOriginJoinedAdInterestGroups",
-            "runAdAuction",
-            "canLoadAdAuctionFencedFrame",
-            "getInterestGroupAdAuctionData",
-            "createAuctionNonce",
-            "updateAdInterestGroups",
+            "install",
             "vibrate",
             "share",
             "canShare",
@@ -262,9 +245,11 @@ pub const Navigator = struct {
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
+            .{ "attribution", "get_attribution", null },
             .{ "audioSession", "get_audioSession", null },
             .{ "clipboard", "get_clipboard", null },
             .{ "contacts", "get_contacts", null },
+            .{ "cpuPerformance", "get_cpuPerformance", null },
             .{ "credentials", "get_credentials", null },
             .{ "devicePosture", "get_devicePosture", null },
             .{ "epubReadingSystem", "get_epubReadingSystem", null },
@@ -282,19 +267,16 @@ pub const Navigator = struct {
             .{ "permissions", "get_permissions", null },
             .{ "maxTouchPoints", "get_maxTouchPoints", null },
             .{ "presentation", "get_presentation", null },
-            .{ "attribution", "get_attribution", null },
             .{ "wakeLock", "get_wakeLock", null },
             .{ "serial", "get_serial", null },
             .{ "serviceWorker", "get_serviceWorker", null },
-            .{ "deprecatedRunAdAuctionEnforcesKAnonymity", "get_deprecatedRunAdAuctionEnforcesKAnonymity", null },
-            .{ "protectedAudience", "get_protectedAudience", null },
             .{ "virtualKeyboard", "get_virtualKeyboard", null },
             .{ "bluetooth", "get_bluetooth", null },
-            .{ "smartCard", "get_smartCard", null },
             .{ "hid", "get_hid", null },
             .{ "usb", "get_usb", null },
             .{ "xr", "get_xr", null },
             .{ "windowControlsOverlay", "get_windowControlsOverlay", null },
+            .{ "crossOriginStorage", "get_crossOriginStorage", null },
             .{ "deviceMemory", "get_deviceMemory", null },
             .{ "globalPrivacyControl", "get_globalPrivacyControl", null },
             .{ "appCodeName", "get_appCodeName", null },
@@ -334,8 +316,10 @@ pub const Navigator = struct {
         /// their mixin's: hidden in a realm that is not a secure context
         /// (WebIDL 3.3.13).
         pub const secure_context_members = .{
+            "attribution",
             "clipboard",
             "contacts",
+            "cpuPerformance",
             "credentials",
             "devicePosture",
             "keyboard",
@@ -344,19 +328,16 @@ pub const Navigator = struct {
             "mediaDevices",
             "preferences",
             "presentation",
-            "attribution",
             "wakeLock",
             "serial",
             "serviceWorker",
-            "deprecatedRunAdAuctionEnforcesKAnonymity",
-            "protectedAudience",
             "virtualKeyboard",
             "bluetooth",
-            "smartCard",
             "hid",
             "usb",
             "xr",
             "windowControlsOverlay",
+            "crossOriginStorage",
             "deviceMemory",
             "storageBuckets",
             "storage",
@@ -369,14 +350,6 @@ pub const Navigator = struct {
             "getInstalledRelatedApps",
             "queryHandwritingRecognizer",
             "createHandwritingRecognizer",
-            "joinAdInterestGroup",
-            "leaveAdInterestGroup",
-            "clearOriginJoinedAdInterestGroups",
-            "runAdAuction",
-            "canLoadAdAuctionFencedFrame",
-            "getInterestGroupAdAuctionData",
-            "createAuctionNonce",
-            "updateAdInterestGroups",
             "share",
             "canShare",
             "requestMIDIAccess",
@@ -391,9 +364,11 @@ pub const Navigator = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
+            attribution: *runtime.Instance = undefined,
             audioSession: *runtime.Instance = undefined,
             clipboard: *runtime.Instance = undefined,
             contacts: *runtime.Instance = undefined,
+            cpuPerformance: u16 = undefined,
             credentials: *runtime.Instance = undefined,
             devicePosture: *runtime.Instance = undefined,
             epubReadingSystem: *runtime.Instance = undefined,
@@ -411,32 +386,29 @@ pub const Navigator = struct {
             permissions: *runtime.Instance = undefined,
             maxTouchPoints: i32 = undefined,
             presentation: *runtime.Instance = undefined,
-            attribution: *runtime.Instance = undefined,
             wakeLock: *runtime.Instance = undefined,
             serial: *runtime.Instance = undefined,
             serviceWorker: *runtime.Instance = undefined,
-            deprecatedRunAdAuctionEnforcesKAnonymity: bool = undefined,
-            protectedAudience: *runtime.Instance = undefined,
             virtualKeyboard: *runtime.Instance = undefined,
             bluetooth: *runtime.Instance = undefined,
-            smartCard: *runtime.Instance = undefined,
             hid: *runtime.Instance = undefined,
             usb: *runtime.Instance = undefined,
             xr: *runtime.Instance = undefined,
             windowControlsOverlay: *runtime.Instance = undefined,
+            crossOriginStorage: *runtime.Instance = undefined,
             deviceMemory: f64 = undefined,
             globalPrivacyControl: bool = undefined,
-            appCodeName: typedefs.DOMString = undefined,
-            appName: typedefs.DOMString = undefined,
-            appVersion: typedefs.DOMString = undefined,
-            platform: typedefs.DOMString = undefined,
-            product: typedefs.DOMString = undefined,
-            productSub: typedefs.DOMString = undefined,
-            userAgent: typedefs.DOMString = undefined,
-            vendor: typedefs.DOMString = undefined,
-            vendorSub: typedefs.DOMString = undefined,
-            oscpu: typedefs.DOMString = undefined,
-            language: typedefs.DOMString = undefined,
+            appCodeName: runtime.DOMString = undefined,
+            appName: runtime.DOMString = undefined,
+            appVersion: runtime.DOMString = undefined,
+            platform: runtime.DOMString = undefined,
+            product: runtime.DOMString = undefined,
+            productSub: runtime.DOMString = undefined,
+            userAgent: runtime.DOMString = undefined,
+            vendor: runtime.DOMString = undefined,
+            vendorSub: runtime.DOMString = undefined,
+            oscpu: runtime.DOMString = undefined,
+            language: runtime.DOMString = undefined,
             languages: runtime.JSValue = undefined,
             onLine: bool = undefined,
             cookieEnabled: bool = undefined,
@@ -452,6 +424,7 @@ pub const Navigator = struct {
             webdriver: bool = undefined,
             gpu: *runtime.Instance = undefined,
             ml: *runtime.Instance = undefined,
+            cached_attribution: ?*runtime.Instance = null,
             cached_clipboard: ?*runtime.Instance = null,
             cached_contacts: ?*runtime.Instance = null,
             cached_credentials: ?*runtime.Instance = null,
@@ -468,18 +441,16 @@ pub const Navigator = struct {
             cached_mediaSession: ?*runtime.Instance = null,
             cached_permissions: ?*runtime.Instance = null,
             cached_presentation: ?*runtime.Instance = null,
-            cached_attribution: ?*runtime.Instance = null,
             cached_wakeLock: ?*runtime.Instance = null,
             cached_serial: ?*runtime.Instance = null,
             cached_serviceWorker: ?*runtime.Instance = null,
-            cached_protectedAudience: ?*runtime.Instance = null,
             cached_virtualKeyboard: ?*runtime.Instance = null,
             cached_bluetooth: ?*runtime.Instance = null,
-            cached_smartCard: ?*runtime.Instance = null,
             cached_hid: ?*runtime.Instance = null,
             cached_usb: ?*runtime.Instance = null,
             cached_xr: ?*runtime.Instance = null,
             cached_windowControlsOverlay: ?*runtime.Instance = null,
+            cached_crossOriginStorage: ?*runtime.Instance = null,
             cached_plugins: ?*runtime.Instance = null,
             cached_mimeTypes: ?*runtime.Instance = null,
             cached_connection: ?*runtime.Instance = null,
@@ -502,8 +473,9 @@ pub const Navigator = struct {
         .get_connection = &get_connection,
         .get_contacts = &get_contacts,
         .get_cookieEnabled = &get_cookieEnabled,
+        .get_cpuPerformance = &get_cpuPerformance,
         .get_credentials = &get_credentials,
-        .get_deprecatedRunAdAuctionEnforcesKAnonymity = &get_deprecatedRunAdAuctionEnforcesKAnonymity,
+        .get_crossOriginStorage = &get_crossOriginStorage,
         .get_deviceMemory = &get_deviceMemory,
         .get_devicePosture = &get_devicePosture,
         .get_epubReadingSystem = &get_epubReadingSystem,
@@ -535,11 +507,9 @@ pub const Navigator = struct {
         .get_presentation = &get_presentation,
         .get_product = &get_product,
         .get_productSub = &get_productSub,
-        .get_protectedAudience = &get_protectedAudience,
         .get_scheduling = &get_scheduling,
         .get_serial = &get_serial,
         .get_serviceWorker = &get_serviceWorker,
-        .get_smartCard = &get_smartCard,
         .get_storage = &get_storage,
         .get_storageBuckets = &get_storageBuckets,
         .get_usb = &get_usb,
@@ -555,11 +525,8 @@ pub const Navigator = struct {
         .get_xr = &get_xr,
 
         .call_adAuctionComponents = &call_adAuctionComponents,
-        .call_canLoadAdAuctionFencedFrame = &call_canLoadAdAuctionFencedFrame,
         .call_canShare = &call_canShare,
         .call_clearAppBadge = &call_clearAppBadge,
-        .call_clearOriginJoinedAdInterestGroups = &call_clearOriginJoinedAdInterestGroups,
-        .call_createAuctionNonce = &call_createAuctionNonce,
         .call_createHandwritingRecognizer = &call_createHandwritingRecognizer,
         .call_deprecatedReplaceInURN = &call_deprecatedReplaceInURN,
         .call_deprecatedURNtoURL = &call_deprecatedURNtoURL,
@@ -567,21 +534,17 @@ pub const Navigator = struct {
         .call_getBattery = &call_getBattery,
         .call_getGamepads = &call_getGamepads,
         .call_getInstalledRelatedApps = &call_getInstalledRelatedApps,
-        .call_getInterestGroupAdAuctionData = &call_getInterestGroupAdAuctionData,
+        .call_install = &call_install,
         .call_javaEnabled = &call_javaEnabled,
-        .call_joinAdInterestGroup = &call_joinAdInterestGroup,
-        .call_leaveAdInterestGroup = &call_leaveAdInterestGroup,
         .call_queryHandwritingRecognizer = &call_queryHandwritingRecognizer,
         .call_registerProtocolHandler = &call_registerProtocolHandler,
         .call_requestMIDIAccess = &call_requestMIDIAccess,
         .call_requestMediaKeySystemAccess = &call_requestMediaKeySystemAccess,
-        .call_runAdAuction = &call_runAdAuction,
         .call_sendBeacon = &call_sendBeacon,
         .call_setAppBadge = &call_setAppBadge,
         .call_share = &call_share,
         .call_taintEnabled = &call_taintEnabled,
         .call_unregisterProtocolHandler = &call_unregisterProtocolHandler,
-        .call_updateAdInterestGroups = &call_updateAdInterestGroups,
         .call_vibrate = &call_vibrate,
 
         .deinit = &deinit,
@@ -673,6 +636,19 @@ pub const Navigator = struct {
         }
     }
 
+    /// Extended attributes: [SecureContext], [SameObject]
+    pub fn get_attribution(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_attribution) |cached| {
+            return cached;
+        }
+        const value = try NavigatorImpl.get_attribution(instance);
+        state.own.cached_attribution = value;
+        @import("dom").same_object_cache.made(instance, value, "attribution");
+        return value;
+    }
+
     pub fn get_audioSession(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NavigatorImpl.get_audioSession(instance);
     }
@@ -701,6 +677,11 @@ pub const Navigator = struct {
         state.own.cached_contacts = value;
         @import("dom").same_object_cache.made(instance, value, "contacts");
         return value;
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn get_cpuPerformance(instance: *runtime.Instance) anyerror!u16 {
+        return try NavigatorImpl.get_cpuPerformance(instance);
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
@@ -898,19 +879,6 @@ pub const Navigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_attribution(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_attribution) |cached| {
-            return cached;
-        }
-        const value = try NavigatorImpl.get_attribution(instance);
-        state.own.cached_attribution = value;
-        @import("dom").same_object_cache.made(instance, value, "attribution");
-        return value;
-    }
-
     /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_wakeLock(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
@@ -950,24 +918,6 @@ pub const Navigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SecureContext]
-    pub fn get_deprecatedRunAdAuctionEnforcesKAnonymity(instance: *runtime.Instance) anyerror!bool {
-        return try NavigatorImpl.get_deprecatedRunAdAuctionEnforcesKAnonymity(instance);
-    }
-
-    /// Extended attributes: [SameObject], [SecureContext]
-    pub fn get_protectedAudience(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_protectedAudience) |cached| {
-            return cached;
-        }
-        const value = try NavigatorImpl.get_protectedAudience(instance);
-        state.own.cached_protectedAudience = value;
-        @import("dom").same_object_cache.made(instance, value, "protectedAudience");
-        return value;
-    }
-
     /// Extended attributes: [SecureContext], [SameObject]
     pub fn get_virtualKeyboard(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
@@ -991,19 +941,6 @@ pub const Navigator = struct {
         const value = try NavigatorImpl.get_bluetooth(instance);
         state.own.cached_bluetooth = value;
         @import("dom").same_object_cache.made(instance, value, "bluetooth");
-        return value;
-    }
-
-    /// Extended attributes: [SameObject], [SecureContext], [IsolatedContext]
-    pub fn get_smartCard(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_smartCard) |cached| {
-            return cached;
-        }
-        const value = try NavigatorImpl.get_smartCard(instance);
-        state.own.cached_smartCard = value;
-        @import("dom").same_object_cache.made(instance, value, "smartCard");
         return value;
     }
 
@@ -1059,56 +996,69 @@ pub const Navigator = struct {
         return value;
     }
 
+    /// Extended attributes: [SameObject], [SecureContext]
+    pub fn get_crossOriginStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_crossOriginStorage) |cached| {
+            return cached;
+        }
+        const value = try NavigatorImpl.get_crossOriginStorage(instance);
+        state.own.cached_crossOriginStorage = value;
+        @import("dom").same_object_cache.made(instance, value, "crossOriginStorage");
+        return value;
+    }
+
     /// Extended attributes: [SecureContext]
     pub const get_deviceMemory = mixins.NavigatorDeviceMemory.get_deviceMemory;
 
     pub const get_globalPrivacyControl = mixins.GlobalPrivacyControl.get_globalPrivacyControl;
 
-    pub fn get_appCodeName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_appCodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorImpl.get_appCodeName(instance);
     }
 
-    pub fn get_appName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_appName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorImpl.get_appName(instance);
     }
 
-    pub fn get_appVersion(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_appVersion(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorImpl.get_appVersion(instance);
     }
 
-    pub fn get_platform(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_platform(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorImpl.get_platform(instance);
     }
 
-    pub fn get_product(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_product(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorImpl.get_product(instance);
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn get_productSub(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_productSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorImpl.get_productSub(instance);
     }
 
-    pub fn get_userAgent(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_userAgent(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorImpl.get_userAgent(instance);
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn get_vendor(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_vendor(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorImpl.get_vendor(instance);
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn get_vendorSub(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_vendorSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorImpl.get_vendorSub(instance);
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn get_oscpu(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_oscpu(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorImpl.get_oscpu(instance);
     }
 
-    pub fn get_language(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorImpl.get_language(instance);
     }
 
@@ -1229,12 +1179,16 @@ pub const Navigator = struct {
         return value;
     }
 
+    pub fn call_deprecatedReplaceInURN(instance: *runtime.Instance, urnOrConfig: UrnOrConfig, replacements: runtime.JSValue) anyerror!runtime.JSValue {
+        return try NavigatorImpl.call_deprecatedReplaceInURN(instance, urnOrConfig, replacements);
+    }
+
     pub fn call_deprecatedURNtoURL(instance: *runtime.Instance, urnOrConfig: UrnOrConfig, send_reports: webidl.Opt(bool)) anyerror!runtime.JSValue {
         return try NavigatorImpl.call_deprecatedURNtoURL(instance, urnOrConfig, send_reports);
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn call_requestMediaKeySystemAccess(instance: *runtime.Instance, keySystem: DOMString, supportedConfigurations: runtime.JSValue) anyerror!runtime.JSValue {
+    pub fn call_requestMediaKeySystemAccess(instance: *runtime.Instance, keySystem: runtime.DOMString, supportedConfigurations: runtime.JSValue) anyerror!runtime.JSValue {
         return try NavigatorImpl.call_requestMediaKeySystemAccess(instance, keySystem, supportedConfigurations);
     }
 
@@ -1245,9 +1199,9 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_canShare(instance, data);
     }
 
-    /// Extended attributes: [SecureContext]
-    pub fn call_createAuctionNonce(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try NavigatorImpl.call_createAuctionNonce(instance);
+    /// Extended attributes: [Exposed=Window]
+    pub fn call_taintEnabled(instance: *runtime.Instance) anyerror!bool {
+        return try NavigatorImpl.call_taintEnabled(instance);
     }
 
     /// Extended attributes: [SecureContext]
@@ -1260,74 +1214,28 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_requestMIDIAccess(instance, options);
     }
 
-    /// Extended attributes: [SecureContext]
-    pub fn call_joinAdInterestGroup(instance: *runtime.Instance, group: AuctionAdInterestGroup) anyerror!runtime.JSValue {
-        return try NavigatorImpl.call_joinAdInterestGroup(instance, group);
-    }
-
-    /// Extended attributes: [Exposed=Window]
-    pub fn call_taintEnabled(instance: *runtime.Instance) anyerror!bool {
-        return try NavigatorImpl.call_taintEnabled(instance);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_runAdAuction(instance: *runtime.Instance, config: AuctionAdConfig) anyerror!runtime.JSValue {
-        return try NavigatorImpl.call_runAdAuction(instance, config);
-    }
-
-    pub const call_registerProtocolHandler = mixins.NavigatorContentUtils.call_registerProtocolHandler;
-
-    pub fn call_vibrate(instance: *runtime.Instance, pattern: VibratePattern) anyerror!bool {
-        return try NavigatorImpl.call_vibrate(instance, pattern);
-    }
-
-    pub const call_javaEnabled = mixins.NavigatorPlugins.call_javaEnabled;
-
-    pub fn call_sendBeacon(instance: *runtime.Instance, url: runtime.USVString, data: webidl.Opt(?BodyInit)) anyerror!bool {
-        return try NavigatorImpl.call_sendBeacon(instance, url, data);
-    }
-
-    pub fn call_getGamepads(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try NavigatorImpl.call_getGamepads(instance);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_createHandwritingRecognizer(instance: *runtime.Instance, constraint: HandwritingModelConstraint) anyerror!runtime.JSValue {
-        return try NavigatorImpl.call_createHandwritingRecognizer(instance, constraint);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_canLoadAdAuctionFencedFrame(instance: *runtime.Instance) anyerror!bool {
-        return try NavigatorImpl.call_canLoadAdAuctionFencedFrame(instance);
-    }
-
-    pub fn call_deprecatedReplaceInURN(instance: *runtime.Instance, urnOrConfig: UrnOrConfig, replacements: runtime.JSValue) anyerror!runtime.JSValue {
-        return try NavigatorImpl.call_deprecatedReplaceInURN(instance, urnOrConfig, replacements);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_getInterestGroupAdAuctionData(instance: *runtime.Instance, config: webidl.Opt(AdAuctionDataConfig)) anyerror!runtime.JSValue {
-        return try NavigatorImpl.call_getInterestGroupAdAuctionData(instance, config);
+    pub fn call_install(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try NavigatorImpl.call_install(instance);
     }
 
     pub fn call_adAuctionComponents(instance: *runtime.Instance, numAdComponents: u16) anyerror!runtime.JSValue {
         return try NavigatorImpl.call_adAuctionComponents(instance, numAdComponents);
     }
 
-    /// Extended attributes: [SecureContext]
-    pub fn call_updateAdInterestGroups(instance: *runtime.Instance) anyerror!void {
-        return try NavigatorImpl.call_updateAdInterestGroups(instance);
-    }
+    pub const call_registerProtocolHandler = mixins.NavigatorContentUtils.call_registerProtocolHandler;
 
     pub const call_setAppBadge = mixins.NavigatorBadge.call_setAppBadge;
+
+    pub fn call_vibrate(instance: *runtime.Instance, pattern: VibratePattern) anyerror!bool {
+        return try NavigatorImpl.call_vibrate(instance, pattern);
+    }
 
     pub fn call_getAutoplayPolicy(instance: *runtime.Instance, @"type": AutoplayPolicyMediaType) anyerror!AutoplayPolicy {
         return try NavigatorImpl.call_getAutoplayPolicy(instance, @"type");
     }
 
-    /// Extended attributes: [SecureContext]
-    pub fn call_share(instance: *runtime.Instance, data: webidl.Opt(ShareData)) anyerror!runtime.JSValue {
-        return try NavigatorImpl.call_share(instance, data);
+    pub fn call_sendBeacon(instance: *runtime.Instance, url: runtime.USVString, data: webidl.Opt(?BodyInit)) anyerror!bool {
+        return try NavigatorImpl.call_sendBeacon(instance, url, data);
     }
 
     /// Extended attributes: [SecureContext]
@@ -1340,16 +1248,30 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_getBattery(instance);
     }
 
-    pub const call_unregisterProtocolHandler = mixins.NavigatorContentUtils.call_unregisterProtocolHandler;
-
     /// Extended attributes: [SecureContext]
-    pub fn call_leaveAdInterestGroup(instance: *runtime.Instance, group: webidl.Opt(AuctionAdInterestGroupKey)) anyerror!runtime.JSValue {
-        return try NavigatorImpl.call_leaveAdInterestGroup(instance, group);
+    pub fn call_share(instance: *runtime.Instance, data: webidl.Opt(ShareData)) anyerror!runtime.JSValue {
+        return try NavigatorImpl.call_share(instance, data);
     }
 
+    pub const call_unregisterProtocolHandler = mixins.NavigatorContentUtils.call_unregisterProtocolHandler;
+
+    pub fn call_getGamepads(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try NavigatorImpl.call_getGamepads(instance);
+    }
+
+    pub const call_javaEnabled = mixins.NavigatorPlugins.call_javaEnabled;
+
     /// Extended attributes: [SecureContext]
-    pub fn call_clearOriginJoinedAdInterestGroups(instance: *runtime.Instance, owner: runtime.USVString, interestGroupsToKeep: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
-        return try NavigatorImpl.call_clearOriginJoinedAdInterestGroups(instance, owner, interestGroupsToKeep);
+    pub fn call_createHandwritingRecognizer(instance: *runtime.Instance, constraint: HandwritingModelConstraint) anyerror!runtime.JSValue {
+        return try NavigatorImpl.call_createHandwritingRecognizer(instance, constraint);
+    }
+
+    pub fn call_install__1(instance: *runtime.Instance, options: InstallParams) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(NavigatorImpl, "call_install__1")) {
+            return try NavigatorImpl.call_install__1(instance, options);
+        } else {
+            return error.NotImplemented;
+        }
     }
 
     pub fn call_getAutoplayPolicy__1(instance: *runtime.Instance, element: *runtime.Instance) anyerror!AutoplayPolicy {
@@ -1373,6 +1295,10 @@ pub const Navigator = struct {
     /// (webidl.overload_resolution). The binding is installed for the first
     /// overload and forwards to the one the arguments select.
     pub const overloads = .{
+        .{ "install", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_install", .args = &.{} },
+            .{ .function = "call_install__1", .implemented = @hasDecl(NavigatorImpl, "call_install__1"), .args = &.{.{ .kinds = &.{.dictionary} }} },
+        } },
         .{ "getAutoplayPolicy", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_getAutoplayPolicy", .args = &.{.{ .kinds = &.{.string} }} },
             .{ .function = "call_getAutoplayPolicy__1", .implemented = @hasDecl(NavigatorImpl, "call_getAutoplayPolicy__1"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "HTMLMediaElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLMediaElement.State) } else .other)} }} },
@@ -1390,22 +1316,18 @@ pub const Navigator = struct {
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{
+        "call_deprecatedReplaceInURN",
         "call_deprecatedURNtoURL",
         "call_requestMediaKeySystemAccess",
         "call_clearAppBadge",
-        "call_createAuctionNonce",
         "call_queryHandwritingRecognizer",
         "call_requestMIDIAccess",
-        "call_joinAdInterestGroup",
-        "call_runAdAuction",
-        "call_createHandwritingRecognizer",
-        "call_deprecatedReplaceInURN",
-        "call_getInterestGroupAdAuctionData",
+        "call_install",
+        "call_install__1",
         "call_setAppBadge",
-        "call_share",
         "call_getInstalledRelatedApps",
         "call_getBattery",
-        "call_leaveAdInterestGroup",
-        "call_clearOriginJoinedAdInterestGroups",
+        "call_share",
+        "call_createHandwritingRecognizer",
     };
 };

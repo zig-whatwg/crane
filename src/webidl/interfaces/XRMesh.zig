@@ -67,10 +67,10 @@ pub const XRMesh = struct {
         Meta.MixinTypes,
         struct {
             meshSpace: *runtime.Instance = undefined,
-            vertices: runtime.JSValue = undefined,
+            vertices: runtime.Float32Array = undefined,
             indices: runtime.Uint32Array = undefined,
             lastChangedTime: typedefs.DOMHighResTimeStamp = undefined,
-            semanticLabel: ?typedefs.DOMString = null,
+            semanticLabel: ?runtime.DOMString = null,
             cached_meshSpace: ?*runtime.Instance = null,
             _internal: ?*XRMeshImpl.InternalState = null,
         },
@@ -197,7 +197,7 @@ pub const XRMesh = struct {
         return try XRMeshImpl.get_lastChangedTime(instance);
     }
 
-    pub fn get_semanticLabel(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_semanticLabel(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try XRMeshImpl.get_semanticLabel(instance);
     }
 };

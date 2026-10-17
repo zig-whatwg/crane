@@ -115,7 +115,7 @@ pub const MediaRecorder = struct {
         Meta.MixinTypes,
         struct {
             stream: *runtime.Instance = undefined,
-            mimeType: typedefs.DOMString = undefined,
+            mimeType: runtime.DOMString = undefined,
             state: enums.RecordingState = undefined,
             onstart: typedefs.EventHandler = undefined,
             onstop: typedefs.EventHandler = undefined,
@@ -259,7 +259,7 @@ pub const MediaRecorder = struct {
         return try MediaRecorderImpl.get_stream(instance);
     }
 
-    pub fn get_mimeType(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_mimeType(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MediaRecorderImpl.get_mimeType(instance);
     }
 
@@ -353,7 +353,7 @@ pub const MediaRecorder = struct {
         return try MediaRecorderImpl.call_resume(instance);
     }
 
-    pub fn call_static_isTypeSupported(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
+    pub fn call_static_isTypeSupported(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
         return try MediaRecorderImpl.call_static_isTypeSupported(instance, @"type");
     }
 

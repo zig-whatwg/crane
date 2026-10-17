@@ -181,7 +181,7 @@ pub const RTCError = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, init_data: RTCErrorInit, message: webidl.Opt(DOMString)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, init_data: RTCErrorInit, message: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try RTCErrorImpl.call_constructor(ctx, init_data, message);
     }

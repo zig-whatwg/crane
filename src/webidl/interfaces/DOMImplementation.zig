@@ -164,7 +164,7 @@ pub const DOMImplementation = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
+    pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(runtime.DOMString)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try DOMImplementationImpl.call_createHTMLDocument(instance, title);
@@ -175,14 +175,14 @@ pub const DOMImplementation = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createDocument(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString, doctype: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
+    pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, doctype: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try DOMImplementationImpl.call_createDocument(instance, namespace, qualifiedName, doctype);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createDocumentType(instance: *runtime.Instance, name: DOMString, publicId: DOMString, systemId: DOMString) anyerror!*runtime.Instance {
+    pub fn call_createDocumentType(instance: *runtime.Instance, name: runtime.DOMString, publicId: runtime.DOMString, systemId: runtime.DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try DOMImplementationImpl.call_createDocumentType(instance, name, publicId, systemId);

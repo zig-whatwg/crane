@@ -71,7 +71,7 @@ pub const VTTRegion = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: typedefs.DOMString = undefined,
+            id: runtime.DOMString = undefined,
             width: f64 = undefined,
             lines: u32 = undefined,
             regionAnchorX: f64 = undefined,
@@ -198,11 +198,11 @@ pub const VTTRegion = struct {
         return try VTTRegionImpl.call_constructor(ctx);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try VTTRegionImpl.get_id(instance);
     }
 
-    pub fn set_id(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_id(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try VTTRegionImpl.set_id(instance, value);
     }
 

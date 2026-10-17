@@ -69,8 +69,8 @@ pub const VisibilityStateEntry = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
-            entryType: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
+            entryType: runtime.DOMString = undefined,
             startTime: typedefs.DOMHighResTimeStamp = undefined,
             duration: u32 = undefined,
             _internal: ?*VisibilityStateEntryImpl.InternalState = null,
@@ -173,11 +173,11 @@ pub const VisibilityStateEntry = struct {
         }
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try VisibilityStateEntryImpl.get_name(instance);
     }
 
-    pub fn get_entryType(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_entryType(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try VisibilityStateEntryImpl.get_entryType(instance);
     }
 

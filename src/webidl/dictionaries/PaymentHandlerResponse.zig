@@ -3,7 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const typedefs = @import("typedefs");
+const AddressInit = @import("AddressInit.zig").AddressInit;
 
 pub const PaymentHandlerResponse = struct {
     methodName: ?runtime.DOMString = null,
@@ -11,7 +11,7 @@ pub const PaymentHandlerResponse = struct {
     payerName: ?runtime.DOMString = null,
     payerEmail: ?runtime.DOMString = null,
     payerPhone: ?runtime.DOMString = null,
-    shippingAddress: ?runtime.JSValue = null,
+    shippingAddress: ?AddressInit = null,
     shippingOption: ?runtime.DOMString = null,
 
     /// Optional members whose IDL type is nullable: a present null is the

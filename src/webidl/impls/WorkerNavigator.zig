@@ -112,12 +112,6 @@ pub fn get_permissions(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return interfaces.Permissions.init(instance.ctx.allocator, instance.ctx);
 }
 
-/// Getter for smartCard
-pub fn get_smartCard(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for usb
 pub fn get_usb(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
@@ -320,6 +314,12 @@ pub fn get_hardwareConcurrency(instance: *runtime.Instance) anyerror!u64 {
 
 /// Operation: taintEnabled
 pub fn call_taintEnabled(instance: *runtime.Instance) anyerror!bool {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for crossOriginStorage
+pub fn get_crossOriginStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

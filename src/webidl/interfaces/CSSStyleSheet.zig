@@ -250,7 +250,7 @@ pub const CSSStyleSheet = struct {
         return try CSSStyleSheetImpl.call_replaceSync(instance, text);
     }
 
-    pub fn call_addRule(instance: *runtime.Instance, selector: webidl.Opt(DOMString), style: webidl.Opt(DOMString), index: webidl.Opt(u32)) anyerror!i32 {
+    pub fn call_addRule(instance: *runtime.Instance, selector: webidl.Opt(runtime.DOMString), style: webidl.Opt(runtime.DOMString), index: webidl.Opt(u32)) anyerror!i32 {
         return try CSSStyleSheetImpl.call_addRule(instance, selector, style, index);
     }
 

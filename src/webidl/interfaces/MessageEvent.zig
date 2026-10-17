@@ -89,7 +89,7 @@ pub const MessageEvent = struct {
         struct {
             data: runtime.JSValue = undefined,
             origin: runtime.USVString = undefined,
-            lastEventId: typedefs.DOMString = undefined,
+            lastEventId: runtime.DOMString = undefined,
             source: ?typedefs.MessageEventSource = null,
             ports: runtime.JSValue = undefined,
             _internal: ?*MessageEventImpl.InternalState = null,
@@ -198,7 +198,7 @@ pub const MessageEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(MessageEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(MessageEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try MessageEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
@@ -211,7 +211,7 @@ pub const MessageEvent = struct {
         return try MessageEventImpl.get_origin(instance);
     }
 
-    pub fn get_lastEventId(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_lastEventId(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MessageEventImpl.get_lastEventId(instance);
     }
 
@@ -223,7 +223,7 @@ pub const MessageEvent = struct {
         return try MessageEventImpl.get_ports(instance);
     }
 
-    pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), data: webidl.Opt(runtime.JSValue), origin: webidl.Opt(runtime.USVString), lastEventId: webidl.Opt(DOMString), source: webidl.Opt(?MessageEventSource), ports: webidl.Opt(runtime.JSValue)) anyerror!void {
+    pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), data: webidl.Opt(runtime.JSValue), origin: webidl.Opt(runtime.USVString), lastEventId: webidl.Opt(runtime.DOMString), source: webidl.Opt(?MessageEventSource), ports: webidl.Opt(runtime.JSValue)) anyerror!void {
         return try MessageEventImpl.call_initMessageEvent(instance, @"type", bubbles, cancelable, data, origin, lastEventId, source, ports);
     }
 };

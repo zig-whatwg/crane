@@ -71,6 +71,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -172,6 +173,7 @@ pub const HTMLTableColElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -179,7 +181,6 @@ pub const HTMLTableColElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -195,6 +196,7 @@ pub const HTMLTableColElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -232,11 +234,11 @@ pub const HTMLTableColElement = struct {
         Meta.MixinTypes,
         struct {
             span: u32 = undefined,
-            @"align": typedefs.DOMString = undefined,
-            ch: typedefs.DOMString = undefined,
-            chOff: typedefs.DOMString = undefined,
-            vAlign: typedefs.DOMString = undefined,
-            width: typedefs.DOMString = undefined,
+            @"align": runtime.DOMString = undefined,
+            ch: runtime.DOMString = undefined,
+            chOff: runtime.DOMString = undefined,
+            vAlign: runtime.DOMString = undefined,
+            width: runtime.DOMString = undefined,
             _internal: ?*HTMLTableColElementImpl.InternalState = null,
         },
     );
@@ -373,83 +375,83 @@ pub const HTMLTableColElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_align(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLTableColElementImpl, "get_align")) return try HTMLTableColElementImpl.get_align(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "align" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "align" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_align(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_align(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTableColElementImpl, "set_align")) return try HTMLTableColElementImpl.set_align(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "align" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "align" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="char"]
-    pub fn get_ch(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_ch(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLTableColElementImpl, "get_ch")) return try HTMLTableColElementImpl.get_ch(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "char" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "char" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="char"]
-    pub fn set_ch(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ch(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTableColElementImpl, "set_ch")) return try HTMLTableColElementImpl.set_ch(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "char" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "char" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="charoff"]
-    pub fn get_chOff(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_chOff(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLTableColElementImpl, "get_chOff")) return try HTMLTableColElementImpl.get_chOff(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "charoff" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "charoff" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="charoff"]
-    pub fn set_chOff(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_chOff(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTableColElementImpl, "set_chOff")) return try HTMLTableColElementImpl.set_chOff(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "charoff" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "charoff" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_vAlign(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_vAlign(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLTableColElementImpl, "get_vAlign")) return try HTMLTableColElementImpl.get_vAlign(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "valign" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "valign" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_vAlign(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_vAlign(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTableColElementImpl, "set_vAlign")) return try HTMLTableColElementImpl.set_vAlign(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "valign" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "valign" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_width(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_width(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLTableColElementImpl, "get_width")) return try HTMLTableColElementImpl.get_width(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "width" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "width" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_width(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_width(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTableColElementImpl, "set_width")) return try HTMLTableColElementImpl.set_width(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "width" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "width" }, value);
     }
 
     /// HTML [CEReactions]: the functions that run a custom element reactions

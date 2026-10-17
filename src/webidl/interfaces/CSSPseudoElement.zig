@@ -10,24 +10,16 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("interfaces").EventTarget;
 const GeometryUtils = @import("mixins").GeometryUtils;
-const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
-const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const DOMString = @import("typedefs").DOMString;
 const CSSOMString = @import("typedefs").CSSOMString;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
-const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const Element = @import("interfaces").Element;
-const Event = @import("interfaces").Event;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
-const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
 
 pub const CSSPseudoElement = struct {
@@ -36,8 +28,7 @@ pub const CSSPseudoElement = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = EventTarget.State;
-        pub const ParentInterface = EventTarget;
+        pub const BaseType = null;
         pub const MixinTypes = &.{
             GeometryUtils,
         };
@@ -53,6 +44,7 @@ pub const CSSPseudoElement = struct {
             .{ "type", "get_type", null },
             .{ "element", "get_element", null },
             .{ "parent", "get_parent", null },
+            .{ "selectorText", "get_selectorText", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -74,18 +66,14 @@ pub const CSSPseudoElement = struct {
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-            "addEventListener",
-            "removeEventListener",
-            "dispatchEvent",
-            "when",
-        };
+        pub const inherited_methods = .{};
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "type", "get_type", null },
             .{ "element", "get_element", null },
             .{ "parent", "get_parent", null },
+            .{ "selectorText", "get_selectorText", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -104,6 +92,7 @@ pub const CSSPseudoElement = struct {
                 Element: Element,
                 CSSPseudoElement: CSSPseudoElement,
             } = undefined,
+            selectorText: typedefs.CSSOMString = undefined,
             _internal: ?*CSSPseudoElementImpl.InternalState = null,
         },
     );
@@ -111,6 +100,7 @@ pub const CSSPseudoElement = struct {
     const delegates = .{
         .get_element = &get_element,
         .get_parent = &get_parent,
+        .get_selectorText = &get_selectorText,
         .get_type = &get_type,
 
         .call_convertPointFromNode = &call_convertPointFromNode,
@@ -162,10 +152,9 @@ pub const CSSPseudoElement = struct {
     ) !*runtime.Instance {
         if (comptime @hasDecl(CSSPseudoElementImpl, "init") and @hasDecl(CSSPseudoElementImpl, "initOwn")) @compileError("CSSPseudoElementImpl defines both init and initOwn");
         if (comptime @hasDecl(CSSPseudoElementImpl, "init")) return CSSPseudoElementImpl.init(allocator, StateType, vtable_ptr, ctx);
-        const instance = try Meta.ParentInterface.initChain(allocator, StateType, vtable_ptr, ctx, args);
+        const instance = try runtime.Instance.init(allocator, StateType, vtable_ptr, ctx);
         if (comptime @hasDecl(CSSPseudoElementImpl, "initOwn")) {
             errdefer {
-                Meta.ParentInterface.deinitChain(instance);
                 runtime.gc.releaseStorage(instance);
             }
             try CSSPseudoElementImpl.initOwn(instance, allocator, StateType, args);
@@ -182,7 +171,7 @@ pub const CSSPseudoElement = struct {
                 if (comptime std.mem.eql(u8, arg, name)) return true;
             }
         }
-        return Meta.ParentInterface.takesConstructionArg(name);
+        return false;
     }
 
     /// The vtable's destructor: the destruction chain.
@@ -197,7 +186,6 @@ pub const CSSPseudoElement = struct {
         if (comptime @hasDecl(CSSPseudoElementImpl, "deinit") and @hasDecl(CSSPseudoElementImpl, "deinitOwn")) @compileError("CSSPseudoElementImpl defines both deinit and deinitOwn");
         if (comptime @hasDecl(CSSPseudoElementImpl, "deinit")) return CSSPseudoElementImpl.deinit(instance);
         if (comptime @hasDecl(CSSPseudoElementImpl, "deinitOwn")) CSSPseudoElementImpl.deinitOwn(instance);
-        Meta.ParentInterface.deinitChain(instance);
     }
 
     /// The impl's process-wide hooks, installed once at process start
@@ -219,6 +207,10 @@ pub const CSSPseudoElement = struct {
 
     pub fn get_parent(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CSSPseudoElementImpl.get_parent(instance);
+    }
+
+    pub fn get_selectorText(instance: *runtime.Instance) anyerror!CSSOMString {
+        return try CSSPseudoElementImpl.get_selectorText(instance);
     }
 
     pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {

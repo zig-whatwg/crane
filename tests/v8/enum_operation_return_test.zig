@@ -254,9 +254,10 @@ test "every operation the generated interfaces bind returns a kind with a conver
     // The walk is not vacuous: it saw the generated operations, and the
     // enum-returning ones (HTMLMediaElement.canPlayType,
     // Navigator.getAutoplayPolicy and its two overloads,
-    // GPU.getPreferredCanvasFormat).
+    // GPU.getPreferredCanvasFormat, and since webref bfbec43f44
+    // XRGPUBinding.getPreferredColorFormat).
     try std.testing.expect(walk.checked > 1000);
-    try std.testing.expectEqual(@as(usize, 5), walk.enums);
+    try std.testing.expectEqual(@as(usize, 6), walk.enums);
 }
 
 test "hasReturnCase's default: a kind convertReturnValue has no case for is unhandled" {

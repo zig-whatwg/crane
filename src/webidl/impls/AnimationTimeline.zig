@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for currentTime
-pub fn get_currentTime(instance: *runtime.Instance) anyerror!?f64 {
+pub fn get_currentTime(instance: *runtime.Instance) anyerror!?typedefs.CSSNumberish {
     _ = instance;
     return null;
 }

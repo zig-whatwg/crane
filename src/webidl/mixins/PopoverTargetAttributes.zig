@@ -24,12 +24,12 @@ pub fn installHooks() void {
     }
 }
 
-/// Extended attributes: [CEReactions], [Reflect]
+/// Extended attributes: [CEReactions], [Reflect="popovertarget"]
 pub fn get_popoverTargetElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return try PopoverTargetAttributesImpl.get_popoverTargetElement(instance);
 }
 
-/// Extended attributes: [CEReactions], [Reflect]
+/// Extended attributes: [CEReactions], [Reflect="popovertarget"]
 pub fn set_popoverTargetElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     // [CEReactions] - Trigger Custom Element lifecycle callbacks
     const ce_scope = runtime.CEReactions.begin(instance);
@@ -39,12 +39,12 @@ pub fn set_popoverTargetElement(instance: *runtime.Instance, value: ?*runtime.In
 }
 
 /// Extended attributes: [CEReactions]
-pub fn get_popoverTargetAction(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_popoverTargetAction(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try PopoverTargetAttributesImpl.get_popoverTargetAction(instance);
 }
 
 /// Extended attributes: [CEReactions]
-pub fn set_popoverTargetAction(instance: *runtime.Instance, value: DOMString) anyerror!void {
+pub fn set_popoverTargetAction(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     // [CEReactions] - Trigger Custom Element lifecycle callbacks
     const ce_scope = runtime.CEReactions.begin(instance);
     defer runtime.CEReactions.end(ce_scope);

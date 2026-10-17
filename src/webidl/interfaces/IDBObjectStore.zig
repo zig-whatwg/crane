@@ -106,7 +106,7 @@ pub const IDBObjectStore = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             keyPath: runtime.JSValue = undefined,
             indexNames: *runtime.Instance = undefined,
             transaction: *runtime.Instance = undefined,
@@ -230,11 +230,11 @@ pub const IDBObjectStore = struct {
         }
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try IDBObjectStoreImpl.get_name(instance);
     }
 
-    pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try IDBObjectStoreImpl.set_name(instance, value);
     }
 
@@ -290,11 +290,11 @@ pub const IDBObjectStore = struct {
         return try IDBObjectStoreImpl.call_count(instance, query);
     }
 
-    pub fn call_deleteIndex(instance: *runtime.Instance, name: DOMString) anyerror!void {
+    pub fn call_deleteIndex(instance: *runtime.Instance, name: runtime.DOMString) anyerror!void {
         return try IDBObjectStoreImpl.call_deleteIndex(instance, name);
     }
 
-    pub fn call_index(instance: *runtime.Instance, name: DOMString) anyerror!*runtime.Instance {
+    pub fn call_index(instance: *runtime.Instance, name: runtime.DOMString) anyerror!*runtime.Instance {
         return try IDBObjectStoreImpl.call_index(instance, name);
     }
 
@@ -327,7 +327,7 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createIndex(instance: *runtime.Instance, name: DOMString, keyPath: runtime.JSValue, options: webidl.Opt(IDBIndexParameters)) anyerror!*runtime.Instance {
+    pub fn call_createIndex(instance: *runtime.Instance, name: runtime.DOMString, keyPath: runtime.JSValue, options: webidl.Opt(IDBIndexParameters)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try IDBObjectStoreImpl.call_createIndex(instance, name, keyPath, options);

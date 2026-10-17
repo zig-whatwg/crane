@@ -71,6 +71,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -183,6 +184,7 @@ pub const HTMLMarqueeElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -190,7 +192,6 @@ pub const HTMLMarqueeElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -206,6 +207,7 @@ pub const HTMLMarqueeElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -247,17 +249,17 @@ pub const HTMLMarqueeElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            behavior: typedefs.DOMString = undefined,
-            bgColor: typedefs.DOMString = undefined,
-            direction: typedefs.DOMString = undefined,
-            height: typedefs.DOMString = undefined,
+            behavior: runtime.DOMString = undefined,
+            bgColor: runtime.DOMString = undefined,
+            direction: runtime.DOMString = undefined,
+            height: runtime.DOMString = undefined,
             hspace: u32 = undefined,
             loop: i32 = undefined,
             scrollAmount: u32 = undefined,
             scrollDelay: u32 = undefined,
             trueSpeed: bool = undefined,
             vspace: u32 = undefined,
-            width: typedefs.DOMString = undefined,
+            width: runtime.DOMString = undefined,
             _internal: ?*HTMLMarqueeElementImpl.InternalState = null,
         },
     );
@@ -391,67 +393,67 @@ pub const HTMLMarqueeElement = struct {
     const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_behavior(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_behavior(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "get_behavior")) return try HTMLMarqueeElementImpl.get_behavior(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "behavior" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "behavior" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_behavior(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_behavior(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_behavior")) return try HTMLMarqueeElementImpl.set_behavior(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "behavior" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "behavior" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_bgColor(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_bgColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "get_bgColor")) return try HTMLMarqueeElementImpl.get_bgColor(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "bgcolor" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "bgcolor" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_bgColor(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_bgColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_bgColor")) return try HTMLMarqueeElementImpl.set_bgColor(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "bgcolor" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "bgcolor" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_direction(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_direction(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "get_direction")) return try HTMLMarqueeElementImpl.get_direction(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "direction" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "direction" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_direction(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_direction(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_direction")) return try HTMLMarqueeElementImpl.set_direction(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "direction" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "direction" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_height(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_height(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "get_height")) return try HTMLMarqueeElementImpl.get_height(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "height" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "height" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_height(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_height(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_height")) return try HTMLMarqueeElementImpl.set_height(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "height" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "height" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -549,19 +551,19 @@ pub const HTMLMarqueeElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_width(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_width(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "get_width")) return try HTMLMarqueeElementImpl.get_width(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "width" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "width" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_width(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_width(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_width")) return try HTMLMarqueeElementImpl.set_width(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "width" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "width" }, value);
     }
 
     pub fn call_start(instance: *runtime.Instance) anyerror!void {
