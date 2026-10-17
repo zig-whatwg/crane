@@ -64,7 +64,9 @@ const Recorder = struct {
             .worker_state => |m| std.fmt.allocPrint(self.allocator, "{d}: worker {d} {s}", .{ environment.id, m.worker, @tagName(m.state) }),
             .registration_slot => |m| std.fmt.allocPrint(self.allocator, "{d}: {s} = {d}", .{ environment.id, @tagName(m.slot), if (m.worker) |w| w.id else 0 }),
             .update_found => std.fmt.allocPrint(self.allocator, "{d}: updatefound", .{environment.id}),
-            .controller_change => std.fmt.allocPrint(self.allocator, "{d}: controllerchange", .{environment.id}),
+            // The new controller as Notify Controller Change saw it: the
+            // realm makes its object from it before firing the event.
+            .controller_change => |m| std.fmt.allocPrint(self.allocator, "{d}: controllerchange {d} {s}", .{ environment.id, if (m) |w| w.id else 0, if (m) |w| @tagName(w.state) else "none" }),
             .ready => |m| std.fmt.allocPrint(self.allocator, "{d}: ready {s}", .{ environment.id, m.scope_url }),
         } catch return;
         self.log.append(self.allocator, line) catch self.allocator.free(line);
@@ -416,9 +418,15 @@ test "a waiting worker activates only once no client uses the registration, or w
     try registry.skipWaiting(second);
     try testing.expectEqual(second, registration.active.?.id);
     try testing.expectEqual(second, page.active_worker.?.id);
+    // Activate step 8's controllerchange names the new controller in the
+    // state step 5 gave it - "activating" - whatever state it is in by the
+    // time the page's task runs (skip-waiting-using-registration.https.html:
+    // "Controller state should be activating").
+    const expected_change = try std.fmt.allocPrint(testing.allocator, "1: controllerchange {d} activating", .{second});
+    defer testing.allocator.free(expected_change);
     var saw_change = false;
     for (recorder.log.items) |line| {
-        if (std.mem.eql(u8, line, "1: controllerchange")) saw_change = true;
+        if (std.mem.eql(u8, line, expected_change)) saw_change = true;
     }
     try testing.expect(saw_change);
     try testing.expectEqual(first, recorder.terminated.items[recorder.terminated.items.len - 1]);
@@ -817,8 +825,10 @@ test "a reserved client is no client until it is adopted: not execution ready, t
     defer testing.allocator.free(all);
     for (all) |client| try testing.expect(client != reserved);
     // Nothing is posted to an environment with no realm: claim() told only
-    // the page.
-    try recorder.expectLog(&.{"1: controllerchange"});
+    // the page - its new controller, activated.
+    const expected_change = try std.fmt.allocPrint(testing.allocator, "1: controllerchange {d} activated", .{worker_id});
+    defer testing.allocator.free(expected_change);
+    try recorder.expectLog(&.{expected_change});
 }
 
 test "Handle Fetch for a navigation: Match, then the reserved client is made and controlled (step 9.8) - not for a report" {

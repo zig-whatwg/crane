@@ -357,8 +357,9 @@ pub const Message = union(enum) {
     /// Install step 9: fire updatefound at the registration's objects.
     update_found: struct { registration: u64 },
     /// Notify Controller Change: fire controllerchange at the realm's
-    /// ServiceWorkerContainer.
-    controller_change,
+    /// ServiceWorkerContainer - its new controller, the environment's active
+    /// service worker, as it is now (null: none).
+    controller_change: ?WorkerSnapshot,
     /// Activate step 7: resolve the realm's ready promise if it is pending.
     ready: RegistrationSnapshot,
 };
@@ -1891,9 +1892,19 @@ pub const Registry = struct {
         self.effects.notify(self.effects.ctx, environment, message);
     }
 
-    /// Notify Controller Change.
+    /// Notify Controller Change. The task carries the new controller as it
+    /// is when the change is made - Activate step 8 makes it in step 5's
+    /// "activating" - and the realm makes its ServiceWorker object from that
+    /// before firing controllerchange. Read later, when the task runs, the
+    /// worker may be "activated" already (the activate event ended on the
+    /// job thread meanwhile), and a controller object made then would show
+    /// that: skip-waiting-using-registration.https.html expects
+    /// "activating" in the event, as Chromium's SetController hands the
+    /// container its controller with the state of that moment
+    /// (ServiceWorkerContainerHost::SendSetControllerServiceWorker).
     fn notifyControllerChange(self: *Registry, environment: *Environment) void {
-        self.notifyEnvironment(environment, .controller_change);
+        const controller: ?WorkerSnapshot = if (environment.active_worker) |w| snapshotWorker(w) else null;
+        self.notifyEnvironment(environment, .{ .controller_change = controller });
     }
 
     /// Post `message` to every environment whose origin is `url`'s.

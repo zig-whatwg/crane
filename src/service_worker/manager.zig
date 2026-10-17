@@ -268,7 +268,8 @@ pub const Delivery = union(enum) {
     worker_state: struct { worker: u64, state: WorkerState },
     registration_slot: struct { registration: u64, slot: Slot, worker: ?WorkerInfo },
     update_found: struct { registration: u64 },
-    controller_change,
+    /// The new controller as Notify Controller Change saw it.
+    controller_change: ?WorkerInfo,
     ready: RegistrationInfo,
     /// getRegistration() step 8.2: the registration matched, or undefined.
     resolve_optional_registration: struct { promise: u64, registration: ?RegistrationInfo },
@@ -312,7 +313,7 @@ pub const Delivery = union(enum) {
                 .worker = if (m.worker) |w| try WorkerInfo.of(allocator, w) else null,
             } },
             .update_found => |m| .{ .update_found = .{ .registration = m.registration } },
-            .controller_change => .controller_change,
+            .controller_change => |m| .{ .controller_change = if (m) |w| try WorkerInfo.of(allocator, w) else null },
             .ready => |snapshot| .{ .ready = try infoOfSnapshot(allocator, registry, snapshot) },
         };
     }
@@ -321,6 +322,7 @@ pub const Delivery = union(enum) {
         switch (self.*) {
             .resolve_registration => |*m| m.registration.deinit(allocator),
             .registration_slot => |*m| if (m.worker) |*w| w.deinit(allocator),
+            .controller_change => |*m| if (m.*) |*w| w.deinit(allocator),
             .ready => |*info| info.deinit(allocator),
             .resolve_optional_registration => |*m| if (m.registration) |*info| info.deinit(allocator),
             .resolve_registrations => |m| {

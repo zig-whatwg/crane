@@ -345,9 +345,13 @@ pub const RealmEnvironment = struct {
                 const instance = entry.object.live() orelse return;
                 dom.navigables.fireSimpleEvent(instance, "updatefound");
             },
-            // Notify Controller Change step 2.
-            .controller_change => {
+            // Notify Controller Change step 2. The new controller's object is
+            // made first, from the controller as the change saw it (registry
+            // notifyControllerChange says why): the event's listeners read
+            // container.controller, and find that object.
+            .controller_change => |*m| {
                 const container = (self.container orelse return).live() orelse return;
+                if (m.*) |info| _ = try self.workerObject(info);
                 dom.navigables.fireSimpleEvent(container, "controllerchange");
             },
             // Activate step 7 and the ready getter's step 3.4: resolve the
