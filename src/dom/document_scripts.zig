@@ -9,7 +9,9 @@
 //! ignore-destructive-writes counter and sets its currentScript. It also asks
 //! the document whether scripting is enabled, whether a style sheet is
 //! blocking scripts, whether its Content Security Policy allows a script, and
-//! hands it a speculation rule set's prefetch hints.
+//! hands it a speculation rule set's prefetch hints. And it answers for the
+//! document's active sandboxing flag set (HTML 7.1.5), which decides whether
+//! scripting is enabled and what else its sandbox restricts.
 //!
 //! All of that is the Document's state, and no IDL member reaches it
 //! (currentScript is read-only to script). So Document keeps a `Scripts` -
@@ -31,6 +33,7 @@
 const std = @import("std");
 const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
+const SandboxingFlagSet = @import("sandboxing.zig").SandboxingFlagSet;
 
 /// A speculation rule's eagerness. More eager first: `@intFromEnum` orders
 /// them.
@@ -144,6 +147,9 @@ pub const Implementation = struct {
     scripts: *const fn (document: *runtime.Instance) ?*Scripts,
     /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#concept-n-script
     scripting_enabled: *const fn (document: *runtime.Instance) bool,
+    /// The document's active sandboxing flag set, fixed when it was created.
+    /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#active-sandboxing-flag-set
+    sandboxing_flags: *const fn (document: *runtime.Instance) SandboxingFlagSet,
     /// Spec: https://html.spec.whatwg.org/multipage/semantics.html#has-a-style-sheet-that-is-blocking-scripts
     has_style_sheet_blocking_scripts: *const fn (document: *runtime.Instance) bool,
     /// CSP §4.2.3 "should element's inline type behavior be blocked", for
@@ -177,6 +183,22 @@ pub fn of(document: *runtime.Instance) ?*Scripts {
 pub fn scriptingEnabled(document: *runtime.Instance) bool {
     const impl = implementation orelse return false;
     return impl.scripting_enabled(document);
+}
+
+/// `document`'s active sandboxing flag set (HTML 7.1.5): what its sandbox
+/// restricts - script, forms, popups, navigation, modals and the rest. Empty
+/// (nothing restricted) for a document Document never made, or with no
+/// implementation installed.
+pub fn activeSandboxingFlags(document: *runtime.Instance) SandboxingFlagSet {
+    const impl = implementation orelse return .empty;
+    return impl.sandboxing_flags(document);
+}
+
+/// Whether `document`'s active sandboxing flag set has the sandboxed scripts
+/// browsing context flag set: script never runs for it, whatever else
+/// enables scripting.
+pub fn scriptsSandboxed(document: *runtime.Instance) bool {
+    return activeSandboxingFlags(document).scripts;
 }
 
 /// Whether `document` has a style sheet that is blocking scripts.
@@ -214,6 +236,8 @@ test "without an installed implementation a document has no scripts and allows e
     var document: runtime.Instance = undefined;
     try std.testing.expect(of(&document) == null);
     try std.testing.expect(!scriptingEnabled(&document));
+    try std.testing.expect(activeSandboxingFlags(&document).isEmpty());
+    try std.testing.expect(!scriptsSandboxed(&document));
     try std.testing.expect(!hasStyleSheetBlockingScripts(&document));
     try std.testing.expect(inlineScriptAllowedByCsp(&document, &document, "", null, false));
     try std.testing.expectEqualStrings("", urlOf(&document));

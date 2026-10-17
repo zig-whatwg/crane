@@ -51,7 +51,7 @@ pub const browsing_context = @import("browsing_context.zig");
 pub const BrowsingContext = browsing_context.BrowsingContext;
 pub const Navigables = browsing_context.Navigables;
 pub const BrowsingContextGroup = browsing_context.BrowsingContextGroup;
-pub const SandboxFlags = browsing_context.SandboxFlags;
+pub const SandboxingFlagSet = browsing_context.SandboxingFlagSet;
 
 // WindowProxy (§7.4)
 pub const window_proxy = @import("window_proxy.zig");

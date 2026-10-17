@@ -219,10 +219,13 @@ test "BrowsingContext - disown removes opener" {
 }
 
 // ============================================================================
-// BrowsingContext - Sandbox Flags Tests
+// BrowsingContext - Sandboxing Tests
 // ============================================================================
 
-test "BrowsingContext - default allows all" {
+// A browsing context keeps only its popup sandboxing flag set (HTML 7.1.5);
+// what restricts a document is the document's own active sandboxing flag set
+// (dom.sandboxing, Document's `sandboxing_flags` construction argument).
+test "BrowsingContext - a top-level context starts with an empty popup sandboxing flag set" {
     const allocator = testing.allocator;
     var navigables = Navigables.init(allocator);
     defer navigables.deinit();
@@ -230,55 +233,8 @@ test "BrowsingContext - default allows all" {
     const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
-    try testing.expect(ctx.allowsScripts());
-    try testing.expect(ctx.allowsForms());
-    try testing.expect(ctx.allowsPopups());
-    try testing.expect(ctx.allowsTopNavigation());
-    try testing.expect(ctx.allowsModals());
-}
-
-test "BrowsingContext - sandbox flags can restrict" {
-    const allocator = testing.allocator;
-    var navigables = Navigables.init(allocator);
-    defer navigables.deinit();
-
-    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
-    defer ctx.deinit();
-
-    // Restrictive flags (all false) means all features are restricted
-    const flags = html.window.SandboxFlags{
-        .allow_scripts = false,
-        .allow_forms = false,
-        .allow_modals = false,
-        .allow_popups = true, // Only popups allowed
-    };
-    ctx.setSandboxFlags(flags);
-
-    try testing.expect(!ctx.allowsScripts());
-    try testing.expect(!ctx.allowsForms());
-    try testing.expect(!ctx.allowsModals());
-    try testing.expect(ctx.allowsPopups()); // This one is allowed
-}
-
-test "BrowsingContext - clearSandboxFlags restores access" {
-    const allocator = testing.allocator;
-    var navigables = Navigables.init(allocator);
-    defer navigables.deinit();
-
-    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
-    defer ctx.deinit();
-
-    // Set restrictive flags (scripts not allowed)
-    const flags = html.window.SandboxFlags{
-        .allow_scripts = false,
-    };
-    ctx.setSandboxFlags(flags);
-
-    try testing.expect(!ctx.allowsScripts());
-
-    ctx.clearSandboxFlags();
-
-    try testing.expect(ctx.allowsScripts());
+    try testing.expect(ctx.popup_sandboxing_flags.isEmpty());
+    try testing.expect(ctx.one_permitted_sandboxed_navigator == null);
 }
 
 // ============================================================================

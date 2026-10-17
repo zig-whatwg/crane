@@ -25,7 +25,8 @@ const Allocator = std.mem.Allocator;
 const browsing_context = @import("browsing_context.zig");
 const BrowsingContext = browsing_context.BrowsingContext;
 const Navigables = browsing_context.Navigables;
-const SandboxFlags = browsing_context.SandboxFlags;
+const SandboxingFlagSet = browsing_context.SandboxingFlagSet;
+const sandboxing = @import("dom").sandboxing;
 const WindowProxy = @import("window_proxy.zig").WindowProxy;
 const Origin = @import("window_proxy.zig").Origin;
 const OriginRecord = @import("dom").origin_record.OriginRecord;
@@ -235,11 +236,19 @@ pub const IFrameIntegration = struct {
     /// Origin of the container document (for same-origin checks)
     container_origin: Origin,
 
-    /// Sandbox flags for this iframe (null if no sandbox attribute)
-    sandbox_flags: ?SandboxFlags,
+    /// HTML's iframe sandboxing flag set: what the iframe's sandbox
+    /// attribute says, parsed ("parse a sandboxing directive") whenever it
+    /// changes - empty without the attribute, and for every other navigable
+    /// container, which has none. It reaches a document only through "determine
+    /// the creation sandboxing flags", when the navigable is created or
+    /// navigated; changing it changes nothing about the documents it has.
+    /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#iframe-sandboxing-flag-set
+    iframe_sandboxing_flags: SandboxingFlagSet = .empty,
 
-    /// Whether this iframe is sandboxed
-    is_sandboxed: bool,
+    /// The active sandboxing flag set for the next document this navigable
+    /// makes (navigationParams's final sandboxing flag set), taken when the
+    /// document is created; empty when none was set.
+    next_sandboxing_flags: SandboxingFlagSet = .empty,
 
     // ========================================================================
     // Cross-Realm Support (Phase 3)
@@ -430,8 +439,6 @@ pub const IFrameIntegration = struct {
             .loaded_url = null,
             .name = "",
             .container_origin = Origin.createOpaque(),
-            .sandbox_flags = null,
-            .is_sandboxed = false,
             // Cross-realm fields (engine-agnostic)
             .engine_context = null,
             .realm = null,
@@ -669,6 +676,20 @@ pub const IFrameIntegration = struct {
         return record;
     }
 
+    /// The active sandboxing flag set for the next document this navigable
+    /// makes.
+    pub fn setNextSandboxingFlags(self: *IFrameIntegration, flags: SandboxingFlagSet) void {
+        self.next_sandboxing_flags = flags;
+    }
+
+    /// The pending active sandboxing flag set, handed over: the integration
+    /// is left with the empty set.
+    pub fn takeNextSandboxingFlags(self: *IFrameIntegration) SandboxingFlagSet {
+        const flags = self.next_sandboxing_flags;
+        self.next_sandboxing_flags = .empty;
+        return flags;
+    }
+
     /// Record the origin the navigable's Windows are created with.
     pub fn setWindowOrigin(self: *IFrameIntegration, origin: ?[]const u8) !void {
         const copy: ?[]u8 = if (origin) |o| try self.allocator.dupe(u8, o) else null;
@@ -784,17 +805,6 @@ pub const IFrameIntegration = struct {
         // Set the target name if we have one
         if (self.name.len > 0) {
             nested_ctx.setTargetName(self.name) catch {};
-        }
-
-        // CRITICAL: Apply sandbox flags to the newly created browsing context.
-        // Per HTML spec §4.8.5, sandbox flags may have been set on the integration
-        // before the browsing context was created (e.g., via setAttribute('sandbox', '')).
-        // The browsing context must inherit these flags so that script execution
-        // respects the sandbox restrictions.
-        if (self.is_sandboxed) {
-            if (self.sandbox_flags) |flags| {
-                nested_ctx.setSandboxFlags(flags);
-            }
         }
 
         // Create the WindowProxy
@@ -1082,8 +1092,10 @@ pub const IFrameIntegration = struct {
 
         // The document origin follows the URL navigated to - an about: URL
         // inherits the container's - and is set as the document is created,
-        // before any of its script runs.
-        var new_origin = self.parseOriginFromURL(final_url);
+        // before any of its script runs. A document whose final sandboxing
+        // flag set has the sandboxed origin browsing context flag is of a new
+        // opaque origin, whatever its URL ("determining the origin" step 1).
+        var new_origin = if (self.next_sandboxing_flags.origin) Origin.createOpaque() else self.parseOriginFromURL(final_url);
         if (!new_origin.is_opaque and new_origin.host.len > 0) {
             const owned_host = self.allocator.dupe(u8, new_origin.host) catch return IFrameError.OutOfMemory;
             if (self.document_origin_host) |old| self.allocator.free(old);
@@ -1584,74 +1596,19 @@ pub const IFrameIntegration = struct {
     // Sandbox Attribute (§4.8.5.4)
     // ========================================================================
 
-    /// Set sandbox flags from the sandbox attribute value
-    /// Per HTML Standard §4.8.5.4
-    /// Empty value means all restrictions apply.
-    /// "allow-*" tokens lift specific restrictions.
-    pub fn setSandbox(self: *IFrameIntegration, value: []const u8) IFrameError!void {
-        const flags = SandboxFlags.parseAlloc(self.allocator, value) catch {
-            return IFrameError.OutOfMemory;
-        };
-        self.sandbox_flags = flags;
-        self.is_sandboxed = true;
-
-        // Apply to browsing context if it exists
-        if (self.browsing_context) |ctx| {
-            ctx.setSandboxFlags(flags);
-        }
+    /// The iframe sandbox attribute's change steps: its iframe sandboxing
+    /// flag set becomes the result of parsing `value` ("parse a sandboxing
+    /// directive"). "These flags only take effect when the content navigable
+    /// of the iframe element is navigated."
+    /// Spec: https://html.spec.whatwg.org/multipage/iframe-embed-object.html#attr-iframe-sandbox
+    pub fn setSandbox(self: *IFrameIntegration, value: []const u8) void {
+        self.iframe_sandboxing_flags = sandboxing.parseSandboxingDirective(value);
     }
 
-    /// Remove sandbox (clear the sandbox attribute)
+    /// The sandbox attribute removed: "the iframe element's iframe sandboxing
+    /// flag set must be emptied" - again only for later navigations.
     pub fn clearSandbox(self: *IFrameIntegration) void {
-        self.sandbox_flags = null;
-        self.is_sandboxed = false;
-
-        // Clear from browsing context if it exists
-        if (self.browsing_context) |ctx| {
-            ctx.clearSandboxFlags();
-        }
-    }
-
-    /// Get the current sandbox flags (null if not sandboxed)
-    pub fn getSandboxFlags(self: *const IFrameIntegration) ?SandboxFlags {
-        return self.sandbox_flags;
-    }
-
-    /// Check if this iframe is sandboxed
-    pub fn isSandboxed(self: *const IFrameIntegration) bool {
-        return self.is_sandboxed;
-    }
-
-    /// Check if scripts are allowed in this iframe
-    pub fn allowsScripts(self: *const IFrameIntegration) bool {
-        if (self.sandbox_flags) |flags| {
-            return flags.allow_scripts;
-        }
-        return true; // Not sandboxed
-    }
-
-    /// Check if forms are allowed in this iframe
-    pub fn allowsForms(self: *const IFrameIntegration) bool {
-        if (self.sandbox_flags) |flags| {
-            return flags.allow_forms;
-        }
-        return true;
-    }
-
-    /// Check if popups are allowed in this iframe
-    pub fn allowsPopups(self: *const IFrameIntegration) bool {
-        if (self.sandbox_flags) |flags| {
-            return flags.allow_popups;
-        }
-        return true;
-    }
-
-    /// Check if top navigation is allowed in this iframe
-    pub fn allowsTopNavigation(self: *const IFrameIntegration) bool {
-        if (self.sandbox_flags) |flags| {
-            return flags.allow_top_navigation;
-        }
-        return true;
+        self.iframe_sandboxing_flags = .empty;
     }
 
     // ============================================================================
@@ -1684,11 +1641,9 @@ pub const IFrameIntegration = struct {
         if (node.node_type == .element) {
             if (node.local_name) |name| {
                 if (std.mem.eql(u8, name, "script")) {
-                    // Check if sandbox allows scripts
-                    if (self.isSandboxed() and !self.allowsScripts()) {
-                        // Sandbox blocks script execution
-                        return;
-                    }
+                    // No script runs when the navigable is created
+                    // sandboxed without allow-scripts.
+                    if (self.iframe_sandboxing_flags.scripts) return;
 
                     // Get script text content from child text nodes
                     const script_text = self.getScriptTextContent(node);
@@ -1985,67 +1940,29 @@ test "IFrameIntegration - about:blank inherits origin" {
 // Sandbox Tests
 // ============================================================================
 
-test "IFrameIntegration - setSandbox with empty value blocks all" {
+test "IFrameIntegration - the sandbox attribute parses into the iframe sandboxing flag set" {
     const allocator = std.testing.allocator;
 
     var integration = IFrameIntegration.init(allocator);
     defer integration.deinit();
+    try std.testing.expect(integration.iframe_sandboxing_flags.isEmpty());
 
-    // Empty sandbox = all restrictions
-    try integration.setSandbox("");
+    // Empty sandbox: every flag.
+    integration.setSandbox("");
+    try std.testing.expect(integration.iframe_sandboxing_flags.eql(sandboxing.parseSandboxingDirective("")));
+    try std.testing.expect(integration.iframe_sandboxing_flags.scripts);
 
-    try std.testing.expect(integration.isSandboxed());
-    try std.testing.expect(!integration.allowsScripts());
-    try std.testing.expect(!integration.allowsForms());
-    try std.testing.expect(!integration.allowsPopups());
-    try std.testing.expect(!integration.allowsTopNavigation());
-}
-
-test "IFrameIntegration - setSandbox with allow-scripts" {
-    const allocator = std.testing.allocator;
-
-    var integration = IFrameIntegration.init(allocator);
-    defer integration.deinit();
-
-    try integration.setSandbox("allow-scripts");
-
-    try std.testing.expect(integration.isSandboxed());
-    try std.testing.expect(integration.allowsScripts());
-    try std.testing.expect(!integration.allowsForms());
-}
-
-test "IFrameIntegration - setSandbox with multiple flags" {
-    const allocator = std.testing.allocator;
-
-    var integration = IFrameIntegration.init(allocator);
-    defer integration.deinit();
-
-    try integration.setSandbox("allow-scripts allow-forms allow-same-origin");
-
-    try std.testing.expect(integration.isSandboxed());
-    try std.testing.expect(integration.allowsScripts());
-    try std.testing.expect(integration.allowsForms());
-
-    const flags = integration.getSandboxFlags().?;
-    try std.testing.expect(flags.allow_same_origin);
-}
-
-test "IFrameIntegration - clearSandbox removes restrictions" {
-    const allocator = std.testing.allocator;
-
-    var integration = IFrameIntegration.init(allocator);
-    defer integration.deinit();
-
-    try integration.setSandbox("allow-scripts");
-    try std.testing.expect(integration.isSandboxed());
+    integration.setSandbox("allow-scripts allow-forms allow-same-origin");
+    try std.testing.expect(!integration.iframe_sandboxing_flags.scripts);
+    try std.testing.expect(!integration.iframe_sandboxing_flags.forms);
+    try std.testing.expect(!integration.iframe_sandboxing_flags.origin);
+    try std.testing.expect(integration.iframe_sandboxing_flags.auxiliary_navigation);
 
     integration.clearSandbox();
-    try std.testing.expect(!integration.isSandboxed());
-    try std.testing.expect(integration.allowsScripts()); // No sandbox = allow all
-    try std.testing.expect(integration.allowsForms());
+    try std.testing.expect(integration.iframe_sandboxing_flags.isEmpty());
 }
 
-test "IFrameIntegration - sandbox applied to browsing context" {
+test "IFrameIntegration - the sandbox attribute never touches the browsing context" {
     const allocator = std.testing.allocator;
     var navigables = Navigables.init(allocator);
     defer navigables.deinit();
@@ -2056,20 +1973,24 @@ test "IFrameIntegration - sandbox applied to browsing context" {
     var integration = IFrameIntegration.init(allocator);
     defer integration.deinit();
 
-    // Set sandbox before insertion
-    try integration.setSandbox("allow-scripts");
-
-    // Insert into document
+    integration.setSandbox("allow-scripts");
     try integration.onInsertedIntoDocument(parent_ctx, Origin.createOpaque());
+    const ctx = integration.browsing_context orelse return error.TestUnexpectedResult;
+    // A child context has no flags of its own: they go to each document as
+    // it is created.
+    try std.testing.expect(ctx.popup_sandboxing_flags.isEmpty());
+    integration.setSandbox("");
+    try std.testing.expect(ctx.popup_sandboxing_flags.isEmpty());
+}
 
-    // Apply sandbox to browsing context
-    if (integration.browsing_context) |ctx| {
-        // The sandbox flags should be applied
-        ctx.setSandboxFlags(integration.sandbox_flags.?);
-        try std.testing.expect(ctx.is_sandboxed);
-        try std.testing.expect(ctx.allowsScripts());
-        try std.testing.expect(!ctx.allowsForms());
-    }
+test "IFrameIntegration - the next document's flags are handed over once" {
+    const allocator = std.testing.allocator;
+    var integration = IFrameIntegration.init(allocator);
+    defer integration.deinit();
+    try std.testing.expect(integration.takeNextSandboxingFlags().isEmpty());
+    integration.setNextSandboxingFlags(sandboxing.parseSandboxingDirective("allow-scripts"));
+    try std.testing.expect(integration.takeNextSandboxingFlags().eql(sandboxing.parseSandboxingDirective("allow-scripts")));
+    try std.testing.expect(integration.takeNextSandboxingFlags().isEmpty());
 }
 
 // ============================================================================

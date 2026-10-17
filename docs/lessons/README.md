@@ -304,6 +304,7 @@ A lane brief now carries the lessons chosen for its batch.
 ### Spec Compliance
 - [Parse selectors over CSS tokens, not characters](spec-compliance-parse-selectors-over-css-tokens.md) - A selector is a CSS grammar over CSS tokens: tokenize per CSS Syntax 3 first, and validity questions answer themselves.
 - [:hover and :active follow the engines' observable rules](spec-compliance-user-action-pseudo-classes-follow-the-engines.md) - For user-action state, read each subtest's browser result before applying the prose: the engines' narrower rules are what WPT checks.
+- [A sandbox belongs to the document it was created with, not to the frame](spec-compliance-a-sandbox-belongs-to-the-document-not-the-frame.md) - Put a security state on the object the spec puts it on, and fix it where the spec fixes it: a flag kept on the frame cannot say which document it applies to.
 - [A form's past names go at the change of owner, and insertBefore is one](spec-compliance-past-names-go-at-the-owner-change.md) - A rule keyed on a change of a computed value needs the change, not a later comparison - and a remove-then-insert is two changes even when the value ends where it began.
 - [A reflection failure can come from an own accessor](spec-compliance-a-reflection-failure-can-come-from-an-own-accessor.md) - Trace generated dispatch and the member's complete algorithm before changing a shared reflector.
 - [Cookie normalization precedes validation](spec-compliance-cookie-normalization-precedes-validation.md) - Normalize before validation and distinguish empty names from omitted filters.
@@ -481,6 +482,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A partial interface's [SecureContext] is its members', not the interface's](codegen-a-partial-interfaces-securecontext-is-its-members-not-the-interfaces.md) - Before honouring an interface-level extended attribute, check that a partial or mixin did not put it there: some attributes scope members, not the interface.
 
 ### Testing
+- [A headers file applies only to the path it names](testing-a-headers-file-applies-only-to-the-path-it-names.md) - Before diagnosing a header-driven failure, confirm the header is sent (`curl -sI`): a misnamed headers file fails silently, in your tests and in upstream ones.
 - [Only state made natively can be orphaned - a wrap reaches up to the root](testing-only-state-made-natively-can-be-orphaned.md) - An orphan is a subtree script never touched: reproduce an orphan leak with state the engine makes on its own, first with state made at parse time; reading the node from script wraps it and every ancestor.
 - [Crane tests are not in the wptreport stream](testing-crane-tests-are-not-in-the-wptreport-stream.md) - A wptreport query proves nothing about crane/ files: check their journal records.
 - [A key pressed by one Actions source is not released by another](testing-a-key-pressed-by-one-actions-source-is-not-released-by-another.md) - Press and release a key from the same named source; an unnamed Actions() never releases what another pressed.

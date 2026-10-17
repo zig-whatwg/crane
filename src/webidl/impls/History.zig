@@ -252,7 +252,17 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
         reloadNavigable(window, bc);
         return;
     }
-    queueTraversal(internal, bc.getTop(), .{ .delta = delta_val }, false);
+    // Delta traverse step 4 hands "apply the history step" this's associated
+    // Document's navigable as initiatorToCheck. Deviation, stated (golden
+    // rule 2, the browsers split): it is not checked here. Firefox 157 and
+    // Safari 27 let a sandboxed frame's history.back() and forward()
+    // traverse its parent's entries (iframe_sandbox_navigate_history_go_back
+    // and _go_forward: both fail with "assert_unreached: no pop state" at
+    // aligned wpt.fyi revision cc74d2669f); only Chrome 154 refuses. All
+    // three refuse the navigation API's traversals (sandboxing-back-parent,
+    // sandboxing-back-sibling: 1/1 each), which Navigation's traverseToKey
+    // checks.
+    queueTraversal(internal, bc.getTop(), .{ .delta = delta_val }, false, null);
 }
 
 /// HTML "reload" `bc`'s navigable: its current entry, repopulated - a
@@ -316,7 +326,7 @@ fn traverseWindowToStep(window: *runtime.Instance, step: u32) void {
     const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
     const history_instance = interfaces.Window.get_history(window) catch return;
     const internal = getInternal(history_instance) orelse return;
-    queueTraversal(internal, bc.getTop(), .{ .step = step }, false);
+    queueTraversal(internal, bc.getTop(), .{ .step = step }, false, initiatorOf(window, bc));
 }
 
 /// dom.history_traversal: "resume applying the traverse history step" to
@@ -326,7 +336,7 @@ fn resumeTraversalOfWindow(window: *runtime.Instance, step: u32) void {
     const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
     const history_instance = interfaces.Window.get_history(window) catch return;
     const internal = getInternal(history_instance) orelse return;
-    queueTraversal(internal, bc.getTop(), .{ .step = step }, true);
+    queueTraversal(internal, bc.getTop(), .{ .step = step }, true, null);
 }
 
 /// dom.history_traversal: the URL and history update steps for `window`'s
@@ -538,15 +548,41 @@ const Traversal = struct {
     /// "Resume applying the traverse history step": the traversable's
     /// navigate event was fired and intercepted; it is not fired again.
     resumed: bool,
+    /// "Apply the history step"'s initiatorToCheck with its source snapshot
+    /// params; null for a traversal no sandboxed document asked for.
+    initiator: ?Initiator = null,
 };
+
+/// The navigable whose document asked for a traversal - by id: it can go
+/// before the traversal runs - and that document's source snapshot params:
+/// its active sandboxing flag set and whether its window had transient
+/// activation, as it asked.
+const Initiator = struct {
+    navigable: u64,
+    snapshot: html_core.navigation.sandbox_navigation.SourceSnapshot,
+};
+
+/// The initiator a traversal `window`'s document asks for carries, for the
+/// navigable `bc`: null when the document is not sandboxed - an empty
+/// sandboxing flag set allows every navigation, so there is nothing to check.
+fn initiatorOf(window: ?*runtime.Instance, bc: *BrowsingContext) ?Initiator {
+    const w = window orelse return null;
+    const document = interfaces.Window.get_document(w) catch return null;
+    const flags = @import("dom").document_scripts.activeSandboxingFlags(document);
+    if (flags.isEmpty()) return null;
+    return .{ .navigable = bc.id, .snapshot = .{
+        .sandboxing_flags = flags,
+        .has_transient_activation = @import("html").user_activation.hasTransientActivation(w),
+    } };
+}
 
 /// Append session history traversal steps - a task, here - that apply the
 /// step `target` names.
-fn queueTraversal(internal: *InternalState, top: *BrowsingContext, target: Target, resumed: bool) void {
+fn queueTraversal(internal: *InternalState, top: *BrowsingContext, target: Target, resumed: bool, initiator: ?Initiator) void {
     const window = internal.window orelse return;
     const navigables = top.navigables orelse return;
     const task = internal.allocator.create(Traversal) catch return;
-    task.* = .{ .navigables = navigables, .top_id = top.id, .target = target, .allocator = internal.allocator, .resumed = resumed };
+    task.* = .{ .navigables = navigables, .top_id = top.id, .target = target, .allocator = internal.allocator, .resumed = resumed, .initiator = initiator };
     const loop = window.ctx.getOptionalEventLoop() orelse return runTraversal(task);
     loop.queueTask(.{ .callback = &runTraversal, .context = task, .drop = &dropTraversal });
 }
@@ -597,6 +633,22 @@ fn runTraversal(context: ?*anyopaque) void {
         .delta => |delta| history.stepByDelta(delta) orelse return,
         .step => |step| step,
     };
+
+    // "Apply the history step" step 3: "If initiatorToCheck is not null ...
+    // for each navigable of get all navigables whose current session history
+    // entry will change or reload: if initiatorToCheck is not allowed by
+    // sandboxing to navigate navigable given sourceSnapshotParams, then
+    // return "initiator-disallowed"." An initiator gone since it asked is
+    // allowed nothing.
+    if (task.initiator) |initiator| {
+        const source = navigables.byId(initiator.navigable) orelse return;
+        for (tree.items) |bc| {
+            const current = history.currentEntry(bc.id) orelse continue;
+            const target_entry = history.entryAt(bc.id, target) orelse continue;
+            if (current == target_entry) continue;
+            if (!html_core.navigation.sandbox_navigation.allowedBySandboxingToNavigate(source, bc, initiator.snapshot)) return;
+        }
+    }
 
     // Step 5, "checking if unloading is canceled" step 4: the traversable's
     // navigate event, when its entry changes within its origin. Canceled -
