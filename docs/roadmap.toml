@@ -321,6 +321,7 @@ progress = [
   "e11f10cd02 - Document-owned scoped registries across DOM creation, cloning, adoption and fragment parsing; form-associated ElementInternals ownership, values, validity and callbacks; ordered custom states and selector matching. Set iterator binding and optional UA restoration triggers remain follow-ups",
   "5b7aa161d9, 5bf24ee0ea - preserve absent versus null customElementRegistry in ShadowRootInit and publish inherited indexed getter/length facades; other nullable dictionary members and HTMLOptionsCollection's missing setter remain follow-ups",
   "7eb7d4aa552 (merge, binding3 batch 1) - a dictionary member present as null converts by its type; [Global] members are the global's own; [SecureContext] exposure per realm; callbacks of a Window whose Document is not fully active do not run; structuredClone transfer handle leak and native [SameObject] reads traced",
+  "f12aaaa6686 (merge, lane bindtype) - an interface-typed value converts only from a platform object that implements its interface (arguments, overloads, constructors, setters, dictionary members, sequence elements), from codegen tables naming every position's interface",
   "65ba206e671, b7cdedccdc5, 5bc3b68c535 (lane bindtype) - codegen names the interface of every interface-typed value (interface_arguments, constructor_interface_arguments, interface_members); the binding converts one only from a platform object that implements it, and an uncovered position is a compile error",
 ]
 
@@ -504,6 +505,7 @@ progress = [
   "8a5f9d87ee, 300ab32f48 - the classic scripts' [[HostDefined]] records are their agent's (AgentHost.classic_scripts), not one unlocked process-wide list two Browsers' scripts corrupted; the module map's dispose function is told each entry's key; inline module scripts keyed by address, not a process-wide counter (liveclassic lane)",
   "a3b66752d2a, 1a9fdbd1a42, 9d683d9d305, cc296e964b2 - service workers batch 1: each Browser's registrations, job queues, workers and clients in a BrowserScope supplement (service_worker.Manager) under one lock, its job thread in the Browser's WorkerRegistry, every service worker on a thread of its own (html.worker_host's third kind); register/update/unregister, install/activate with waitUntil, skipWaiting, claim, idle termination; per-realm ServiceWorker/ServiceWorkerRegistration objects (sw1 lane)",
   "08d8f490341 (merge), e5ba46b939d - service workers batch 2: messages between pages and service workers and the client message queue, Clients get/matchAll, Cache Storage per Browser over the platform storage engine shared across threads; a service worker's realm is a secure context",
+  "f13e81794f7 (merge) - service workers batch 3: every window and worker a service worker client from its creation, Handle Fetch (FetchEvent, respondWith, subresource and navigation interception, the response across threads), WindowClient.navigate and Soft Update; opaque responses keep their internal response",
 ]
 
   [[infra.items]]
