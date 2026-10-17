@@ -51,7 +51,9 @@ pub const Decoder = struct {
             const lead = self.euc_jp_lead;
             self.euc_jp_lead = 0x00;
 
-            const code_point: ?u21 = if (b >= 0xA1 and b <= 0xFE) blk: {
+            // §12.1.1 step 5.4 requires BOTH bytes in the index range.
+            // A rejected halfwidth prefix (0x8E) must not underflow here.
+            const code_point: ?u21 = if (lead >= 0xA1 and lead <= 0xFE and b >= 0xA1 and b <= 0xFE) blk: {
                 const pointer: u32 = (@as(u32, lead - 0xA1) * 94) + (b - 0xA1);
 
                 if (self.euc_jp_jis0212_flag) {

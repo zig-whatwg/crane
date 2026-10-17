@@ -106,7 +106,8 @@ fn decodeUnits(comptime Unit: type, decoder: *Decoder, input: []const u8, output
             result.bytes_consumed += 1;
             break :blk b;
         } else null;
-        const point = byte_decoder.decode(byte) catch {
+        // Keep the per-byte handler in this loop without changing its state machine.
+        const point = @call(.always_inline, iso_2022_jp_impl.Decoder.decode, .{ &byte_decoder, byte }) catch {
             // The handler has consumed this item; any restored bytes are in
             // its two-byte queue. There are no external bytes to skip.
             result.status = .malformed;
@@ -216,7 +217,7 @@ pub fn encode(
             state_wrapper.state = byte_encoder.state;
             return .{
                 .status = .unmappable,
-                .code_units_consumed = in_pos - 1,
+                .code_units_consumed = input_before,
                 .bytes_written = out_pos,
                 // Step 3 reports U+000E, U+000F and U+001B as U+FFFD, so an
                 // escape sequence cannot be smuggled through as a reference.
@@ -246,6 +247,21 @@ pub fn encode(
         if (state_wrapper.pending_high_surrogate != null) {
             fba.reset();
             const encoded = byte_encoder.encode(allocator, 0xFFFD) catch {
+                // Step 11.1 also applies to a final lone surrogate's U+FFFD:
+                // write the ASCII designation before reporting the error.
+                if (byte_encoder.state == .jis0208) {
+                    const escape = [_]u8{ 0x1B, 0x28, 0x42 };
+                    if (output.len - out_pos < escape.len) return .{
+                        .status = .output_full,
+                        .code_units_consumed = in_pos,
+                        .bytes_written = out_pos,
+                    };
+                    @memcpy(output[out_pos..][0..escape.len], &escape);
+                    out_pos += escape.len;
+                    byte_encoder.state = .ascii;
+                }
+                state_wrapper.state = byte_encoder.state;
+                state_wrapper.pending_high_surrogate = null;
                 return .{
                     .status = .unmappable,
                     .code_units_consumed = in_pos,

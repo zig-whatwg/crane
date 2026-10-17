@@ -14,6 +14,7 @@ pub const Gb18030DecoderState = struct {
     gb18030_second: u8 = 0x00,
     gb18030_third: u8 = 0x00,
     is_gbk: bool = false,
+    pending_ascii: ?u8 = null,
 };
 
 /// gb18030 encoder state for streaming
@@ -32,130 +33,117 @@ pub fn decode(
     is_last: bool,
 ) streaming.DecodeResult {
     std.debug.assert(decoder.state == .gb18030 or decoder.state == .neutral);
-
-    // Initialize state if needed
     if (decoder.state == .neutral) {
         decoder.state = .{ .gb18030 = .{
-            .gb18030_first = 0x00,
-            .gb18030_second = 0x00,
-            .gb18030_third = 0x00,
+            .gb18030_first = 0,
+            .gb18030_second = 0,
+            .gb18030_third = 0,
             .is_gbk = false,
         } };
     }
-
-    var state = &decoder.state.gb18030;
+    const state = &decoder.state.gb18030;
     var byte_decoder = gb18030_impl.Decoder{
         .gb18030_first = state.gb18030_first,
         .gb18030_second = state.gb18030_second,
         .gb18030_third = state.gb18030_third,
         .is_gbk = state.is_gbk,
     };
-
+    defer {
+        state.gb18030_first = byte_decoder.gb18030_first;
+        state.gb18030_second = byte_decoder.gb18030_second;
+        state.gb18030_third = byte_decoder.gb18030_third;
+    }
     var in_pos: usize = 0;
     var out_pos: usize = 0;
-
+    // A failed four-byte sequence restores its ASCII second byte before its
+    // third byte (already retained as a lead) and the unread current byte.
+    if (state.pending_ascii) |byte| {
+        if (output.len == 0) return .{ .status = .output_full, .bytes_consumed = in_pos, .code_units_written = out_pos };
+        output[out_pos] = byte;
+        out_pos += 1;
+        state.pending_ascii = null;
+    }
     while (in_pos < input.len) {
-        // Prefetch next cache line for large buffers (64-byte cache lines)
         if (in_pos + 64 < input.len) {
             @prefetch(&input[in_pos + 64], .{ .rw = .read, .locality = 3 });
         }
-
-        if (out_pos >= output.len) {
-            // Output buffer full - save state and return
-            state.gb18030_first = byte_decoder.gb18030_first;
-            state.gb18030_second = byte_decoder.gb18030_second;
-            state.gb18030_third = byte_decoder.gb18030_third;
-            return .{
-                .status = .output_full,
-                .bytes_consumed = in_pos,
-                .code_units_written = out_pos,
-            };
-        }
-
+        if (out_pos == output.len) return .{ .status = .output_full, .bytes_consumed = in_pos, .code_units_written = out_pos };
         const byte = input[in_pos];
-
-        // Decode one byte
-        const result = byte_decoder.decode(byte) catch {
-            @branchHint(.unlikely); // Decoding errors are rare in valid GB18030
-            // Decoding error - emit replacement character
-            output[out_pos] = 0xFFFD;
-            out_pos += 1;
-            in_pos += 1;
-
-            // Reset decoder state
-            byte_decoder.gb18030_first = 0x00;
-            byte_decoder.gb18030_second = 0x00;
-            byte_decoder.gb18030_third = 0x00;
-            continue;
+        const before = byte_decoder;
+        const point_or_continue = byte_decoder.decode(byte) catch {
+            @branchHint(.unlikely);
+            const error_length = restoreAfterError(&state.pending_ascii, &byte_decoder, before, byte);
+            return .{ .status = .malformed, .bytes_consumed = in_pos, .code_units_written = out_pos, .error_length = error_length };
         };
-
-        in_pos += 1;
-
-        if (result) |code_point| {
-            // Got a code point - emit it as UTF-16
-            if (code_point <= 0xFFFF) {
-                // BMP code point - single UTF-16 code unit
-                output[out_pos] = @intCast(code_point);
+        if (point_or_continue) |point| {
+            if (point <= 0xffff) {
+                output[out_pos] = @intCast(point);
                 out_pos += 1;
             } else {
-                // Supplementary code point - need surrogate pair
-                if (out_pos + 1 >= output.len) {
-                    // Not enough space for surrogate pair - back up
-                    in_pos -= 1;
-                    state.gb18030_first = byte_decoder.gb18030_first;
-                    state.gb18030_second = byte_decoder.gb18030_second;
-                    state.gb18030_third = byte_decoder.gb18030_third;
-                    return .{
-                        .status = .output_full,
-                        .bytes_consumed = in_pos,
-                        .code_units_written = out_pos,
-                    };
+                if (output.len - out_pos < 2) {
+                    byte_decoder = before;
+                    return .{ .status = .output_full, .bytes_consumed = in_pos, .code_units_written = out_pos };
                 }
-
-                // Encode as UTF-16 surrogate pair
-                const adjusted = code_point - 0x10000;
-                const high: u16 = @intCast(0xD800 + (adjusted >> 10));
-                const low: u16 = @intCast(0xDC00 + (adjusted & 0x3FF));
-                output[out_pos] = high;
-                output[out_pos + 1] = low;
+                const adjusted = point - 0x10000;
+                output[out_pos] = @intCast(0xd800 + (adjusted >> 10));
+                output[out_pos + 1] = @intCast(0xdc00 + (adjusted & 0x3ff));
                 out_pos += 2;
             }
         }
-        // If result is null, continue accumulating bytes
+        in_pos += 1;
     }
+    if (is_last and byte_decoder.gb18030_first != 0) {
+        if (out_pos == output.len) return .{ .status = .output_full, .bytes_consumed = in_pos, .code_units_written = out_pos };
+        // §10.2.1 step 2 consumes the entire unfinished sequence at EOF.
+        _ = byte_decoder.decode(null) catch return .{ .status = .malformed, .bytes_consumed = in_pos, .code_units_written = out_pos, .error_length = 0 };
+    }
+    return .{ .status = .input_empty, .bytes_consumed = in_pos, .code_units_written = out_pos };
+}
 
-    // Save state
-    state.gb18030_first = byte_decoder.gb18030_first;
-    state.gb18030_second = byte_decoder.gb18030_second;
-    state.gb18030_third = byte_decoder.gb18030_third;
-
-    // Check if we have pending bytes at end of stream
-    if (is_last and (state.gb18030_first != 0x00 or
-        state.gb18030_second != 0x00 or
-        state.gb18030_third != 0x00))
-    {
-        @branchHint(.unlikely); // Incomplete sequences at EOF are rare
-        // Incomplete sequence at end - emit error
-        if (out_pos < output.len) {
-            output[out_pos] = 0xFFFD;
-            out_pos += 1;
-            state.gb18030_first = 0x00;
-            state.gb18030_second = 0x00;
-            state.gb18030_third = 0x00;
-        } else {
-            return .{
-                .status = .output_full,
-                .bytes_consumed = in_pos,
-                .code_units_written = out_pos,
-            };
+/// Preserve the bytes restored by §10.2.1 without retaining the input slice.
+/// The second byte is ASCII; the restored third byte is necessarily a lead.
+/// See encoding_rs/src/gb18030.rs: pending_ascii with Pending::One.
+fn restoreAfterError(
+    pending_ascii: *?u8,
+    decoder: *gb18030_impl.Decoder,
+    before: gb18030_impl.Decoder,
+    byte: u8,
+) u8 {
+    if (before.gb18030_third != 0) {
+        if (byte < 0x30 or byte > 0x39) {
+            // Step 3.1: restore second, third, and current byte, in that order.
+            pending_ascii.* = before.gb18030_second;
+            decoder.gb18030_first = before.gb18030_third;
+            return 0;
         }
+        // Step 3.4: an unmapped four-byte pointer consumes all four bytes.
+        return 1;
     }
+    if (before.gb18030_second != 0) {
+        // Step 4.2: restore the second and current byte.
+        pending_ascii.* = before.gb18030_second;
+        return 0;
+    }
+    // Step 5.9: a malformed two-byte sequence restores only an ASCII trail.
+    return if (before.gb18030_first != 0 and byte < 0x80) 0 else 1;
+}
 
-    return .{
-        .status = .input_empty,
-        .bytes_consumed = in_pos,
-        .code_units_written = out_pos,
-    };
+/// Encoding §10.1.2: GBK's encoder is gb18030's with its is GBK flag set.
+/// Select the mode at the entry point, without relying on Encoding addresses
+/// (equal constants can share an address in optimized builds).
+pub fn encodeGbk(
+    encoder: *Encoder,
+    input: []const u16,
+    output: []u8,
+    is_last: bool,
+) streaming.EncodeResult {
+    if (encoder.state == .neutral) {
+        encoder.state = .{ .gb18030 = .{
+            .is_gbk = true,
+            .pending_high_surrogate = null,
+        } };
+    }
+    return encode(encoder, input, output, is_last);
 }
 
 /// gb18030 streaming encode implementation
@@ -189,6 +177,10 @@ pub fn encode(
     const allocator = fba.allocator();
 
     while (in_pos < input.len) {
+        // A scalar may start in the previous call. Retry from this call's
+        // cursor and carried high surrogate, never by indexing before input.
+        const input_before = in_pos;
+        const pending_before = state.pending_high_surrogate;
         const code_unit = input[in_pos];
 
         // Handle surrogate pairs
@@ -231,7 +223,7 @@ pub fn encode(
                 // Can't encode this code point
                 return .{
                     .status = .unmappable,
-                    .code_units_consumed = in_pos - 1,
+                    .code_units_consumed = input_before,
                     .bytes_written = out_pos,
                     .error_code_point = code_point,
                 };
@@ -239,7 +231,7 @@ pub fn encode(
             // Other error (OutOfMemory shouldn't happen with fixed buffer)
             return .{
                 .status = .unmappable,
-                .code_units_consumed = in_pos - 1,
+                .code_units_consumed = input_before,
                 .bytes_written = out_pos,
                 .error_code_point = code_point,
             };
@@ -248,14 +240,10 @@ pub fn encode(
         // Check if we have room in output
         if (out_pos + encoded.len > output.len) {
             // Not enough space - back up
-            in_pos -= 1;
-            if (code_point >= 0x10000) {
-                // Was a surrogate pair - restore high surrogate
-                state.pending_high_surrogate = input[in_pos - 1];
-            }
+            state.pending_high_surrogate = pending_before;
             return .{
                 .status = .output_full,
-                .code_units_consumed = in_pos,
+                .code_units_consumed = input_before,
                 .bytes_written = out_pos,
             };
         }
@@ -270,6 +258,8 @@ pub fn encode(
         // Unpaired high surrogate at end - emit replacement
         fba.reset();
         const encoded = byte_encoder.encode(allocator, 0xFFFD) catch {
+            // The final surrogate error consumes its pending input once.
+            state.pending_high_surrogate = null;
             return .{
                 .status = .unmappable,
                 .code_units_consumed = in_pos,
@@ -312,119 +302,64 @@ pub fn decodeToUtf8(
     is_last: bool,
 ) streaming.DecodeToUtf8Result {
     std.debug.assert(decoder.state == .gb18030 or decoder.state == .neutral);
-
-    // Initialize state if needed
     if (decoder.state == .neutral) {
         decoder.state = .{ .gb18030 = .{
-            .gb18030_first = 0x00,
-            .gb18030_second = 0x00,
-            .gb18030_third = 0x00,
+            .gb18030_first = 0,
+            .gb18030_second = 0,
+            .gb18030_third = 0,
             .is_gbk = false,
         } };
     }
-
-    var state = &decoder.state.gb18030;
+    const state = &decoder.state.gb18030;
     var byte_decoder = gb18030_impl.Decoder{
         .gb18030_first = state.gb18030_first,
         .gb18030_second = state.gb18030_second,
         .gb18030_third = state.gb18030_third,
         .is_gbk = state.is_gbk,
     };
-
+    defer {
+        state.gb18030_first = byte_decoder.gb18030_first;
+        state.gb18030_second = byte_decoder.gb18030_second;
+        state.gb18030_third = byte_decoder.gb18030_third;
+    }
     var in_pos: usize = 0;
     var out_pos: usize = 0;
-
+    // A failed four-byte sequence restores its ASCII second byte before its
+    // third byte (already retained as a lead) and the unread current byte.
+    if (state.pending_ascii) |byte| {
+        if (output.len == 0) return .{ .status = .output_full, .bytes_consumed = in_pos, .bytes_written = out_pos };
+        output[out_pos] = byte;
+        out_pos += 1;
+        state.pending_ascii = null;
+    }
     while (in_pos < input.len) {
-        // Prefetch next cache line for large buffers
         if (in_pos + 64 < input.len) {
             @prefetch(&input[in_pos + 64], .{ .rw = .read, .locality = 3 });
         }
-
+        if (out_pos == output.len) return .{ .status = .output_full, .bytes_consumed = in_pos, .bytes_written = out_pos };
         const byte = input[in_pos];
-
-        // Decode one byte
-        const result = byte_decoder.decode(byte) catch {
+        const before = byte_decoder;
+        const point_or_continue = byte_decoder.decode(byte) catch {
             @branchHint(.unlikely);
-            // Decoding error - emit replacement character U+FFFD as UTF-8 (0xEF 0xBF 0xBD)
-            if (out_pos + 3 > output.len) {
-                state.gb18030_first = byte_decoder.gb18030_first;
-                state.gb18030_second = byte_decoder.gb18030_second;
-                state.gb18030_third = byte_decoder.gb18030_third;
-                return .{
-                    .status = .output_full,
-                    .bytes_consumed = in_pos,
-                    .bytes_written = out_pos,
-                };
-            }
-            output[out_pos] = 0xEF;
-            output[out_pos + 1] = 0xBF;
-            output[out_pos + 2] = 0xBD;
-            out_pos += 3;
-            in_pos += 1;
-
-            // Reset decoder state
-            byte_decoder.gb18030_first = 0x00;
-            byte_decoder.gb18030_second = 0x00;
-            byte_decoder.gb18030_third = 0x00;
-            continue;
+            const error_length = restoreAfterError(&state.pending_ascii, &byte_decoder, before, byte);
+            return .{ .status = .malformed, .bytes_consumed = in_pos, .bytes_written = out_pos, .error_length = error_length };
         };
-
-        in_pos += 1;
-
-        if (result) |code_point| {
-            // Got a code point - emit it as UTF-8 directly
-            const utf8_len = writeUtf8CodePoint(code_point, output[out_pos..]);
-            if (utf8_len == 0) {
-                // Output buffer full - back up
-                in_pos -= 1;
-                state.gb18030_first = byte_decoder.gb18030_first;
-                state.gb18030_second = byte_decoder.gb18030_second;
-                state.gb18030_third = byte_decoder.gb18030_third;
-                return .{
-                    .status = .output_full,
-                    .bytes_consumed = in_pos,
-                    .bytes_written = out_pos,
-                };
+        if (point_or_continue) |point| {
+            const written = writeUtf8CodePoint(point, output[out_pos..]);
+            if (written == 0) {
+                byte_decoder = before;
+                return .{ .status = .output_full, .bytes_consumed = in_pos, .bytes_written = out_pos };
             }
-            out_pos += utf8_len;
+            out_pos += written;
         }
-        // If result is null, continue accumulating bytes
+        in_pos += 1;
     }
-
-    // Save state
-    state.gb18030_first = byte_decoder.gb18030_first;
-    state.gb18030_second = byte_decoder.gb18030_second;
-    state.gb18030_third = byte_decoder.gb18030_third;
-
-    // Check if we have pending bytes at end of stream
-    if (is_last and (state.gb18030_first != 0x00 or
-        state.gb18030_second != 0x00 or
-        state.gb18030_third != 0x00))
-    {
-        @branchHint(.unlikely);
-        // Incomplete sequence at end - emit replacement character
-        if (out_pos + 3 <= output.len) {
-            output[out_pos] = 0xEF;
-            output[out_pos + 1] = 0xBF;
-            output[out_pos + 2] = 0xBD;
-            out_pos += 3;
-            state.gb18030_first = 0x00;
-            state.gb18030_second = 0x00;
-            state.gb18030_third = 0x00;
-        } else {
-            return .{
-                .status = .output_full,
-                .bytes_consumed = in_pos,
-                .bytes_written = out_pos,
-            };
-        }
+    if (is_last and byte_decoder.gb18030_first != 0) {
+        if (out_pos == output.len) return .{ .status = .output_full, .bytes_consumed = in_pos, .bytes_written = out_pos };
+        // §10.2.1 step 2 consumes the entire unfinished sequence at EOF.
+        _ = byte_decoder.decode(null) catch return .{ .status = .malformed, .bytes_consumed = in_pos, .bytes_written = out_pos, .error_length = 0 };
     }
-
-    return .{
-        .status = .input_empty,
-        .bytes_consumed = in_pos,
-        .bytes_written = out_pos,
-    };
+    return .{ .status = .input_empty, .bytes_consumed = in_pos, .bytes_written = out_pos };
 }
 
 /// Write a code point as UTF-8. Returns number of bytes written (0 if buffer too small).

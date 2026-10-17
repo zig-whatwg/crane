@@ -56,101 +56,56 @@ pub fn decode(
     is_last: bool,
 ) streaming.DecodeResult {
     std.debug.assert(decoder.state == .euc_jp or decoder.state == .neutral);
-
     if (decoder.state == .neutral) {
-        decoder.state = .{ .euc_jp = .{ .euc_jp_lead = 0x00, .euc_jp_jis0212_flag = false } };
+        decoder.state = .{ .euc_jp = .{ .euc_jp_lead = 0, .euc_jp_jis0212_flag = false } };
     }
-
-    var state = &decoder.state.euc_jp;
+    const state = &decoder.state.euc_jp;
     var byte_decoder = euc_jp_impl.Decoder{
         .euc_jp_lead = state.euc_jp_lead,
         .euc_jp_jis0212_flag = state.euc_jp_jis0212_flag,
     };
-
+    defer {
+        state.euc_jp_lead = byte_decoder.euc_jp_lead;
+        state.euc_jp_jis0212_flag = byte_decoder.euc_jp_jis0212_flag;
+    }
     var in_pos: usize = 0;
     var out_pos: usize = 0;
-
     while (in_pos < input.len) {
-        // Prefetch next cache line for large buffers (64-byte cache lines)
         if (in_pos + 64 < input.len) {
             @prefetch(&input[in_pos + 64], .{ .rw = .read, .locality = 3 });
         }
-
-        if (out_pos >= output.len) {
-            state.euc_jp_lead = byte_decoder.euc_jp_lead;
-            state.euc_jp_jis0212_flag = byte_decoder.euc_jp_jis0212_flag;
-            return .{
-                .status = .output_full,
-                .bytes_consumed = in_pos,
-                .code_units_written = out_pos,
-            };
-        }
-
+        if (out_pos == output.len) return .{ .status = .output_full, .bytes_consumed = in_pos, .code_units_written = out_pos };
         const byte = input[in_pos];
-
-        const result = byte_decoder.decode(byte) catch {
-            @branchHint(.unlikely); // Decode errors are rare in valid EUC-JP
-            output[out_pos] = 0xFFFD;
-            out_pos += 1;
-            in_pos += 1;
-
-            byte_decoder.euc_jp_lead = 0x00;
-            byte_decoder.euc_jp_jis0212_flag = false;
-            continue;
+        const before = byte_decoder;
+        const point_or_continue = byte_decoder.decode(byte) catch {
+            @branchHint(.unlikely);
+            // §12.1.1 step 5.7: restore an ASCII trail. The handler's
+            // resulting state belongs to it; replacement mode must retain it.
+            return .{ .status = .malformed, .bytes_consumed = in_pos, .code_units_written = out_pos, .error_length = if (before.euc_jp_lead != 0 and byte < 0x80) 0 else 1 };
         };
-
-        in_pos += 1;
-
-        if (result) |code_point| {
-            if (code_point <= 0xFFFF) {
-                output[out_pos] = @intCast(code_point);
+        if (point_or_continue) |point| {
+            if (point <= 0xffff) {
+                output[out_pos] = @intCast(point);
                 out_pos += 1;
             } else {
-                if (out_pos + 1 >= output.len) {
-                    in_pos -= 1;
-                    state.euc_jp_lead = byte_decoder.euc_jp_lead;
-                    state.euc_jp_jis0212_flag = byte_decoder.euc_jp_jis0212_flag;
-                    return .{
-                        .status = .output_full,
-                        .bytes_consumed = in_pos,
-                        .code_units_written = out_pos,
-                    };
+                if (output.len - out_pos < 2) {
+                    byte_decoder = before;
+                    return .{ .status = .output_full, .bytes_consumed = in_pos, .code_units_written = out_pos };
                 }
-
-                const adjusted = code_point - 0x10000;
-                const high: u16 = @intCast(0xD800 + (adjusted >> 10));
-                const low: u16 = @intCast(0xDC00 + (adjusted & 0x3FF));
-                output[out_pos] = high;
-                output[out_pos + 1] = low;
+                const adjusted = point - 0x10000;
+                output[out_pos] = @intCast(0xd800 + (adjusted >> 10));
+                output[out_pos + 1] = @intCast(0xdc00 + (adjusted & 0x3ff));
                 out_pos += 2;
             }
         }
+        in_pos += 1;
     }
-
-    state.euc_jp_lead = byte_decoder.euc_jp_lead;
-    state.euc_jp_jis0212_flag = byte_decoder.euc_jp_jis0212_flag;
-
-    if (is_last and (state.euc_jp_lead != 0x00 or state.euc_jp_jis0212_flag)) {
-        @branchHint(.unlikely); // Incomplete sequences at EOF are rare
-        if (out_pos < output.len) {
-            output[out_pos] = 0xFFFD;
-            out_pos += 1;
-            state.euc_jp_lead = 0x00;
-            state.euc_jp_jis0212_flag = false;
-        } else {
-            return .{
-                .status = .output_full,
-                .bytes_consumed = in_pos,
-                .code_units_written = out_pos,
-            };
-        }
+    if (is_last and byte_decoder.euc_jp_lead != 0) {
+        if (out_pos == output.len) return .{ .status = .output_full, .bytes_consumed = in_pos, .code_units_written = out_pos };
+        // §12.1.1 step 1: clear the pending lead and report one EOF error.
+        _ = byte_decoder.decode(null) catch return .{ .status = .malformed, .bytes_consumed = in_pos, .code_units_written = out_pos, .error_length = 0 };
     }
-
-    return .{
-        .status = .input_empty,
-        .bytes_consumed = in_pos,
-        .code_units_written = out_pos,
-    };
+    return .{ .status = .input_empty, .bytes_consumed = in_pos, .code_units_written = out_pos };
 }
 
 pub fn encode(
@@ -172,6 +127,10 @@ pub fn encode(
     var out_pos: usize = 0;
 
     while (in_pos < input.len) {
+        // A scalar may start in the previous call. Retry from this call's
+        // cursor and carried high surrogate, never by indexing before input.
+        const input_before = in_pos;
+        const pending_before = state.pending_high_surrogate;
         const code_unit = input[in_pos];
 
         var code_point: u21 = undefined;
@@ -203,14 +162,14 @@ pub fn encode(
             if (err == error.InvalidCodePoint) {
                 return .{
                     .status = .unmappable,
-                    .code_units_consumed = in_pos - 1,
+                    .code_units_consumed = input_before,
                     .bytes_written = out_pos,
                     .error_code_point = code_point,
                 };
             }
             return .{
                 .status = .unmappable,
-                .code_units_consumed = in_pos - 1,
+                .code_units_consumed = input_before,
                 .bytes_written = out_pos,
                 .error_code_point = code_point,
             };
@@ -221,13 +180,10 @@ pub fn encode(
         if (encoded.?[2] != 0) encoded_len = 3;
 
         if (out_pos + encoded_len > output.len) {
-            in_pos -= 1;
-            if (code_point >= 0x10000) {
-                state.pending_high_surrogate = input[in_pos - 1];
-            }
+            state.pending_high_surrogate = pending_before;
             return .{
                 .status = .output_full,
-                .code_units_consumed = in_pos,
+                .code_units_consumed = input_before,
                 .bytes_written = out_pos,
             };
         }
@@ -246,6 +202,8 @@ pub fn encode(
 
     if (is_last and state.pending_high_surrogate != null) {
         const encoded = byte_encoder.encode(0xFFFD) catch {
+            // The final surrogate error consumes its pending input once.
+            state.pending_high_surrogate = null;
             return .{
                 .status = .unmappable,
                 .code_units_consumed = in_pos,
@@ -297,94 +255,47 @@ pub fn decodeToUtf8(
     is_last: bool,
 ) streaming.DecodeToUtf8Result {
     std.debug.assert(decoder.state == .euc_jp or decoder.state == .neutral);
-
     if (decoder.state == .neutral) {
-        decoder.state = .{ .euc_jp = .{ .euc_jp_lead = 0x00, .euc_jp_jis0212_flag = false } };
+        decoder.state = .{ .euc_jp = .{ .euc_jp_lead = 0, .euc_jp_jis0212_flag = false } };
     }
-
-    var state = &decoder.state.euc_jp;
+    const state = &decoder.state.euc_jp;
     var byte_decoder = euc_jp_impl.Decoder{
         .euc_jp_lead = state.euc_jp_lead,
         .euc_jp_jis0212_flag = state.euc_jp_jis0212_flag,
     };
-
+    defer {
+        state.euc_jp_lead = byte_decoder.euc_jp_lead;
+        state.euc_jp_jis0212_flag = byte_decoder.euc_jp_jis0212_flag;
+    }
     var in_pos: usize = 0;
     var out_pos: usize = 0;
-
     while (in_pos < input.len) {
-        // Prefetch next cache line for large buffers (64-byte cache lines)
         if (in_pos + 64 < input.len) {
             @prefetch(&input[in_pos + 64], .{ .rw = .read, .locality = 3 });
         }
-
+        if (out_pos == output.len) return .{ .status = .output_full, .bytes_consumed = in_pos, .bytes_written = out_pos };
         const byte = input[in_pos];
-
-        const result = byte_decoder.decode(byte) catch {
-            @branchHint(.unlikely); // Decode errors are rare in valid EUC-JP
-            // Write replacement character (U+FFFD = 0xEF 0xBF 0xBD in UTF-8)
-            if (out_pos + 2 >= output.len) {
-                state.euc_jp_lead = byte_decoder.euc_jp_lead;
-                state.euc_jp_jis0212_flag = byte_decoder.euc_jp_jis0212_flag;
-                return .{
-                    .status = .output_full,
-                    .bytes_consumed = in_pos,
-                    .bytes_written = out_pos,
-                };
-            }
-            output[out_pos] = 0xEF;
-            output[out_pos + 1] = 0xBF;
-            output[out_pos + 2] = 0xBD;
-            out_pos += 3;
-            in_pos += 1;
-            byte_decoder.euc_jp_lead = 0x00;
-            byte_decoder.euc_jp_jis0212_flag = false;
-            continue;
+        const before = byte_decoder;
+        const point_or_continue = byte_decoder.decode(byte) catch {
+            @branchHint(.unlikely);
+            // §12.1.1 step 5.7: restore an ASCII trail. The handler's
+            // resulting state belongs to it; replacement mode must retain it.
+            return .{ .status = .malformed, .bytes_consumed = in_pos, .bytes_written = out_pos, .error_length = if (before.euc_jp_lead != 0 and byte < 0x80) 0 else 1 };
         };
-
-        in_pos += 1;
-
-        if (result) |code_point| {
-            if (writeUtf8CodePoint(output, out_pos, code_point)) |bytes_written| {
-                out_pos += bytes_written;
+        if (point_or_continue) |point| {
+            if (writeUtf8CodePoint(output, out_pos, point)) |written| {
+                out_pos += written;
             } else {
-                // Output buffer full - back up
-                in_pos -= 1;
-                state.euc_jp_lead = byte_decoder.euc_jp_lead;
-                state.euc_jp_jis0212_flag = byte_decoder.euc_jp_jis0212_flag;
-                return .{
-                    .status = .output_full,
-                    .bytes_consumed = in_pos,
-                    .bytes_written = out_pos,
-                };
+                byte_decoder = before;
+                return .{ .status = .output_full, .bytes_consumed = in_pos, .bytes_written = out_pos };
             }
         }
+        in_pos += 1;
     }
-
-    state.euc_jp_lead = byte_decoder.euc_jp_lead;
-    state.euc_jp_jis0212_flag = byte_decoder.euc_jp_jis0212_flag;
-
-    if (is_last and (state.euc_jp_lead != 0x00 or state.euc_jp_jis0212_flag)) {
-        @branchHint(.unlikely); // Incomplete sequences at EOF are rare
-        // Write replacement character for incomplete sequence
-        if (out_pos + 2 < output.len) {
-            output[out_pos] = 0xEF;
-            output[out_pos + 1] = 0xBF;
-            output[out_pos + 2] = 0xBD;
-            out_pos += 3;
-            state.euc_jp_lead = 0x00;
-            state.euc_jp_jis0212_flag = false;
-        } else {
-            return .{
-                .status = .output_full,
-                .bytes_consumed = in_pos,
-                .bytes_written = out_pos,
-            };
-        }
+    if (is_last and byte_decoder.euc_jp_lead != 0) {
+        if (out_pos == output.len) return .{ .status = .output_full, .bytes_consumed = in_pos, .bytes_written = out_pos };
+        // §12.1.1 step 1: clear the pending lead and report one EOF error.
+        _ = byte_decoder.decode(null) catch return .{ .status = .malformed, .bytes_consumed = in_pos, .bytes_written = out_pos, .error_length = 0 };
     }
-
-    return .{
-        .status = .input_empty,
-        .bytes_consumed = in_pos,
-        .bytes_written = out_pos,
-    };
+    return .{ .status = .input_empty, .bytes_consumed = in_pos, .bytes_written = out_pos };
 }

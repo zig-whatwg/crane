@@ -24,137 +24,61 @@ pub fn decode(
     is_last: bool,
 ) streaming.DecodeResult {
     std.debug.assert(decoder.state == .big5 or decoder.state == .neutral);
-
     if (decoder.state == .neutral) {
-        decoder.state = .{ .big5 = .{ .big5_lead = 0x00, .pending_code_point = null } };
+        decoder.state = .{ .big5 = .{ .big5_lead = 0, .pending_code_point = null } };
     }
-
-    var state = &decoder.state.big5;
+    const state = &decoder.state.big5;
     var byte_decoder = big5_impl.Decoder{
         .big5_lead = state.big5_lead,
         .pending_code_point = state.pending_code_point,
     };
-
+    defer {
+        state.big5_lead = byte_decoder.big5_lead;
+        state.pending_code_point = byte_decoder.pending_code_point;
+    }
     var in_pos: usize = 0;
     var out_pos: usize = 0;
-
     while (in_pos < input.len or byte_decoder.pending_code_point != null) {
-        // Prefetch next cache line for large buffers (only when processing input)
-        if (in_pos < input.len and in_pos + 64 < input.len) {
-            @prefetch(&input[in_pos + 64], .{ .rw = .read, .locality = 3 });
-        }
-
-        if (out_pos >= output.len) {
-            state.big5_lead = byte_decoder.big5_lead;
-            state.pending_code_point = byte_decoder.pending_code_point;
-            return .{
-                .status = .output_full,
-                .bytes_consumed = in_pos,
-                .code_units_written = out_pos,
-            };
-        }
-
-        // If we have a pending code point, emit it without consuming input
-        if (byte_decoder.pending_code_point != null) {
-            const result = byte_decoder.decode(null) catch {
-                @branchHint(.unlikely); // Decode errors are rare in valid Big5
-                output[out_pos] = 0xFFFD;
-                out_pos += 1;
-                continue;
-            };
-
-            if (result) |code_point| {
-                if (code_point <= 0xFFFF) {
-                    output[out_pos] = @intCast(code_point);
-                    out_pos += 1;
-                } else {
-                    if (out_pos + 1 >= output.len) {
-                        state.big5_lead = byte_decoder.big5_lead;
-                        state.pending_code_point = byte_decoder.pending_code_point;
-                        return .{
-                            .status = .output_full,
-                            .bytes_consumed = in_pos,
-                            .code_units_written = out_pos,
-                        };
-                    }
-
-                    const adjusted = code_point - 0x10000;
-                    const high: u16 = @intCast(0xD800 + (adjusted >> 10));
-                    const low: u16 = @intCast(0xDC00 + (adjusted & 0x3FF));
-                    output[out_pos] = high;
-                    output[out_pos + 1] = low;
-                    out_pos += 2;
-                }
-            }
-            continue;
-        }
-
-        // Break if no more input
-        if (in_pos >= input.len) break;
-
-        const byte = input[in_pos];
-
-        const result = byte_decoder.decode(byte) catch {
-            @branchHint(.unlikely); // Decode errors are rare in valid Big5
-            output[out_pos] = 0xFFFD;
+        if (out_pos == output.len) return .{ .status = .output_full, .bytes_consumed = in_pos, .code_units_written = out_pos };
+        // §11.1.1 step 3.6: the second scalar precedes the next input item,
+        // including EOF. Keep it pending until its entire output fits.
+        if (byte_decoder.pending_code_point) |point| {
+            output[out_pos] = @intCast(point);
             out_pos += 1;
-            in_pos += 1;
-
-            byte_decoder.big5_lead = 0x00;
             byte_decoder.pending_code_point = null;
             continue;
+        }
+        const byte = input[in_pos];
+        const before = byte_decoder;
+        const point_or_continue = byte_decoder.decode(byte) catch {
+            @branchHint(.unlikely);
+            // §11.1.1 step 3.9 restores an ASCII trail, even when the pair's
+            // pointer exists but is unmapped. The handler cleared its lead.
+            return .{ .status = .malformed, .bytes_consumed = in_pos, .code_units_written = out_pos, .error_length = if (before.big5_lead != 0 and byte < 0x80) 0 else 1 };
         };
-
-        in_pos += 1;
-
-        if (result) |code_point| {
-            if (code_point <= 0xFFFF) {
-                output[out_pos] = @intCast(code_point);
+        if (point_or_continue) |point| {
+            if (point <= 0xffff) {
+                output[out_pos] = @intCast(point);
                 out_pos += 1;
             } else {
-                if (out_pos + 1 >= output.len) {
-                    in_pos -= 1;
-                    state.big5_lead = byte_decoder.big5_lead;
-                    return .{
-                        .status = .output_full,
-                        .bytes_consumed = in_pos,
-                        .code_units_written = out_pos,
-                    };
+                if (output.len - out_pos < 2) {
+                    byte_decoder = before;
+                    return .{ .status = .output_full, .bytes_consumed = in_pos, .code_units_written = out_pos };
                 }
-
-                const adjusted = code_point - 0x10000;
-                const high: u16 = @intCast(0xD800 + (adjusted >> 10));
-                const low: u16 = @intCast(0xDC00 + (adjusted & 0x3FF));
-                output[out_pos] = high;
-                output[out_pos + 1] = low;
+                const adjusted = point - 0x10000;
+                output[out_pos] = @intCast(0xd800 + (adjusted >> 10));
+                output[out_pos + 1] = @intCast(0xdc00 + (adjusted & 0x3ff));
                 out_pos += 2;
             }
         }
+        in_pos += 1;
     }
-
-    state.big5_lead = byte_decoder.big5_lead;
-    state.pending_code_point = byte_decoder.pending_code_point;
-
-    if (is_last and state.big5_lead != 0x00) {
-        @branchHint(.unlikely); // Incomplete sequences at EOF are rare
-        if (out_pos < output.len) {
-            output[out_pos] = 0xFFFD;
-            out_pos += 1;
-            state.big5_lead = 0x00;
-        } else {
-            return .{
-                .status = .output_full,
-                .bytes_consumed = in_pos,
-                .code_units_written = out_pos,
-            };
-        }
+    if (is_last and byte_decoder.big5_lead != 0) {
+        if (out_pos == output.len) return .{ .status = .output_full, .bytes_consumed = in_pos, .code_units_written = out_pos };
+        // §11.1.1 step 1: clear the pending lead and report one EOF error.
+        _ = byte_decoder.decode(null) catch return .{ .status = .malformed, .bytes_consumed = in_pos, .code_units_written = out_pos, .error_length = 0 };
     }
-
-    return .{
-        .status = .input_empty,
-        .bytes_consumed = in_pos,
-        .code_units_written = out_pos,
-    };
+    return .{ .status = .input_empty, .bytes_consumed = in_pos, .code_units_written = out_pos };
 }
 
 /// Direct UTF-8 decode for Big5 - optimization path
@@ -171,137 +95,55 @@ pub fn decodeToUtf8(
     is_last: bool,
 ) streaming.DecodeToUtf8Result {
     std.debug.assert(decoder.state == .big5 or decoder.state == .neutral);
-
     if (decoder.state == .neutral) {
-        decoder.state = .{ .big5 = .{ .big5_lead = 0x00, .pending_code_point = null } };
+        decoder.state = .{ .big5 = .{ .big5_lead = 0, .pending_code_point = null } };
     }
-
-    var state = &decoder.state.big5;
+    const state = &decoder.state.big5;
     var byte_decoder = big5_impl.Decoder{
         .big5_lead = state.big5_lead,
         .pending_code_point = state.pending_code_point,
     };
-
+    defer {
+        state.big5_lead = byte_decoder.big5_lead;
+        state.pending_code_point = byte_decoder.pending_code_point;
+    }
     var in_pos: usize = 0;
     var out_pos: usize = 0;
-
     while (in_pos < input.len or byte_decoder.pending_code_point != null) {
-        // Prefetch next cache line for large buffers
-        if (in_pos < input.len and in_pos + 64 < input.len) {
-            @prefetch(&input[in_pos + 64], .{ .rw = .read, .locality = 3 });
-        }
-
-        // If we have a pending code point, emit it without consuming input
-        if (byte_decoder.pending_code_point != null) {
-            const result = byte_decoder.decode(null) catch {
-                @branchHint(.unlikely);
-                // Emit replacement character U+FFFD as UTF-8 (0xEF 0xBF 0xBD)
-                if (out_pos + 3 > output.len) {
-                    state.big5_lead = byte_decoder.big5_lead;
-                    state.pending_code_point = byte_decoder.pending_code_point;
-                    return .{
-                        .status = .output_full,
-                        .bytes_consumed = in_pos,
-                        .bytes_written = out_pos,
-                    };
-                }
-                output[out_pos] = 0xEF;
-                output[out_pos + 1] = 0xBF;
-                output[out_pos + 2] = 0xBD;
-                out_pos += 3;
-                continue;
-            };
-
-            if (result) |code_point| {
-                const utf8_len = writeUtf8CodePoint(code_point, output[out_pos..]);
-                if (utf8_len == 0) {
-                    // Output buffer full
-                    state.big5_lead = byte_decoder.big5_lead;
-                    state.pending_code_point = byte_decoder.pending_code_point;
-                    return .{
-                        .status = .output_full,
-                        .bytes_consumed = in_pos,
-                        .bytes_written = out_pos,
-                    };
-                }
-                out_pos += utf8_len;
-            }
-            continue;
-        }
-
-        // Break if no more input
-        if (in_pos >= input.len) break;
-
-        const byte = input[in_pos];
-
-        const result = byte_decoder.decode(byte) catch {
-            @branchHint(.unlikely);
-            // Emit replacement character U+FFFD as UTF-8
-            if (out_pos + 3 > output.len) {
-                state.big5_lead = byte_decoder.big5_lead;
-                state.pending_code_point = byte_decoder.pending_code_point;
-                return .{
-                    .status = .output_full,
-                    .bytes_consumed = in_pos,
-                    .bytes_written = out_pos,
-                };
-            }
-            output[out_pos] = 0xEF;
-            output[out_pos + 1] = 0xBF;
-            output[out_pos + 2] = 0xBD;
-            out_pos += 3;
-            in_pos += 1;
-
-            byte_decoder.big5_lead = 0x00;
+        // §11.1.1 step 3.6: the second scalar precedes the next input item,
+        // including EOF. Keep it pending until its entire output fits.
+        if (byte_decoder.pending_code_point) |point| {
+            const written = writeUtf8CodePoint(point, output[out_pos..]);
+            if (written == 0) return .{ .status = .output_full, .bytes_consumed = in_pos, .bytes_written = out_pos };
+            out_pos += written;
             byte_decoder.pending_code_point = null;
             continue;
+        }
+        if (out_pos == output.len) return .{ .status = .output_full, .bytes_consumed = in_pos, .bytes_written = out_pos };
+        const byte = input[in_pos];
+        const before = byte_decoder;
+        const point_or_continue = byte_decoder.decode(byte) catch {
+            @branchHint(.unlikely);
+            // §11.1.1 step 3.9 restores an ASCII trail, even when the pair's
+            // pointer exists but is unmapped. The handler cleared its lead.
+            return .{ .status = .malformed, .bytes_consumed = in_pos, .bytes_written = out_pos, .error_length = if (before.big5_lead != 0 and byte < 0x80) 0 else 1 };
         };
-
-        in_pos += 1;
-
-        if (result) |code_point| {
-            const utf8_len = writeUtf8CodePoint(code_point, output[out_pos..]);
-            if (utf8_len == 0) {
-                // Output buffer full - back up
-                in_pos -= 1;
-                state.big5_lead = byte_decoder.big5_lead;
-                state.pending_code_point = byte_decoder.pending_code_point;
-                return .{
-                    .status = .output_full,
-                    .bytes_consumed = in_pos,
-                    .bytes_written = out_pos,
-                };
+        if (point_or_continue) |point| {
+            const written = writeUtf8CodePoint(point, output[out_pos..]);
+            if (written == 0) {
+                byte_decoder = before;
+                return .{ .status = .output_full, .bytes_consumed = in_pos, .bytes_written = out_pos };
             }
-            out_pos += utf8_len;
+            out_pos += written;
         }
+        in_pos += 1;
     }
-
-    state.big5_lead = byte_decoder.big5_lead;
-    state.pending_code_point = byte_decoder.pending_code_point;
-
-    if (is_last and state.big5_lead != 0x00) {
-        @branchHint(.unlikely);
-        // Emit replacement character for incomplete sequence
-        if (out_pos + 3 <= output.len) {
-            output[out_pos] = 0xEF;
-            output[out_pos + 1] = 0xBF;
-            output[out_pos + 2] = 0xBD;
-            out_pos += 3;
-            state.big5_lead = 0x00;
-        } else {
-            return .{
-                .status = .output_full,
-                .bytes_consumed = in_pos,
-                .bytes_written = out_pos,
-            };
-        }
+    if (is_last and byte_decoder.big5_lead != 0) {
+        if (out_pos == output.len) return .{ .status = .output_full, .bytes_consumed = in_pos, .bytes_written = out_pos };
+        // §11.1.1 step 1: clear the pending lead and report one EOF error.
+        _ = byte_decoder.decode(null) catch return .{ .status = .malformed, .bytes_consumed = in_pos, .bytes_written = out_pos, .error_length = 0 };
     }
-
-    return .{
-        .status = .input_empty,
-        .bytes_consumed = in_pos,
-        .bytes_written = out_pos,
-    };
+    return .{ .status = .input_empty, .bytes_consumed = in_pos, .bytes_written = out_pos };
 }
 
 /// Write a code point as UTF-8. Returns number of bytes written (0 if buffer too small).
@@ -350,6 +192,10 @@ pub fn encode(
     var out_pos: usize = 0;
 
     while (in_pos < input.len) {
+        // A scalar may start in the previous call. Retry from this call's
+        // cursor and carried high surrogate, never by indexing before input.
+        const input_before = in_pos;
+        const pending_before = state.pending_high_surrogate;
         const code_unit = input[in_pos];
 
         var code_point: u21 = undefined;
@@ -381,14 +227,14 @@ pub fn encode(
             if (err == error.InvalidCodePoint) {
                 return .{
                     .status = .unmappable,
-                    .code_units_consumed = in_pos - 1,
+                    .code_units_consumed = input_before,
                     .bytes_written = out_pos,
                     .error_code_point = code_point,
                 };
             }
             return .{
                 .status = .unmappable,
-                .code_units_consumed = in_pos - 1,
+                .code_units_consumed = input_before,
                 .bytes_written = out_pos,
                 .error_code_point = code_point,
             };
@@ -397,13 +243,10 @@ pub fn encode(
         const encoded_len: usize = if (encoded.?[1] == 0) 1 else 2;
 
         if (out_pos + encoded_len > output.len) {
-            in_pos -= 1;
-            if (code_point >= 0x10000) {
-                state.pending_high_surrogate = input[in_pos - 1];
-            }
+            state.pending_high_surrogate = pending_before;
             return .{
                 .status = .output_full,
-                .code_units_consumed = in_pos,
+                .code_units_consumed = input_before,
                 .bytes_written = out_pos,
             };
         }
@@ -418,6 +261,8 @@ pub fn encode(
 
     if (is_last and state.pending_high_surrogate != null) {
         const encoded = byte_encoder.encode(0xFFFD) catch {
+            // The final surrogate error consumes its pending input once.
+            state.pending_high_surrogate = null;
             return .{
                 .status = .unmappable,
                 .code_units_consumed = in_pos,
