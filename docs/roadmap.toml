@@ -790,3 +790,12 @@ owner = "integrator"
 status = "done"
 branch = "lane/codex-docwrite"
 paths = ["src/html/scripted_parser.zig", "src/html/parser/", "src/html/dom_parser.zig", "src/dom/document_lifecycle.zig", "src/dom/document_fetches.zig", "src/webidl/impls/Document.zig", "tests/wpt/crane/dw-*"]
+
+[[lane]]
+name = "Worklets: addModule, worklet global scopes and their realms (HTML 11)"
+area = "content-security-policy/gen/, mixed-content/gen/, upgrade-insecure-requests/gen/ (worklet-*)"
+infra = "engine-adapter"
+owner = "agent"
+status = "doing"
+branch = "lane/worklets"
+paths = ["src/html/worklet_host.zig", "src/webidl/impls/{Worklet,WorkletGlobalScope,PaintWorkletGlobalScope,LayoutWorkletGlobalScope,AnimationWorkletGlobalScope,AudioWorklet,AudioWorkletGlobalScope,AudioWorkletProcessor}.zig", "CSS.zig: the worklet getters", "BaseAudioContext.get_audioWorklet", "src/runtime/engines/v8/worklet_realm.zig and the createWorkletRealm/destroyWorkletRealm protocol entries", "namespace attributes in generator.zig and namespace.zig", "module_script.zig: script_destination, credentials_mode, the reportScriptFetch realm", "tests/v8/worklet_realm_test.zig", "tests/html/worklet_test.zig", "tests/wpt/crane/wl-*"]
