@@ -23,10 +23,14 @@
 //! - A style sheet's rules, as "parse a stylesheet's contents" gives them
 //!   (rules), for the CSSOM objects that wrap them (src/dom/cssom.zig)
 //!
+//! - The style system's pure layer: values (style_values), the supported
+//!   properties (properties), declaration blocks (declarations), the
+//!   cascade and computed values (cascade, computed_style), media queries
+//!   (media_queries)
+//!
 //! This module does NOT include:
-//! - Selector parsing (see src/selector/)
-//! - The grammar of at-rules other than @import
-//! - Cascade/inheritance
+//! - Selector parsing or matching (see src/selector/, src/dom/selector_matching.zig)
+//! - The style engine that matches rules against the DOM (src/dom/style/)
 //! - The CSSOM objects themselves (src/dom/cssom.zig, the CSS* impls)
 //!
 //! ## Quirks Mode Support
@@ -99,6 +103,15 @@ pub const serialize = @import("serialize.zig");
 // Geometry Interfaces 1: the abstract point, rectangle and matrix algorithms the
 // DOMPoint, DOMRect and DOMMatrix interfaces share.
 pub const geometry = @import("geometry.zig");
+
+// The style system's pure layer (tmp/plans/style-design.md section 3.1):
+// values, the supported properties, declaration blocks.
+pub const style_values = @import("style_values.zig");
+pub const properties = @import("properties.zig");
+pub const declarations = @import("declarations.zig");
+pub const media_queries = @import("media_queries.zig");
+pub const computed_style = @import("computed_style.zig");
+pub const cascade = @import("cascade.zig");
 
 // ============================================================================
 // Tests

@@ -138,6 +138,86 @@ pub fn closest(element: *runtime.Instance, selectors: []const u8) Error!?*runtim
 /// cache the parse per document instead).
 const parse_stack_bytes = 8192;
 
+// ============================================================================
+// The style engine's matching (src/dom/style/)
+// ============================================================================
+
+/// What a style match read beyond the tree: whether any pseudo-class it
+/// evaluated answers from per-element state that can change with no DOM
+/// mutation - a control's checkedness or value, a custom element's
+/// definition or states, a dialog's or popover's open state, a media
+/// element's playback (tmp/plans/style-design.md section 5.3). A style that
+/// read such state is not reused. Blink records the same during matching
+/// (Element's "affected by" flags) to invalidate precisely; this records it
+/// to not cache at all. The document singletons (focus, hover, active,
+/// target) are not recorded: the style engine keys its cache on them.
+pub const StateReads = struct {
+    @"volatile": bool = false,
+};
+
+/// Matching a style rule's selectors against one element (Selectors 4 17.3
+/// "match a selector against an element", with no scoping root: `:scope`
+/// is the root element, as for a style sheet's rules).
+pub const StyleMatcher = struct {
+    matcher: Matcher,
+
+    /// For `element`, in the tree it is in - its document, or the shadow
+    /// tree it is in (whose host is featureless to it, CSS Scoping 3.1.1).
+    pub fn init(element: *runtime.Instance, reads: *StateReads) ?StyleMatcher {
+        const node = instance_bridge.getNodeBase(element) orelse return null;
+        var root = node;
+        while (root.parent_node) |parent| root = parent;
+        const root_instance = instanceOf(root) orelse return null;
+        var matcher = Matcher.init(root, root_instance);
+        matcher.state_reads = reads;
+        return .{ .matcher = matcher };
+    }
+
+    /// Whether `complex` matches `element` - or, with `pseudo`, that
+    /// pseudo-element of it: the subject compound must name the
+    /// pseudo-element exactly when one is asked for.
+    pub fn matches(self: *StyleMatcher, element: *runtime.Instance, complex: *const ComplexSelector, pseudo: ?[]const u8) bool {
+        const node = instance_bridge.getNodeBase(element) orelse return false;
+        if (node.node_type != ELEMENT_NODE) return false;
+        if (complex.compound.hasPseudoElement() != (pseudo != null)) return false;
+        self.matcher.pseudo_target = pseudo;
+        defer self.matcher.pseudo_target = null;
+        return self.matcher.matchesComplex(.{ .node = node }, complex);
+    }
+};
+
+/// Section 5.3's table: whether `kind`, evaluated on an element with
+/// `data`, can change its answer with no tree mutation (for elements where
+/// it can matter at all, so that a universal UA rule such as `:autofill`
+/// does not make every style volatile).
+fn readsVolatileState(kind: PseudoClassKind, data: *const ElementData) bool {
+    const local = data.local_name.asSlice();
+    const html = namespaceIs(data, html_namespace);
+    const custom = std.mem.indexOfScalar(u8, local, '-') != null or data.findAttribute(null, "is") != null;
+    return switch (kind) {
+        // A control's checkedness, value, validity and autofill state; a
+        // form-associated custom element's validity.
+        .Checked, .Indeterminate, .Default, .Valid, .Invalid, .UserValid, .UserInvalid, .InRange, .OutOfRange, .PlaceholderShown, .Autofill, .ReadOnly, .ReadWrite => custom or (html and isFormish(local)),
+        .Defined, .State => custom,
+        // A details element's open state is its attribute (a mutation); a
+        // dialog's, a select's and an input's picker are not.
+        .Open => html and (std.mem.eql(u8, local, "dialog") or std.mem.eql(u8, local, "select") or std.mem.eql(u8, local, "input")),
+        .PopoverOpen => data.findAttribute(null, "popover") != null,
+        .Modal => html and std.mem.eql(u8, local, "dialog"),
+        .Playing, .Paused, .Seeking, .Buffering, .Stalled, .Muted, .VolumeLocked => html and (std.mem.eql(u8, local, "audio") or std.mem.eql(u8, local, "video")),
+        // dir=auto on a text control reads its value.
+        .Dir => html and (std.mem.eql(u8, local, "input") or std.mem.eql(u8, local, "textarea")),
+        else => false,
+    };
+}
+
+fn isFormish(local: []const u8) bool {
+    for ([_][]const u8{ "input", "select", "textarea", "button", "option", "optgroup", "fieldset", "form", "output", "object", "progress", "meter", "datalist" }) |name| {
+        if (std.mem.eql(u8, local, name)) return true;
+    }
+    return false;
+}
+
 /// Selectors 4 17.1 "parse a selector"; failure is DOM's SyntaxError.
 pub fn parse(allocator: std.mem.Allocator, selectors: []const u8) Error!SelectorList {
     return selector.parse(allocator, selectors) catch |err| switch (err) {
@@ -275,6 +355,11 @@ const Matcher = struct {
     /// The query's child indices (querySelector and querySelectorAll; null
     /// for matches() and closest(), which look at one element).
     nth_cache: ?*NthIndexCache = null,
+    /// The style engine's matching (`StyleMatcher`): the pseudo-element the
+    /// subject compound must name - null for the element itself - and where
+    /// the per-element dynamic state a match read is recorded.
+    pseudo_target: ?[]const u8 = null,
+    state_reads: ?*StateReads = null,
 
     fn init(scope: *NodeBase, scope_instance: *runtime.Instance) Matcher {
         const document: ?*runtime.Instance = if (scope.node_type == DOCUMENT_NODE)
@@ -474,9 +559,12 @@ const Matcher = struct {
             .Class => |class| self.hasClass(data, class.class_name),
             .Id => |id| self.idIs(data, id.id),
             .Attribute => |*attribute| self.matchesAttribute(data, attribute),
-            .PseudoClass => |*pseudo| self.matchesPseudoClass(node, data, pseudo.kind),
-            // A pseudo-element is no element of the tree.
-            .PseudoElement => false,
+            .PseudoClass => |*pseudo| self.matchesPseudoClassRead(node, data, pseudo.kind),
+            // A pseudo-element is no element of the tree - except to the
+            // style engine resolving that pseudo-element's style, for which
+            // the compound's other simple selectors match its originating
+            // element.
+            .PseudoElement => |pseudo| if (self.pseudo_target) |wanted| std.ascii.eqlIgnoreCase(wanted, pseudo.name) else false,
         };
     }
 
@@ -544,6 +632,15 @@ const Matcher = struct {
     // ========================================================================
     // Pseudo-classes
     // ========================================================================
+
+    /// matchesPseudoClass, recording for the style engine whether the
+    /// answer read state that can change without a tree mutation.
+    fn matchesPseudoClassRead(self: *const Matcher, node: *NodeBase, data: *const ElementData, kind: PseudoClassKind) bool {
+        if (self.state_reads) |reads| {
+            if (!reads.@"volatile" and readsVolatileState(kind, data)) reads.@"volatile" = true;
+        }
+        return self.matchesPseudoClass(node, data, kind);
+    }
 
     fn matchesPseudoClass(self: *const Matcher, node: *NodeBase, data: *const ElementData, kind: PseudoClassKind) bool {
         const element = instanceOf(node) orelse return false;

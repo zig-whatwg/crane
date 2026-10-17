@@ -68,7 +68,6 @@ src/webidl/impls/File.zig Blob.processBlobParts 1
 src/webidl/impls/File.zig Blob.setBlobData 2
 src/webidl/impls/HTMLAnchorElement.zig DOMTokenList.setElement 1
 src/webidl/impls/HTMLAreaElement.zig DOMTokenList.setElement 1
-src/webidl/impls/HTMLElement.zig CSSStyleDeclaration.initForInlineStyle 1
 src/webidl/impls/HTMLElement.zig DOMStringMap.create 1
 src/webidl/impls/HTMLElement.zig Node.set_textContent 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.setElement 1
@@ -107,7 +106,6 @@ src/webidl/impls/Response.zig Headers.initWithHeaderList 1
 src/webidl/impls/SVGScriptElement.zig Node.setLocalName 1
 src/webidl/impls/ServiceWorkerRegistration.zig CookieStoreManager.createForRegistration 1
 src/webidl/impls/URL.zig Blob.getInternal 1
-src/webidl/impls/Window.zig CSSStyleDeclaration.initForComputedStyle 1
 src/webidl/impls/Window.zig History.State 1
 src/webidl/impls/Window.zig History.deinit 1
 src/webidl/impls/Window.zig History.getInternal 1

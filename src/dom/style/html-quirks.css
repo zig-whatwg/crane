@@ -1,0 +1,44 @@
+/* HTML Standard, chapter 15 "Rendering": the CSS user agent style sheet - the rules that apply only in quirks mode.
+ * Copied verbatim from https://html.spec.whatwg.org/multipage/rendering.html
+ * (specs/whatwg/html.md, fetched for lane style1, 2026-10-17), each block under
+ * the section it comes from. Blocks the spec makes conditional on rendering
+ * state Crane does not model are left out, and listed in
+ * src/dom/style/ua_sheet.zig.
+ * Copyright (c) WHATWG (Apple, Google, Mozilla, Microsoft). This work is licensed
+ * under a Creative Commons Attribution 4.0 International License. */
+
+/* 15.3.3 Flow content */
+@namespace "http://www.w3.org/1999/xhtml";
+
+form { margin-block-end: 1em; }
+
+/* 15.3.7 Lists */
+@namespace "http://www.w3.org/1999/xhtml";
+
+li { list-style-position: inside; }
+li :is(dir, menu, ol, ul) { list-style-position: outside; }
+:is(dir, menu, ol, ul) :is(dir, menu, ol, ul, li) { list-style-position: unset; }
+
+/* 15.3.8 Tables */
+@namespace "http://www.w3.org/1999/xhtml";
+
+table {
+ font-weight: initial;
+ font-style: initial;
+ font-variant: initial;
+ font-size: initial;
+ line-height: initial;
+ white-space: initial;
+ text-align: initial;
+}
+
+/* 15.3.10 Form controls */
+@namespace "http://www.w3.org/1999/xhtml";
+
+input:not([type=image i]), textarea { box-sizing: border-box; }
+
+/* 15.4.2 Images */
+@namespace "http://www.w3.org/1999/xhtml";
+
+img[align=left i] { margin-right: 3px; }
+img[align=right i] { margin-left: 3px; }

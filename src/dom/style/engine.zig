@@ -1,0 +1,765 @@
+//! The style engine of a Document (Blink's StyleEngine): which style sheets
+//! apply to it, in CSSOM's "final CSS style sheets" order, and the computed
+//! style of each of its elements, resolved when something asks.
+//!
+//! Sheets. The elements that own sheets (style and link) register as
+//! candidates while they are connected - Blink's AddStyleSheetCandidateNode
+//! / RemoveStyleSheetCandidateNode - and bump `sheets_version` whenever
+//! their sheet changes. The active sheets are rebuilt from the candidates,
+//! in tree order, the first time style is asked for after a change: each
+//! enabled sheet whose media matches (CSSOM 6.2 and the "add a CSS style
+//! sheet" disabled-flag steps), its @import sheets substituted where their
+//! rules stand (Cascade 5 6.1), with the author layers ordered per 6.4.3.
+//!
+//! Computed style. WebKit's Element::resolveComputedStyle shape: walk the
+//! element's flat-tree ancestors, resolve from the rootmost one whose
+//! cached style is missing, stale or volatile, downward, caching each in
+//! the element's own ElementStyle. A cached style is valid while its key
+//! still holds (design section 5.1) - the document's DOM tree version
+//! (which every mutation already moves), the engine's generation (sheets,
+//! their contents, the media environment) and the document's focus, hover,
+//! active and target elements - unless matching read per-element dynamic
+//! state (5.3), which makes it volatile. All of it is pulled when a style
+//! is read: no mutation path runs any of this code.
+//!
+//! Stated for batch 1: an element in a shadow tree is styled by the UA
+//! sheet, its style attribute and inheritance only - shadow trees' own
+//! sheets, :host and ::slotted are batch 2; the document's sheets do not
+//! apply in a shadow tree, as CSS Scoping says. A slotted element's style is
+//! volatile, since slot assignment can change with no mutation.
+//!
+//! Spec: https://drafts.csswg.org/cssom-1/#css-style-sheet-collections
+//! Spec: https://drafts.csswg.org/css-cascade-5/#value-stages
+//! Spec: https://drafts.csswg.org/css-scoping-1/#flattening
+
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const css = @import("css");
+const NodeBase = @import("../node_base.zig").NodeBase;
+const instance_bridge = @import("../instance_bridge.zig");
+const element_data = @import("../element_data.zig");
+const refcount = @import("../refcount.zig");
+const document_internals = @import("../document_internals.zig");
+const focused_area = @import("../focused_area.zig");
+const pointer_states = @import("../pointer_states.zig");
+const target_element = @import("../target_element.zig");
+const slot_helpers = @import("../slot_helpers.zig");
+const navigable_container = @import("../navigable_container.zig");
+const selector_matching = @import("../selector_matching.zig");
+const hooks = @import("hooks.zig");
+const sheet_mod = @import("sheet.zig");
+const ua_sheet = @import("ua_sheet.zig");
+const element_style = @import("element_style.zig");
+
+const ComputedStyle = css.computed_style.ComputedStyle;
+const MediaValues = css.media_queries.MediaValues;
+const Matched = css.cascade.Matched;
+const SheetRecord = sheet_mod.SheetRecord;
+const Contents = sheet_mod.Contents;
+const ElementStyle = element_style.ElementStyle;
+const Key = element_style.Key;
+
+const html_namespace = "http://www.w3.org/1999/xhtml";
+const svg_namespace = "http://www.w3.org/2000/svg";
+const mathml_namespace = "http://www.w3.org/1998/Math/MathML";
+
+pub const Error = Allocator.Error;
+
+/// A registered sheet owner: an element that may have a sheet.
+const Owner = struct {
+    element: *runtime.Instance,
+    generation: u64,
+
+    fn live(self: Owner) bool {
+        return runtime.SlabAllocator.generationOf(self.element) == self.generation;
+    }
+};
+
+/// One sheet in the cascade, in final order.
+const ActiveSheet = struct {
+    record: *SheetRecord,
+    contents: *Contents,
+    contents_version: u64,
+    /// Order of appearance base: the sheet's index, shifted past every rule
+    /// position in it.
+    order_base: u32,
+    /// Each of the sheet's layers' place in the document's author layer
+    /// order.
+    layer_order: []u16,
+    /// The layer an `@import ... layer(...)` put the whole sheet in.
+    import_layer: ?u16,
+};
+
+const Active = struct {
+    sheets_version: u64,
+    media: MediaValues,
+    quirks: bool,
+    sheets: std.ArrayList(ActiveSheet) = .empty,
+
+    fn deinit(self: *Active, allocator: Allocator) void {
+        for (self.sheets.items) |s| allocator.free(s.layer_order);
+        self.sheets.deinit(allocator);
+    }
+
+    /// Whether every sheet's rules are the ones it was built from.
+    fn contentsCurrent(self: *const Active) bool {
+        for (self.sheets.items) |s| if (s.record.contents_version != s.contents_version) return false;
+        return true;
+    }
+};
+
+pub const StyleEngine = struct {
+    allocator: Allocator,
+    owners: std.ArrayList(Owner) = .empty,
+    /// Moves on every change to the set of sheets or one of their flags
+    /// (owners connecting and disconnecting, media, disabled, title).
+    sheets_version: u64 = 1,
+    active: ?Active = null,
+    /// Moves every time the active sheets are rebuilt: part of each cached
+    /// style's key.
+    generation: u64 = 1,
+
+    pub fn init(allocator: Allocator) StyleEngine {
+        return .{ .allocator = allocator };
+    }
+
+    pub fn deinit(self: *StyleEngine) void {
+        if (self.active) |*a| a.deinit(self.allocator);
+        self.active = null;
+        self.owners.deinit(self.allocator);
+    }
+
+    /// `element` (a style or link element of this document) may own a
+    /// sheet. Idempotent.
+    pub fn addOwner(self: *StyleEngine, element: *runtime.Instance) Error!void {
+        for (self.owners.items) |o| if (o.element == element and o.live()) {
+            self.sheetsChanged();
+            return;
+        };
+        try self.owners.append(self.allocator, .{ .element = element, .generation = runtime.SlabAllocator.generationOf(element) });
+        self.sheetsChanged();
+    }
+
+    /// `element` no longer owns a sheet in this document.
+    pub fn removeOwner(self: *StyleEngine, element: *runtime.Instance) void {
+        var i: usize = 0;
+        while (i < self.owners.items.len) {
+            const o = self.owners.items[i];
+            if (o.element == element or !o.live()) {
+                _ = self.owners.swapRemove(i);
+                continue;
+            }
+            i += 1;
+        }
+        self.sheetsChanged();
+    }
+
+    /// A sheet of this document was made, removed or changed one of its
+    /// flags: the active sheets are rebuilt when style is next read.
+    pub fn sheetsChanged(self: *StyleEngine) void {
+        self.sheets_version +%= 1;
+    }
+
+    /// The active sheets, rebuilt first if anything they depend on moved.
+    fn ensureActive(self: *StyleEngine, document: *runtime.Instance) Error!*Active {
+        const media = hooks.mediaValues(document);
+        const quirks = isQuirks(document);
+        if (self.active) |*a| {
+            if (a.sheets_version == self.sheets_version and a.quirks == quirks and a.media.eql(media) and a.contentsCurrent()) return a;
+            a.deinit(self.allocator);
+            self.active = null;
+        }
+        var built: Active = .{ .sheets_version = self.sheets_version, .media = media, .quirks = quirks };
+        errdefer built.deinit(self.allocator);
+        try self.buildActive(document, &built);
+        self.active = built;
+        self.generation +%= 1;
+        return &self.active.?;
+    }
+
+    /// CSSOM 6.2's final CSS style sheets of the document, enabled and
+    /// matching.
+    fn buildActive(self: *StyleEngine, document: *runtime.Instance, active: *Active) Error!void {
+        // Owners in tree order (registration order is not tree order).
+        var owners: std.ArrayList(*runtime.Instance) = .empty;
+        defer owners.deinit(self.allocator);
+        for (self.owners.items) |o| {
+            if (!o.live()) continue;
+            const node = instance_bridge.getNodeBase(o.element) orelse continue;
+            if (!node.is_connected) continue;
+            // A sheet in a shadow tree is that tree's (batch 2), not the
+            // document's.
+            var root = node;
+            while (root.parent_node) |p| root = p;
+            if (root.node_type != NodeBase.DOCUMENT_NODE) continue;
+            try owners.append(self.allocator, o.element);
+        }
+        std.mem.sort(*runtime.Instance, owners.items, {}, struct {
+            fn lessThan(_: void, a: *runtime.Instance, b: *runtime.Instance) bool {
+                const na = instance_bridge.getNodeBase(a) orelse return false;
+                const nb = instance_bridge.getNodeBase(b) orelse return false;
+                return precedes(na, nb);
+            }
+        }.lessThan);
+
+        // CSSOM "add a CSS style sheet" steps 4-6: the preferred CSS style
+        // sheet set name is the first titled, non-alternate sheet's title;
+        // a titled sheet is enabled only when its title is that name. (The
+        // spec sets it as sheets are added; tree order stands in, stated.)
+        var preferred: ?[]const u8 = null;
+        for (owners.items) |owner| {
+            const record = hooks.sheetOf(owner) orelse continue;
+            if (record.disabled) continue;
+            if (record.title.len != 0 and !record.alternate and preferred == null) preferred = record.title;
+        }
+
+        var layers = LayerTree.init(self.allocator);
+        defer layers.deinit();
+        var pending: std.ArrayList(Pending) = .empty;
+        defer pending.deinit(self.allocator);
+        for (owners.items) |owner| {
+            const record = hooks.sheetOf(owner) orelse continue;
+            if (record.disabled) continue;
+            if (record.title.len != 0) {
+                const p = preferred orelse continue;
+                if (!std.mem.eql(u8, p, record.title)) continue;
+            }
+            if (!record.mediaMatches(&active.media)) continue;
+            try self.addSheet(document, record, null, &active.media, &layers, &pending, 0);
+        }
+        // Order the layers, then make each sheet's map.
+        try layers.order();
+        for (pending.items, 0..) |p, index| {
+            const map = try self.allocator.alloc(u16, p.contents.layers.items.len);
+            errdefer self.allocator.free(map);
+            for (p.layer_nodes, 0..) |node, i| map[i] = layers.nodes.items[node].rank;
+            self.allocator.free(p.layer_nodes);
+            try active.sheets.append(self.allocator, .{
+                .record = p.record,
+                .contents = p.contents,
+                .contents_version = p.record.contents_version,
+                .order_base = @as(u32, @intCast(index + 1)) << 20,
+                .layer_order = map,
+                .import_layer = if (p.import_layer_node) |n| layers.nodes.items[n].rank else null,
+            });
+        }
+        pending.clearRetainingCapacity();
+    }
+
+    const Pending = struct {
+        record: *SheetRecord,
+        contents: *Contents,
+        layer_nodes: []usize,
+        import_layer_node: ?usize,
+    };
+
+    /// `record` and, before its own rules, its imports (Cascade 5 6.1:
+    /// "as if their style sheets were substituted in place of the @import
+    /// rule").
+    fn addSheet(self: *StyleEngine, document: *runtime.Instance, record: *SheetRecord, parent_layer: ?usize, media: *const MediaValues, layers: *LayerTree, pending: *std.ArrayList(Pending), depth: usize) Error!void {
+        if (depth > 16) return;
+        var resolver_context: UrlContext = .{ .document = document, .base = record.base_url };
+        const contents = try record.contentsOf(.{ .context = &resolver_context, .resolve = &resolveUrl });
+        // The sheet's layer declarations, in order, under `parent_layer`.
+        const layer_nodes = try self.allocator.alloc(usize, contents.layers.items.len);
+        var layer_nodes_owned = true;
+        defer if (layer_nodes_owned) self.allocator.free(layer_nodes);
+        for (contents.layers.items, 0..) |name, i| layer_nodes[i] = try layers.declare(parent_layer, name);
+        for (contents.imports.items, 0..) |import_rule, i| {
+            if (i >= record.imports.items.len) break;
+            const child = record.imports.items[i] orelse continue;
+            if (import_rule.media) |m| if (!m.matches(media)) continue;
+            const child_layer: ?usize = if (import_rule.layer) |l| layer_nodes[l] else parent_layer;
+            try self.addSheet(document, child, child_layer, media, layers, pending, depth + 1);
+        }
+        try pending.append(self.allocator, .{ .record = record, .contents = contents, .layer_nodes = layer_nodes, .import_layer_node = parent_layer });
+        layer_nodes_owned = false;
+    }
+};
+
+/// Cascade 5 6.4.3's layer order as a tree: layers sorted by first
+/// declaration, nested layers grouped within their parent, and a parent's
+/// own (implicit sub-layer) rules after its nested layers.
+const LayerTree = struct {
+    allocator: Allocator,
+    nodes: std.ArrayList(Node) = .empty,
+
+    const Node = struct {
+        /// The full dotted name.
+        name: []const u8,
+        parent: ?usize,
+        children: std.ArrayList(usize) = .empty,
+        rank: u16 = 0,
+    };
+
+    fn init(allocator: Allocator) LayerTree {
+        return .{ .allocator = allocator };
+    }
+
+    fn deinit(self: *LayerTree) void {
+        for (self.nodes.items) |*n| {
+            n.children.deinit(self.allocator);
+            self.allocator.free(n.name);
+        }
+        self.nodes.deinit(self.allocator);
+    }
+
+    /// The node for layer `name` (dotted) under `parent`, declared now if
+    /// new; each dotted prefix is declared too.
+    fn declare(self: *LayerTree, parent: ?usize, name: []const u8) Error!usize {
+        var current = parent;
+        var it = std.mem.splitScalar(u8, name, '.');
+        while (it.next()) |segment| {
+            const prefix = if (current) |c| self.nodes.items[c].name else "";
+            const full = if (prefix.len == 0) try self.allocator.dupe(u8, segment) else try std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ prefix, segment });
+            var found: ?usize = null;
+            for (self.nodes.items, 0..) |n, i| if (n.parent == current and std.mem.eql(u8, n.name, full)) {
+                found = i;
+            };
+            if (found) |f| {
+                self.allocator.free(full);
+                current = f;
+                continue;
+            }
+            self.nodes.append(self.allocator, .{ .name = full, .parent = current }) catch |err| {
+                self.allocator.free(full);
+                return err;
+            };
+            const index = self.nodes.items.len - 1;
+            if (current) |c| try self.nodes.items[c].children.append(self.allocator, index);
+            current = index;
+        }
+        return current.?;
+    }
+
+    /// Rank every layer: post-order, children before their parent.
+    fn order(self: *LayerTree) Error!void {
+        var rank: u16 = 0;
+        for (self.nodes.items, 0..) |n, i| if (n.parent == null) self.visit(i, &rank);
+    }
+
+    fn visit(self: *LayerTree, index: usize, rank: *u16) void {
+        for (self.nodes.items[index].children.items) |child| self.visit(child, rank);
+        self.nodes.items[index].rank = rank.*;
+        rank.* +|= 1;
+    }
+};
+
+const UrlContext = struct {
+    document: *runtime.Instance,
+    base: []const u8,
+};
+
+/// A url() in a sheet, parsed against the sheet's base URL (CSS Values 4
+/// 4.5.1); null when it does not parse (it stays as written).
+fn resolveUrl(context: *const anyopaque, allocator: Allocator, url: []const u8) ?[]u8 {
+    const ctx: *const UrlContext = @ptrCast(@alignCast(context));
+    const webidl = @import("webidl");
+    const base_arg = if (ctx.base.len > 0) webidl.Opt(runtime.USVString).passed(ctx.base) else webidl.Opt(runtime.USVString).notPassed();
+    const parsed = (interfaces.URL.call_static_parse(ctx.document, url, base_arg) catch null) orelse return null;
+    defer runtime.Instance.deinit(parsed);
+    const href = interfaces.URL.get_href(parsed) catch return null;
+    defer ctx.document.ctx.allocator.free(href);
+    return allocator.dupe(u8, href) catch null;
+}
+
+fn isQuirks(document: *runtime.Instance) bool {
+    return document_internals.getMode(document) == .quirks;
+}
+
+/// Whether `a` precedes `b` in shadow-including tree order.
+fn precedes(a: *NodeBase, b: *NodeBase) bool {
+    if (a == b) return false;
+    var chain_a: [256]*NodeBase = undefined;
+    var chain_b: [256]*NodeBase = undefined;
+    const la = ancestorChain(a, &chain_a);
+    const lb = ancestorChain(b, &chain_b);
+    // Walk down from the roots while they agree.
+    var i: usize = 0;
+    while (i < la and i < lb and chain_a[la - 1 - i] == chain_b[lb - 1 - i]) i += 1;
+    if (i == la) return true; // a is an ancestor of b
+    if (i == lb) return false;
+    const sa = chain_a[la - 1 - i];
+    const sb = chain_b[lb - 1 - i];
+    var s = sa.next_sibling;
+    while (s) |sib| : (s = sib.next_sibling) if (sib == sb) return true;
+    return false;
+}
+
+fn ancestorChain(node: *NodeBase, out: *[256]*NodeBase) usize {
+    var n: usize = 0;
+    var current: ?*NodeBase = node;
+    while (current) |c| : (current = c.parent_node) {
+        if (n == out.len) break;
+        out[n] = c;
+        n += 1;
+    }
+    return n;
+}
+
+// ============================================================================
+// Computed style
+// ============================================================================
+
+fn instanceOf(node: *NodeBase) ?*runtime.Instance {
+    return @ptrCast(@alignCast(node.owner_instance orelse return null));
+}
+
+fn isShadowRoot(node: *NodeBase) bool {
+    if (node.node_type != NodeBase.DOCUMENT_FRAGMENT_NODE) return false;
+    const instance = instanceOf(node) orelse return false;
+    return instance.vtable == &interfaces.ShadowRoot.vtable;
+}
+
+const FlatParent = union(enum) {
+    /// The root element: no parent element.
+    root,
+    element: *NodeBase,
+    /// Not in the flat tree (a shadow host's unassigned child), or not in
+    /// a document.
+    none,
+};
+
+/// CSS Scoping 2.1 "the flat tree": a slotted element's parent is its
+/// slot, a shadow root's child's is the host, every other element's its
+/// parent element.
+fn flatParent(node: *NodeBase, slotted: *bool) FlatParent {
+    slotted.* = false;
+    if (slot_helpers.slottable(node)) |s| if (s.state.assignedSlot()) |slot| {
+        slotted.* = true;
+        return .{ .element = slot };
+    };
+    const parent = node.parent_node orelse return .none;
+    switch (parent.node_type) {
+        NodeBase.DOCUMENT_NODE => return .root,
+        NodeBase.ELEMENT_NODE => {
+            // A host's light child is in the flat tree only through a slot.
+            if (parent.is_shadow_host) return .none;
+            return .{ .element = parent };
+        },
+        NodeBase.DOCUMENT_FRAGMENT_NODE => {
+            if (!isShadowRoot(parent)) return .none;
+            const host = interfaces.ShadowRoot.get_host(instanceOf(parent) orelse return .none) catch return .none;
+            return .{ .element = instance_bridge.getNodeBase(host) orelse return .none };
+        },
+        else => return .none,
+    }
+}
+
+/// The document's singleton states, by address and generation.
+fn singletonKey(document: *runtime.Instance) [5]u64 {
+    var key: [5]u64 = .{0} ** 5;
+    if (focused_area.get(document)) |d| if (d.isLive()) {
+        key[0] = @intFromPtr(d.element) ^ d.generation;
+    };
+    const states = [_]pointer_states.State{ .hovered, .pointed, .activated };
+    for (states, 0..) |state, i| {
+        if (pointer_states.get(document, state)) |e| key[1 + i] = @intFromPtr(e) ^ runtime.SlabAllocator.generationOf(e);
+    }
+    if (target_element.get(document)) |e| key[4] = @intFromPtr(e) ^ runtime.SlabAllocator.generationOf(e);
+    return key;
+}
+
+/// What resolving one lineage shares.
+const Resolution = struct {
+    allocator: Allocator,
+    document: *runtime.Instance,
+    engine: *StyleEngine,
+    active: *Active,
+    key: Key,
+    root_font_size: f64 = 16,
+    matched: std.ArrayList(Matched) = .empty,
+    candidates: std.ArrayList(u32) = .empty,
+
+    fn deinit(self: *Resolution) void {
+        self.matched.deinit(self.allocator);
+        self.candidates.deinit(self.allocator);
+    }
+};
+
+/// The computed style of `element` - or of its pseudo-element `pseudo`
+/// (lowercase, without colons) - resolved now if its cached one is not
+/// valid. Borrowed: valid until the next style read of the element. Null
+/// for an element that has no style: not connected, not in the flat tree,
+/// or before a Document installed its engine.
+pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*const ComputedStyle {
+    const node = instance_bridge.getNodeBase(element) orelse return null;
+    if (node.node_type != NodeBase.ELEMENT_NODE or !node.is_connected) return null;
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return null;
+    const engine = hooks.engineOf(document) orelse return null;
+    const active = try engine.ensureActive(document);
+    var res: Resolution = .{
+        .allocator = engine.allocator,
+        .document = document,
+        .engine = engine,
+        .active = active,
+        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .singletons = singletonKey(document) },
+    };
+    defer res.deinit();
+
+    // The flat-tree lineage, the element first.
+    var lineage: std.ArrayList(LineageEntry) = .empty;
+    defer lineage.deinit(engine.allocator);
+    var current: *NodeBase = node;
+    while (true) {
+        var slotted = false;
+        const parent = flatParent(current, &slotted);
+        try lineage.append(engine.allocator, .{ .node = current, .slotted = slotted });
+        switch (parent) {
+            .root => break,
+            .none => return null,
+            .element => |p| current = p,
+        }
+    }
+
+    // From the root down: reuse each valid cache, resolve the rest.
+    var parent_style: ?*const ComputedStyle = null;
+    var parent_volatile = false;
+    var i = lineage.items.len;
+    while (i > 0) {
+        i -= 1;
+        const entry = lineage.items[i];
+        const e = instanceOf(entry.node) orelse return null;
+        const state = element_style.of(e) orelse return null;
+        const must_resolve = parent_volatile or entry.slotted or blk: {
+            const cached = state.cached orelse break :blk true;
+            break :blk cached.@"volatile" or !cached.key.eql(res.key);
+        };
+        if (must_resolve) {
+            var reads: selector_matching.StateReads = .{};
+            const style = try resolveOne(&res, e, entry.node, state, null, parent_style, i == lineage.items.len - 1, &reads);
+            state.setCached(.{ .style = style, .key = res.key, .@"volatile" = reads.@"volatile" or parent_volatile or entry.slotted });
+        }
+        const cached = state.cached.?;
+        if (i == lineage.items.len - 1) res.root_font_size = cached.style.get(.font_size).length.value;
+        parent_style = cached.style;
+        parent_volatile = cached.@"volatile";
+    }
+    const state = element_style.existingOf(element) orelse return null;
+    const own = state.cached orelse return null;
+    const p = pseudo orelse return own.style;
+    if (!hasPseudoElement(element, p)) return null;
+
+    // A pseudo-element's style inherits from its originating element's.
+    if (state.pseudoCached(p)) |cached| {
+        if (!cached.cached.@"volatile" and !own.@"volatile" and cached.cached.key.eql(res.key)) return cached.cached.style;
+    }
+    var reads: selector_matching.StateReads = .{};
+    const style = try resolveOne(&res, element, node, state, p, own.style, false, &reads);
+    try state.setPseudoCached(p, .{ .style = style, .key = res.key, .@"volatile" = reads.@"volatile" or own.@"volatile" });
+    return state.pseudoCached(p).?.cached.style;
+}
+
+/// Whether `element` has the pseudo-element `name` at all. CSS Forms'
+/// ::picker(select) is a drop-down box's picker: a select that is a list
+/// box (`multiple`, or a display size above 1) has none, and its computed
+/// declarations are empty (CSSOM 7.2 step 5's null obj). Chrome, the one
+/// engine shipping ::picker, answers so
+/// (customizable-select/select-picker-pseudo-box-type.html).
+fn hasPseudoElement(element: *runtime.Instance, name: []const u8) bool {
+    if (!std.mem.eql(u8, name, "picker")) return true;
+    const data = element_data.of(element) orelse return false;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "select")) return false;
+    if (data.findAttribute(null, "multiple") != null) return false;
+    if (data.findAttribute(null, "size")) |size| {
+        const n = std.fmt.parseInt(u32, std.mem.trim(u8, size.value, " \t\n\r\x0c"), 10) catch 0;
+        if (n > 1) return false;
+    }
+    return true;
+}
+
+const LineageEntry = struct {
+    node: *NodeBase,
+    slotted: bool,
+};
+
+/// The cascade for one element (or pseudo-element), its parent's style
+/// computed.
+fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, state: *ElementStyle, pseudo: ?[]const u8, parent: ?*const ComputedStyle, is_root: bool, reads: *selector_matching.StateReads) Error!*ComputedStyle {
+    res.matched.clearRetainingCapacity();
+    try collectMatched(res, element, node, state, pseudo, reads);
+    return css.cascade.cascade(.{
+        .allocator = element.ctx.allocator,
+        .parent = parent,
+        .root_font_size = if (is_root) 16 else res.root_font_size,
+        .viewport_width = res.active.media.width,
+        .viewport_height = res.active.media.height,
+        .is_root = is_root and pseudo == null,
+    }, res.matched.items);
+}
+
+/// Cascade 5 section 5: every declaration block that applies to the
+/// element, with where it enters the cascade.
+fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase, state: *ElementStyle, pseudo: ?[]const u8, reads: *selector_matching.StateReads) Error!void {
+    const data = element_data.of(element) orelse return;
+    const ns = data.namespaceSlice();
+    const is_html = if (ns) |n| std.mem.eql(u8, n, html_namespace) else false;
+
+    // The keys the rule buckets file rules under.
+    var lower_buffer: [64]u8 = undefined;
+    const local = data.local_name.asSlice();
+    const local_lower = if (local.len <= lower_buffer.len) std.ascii.lowerString(lower_buffer[0..local.len], local) else local;
+    var names_storage: [32][]const u8 = undefined;
+    var name_buffers: [32][48]u8 = undefined;
+    var name_count: usize = 0;
+    var it = data.attributeIterator();
+    while (it.next()) |entry| {
+        if (entry.namespace_uri != null or name_count == names_storage.len) continue;
+        const n = entry.local_name;
+        if (n.len > 48) continue;
+        names_storage[name_count] = std.ascii.lowerString(name_buffers[name_count][0..n.len], n);
+        name_count += 1;
+    }
+    const keys: sheet_mod.ElementKeys = .{
+        .id = data.id.asSlice(),
+        .class_name = data.class_name.asSlice(),
+        .local_name_lower = local_lower,
+        .attribute_names = names_storage[0..name_count],
+    };
+
+    var matcher = selector_matching.StyleMatcher.init(element, reads) orelse return;
+    const quirks = res.active.quirks;
+
+    // The UA origin, and HTML's presentational hints.
+    if (ua_sheet.get()) |ua| {
+        try matchContents(res, &matcher, element, keys, ua.rules, pseudo, is_html, quirks, .{ .origin = .user_agent }, null, null);
+        if (quirks) try matchContents(res, &matcher, element, keys, ua.quirks, pseudo, is_html, quirks, .{ .origin = .user_agent, .order = 1 << 20 }, null, null);
+        try matchContents(res, &matcher, element, keys, ua.hints, pseudo, is_html, quirks, .{ .origin = .presentational_hint }, null, .zero);
+    }
+
+    // The author origin: the document's sheets, for an element in the
+    // document tree (a shadow tree's own sheets are batch 2).
+    var root = node;
+    while (root.parent_node) |p| root = p;
+    if (root.node_type == NodeBase.DOCUMENT_NODE) {
+        for (res.active.sheets.items) |*s| {
+            try matchContents(res, &matcher, element, keys, s.contents, pseudo, is_html, quirks, .{ .origin = .author, .order = s.order_base }, s, null);
+        }
+    }
+
+    // Element-attached declarations: the style attribute (CSS Style
+    // Attributes, Cascade 5 6.1 "Element-Attached Styles").
+    if (pseudo == null and ns != null) {
+        const n = ns.?;
+        if (std.mem.eql(u8, n, html_namespace) or std.mem.eql(u8, n, svg_namespace) or std.mem.eql(u8, n, mathml_namespace)) {
+            if (try inlineBlock(element, state, quirks)) |block| {
+                try res.matched.append(res.allocator, .{ .block = block, .source = .{ .origin = .author, .element_attached = true } });
+            }
+        }
+    }
+}
+
+const SpecificityOverride = enum { zero };
+
+fn matchContents(res: *Resolution, matcher: *selector_matching.StyleMatcher, element: *runtime.Instance, keys: sheet_mod.ElementKeys, contents: *const Contents, pseudo: ?[]const u8, is_html: bool, quirks: bool, base: css.cascade.Source, active_sheet: ?*const ActiveSheet, specificity: ?SpecificityOverride) Error!void {
+    if (contents.html_only and !is_html) return;
+    res.candidates.clearRetainingCapacity();
+    try contents.collectCandidates(keys, pseudo != null, quirks, &res.candidates, res.allocator);
+    for (res.candidates.items) |index| {
+        const rule = &contents.rules.items[index];
+        if (!contents.conditionHolds(rule.condition, &res.active.media)) continue;
+        if (!matcher.matches(element, rule.complex, pseudo)) continue;
+        var source = base;
+        source.order = base.order + rule.position;
+        source.specificity = if (specificity != null) .{} else rule.specificity;
+        if (active_sheet) |s| {
+            if (rule.layer) |l| source.layer = s.layer_order[l] else if (s.import_layer) |l| source.layer = l;
+        }
+        try res.matched.append(res.allocator, .{ .block = rule.block, .source = source });
+    }
+}
+
+/// The element's style attribute's declarations (parsed on first use
+/// after a change), or null when it has none or CSP blocked it.
+fn inlineBlock(element: *runtime.Instance, state: *ElementStyle, quirks: bool) Error!?*const css.declarations.DeclarationBlock {
+    switch (state.inline_state) {
+        .blocked => return null,
+        .parsed => return if (state.inline_block) |*b| b else null,
+        .unparsed => {},
+    }
+    const data = element_data.of(element) orelse return null;
+    const value = if (data.findAttribute(null, "style")) |entry| entry.value else {
+        state.inline_state = .parsed;
+        if (state.inline_block) |*b| b.clear();
+        return null;
+    };
+    try reparseInline(element, state, value, quirks);
+    return if (state.inline_block) |*b| b else null;
+}
+
+/// Parse `value` into the element's inline declaration block.
+pub fn reparseInline(element: *runtime.Instance, state: *ElementStyle, value: []const u8, quirks: bool) Error!void {
+    const document = interfaces.Node.get_ownerDocument(element) catch null;
+    var url_context: UrlContext = .{ .document = document orelse element, .base = "" };
+    const options: css.properties.ParseOptions = .{ .allocator = state.allocator, .quirks = quirks, .url_resolver = if (document != null) .{ .context = &url_context, .resolve = &resolveUrl } else null };
+    if (state.inline_block) |*b| {
+        try b.setCssText(options, value);
+    } else {
+        state.inline_block = try css.declarations.DeclarationBlock.parse(options, value);
+    }
+    state.inline_state = .parsed;
+}
+
+/// HTML "being rendered", as a layout-less Crane answers it (ruling Q4):
+/// the element is connected, in a document with a browsing context, in the
+/// flat tree, and neither it nor any flat-tree ancestor has `display:
+/// none`; an element with `display: contents` has no box of its own (it is
+/// "delegating its rendering to its children").
+pub fn isBeingRendered(element: *runtime.Instance) Error!bool {
+    const node = instance_bridge.getNodeBase(element) orelse return false;
+    if (node.node_type != NodeBase.ELEMENT_NODE or !node.is_connected) return false;
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
+    const view = interfaces.Document.get_defaultView(document) catch null;
+    if (view == null) return false;
+    const style = (try computedStyle(element, null)) orelse return false;
+    if (style.display().box == .contents) return false;
+    var current: *NodeBase = node;
+    while (true) {
+        const e = instanceOf(current) orelse return false;
+        const s = (try computedStyle(e, null)) orelse return false;
+        if (s.display().box == .none) return false;
+        var slotted = false;
+        switch (flatParent(current, &slotted)) {
+            .root => return true,
+            .none => return false,
+            .element => |p| current = p,
+        }
+    }
+}
+
+/// CSSOM 7.2 step 5's condition on `element`, but the flat tree's (which
+/// computedStyle's null answers): connected, and its shadow-including root
+/// has a browsing context whose container, if any, is being rendered.
+pub fn hasComputedStyle(element: *runtime.Instance) Error!bool {
+    const node = instance_bridge.getNodeBase(element) orelse return false;
+    if (!node.is_connected) return false;
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return false;
+    if (navigable_container.of(window)) |container| {
+        if (container != element and !try isBeingRendered(container)) return false;
+    }
+    // In the flat tree: computedStyle answers null otherwise, without this
+    // resolving the style twice.
+    return true;
+}
+
+/// The engine of `document`, for the owners' registration.
+pub fn engineOf(document: *runtime.Instance) ?*StyleEngine {
+    return hooks.engineOf(document);
+}
+
+test "layer order: first declaration, nested within the parent, children before the parent's own" {
+    var tree = LayerTree.init(std.testing.allocator);
+    defer tree.deinit();
+    const type_layer = try tree.declare(null, "reset.type");
+    const reset = try tree.declare(null, "reset");
+    const framework = try tree.declare(null, "framework");
+    const theme = try tree.declare(framework, "theme");
+    try tree.order();
+    try std.testing.expectEqual(@as(u16, 0), tree.nodes.items[type_layer].rank);
+    try std.testing.expectEqual(@as(u16, 1), tree.nodes.items[reset].rank);
+    try std.testing.expectEqual(@as(u16, 2), tree.nodes.items[theme].rank);
+    try std.testing.expectEqual(@as(u16, 3), tree.nodes.items[framework].rank);
+}

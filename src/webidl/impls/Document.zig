@@ -273,6 +273,11 @@ pub const InternalState = struct {
     scripts: dom_document_scripts.Scripts,
     /// HTML 3.1.6: ordered set of elements blocking rendering.
     render_blocking_elements: @import("dom").document_rendering.ElementSet,
+    /// The document's style engine (dom.style): its sheets and its
+    /// elements' computed styles. By value - the engine's type is
+    /// dom.style's, the state this document's - and reached through the
+    /// `engine_of` hook below (lane style1).
+    style_engine: @import("dom").style.StyleEngine,
 
     /// Throw-on-dynamic-markup-insertion counter
     /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#throw-on-dynamic-markup-insertion-counter
@@ -473,6 +478,7 @@ pub const InternalState = struct {
             // Script execution state
             .scripts = dom_document_scripts.Scripts.init(allocator),
             .render_blocking_elements = @import("dom").document_rendering.ElementSet.init(allocator),
+            .style_engine = @import("dom").style.StyleEngine.init(allocator),
             .throw_on_dynamic_markup_insertion_counter = 0,
             .unload_counter = 0,
             .insertion_point = null,
@@ -572,6 +578,7 @@ pub const InternalState = struct {
         // Script execution lists (don't own the script elements, just the list storage)
         self.scripts.deinit();
         self.render_blocking_elements.deinit();
+        self.style_engine.deinit();
 
         // Module map - dispose module handles and free keys
         {
@@ -651,6 +658,49 @@ pub const InternalState = struct {
     }
 };
 
+/// dom.style's `engine_of`: this document's style engine.
+fn styleEngineOf(instance: *runtime.Instance) ?*@import("dom").style.StyleEngine {
+    const internal = getInternal(instance) orelse return null;
+    return &internal.style_engine;
+}
+
+/// dom.style's `media_values`: the environment Media Queries 5 evaluates
+/// against for this document. The viewport is what the document's window
+/// reports as innerWidth/innerHeight (ruling Q5: the headless default,
+/// consistent with them); the screen and the user preferences are the
+/// platform's (protocol 6.10.4); scripting follows the document's
+/// browsing context and sandbox. A document with no window has no
+/// viewport of its own and evaluates against the defaults, scripting none.
+fn styleMediaValues(instance: *runtime.Instance) @import("css").media_queries.MediaValues {
+    const platform = @import("platform");
+    var values: @import("css").media_queries.MediaValues = .{};
+    const window = (get_defaultView(instance) catch null) orelse {
+        values.scripting = .none;
+        return values;
+    };
+    values.width = @floatFromInt(interfaces.Window.get_innerWidth(window) catch 1024);
+    values.height = @floatFromInt(interfaces.Window.get_innerHeight(window) catch 768);
+    values.scripting = if (@import("dom").document_scripts.scriptingEnabled(instance)) .enabled else .none;
+    if (@import("html").platform_state.of(instance.ctx)) |browser| {
+        const screen = platform.screenInfo(browser);
+        values.device_width = @floatFromInt(screen.width);
+        values.device_height = @floatFromInt(screen.height);
+        values.resolution = screen.device_pixel_ratio;
+        values.color_bits = screen.color_depth / 3;
+        const preferences = platform.userPreferences(browser);
+        values.prefers_color_scheme = if (preferences.color_scheme == .dark) .dark else .light;
+        values.prefers_reduced_motion = if (preferences.reduced_motion == .reduce) .reduce else .no_preference;
+        values.prefers_contrast = switch (preferences.contrast) {
+            .no_preference => .no_preference,
+            .more => .more,
+            .less => .less,
+            .custom => .custom,
+        };
+        values.forced_colors = preferences.forced_colors;
+    }
+    return values;
+}
+
 /// An object the document makes once, keeps in its own state and hands out as
 /// the same object for its whole life - getSelection()'s Selection,
 /// document.all, document.fonts, document.styleSheets - kept alive from the
@@ -683,6 +733,9 @@ fn policyContainerOf(document: *runtime.Instance) ?*fetch.internal.PolicyContain
 pub fn installHooks() void {
     // Its states left at its Browser's end (Browser.deinit).
     @import("dom").teardown_sweeps.install(.documents, &sweepRemaining);
+    // The style engine this document keeps, and the media environment its
+    // elements are styled in (lane style1).
+    @import("dom").style.hooks.install(.{ .engine_of = &styleEngineOf, .media_values = &styleMediaValues });
     @import("dom").template_contents.install(.{ .owner_document = &templateOwnerDocument });
     @import("dom").refcount.install(.{ .document_counts = &countsOf });
     @import("dom").custom_elements.installDocument(.{
