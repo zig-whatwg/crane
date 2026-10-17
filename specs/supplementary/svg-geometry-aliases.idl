@@ -1,0 +1,16 @@
+// SVG 2 (https://svgwg.org/svg2-draft/) uses SVGRect, SVGMatrix and SVGPoint
+// as types - SVGGraphicsElement.getBBox(), getCTM(), SVGAnimatedRect,
+// SVGPointList, SVGSVGElement.createSVGRect() and the rest - and webref's
+// SVG.idl (so also WPT's interfaces/SVG.idl) has them so. Those names are
+// only the [LegacyWindowAlias]es of DOMRect, DOMMatrix and DOMPoint in
+// Geometry Interfaces 1 (https://drafts.csswg.org/geometry-1/, geometry.idl),
+// and WebIDL does not make a legacy window alias a type name, so codegen
+// would bind the members as untyped values.
+//
+// These typedefs give codegen the type the browsers bind: getBBox() returns
+// a DOMRect in Chrome, Firefox and Safari, and window.SVGRect === DOMRect.
+// A typedef creates no global; the window aliases stay geometry.idl's.
+
+typedef DOMRect SVGRect;
+typedef DOMMatrix SVGMatrix;
+typedef DOMPoint SVGPoint;
