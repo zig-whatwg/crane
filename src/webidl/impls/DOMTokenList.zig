@@ -319,7 +319,7 @@ pub fn call_supports(instance: *runtime.Instance, token: runtime.DOMString) anye
     }
 
     // No supported tokens defined - throw TypeError
-    return error.NotImplemented;
+    return error.TypeError;
 }
 
 // ============================================================================
