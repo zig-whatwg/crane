@@ -38,8 +38,10 @@ pub const IsolateTemplates = struct {
     allocator: std.mem.Allocator,
     /// The binding's cache: the template it made for each interface
     /// (createTemplateCached), and each iterable interface's iterator
-    /// prototype template ("<Interface> Iterator"). Not disposed here - the
-    /// ones objects are made from are also `registered`.
+    /// prototype template ("<Interface> Iterator"). Disposed with the
+    /// storage (`deinit`), each once: the ones objects are made from are
+    /// also `registered`, and the rest - the iterator prototype templates,
+    /// an interface made for a namespace object - are this map's alone.
     templates: std.StringHashMap(*v8.FunctionTemplate),
     /// The template registry (template_registry.register): the template each
     /// interface's objects of this isolate are made from, by interface name.
@@ -55,14 +57,38 @@ pub const IsolateTemplates = struct {
         };
     }
 
-    /// Free the maps. `dispose`: the registered templates' handles too.
+    /// Free the maps. `dispose`: every template either map holds too, each
+    /// handle once - one in both maps is one handle.
+    ///
+    /// This disposed only the registered ones, so a template that was only
+    /// in `templates` outlived its storage: every iterable interface's
+    /// iterator prototype template (interface.zig, iteratorPrototypeTemplate)
+    /// was one Global<FunctionTemplate> left behind per worker realm that
+    /// iterated one - a worker realm ends its storage with it - and per
+    /// agent for a Window (lane sw1-b2's leaks --atExit: 21 x 16 B from
+    /// `V8Interface(Headers).returnNewIterator` on worker threads).
     pub fn deinit(self: *IsolateTemplates, dispose: bool) void {
-        if (dispose) {
-            var registered = self.registered.valueIterator();
-            while (registered.next()) |template| v8.v8_FunctionTemplate_Dispose(template.*);
-        }
+        if (dispose) self.disposeAll();
         self.registered.deinit(self.allocator);
         self.templates.deinit();
+    }
+
+    /// Dispose every distinct template the two maps hold.
+    fn disposeAll(self: *IsolateTemplates) void {
+        var distinct: std.AutoHashMapUnmanaged(*v8.FunctionTemplate, void) = .empty;
+        defer distinct.deinit(self.allocator);
+        distinct.ensureTotalCapacity(self.allocator, self.registered.count() + self.templates.count()) catch {
+            // Out of memory: the registered ones at least, as before.
+            var registered = self.registered.valueIterator();
+            while (registered.next()) |template| v8.v8_FunctionTemplate_Dispose(template.*);
+            return;
+        };
+        var registered = self.registered.valueIterator();
+        while (registered.next()) |template| distinct.putAssumeCapacity(template.*, {});
+        var cached = self.templates.valueIterator();
+        while (cached.next()) |template| distinct.putAssumeCapacity(template.*, {});
+        var each = distinct.keyIterator();
+        while (each.next()) |template| v8.v8_FunctionTemplate_Dispose(template.*);
     }
 
     /// Get a template by interface name
