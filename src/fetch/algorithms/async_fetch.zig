@@ -83,6 +83,13 @@ pub const AsyncFetch = struct {
     /// nobody reads it.
     relay: ?*BodyRelay = null,
     relay_source: ?*PipeSource = null,
+    /// Handle Fetch 13.3.4's race, while the call races the network (and,
+    /// when the network's response won, until its body has arrived).
+    race: Race = .{},
+    /// A streamed body's transfer pauses while its readers fall behind. Off
+    /// for a race's network side whose raced fetch collects: nobody reads
+    /// that body until it has all arrived.
+    pause_body: bool = true,
     /// Fetch's outcome, from the moment the job ends until `pump` hands it to
     /// the client.
     outcome: ?(FetchError!FetchResult) = null,
@@ -106,6 +113,48 @@ pub const AsyncFetch = struct {
         /// After `done`, the fetch is entirely over: its body has ended, or
         /// nobody was left to read it. The client's last word from it.
         finished: ?*const fn (context: *anyopaque) void = null,
+    };
+
+    /// Service Workers Handle Fetch 13.3.4, "race-network-and-fetch-handler":
+    /// the request is fetched from the network ("fetch given request",
+    /// 13.3.4.5.2) by a second AsyncFetch on the same agent's fetches, beside
+    /// the worker's fetch event, and the first usable answer is this fetch's
+    /// - the spec's queue of race results:
+    ///
+    /// 1. the network's response with an ok status, while the worker has not
+    ///    answered (13.3.4.5.2.1.2): the network wins - the call is lost
+    ///    (its event still runs, its answer is freed) and the response, its
+    ///    body still arriving through the network side, is handed to HTTP
+    ///    fetch step 3.5 as Handle Fetch's (13.3.4.14);
+    /// 2. the worker's response or network error first (13.3.4.7.2-7.4):
+    ///    the network side is aborted - its transfer cancelled, a response
+    ///    it kept freed;
+    /// 3. the worker falls back: the race's response, whatever its status,
+    ///    once it has one (Create Fetch Event and Dispatch step 21.3, "wait
+    ///    until raceResponse's value is not pending"). Stated deviation: the
+    ///    network side is not aborted then, where step 13.3.4.7.2 would abort
+    ///    the fetch whose response it returns - Chromium commits that
+    ///    response instead (ServiceWorkerMainResourceLoader::
+    ///    DidDispatchFetchEvent: a fallback after the race started is
+    ///    kWithoutServiceWorker, "not to dispatch additional network request
+    ///    for fallback");
+    /// 4. the network's response without an ok status (or a network error)
+    ///    while the worker has not answered: kept - it is not enqueued, and
+    ///    the worker decides.
+    ///
+    /// The network side is this fetch's: it is ended with it, and this
+    /// fetch is not over - nor, collected, deliverable - until the winning
+    /// network response's body has arrived.
+    const Race = struct {
+        /// The network side, until it is over. In `fetches.live`, after this
+        /// fetch.
+        network: ?*AsyncFetch = null,
+        /// Its outcome, delivered while the worker had not decided: kept
+        /// (case 4) until the worker does.
+        kept: ?(FetchError!FetchResult) = null,
+        /// The worker fell back before the network side delivered: its
+        /// outcome is the answer (case 3).
+        fallback: bool = false,
     };
 
     /// Start fetching `request`, whose ownership passes to the fetch - even
@@ -198,6 +247,8 @@ pub const AsyncFetch = struct {
     }
 
     fn destroy(self: *AsyncFetch) void {
+        // The race's network side is this fetch's to end.
+        self.endRace();
         const live = &self.fetches.live;
         for (live.items, 0..) |f, i| {
             if (f == self) {
@@ -223,7 +274,7 @@ pub const AsyncFetch = struct {
     /// body has to have arrived first.
     fn deliverable(self: *const AsyncFetch) bool {
         if (self.outcome == null) return false;
-        return !self.collect or (self.source == null and self.relay == null);
+        return !self.collect or (self.source == null and self.relay == null and self.race.network == null);
     }
 
     /// Whether this fetch's response has started arriving and not ended:
@@ -245,7 +296,7 @@ pub const AsyncFetch = struct {
     /// navigation's redirect: the fetch goes on when the client asks).
     fn over(self: *const AsyncFetch) bool {
         return self.delivered and self.source == null and self.transfer == null and self.relay == null and
-            !self.job.hasNextManualRedirect();
+            self.race.network == null and !self.job.hasNextManualRedirect();
     }
 
     /// Whether the response delivered is a navigation's redirect whose next
@@ -292,7 +343,7 @@ pub const AsyncFetch = struct {
                     // The body's producer - the network's source, or a
                     // service worker's relay (`drainRelay`) - has ended
                     // already: verify it now. Otherwise its end resumes.
-                    if (self.source == null and self.relay_source == null) {
+                    if (self.source == null and self.relay_source == null and self.race.network == null) {
                         next = self.job.resumeBody();
                         continue;
                     }
@@ -306,6 +357,8 @@ pub const AsyncFetch = struct {
                 .service_worker => |call| {
                     // Asked again at every turn of the loop (`pump`).
                     self.service_worker_call = call;
+                    // 13.3.4.5: the network races the worker.
+                    if (self.job.serviceWorkerRaces()) self.startRace();
                     return;
                 },
                 .network => |needed| {
@@ -340,7 +393,7 @@ pub const AsyncFetch = struct {
         // A collected body is taken only at its end: pausing it would wait
         // for a reader that never comes. A streamed one pauses while its
         // readers fall behind.
-        source.producer = if (self.collect)
+        source.producer = if (self.collect or !self.pause_body)
             .{ .context = self, .cancel = stopProducing }
         else
             .{ .context = self, .cancel = stopProducing, .pause = pauseTransfer, .unpause = unpauseTransfer };
@@ -405,9 +458,143 @@ pub const AsyncFetch = struct {
     fn askServiceWorker(self: *AsyncFetch) bool {
         const call = self.service_worker_call orelse return false;
         const answer = call.take() orelse return false;
+        if (self.race.network != null or self.race.kept != null) return self.raceWorkerAnswered(answer);
         self.service_worker_call = null;
         self.advance(self.job.resumeServiceWorker(self.attachRelay(answer)));
         return true;
+    }
+
+    /// Whether the race keeps the network side's response for the worker to
+    /// decide on (case 4).
+    pub fn raceHasNetworkResponse(self: *const AsyncFetch) bool {
+        return self.race.kept != null;
+    }
+
+    /// 13.3.4.5.2: the race's network side, started beside the worker's
+    /// fetch event. A network side that cannot start leaves the worker's
+    /// answer alone, as for a "fetch-event" source.
+    fn startRace(self: *AsyncFetch) void {
+        // A previous hop's race whose network side still delivers that hop's
+        // body (a navigation's redirect, handed over and followed): nobody
+        // reads it now.
+        self.endRace();
+        const request = self.job.raceRequest() catch return;
+        const network_side = startStreaming(self.allocator, request, .{
+            .cross_origin_isolated_capability = self.job.options.cross_origin_isolated_capability,
+        }, self.fetches, .{
+            .context = self,
+            .done = raceNetworkDone,
+            .alive = raceNetworkAlive,
+            .gone = raceNetworkGone,
+            .finished = raceNetworkFinished,
+        }) catch return;
+        // Nothing has been heard yet: the client hears only from `pump`.
+        network_side.pause_body = !self.collect;
+        self.race.network = network_side;
+    }
+
+    /// The race's network side and a response it kept go (13.3.4.7.2's
+    /// abort); its transfer is cancelled, and its client - this fetch -
+    /// hears nothing more from it.
+    fn endRace(self: *AsyncFetch) void {
+        if (self.race.network) |network_side| {
+            self.race.network = null;
+            network_side.terminate();
+        }
+        if (self.race.kept) |kept| {
+            self.race.kept = null;
+            var result = kept catch null;
+            if (result) |*r| r.deinit();
+        }
+        self.race.fallback = false;
+    }
+
+    /// The worker's answer while the network races it.
+    fn raceWorkerAnswered(self: *AsyncFetch, answer: service_worker_fetch.Call.Answer) bool {
+        switch (answer) {
+            .fallback => {
+                // Case 3: the race's response, as soon as it has one.
+                if (self.race.kept) |kept| {
+                    self.race.kept = null;
+                    self.raceTakeNetwork(kept);
+                } else if (self.race.network == null) {
+                    // No network side: HTTP fetch step 4, the network.
+                    self.service_worker_call = null;
+                    self.advance(self.job.resumeServiceWorker(.fallback));
+                } else {
+                    self.race.fallback = true;
+                }
+            },
+            .response, .network_error => {
+                // Case 2: the worker won; the network side is aborted.
+                self.endRace();
+                self.service_worker_call = null;
+                self.advance(self.job.resumeServiceWorker(self.attachRelay(answer)));
+            },
+        }
+        return true;
+    }
+
+    /// The network side's outcome is the answer (cases 1 and 3): Handle
+    /// Fetch returns it, and HTTP fetch step 3.5 takes it as a service
+    /// worker's response. Its body - the network side's pipe - is still
+    /// arriving; the network side fills it until it is over.
+    fn raceTakeNetwork(self: *AsyncFetch, outcome: FetchError!FetchResult) void {
+        self.race.fallback = false;
+        self.service_worker_call = null;
+        var result = outcome catch {
+            self.advance(self.job.resumeServiceWorker(.network_error));
+            return;
+        };
+        // The network side's own timing info goes: this fetch's is the one
+        // reported (13.3.4.12 gives the routed response the raced fetch's
+        // service worker timing info).
+        result.timing_info.deinit();
+        if (result.referrer) |referrer| result.response.allocator.free(referrer);
+        self.advance(self.job.resumeServiceWorker(.{ .response = result.response }));
+    }
+
+    /// 13.3.4.5.2.1.2's "ok status", of the response fetch handed over (an
+    /// opaque filtered response's status is 0).
+    fn raceResponseOk(outcome: *const (FetchError!FetchResult)) bool {
+        const result = outcome.* catch return false;
+        return switch (result.response.response_type) {
+            .@"error", .@"opaque", .opaqueredirect => false,
+            else => result.response.status >= 200 and result.response.status <= 299,
+        };
+    }
+
+    /// The network side's client: its response.
+    fn raceNetworkDone(context: *anyopaque, outcome: FetchError!FetchResult) void {
+        const self: *AsyncFetch = @ptrCast(@alignCast(context));
+        // Case 3: the worker fell back - this is the answer.
+        if (self.race.fallback) return self.raceTakeNetwork(outcome);
+        // Case 1: an ok response before the worker answered wins.
+        if (raceResponseOk(&outcome)) if (self.service_worker_call) |call| {
+            call.lose();
+            return self.raceTakeNetwork(outcome);
+        };
+        // Case 4: kept for the worker to decide on.
+        self.race.kept = outcome;
+    }
+
+    /// The network side is this fetch's to end: it is always wanted.
+    fn raceNetworkAlive(_: *anyopaque) bool {
+        return true;
+    }
+
+    /// Never: the network side's client is always alive.
+    fn raceNetworkGone(_: *anyopaque) void {}
+
+    /// The network side is over (and gone): a winning response's body has
+    /// arrived, and main fetch step 23 can go on.
+    fn raceNetworkFinished(context: *anyopaque) void {
+        const self: *AsyncFetch = @ptrCast(@alignCast(context));
+        self.race.network = null;
+        if (self.awaiting_body and self.source == null and self.relay_source == null) {
+            self.awaiting_body = false;
+            self.advance(self.job.resumeBody());
+        }
     }
 
     /// The answer as the job takes it: a response's body is a pipe of a

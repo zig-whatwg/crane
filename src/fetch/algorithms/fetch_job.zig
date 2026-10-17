@@ -121,6 +121,13 @@ pub const FetchJob = struct {
     service_worker_call: ?*service_worker_fetch.Call = null,
     service_worker_start_time: f64 = 0,
     service_worker_preflight: bool = false,
+    /// Handle Fetch 13.3.4: the call races the network ("race-network-and-
+    /// fetch-handler"). The event loop's driver (AsyncFetch) fetches
+    /// `raceRequest()` beside it and resumes with the race's winner as the
+    /// service worker's answer. Stated deviation: the blocking driver
+    /// (fetch.zig) does not race - it waits for the fetch event's answer
+    /// alone, as for a "fetch-event" source.
+    service_worker_race: bool = false,
     /// The fetch controller's next manual redirect steps (HTTP fetch step 6
     /// "manual", a navigation): HTTP-redirect fetch given fetchParams and
     /// the redirect response handed over - `processNextManualRedirect`.
@@ -439,6 +446,7 @@ pub const FetchJob = struct {
             self.service_worker_call = started.call;
             self.service_worker_start_time = started.start_time;
             self.service_worker_preflight = make_cors_preflight;
+            self.service_worker_race = started.race;
             return .{ .service_worker = started.call };
         }
         return self.httpFetchFromNetwork(make_cors_preflight);
@@ -449,6 +457,7 @@ pub const FetchJob = struct {
     pub fn resumeServiceWorker(self: *FetchJob, answer: ServiceWorkerAnswer) FetchError!Step {
         const call = self.service_worker_call orelse unreachable; // no service worker was asked
         self.service_worker_call = null;
+        self.service_worker_race = false;
         call.release();
         switch (answer) {
             .fallback => return self.httpFetchFromNetwork(self.service_worker_preflight),
@@ -469,6 +478,35 @@ pub const FetchJob = struct {
                 }
             },
         }
+    }
+
+    /// Whether the `.service_worker` step's call races the network (Handle
+    /// Fetch 13.3.4).
+    pub fn serviceWorkerRaces(self: *const FetchJob) bool {
+        return self.service_worker_call != null and self.service_worker_race;
+    }
+
+    /// Handle Fetch 13.3.4.5.2's "fetch given request", for the race's
+    /// network side: a clone of the request (OWNED by the caller) as it is
+    /// now - its URL list, its client's cookie jar and network. Its
+    /// service-workers mode is "none": the spec's request would reach Handle
+    /// Fetch again, and Chromium's race request bypasses the worker
+    /// (ServiceWorkerMainResourceLoader::StartRaceNetworkRequest). It reports
+    /// nothing of its own - the raced fetch reports the one Resource Timing
+    /// entry - and checks no integrity: the raced fetch's main fetch step 23
+    /// does, for whichever answer wins.
+    pub fn raceRequest(self: *FetchJob) FetchError!*InternalRequest {
+        const copy = self.request.clone() catch return FetchError.OutOfMemory;
+        copy.service_workers_mode = .none;
+        copy.service_worker = null;
+        copy.reserved_client = null;
+        copy.initiator_type = null;
+        copy.timing_reporter = null;
+        if (copy.integrity_metadata.len != 0) {
+            copy.allocator.free(copy.integrity_metadata);
+            copy.integrity_metadata = "";
+        }
+        return copy;
     }
 
     /// HTTP fetch step 4, from the network: a CORS-preflight first when

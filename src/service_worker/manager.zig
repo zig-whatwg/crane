@@ -1477,6 +1477,9 @@ pub const Manager = struct {
         // Handle Fetch step 15.1's preloadRequest header value.
         var preload_header: ?[]u8 = null;
         defer if (preload_header) |value| self.allocator.free(value);
+        // Step 13.3.4: a "race-network-and-fetch-handler" source - the fetch
+        // event races the network.
+        var race = false;
         // Step 13: the active worker's list of router rules (a reference),
         // whether it runs, the environment whose realm evaluates them on
         // this thread, and the storage key a cache source reads.
@@ -1579,9 +1582,16 @@ pub const Manager = struct {
                     if (try self.cacheSourceAnswer(&routing, name, request)) |call| return .{ .call = call };
                     return .network;
                 },
-                // 13.3.4. race-network-and-fetch-handler (a GET): not raced
-                // yet - the fetch event answers alone (stated).
-                .race_network_and_fetch_handler => {},
+                // 13.3.4. race-network-and-fetch-handler, for a GET: the fetch
+                // event is dispatched as for fetch-event (13.3.4.7), and the
+                // call goes back to fetch as a race - its driver fetches the
+                // request from the network beside it (13.3.4.5, AsyncFetch's
+                // race) and takes the first usable answer. No navigation
+                // preload (13.3.4.6 resolves preloadResponse with
+                // undefined). The Soft Update of 13.3.4.1 is the event's own
+                // (step 19's), once - two would queue one update. Another
+                // method: 13.3.5, fetch-event.
+                .race_network_and_fetch_handler => race = std.mem.eql(u8, request.method, "GET"),
                 // 13.3.5. fetch-event: on to step 14.
                 .fetch_event => {},
             };
@@ -1594,6 +1604,11 @@ pub const Manager = struct {
             if (soft_update) self.report(.{ .soft_update = registration_id });
             return .network;
         }
+        // 13.3.4.6: a raced request's preloadResponse is undefined.
+        if (race) if (preload_header) |value| {
+            self.allocator.free(value);
+            preload_header = null;
+        };
         // 3.1-3.2 (HTTP fetch): requestForServiceWorker, for the worker's
         // thread. A body only a stream holds goes to the network (stated).
         const copy = (try copyRequestForWorker(self.allocator, request)) orelse return .network;
@@ -1622,6 +1637,7 @@ pub const Manager = struct {
         // 17. Create Fetch Event and Dispatch, from step 15, on the job
         // thread.
         self.report(.{ .fetch = dispatch });
+        if (race) return .{ .race = call };
         return .{ .call = call };
     }
 

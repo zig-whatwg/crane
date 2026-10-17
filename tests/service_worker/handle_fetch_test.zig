@@ -745,3 +745,53 @@ test "Should Skip Event: a worker with no fetch listener is not asked - the netw
     manager.removeEnvironment(fixture.page_environment);
     manager.removeEnvironment(fixture.sw_environment);
 }
+
+test "Handle Fetch step 13.3.4: a race-network-and-fetch-handler rule's GET is handed back to race the network; another method is the fetch event's alone" {
+    var fixture: Fixture = .{};
+    try fixture.setUp();
+    defer fixture.tearDown();
+    const manager = &fixture.harness.manager;
+    const a = manager.allocator;
+    fixture.page.endpoint.router = &test_router_steps;
+    try claim(manager, fixture.worker_id);
+    const rules = try a.alloc(sw.router.Rule, 1);
+    rules[0] = .{ .condition = .{ .mode = .cors }, .source = .race_network_and_fetch_handler };
+    try setRules(manager, fixture.worker_id, rules);
+    const route = manager.routeForRealm(fixture.page.endpoint.realm).?;
+
+    // GET: the fetch event fires, and the call comes back as a race - the
+    // fetching side starts the network beside it (13.3.4.5).
+    const raced = try InternalRequest.init(a, "https://example.com/raced");
+    defer raced.deinit();
+    raced.mode = .cors;
+    const call = switch (try route.handle(route.context, raced, route.client)) {
+        .race => |c| c,
+        else => return error.TestExpectedRace,
+    };
+    defer call.release();
+    const kept = try fixture.harness.nextDispatch(10_000);
+    // 13.3.4.6: no navigation preload for a raced request.
+    try testing.expect(kept.dispatch.preload_header == null);
+    kept.dispatch.call.answer(.fallback);
+    kept.dispatch.destroy();
+    fixture.harness.done(kept);
+    _ = call.wait(5_000) orelse return error.TestUnexpectedTimeout;
+
+    // POST: 13.3.4 is for a GET only - the fetch event answers alone.
+    const posted = try InternalRequest.init(a, "https://example.com/raced");
+    defer posted.deinit();
+    posted.mode = .cors;
+    try posted.setMethod("POST");
+    const event_call = switch (try route.handle(route.context, posted, route.client)) {
+        .call => |c| c,
+        else => return error.TestExpectedCall,
+    };
+    defer event_call.release();
+    const posted_kept = try fixture.harness.nextDispatch(10_000);
+    posted_kept.dispatch.call.answer(.fallback);
+    posted_kept.dispatch.destroy();
+    fixture.harness.done(posted_kept);
+    _ = event_call.wait(5_000) orelse return error.TestUnexpectedTimeout;
+    manager.removeEnvironment(fixture.page_environment);
+    manager.removeEnvironment(fixture.sw_environment);
+}

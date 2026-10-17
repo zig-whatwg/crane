@@ -81,6 +81,12 @@ pub const Route = struct {
         /// A service worker's fetch event is under way: wait for the call's
         /// answer. The caller holds one reference.
         call: *Call,
+        /// Handle Fetch 13.3.4, a "race-network-and-fetch-handler" source:
+        /// the fetch event is under way, and the fetching side fetches the
+        /// request from the network beside it (AsyncFetch's race) - the
+        /// first usable answer is the fetch's. The caller holds one
+        /// reference.
+        race: *Call,
     };
 };
 
@@ -98,7 +104,7 @@ pub const Call = struct {
     /// worker side before the call is handed to fetch, read only by `wait`.
     blocking: ?Blocking = null,
 
-    pub const State = enum { pending, answered, taken, abandoned };
+    pub const State = enum { pending, answered, taken, abandoned, lost };
 
     /// How Handle Fetch ended for the request.
     pub const Answer = union(enum) {
@@ -193,6 +199,21 @@ pub const Call = struct {
         const waiting = self.slot;
         self.slot = null;
         self.state = .abandoned;
+        unlock(&self.mutex);
+        if (waiting) |value| freeAnswer(value);
+    }
+
+    /// The fetching side no longer wants the answer, but the fetch event is
+    /// still to run: the network won Handle Fetch 13.3.4's race (step 13.3.4.5
+    /// enqueued its response first) while Create Fetch Event and Dispatch,
+    /// which runs in parallel, goes on. Unlike `abandon`, `isAbandoned` stays
+    /// false, so the worker's thread still fires the event. An answer
+    /// waiting, or one still to come, is freed.
+    pub fn lose(self: *Call) void {
+        lock(&self.mutex);
+        const waiting = self.slot;
+        self.slot = null;
+        if (self.state != .abandoned) self.state = .lost;
         unlock(&self.mutex);
         if (waiting) |value| freeAnswer(value);
     }
@@ -433,6 +454,23 @@ test "an answer to a call fetch gave up on is freed, before or after it comes" {
         call.release();
         call.release();
     }
+}
+
+test "a call the network won a race for frees its answer, but its fetch event is not abandoned" {
+    const call = try Call.create(testing.allocator);
+    call.lose();
+    try testing.expect(!call.isAbandoned());
+    try testing.expect(call.take() == null);
+    // The worker's answer, after the race was lost, is freed here.
+    const relay = try BodyRelay.create(testing.allocator);
+    call.answer(.{ .response = .{ .response = try testResponse(201), .body = relay } });
+    // The reader's reference went with the answer, cancelled.
+    try testing.expect(relay.isCancelled());
+    relay.release();
+    // Abandoned later (the fetch ended): still nothing to take.
+    call.abandon();
+    call.release();
+    call.release();
 }
 
 const Waiting = struct {
