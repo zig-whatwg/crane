@@ -13,9 +13,15 @@
 //! The sweep: a page with an enforced `<meta>` CSP and a srcdoc iframe,
 //! which inherits it (step 2: a clone of its container document's). Each
 //! round fails the i-th allocation made while the frame navigates again -
-//! to a new srcdoc, then to a javascript: URL whose String is a document -
-//! and then checks the frame's active document: it must have the page's
-//! policy. The Browser's allocator is a FailingAllocator over c_allocator
+//! to a new srcdoc, or to a javascript: URL whose String is a document - and
+//! then checks the frame's active document: it must have the page's policy.
+//!
+//! Not red on main: neither sweep found a document with an empty container
+//! there. The fail-open the clones had shows in a local-scheme frame (data:,
+//! blob:: "determine navigation params policy container" step 3 inherits the
+//! initiator's clone), and a sweep of an `iframe.src = 'data:...'`
+//! navigation panics first, in resolveSrc's `catch unreachable` on out of
+//! memory (HTMLIFrameElement.resolveSrc; lane leaks4's report). The Browser's allocator is a FailingAllocator over c_allocator
 //! (an out-of-memory path elsewhere may leak; that is not this test's).
 
 const std = @import("std");
@@ -29,7 +35,7 @@ const dom = @import("dom");
 const page_html =
     \\<!doctype html>
     \\<head><meta http-equiv="Content-Security-Policy" content="img-src 'none'"></head>
-    \\<body><iframe srcdoc="<p>first</p>"></iframe></body>
+    \\<body><iframe id="s" srcdoc="<p>first</p>"></iframe></body>
 ;
 
 /// What the frame's active document has.
@@ -45,11 +51,14 @@ const FrameDocument = union(enum) {
     policies: usize,
 };
 
-fn frameDocument(page: anytype, realm: runtime.Context) !FrameDocument {
-    const owned = try page.evaluateScript("document.querySelector('iframe')");
+fn frameDocument(page: anytype, realm: runtime.Context, navigation: Navigation) !FrameDocument {
+    const owned = try page.evaluateScript(navigation.frame());
     defer owned.release();
     const iframe = engine.convertToPlatformObject(realm, owned.value) orelse return error.NoIframe;
-    const document = (try interfaces.HTMLIFrameElement.get_contentDocument(iframe)) orelse return .none;
+    // Through the frame's Window, not contentDocument: a data: document is
+    // cross-origin, and Zig code runs no access check.
+    const window = (try interfaces.HTMLIFrameElement.get_contentWindow(iframe)) orelse return .none;
+    const document = interfaces.Window.get_document(window) catch return .none;
     const container = dom.policy_containers.of(document) orelse return .no_container;
     if (container.csp_list.unenforceable) return .{ .policies = std.math.maxInt(usize) };
     return .{ .policies = container.csp_list.policies.items.len };
@@ -59,10 +68,16 @@ const Navigation = enum {
     srcdoc,
     javascript_url,
 
+    /// The frame the navigation is of.
+    fn frame(self: Navigation) []const u8 {
+        _ = self;
+        return "document.getElementById('s')";
+    }
+
     fn script(self: Navigation) []const u8 {
         return switch (self) {
-            .srcdoc => "document.querySelector('iframe').srcdoc = '<p>again</p>';",
-            .javascript_url => "document.querySelector('iframe').src = 'javascript:\"<p>string</p>\"';",
+            .srcdoc => "document.getElementById('s').srcdoc = '<p>again</p>';",
+            .javascript_url => "document.getElementById('s').src = 'javascript:\"<p>string</p>\"';",
         };
     }
 };
@@ -77,7 +92,7 @@ fn sweep(navigation: Navigation, rounds: usize) !void {
     _ = try browser.runEventLoopBlocking(50);
     const realm = browser.getRealm() orelse return error.NoRealm;
     // The frame inherited the page's policy.
-    try testing.expectEqual(FrameDocument{ .policies = 1 }, try frameDocument(page, realm));
+    try testing.expectEqual(FrameDocument{ .policies = 1 }, try frameDocument(page, realm, navigation));
 
     var round: usize = 0;
     while (round < rounds) : (round += 1) {
@@ -86,7 +101,7 @@ fn sweep(navigation: Navigation, rounds: usize) !void {
         page.runScript(navigation.script()) catch {};
         _ = browser.runEventLoopBlocking(50) catch {};
         failing.fail_index = std.math.maxInt(usize);
-        const found = frameDocument(page, realm) catch |err| {
+        const found = frameDocument(page, realm, navigation) catch |err| {
             std.debug.print("{s}: failing allocation {d}: the frame could not be read: {s}\n", .{ @tagName(navigation), round, @errorName(err) });
             return err;
         };
