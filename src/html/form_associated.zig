@@ -941,17 +941,41 @@ pub fn fireSimpleEvent(target: *Instance, comptime event_type: []const u8, init:
 // labels (§ 4.10.18 "labels")
 // ============================================================================
 
-/// A new NodeList of `element`'s labels, in tree order.
-///
-/// Stated deviation: the spec's list is live and the same object on every
-/// read; this one is a snapshot made on each read, as Blink's was before its
-/// LabelsNodeList.
+/// A new live NodeList of `element`'s labels, in tree order. The NodeList's
+/// existing root hold keeps the control alive while script retains the list.
 pub fn labelsNodeList(element: *Instance) !*Instance {
-    const allocator = element.ctx.allocator;
-    const labels = try labelsOf(allocator, element);
-    defer allocator.free(labels);
-    const list = try interfaces.NodeList.init(allocator, element.ctx);
-    errdefer list.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(list));
-    try @import("dom").node_lists.setStatic(list, labels);
+    const list = try interfaces.NodeList.init(element.ctx.allocator, element.ctx);
+    errdefer runtime.Instance.deinit(list);
+    try @import("dom").node_lists.labels(list, element);
     return list;
 }
+
+/// HTML 4.10.19: labels returns the same live list. Reuse ElementInternals'
+/// traced-child cache: the wrapper graph owns an engine-backed list, while
+/// an engine-free control frees the native list at teardown.
+pub const LabelsCache = struct {
+    list: ?*Instance = null,
+    generation: u64 = 0,
+    traced: bool = false,
+
+    pub fn get(self: *LabelsCache, element: *Instance) !*Instance {
+        if (@import("forms/root.zig").liveChild(self.list, self.generation)) |list| return list;
+        const list = try labelsNodeList(element);
+        if (element.ctx.hasEngine()) {
+            engine.traceChild(element, list, .{ .name = "labels" });
+            self.traced = true;
+        }
+        self.list = list;
+        self.generation = runtime.SlabAllocator.generationOf(list);
+        return list;
+    }
+
+    pub fn deinit(self: *LabelsCache, element: *Instance) void {
+        if (self.traced) {
+            engine.forgetTracedChild(element, .{ .name = "labels" });
+        } else if (@import("forms/root.zig").liveChild(self.list, self.generation)) |list| {
+            runtime.Instance.deinit(list);
+        }
+        self.* = .{};
+    }
+};

@@ -45,6 +45,7 @@ pub const InternalState = struct {
     /// The allocator the custom validity message came from: the context's.
     allocator: std.mem.Allocator,
     validation: forms.Validation = .{},
+    labels: form_associated.LabelsCache = .{},
     // HTML's explicitly set attr-element is WEAK. Generation is the weak
     // reference's liveness test, not a substitute for a missing traced hold.
     command_target: ?dom.custom_elements.KeptInstance = null,
@@ -111,6 +112,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        internal.labels.deinit(instance);
         if (internal.validation.validity_traced) @import("engine").forgetTracedChild(instance, .{ .name = "validity" });
         internal.validation.deinit(instance.ctx.allocator);
         state.own._internal = null;
@@ -393,7 +395,9 @@ pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMSt
 
 /// Getter for labels
 pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    return form_associated.labelsNodeList(instance);
+    // Reuse the existing lazy state; parsing an untouched button adds no work.
+    _ = try validationState(instance);
+    return instance.getState(State).own._internal.?.labels.get(instance);
 }
 
 /// Getter for popoverTargetElement

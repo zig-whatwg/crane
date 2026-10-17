@@ -190,6 +190,7 @@ const Registry = runtime.InstanceRegistry(.html_input_element, InternalState);
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     validation: forms.Validation = .{},
+    labels: form_associated.LabelsCache = .{},
     /// Owned. Non-null means the dirty value flag is set; always sanitized.
     value: ?[]u8 = null,
     /// The last user edit's owned raw text. Null after every script value
@@ -532,6 +533,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     if (Registry.get(instance)) |internal| {
         dropFiles(instance, internal);
+        internal.labels.deinit(instance);
         if (internal.validation.validity_traced) @import("engine").forgetTracedChild(instance, .{ .name = "validity" });
         internal.deinit();
     }
@@ -2012,7 +2014,7 @@ pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMSt
 /// Getter for labels: null in the Hidden state, else the element's labels.
 pub fn get_labels(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     if (typeOf(instance) == .hidden) return null;
-    return try form_associated.labelsNodeList(instance);
+    return try (getInternal(instance) orelse return error.InvalidStateError).labels.get(instance);
 }
 
 /// Getter for capture
