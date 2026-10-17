@@ -258,6 +258,8 @@ pub const declarative_shadow = @import("declarative_shadow.zig");
 pub const indexeddb = @import("indexeddb.zig");
 pub const string_lists = @import("string_lists.zig");
 pub const event_handlers = @import("event_handlers.zig");
+/// HTML 7.1.5 sandboxing flag sets: parsing, CSP-derived and creation flags.
+pub const sandboxing = @import("sandboxing.zig");
 
 test {
     std.testing.refAllDecls(@This());

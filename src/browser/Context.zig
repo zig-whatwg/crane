@@ -960,6 +960,17 @@ fn runTimerTask(data: *WindowTimerData) void {
 fn runTimerSteps(opaque_data: ?*anyopaque) void {
     const data: *WindowTimerData = @ptrCast(@alignCast(opaque_data orelse return));
 
+    // Step 8.4: "Let settings object be global's relevant settings object.
+    // If scripting is disabled for settings object, then abort these
+    // steps" - for a Window whose document is sandboxed without
+    // allow-scripts, whoever set the timer (an embedder reaching in with
+    // allow-same-origin, through frame.contentWindow.setTimeout).
+    if (realmWindow(data.realm)) |window| {
+        if (interfaces.Window.get_document(window) catch null) |document| {
+            if (dom_mod.document_scripts.scriptsSandboxed(document)) return;
+        }
+    }
+
     // The "current timer nesting level" is this timer's level for the DURATION OF
     // THE CALLBACK ONLY, so timers the callback creates nest one deeper. It is
     // restored before the microtask checkpoint the caller performs: per HTML the
@@ -1823,9 +1834,20 @@ pub const Context = struct {
         // replaces `self.url`.
         const url = try self.allocator.dupe(u8, self.url);
         defer self.allocator.free(url);
+        // "Create navigation params by fetching" step 21.10: the final
+        // sandboxing flag set - for the host's page, which no container or
+        // opener sandboxes, its response policy container's CSP-derived
+        // sandboxing flags.
+        const sandboxing_flags = if (result.policy_container) |*container|
+            dom_mod.sandboxing.cspDerivedSandboxingFlags(&container.csp_list)
+        else
+            dom_mod.sandboxing.SandboxingFlagSet.empty;
         const html_options: LoadHTMLOptions = .{
             .base_url = url,
-            .scripting_enabled = kind == .html or kind == .xml,
+            .sandboxing_flags = sandboxing_flags,
+            // HTML 8.1.3.4: no script for a document sandboxed without
+            // allow-scripts.
+            .scripting_enabled = (kind == .html or kind == .xml) and !sandboxing_flags.scripts,
             .script_loader = options.script_loader,
             // An HTML page is its response's bytes, decoded with the encoding
             // HTML's sniffing algorithm determines from them and their
@@ -1920,6 +1942,13 @@ pub const Context = struct {
         /// HTML's encoding sniffing algorithm determines; null when it is
         /// characters already.
         byte_stream: ?html_mod.scripted_parser.ByteStream = null,
+        /// The new document's active sandboxing flag set: navigationParams's
+        /// final sandboxing flag set ("create and initialize a Document
+        /// object" step 9). A top-level page's is its response's CSP-derived
+        /// sandboxing flags; with the sandboxed scripts flag its parser runs
+        /// no script, and with the sandboxed origin flag its origin is a new
+        /// opaque one.
+        sandboxing_flags: dom_mod.sandboxing.SandboxingFlagSet = .empty,
     };
 
     /// Load HTML content as the page's new document
@@ -2008,7 +2037,21 @@ pub const Context = struct {
         // Step 9: "Let document be a new Document" whose type is "html"
         // ("load an HTML document"); the parser gives it its content type.
         const load = try LoadParse.create(self.allocator);
-        const document = interfaces.Document.init(self.allocator, runtime_ctx) catch |err| {
+        // Its origin: "determining the origin" step 1 makes it a new opaque
+        // one when the final sandboxing flag set has the sandboxed origin
+        // browsing context flag; else one of its own, from its URL.
+        const opaque_origin: ?*dom_mod.origin_record.OriginRecord = if (options.sandboxing_flags.origin)
+            (dom_mod.origin_record.OriginRecord.create(self.allocator, "null") catch |err| {
+                load.release();
+                return err;
+            })
+        else
+            null;
+        defer if (opaque_origin) |record| record.release();
+        const document = interfaces.Document.initWith(self.allocator, runtime_ctx, .{
+            .origin = opaque_origin,
+            .sandboxing_flags = options.sandboxing_flags,
+        }) catch |err| {
             load.release();
             return err;
         };

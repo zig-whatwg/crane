@@ -1362,6 +1362,9 @@ fn submit(form: *runtime.Instance, submitter: *runtime.Instance, options: Submit
     }
     // 3. Let form document be form's node document.
     const document = (try interfaces.Node.get_ownerDocument(form)) orelse return;
+    // 4. "If form document's active sandboxing flag set has its sandboxed
+    // forms browsing context flag set, then return."
+    if (@import("dom").document_scripts.activeSandboxingFlags(document).forms) return;
 
     // 5. If submitted from submit() method is false:
     if (!options.from_submit_method) {
