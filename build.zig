@@ -5438,9 +5438,9 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     });
     file_mod.addImport("clock", clock_mod);
     file_mod.addImport("host", host_mod);
-    // File module dependencies can be added here when needed:
-    // file_mod.addImport("infra", infra_mod);
-    // file_mod.addImport("encoding", encoding_mod);
+    file_mod.addImport("infra", infra_mod);
+    file_mod.addImport("encoding", encoding_mod);
+    file_mod.addImport("mimesniff", mimesniff_mod);
     // file_mod.addImport("streams", streams_mod);
 
     // Add file module to impls (for Blob, File, FileReader implementations)

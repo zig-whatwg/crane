@@ -250,6 +250,12 @@ pub const IFrameIntegration = struct {
     /// document is created; empty when none was set.
     next_sandboxing_flags: SandboxingFlagSet = .empty,
 
+    /// navigationParams's `iframe` element referrer policy for the next
+    /// document this navigable makes, taken when the document is created;
+    /// null when no navigation set one (the initial about:blank document
+    /// reads its embedder's attribute instead).
+    next_iframe_referrer_policy: ?@import("fetch").internal.ReferrerPolicy = null,
+
     // ========================================================================
     // Cross-Realm Support (Phase 3)
     // ========================================================================
@@ -688,6 +694,20 @@ pub const IFrameIntegration = struct {
         const flags = self.next_sandboxing_flags;
         self.next_sandboxing_flags = .empty;
         return flags;
+    }
+
+    /// navigationParams's `iframe` element referrer policy for the next
+    /// document this navigable makes; null clears it.
+    pub fn setNextIframeReferrerPolicy(self: *IFrameIntegration, policy: ?@import("fetch").internal.ReferrerPolicy) void {
+        self.next_iframe_referrer_policy = policy;
+    }
+
+    /// The pending `iframe` element referrer policy, handed over: the
+    /// integration is left with none.
+    pub fn takeNextIframeReferrerPolicy(self: *IFrameIntegration) ?@import("fetch").internal.ReferrerPolicy {
+        const policy = self.next_iframe_referrer_policy;
+        self.next_iframe_referrer_policy = null;
+        return policy;
     }
 
     /// Record the origin the navigable's Windows are created with.

@@ -15,9 +15,8 @@
 //!   - slice-blob: ✅ Complete
 //!   - process-blob-parts: ✅ Complete
 //!   - convert-line-endings-to-native: ✅ Complete
-//!   - package-data: ✅ Complete (FileReaderSync; FileReader's read operation
-//!     and its package data are the impl's, src/webidl/impls/FileReader.zig,
-//!     which the engine and the event loop are reachable from)
+//!   - package-data: ✅ Complete, shared by FileReader and FileReaderSync.
+//!     The impls create engine values; FileReader also schedules read events.
 //!
 //! ## Usage
 //!

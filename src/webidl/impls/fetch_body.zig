@@ -248,6 +248,38 @@ pub fn bodyStream(o: Owner) !?*runtime.Instance {
     return stream;
 }
 
+/// Fetch §5.3 textStream(), steps 2–6, after the caller's unusable check.
+pub fn textStream(o: Owner) !*runtime.Instance {
+    // 2–3. A body's stream, or a fresh, closed default stream for null.
+    const stream = (try bodyStream(o)) orelse {
+        // Streams §9.1 "set up": absent algorithms return undefined from
+        // start, resolved promises from pull/cancel, and a size of one.
+        const Empty = struct {
+            fn start(_: ?*anyopaque, realm: js.Realm, _: *runtime.Instance) js.Error!js.Completion {
+                return .{ .normal = try realm.undefinedValue() };
+            }
+            fn pull(_: ?*anyopaque, realm: js.Realm, _: *runtime.Instance) js.Error!js.Value {
+                return realm.promiseResolvedWithUndefined();
+            }
+            fn cancel(_: ?*anyopaque, realm: js.Realm, _: *runtime.Instance, _: js.Value) js.Error!js.Value {
+                return realm.promiseResolvedWithUndefined();
+            }
+            fn deinit(_: ?*anyopaque, _: std.mem.Allocator) void {}
+
+            const vtable: srd.Source.VTable = .{ .start = start, .pull = pull, .cancel = cancel, .deinit = deinit };
+        };
+        const realm = try js.Realm.of(o.instance);
+        // 2.1–2.2. Set up in this's relevant realm.
+        const empty = try srd.createReadableStream(realm, o.instance.ctx, .{ .ctx = null, .vtable = &Empty.vtable }, 1, .one);
+        // 2.3–2.4. Streams "close" clears controller algorithms too. It
+        // leaves the stream undisturbed, unlike cancelling it.
+        srd.defaultControllerClose(realm, srd.streamOf(empty).?.controller.?);
+        return empty;
+    };
+    // 4–6. UTF-8 regardless of Content-Type or charset, in the owner realm.
+    return @import("dom").text_stream.decode(o.instance.ctx, stream);
+}
+
 /// The `bodyUsed` getter: this's body is non-null and its stream is
 /// disturbed. A body whose stream was never made cannot have been.
 pub fn bodyUsed(o: Owner) bool {

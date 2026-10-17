@@ -191,6 +191,7 @@ pub const IntegrityPolicy = struct {
     allocator: Allocator,
     inline_source: bool = true,
     block_script: bool = false,
+    block_style: bool = false,
     endpoints: std.ArrayListUnmanaged([]const u8) = .empty,
 
     pub fn deinit(self: *IntegrityPolicy) void {
@@ -207,7 +208,7 @@ pub const IntegrityPolicy = struct {
 
     fn clone(self: *const IntegrityPolicy, allocator: Allocator) error{OutOfMemory}!*IntegrityPolicy {
         const copy = try allocator.create(IntegrityPolicy);
-        copy.* = .{ .allocator = allocator, .inline_source = self.inline_source, .block_script = self.block_script };
+        copy.* = .{ .allocator = allocator, .inline_source = self.inline_source, .block_script = self.block_script, .block_style = self.block_style };
         errdefer copy.deinit();
         try copy.copyEndpoints(self.endpoints.items);
         return copy;
@@ -233,12 +234,15 @@ pub const IntegrityPolicy = struct {
                 // Step 3. Tokens are case-sensitive; ignore unknown ones.
                 result.inline_source = contains(tokens, "inline");
             } else if (std.mem.eql(u8, member.key, "blocked-destinations")) {
-                // Step 4, browser deviation: only script ships by default.
-                // Blink integrity_policy_parser.cc HandleKeyValue, WebKit
-                // IntegrityPolicy.cpp processIntegrityPolicy, and Gecko
-                // IntegrityPolicy.cpp ParseDestinations (style pref=false).
-                // JSON is likewise not a supported policy destination.
+                // Step 4.1-4.2: "script" and "style". "style" came with
+                // w3c/webappsec-subresource-integrity PR #146 (2025-07-07),
+                // which no browser ships by default yet (Gecko bug 1984960
+                // and WebKit bug 295582 open; WPT updated): golden rule 2 as
+                // refined 2026-10-17 takes a newer spec the browsers merely
+                // lag. This reverses Codex row 48 Q10's "scripts only"
+                // ruling (gr2audit D8). JSON is not a policy destination.
                 result.block_script = contains(tokens, "script");
+                result.block_style = contains(tokens, "style");
             } else if (std.mem.eql(u8, member.key, "endpoints")) {
                 // Step 5. The projection skips non-token items, as Blink
                 // and WebKit do, but validates all their RFC 9651 syntax.
