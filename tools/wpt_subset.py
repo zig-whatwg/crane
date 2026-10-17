@@ -405,6 +405,13 @@ EXCLUDE = [
     ('html/semantics/embedded-content/the-iframe-element/iframe-loading-lazy-multiple-times.html',
      'lazy loading by viewport, needs layout'),
 
+    # Found after the geometry pass (Codex row 62, 2026-10-17): every one of its
+    # 330 subtests (six variants x 55) fails with "unsupported operation:
+    # Crane has no layout: a pointer moves onto an element origin only" - the
+    # test drives clicks by viewport point (test_driver Actions), which needs
+    # boxes. Chrome, Firefox and Safari pass each variant 55/55.
+    ('html/semantics/the-button-element/command-and-commandfor/invalid-element-types.html',
+     'hit-tests a point (pointer actions at viewport coordinates), needs layout'),
     # Harness infrastructure, not tests.
     ('/support/',                      'support files'),
     ('/resources/',                    'harness resources'),
