@@ -2226,13 +2226,20 @@ pub fn build(b: *std.Build) void {
         // recipes step that replaces it retires it (tests/platform/
         // retained_old_platform.zig). Its own executable: the old root shares
         // files with the facade, so it cannot join a compile that has `platform`.
+        // Fetch now reaches that facade for SRI. The retained adapter uses
+        // only network.backend, so keep its real code in a narrow test graph.
+        const retained_fetch = b.createModule(.{
+            .root_source_file = b.path("src/fetch/retained_network_root.zig"),
+            .target = target,
+            .imports = &.{.{ .name = "kit_curl_share", .module = testing_graph.fetch.import_table.get("kit_curl_share").? }},
+        });
         const old_platform = b.createModule(.{
             .root_source_file = b.path("src/platform/root.zig"),
             .target = target,
             .imports = &.{
                 .{ .name = "clock", .module = testing_graph.clock },
                 .{ .name = "host", .module = testing_graph.host },
-                .{ .name = "fetch", .module = testing_graph.fetch },
+                .{ .name = "fetch", .module = retained_fetch },
             },
         });
         const retained_old_platform = b.addTest(.{
