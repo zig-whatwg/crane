@@ -25,4 +25,10 @@ pub const TouchInit = struct {
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{ "clientX", "clientY", "screenX", "screenY", "pageX", "pageY", "radiusX", "radiusY", "rotationAngle", "force", "altitudeAngle", "azimuthAngle" };
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "target", "EventTarget" },
+    };
 };

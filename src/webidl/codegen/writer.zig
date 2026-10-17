@@ -3747,6 +3747,248 @@ fn isByteStringName(type_name: []const u8, model: ?*const ir.IR) bool {
     return false;
 }
 
+// =============================================================================
+// Interface types (WebIDL 3.2.15)
+// =============================================================================
+
+/// The interface a value of `idl_type` converts to, when converting it is an
+/// interface type conversion - WebIDL 3.2.15: "If V implements I, then return
+/// the IDL interface type value that represents a reference to that platform
+/// object. Throw a TypeError." - or a list of them: the interface itself, a
+/// typedef of one (WindowProxy is Window), its nullable form, or a sequence,
+/// FrozenArray or record whose elements are such conversions (each element
+/// is converted by that algorithm), however deep. Null for every other type:
+/// a union - its conversion picks the arm itself, by the arm's name - a
+/// callback interface, a promise, an observable array.
+///
+/// Codegen maps every interface type to `*runtime.Instance`, so this is how
+/// the binding learns which interface a value must implement
+/// (`interface_arguments`, `constructor_interface_arguments`,
+/// `interface_members`).
+pub fn interfaceTypeName(idl_type: types.IDLType, type_registry: ?*const ir.TypeRegistry) ?[]const u8 {
+    return interfaceTypeNameAt(idl_type, type_registry, 0);
+}
+
+fn interfaceTypeNameAt(t: types.IDLType, type_registry: ?*const ir.TypeRegistry, depth: u8) ?[]const u8 {
+    if (depth >= 16) return null;
+    if (t.unionTypes != null) return null;
+    if (t.sequence) |element| return interfaceTypeNameAt(element.*, type_registry, depth + 1);
+    if (t.record) |record| return interfaceTypeNameAt(record.value.*, type_registry, depth + 1);
+    const eql = std.mem.eql;
+    if (eql(u8, t.type, "sequence") or eql(u8, t.type, "FrozenArray")) {
+        return interfaceTypeNameOfText(t.generic orelse return null, type_registry, depth + 1);
+    }
+    if (eql(u8, t.type, "record")) {
+        return interfaceTypeNameOfText(recordValueText(t.generic orelse return null) orelse return null, type_registry, depth + 1);
+    }
+    // Promise<T>, ObservableArray<T>: no interface type conversion.
+    if (t.generic != null) return null;
+    return interfaceNamed(t.type, type_registry, depth);
+}
+
+/// `interfaceTypeName` for a type the parser left as text - a generic's
+/// argument: "Node", "Node?", "sequence<Node>", "DOMString, Blob" is a
+/// record's (see `recordValueText`).
+fn interfaceTypeNameOfText(text: []const u8, type_registry: ?*const ir.TypeRegistry, depth: u8) ?[]const u8 {
+    if (depth >= 16) return null;
+    var name = std.mem.trim(u8, text, " \t\n");
+    if (std.mem.endsWith(u8, name, "?")) name = std.mem.trimEnd(u8, name[0 .. name.len - 1], " \t\n");
+    if (name.len == 0 or name[0] == '(') return null;
+    inline for (.{ "sequence<", "FrozenArray<" }) |prefix| {
+        if (std.mem.startsWith(u8, name, prefix) and std.mem.endsWith(u8, name, ">")) {
+            return interfaceTypeNameOfText(name[prefix.len .. name.len - 1], type_registry, depth + 1);
+        }
+    }
+    if (std.mem.startsWith(u8, name, "record<") and std.mem.endsWith(u8, name, ">")) {
+        const value = recordValueText(name["record<".len .. name.len - 1]) orelse return null;
+        return interfaceTypeNameOfText(value, type_registry, depth + 1);
+    }
+    if (std.mem.indexOfAny(u8, name, "<> ,") != null) return null;
+    return interfaceNamed(name, type_registry, depth);
+}
+
+/// A record's value type, from the text of its type arguments ("K, V"): what
+/// follows the comma outside any nested `<...>` or `(...)`.
+fn recordValueText(arguments: []const u8) ?[]const u8 {
+    var depth: usize = 0;
+    for (arguments, 0..) |c, i| {
+        switch (c) {
+            '<', '(' => depth += 1,
+            '>', ')' => depth -|= 1,
+            ',' => if (depth == 0) return arguments[i + 1 ..],
+            else => {},
+        }
+    }
+    return null;
+}
+
+/// `name` itself when it names an interface (not a callback interface), the
+/// interface its typedef resolves to, or null.
+fn interfaceNamed(name: []const u8, type_registry: ?*const ir.TypeRegistry, depth: u8) ?[]const u8 {
+    const reg = type_registry orelse return null;
+    const info = reg.resolve(name) orelse return null;
+    return switch (info.kind) {
+        .interface => name,
+        .typedef => interfaceTypeNameAt(info.underlying_type orelse return null, type_registry, depth + 1),
+        else => null,
+    };
+}
+
+/// One `interface_arguments` entry per interface-typed argument of `op`,
+/// keyed by its delegate `function`.
+fn writeInterfaceArgumentEntries(
+    writer: anytype,
+    function: []const u8,
+    arguments: []const types.Argument,
+    type_registry: ?*const ir.TypeRegistry,
+) !void {
+    for (arguments, 0..) |arg, i| {
+        const name = interfaceTypeName(arg.idlType, type_registry) orelse continue;
+        try writer.print("        .{{ \"{s}\", {d}, \"{s}\" }},\n", .{ function, i, name });
+    }
+}
+
+fn hasInterfaceArgument(arguments: []const types.Argument, type_registry: ?*const ir.TypeRegistry) bool {
+    for (arguments) |arg| {
+        if (interfaceTypeName(arg.idlType, type_registry) != null) return true;
+    }
+    return false;
+}
+
+/// A writable attribute whose value converts to an interface type.
+fn interfaceSetter(attr: types.Attribute, type_registry: ?*const ir.TypeRegistry) ?[]const u8 {
+    if (attr.readonly) return null;
+    return interfaceTypeName(attr.idlType, type_registry);
+}
+
+/// WebIDL 3.2.15: converting to an interface type I is a TypeError unless
+/// the value implements I. Codegen maps every interface type to
+/// `*runtime.Instance`, so the binding learns which interface each value
+/// must implement from this table - one entry per interface-typed value: the
+/// Zig function, the argument's index (0 for an attribute setter's value)
+/// and the interface (`interfaceTypeName`: through typedefs, nullable and
+/// the elements of a sequence, FrozenArray or record):
+///
+///     pub const interface_arguments = .{
+///         .{ "set_relatedTarget", 0, "EventTarget" },
+///         .{ "call_append__1", 1, "Blob" },
+///     };
+///
+/// The anonymous getters, setters and deleters are keyed by their delegates
+/// (`call_setter`, special_operations.anonymousFunctions).
+fn writeInterfaceArguments(
+    writer: anytype,
+    own_attributes: []const types.Attribute,
+    own_operations: []const types.Operation,
+    overload_ops: []const types.Operation,
+    type_registry: ?*const ir.TypeRegistry,
+) !void {
+    const allocator = std.heap.page_allocator;
+
+    const anonymous = try special_operations.anonymousFunctions(allocator, own_operations);
+    defer special_operations.freeAnonymous(allocator, anonymous);
+
+    var any = false;
+    for (own_attributes) |attr| {
+        if (interfaceSetter(attr, type_registry) != null) any = true;
+    }
+    for (overload_ops) |op| {
+        if (hasInterfaceArgument(op.arguments, type_registry)) any = true;
+    }
+    for (anonymous) |a| {
+        if (hasInterfaceArgument(a.op.arguments, type_registry)) any = true;
+    }
+    if (!any) return;
+
+    try writer.writeAll("    /// WebIDL interface types: the interface each interface-typed argument\n");
+    try writer.writeAll("    /// and attribute value converts to - a TypeError unless the value implements\n");
+    try writer.writeAll("    /// it (function, argument index - an attribute setter's value is 0 -,\n");
+    try writer.writeAll("    /// interface; a nullable, sequence or record value by its elements').\n");
+    try writer.writeAll("    pub const interface_arguments = .{\n");
+    for (own_attributes) |attr| {
+        const name = interfaceSetter(attr, type_registry) orelse continue;
+        const sanitized_name = try sanitizeFunctionName(allocator, attr.name);
+        defer if (!std.mem.eql(u8, sanitized_name, attr.name)) allocator.free(sanitized_name);
+        try writer.print("        .{{ \"{s}{s}\", 0, \"{s}\" }},\n", .{ setterPrefix(attr), sanitized_name, name });
+    }
+    for (anonymous) |a| try writeInterfaceArgumentEntries(writer, a.function, a.op.arguments, type_registry);
+    const overload_sets = try overload.groupOperationsByName(allocator, overload_ops);
+    defer overload.freeOverloadSets(allocator, overload_sets);
+    for (overload_sets) |set| {
+        // An unresolvable overload set binds one function taking a union of
+        // argument lists; nothing there converts argument by argument.
+        if (set.isOverloaded() and !isResolvableOverloadSet(set)) continue;
+        for (set.operations, 0..) |op, k| {
+            const name = op.name orelse continue;
+            const prefix = if (op.static) "call_static_" else "call_";
+            const function = if (k == 0)
+                try std.fmt.allocPrint(allocator, "{s}{s}", .{ prefix, name })
+            else
+                try std.fmt.allocPrint(allocator, "{s}{s}__{d}", .{ prefix, name, k });
+            defer allocator.free(function);
+            try writeInterfaceArgumentEntries(writer, function, op.arguments, type_registry);
+        }
+    }
+    try writer.writeAll("    };\n\n");
+}
+
+/// A constructor's interface-typed arguments (see `writeInterfaceArguments`),
+/// for the binding's constructor path - keyed by the ConstructorArgs variant
+/// for an overloaded constructor ("" for a sole one) and the argument's index
+/// within it:
+///
+///     pub const constructor_interface_arguments = .{
+///         .{ "", 0, "HTMLFormElement" },
+///         .{ "XRRigidTransform", 0, "XRRigidTransform" },
+///     };
+pub fn writeConstructorInterfaceArguments(
+    writer: anytype,
+    constructors: []const types.Constructor,
+    type_registry: ?*const ir.TypeRegistry,
+) !void {
+    const allocator = std.heap.page_allocator;
+    var any = false;
+    for (constructors) |ctor| {
+        if (hasInterfaceArgument(ctor.arguments, type_registry)) any = true;
+    }
+    if (!any) return;
+
+    try writer.writeAll("    /// WebIDL interface types: the interface each interface-typed constructor\n");
+    try writer.writeAll("    /// argument converts to (ConstructorArgs variant - \"\" for a sole\n");
+    try writer.writeAll("    /// constructor -, argument index, interface).\n");
+    try writer.writeAll("    pub const constructor_interface_arguments = .{\n");
+    for (constructors) |ctor| {
+        const variant = if (constructors.len == 1) try allocator.dupe(u8, "") else try overload.generateConstructorVariantName(allocator, ctor);
+        defer allocator.free(variant);
+        try writeInterfaceArgumentEntries(writer, variant, ctor.arguments, type_registry);
+    }
+    try writer.writeAll("    };\n\n");
+}
+
+/// A dictionary's interface-typed members (see `writeInterfaceArguments`),
+/// for the dictionary converter:
+///
+///     pub const interface_members = .{
+///         .{ "startContainer", "Node" },
+///     };
+///
+/// Written inside the dictionary's struct; nothing when it has none.
+pub fn writeInterfaceMembers(writer: anytype, members: []const types.DictionaryMember, type_registry: ?*const ir.TypeRegistry) !void {
+    var any = false;
+    for (members) |member| {
+        if (interfaceTypeName(member.idlType, type_registry) != null) any = true;
+    }
+    if (!any) return;
+    try writer.writeAll("\n    /// WebIDL interface types: the interface each interface-typed member\n");
+    try writer.writeAll("    /// converts to - a TypeError unless the value implements it.\n");
+    try writer.writeAll("    pub const interface_members = .{\n");
+    for (members) |member| {
+        const name = interfaceTypeName(member.idlType, type_registry) orelse continue;
+        try writer.print("        .{{ \"{s}\", \"{s}\" }},\n", .{ member.name, name });
+    }
+    try writer.writeAll("    };\n");
+}
+
 /// A dictionary's ByteString members, for the dictionary converter:
 ///
 ///     pub const byte_string_members = .{ "method" };
@@ -4665,6 +4907,9 @@ pub fn writeDelegateFunctions(
     // Which string arguments and attribute values are ByteStrings: a code
     // unit above 0xFF throws for them.
     try writeByteStringArguments(writer, own_attributes, overload_ops, options.model);
+    // Which arguments and attribute values convert to an interface type, and
+    // the interface each must implement.
+    try writeInterfaceArguments(writer, own_attributes, own_operations, overload_ops, type_registry orelse if (options.model) |m| &m.type_registry else null);
     // Which integer arguments and attribute values take [EnforceRange]'s or
     // [Clamp]'s conversion.
     try writeIntegerConversions(writer, own_attributes, overload_ops);

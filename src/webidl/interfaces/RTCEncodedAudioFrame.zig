@@ -210,6 +210,13 @@ pub const RTCEncodedAudioFrame = struct {
         return try RTCEncodedAudioFrameImpl.call_constructor(ctx, originalFrame, options);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "RTCEncodedAudioFrame" },
+    };
+
     pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try RTCEncodedAudioFrameImpl.get_data(instance);
     }

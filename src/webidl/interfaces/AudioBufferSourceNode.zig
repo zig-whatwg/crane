@@ -224,6 +224,13 @@ pub const AudioBufferSourceNode = struct {
         return try AudioBufferSourceNodeImpl.call_constructor(ctx, context, options);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "BaseAudioContext" },
+    };
+
     pub fn get_buffer(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try AudioBufferSourceNodeImpl.get_buffer(instance);
     }
@@ -275,5 +282,13 @@ pub const AudioBufferSourceNode = struct {
         .{ "set_loopStart", 0b1 },
         .{ "set_loopEnd", 0b1 },
         .{ "call_start", 0b111 },
+    };
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "set_buffer", 0, "AudioBuffer" },
     };
 };

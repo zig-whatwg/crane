@@ -622,6 +622,23 @@ pub const Node = struct {
         return try NodeImpl.call_contains(instance, other);
     }
 
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_insertBefore", 0, "Node" },
+        .{ "call_insertBefore", 1, "Node" },
+        .{ "call_isSameNode", 0, "Node" },
+        .{ "call_replaceChild", 0, "Node" },
+        .{ "call_replaceChild", 1, "Node" },
+        .{ "call_compareDocumentPosition", 0, "Node" },
+        .{ "call_appendChild", 0, "Node" },
+        .{ "call_isEqualNode", 0, "Node" },
+        .{ "call_removeChild", 0, "Node" },
+        .{ "call_contains", 0, "Node" },
+    };
+
     /// HTML [CEReactions]: the functions that run a custom element reactions
     /// bracket - the binding dispatches each in a catch scope, where
     /// engine.withPendingExceptionSetAside sets aside what the member leaves

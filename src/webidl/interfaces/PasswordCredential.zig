@@ -205,6 +205,13 @@ pub const PasswordCredential = struct {
         return try PasswordCredentialImpl.call_constructor(ctx, args);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "HTMLFormElement", 0, "HTMLFormElement" },
+    };
+
     pub fn get_password(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try PasswordCredentialImpl.get_password(instance);
     }

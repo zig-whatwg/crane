@@ -182,6 +182,13 @@ pub const GroupEffect = struct {
         return try GroupEffectImpl.call_constructor(ctx, children, timing);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "AnimationEffect" },
+    };
+
     pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try GroupEffectImpl.get_children(instance);
     }
@@ -205,4 +212,13 @@ pub const GroupEffect = struct {
     pub fn call_append(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
         return try GroupEffectImpl.call_append(instance, effects);
     }
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_prepend", 0, "AnimationEffect" },
+        .{ "call_append", 0, "AnimationEffect" },
+    };
 };

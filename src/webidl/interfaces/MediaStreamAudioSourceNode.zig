@@ -193,6 +193,13 @@ pub const MediaStreamAudioSourceNode = struct {
         return try MediaStreamAudioSourceNodeImpl.call_constructor(ctx, context, options);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "AudioContext" },
+    };
+
     /// Extended attributes: [SameObject]
     pub fn get_mediaStream(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);

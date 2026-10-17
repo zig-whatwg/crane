@@ -45,3 +45,11 @@ pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuad
 pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
     return try GeometryUtilsImpl.call_convertPointFromNode(instance, point, from, options);
 }
+
+/// WebIDL interface types: the interface each interface-typed argument
+/// and attribute value converts to - a TypeError unless the value implements
+/// it (function, argument index - an attribute setter's value is 0 -,
+/// interface; a nullable, sequence or record value by its elements').
+pub const interface_arguments = .{
+    .{ "call_convertRectFromNode", 0, "DOMRectReadOnly" },
+};

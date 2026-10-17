@@ -573,6 +573,61 @@ pub fn call_getFramebufferAttachmentParameter(instance: *runtime.Instance, targe
     return try WebGLRenderingContextBaseImpl.call_getFramebufferAttachmentParameter(instance, target, attachment, pname);
 }
 
+/// WebIDL interface types: the interface each interface-typed argument
+/// and attribute value converts to - a TypeError unless the value implements
+/// it (function, argument index - an attribute setter's value is 0 -,
+/// interface; a nullable, sequence or record value by its elements').
+pub const interface_arguments = .{
+    .{ "call_bindAttribLocation", 0, "WebGLProgram" },
+    .{ "call_isTexture", 0, "WebGLTexture" },
+    .{ "call_getAttachedShaders", 0, "WebGLProgram" },
+    .{ "call_deleteShader", 0, "WebGLShader" },
+    .{ "call_getProgramInfoLog", 0, "WebGLProgram" },
+    .{ "call_uniform4i", 0, "WebGLUniformLocation" },
+    .{ "call_getUniform", 0, "WebGLProgram" },
+    .{ "call_getUniform", 1, "WebGLUniformLocation" },
+    .{ "call_isShader", 0, "WebGLShader" },
+    .{ "call_deleteRenderbuffer", 0, "WebGLRenderbuffer" },
+    .{ "call_compileShader", 0, "WebGLShader" },
+    .{ "call_isBuffer", 0, "WebGLBuffer" },
+    .{ "call_uniform1f", 0, "WebGLUniformLocation" },
+    .{ "call_framebufferTexture2D", 3, "WebGLTexture" },
+    .{ "call_attachShader", 0, "WebGLProgram" },
+    .{ "call_attachShader", 1, "WebGLShader" },
+    .{ "call_deleteFramebuffer", 0, "WebGLFramebuffer" },
+    .{ "call_getShaderInfoLog", 0, "WebGLShader" },
+    .{ "call_bindTexture", 1, "WebGLTexture" },
+    .{ "call_getProgramParameter", 0, "WebGLProgram" },
+    .{ "call_uniform2i", 0, "WebGLUniformLocation" },
+    .{ "call_deleteBuffer", 0, "WebGLBuffer" },
+    .{ "call_shaderSource", 0, "WebGLShader" },
+    .{ "call_uniform4f", 0, "WebGLUniformLocation" },
+    .{ "call_deleteTexture", 0, "WebGLTexture" },
+    .{ "call_linkProgram", 0, "WebGLProgram" },
+    .{ "call_framebufferRenderbuffer", 3, "WebGLRenderbuffer" },
+    .{ "call_uniform3f", 0, "WebGLUniformLocation" },
+    .{ "call_validateProgram", 0, "WebGLProgram" },
+    .{ "call_uniform3i", 0, "WebGLUniformLocation" },
+    .{ "call_getActiveAttrib", 0, "WebGLProgram" },
+    .{ "call_getShaderSource", 0, "WebGLShader" },
+    .{ "call_bindBuffer", 1, "WebGLBuffer" },
+    .{ "call_isProgram", 0, "WebGLProgram" },
+    .{ "call_uniform2f", 0, "WebGLUniformLocation" },
+    .{ "call_isFramebuffer", 0, "WebGLFramebuffer" },
+    .{ "call_getAttribLocation", 0, "WebGLProgram" },
+    .{ "call_isRenderbuffer", 0, "WebGLRenderbuffer" },
+    .{ "call_getActiveUniform", 0, "WebGLProgram" },
+    .{ "call_getShaderParameter", 0, "WebGLShader" },
+    .{ "call_bindRenderbuffer", 1, "WebGLRenderbuffer" },
+    .{ "call_deleteProgram", 0, "WebGLProgram" },
+    .{ "call_uniform1i", 0, "WebGLUniformLocation" },
+    .{ "call_bindFramebuffer", 1, "WebGLFramebuffer" },
+    .{ "call_getUniformLocation", 0, "WebGLProgram" },
+    .{ "call_useProgram", 0, "WebGLProgram" },
+    .{ "call_detachShader", 0, "WebGLProgram" },
+    .{ "call_detachShader", 1, "WebGLShader" },
+};
+
 /// WebIDL: operations whose return type is a promise - an exception in
 /// their steps becomes a rejected promise.
 pub const promise_returning = .{

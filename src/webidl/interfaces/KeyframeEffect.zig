@@ -226,6 +226,14 @@ pub const KeyframeEffect = struct {
         return try KeyframeEffectImpl.call_constructor(ctx, args);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "Element_object_union", 0, "Element" },
+        .{ "KeyframeEffect", 0, "KeyframeEffect" },
+    };
+
     pub fn get_target(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try KeyframeEffectImpl.get_target(instance);
     }
@@ -265,4 +273,12 @@ pub const KeyframeEffect = struct {
     pub fn call_getKeyframes(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try KeyframeEffectImpl.call_getKeyframes(instance);
     }
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "set_target", 0, "Element" },
+    };
 };

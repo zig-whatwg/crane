@@ -12,4 +12,10 @@ pub const SchedulerPostTaskOptions = struct {
 
     /// [EnforceRange] members: converted with that branch of ConvertToInt.
     pub const enforce_range_members = .{"delay"};
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "signal", "AbortSignal" },
+    };
 };

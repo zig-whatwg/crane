@@ -214,6 +214,13 @@ pub const BiquadFilterNode = struct {
         return try BiquadFilterNodeImpl.call_constructor(ctx, context, options);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "BaseAudioContext" },
+    };
+
     pub fn get_type(instance: *runtime.Instance) anyerror!BiquadFilterType {
         return try BiquadFilterNodeImpl.get_type(instance);
     }

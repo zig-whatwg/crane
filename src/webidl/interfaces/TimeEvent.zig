@@ -188,4 +188,12 @@ pub const TimeEvent = struct {
     pub fn call_initTimeEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, viewArg: webidl.Opt(?*runtime.Instance), detailArg: webidl.Opt(i32)) anyerror!void {
         return try TimeEventImpl.call_initTimeEvent(instance, typeArg, viewArg, detailArg);
     }
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_initTimeEvent", 1, "Window" },
+    };
 };

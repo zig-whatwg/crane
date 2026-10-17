@@ -158,7 +158,7 @@ fn write(data: ?*anyopaque, object: *ffi.Value, serializer: *ffi.ValueSerializer
     const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return false;
     defer ffi.v8_Context_Dispose(context);
 
-    const instance = conversions.fromV8Value(*runtime.Instance, host.allocator, isolate, context, object) catch {
+    const instance = conversions.platformObjectOf(object) orelse {
         // Step 20 for an API object that is no platform object of ours.
         throwDataCloneError("An object could not be cloned.", .{});
         return false;

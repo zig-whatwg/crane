@@ -268,6 +268,15 @@ pub const NamedNodeMap = struct {
         return try NamedNodeMapImpl.call_item(instance, index);
     }
 
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_setNamedItem", 0, "Attr" },
+        .{ "call_setNamedItemNS", 0, "Attr" },
+    };
+
     /// HTML [CEReactions]: the functions that run a custom element reactions
     /// bracket - the binding dispatches each in a catch scope, where
     /// engine.withPendingExceptionSetAside sets aside what the member leaves

@@ -225,6 +225,13 @@ pub const AnalyserNode = struct {
         return try AnalyserNodeImpl.call_constructor(ctx, context, options);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "BaseAudioContext" },
+    };
+
     pub fn get_fftSize(instance: *runtime.Instance) anyerror!u32 {
         return try AnalyserNodeImpl.get_fftSize(instance);
     }

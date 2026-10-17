@@ -71,7 +71,7 @@ pub fn structuredSerializeWithTransfer(
         // transferable platform object (a SharedArrayBuffer lands here too,
         // step 2.2) - is a DataCloneError.
         if (!ffi.v8_Value_IsObject(transferable)) return EngineError.DataCloneError;
-        const instance = conversions.fromV8Value(*runtime.Instance, allocator, isolate, context, transferable) catch
+        const instance = conversions.platformObjectOf(transferable) orelse
             return EngineError.DataCloneError;
         switch (check(check_data, instance)) {
             .not_transferable => return EngineError.DataCloneError,

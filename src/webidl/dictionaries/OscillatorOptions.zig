@@ -18,4 +18,10 @@ pub const OscillatorOptions = struct {
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{ "frequency", "detune" };
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "periodicWave", "PeriodicWave" },
+    };
 };

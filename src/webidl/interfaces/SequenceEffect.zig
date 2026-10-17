@@ -168,6 +168,13 @@ pub const SequenceEffect = struct {
         return try SequenceEffectImpl.call_constructor(ctx, children, timing);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "AnimationEffect" },
+    };
+
     pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SequenceEffectImpl.call_clone(instance);
     }

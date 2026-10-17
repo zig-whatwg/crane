@@ -455,6 +455,39 @@ fn isByteStringMember(comptime T: type, comptime name: []const u8) bool {
     }
 }
 
+/// The interface member `name` of struct `T` converts to. A dictionary's
+/// members name their own (`memberInterface`). A struct converted with an
+/// interface is a record's entry - codegen writes record<K, V> as a slice of
+/// `struct { key: K, value: V }`, and lists the record by its values'
+/// interface (`interface_arguments`) - so its `value` converts to that
+/// interface. (A record is bound as such a slice and converted as one: a
+/// record-typed argument is taken for a variadic argument of key/value
+/// dictionaries - MLContext.dispatch's MLNamedTensors - a defect of its own,
+/// left as it was; this keeps its values from being any platform object.)
+fn structMemberInterface(comptime T: type, comptime Interface: ?type, comptime name: []const u8) ?type {
+    comptime {
+        if (Interface) |I| {
+            if (!@hasField(T, "value")) @compileError(@typeName(T) ++ " converts with an interface but is no record entry");
+            return if (std.mem.eql(u8, name, "value")) I else null;
+        }
+        return memberInterface(T, name);
+    }
+}
+
+/// The interface dictionary `T`'s member `name` converts to - the one
+/// `interface_members` names for it - or null for a member of no interface
+/// type.
+pub fn memberInterface(comptime T: type, comptime name: []const u8) ?type {
+    comptime {
+        @setEvalBranchQuota(100_000);
+        if (!@hasDecl(T, "interface_members")) return null;
+        for (T.interface_members) |member| {
+            if (std.mem.eql(u8, member[0], name)) return interfaceNamed(member[1]);
+        }
+        return null;
+    }
+}
+
 /// Whether dictionary `T` lists member `name` in `any_members`.
 fn isAnyMember(comptime T: type, comptime name: []const u8) bool {
     comptime {
@@ -614,6 +647,9 @@ pub fn fromV8ValueTyped(
 /// Caller must free the returned slice when done.
 pub fn fromV8Sequence(
     comptime T: type,
+    /// The interface each element converts to, for an interface type's
+    /// elements (`fromV8ValueAs`); null for any other element type.
+    comptime Interface: ?type,
     allocator: std.mem.Allocator,
     isolate: *v8.Isolate,
     context: *v8.Context,
@@ -643,7 +679,7 @@ pub fn fromV8Sequence(
         defer v8.v8_Value_Dispose(@ptrCast(index_key));
         // Get fails only when it threw ("? Get"): the exception is pending.
         const v8_value = v8.v8_Object_Get(@ptrCast(array), context, @ptrCast(index_key)) orelse return ConversionError.ExceptionPending;
-        const element = fromV8Value(T, allocator, isolate, context, v8_value) catch |err| {
+        const element = fromV8ValueAs(T, Interface, allocator, isolate, context, v8_value) catch |err| {
             if (comptime interface_mod.argHandleIsCopied(T) or interface_mod.argumentHandleIsKeptInValue(T)) v8.v8_Value_Dispose(v8_value);
             return err;
         };
@@ -876,11 +912,11 @@ fn sequenceFromIterable(
     return items.toOwnedSlice(allocator);
 }
 
-/// `fromV8Value` as a conversion `sequenceFromIterable` can call per item.
-fn ItemConversion(comptime T: type) type {
+/// `fromV8ValueAs` as a conversion `sequenceFromIterable` can call per item.
+fn ItemConversion(comptime T: type, comptime Interface: ?type) type {
     return struct {
         fn convert(allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, value: *v8.Value) ConversionError!T {
-            return fromV8Value(T, allocator, isolate, context, value);
+            return fromV8ValueAs(T, Interface, allocator, isolate, context, value);
         }
     };
 }
@@ -894,10 +930,13 @@ fn ItemConversion(comptime T: type) type {
 /// bindings/core/v8/native_value_traits_impl.h, crbug.com/715122). Any other
 /// iterable - a Map, a Set, a generator, a platform object's iterator - is
 /// iterated.
-fn sequenceFromMethod(comptime S: type, allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, value: *v8.Value, method: *v8.Value) ConversionError!S {
+///
+/// `Interface` is the interface each element converts to, for a sequence of
+/// an interface type (`fromV8ValueAs`); null for any other element type.
+fn sequenceFromMethod(comptime S: type, comptime Interface: ?type, allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, value: *v8.Value, method: *v8.Value) ConversionError!S {
     const Elem = @typeInfo(S).pointer.child;
-    if (v8.v8_Value_IsArray(value)) return fromV8Sequence(Elem, allocator, isolate, context, @ptrCast(value));
-    return sequenceFromIterable(Elem, allocator, isolate, context, value, method, ItemConversion(Elem).convert);
+    if (v8.v8_Value_IsArray(value)) return fromV8Sequence(Elem, Interface, allocator, isolate, context, @ptrCast(value));
+    return sequenceFromIterable(Elem, allocator, isolate, context, value, method, ItemConversion(Elem, Interface).convert);
 }
 
 /// WebIDL 3.2.21, converting V to sequence<ByteString> - HeadersInit's
@@ -1171,15 +1210,12 @@ fn convertBufferSource(allocator: std.mem.Allocator, value: *v8.Value) Conversio
 /// memory.
 fn convertBodyInit(
     allocator: std.mem.Allocator,
-    isolate: *v8.Isolate,
     context: *v8.Context,
     value: *v8.Value,
 ) ConversionError!typedefs.BodyInit {
     // Step 4: a platform object implementing a member interface.
-    if (v8.v8_Value_IsObject(value) and !v8.v8_Value_IsFunction(value)) {
-        if (fromV8Value(*runtime.Instance, allocator, isolate, context, value)) |instance| {
-            if (bodyInitArmOf(instance)) |arm| return arm;
-        } else |_| {}
+    if (platformObjectOf(value)) |instance| {
+        if (bodyInitArmOf(instance)) |arm| return arm;
     }
 
     // Steps 6-9: ArrayBuffer, and the ArrayBufferViews (DataView and the
@@ -1246,6 +1282,84 @@ fn bodyInitCopy(allocator: std.mem.Allocator, bytes: []const u8) ConversionError
 }
 
 // =============================================================================
+// Interface types (WebIDL 3.2.15)
+// =============================================================================
+
+/// The generated interface `name` names - an interface type's name as
+/// codegen's tables give it (`interface_arguments`,
+/// `constructor_interface_arguments`, `interface_members`), a typedef already
+/// resolved to its interface. Codegen names only interfaces it generates, so
+/// any other name is a compile error.
+pub fn interfaceNamed(comptime name: []const u8) type {
+    comptime {
+        const interfaces = @import("interfaces");
+        if (!@hasDecl(interfaces, name)) @compileError("codegen named '" ++ name ++ "' as an interface type, and no generated interface has that name");
+        const I = @field(interfaces, name);
+        if (@TypeOf(I) != type or !@hasDecl(I, "State")) @compileError("'" ++ name ++ "' is no generated interface with a State");
+        return I;
+    }
+}
+
+/// The platform object `value` is - the Instance its wrapper holds - or null
+/// for any other value: a primitive, a function, an object no binding
+/// wrapped. It says nothing about WHICH interface the object implements;
+/// converting to an interface type is `convertToInterface`.
+///
+/// A wrapper's internal field 0 holds its Instance, and nothing else ever
+/// sets it: every `v8_Object_SetAlignedPointerInInternalField(_, 0, _)` in
+/// the adapter stores an Instance or null (a WindowProperties object holds
+/// its Window's).
+pub fn platformObjectOf(value: *v8.Value) ?*runtime.Instance {
+    if (!v8.v8_Value_IsObject(value)) return null;
+    // A function has no internal fields to read: no platform object here is
+    // callable (a callback interface's function is converted as a callback,
+    // never as an interface).
+    if (v8.v8_Value_IsFunction(value)) return null;
+    return interface_mod.getInstance(runtime.Instance, @ptrCast(value));
+}
+
+/// Whether `instance` implements interface `I`: `I`'s State is in its state
+/// ancestry, so a File implements Blob and an HTMLDivElement Node. An
+/// instance whose vtable has no ancestry implements nothing: every generated
+/// vtable has one (`runtime.buildVTable`), and only a hand-made test vtable
+/// lacks it - it was accepted as everything, which is how a mock reached an
+/// impl as any interface.
+pub inline fn implements(instance: *const runtime.Instance, comptime I: type) bool {
+    return instance.stateAs(I.State) != null;
+}
+
+/// Whether converting to `T` is an interface type conversion, or includes one
+/// as a nullable's payload, an optional argument's value or a sequence's
+/// elements: the positions `fromV8ValueAs` must be told an interface for
+/// (without one, a compile error). A union's arms and a dictionary's members
+/// name their own interfaces, so neither is one; nor is anything else.
+pub fn needsInterface(comptime T: type) bool {
+    if (T == *runtime.Instance) return true;
+    const info = @typeInfo(T);
+    if (info == .optional) return needsInterface(info.optional.child);
+    if (info == .pointer and info.pointer.size == .slice and info.pointer.child != u8) return needsInterface(info.pointer.child);
+    if (info == .@"struct" and @hasDecl(T, "notPassed") and @hasDecl(T, "wasPassed")) return needsInterface(@FieldType(T, "value"));
+    return false;
+}
+
+/// WebIDL 3.2.15, converting V to the interface type I:
+///
+/// 1. If V implements I, then return the IDL interface type value that
+///    represents a reference to that platform object.
+/// 2. Throw a TypeError.
+///
+/// Blink's NativeValueTraits for an interface type asks the same question of
+/// the wrapper (V8PerIsolateData::HasInstance(T's WrapperTypeInfo, value),
+/// bindings/core/v8/native_value_traits_impl.h) and throws "parameter N is
+/// not of type 'T'"; WebKit's JST::toWrapped answers null for any other
+/// wrapper and its converter throws (JSDOMConvertInterface.h).
+pub fn convertToInterface(comptime I: type, value: *v8.Value) ConversionError!*runtime.Instance {
+    const instance = platformObjectOf(value) orelse return ConversionError.TypeError;
+    if (!implements(instance, I)) return ConversionError.TypeError;
+    return instance;
+}
+
+// =============================================================================
 // Union arms of interface type (WebIDL §3.2.24 step 4)
 // =============================================================================
 
@@ -1285,6 +1399,10 @@ pub fn unionArmInterfaceName(comptime arm: []const u8) ?[]const u8 {
 /// The generated typedefs, re-exported so `tests/v8` can walk every union's
 /// interface arms.
 pub const generated_typedefs = @import("typedefs");
+
+/// The generated dictionaries, re-exported so `tests/v8` can walk every
+/// interface-typed member.
+pub const generated_dictionaries = @import("dictionaries");
 
 /// Whether codegen names a union arm of interface `name` `arm`.
 fn isArmNameOf(comptime name: []const u8, comptime arm: []const u8) bool {
@@ -1348,13 +1466,13 @@ pub fn typedArrayNameOf(value: *v8.Value) ?[]const u8 {
 
 /// Whether `instance` implements the interface arm `arm` names: its state
 /// ancestry holds that interface's State, so File implements Blob. An arm
-/// no interface is named for, or an instance whose vtable carries no
-/// ancestry, cannot be checked, and is accepted.
+/// no interface is named for cannot be checked, and is accepted (no
+/// generated union has one: tests/v8/union_arm_interface_test.zig). An
+/// instance whose vtable carries no ancestry implements none (`implements`).
 fn implementsArm(comptime arm: []const u8, instance: *runtime.Instance) bool {
     const Interface = comptime unionArmInterface(arm);
     if (comptime Interface == null) return true;
-    if (instance.vtable.ancestors.len == 0) return true;
-    return instance.stateAs(Interface.?.State) != null;
+    return implements(instance, Interface.?);
 }
 
 /// WebIDL §3.2.24 step 4 for a union with `*runtime.Instance` arms: if
@@ -1362,8 +1480,8 @@ fn implementsArm(comptime arm: []const u8, instance: *runtime.Instance) bool {
 /// implements. Arms that name an interface are tried before any that
 /// cannot be checked. Null when `value` is no platform object, or one that
 /// implements none of them.
-fn platformObjectArm(comptime T: type, allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, value: *v8.Value) ?T {
-    const instance = fromV8Value(*runtime.Instance, allocator, isolate, context, value) catch return null;
+fn platformObjectArm(comptime T: type, value: *v8.Value) ?T {
+    const instance = platformObjectOf(value) orelse return null;
     return checkedArm(T, instance) orelse uncheckedArm(T, instance);
 }
 
@@ -1458,8 +1576,32 @@ fn isRequiredMember(comptime field: std.builtin.Type.StructField) bool {
 /// Generic V8 Value to Zig type conversion
 ///
 /// Dispatches to the appropriate conversion function based on target type.
+/// A type with an interface-typed position outside a union - `*runtime.Instance`
+/// itself, its nullable or optional form, a sequence of it - converts only
+/// through `fromV8ValueAs`, which names the interface: here it is a compile
+/// error (`interfaceTypeNeedsName`).
 pub fn fromV8Value(
     comptime T: type,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!T {
+    return fromV8ValueAs(T, null, allocator, isolate, context, value);
+}
+
+/// `fromV8Value`, where `T`'s interface-typed positions convert to
+/// `Interface` (a generated interface; WebIDL 3.2.15: a TypeError unless the
+/// value implements it): `*runtime.Instance`, its nullable form, an optional
+/// argument of either (`webidl.Opt`), and a sequence's elements. Codegen
+/// says which interface each position names (`interface_arguments`,
+/// `constructor_interface_arguments`, `interface_members`); the Zig type
+/// cannot, since every interface type is `*runtime.Instance`. A union's arms
+/// name their own interfaces (`unionArmInterface`), and a dictionary's
+/// members theirs (`interface_members`), so neither takes `Interface`.
+pub fn fromV8ValueAs(
+    comptime T: type,
+    comptime Interface: ?type,
     allocator: std.mem.Allocator,
     isolate: *v8.Isolate,
     context: *v8.Context,
@@ -1501,7 +1643,7 @@ pub fn fromV8Value(
         }
 
         // Recursively convert the child type
-        return try fromV8Value(ChildType, allocator, isolate, context, value);
+        return try fromV8ValueAs(ChildType, Interface, allocator, isolate, context, value);
     }
 
     // Handle slices (sequence<T> or ByteString)
@@ -1553,7 +1695,7 @@ pub fn fromV8Value(
         const method = (try iteratorMethodOf(isolate, context, value)) orelse return ConversionError.TypeError;
         defer v8.v8_Value_Dispose(method);
         // 4. Return the result of creating a sequence from V and method.
-        return try sequenceFromMethod(T, allocator, isolate, context, value, method);
+        return try sequenceFromMethod(T, Interface, allocator, isolate, context, value, method);
     }
 
     // Handle DOMString specially (it's a union type but should be treated as a string)
@@ -1587,7 +1729,7 @@ pub fn fromV8Value(
 
     // Handle BodyInit specially - parse V8 value to appropriate variant
     if (T == @import("typedefs").BodyInit) {
-        return try convertBodyInit(allocator, isolate, context, value);
+        return try convertBodyInit(allocator, context, value);
     }
 
     // WebIDL 3.2.26: a buffer source IDL value "is a reference to the same
@@ -1845,7 +1987,7 @@ pub fn fromV8Value(
             if (v8.v8_Value_IsObject(value) and !(function_idx != null and v8.v8_Value_IsFunction(value))) {
                 // Step 5.1.
                 if (comptime instance_idx != null) {
-                    if (platformObjectArm(T, allocator, isolate, context, value)) |arm| return arm;
+                    if (platformObjectArm(T, value)) |arm| return arm;
                 }
                 // 11.2.1. Let method be ? GetMethod(V, %Symbol.iterator%).
                 // 11.2.2. If method is not undefined, return the result of
@@ -1853,7 +1995,7 @@ pub fn fromV8Value(
                 if (try iteratorMethodOf(isolate, context, value)) |method| {
                     defer v8.v8_Value_Dispose(method);
                     const idx = comptime sequence_idx.?;
-                    return @unionInit(T, fields[idx].name, try sequenceFromMethod(fields[idx].type, allocator, isolate, context, value, method));
+                    return @unionInit(T, fields[idx].name, try sequenceFromMethod(fields[idx].type, null, allocator, isolate, context, value, method));
                 }
             }
         }
@@ -1914,7 +2056,7 @@ pub fn fromV8Value(
                 // because strings should take priority over treating them as objects
                 if (string_idx != null and v8.v8_Value_IsString(value)) {
                     // This is a string, skip instance extraction and let string handling below deal with it
-                } else if (platformObjectArm(T, allocator, isolate, context, value)) |arm| {
+                } else if (platformObjectArm(T, value)) |arm| {
                     // WebIDL §3.2.24 step 4: a platform object goes to the
                     // arm whose interface it implements.
                     return arm;
@@ -2079,59 +2221,19 @@ pub fn fromV8Value(
         return enumFromIdlValue(T, enum_name) orelse ConversionError.TypeError;
     }
 
-    // Handle *runtime.Instance (interface instance pointers)
+    // WebIDL 3.2.15, an interface type: "1. If V implements I, then return
+    // the IDL interface type value that represents a reference to that
+    // platform object. 2. Throw a TypeError." It accepted ANY platform object
+    // - every interface type is the one Zig type `*runtime.Instance` - so
+    // `fd.append(name, new URLSearchParams(), filename)` handed FormData a
+    // URLSearchParams as its Blob, and FormData read its state as a Blob's.
     if (T == *runtime.Instance) {
-        // Extract instance pointer from V8 object's internal field
-        if (!v8.v8_Value_IsObject(value)) {
-            return ConversionError.TypeError;
-        }
-
-        // Check if this is a function (callback interface like EventListener)
-        // Functions don't have internal fields, so we can't extract a *runtime.Instance
-        //
-        // NOTE: This is an architectural limitation. Callback interfaces (EventListener,
-        // NodeFilter, XPathNSResolver) should be generated as *CallbackWrapper types,
-        // not *runtime.Instance. Until codegen is updated:
-        //
-        // - Functions passed as callback interface params will return TypeError
-        // - The impl code should handle null callbacks gracefully
-        //
-        // TODO: Update codegen to generate proper callback interface types
-        // See: src/webidl/v8_bindings/callback_wrapper.zig for CallbackWrapper
-        if (v8.v8_Value_IsFunction(value)) {
-            // Return null instead of error - allows impl to handle gracefully
-            // This is a workaround until proper callback interface support is added
-            return ConversionError.TypeError;
-        }
-
-        const object = @as(*v8.Object, @ptrCast(value));
-
-        // Only accept objects that have valid WrapperTypeInfo - this means they
-        // were created by our WebIDL bindings. Native JS objects (like URL, Date, etc.)
-        // should NOT be converted to *runtime.Instance.
-        if (interface_mod.getWrapperTypeInfo(object)) |wrapper_info| {
-            // We have type info - use type-safe unwrapping
-            // For generic *runtime.Instance, we accept any valid wrapped object
-            // by checking that it has a valid type tag (any tag is fine)
-            if (wrapper_info.this_tag > 0) {
-                // Valid type info, get instance from slot 0
-                return interface_mod.getInstance(runtime.Instance, object) orelse {
-                    return ConversionError.TypeError;
-                };
-            }
-        }
-
-        // FALLBACK: No valid WrapperTypeInfo stored, but the object might still be a valid
-        // WebIDL-wrapped object from our bindings. This happens when:
-        // 1. The wrapper_type_info_registry.getWrapperTypeInfoByName() is a stub (returns null)
-        // 2. The constructor fell back to setInstance() instead of setInstanceWithTypeInfo()
-        //
-        // Try to extract the instance from slot 0. This is safe because:
-        // - Native JS objects won't have anything in internal fields
-        // - Our constructor always stores the instance in slot 0
-        return interface_mod.getInstance(runtime.Instance, object) orelse {
-            return ConversionError.TypeError;
-        };
+        const I = comptime Interface orelse @compileError(
+            "an interface-typed value converts only to a named interface: " ++
+                "convert it with fromV8ValueAs, the interface from codegen's tables " ++
+                "(interface_arguments, constructor_interface_arguments, interface_members)",
+        );
+        return convertToInterface(I, value);
     }
 
     // Handle function pointers (callbacks)
@@ -2212,7 +2314,7 @@ pub fn fromV8Value(
         if (v8.v8_Value_IsUndefined(value)) {
             return T.notPassed();
         }
-        const inner_value = try fromV8Value(InnerType, allocator, isolate, context, value);
+        const inner_value = try fromV8ValueAs(InnerType, Interface, allocator, isolate, context, value);
         return T.passed(inner_value);
     }
 
@@ -2328,7 +2430,7 @@ pub fn fromV8Value(
                     // handle. An [EnforceRange] or [Clamp] member's null is
                     // ToNumber's 0 - in range, and clamped to itself.
                     const Payload = @typeInfo(field.type).optional.child;
-                    const converted_null = fromV8Value(Payload, allocator, isolate, context, field_v8);
+                    const converted_null = fromV8ValueAs(Payload, comptime structMemberInterface(T, Interface, field.name), allocator, isolate, context, field_v8);
                     if (!member_handle_released) v8.v8_Value_Dispose(field_v8);
                     @field(result, field.name) = try converted_null;
                 } else if (comptime interface_mod.argumentHandleIsKeptInValue(field.type)) {
@@ -2356,9 +2458,11 @@ pub fn fromV8Value(
                         field_v8,
                     );
                 } else {
-                    // Convert field value
-                    @field(result, field.name) = try fromV8Value(
+                    // Convert field value - an interface-typed member to the
+                    // interface `interface_members` names.
+                    @field(result, field.name) = try fromV8ValueAs(
                         field.type,
+                        comptime structMemberInterface(T, Interface, field.name),
                         allocator,
                         isolate,
                         context,

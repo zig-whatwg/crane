@@ -435,6 +435,27 @@ pub const Range = struct {
         return try RangeImpl.call_cloneRange(instance);
     }
 
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_setEnd", 0, "Node" },
+        .{ "call_setStartBefore", 0, "Node" },
+        .{ "call_setEndAfter", 0, "Node" },
+        .{ "call_selectNodeContents", 0, "Node" },
+        .{ "call_insertNode", 0, "Node" },
+        .{ "call_setStartAfter", 0, "Node" },
+        .{ "call_surroundContents", 0, "Node" },
+        .{ "call_selectNode", 0, "Node" },
+        .{ "call_intersectsNode", 0, "Node" },
+        .{ "call_setStart", 0, "Node" },
+        .{ "call_isPointInRange", 0, "Node" },
+        .{ "call_setEndBefore", 0, "Node" },
+        .{ "call_comparePoint", 0, "Node" },
+        .{ "call_compareBoundaryPoints", 1, "Range" },
+    };
+
     /// HTML [CEReactions]: the functions that run a custom element reactions
     /// bracket - the binding dispatches each in a catch scope, where
     /// engine.withPendingExceptionSetAside sets aside what the member leaves

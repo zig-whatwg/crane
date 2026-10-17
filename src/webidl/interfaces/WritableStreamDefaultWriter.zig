@@ -183,6 +183,13 @@ pub const WritableStreamDefaultWriter = struct {
         return try WritableStreamDefaultWriterImpl.call_constructor(ctx, stream);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "WritableStream" },
+    };
+
     pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try WritableStreamDefaultWriterImpl.get_closed(instance);
     }

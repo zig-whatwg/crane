@@ -11,4 +11,10 @@ pub const NotificationEventInit = struct {
 
     notification: *runtime.Instance,
     action: ?runtime.DOMString = null,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "notification", "Notification" },
+    };
 };

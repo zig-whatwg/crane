@@ -190,6 +190,13 @@ pub const WorkletAnimation = struct {
         return try WorkletAnimationImpl.call_constructor(ctx, animatorName, effects, timeline, options);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 2, "AnimationTimeline" },
+    };
+
     pub fn get_animatorName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WorkletAnimationImpl.get_animatorName(instance);
     }

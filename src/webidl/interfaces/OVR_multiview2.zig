@@ -198,4 +198,12 @@ pub const OVR_multiview2 = struct {
     pub fn call_framebufferTextureMultiviewOVR(instance: *runtime.Instance, target: GLenum, attachment: GLenum, texture: ?*runtime.Instance, level: GLint, baseViewIndex: GLint, numViews: GLsizei) anyerror!void {
         return try OVR_multiview2Impl.call_framebufferTextureMultiviewOVR(instance, target, attachment, texture, level, baseViewIndex, numViews);
     }
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_framebufferTextureMultiviewOVR", 2, "WebGLTexture" },
+    };
 };

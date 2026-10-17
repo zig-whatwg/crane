@@ -267,4 +267,16 @@ pub const EXT_disjoint_timer_query = struct {
     pub fn call_deleteQueryEXT(instance: *runtime.Instance, query: ?*runtime.Instance) anyerror!void {
         return try EXT_disjoint_timer_queryImpl.call_deleteQueryEXT(instance, query);
     }
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_getQueryObjectEXT", 0, "WebGLTimerQueryEXT" },
+        .{ "call_queryCounterEXT", 0, "WebGLTimerQueryEXT" },
+        .{ "call_beginQueryEXT", 1, "WebGLTimerQueryEXT" },
+        .{ "call_isQueryEXT", 0, "WebGLTimerQueryEXT" },
+        .{ "call_deleteQueryEXT", 0, "WebGLTimerQueryEXT" },
+    };
 };

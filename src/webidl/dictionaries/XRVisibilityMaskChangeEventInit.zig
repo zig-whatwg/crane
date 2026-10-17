@@ -15,4 +15,10 @@ pub const XRVisibilityMaskChangeEventInit = struct {
     index: u32,
     vertices: runtime.JSValue,
     indices: runtime.JSValue,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "session", "XRSession" },
+    };
 };

@@ -280,4 +280,13 @@ pub const TextTrack = struct {
     pub fn call_removeCue(instance: *runtime.Instance, cue: *runtime.Instance) anyerror!void {
         return try TextTrackImpl.call_removeCue(instance, cue);
     }
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_addCue", 0, "TextTrackCue" },
+        .{ "call_removeCue", 0, "TextTrackCue" },
+    };
 };

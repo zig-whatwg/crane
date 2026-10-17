@@ -203,6 +203,13 @@ pub const AudioWorkletNode = struct {
         return try AudioWorkletNodeImpl.call_constructor(ctx, context, name, options);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "BaseAudioContext" },
+    };
+
     pub fn get_parameters(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioWorkletNodeImpl.get_parameters(instance);
     }

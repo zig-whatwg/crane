@@ -172,6 +172,13 @@ pub const CSSParserFunction = struct {
         return try CSSParserFunctionImpl.call_constructor(ctx, name, args);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 1, "CSSParserValue" },
+    };
+
     pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try CSSParserFunctionImpl.get_name(instance);
     }

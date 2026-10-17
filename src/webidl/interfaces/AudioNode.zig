@@ -323,4 +323,18 @@ pub const AudioNode = struct {
             .{ .function = "call_disconnect__6", .implemented = @hasDecl(AudioNodeImpl, "call_disconnect__6"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "AudioParam")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").AudioParam.State) } else .other)} }, .{ .kinds = &.{.numeric} } } },
         } },
     };
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_connect", 0, "AudioNode" },
+        .{ "call_connect__1", 0, "AudioParam" },
+        .{ "call_disconnect__2", 0, "AudioNode" },
+        .{ "call_disconnect__3", 0, "AudioNode" },
+        .{ "call_disconnect__4", 0, "AudioNode" },
+        .{ "call_disconnect__5", 0, "AudioParam" },
+        .{ "call_disconnect__6", 0, "AudioParam" },
+    };
 };

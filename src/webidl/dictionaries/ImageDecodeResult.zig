@@ -7,4 +7,10 @@ const runtime = @import("runtime");
 pub const ImageDecodeResult = struct {
     image: *runtime.Instance,
     complete: bool,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "image", "VideoFrame" },
+    };
 };

@@ -197,6 +197,13 @@ pub const ConvolverNode = struct {
         return try ConvolverNodeImpl.call_constructor(ctx, context, options);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "BaseAudioContext" },
+    };
+
     pub fn get_buffer(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try ConvolverNodeImpl.get_buffer(instance);
     }
@@ -212,4 +219,12 @@ pub const ConvolverNode = struct {
     pub fn set_normalize(instance: *runtime.Instance, value: bool) anyerror!void {
         try ConvolverNodeImpl.set_normalize(instance, value);
     }
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "set_buffer", 0, "AudioBuffer" },
+    };
 };

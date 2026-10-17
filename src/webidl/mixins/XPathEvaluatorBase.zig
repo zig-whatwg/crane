@@ -41,3 +41,13 @@ pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DO
 
     return try XPathEvaluatorBaseImpl.call_createExpression(instance, expression, resolver);
 }
+
+/// WebIDL interface types: the interface each interface-typed argument
+/// and attribute value converts to - a TypeError unless the value implements
+/// it (function, argument index - an attribute setter's value is 0 -,
+/// interface; a nullable, sequence or record value by its elements').
+pub const interface_arguments = .{
+    .{ "call_createNSResolver", 0, "Node" },
+    .{ "call_evaluate", 1, "Node" },
+    .{ "call_evaluate", 4, "XPathResult" },
+};

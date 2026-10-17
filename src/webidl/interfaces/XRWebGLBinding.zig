@@ -221,6 +221,13 @@ pub const XRWebGLBinding = struct {
         return try XRWebGLBindingImpl.call_constructor(ctx, session, context);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "XRSession" },
+    };
+
     pub fn get_nativeProjectionScaleFactor(instance: *runtime.Instance) anyerror!f64 {
         return try XRWebGLBindingImpl.get_nativeProjectionScaleFactor(instance);
     }
@@ -278,5 +285,19 @@ pub const XRWebGLBinding = struct {
     /// setter's value is bit 0).
     pub const restricted_floats = .{
         .{ "call_foveateBoundTexture", 0b10 },
+    };
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_getReflectionCubeMap", 0, "XRLightProbe" },
+        .{ "call_getSubImage", 0, "XRCompositionLayer" },
+        .{ "call_getSubImage", 1, "XRFrame" },
+        .{ "call_getViewSubImage", 0, "XRProjectionLayer" },
+        .{ "call_getViewSubImage", 1, "XRView" },
+        .{ "call_getDepthInformation", 0, "XRView" },
+        .{ "call_getCameraImage", 0, "XRCamera" },
     };
 };

@@ -11,4 +11,11 @@ pub const PushSubscriptionChangeEventInit = struct {
 
     newSubscription: ?*runtime.Instance = null,
     oldSubscription: ?*runtime.Instance = null,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "newSubscription", "PushSubscription" },
+        .{ "oldSubscription", "PushSubscription" },
+    };
 };

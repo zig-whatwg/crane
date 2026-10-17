@@ -16,4 +16,10 @@ pub const DisplayMediaStreamOptions = struct {
     surfaceSwitching: ?enums.SurfaceSwitchingPreferenceEnum = null,
     monitorTypeSurfaces: ?enums.MonitorTypeSurfacesEnum = null,
     audioSelection: ?enums.AudioSelectionPreferenceEnum = null,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "controller", "CaptureController" },
+    };
 };

@@ -153,4 +153,11 @@ pub const PeriodicWave = struct {
         // Directly return result from impl.call_constructor
         return try PeriodicWaveImpl.call_constructor(ctx, context, options);
     }
+
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "BaseAudioContext" },
+    };
 };

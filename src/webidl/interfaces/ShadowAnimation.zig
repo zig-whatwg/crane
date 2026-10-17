@@ -194,6 +194,13 @@ pub const ShadowAnimation = struct {
         return try ShadowAnimationImpl.call_constructor(ctx, source, newTarget);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "Animation" },
+    };
+
     /// Extended attributes: [SameObject]
     pub fn get_sourceAnimation(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);

@@ -9,4 +9,10 @@ pub const ViewTimelineOptions = struct {
     subject: ?*runtime.Instance = null,
     axis: ?enums.ScrollAxis = null,
     inset: ?runtime.JSValue = null,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "subject", "Element" },
+    };
 };

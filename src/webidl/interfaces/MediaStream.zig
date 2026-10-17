@@ -235,6 +235,14 @@ pub const MediaStream = struct {
         return try MediaStreamImpl.call_constructor(ctx, args);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "MediaStream", 0, "MediaStream" },
+        .{ "sequence", 0, "MediaStreamTrack" },
+    };
+
     pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MediaStreamImpl.get_id(instance);
     }
@@ -292,4 +300,13 @@ pub const MediaStream = struct {
     pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try MediaStreamImpl.call_clone(instance);
     }
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_addTrack", 0, "MediaStreamTrack" },
+        .{ "call_removeTrack", 0, "MediaStreamTrack" },
+    };
 };

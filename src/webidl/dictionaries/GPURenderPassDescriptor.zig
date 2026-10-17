@@ -17,4 +17,10 @@ pub const GPURenderPassDescriptor = struct {
     occlusionQuerySet: ?*runtime.Instance = null,
     timestampWrites: ?GPURenderPassTimestampWrites = null,
     maxDrawCount: ?typedefs.GPUSize64 = null,
+
+    /// WebIDL interface types: the interface each interface-typed member
+    /// converts to - a TypeError unless the value implements it.
+    pub const interface_members = .{
+        .{ "occlusionQuerySet", "GPUQuerySet" },
+    };
 };

@@ -181,6 +181,14 @@ pub const RdfDataset = struct {
         return try RdfDatasetImpl.call_add(instance, graphName, graph);
     }
 
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_add", 1, "RdfGraph" },
+    };
+
     /// Get entries for pair iterable support (used by V8 for iteration)
     /// Returns slice of entries with .name and .value fields
     pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const RdfDatasetImpl.IterableEntry {

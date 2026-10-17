@@ -1,0 +1,78 @@
+// Interface-typed values: which interface each one converts to
+// (tests/codegen/interface_arguments_test.zig).
+
+typedef Blob BlobAlias;
+typedef BlobAlias BlobAliasAlias;
+typedef sequence<Node> NodeSequence;
+typedef (Node or DOMString) NodeOrString;
+
+[Exposed=Window]
+interface Blob {};
+
+[Exposed=Window]
+interface Node {};
+
+[Exposed=Window]
+interface HTMLFormElement : Node {};
+
+callback interface Listener {
+  undefined handleEvent();
+};
+
+interface mixin Pointing {
+  attribute Node? pointed;
+  undefined point(Node target);
+};
+
+dictionary Boundary {
+  required Node container;
+  Node? optionalNode;
+  BlobAlias aliased;
+  sequence<Node> nodes;
+  FrozenArray<Blob> frozenBlobs;
+  record<DOMString, Blob> blobRecord;
+  (Node or DOMString) either;
+  Listener listener;
+  DOMString text;
+};
+
+dictionary Plain {
+  DOMString text;
+};
+
+[Exposed=Window]
+interface Sink {
+  constructor(HTMLFormElement form, optional Node? submitter = null);
+  attribute Node? target;
+  readonly attribute Node owner;
+  attribute DOMString name;
+  attribute BlobAliasAlias aliased;
+  static attribute Node staticNode;
+  undefined append(DOMString name, DOMString value);
+  undefined append(DOMString name, Blob blobValue, optional DOMString filename);
+  undefined take(BlobAlias b);
+  undefined many(sequence<Node> nodes, record<DOMString, Blob> blobs, FrozenArray<Node> frozen);
+  undefined either(NodeOrString value);
+  undefined inline((Node or Blob) value);
+  undefined listen(Listener l);
+  undefined rest(DOMString first, Node... nodes);
+  undefined aliasedSequence(NodeSequence list);
+  static undefined adopt(Node node);
+  undefined text(DOMString s);
+  getter Node? (unsigned long index);
+  setter undefined (unsigned long index, Node? node);
+};
+Sink includes Pointing;
+
+[Exposed=Window]
+interface Ray {
+  constructor(optional Boundary origin = {});
+  constructor(Node transform);
+  constructor(DOMString name, Blob blob);
+};
+
+[Exposed=Window]
+interface Quiet {
+  constructor(DOMString text);
+  undefined text(DOMString s);
+};

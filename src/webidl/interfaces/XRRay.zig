@@ -195,6 +195,13 @@ pub const XRRay = struct {
         return try XRRayImpl.call_constructor(ctx, args);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "XRRigidTransform", 0, "XRRigidTransform" },
+    };
+
     /// Extended attributes: [SameObject]
     pub fn get_origin(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);

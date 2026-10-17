@@ -116,7 +116,7 @@ const Probe = struct {
 
     fn callback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
         const e = env_once.?;
-        const args = resolver.resolveConstructorOverload(Overloads, overloads, info, testing.allocator, e.isolate, e.context) catch {
+        const args = resolver.resolveConstructorOverload(Overloads, overloads, .{}, info, testing.allocator, e.isolate, e.context) catch {
             failed = true;
             return;
         };

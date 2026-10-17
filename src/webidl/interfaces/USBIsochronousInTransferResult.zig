@@ -168,6 +168,13 @@ pub const USBIsochronousInTransferResult = struct {
         return try USBIsochronousInTransferResultImpl.call_constructor(ctx, packets, data);
     }
 
+    /// WebIDL interface types: the interface each interface-typed constructor
+    /// argument converts to (ConstructorArgs variant - "" for a sole
+    /// constructor -, argument index, interface).
+    pub const constructor_interface_arguments = .{
+        .{ "", 0, "USBIsochronousInTransferPacket" },
+    };
+
     pub fn get_data(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try USBIsochronousInTransferResultImpl.get_data(instance);
     }

@@ -391,4 +391,12 @@ pub const HTMLModelElement = struct {
         if (comptime @hasDecl(HTMLModelElementImpl, "set_stageMode")) return try HTMLModelElementImpl.set_stageMode(instance, value);
         try reflection.set(runtime.DOMString, instance, .{ .name = "stagemode" }, value);
     }
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "set_entityTransform", 0, "DOMMatrixReadOnly" },
+    };
 };

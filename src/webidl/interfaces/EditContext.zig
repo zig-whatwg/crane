@@ -336,4 +336,14 @@ pub const EditContext = struct {
     pub fn call_updateText(instance: *runtime.Instance, rangeStart: u32, rangeEnd: u32, text: runtime.DOMString) anyerror!void {
         return try EditContextImpl.call_updateText(instance, rangeStart, rangeEnd, text);
     }
+
+    /// WebIDL interface types: the interface each interface-typed argument
+    /// and attribute value converts to - a TypeError unless the value implements
+    /// it (function, argument index - an attribute setter's value is 0 -,
+    /// interface; a nullable, sequence or record value by its elements').
+    pub const interface_arguments = .{
+        .{ "call_updateCharacterBounds", 1, "DOMRect" },
+        .{ "call_updateControlBounds", 0, "DOMRect" },
+        .{ "call_updateSelectionBounds", 0, "DOMRect" },
+    };
 };
