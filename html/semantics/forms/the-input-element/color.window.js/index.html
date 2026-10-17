@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../../">Crane WPT results</a></li><li><a href="../../../../../html/"><code>html/</code></a></li><li><a href="../../../../../html/semantics/"><code>semantics/</code></a></li><li><a href="../../../../../html/semantics/forms/"><code>forms/</code></a></li><li><a href="../../../../../html/semantics/forms/the-input-element/"><code>the-<wbr>input-<wbr>element/</code></a></li><li aria-current="page"><code>color.<wbr>window.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>color.<wbr>window.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="html/semantics/forms/the-input-element/color.window.js">
-<p class="figures-main"><span class="fg-pass">24</span><span class="fg-of"> / 196</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>172</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">196</span><span class="fg-of"> / 196</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-2f09d08336</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/2f09d08336"><code>2f09d08336</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c9ecc418a0</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c9ecc418a0"><code>c9ecc418a0</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/semantics/forms/the-input-element/color.window.js"><code>html/<wbr>semantics/<wbr>forms/<wbr>the-<wbr>input-<wbr>element/<wbr>color.<wbr>window.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -36,708 +36,201 @@
 <div class="run">
 <ol class="subtests">
 <li class="sub s-pass" id="s-fb50274d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing the empty string with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-fb50274d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-470033bb"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing the empty string with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-470033bb" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9967cf59"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing the empty string with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-9967cf59" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-dfcb03b4"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing the empty string with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-dfcb03b4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-59d285f2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing the empty string with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-59d285f2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2cd1c461"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing the empty string with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-2cd1c461" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-19e048e2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing the empty string with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-19e048e2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5100c9f0"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing the empty string with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-5100c9f0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-470033bb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing the empty string with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-470033bb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9967cf59"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing the empty string with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-9967cf59" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dfcb03b4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing the empty string with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-dfcb03b4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-59d285f2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing the empty string with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-59d285f2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2cd1c461"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing the empty string with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-2cd1c461" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-19e048e2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing the empty string with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-19e048e2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5100c9f0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing the empty string with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-5100c9f0" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-be668ca6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing no value with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-be668ca6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-96068d81"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing no value with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-96068d81" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-908bbd53"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing no value with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-908bbd53" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-61ae126b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing no value with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-61ae126b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a777f182"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing no value with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-a777f182" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-be7543b6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing no value with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-be7543b6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d7bc99c4"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing no value with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-d7bc99c4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-75836398"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing no value with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-75836398" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-96068d81"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing no value with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-96068d81" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-908bbd53"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing no value with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-908bbd53" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-61ae126b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing no value with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-61ae126b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a777f182"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing no value with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-a777f182" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-be7543b6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing no value with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-be7543b6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d7bc99c4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing no value with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-d7bc99c4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-75836398"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing no value with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-75836398" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-14d02047"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff&#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-14d02047" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c8cf6a65"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-c8cf6a65" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-143e6ada"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-143e6ada" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-45d6504a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-45d6504a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3fe258f3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(display-p3 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-3fe258f3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-99b997c1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-99b997c1" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-129bb26e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(display-p3 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-129bb26e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6577d09c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-6577d09c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c8cf6a65"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-c8cf6a65" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-143e6ada"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-143e6ada" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-45d6504a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-45d6504a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3fe258f3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-3fe258f3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-99b997c1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-99b997c1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-129bb26e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-129bb26e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6577d09c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-6577d09c" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-11803ae5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff08&#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-11803ae5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-85abf52e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff08&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1 / 0.031373).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 4 got 0</pre></details><a class="self" href="#s-85abf52e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5515bdf5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff08&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1 / 0.031373).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 4 got 0</pre></details><a class="self" href="#s-5515bdf5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-99f2fce1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff08&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1 / 0.031373).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 4 got 0</pre></details><a class="self" href="#s-99f2fce1" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b823ea88"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff08&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(display-p3 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-b823ea88" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-0899f243"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff08&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1 / 0.031373).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 4 got 0</pre></details><a class="self" href="#s-0899f243" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-fbeb5874"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff08&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(display-p3 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-fbeb5874" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2e7dda9b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff08&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1 / 0.031373).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 4 got 0</pre></details><a class="self" href="#s-2e7dda9b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-85abf52e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff08&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-85abf52e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5515bdf5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff08&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-5515bdf5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-99f2fce1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff08&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-99f2fce1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b823ea88"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff08&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-b823ea88" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0899f243"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff08&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-0899f243" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fbeb5874"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff08&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-fbeb5874" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2e7dda9b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff08&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-2e7dda9b" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-0aa45f37"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#FFFFFF&#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-0aa45f37" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-fdd9f9e5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#FFFFFF&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-fdd9f9e5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f6a4bc08"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#FFFFFF&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-f6a4bc08" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-836a8fbc"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#FFFFFF&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-836a8fbc" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6fa9328a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#FFFFFF&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(display-p3 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-6fa9328a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-98c55d43"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#FFFFFF&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-98c55d43" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b9d1e85d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#FFFFFF&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(display-p3 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-b9d1e85d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f09e91ae"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#FFFFFF&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-f09e91ae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fdd9f9e5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#FFFFFF&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-fdd9f9e5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f6a4bc08"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#FFFFFF&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-f6a4bc08" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-836a8fbc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#FFFFFF&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-836a8fbc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6fa9328a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#FFFFFF&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-6fa9328a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-98c55d43"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#FFFFFF&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-98c55d43" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b9d1e85d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#FFFFFF&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-b9d1e85d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f09e91ae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#FFFFFF&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-f09e91ae" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ebde2933"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#0F0F0F&#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-ebde2933" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-89cb3cd0"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#0F0F0F&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #0f0f0f
-Expected: color(srgb 0.058824 0.058824 0.058824).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-89cb3cd0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-108f7507"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#0F0F0F&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #0f0f0f
-Expected: color(srgb 0.058824 0.058824 0.058824).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-108f7507" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-28d43dbe"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#0F0F0F&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #0f0f0f
-Expected: color(srgb 0.058824 0.058824 0.058824).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-28d43dbe" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-da459787"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#0F0F0F&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #0f0f0f
-Expected: color(display-p3 0.058824 0.058824 0.058824).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-da459787" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-33e30f6f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#0F0F0F&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #0f0f0f
-Expected: color(srgb 0.058824 0.058824 0.058824).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-33e30f6f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-0354a4c4"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#0F0F0F&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #0f0f0f
-Expected: color(display-p3 0.058824 0.058824 0.058824).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-0354a4c4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-36762ef6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#0F0F0F&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #0f0f0f
-Expected: color(srgb 0.058824 0.058824 0.058824).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-36762ef6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-89cb3cd0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#0F0F0F&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-89cb3cd0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-108f7507"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#0F0F0F&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-108f7507" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-28d43dbe"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#0F0F0F&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-28d43dbe" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-da459787"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#0F0F0F&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-da459787" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-33e30f6f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#0F0F0F&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-33e30f6f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0354a4c4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#0F0F0F&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-0354a4c4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-36762ef6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#0F0F0F&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-36762ef6" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-10a7b226"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#fff&#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-10a7b226" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1d602902"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#fff&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-1d602902" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9fb692eb"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#fff&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-9fb692eb" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-baa722b7"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#fff&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-baa722b7" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a590de04"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#fff&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(display-p3 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-a590de04" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-49bbf3c5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#fff&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-49bbf3c5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-68401cd7"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#fff&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(display-p3 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-68401cd7" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d4767029"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#fff&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-d4767029" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1d602902"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#fff&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-1d602902" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9fb692eb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#fff&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-9fb692eb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-baa722b7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#fff&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-baa722b7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a590de04"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#fff&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-a590de04" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-49bbf3c5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#fff&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-49bbf3c5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-68401cd7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#fff&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-68401cd7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d4767029"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#fff&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-d4767029" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-3ac668c0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;fffffff&#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-3ac668c0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-4ea59bb7"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;fffffff&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-4ea59bb7" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9a0f1336"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;fffffff&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-9a0f1336" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c9062a97"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;fffffff&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-c9062a97" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-02b61ffe"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;fffffff&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-02b61ffe" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5cf474ca"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;fffffff&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-5cf474ca" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-da097315"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;fffffff&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-da097315" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6e2e0472"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;fffffff&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-6e2e0472" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4ea59bb7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;fffffff&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-4ea59bb7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9a0f1336"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;fffffff&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-9a0f1336" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c9062a97"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;fffffff&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-c9062a97" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-02b61ffe"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;fffffff&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-02b61ffe" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5cf474ca"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;fffffff&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-5cf474ca" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-da097315"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;fffffff&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-da097315" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6e2e0472"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;fffffff&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-6e2e0472" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-d8bb834c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#gggggg&#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-d8bb834c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d348f02b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#gggggg&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-d348f02b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2527296a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#gggggg&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-2527296a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f7a1c464"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#gggggg&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-f7a1c464" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2eec69b6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#gggggg&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-2eec69b6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c6c762d1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#gggggg&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-c6c762d1" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a6d9ccec"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#gggggg&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-a6d9ccec" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-29c3e005"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#gggggg&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-29c3e005" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d348f02b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#gggggg&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-d348f02b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2527296a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#gggggg&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-2527296a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f7a1c464"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#gggggg&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-f7a1c464" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2eec69b6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#gggggg&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-2eec69b6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c6c762d1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#gggggg&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-c6c762d1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a6d9ccec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#gggggg&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-a6d9ccec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-29c3e005"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#gggggg&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-29c3e005" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-faa2f820"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;foobar&#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-faa2f820" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-20c50718"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;foobar&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-20c50718" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-882781f5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;foobar&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-882781f5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ad8d0def"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;foobar&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-ad8d0def" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f0f63599"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;foobar&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-f0f63599" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-27f12648"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;foobar&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-27f12648" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-87869dc4"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;foobar&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-87869dc4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-bee5eb44"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;foobar&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-bee5eb44" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-20c50718"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;foobar&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-20c50718" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-882781f5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;foobar&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-882781f5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ad8d0def"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;foobar&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-ad8d0def" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f0f63599"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;foobar&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-f0f63599" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-27f12648"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;foobar&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-27f12648" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-87869dc4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;foobar&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-87869dc4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bee5eb44"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;foobar&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-bee5eb44" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-342cb8fb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff␀&#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-342cb8fb" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-90849df1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff␀&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-90849df1" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6fcdcdec"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff␀&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-6fcdcdec" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5fc7ae53"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff␀&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-5fc7ae53" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a5a7e386"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff␀&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-a5a7e386" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-93a85f06"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff␀&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-93a85f06" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ef36e5fd"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff␀&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-ef36e5fd" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-00cbabc1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff␀&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-00cbabc1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-90849df1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff␀&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-90849df1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6fcdcdec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff␀&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-6fcdcdec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5fc7ae53"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff␀&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-5fc7ae53" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a5a7e386"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff␀&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-a5a7e386" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-93a85f06"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff␀&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-93a85f06" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ef36e5fd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff␀&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-ef36e5fd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-00cbabc1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff␀&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-00cbabc1" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-899443a0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff;&#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-899443a0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6b9a6716"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff;&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-6b9a6716" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7b1ab46e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff;&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-7b1ab46e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c8467956"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff;&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-c8467956" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-46d8cea1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff;&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-46d8cea1" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-673547fb"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff;&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-673547fb" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8a01d696"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff;&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-8a01d696" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b379d3db"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff;&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-b379d3db" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6b9a6716"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff;&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-6b9a6716" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7b1ab46e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff;&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-7b1ab46e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c8467956"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff;&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-c8467956" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-46d8cea1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff;&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-46d8cea1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-673547fb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff;&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-673547fb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8a01d696"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff;&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-8a01d696" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b379d3db"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff;&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-b379d3db" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-adeaae94"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39; #ffffff&#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-adeaae94" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c37d555c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39; #ffffff&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-c37d555c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5f905749"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39; #ffffff&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-5f905749" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-09bec008"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39; #ffffff&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-09bec008" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8018dabc"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39; #ffffff&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(display-p3 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-8018dabc" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-eb7c70ef"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39; #ffffff&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-eb7c70ef" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ae8ec85b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39; #ffffff&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(display-p3 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-ae8ec85b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-33ea8e1d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39; #ffffff&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-33ea8e1d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c37d555c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39; #ffffff&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-c37d555c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5f905749"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39; #ffffff&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-5f905749" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-09bec008"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39; #ffffff&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-09bec008" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8018dabc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39; #ffffff&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-8018dabc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-eb7c70ef"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39; #ffffff&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-eb7c70ef" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ae8ec85b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39; #ffffff&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-ae8ec85b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-33ea8e1d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39; #ffffff&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-33ea8e1d" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-3bd0536c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff &#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-3bd0536c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-102abca6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff &#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-102abca6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-03a04628"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff &#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-03a04628" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-635c5f20"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff &#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-635c5f20" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f3b8760e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff &#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(display-p3 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-f3b8760e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-83173325"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff &#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-83173325" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b28c2b22"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff &#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(display-p3 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-b28c2b22" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-69e24be8"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#ffffff &#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-69e24be8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-102abca6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff &#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-102abca6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-03a04628"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff &#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-03a04628" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-635c5f20"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff &#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-635c5f20" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f3b8760e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff &#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-f3b8760e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-83173325"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff &#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-83173325" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b28c2b22"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff &#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-b28c2b22" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-69e24be8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#ffffff &#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-69e24be8" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-d13cfa89"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39; #ffffff &#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-d13cfa89" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-aa0b71d2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39; #ffffff &#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-aa0b71d2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5011e374"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39; #ffffff &#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-5011e374" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-320e1a85"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39; #ffffff &#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-320e1a85" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-49f61926"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39; #ffffff &#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(display-p3 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-49f61926" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9d48afa7"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39; #ffffff &#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-9d48afa7" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-fe01ef5c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39; #ffffff &#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(display-p3 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-fe01ef5c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5ae5f79c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39; #ffffff &#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-5ae5f79c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-aa0b71d2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39; #ffffff &#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-aa0b71d2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5011e374"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39; #ffffff &#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-5011e374" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-320e1a85"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39; #ffffff &#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-320e1a85" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-49f61926"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39; #ffffff &#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-49f61926" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9d48afa7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39; #ffffff &#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-9d48afa7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fe01ef5c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39; #ffffff &#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-fe01ef5c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5ae5f79c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39; #ffffff &#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-5ae5f79c" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-31fa9e9f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;crimson&#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-31fa9e9f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b8912875"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;crimson&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #dc143c
-Expected: color(srgb 0.862745 0.078431 0.235294).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-b8912875" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8ed5b9f4"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;crimson&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #dc143c
-Expected: color(srgb 0.862745 0.078431 0.235294).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-8ed5b9f4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-83e56ac0"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;crimson&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #dc143c
-Expected: color(srgb 0.862745 0.078431 0.235294).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-83e56ac0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2d88843d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;crimson&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #dc143c
-Expected: color(display-p3 0.791711 0.191507 0.257367).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-2d88843d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ae5195ae"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;crimson&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #dc143c
-Expected: color(srgb 0.862745 0.078431 0.235294).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-ae5195ae" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f4071179"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;crimson&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #dc143c
-Expected: color(display-p3 0.791711 0.191507 0.257367).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-f4071179" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b9b39f36"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;crimson&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #dc143c
-Expected: color(srgb 0.862745 0.078431 0.235294).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-b9b39f36" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b8912875"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;crimson&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-b8912875" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8ed5b9f4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;crimson&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-8ed5b9f4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-83e56ac0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;crimson&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-83e56ac0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2d88843d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;crimson&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-2d88843d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ae5195ae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;crimson&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-ae5195ae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f4071179"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;crimson&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-f4071179" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b9b39f36"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;crimson&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-b9b39f36" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-a2421386"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;bisque&#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-a2421386" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-de2c4ffe"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;bisque&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffe4c4
-Expected: color(srgb 1 0.894118 0.768627).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-de2c4ffe" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-182797e0"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;bisque&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffe4c4
-Expected: color(srgb 1 0.894118 0.768627).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-182797e0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-579f7f50"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;bisque&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffe4c4
-Expected: color(srgb 1 0.894118 0.768627).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-579f7f50" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e768c7e3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;bisque&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffe4c4
-Expected: color(display-p3 0.982297 0.8979 0.783276).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-e768c7e3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-41b8a08f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;bisque&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffe4c4
-Expected: color(srgb 1 0.894118 0.768627).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-41b8a08f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-738006c3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;bisque&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffe4c4
-Expected: color(display-p3 0.982297 0.8979 0.783276).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-738006c3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a7c48ad1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;bisque&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffe4c4
-Expected: color(srgb 1 0.894118 0.768627).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-a7c48ad1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-de2c4ffe"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;bisque&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-de2c4ffe" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-182797e0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;bisque&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-182797e0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-579f7f50"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;bisque&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-579f7f50" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e768c7e3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;bisque&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-e768c7e3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-41b8a08f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;bisque&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-41b8a08f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-738006c3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;bisque&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-738006c3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a7c48ad1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;bisque&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-a7c48ad1" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-e2bba0b0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;currentColor&#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-e2bba0b0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1aabaa70"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;currentColor&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-1aabaa70" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-187b09d5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;currentColor&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-187b09d5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d00ba769"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;currentColor&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-d00ba769" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e223a77c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;currentColor&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-e223a77c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-77ed8728"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;currentColor&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-77ed8728" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9d0a3399"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;currentColor&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-9d0a3399" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-39954f99"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;currentColor&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-39954f99" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1aabaa70"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;currentColor&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-1aabaa70" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-187b09d5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;currentColor&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-187b09d5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d00ba769"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;currentColor&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-d00ba769" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e223a77c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;currentColor&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-e223a77c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-77ed8728"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;currentColor&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-77ed8728" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9d0a3399"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;currentColor&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-9d0a3399" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-39954f99"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;currentColor&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-39954f99" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-7ac23cf0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;transparent&#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-7ac23cf0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-10af3d96"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;transparent&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0 / 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 4 got 0</pre></details><a class="self" href="#s-10af3d96" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-983aff72"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;transparent&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0 / 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 4 got 0</pre></details><a class="self" href="#s-983aff72" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7d476728"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;transparent&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0 / 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 4 got 0</pre></details><a class="self" href="#s-7d476728" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-67d650d0"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;transparent&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-67d650d0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-968d0261"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;transparent&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0 / 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 4 got 0</pre></details><a class="self" href="#s-968d0261" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e0d1ac04"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;transparent&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-e0d1ac04" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b9bd3aca"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;transparent&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0 / 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 4 got 0</pre></details><a class="self" href="#s-b9bd3aca" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-10af3d96"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;transparent&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-10af3d96" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-983aff72"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;transparent&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-983aff72" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7d476728"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;transparent&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-7d476728" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-67d650d0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;transparent&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-67d650d0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-968d0261"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;transparent&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-968d0261" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e0d1ac04"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;transparent&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-e0d1ac04" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b9bd3aca"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;transparent&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-b9bd3aca" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-a1adc921"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;inherit&#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-a1adc921" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3d02556e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;inherit&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-3d02556e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-fca6700d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;inherit&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-fca6700d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3cdf3a62"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;inherit&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-3cdf3a62" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-83fe7246"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;inherit&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-83fe7246" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e1163e62"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;inherit&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-e1163e62" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-fd08607a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;inherit&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-fd08607a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-aedabf67"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;inherit&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-aedabf67" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3d02556e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;inherit&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-3d02556e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fca6700d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;inherit&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-fca6700d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3cdf3a62"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;inherit&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-3cdf3a62" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-83fe7246"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;inherit&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-83fe7246" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e1163e62"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;inherit&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-e1163e62" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fd08607a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;inherit&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-fd08607a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-aedabf67"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;inherit&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-aedabf67" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-c5976b6e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1)&#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-c5976b6e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-eaa7f76a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1)&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(srgb 0.003922 0.003922 0.003922).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-eaa7f76a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-4dcaac25"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1)&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(srgb 0.003922 0.003922 0.003922).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-4dcaac25" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-49e9562e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1)&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(srgb 0.003922 0.003922 0.003922).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-49e9562e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8410e648"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1)&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(display-p3 0.003922 0.003922 0.003922).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-8410e648" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c851c4f1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1)&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(srgb 0.003922 0.003922 0.003922).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-c851c4f1" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-92d049bb"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1)&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(display-p3 0.003922 0.003922 0.003922).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-92d049bb" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6afb6cc5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1)&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(srgb 0.003922 0.003922 0.003922).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-6afb6cc5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-eaa7f76a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1)&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-eaa7f76a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4dcaac25"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1)&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-4dcaac25" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-49e9562e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1)&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-49e9562e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8410e648"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1)&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-8410e648" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c851c4f1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1)&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-c851c4f1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-92d049bb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1)&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-92d049bb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6afb6cc5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1)&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-6afb6cc5" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-98cf9ef3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1,1)&#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-98cf9ef3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-50f42e3e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1,1)&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(srgb 0.003922 0.003922 0.003922).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-50f42e3e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-56b87a25"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1,1)&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(srgb 0.003922 0.003922 0.003922).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-56b87a25" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-0cd7c763"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1,1)&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(srgb 0.003922 0.003922 0.003922).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-0cd7c763" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-16c2a380"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1,1)&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(display-p3 0.003922 0.003922 0.003922).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-16c2a380" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-0affdd73"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1,1)&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(srgb 0.003922 0.003922 0.003922).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-0affdd73" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-4b6d7367"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1,1)&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(display-p3 0.003922 0.003922 0.003922).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-4b6d7367" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-aac85171"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1,1)&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(srgb 0.003922 0.003922 0.003922).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-aac85171" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-50f42e3e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1,1)&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-50f42e3e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-56b87a25"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1,1)&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-56b87a25" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0cd7c763"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1,1)&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-0cd7c763" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-16c2a380"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1,1)&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-16c2a380" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0affdd73"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1,1)&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-0affdd73" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4b6d7367"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1,1)&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-4b6d7367" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-aac85171"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1,1)&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-aac85171" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-31a27882"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1,0.5)&#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-31a27882" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9c52438b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1,0.5)&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(srgb 0.003922 0.003922 0.003922 / 0.501961).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 4 got 0</pre></details><a class="self" href="#s-9c52438b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2d302445"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1,0.5)&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(srgb 0.003922 0.003922 0.003922 / 0.501961).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 4 got 0</pre></details><a class="self" href="#s-2d302445" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9592d4f7"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1,0.5)&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(srgb 0.003922 0.003922 0.003922 / 0.501961).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 4 got 0</pre></details><a class="self" href="#s-9592d4f7" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b7f579a8"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1,0.5)&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(display-p3 0.003922 0.003922 0.003922).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-b7f579a8" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5b54660e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1,0.5)&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(srgb 0.003922 0.003922 0.003922 / 0.501961).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 4 got 0</pre></details><a class="self" href="#s-5b54660e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-4523c4c0"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1,0.5)&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(display-p3 0.003922 0.003922 0.003922).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-4523c4c0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-264abf55"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;rgb(1,1,1,0.5)&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #010101
-Expected: color(srgb 0.003922 0.003922 0.003922 / 0.501961).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 4 got 0</pre></details><a class="self" href="#s-264abf55" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9c52438b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1,0.5)&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-9c52438b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2d302445"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1,0.5)&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-2d302445" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9592d4f7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1,0.5)&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-9592d4f7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b7f579a8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1,0.5)&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-b7f579a8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5b54660e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1,0.5)&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-5b54660e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4523c4c0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1,0.5)&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-4523c4c0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-264abf55"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;rgb(1,1,1,0.5)&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-264abf55" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-b860ad9a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#FFFFFὊ9&#39; with color space &#39;limited-srgb&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-b860ad9a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-403ea9f8"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#FFFFFὊ9&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-403ea9f8" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-70c52828"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#FFFFFὊ9&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-70c52828" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-188bc8ae"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#FFFFFὊ9&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-188bc8ae" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-fe10cbab"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#FFFFFὊ9&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-fe10cbab" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2deb8746"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#FFFFFὊ9&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-2deb8746" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9d0b12ce"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#FFFFFὊ9&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(display-p3 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-9d0b12ce" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-62203b19"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing &#39;#FFFFFὊ9&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></summary><pre class="msg">Colors do not match.
-Actual:   #000000
-Expected: color(srgb 0 0 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 0</pre></details><a class="self" href="#s-62203b19" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2fb33716"><details><summary><span class="mark">FAIL</span><span class="sub-name">Display P3 colors can be out-of-bounds</span></summary><pre class="msg">assert_equals: expected &quot;color(display-p3 3 0 0.2 / 0.6)&quot; but got &quot;#ff0000&quot;</pre></details><a class="self" href="#s-2fb33716" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d02aae69"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting colorspace by setAttribute should update the value</span></summary><pre class="msg">assert_equals: expected &quot;color(display-p3 1 1 1)&quot; but got &quot;#ffffff&quot;</pre></details><a class="self" href="#s-d02aae69" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a2b075ed"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting alpha by setAttribute should update the value</span></summary><pre class="msg">assert_equals: expected &quot;color(srgb 0 0 1)&quot; but got &quot;#0000ff&quot;</pre></details><a class="self" href="#s-a2b075ed" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-0f529921"><details><summary><span class="mark">FAIL</span><span class="sub-name">Adding alpha reparses the original value attribute for a non-dirty value</span></summary><pre class="msg">Colors do not match.
-Actual:   #ffffff
-Expected: color(srgb 1 1 1 / 0.031373).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 4 got 0</pre></details><a class="self" href="#s-0f529921" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-403ea9f8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#FFFFFὊ9&#39; with color space &#39;limited-srgb&#39; and  without alpha (value)</span></div><a class="self" href="#s-403ea9f8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-70c52828"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#FFFFFὊ9&#39; with color space &#39;limited-srgb&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-70c52828" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-188bc8ae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#FFFFFὊ9&#39; with color space &#39;limited-srgb&#39; and with alpha (value)</span></div><a class="self" href="#s-188bc8ae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fe10cbab"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#FFFFFὊ9&#39; with color space &#39;display-p3&#39; and  without alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-fe10cbab" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2deb8746"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#FFFFFὊ9&#39; with color space &#39;display-p3&#39; and  without alpha (value)</span></div><a class="self" href="#s-2deb8746" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9d0b12ce"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#FFFFFὊ9&#39; with color space &#39;display-p3&#39; and with alpha (setAttribute(&quot;value&quot;))</span></div><a class="self" href="#s-9d0b12ce" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-62203b19"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing &#39;#FFFFFὊ9&#39; with color space &#39;display-p3&#39; and with alpha (value)</span></div><a class="self" href="#s-62203b19" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2fb33716"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Display P3 colors can be out-of-bounds</span></div><a class="self" href="#s-2fb33716" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d02aae69"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Setting colorspace by setAttribute should update the value</span></div><a class="self" href="#s-d02aae69" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a2b075ed"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Setting alpha by setAttribute should update the value</span></div><a class="self" href="#s-a2b075ed" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0f529921"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Adding alpha reparses the original value attribute for a non-dirty value</span></div><a class="self" href="#s-0f529921" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
@@ -750,7 +243,7 @@ Error: assert_array_approx_equals: Numeric parameters are approximately equal. l
 <ol class="toc-list">
 <li class="toc-front"><a href="../../../../../"><span class="secno"></span><span class="toc-name">Subtest totals</span></a></li>
 <li class="toc-front"><a href="../../../../../#status"><span class="secno"></span><span class="toc-name">Status of this document</span></a></li>
-<li class="toc-suite"><a href="../../../../../FileAPI/"><span class="secno">1</span><span class="toc-name">FileAPI/</span><span class="toc-count" title="73 test files">73</span></a></li>
+<li class="toc-suite"><a href="../../../../../FileAPI/"><span class="secno">1</span><span class="toc-name">FileAPI/</span><span class="toc-count" title="72 test files">72</span></a></li>
 <li class="toc-suite"><a href="../../../../../IndexedDB/"><span class="secno">2</span><span class="toc-name">IndexedDB/</span><span class="toc-count" title="229 test files">229</span></a></li>
 <li class="toc-suite"><a href="../../../../../WebCryptoAPI/"><span class="secno">3</span><span class="toc-name">WebCryptoAPI/</span><span class="toc-count" title="78 test files">78</span></a></li>
 <li class="toc-suite"><a href="../../../../../beacon/"><span class="secno">4</span><span class="toc-name">beacon/</span><span class="toc-count" title="16 test files">16</span></a></li>
@@ -768,19 +261,19 @@ Error: assert_array_approx_equals: Numeric parameters are approximately equal. l
 <li class="toc-suite"><a href="../../../../../eventsource/"><span class="secno">16</span><span class="toc-name">eventsource/</span><span class="toc-count" title="63 test files">63</span></a></li>
 <li class="toc-suite"><a href="../../../../../fetch/"><span class="secno">17</span><span class="toc-name">fetch/</span><span class="toc-count" title="185 test files">185</span></a></li>
 <li class="toc-suite"><a href="../../../../../hr-time/"><span class="secno">18</span><span class="toc-name">hr-time/</span><span class="toc-count" title="13 test files">13</span></a></li>
-<li class="toc-suite"><a href="../../../../../html/" aria-current="page"><span class="secno">19</span><span class="toc-name">html/</span><span class="toc-count" title="2,507 test files">2,507</span></a></li>
+<li class="toc-suite"><a href="../../../../../html/" aria-current="page"><span class="secno">19</span><span class="toc-name">html/</span><span class="toc-count" title="2,470 test files">2,470</span></a></li>
 <li class="toc-suite"><a href="../../../../../mimesniff/"><span class="secno">20</span><span class="toc-name">mimesniff/</span><span class="toc-count" title="4 test files">4</span></a></li>
 <li class="toc-suite"><a href="../../../../../mixed-content/"><span class="secno">21</span><span class="toc-name">mixed-content/</span><span class="toc-count" title="384 test files">384</span></a></li>
-<li class="toc-suite"><a href="../../../../../navigation-api/"><span class="secno">22</span><span class="toc-name">navigation-api/</span><span class="toc-count" title="439 test files">439</span></a></li>
+<li class="toc-suite"><a href="../../../../../navigation-api/"><span class="secno">22</span><span class="toc-name">navigation-api/</span><span class="toc-count" title="417 test files">417</span></a></li>
 <li class="toc-suite"><a href="../../../../../navigation-timing/"><span class="secno">23</span><span class="toc-name">navigation-timing/</span><span class="toc-count" title="58 test files">58</span></a></li>
 <li class="toc-suite"><a href="../../../../../performance-timeline/"><span class="secno">24</span><span class="toc-name">performance-timeline/</span><span class="toc-count" title="30 test files">30</span></a></li>
 <li class="toc-suite"><a href="../../../../../permissions/"><span class="secno">25</span><span class="toc-name">permissions/</span><span class="toc-count" title="14 test files">14</span></a></li>
 <li class="toc-suite"><a href="../../../../../referrer-policy/"><span class="secno">26</span><span class="toc-name">referrer-policy/</span><span class="toc-count" title="1,387 test files">1,387</span></a></li>
 <li class="toc-suite"><a href="../../../../../resource-timing/"><span class="secno">27</span><span class="toc-name">resource-timing/</span><span class="toc-count" title="117 test files">117</span></a></li>
 <li class="toc-suite"><a href="../../../../../sanitizer-api/"><span class="secno">28</span><span class="toc-name">sanitizer-api/</span><span class="toc-count" title="23 test files">23</span></a></li>
-<li class="toc-suite"><a href="../../../../../selection/"><span class="secno">29</span><span class="toc-name">selection/</span><span class="toc-count" title="85 test files">85</span></a></li>
+<li class="toc-suite"><a href="../../../../../selection/"><span class="secno">29</span><span class="toc-name">selection/</span><span class="toc-count" title="78 test files">78</span></a></li>
 <li class="toc-suite"><a href="../../../../../service-workers/"><span class="secno">30</span><span class="toc-name">service-workers/</span><span class="toc-count" title="283 test files">283</span></a></li>
-<li class="toc-suite"><a href="../../../../../shadow-dom/"><span class="secno">31</span><span class="toc-name">shadow-dom/</span><span class="toc-count" title="140 test files">140</span></a></li>
+<li class="toc-suite"><a href="../../../../../shadow-dom/"><span class="secno">31</span><span class="toc-name">shadow-dom/</span><span class="toc-count" title="130 test files">130</span></a></li>
 <li class="toc-suite"><a href="../../../../../streams/"><span class="secno">32</span><span class="toc-name">streams/</span><span class="toc-count" title="84 test files">84</span></a></li>
 <li class="toc-suite"><a href="../../../../../subresource-integrity/"><span class="secno">33</span><span class="toc-name">subresource-integrity/</span><span class="toc-count" title="5 test files">5</span></a></li>
 <li class="toc-suite"><a href="../../../../../trusted-types/"><span class="secno">34</span><span class="toc-name">trusted-types/</span><span class="toc-count" title="218 test files">218</span></a></li>
@@ -792,10 +285,10 @@ Error: assert_array_approx_equals: Numeric parameters are approximately equal. l
 <li class="toc-suite"><a href="../../../../../web-locks/"><span class="secno">40</span><span class="toc-name">web-locks/</span><span class="toc-count" title="23 test files">23</span></a></li>
 <li class="toc-suite"><a href="../../../../../webidl/"><span class="secno">41</span><span class="toc-name">webidl/</span><span class="toc-count" title="45 test files">45</span></a></li>
 <li class="toc-suite"><a href="../../../../../webmessaging/"><span class="secno">42</span><span class="toc-name">webmessaging/</span><span class="toc-count" title="130 test files">130</span></a></li>
-<li class="toc-suite"><a href="../../../../../websockets/"><span class="secno">43</span><span class="toc-name">websockets/</span><span class="toc-count" title="204 test files">204</span></a></li>
+<li class="toc-suite"><a href="../../../../../websockets/"><span class="secno">43</span><span class="toc-name">websockets/</span><span class="toc-count" title="202 test files">202</span></a></li>
 <li class="toc-suite"><a href="../../../../../webstorage/"><span class="secno">44</span><span class="toc-name">webstorage/</span><span class="toc-count" title="54 test files">54</span></a></li>
 <li class="toc-suite"><a href="../../../../../workers/"><span class="secno">45</span><span class="toc-name">workers/</span><span class="toc-count" title="288 test files">288</span></a></li>
-<li class="toc-suite"><a href="../../../../../xhr/"><span class="secno">46</span><span class="toc-name">xhr/</span><span class="toc-count" title="327 test files">327</span></a></li>
+<li class="toc-suite"><a href="../../../../../xhr/"><span class="secno">46</span><span class="toc-name">xhr/</span><span class="toc-count" title="326 test files">326</span></a></li>
 <li class="toc-back"><a href="../../../../../#history"><span class="secno">47</span><span class="toc-name">Revision history</span></a></li>
 </ol>
 </nav>
