@@ -610,7 +610,7 @@ pub fn call_reload(instance: *runtime.Instance, options: webidl.Opt(dictionaries
     // to serializedState and apiMethodTracker set to apiMethodTracker."
     internal.handoff = tracker;
     ensureHistoryTraversal(scope.window);
-    dom.history_traversal.reload(scope.window);
+    dom.history_traversal.reloadWithNavigationApiState(scope.window, tracker.serialized_state.?);
     if (internal.handoff == tracker) internal.handoff = null;
     // Step 10.
     return derivedResult(instance, internal, tracker);

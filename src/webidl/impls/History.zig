@@ -94,6 +94,7 @@ pub fn installHooks() void {
     @import("dom").history_traversal.install(.{
         .traverse_to_step = &traverseWindowToStep,
         .reload = &reloadWindow,
+        .reload_with_navigation_api_state = &reloadWindowWithNavigationApiState,
         .url_and_history_update = &urlAndHistoryUpdateOfWindow,
         .resume_traversal = &resumeTraversalOfWindow,
     });
@@ -269,6 +270,10 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
 /// traversal of the navigable to the entry it is on. Not while its document
 /// is unloading (reload step 1).
 fn reloadNavigable(window: *runtime.Instance, bc: *BrowsingContext) void {
+    reloadNavigableWithNavigationApiState(window, bc, null);
+}
+
+fn reloadNavigableWithNavigationApiState(window: *runtime.Instance, bc: *BrowsingContext, navigation_api_state: ?joint_history.SerializedState) void {
     const document = interfaces.Window.get_document(window) catch return;
     if (@import("dom").document_lifecycle.isUnloading(document)) return;
     const history = ensureEntries(bc) catch return;
@@ -280,11 +285,15 @@ fn reloadNavigable(window: *runtime.Instance, bc: *BrowsingContext) void {
     // entry's URL, and navigationAPIState set to destinationNavigationAPIState
     // ... If continue is false, then return." Copied: the event's handlers
     // can change the history.
-    const url = bc.allocator.dupe(u8, entry.url) catch return;
-    defer bc.allocator.free(url);
+    const allocator = bc.allocator;
+    const url = allocator.dupe(u8, entry.url) catch return;
+    defer allocator.free(url);
     const entry_id = entry.id;
-    var api_state = entry.api_state.clone(bc.allocator) catch return;
-    defer api_state.deinit(bc.allocator);
+    // Reload's destinationNavigationAPIState is the optional argument, or
+    // the active entry's state. Clone before navigate runs script; the
+    // current entry retains its old state until cancellation checks pass.
+    var api_state = (navigation_api_state orelse entry.api_state).clone(allocator) catch return;
+    defer api_state.deinit(allocator);
     if (!@import("dom").navigation_api.firePushReplaceReload(window, .{
         .navigation_type = .reload,
         .destination_url = url,
@@ -310,6 +319,12 @@ fn reloadNavigable(window: *runtime.Instance, bc: *BrowsingContext) void {
     if (navigables.byId(id) != bc or bc.orphaned or bc.is_closed) return;
     if (navigables.byId(top_id) == null) return;
     const current = history.entryById(entry_id) orelse return;
+    if (navigation_api_state != null) {
+        // Apply the reload history step only after navigate/beforeunload
+        // permit it, to the entry captured before either handler ran.
+        history.setEntryApiState(entry_id, api_state);
+        api_state = .undefined;
+    }
     // A reload's previousEntry is the entry it reloads.
     @import("dom").navigables.traverseNavigable(@ptrCast(bc), current.id, current.url, current.resource, current.id);
 }
@@ -318,6 +333,12 @@ fn reloadNavigable(window: *runtime.Instance, bc: *BrowsingContext) void {
 fn reloadWindow(window: *runtime.Instance) void {
     const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
     reloadNavigable(window, bc);
+}
+
+/// dom.history_traversal: navigation.reload()'s borrowed serialized state.
+fn reloadWindowWithNavigationApiState(window: *runtime.Instance, state: joint_history.SerializedState) void {
+    const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
+    reloadNavigableWithNavigationApiState(window, bc, state);
 }
 
 /// dom.history_traversal: queue a traversal of `window`'s traversable to

@@ -18,6 +18,9 @@ pub const Implementation = struct {
     traverse_to_step: *const fn (window: *runtime.Instance, step: u32) void,
     /// Reload `window`'s navigable ("reload"), if the engine can.
     reload: *const fn (window: *runtime.Instance) void,
+    /// The navigation API's reload with an explicit serialized state.
+    /// `state` is borrowed for this synchronous call.
+    reload_with_navigation_api_state: ?*const fn (window: *runtime.Instance, state: joint_history.SerializedState) void = null,
     /// HTML "URL and history update steps" given `window`'s associated
     /// Document and `url`, with serializedData `serialized` (null: the
     /// default, null) and historyHandling `handling` - what committing an
@@ -55,6 +58,17 @@ pub fn traverseToStep(window: *runtime.Instance, step: u32) void {
 pub fn reload(window: *runtime.Instance) void {
     const impl = implementation orelse return;
     impl.reload(window);
+}
+
+/// Reload with the navigation API state supplied by navigation.reload().
+/// The reload implementation clones the borrowed state before running script.
+pub fn reloadWithNavigationApiState(window: *runtime.Instance, state: joint_history.SerializedState) void {
+    const impl = implementation orelse return;
+    if (impl.reload_with_navigation_api_state) |reload_with_state| {
+        reload_with_state(window, state);
+    } else {
+        impl.reload(window);
+    }
 }
 
 /// The URL and history update steps for `window`'s associated Document.
