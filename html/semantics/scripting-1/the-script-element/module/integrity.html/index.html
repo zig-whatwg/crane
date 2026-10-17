@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../../../">Crane WPT results</a></li><li><a href="../../../../../../html/"><code>html/</code></a></li><li><a href="../../../../../../html/semantics/"><code>semantics/</code></a></li><li><a href="../../../../../../html/semantics/scripting-1/"><code>scripting-<wbr>1/</code></a></li><li><a href="../../../../../../html/semantics/scripting-1/the-script-element/"><code>the-<wbr>script-<wbr>element/</code></a></li><li><a href="../../../../../../html/semantics/scripting-1/the-script-element/module/"><code>module/</code></a></li><li aria-current="page"><code>integrity.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>integrity.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="html/semantics/scripting-1/the-script-element/module/integrity.html">
-<p class="figures-main"><span class="fg-pass">2</span><span class="fg-of"> / 3</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">3</span><span class="fg-of"> / 3</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-e5ef1b9a95</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/e5ef1b9a95"><code>e5ef1b9a95</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-07fd3bc2be</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/07fd3bc2be"><code>07fd3bc2be</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/semantics/scripting-1/the-script-element/module/integrity.html"><code>html/<wbr>semantics/<wbr>scripting-<wbr>1/<wbr>the-<wbr>script-<wbr>element/<wbr>module/<wbr>integrity.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -37,7 +37,7 @@
 <ol class="subtests">
 <li class="sub s-pass" id="s-e28db57b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The integrity attribute must have no affect on inline module scripts</span></div><a class="self" href="#s-e28db57b" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-604c4fe8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The integrity attribute must be verified on the top-level of a module and allow it to execute when it matches</span></div><a class="self" href="#s-604c4fe8" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-cabb8602"><details><summary><span class="mark">FAIL</span><span class="sub-name">The integrity attribute must be verified on the top-level of a module and not allow it to execute when there&#39;s a mismatch</span></summary><pre class="msg">assert_array_equals: The module and its dependency must not have executed lengths differ, expected array [] length 0, got [&quot;integrity-mismatches-inner&quot;, &quot;integrity-mismatches&quot;] length 2</pre></details><a class="self" href="#s-cabb8602" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cabb8602"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The integrity attribute must be verified on the top-level of a module and not allow it to execute when there&#39;s a mismatch</span></div><a class="self" href="#s-cabb8602" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
