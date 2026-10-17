@@ -262,10 +262,25 @@ pub const BodyRelay = struct {
     end: End = .open,
     /// The fetching side has no reader left: the writer may stop.
     cancelled: bool = false,
+    /// What the writer asks to hear when the reader goes (`watchCancel`).
+    reader_gone: ?ReaderGone = null,
     /// Bumped by every write and end: the futex word `collect` sleeps on.
     wake: std.atomic.Value(u32) = .init(0),
 
     pub const End = enum { open, closed, errored };
+
+    /// The writer's word that the reader went: a writer waiting on its own
+    /// source - a stream's read still pending - would otherwise learn of the
+    /// cancel only at its next write, which may never come
+    /// (fetch-event-respond-with-readable-stream.https.html: a cancel or
+    /// abort in the page is observable in the service worker). Exactly one
+    /// of the two runs, once: `run` on the reader's thread when it cancels,
+    /// `drop` when the relay goes with no cancel.
+    pub const ReaderGone = struct {
+        context: *anyopaque,
+        run: *const fn (context: *anyopaque) void,
+        drop: *const fn (context: *anyopaque) void,
+    };
 
     pub fn create(allocator: Allocator) Allocator.Error!*BodyRelay {
         const self = try allocator.create(BodyRelay);
@@ -300,6 +315,20 @@ pub const BodyRelay = struct {
     /// The body failed: the reader's body errors.
     pub fn fail(self: *BodyRelay) void {
         self.finishWith(.errored);
+    }
+
+    /// The writer asks to hear the reader's cancel (`ReaderGone`). A reader
+    /// gone already: `hook` runs at once, here.
+    pub fn watchCancel(self: *BodyRelay, hook: ReaderGone) void {
+        lock(&self.mutex);
+        if (self.cancelled) {
+            unlock(&self.mutex);
+            return hook.run(hook.context);
+        }
+        const old = self.reader_gone;
+        self.reader_gone = hook;
+        unlock(&self.mutex);
+        if (old) |o| o.drop(o.context);
     }
 
     /// Whether the reader is gone.
@@ -368,17 +397,23 @@ pub const BodyRelay = struct {
         }
     }
 
-    /// The reader is gone: what was written goes, and the writer stops.
+    /// The reader is gone: what was written goes, and the writer stops -
+    /// told so now if it asked (`watchCancel`).
     pub fn cancel(self: *BodyRelay) void {
         lock(&self.mutex);
+        const first = !self.cancelled;
         self.cancelled = true;
         self.pending.clearAndFree(self.allocator);
+        const hook = if (first) self.reader_gone else null;
+        if (first) self.reader_gone = null;
         unlock(&self.mutex);
+        if (hook) |h| h.run(h.context);
     }
 
     /// Let go of one reference.
     pub fn release(self: *BodyRelay) void {
         if (self.refs.fetchSub(1, .acq_rel) != 1) return;
+        if (self.reader_gone) |h| h.drop(h.context);
         self.pending.deinit(self.allocator);
         self.allocator.destroy(self);
     }
@@ -549,6 +584,62 @@ test "a relay that fails errors the pipe; one whose reader is gone stops its wri
         try testing.expect(!relay.write("more"));
         relay.release();
         relay.release();
+    }
+}
+
+const Gone = struct {
+    runs: u32 = 0,
+    drops: u32 = 0,
+
+    fn hook(self: *Gone) BodyRelay.ReaderGone {
+        return .{ .context = self, .run = run, .drop = drop };
+    }
+
+    fn run(context: *anyopaque) void {
+        const self: *Gone = @ptrCast(@alignCast(context));
+        self.runs += 1;
+    }
+
+    fn drop(context: *anyopaque) void {
+        const self: *Gone = @ptrCast(@alignCast(context));
+        self.drops += 1;
+    }
+};
+
+test "a relay's writer hears its reader's cancel once - or its hook is dropped when the relay goes uncancelled" {
+    {
+        // Cancelled while the writer waits: the hook runs, once.
+        var gone: Gone = .{};
+        const relay = try BodyRelay.create(testing.allocator);
+        relay.watchCancel(gone.hook());
+        relay.cancel();
+        relay.cancel();
+        try testing.expectEqual(@as(u32, 1), gone.runs);
+        relay.release();
+        relay.release();
+        try testing.expectEqual(@as(u32, 0), gone.drops);
+    }
+    {
+        // Cancelled before the writer asked: it hears at once.
+        var gone: Gone = .{};
+        const relay = try BodyRelay.create(testing.allocator);
+        relay.cancel();
+        relay.watchCancel(gone.hook());
+        try testing.expectEqual(@as(u32, 1), gone.runs);
+        relay.release();
+        relay.release();
+        try testing.expectEqual(@as(u32, 0), gone.drops);
+    }
+    {
+        // Read to its end, never cancelled: the hook is dropped.
+        var gone: Gone = .{};
+        const relay = try BodyRelay.create(testing.allocator);
+        relay.watchCancel(gone.hook());
+        relay.close();
+        relay.release();
+        relay.release();
+        try testing.expectEqual(@as(u32, 0), gone.runs);
+        try testing.expectEqual(@as(u32, 1), gone.drops);
     }
 }
 

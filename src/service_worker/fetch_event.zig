@@ -284,6 +284,12 @@ const BodyPump = struct {
     reader: *runtime.Instance,
     /// Keeps the reader (and through it the stream) alive.
     reader_hold: engine.Owned,
+    /// How the reader's cancel reaches this thread while a read is pending
+    /// (null: the realm has no task sink - the cancel is seen at the next
+    /// write, as before).
+    watch: ?*CancelWatch = null,
+    /// The stream is being canceled for the reader: its pending read ends it.
+    cancelling: bool = false,
 
     fn start(realm: runtime.Context, stream: *runtime.Instance, relay: *BodyRelay) !void {
         // 10.2.5.1. A reader of the body's stream.
@@ -294,8 +300,27 @@ const BodyPump = struct {
         const hold = try engine.retainValue(realm, runtime.JSValue.fromInstance(reader));
         errdefer hold.release();
         const self = try realm.allocator.create(BodyPump);
+        errdefer realm.allocator.destroy(self);
         self.* = .{ .realm = realm, .relay = relay, .reader = reader, .reader_hold = hold };
+        if (realm.task_sink) |sink| {
+            const watch = try relay.allocator.create(CancelWatch);
+            watch.* = .{ .allocator = relay.allocator, .sink = sink.retain(), .pump = self };
+            self.watch = watch;
+            relay.watchCancel(watch.hook());
+        }
         self.read();
+    }
+
+    /// The reader went (CancelWatch's task, on this thread): cancel the
+    /// stream - its underlying source hears it now, and the read pending
+    /// ends the pump (done).
+    fn cancelForReader(self: *BodyPump) void {
+        if (self.cancelling) return;
+        self.cancelling = true;
+        const canceled = interfaces.ReadableStreamDefaultReader.call_cancel(self.reader, @import("webidl").Opt(runtime.JSValue).notPassed()) catch return;
+        const held: engine.Owned = .{ .value = canceled };
+        engine.markPromiseAsHandled(self.realm, canceled);
+        held.release();
     }
 
     /// 10.2.5.2.2: read a chunk.
@@ -354,13 +379,70 @@ const BodyPump = struct {
 
     fn finish(self: *BodyPump, end: enum { closed, errored, cancelled }) void {
         switch (end) {
-            .closed => self.relay.close(),
+            .closed => if (!self.cancelling) self.relay.close(),
             .errored => self.relay.fail(),
             .cancelled => {},
+        }
+        if (self.watch) |watch| {
+            watch.pump = null;
+            watch.release();
         }
         self.relay.release();
         self.reader_hold.release();
         self.realm.allocator.destroy(self);
+    }
+};
+
+/// A body relay's reader-gone hook for a BodyPump: on the fetching thread it
+/// posts a task to the worker's loop, which cancels the pump's stream - a
+/// read still pending would never learn of the cancel otherwise
+/// (fetch-event-respond-with-readable-stream.https.html: "Cancellation in
+/// the page" and "Abort in the page should be observable in the service
+/// worker"; Chrome and Safari pass them, wpt.fyi df642c4142). Two holders,
+/// atomically counted: the pump, and the relay's hook - then the task it
+/// posted. `pump` is read and cleared on the worker's thread only, so a task
+/// that runs after the pump finished does nothing.
+const CancelWatch = struct {
+    /// The relay's: thread-safe (the watch is let go on either thread).
+    allocator: Allocator,
+    refs: std.atomic.Value(u32) = .init(2),
+    /// The worker realm's loop (a reference).
+    sink: *runtime.TaskSink,
+    /// The pump, while it reads.
+    pump: ?*BodyPump,
+
+    fn hook(self: *CancelWatch) BodyRelay.ReaderGone {
+        return .{ .context = self, .run = readerGone, .drop = readerKept };
+    }
+
+    fn release(self: *CancelWatch) void {
+        if (self.refs.fetchSub(1, .acq_rel) != 1) return;
+        self.sink.release();
+        self.allocator.destroy(self);
+    }
+
+    /// The fetching thread: the reader cancelled. The hook's reference goes
+    /// to the task (the sink drops it if the loop has ended).
+    fn readerGone(context: *anyopaque) void {
+        const self: *CancelWatch = @ptrCast(@alignCast(context));
+        _ = self.sink.post(.{ .run = cancelOnWorker, .drop = dropTask, .data = self });
+    }
+
+    /// The relay went with no cancel.
+    fn readerKept(context: *anyopaque) void {
+        const self: *CancelWatch = @ptrCast(@alignCast(context));
+        self.release();
+    }
+
+    fn cancelOnWorker(data: ?*anyopaque) void {
+        const self: *CancelWatch = @ptrCast(@alignCast(data.?));
+        defer self.release();
+        if (self.pump) |pump| pump.cancelForReader();
+    }
+
+    fn dropTask(data: ?*anyopaque) void {
+        const self: *CancelWatch = @ptrCast(@alignCast(data.?));
+        self.release();
     }
 };
 
