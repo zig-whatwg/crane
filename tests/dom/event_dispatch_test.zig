@@ -171,8 +171,9 @@ test "inner event creation steps initialize an Event subclass's Event attributes
 
     // 2. The initialized flag.
     try std.testing.expect(initialized(event));
-    // 3. timeStamp: the creation time.
-    try std.testing.expect(try interfaces.Event.get_timeStamp(event) > 0);
+    // 3. createNullContext has no realm or global from which to measure
+    // relative high resolution coarse time. Pin the deliberate zero fallback.
+    try std.testing.expectEqual(@as(f64, 0), try interfaces.Event.get_timeStamp(event));
     // 4. The dictionary's members; a member not present is its default.
     try std.testing.expect(try interfaces.Event.get_bubbles(event));
     try std.testing.expect(!try interfaces.Event.get_cancelable(event));
