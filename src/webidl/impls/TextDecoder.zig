@@ -252,12 +252,15 @@ pub fn call_decode(instance: *runtime.Instance, input: webidl.Opt(typedefs.Allow
     internal.do_not_flush = stream;
 
     // Step 3: If input is given, then push a copy of input to this's I/O
-    // queue. The copy is taken here, after options converted: a buffer its
-    // `stream` getter transferred holds no bytes (the binding hands over a
-    // reference to the object, borrowed for the call, not its bytes).
-    const input_copy: ?[]u8 = if (input.was_passed) try copyOfInput(instance.ctx, input.value) else null;
+    // queue. Read here, after options converted: a buffer its `stream`
+    // getter transferred holds no bytes (the binding hands over a reference
+    // to the object, borrowed for the call, not its bytes). decode runs no
+    // script from this step to its return, so a non-shared input is read in
+    // place - no script can detach or alter it before the last read, and a
+    // copy could not be observed; a shared one is copied (`inputBytes`).
+    var input_copy: ?[]u8 = null;
     defer if (input_copy) |copy| instance.ctx.allocator.free(copy);
-    const input_bytes: []const u8 = input_copy orelse &[_]u8{};
+    const input_bytes: []const u8 = if (input.was_passed) try inputBytes(instance.ctx, input.value, &input_copy) else &[_]u8{};
 
     // Combine pending bytes (I/O queue) with new input
     var bytes: []const u8 = input_bytes;
@@ -283,16 +286,22 @@ pub fn call_decode(instance: *runtime.Instance, input: webidl.Opt(typedefs.Allow
     return try processAndSerialize(internal, instance.ctx.allocator, bytes, state.own.fatal, state.own.ignoreBOM, is_last);
 }
 
-/// "A copy of input" (Encoding decode() step 3): WebIDL "get a copy of the
-/// bytes held by the buffer source" - an ArrayBuffer's or SharedArrayBuffer's
-/// bytes, a view's own window of its buffer, none when detached. OWNED by
-/// `realm.allocator`.
-fn copyOfInput(realm: runtime.Context, input: typedefs.AllowSharedBufferSource) ![]u8 {
+/// The bytes of "a copy of input" (Encoding decode() step 3): an
+/// ArrayBuffer's or SharedArrayBuffer's bytes, a view's own window of its
+/// buffer, none when detached. A non-shared buffer's are BORROWED, read in
+/// place (`engine.borrowBufferSourceBytes`, as Blink's TextDecoder reads a
+/// DOMArrayPiece): valid until script next runs, which decode does not. A
+/// shared one's are copied - another agent can write shared memory while it
+/// is read - into `copy`, OWNED by `realm.allocator`.
+fn inputBytes(realm: runtime.Context, input: typedefs.AllowSharedBufferSource, copy: *?[]u8) ![]const u8 {
+    const engine = @import("engine");
     if (input.jsValue(runtime.JSValue)) |value| {
-        return (try @import("engine").getCopyOfAllowSharedBufferSourceBytes(realm, value, realm.allocator)) orelse error.TypeError;
+        if (engine.borrowBufferSourceBytes(realm, value)) |bytes| return bytes;
+        copy.* = (try engine.getCopyOfAllowSharedBufferSourceBytes(realm, value, realm.allocator)) orelse return error.TypeError;
+        return copy.*.?;
     }
     // A value made in Zig, or the empty value null converts to.
-    return realm.allocator.dupe(u8, input.asBytes() catch &[_]u8{});
+    return input.asBytes() catch &[_]u8{};
 }
 
 /// Process bytes through decoder and run serialize I/O queue algorithm
