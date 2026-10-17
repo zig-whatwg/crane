@@ -50,6 +50,11 @@ pub const Rule = struct {
     declarations: []Declaration,
     /// The rule ended in a {}-block (an at-rule may end in `;` instead).
     has_block: bool,
+    /// The rules of a conditional or layer group rule's block (`@media`,
+    /// `@supports`, `@layer`, `@container`, `@scope`, `@starting-style`,
+    /// `@document`): a <rule-list>, parsed as the top level is. Empty for
+    /// every other rule.
+    children: []Rule = &.{},
 
     pub const Kind = enum { qualified, at_rule };
 
@@ -61,8 +66,30 @@ pub const Rule = struct {
             allocator.free(d.value);
         }
         allocator.free(self.declarations);
+        for (self.children) |*child| child.deinit(allocator);
+        allocator.free(self.children);
     }
 };
+
+/// The at-rules whose block is a list of rules.
+fn isGroupRule(name: []const u8) bool {
+    for ([_][]const u8{ "media", "supports", "layer", "container", "scope", "starting-style", "document", "-moz-document" }) |group| {
+        if (std.mem.eql(u8, name, group)) return true;
+    }
+    return false;
+}
+
+/// CSS Syntax "parse a list of declarations" (a style attribute's value,
+/// CSSOM's cssText): "consume a block's contents" of `text`, the
+/// declarations only. Owned: `freeDeclarationList`.
+pub fn parseDeclarationList(allocator: Allocator, text: []const u8) Allocator.Error![]Declaration {
+    var parser: Parser = .{ .allocator = allocator, .tokens = Tokenizer.init(text) };
+    return parser.consumeDeclarationList();
+}
+
+pub fn freeDeclarationList(allocator: Allocator, declarations: []Declaration) void {
+    freeDeclarations(allocator, declarations);
+}
 
 /// A style sheet's top-level rules, in order. Owned: `deinit`.
 pub const Rules = struct {
@@ -98,7 +125,7 @@ pub fn parseStyleSheetContents(allocator: Allocator, text: []const u8) Allocator
             // are discarded.
             .whitespace, .cdo, .cdc => _ = parser.next(),
             .at_keyword => {
-                var rule = try parser.consumeAtRule();
+                var rule = try parser.consumeAtRule(false);
                 errdefer rule.deinit(allocator);
                 try rules.append(allocator, rule);
             },
@@ -137,7 +164,7 @@ const Parser = struct {
     /// "Consume an at-rule" at the top level (nested false). The block of
     /// an at-rule is skipped: the CSSOM objects that would read it are not
     /// made yet.
-    fn consumeAtRule(self: *Parser) Allocator.Error!Rule {
+    fn consumeAtRule(self: *Parser, nested: bool) Allocator.Error!Rule {
         const keyword = self.next();
         const name = try tokenizer.decode(self.allocator, keyword.value);
         errdefer self.allocator.free(name);
@@ -145,6 +172,7 @@ const Parser = struct {
         var prelude: Serializer = .{ .allocator = self.allocator };
         errdefer prelude.deinit();
         var has_block = false;
+        var children: []Rule = &.{};
         while (true) {
             const token = self.peek();
             switch (token.token_type) {
@@ -158,23 +186,90 @@ const Parser = struct {
                 // <{-token>: consume a block; the rule ends.
                 .left_brace => {
                     _ = self.next();
-                    try self.skipBlock(.right_brace);
+                    if (isGroupRule(name)) {
+                        children = try self.consumeRuleList();
+                    } else {
+                        try self.skipBlock(.right_brace);
+                    }
                     has_block = true;
                     break;
                 },
                 // <}-token> at the top level: a parse error, appended to
-                // the prelude.
-                .right_brace => try prelude.token(self.next()),
+                // the prelude; nested, it ends the rule (left for the
+                // enclosing block).
+                .right_brace => if (nested) break else try prelude.token(self.next()),
                 else => try self.consumeComponentValue(&prelude),
             }
         }
+        errdefer freeRules(self.allocator, children);
         return .{
             .kind = .at_rule,
             .name = name,
             .prelude = try prelude.finish(),
             .declarations = &.{},
             .has_block = has_block,
+            .children = children,
         };
+    }
+
+    /// A group rule's block, its `{` consumed: a list of rules, as the
+    /// top level's, through the block's `}` (or EOF).
+    fn consumeRuleList(self: *Parser) Allocator.Error![]Rule {
+        var rules: std.ArrayList(Rule) = .empty;
+        errdefer {
+            for (rules.items) |*rule| rule.deinit(self.allocator);
+            rules.deinit(self.allocator);
+        }
+        while (true) {
+            const token = self.peek();
+            switch (token.token_type) {
+                .eof => break,
+                .right_brace => {
+                    _ = self.next();
+                    break;
+                },
+                .whitespace, .semicolon => _ = self.next(),
+                .at_keyword => {
+                    var rule = try self.consumeAtRule(true);
+                    errdefer rule.deinit(self.allocator);
+                    try rules.append(self.allocator, rule);
+                },
+                else => {
+                    if (try self.consumeNestedQualifiedRule()) |rule| {
+                        var owned = rule;
+                        errdefer owned.deinit(self.allocator);
+                        try rules.append(self.allocator, owned);
+                    }
+                },
+            }
+        }
+        return rules.toOwnedSlice(self.allocator);
+    }
+
+    /// A qualified rule inside a group rule's block: as the top level's,
+    /// except that the block's `}` ends it (a parse error, nothing).
+    fn consumeNestedQualifiedRule(self: *Parser) Allocator.Error!?Rule {
+        var prelude: Serializer = .{ .allocator = self.allocator };
+        defer prelude.deinit();
+        while (true) {
+            const token = self.peek();
+            switch (token.token_type) {
+                .eof, .right_brace => return null,
+                .left_brace => {
+                    _ = self.next();
+                    const declarations = try self.consumeDeclarationList();
+                    errdefer freeDeclarations(self.allocator, declarations);
+                    return .{
+                        .kind = .qualified,
+                        .name = try self.allocator.alloc(u8, 0),
+                        .prelude = try prelude.finish(),
+                        .declarations = declarations,
+                        .has_block = true,
+                    };
+                },
+                else => try self.consumeComponentValue(&prelude),
+            }
+        }
     }
 
     /// "Consume a qualified rule" at the top level (nested false, no stop
@@ -473,6 +568,11 @@ fn lastNonWhitespace(list: []const Token) ?usize {
         if (list[k].token_type != .whitespace) return k;
     }
     return null;
+}
+
+fn freeRules(allocator: Allocator, rules: []Rule) void {
+    for (rules) |*rule| rule.deinit(allocator);
+    allocator.free(rules);
 }
 
 fn freeDeclarations(allocator: Allocator, declarations: []Declaration) void {
@@ -788,4 +888,37 @@ test "decodeUtf8: BOM, invalid bytes and truncated sequences" {
     const surrogate = try decodeUtf8(a, "\xED\xA0\x80");
     defer a.free(surrogate);
     try testing.expectEqualStrings("\u{FFFD}\u{FFFD}\u{FFFD}", surrogate);
+}
+
+test "group rules keep their block's rules as children" {
+    var rules = try parseStyleSheetContents(std.testing.allocator, "@media screen { a { color: red } @supports (x: y) { b { c: d } } } p { margin: 0 } @font-face { src: x }");
+    defer rules.deinit();
+    try std.testing.expectEqual(@as(usize, 3), rules.items.len);
+    const media = rules.items[0];
+    try std.testing.expectEqualStrings("media", media.name);
+    try std.testing.expectEqualStrings("screen", media.prelude);
+    try std.testing.expectEqual(@as(usize, 2), media.children.len);
+    try std.testing.expectEqualStrings("a", media.children[0].prelude);
+    try std.testing.expectEqualStrings("supports", media.children[1].name);
+    try std.testing.expectEqualStrings("b", media.children[1].children[0].prelude);
+    try std.testing.expectEqualStrings("p", rules.items[1].prelude);
+    try std.testing.expectEqual(@as(usize, 0), rules.items[2].children.len);
+}
+
+test "a nested at-rule ends at its block's closing brace" {
+    var rules = try parseStyleSheetContents(std.testing.allocator, "@layer a { @import x } q { r: s }");
+    defer rules.deinit();
+    try std.testing.expectEqual(@as(usize, 2), rules.items.len);
+    try std.testing.expectEqual(@as(usize, 1), rules.items[0].children.len);
+    try std.testing.expectEqualStrings("import", rules.items[0].children[0].name);
+}
+
+test "parseDeclarationList: a style attribute's declarations" {
+    const declarations = try parseDeclarationList(std.testing.allocator, "color: red; margin-left :2px !important;; bogus; width:");
+    defer freeDeclarationList(std.testing.allocator, declarations);
+    try std.testing.expectEqual(@as(usize, 3), declarations.len);
+    try std.testing.expectEqualStrings("margin-left", declarations[1].name);
+    try std.testing.expectEqualStrings("2px", declarations[1].value);
+    try std.testing.expect(declarations[1].important);
+    try std.testing.expectEqualStrings("width", declarations[2].name);
 }
