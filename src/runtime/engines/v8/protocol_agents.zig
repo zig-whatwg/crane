@@ -27,6 +27,7 @@ const isolate_templates = @import("isolate_templates.zig");
 const context_manager = @import("context_manager.zig");
 /// worker_realm.zig's agent operations.
 const worker_realm = @import("worker_realm.zig");
+const protocol_realms = @import("protocol_realms.zig");
 
 const Context = engine.Context;
 const Agent = engine.Agent;
@@ -163,6 +164,12 @@ const AgentRecord = struct {
     /// The agent's live ObservableArray states (observable_array.Registry):
     /// made by its first array, on the agent's thread; freed by its end.
     observable_arrays: ?*observable_array.Registry = null,
+    /// The Window realms the agent made and that have not ended, by realm
+    /// (protocol_realms.zig): written by createWindowRealm and each realm's
+    /// end, read and written on the agent's own thread only; its storage is
+    /// freed with the record (forgetAgent). Every Window realm ends before
+    /// its agent, so it is empty by then.
+    window_realms: protocol_realms.WindowRealms = .empty,
 };
 
 /// The agent's PatternMatcher, made on its first use; null for an isolate
@@ -522,6 +529,10 @@ pub fn forgetAgent(agent: *Agent) void {
     if (record.hooks.afterMicrotaskCheckpoint != null) {
         ffi.v8_Isolate_RemoveMicrotasksCompletedCallback(isolate, onMicrotasksCompleted, record);
     }
+    // Its Window realms' map: every one has ended, so only its storage is
+    // left - which a thread-local map kept after its thread had gone.
+    if (record.window_realms.count() != 0) log.err("the agent ended with {d} Window realm(s) still alive; the host must destroy them first", .{record.window_realms.count()});
+    record.window_realms.deinit(std.heap.c_allocator);
     std.heap.c_allocator.destroy(record);
 }
 

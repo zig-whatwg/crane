@@ -20,6 +20,7 @@ const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
 const realm_v8 = @import("realm_v8.zig");
 const template_registry = @import("template_registry.zig");
 const page_realm = @import("page_realm.zig");
+const protocol_agents = @import("protocol_agents.zig");
 const namespaces = @import("namespaces");
 
 const Context = engine.Context;
@@ -98,12 +99,40 @@ const retained_key = "crane:retained";
 /// more (HTML "destroy a document" step 7: they are removed from the task
 /// queues without running).
 pub fn isDetached(realm: Context) bool {
-    const state = window_realms.get(realm) orelse return false;
+    const state = stateOf(realm) orelse return false;
     return state.detached != null;
 }
 
-/// The Window realms made on this thread (an agent is one thread), by realm.
-threadlocal var window_realms: std.AutoHashMapUnmanaged(Context, *WindowRealmState) = .empty;
+/// The Window realms an agent made, by realm. Held on the agent's record
+/// (protocol_agents.AgentRecord.window_realms) and freed with it, as Blink
+/// keeps its per-isolate maps on V8PerIsolateData: it was a `threadlocal` on
+/// c_allocator, whose entries every realm's end removed but whose capacity
+/// nothing freed, so each thread that ever made a Window realm left its
+/// storage behind when it ended (192 B a thread, Codex row 56's fresh-thread
+/// test under leaks --atExit; docs/lessons/architecture-a-threadlocal-
+/// container-outlives-its-thread-unless-its-capacity-goes.md). Read and
+/// written on the agent's own thread only, as the record's other state is.
+pub const WindowRealms = std.AutoHashMapUnmanaged(Context, *WindowRealmState);
+
+/// The Window realms of the agent whose isolate this is; null for an isolate
+/// createAgent did not make, which can make no Window realm.
+fn realmsOfAgent(isolate: *ffi.Isolate) ?*WindowRealms {
+    const record = protocol_agents.recordOf(isolate) orelse return null;
+    return &record.window_realms;
+}
+
+/// The Window realms of `realm`'s agent.
+fn realmsOf(realm: Context) ?*WindowRealms {
+    const agent = realm.agent orelse return null;
+    return realmsOfAgent(@ptrCast(@alignCast(agent)));
+}
+
+/// What the adapter keeps for `realm`, a Window realm it made and that has
+/// not ended; null for any other realm.
+fn stateOf(realm: Context) ?*WindowRealmState {
+    const realms = realmsOf(realm) orelse return null;
+    return realms.get(realm);
+}
 
 fn contextOf(realm: Context) ?*ffi.Context {
     const engine_ctx = realm.engine_ctx orelse return null;
@@ -150,6 +179,12 @@ fn realmOfOwnedContext(context: ?*ffi.Context) ?Context {
 pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Context {
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(options.agent));
     const allocator = options.allocator;
+    // The agent keeps its Window realms (`WindowRealms`): one createAgent
+    // made, as WindowRealmOptions.agent says.
+    const realms = realmsOfAgent(isolate) orelse {
+        log.warn("createWindowRealm: the agent was not made by createAgent; it has no record to keep its Window realms in", .{});
+        return error.OperationFailed;
+    };
 
     // The agent stays entered while its realm lives: the page's context is
     // entered for its whole life, and a context can be entered only in its
@@ -170,7 +205,7 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
         .window_proxy_of => |old| {
             const old_context = contextOf(old) orelse return error.OperationFailed;
             reused_proxy = ffi.v8_Context_Global(old_context) orelse return error.OperationFailed;
-            const old_state = window_realms.get(old);
+            const old_state = realms.get(old);
             if (old_state == null or !old_state.?.window_proxy_handed_on) {
                 // The old global object, behind the proxy until the detach:
                 // the old realm's end severs it from its Window. V8's V1
@@ -309,10 +344,10 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
         .window = window,
         .allocator = allocator,
     };
-    const parent_state: ?*WindowRealmState = if (options.parent) |parent| window_realms.get(parent) else null;
+    const parent_state: ?*WindowRealmState = if (options.parent) |parent| realms.get(parent) else null;
     if (parent_state) |ps| ps.children.append(std.heap.c_allocator, realm) catch return error.OutOfMemory;
     errdefer if (parent_state) |ps| removeChild(ps, realm);
-    window_realms.put(std.heap.c_allocator, realm, state) catch return error.OutOfMemory;
+    realms.put(std.heap.c_allocator, realm, state) catch return error.OutOfMemory;
 
     if (options.parent != null) {
         // A frame's window gets the window operations its parent's has.
@@ -349,7 +384,7 @@ pub fn tracedEdgeHolderOfWindow(window: *engine.Instance) TracedEdgeHolder {
     // never wrap it as an ordinary object - its wrapper is a global object
     // or nothing.
     const is_window = std.mem.eql(u8, window.vtable.name, "Window");
-    const state = window_realms.get(window.ctx) orelse return if (is_window) .gone else .not_a_realm_window;
+    const state = stateOf(window.ctx) orelse return if (is_window) .gone else .not_a_realm_window;
     if (state.window != window) return if (is_window) .gone else .not_a_realm_window;
     // Its WindowProxy went on to a later realm: the global object it had is
     // the one createWindowRealm kept (weakly) as `retired_global`.
@@ -471,7 +506,7 @@ pub const SameOriginCheck = struct {
 };
 
 pub fn sameOriginCheckOf(realm: Context) ?SameOriginCheck {
-    const state = window_realms.get(realm) orelse return null;
+    const state = stateOf(realm) orelse return null;
     return .{
         .is_platform_object_same_origin = state.is_platform_object_same_origin orelse return null,
         .host = state.host,
@@ -482,7 +517,7 @@ pub fn sameOriginCheckOf(realm: Context) ?SameOriginCheck {
 /// (v8_Object_Dispose), when `window` is the Window behind it; null for a
 /// Window whose proxy went on to a later realm, or one not made here.
 pub fn windowProxyOf(window: *engine.Instance) ?*ffi.Object {
-    const state = window_realms.get(window.ctx) orelse return null;
+    const state = stateOf(window.ctx) orelse return null;
     if (state.window != window or state.window_proxy_handed_on) return null;
     const context = contextOf(window.ctx) orelse return null;
     return ffi.v8_Context_Global(context);
@@ -605,7 +640,7 @@ fn isEnding(realm: Context) bool {
 /// Each is detached (`detach`), and ends once the collector takes it, or
 /// with its page, whichever comes first (`endRealm`).
 pub fn destroyWindowRealm(realm: Context, how: engine.WindowRealmEnd) void {
-    if (window_realms.get(realm)) |state| {
+    if (stateOf(realm)) |state| {
         if (state.parent != null and state.detached == null) switch (how) {
             .navigable_destroyed => return detach(realm, state),
             .global_detached => if (state.window_proxy_handed_on) return detach(realm, state),
@@ -670,7 +705,7 @@ fn detach(realm: Context, state: *WindowRealmState) void {
         i -= 1;
         if (i >= state.children.items.len) continue;
         const child = state.children.items[i];
-        if (window_realms.get(child)) |child_state| {
+        if (stateOf(child)) |child_state| {
             if (child_state.detached != null) continue;
         }
         destroyWindowRealm(child, .navigable_destroyed);
@@ -774,18 +809,19 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
 
     // Its frames' realms that are still alive end first, the same way: a
     // removed frame's frames are destroyed navigables too.
-    if (window_realms.get(realm)) |s| {
+    const realms = realmsOf(realm);
+    if (stateOf(realm)) |s| {
         while (s.children.pop()) |child| endRealm(child, how);
         s.children.deinit(std.heap.c_allocator);
     }
-    const state = if (window_realms.fetchRemove(realm)) |kv| kv.value else null;
+    const state = if (realms) |r| (if (r.fetchRemove(realm)) |kv| kv.value else null) else null;
     const detached: ?*Detached = if (state) |s| s.detached else null;
     defer if (state) |s| {
         if (s.retired_global) |g| ffi.v8_Global_Dispose(g);
         s.allocator.destroy(s);
     };
     if (state) |s| if (s.parent) |parent| {
-        if (window_realms.get(parent)) |ps| removeChild(ps, realm);
+        if (realms.?.get(parent)) |ps| removeChild(ps, realm);
     };
     // A detached realm's context is its record's handle - `engine_ctx` reads
     // null once the collector took it.
