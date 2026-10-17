@@ -352,110 +352,67 @@ pub const Decoder = struct {
         return decodeToUtf8Fallback(self, input, output, is_last);
     }
 
-    /// Fallback implementation: decode to UTF-16, then convert to UTF-8.
-    /// Used when no native decodeToUtf8 implementation is available.
+    /// Fallback implementation: decode scalar values through a UTF-16 buffer.
+    /// Reserve the worst-case UTF-8 expansion BEFORE advancing the decoder,
+    /// so an output-full result never loses already consumed input or state.
     fn decodeToUtf8Fallback(
         self: *Decoder,
         input: []const u8,
         output: []u8,
         is_last: bool,
     ) streaming.DecodeToUtf8Result {
-        // Use stack buffer for intermediate UTF-16 output
-        // 256 code units handles most practical cases without heap allocation
-        var utf16_buf: [256]u16 = undefined;
+        var units: [256]u16 = undefined;
+        var in_pos: usize = 0;
+        var out_pos: usize = 0;
+        while (true) {
+            // A BMP unit needs at most three bytes; a surrogate pair needs
+            // four for two units. This conservative bound can require six
+            // bytes of capacity to make progress on a supplementary scalar.
+            const capacity = @min(units.len, (output.len - out_pos) / 3);
+            if (capacity == 0) return .{
+                .status = .output_full,
+                .bytes_consumed = in_pos,
+                .bytes_written = out_pos,
+            };
+            // Encoding §5 process-a-queue also processes end-of-queue. Run
+            // once for empty input so a pending sequence can finish or error.
+            const result = self.encoding.decode_fn(self, input[in_pos..], units[0..capacity], is_last);
+            in_pos += result.bytes_consumed;
 
-        var total_bytes_consumed: usize = 0;
-        var total_bytes_written: usize = 0;
-        var remaining_input = input;
-        var remaining_output = output;
-
-        while (remaining_input.len > 0 and remaining_output.len > 0) {
-            // Decode chunk to UTF-16
-            const decode_result = self.encoding.decode_fn(
-                self,
-                remaining_input,
-                &utf16_buf,
-                is_last and remaining_input.len <= utf16_buf.len,
-            );
-
-            // Convert UTF-16 to UTF-8
-            const utf16_slice = utf16_buf[0..decode_result.code_units_written];
-            var utf8_written: usize = 0;
-
-            for (utf16_slice) |code_unit| {
-                const needed = utf8BytesNeeded(code_unit);
-                if (utf8_written + needed > remaining_output.len) {
-                    // Output buffer full - return what we have
-                    return .{
-                        .status = .output_full,
-                        .bytes_consumed = total_bytes_consumed,
-                        .bytes_written = total_bytes_written + utf8_written,
-                    };
-                }
-
-                utf8_written += writeUtf8CodeUnit(code_unit, remaining_output[utf8_written..]);
+            // Handlers return complete scalar values (§8.1.1 step 11 and
+            // §14.2.1 step 6.3), emitting UTF-16 pairs atomically. Their state
+            // retains any scalar whose pair does not fit this chunk.
+            // These are numeric code units, not little-endian bytes.
+            var unit_pos: usize = 0;
+            while (unit_pos < result.code_units_written) {
+                const length = std.unicode.utf16CodeUnitSequenceLength(units[unit_pos]) catch unreachable;
+                const point: u21 = if (length == 2)
+                    std.unicode.utf16DecodeSurrogatePair(units[unit_pos..][0..2]) catch unreachable
+                else
+                    units[unit_pos];
+                out_pos += std.unicode.utf8Encode(point, output[out_pos..]) catch unreachable;
+                unit_pos += length;
             }
-
-            total_bytes_consumed += decode_result.bytes_consumed;
-            total_bytes_written += utf8_written;
-            remaining_input = remaining_input[decode_result.bytes_consumed..];
-            remaining_output = remaining_output[utf8_written..];
-
-            // Handle decode status
-            switch (decode_result.status) {
-                .malformed => {
-                    return .{
-                        .status = .malformed,
-                        .bytes_consumed = total_bytes_consumed,
-                        .bytes_written = total_bytes_written,
-                        .error_length = decode_result.error_length,
-                    };
+            switch (result.status) {
+                .input_empty, .malformed => return .{
+                    .status = if (result.status == .malformed) .malformed else .input_empty,
+                    .bytes_consumed = in_pos,
+                    .bytes_written = out_pos,
+                    .error_length = result.error_length,
                 },
                 .output_full => {
-                    // UTF-16 buffer was filled, continue with next chunk
-                    continue;
-                },
-                .input_empty => {
-                    // All input consumed
-                    break;
+                    // A two-unit scalar cannot fit a one-unit intermediate
+                    // buffer. Leave the pending scalar for a larger retry.
+                    if (result.bytes_consumed == 0 and result.code_units_written == 0) return .{
+                        .status = .output_full,
+                        .bytes_consumed = in_pos,
+                        .bytes_written = out_pos,
+                    };
                 },
             }
         }
-
-        return .{
-            .status = .input_empty,
-            .bytes_consumed = total_bytes_consumed,
-            .bytes_written = total_bytes_written,
-        };
     }
 };
-
-/// Calculate number of UTF-8 bytes needed for a UTF-16 code unit.
-fn utf8BytesNeeded(code_unit: u16) usize {
-    if (code_unit < 0x80) return 1;
-    if (code_unit < 0x800) return 2;
-    return 3;
-}
-
-/// Write a BMP code point (from UTF-16 code unit) as UTF-8.
-/// Returns number of bytes written.
-fn writeUtf8CodeUnit(code_unit: u16, output: []u8) usize {
-    const cp: u21 = code_unit;
-
-    if (cp < 0x80) {
-        output[0] = @intCast(cp);
-        return 1;
-    } else if (cp < 0x800) {
-        output[0] = @intCast(0xC0 | (cp >> 6));
-        output[1] = @intCast(0x80 | (cp & 0x3F));
-        return 2;
-    } else {
-        output[0] = @intCast(0xE0 | (cp >> 12));
-        output[1] = @intCast(0x80 | ((cp >> 6) & 0x3F));
-        output[2] = @intCast(0x80 | (cp & 0x3F));
-        return 3;
-    }
-}
 
 pub const Encoder = struct {
     encoding: *const Encoding,

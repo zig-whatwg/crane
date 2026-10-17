@@ -170,13 +170,32 @@ pub fn decode(
     var in_pos: usize = 0;
     var out_pos: usize = 0;
 
-    // Fast path: Process ASCII prefix
+    // §8.1.1 steps 9-11 already consumed this scalar. The slice wrapper
+    // deferred its two UTF-16 units when only one output slot remained.
+    // Drain that output before reading another byte, including at EOF.
+    if (state.bytes_needed == 0xFF) {
+        @branchHint(.unlikely);
+        if (output.len < 2) return .{
+            .status = .output_full,
+            .bytes_consumed = 0,
+            .code_units_written = 0,
+        };
+        const pair = code_points.encodeSurrogatePair(state.code_point) catch unreachable;
+        output[0] = pair.high;
+        output[1] = pair.low;
+        out_pos = 2;
+        state.code_point = 0;
+        state.bytes_seen = 0;
+        state.bytes_needed = 0;
+    }
+
+    // Fast path: Process ASCII prefix after any deferred output.
     const ascii_len = ascii.countAsciiPrefix(input);
     if (ascii_len > 0 and state.bytes_needed == 0) {
-        const to_copy = @min(ascii_len, output.len);
-        const copied = ascii.copyAsciiToUtf16(input[0..to_copy], output);
+        const to_copy = @min(ascii_len, output.len - out_pos);
+        const copied = ascii.copyAsciiToUtf16(input[0..to_copy], output[out_pos..]);
         in_pos = copied;
-        out_pos = copied;
+        out_pos += copied;
 
         if (copied < ascii_len) {
             // Output buffer full
