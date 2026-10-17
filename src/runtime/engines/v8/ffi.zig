@@ -1167,6 +1167,11 @@ pub extern fn v8_Object_HasOwnPropertyOrThrow(object: *Object, context: *Context
 /// when `value` is none of those. The pointer is valid until script next runs
 /// or the buffer is detached.
 pub extern fn v8_AllowSharedBufferSource_Bytes(value: *Value, data: *?*anyopaque, byte_length: *usize) bool;
+/// The bytes a buffer source over a NON-shared buffer holds: an ArrayBuffer's
+/// (none when detached) or a view's window over an ArrayBuffer. False for a
+/// SharedArrayBuffer, a view over one, and anything else. Valid until script
+/// next runs or the buffer is detached.
+pub extern fn v8_BufferSource_UnsharedBytes(value: *Value, data: *?*anyopaque, byte_length: *usize) bool;
 pub extern fn v8_Object_GetOwnPropertyDescriptor(object: *Object, context: *Context, key: *Value) ?*Value;
 pub extern fn v8_Object_GetOwnPropertyNames(context: *Context, obj: *Object) ?*Array;
 pub extern fn v8_Object_GetOwnPropertyNamesAsStrings(context: *Context, obj: *Object) ?*Array;

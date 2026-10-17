@@ -1061,6 +1061,14 @@ fn convertAllowSharedBufferSource(
     allocator: std.mem.Allocator,
     value: *v8.Value,
 ) ConversionError!typedefs.AllowSharedBufferSource {
+    // Steps 8-9: a view over either kind of buffer - first, as the common
+    // case (TextDecoder.decode's input), one FFI call.
+    var info: v8.ViewInfo = undefined;
+    if (v8.v8_ArrayBufferView_Describe(value, &info)) {
+        const view = typedefs.ArrayBufferView.fromEngine(@intCast(@intFromEnum(info.kind)), info.byte_offset, info.length, @ptrCast(value)) orelse
+            return ConversionError.TypeError;
+        return .{ .array_buffer_view = view };
+    }
     // Step 6 (V8's IsArrayBuffer is false for a SharedArrayBuffer).
     if (v8.v8_Value_IsArrayBuffer(value)) {
         const buffer = try allocator.create(buffer_sources.ArrayBuffer);
@@ -1072,13 +1080,6 @@ fn convertAllowSharedBufferSource(
         const buffer = try allocator.create(buffer_sources.SharedArrayBuffer);
         buffer.* = .{ .data = &[_]u8{}, .allocator = allocator, .js = @ptrCast(value) };
         return .{ .shared_array_buffer = buffer };
-    }
-    // Steps 8-9: a view over either kind of buffer.
-    var info: v8.ViewInfo = undefined;
-    if (v8.v8_ArrayBufferView_Describe(value, &info)) {
-        const view = typedefs.ArrayBufferView.fromEngine(@intCast(@intFromEnum(info.kind)), info.byte_offset, info.length, @ptrCast(value)) orelse
-            return ConversionError.TypeError;
-        return .{ .array_buffer_view = view };
     }
     if (v8.v8_Value_IsNullOrUndefined(value)) return .{ .byte_slice = &[_]u8{} };
     // Step 20.
