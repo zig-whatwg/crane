@@ -84,13 +84,133 @@ def alt_rates(worklist, records):
             sum(rates) / len(rates) * 100 if rates else 0.0)
 
 
-def gate_status(rec):
-    """The status the gate judges `rec` by: the runner's, or NONE-PASSED."""
+def gate_status(rec, path=None):
+    """The status the gate judges `rec` by: the runner's, or NONE-PASSED - or
+    EXEMPT, when `path` is listed in the gate's exemptions and would block."""
     st = rec.get('status', 'ERROR')
     if st == 'OK' and rec.get('passed', 0) == 0 and (
             rec.get('failed', 0) + rec.get('timed_out', 0) + rec.get('notrun', 0)) > 0:
-        return NONE_PASSED
+        st = NONE_PASSED
+    # Anything but OK blocks (an unknown status included), so anything but OK
+    # is what an exemption turns into EXEMPT.
+    if path is not None and path in EXEMPTIONS and st != 'OK':
+        return EXEMPT
     return st
+
+
+# The gate's exemptions (the user, 2026-10-17; AGENTS.md "The 0.1 gate"): worklist
+# files omitted from the blocking count because ALL THREE of Chrome, Firefox and
+# Safari intentionally deviate from the spec they test, each listed with that
+# evidence in tools/wpt_gate_exemptions.txt (its header is the format; the public
+# site, tools/wpt_site/model.zig, reads it by the same rules). A listed file that
+# would block is EXEMPT: counted in its own group, never as blocking. One that does
+# not block keeps its standing. An invalid entry stops the report - an exemption
+# is never applied, or dropped, silently.
+EXEMPTIONS_FILE = os.path.join(REPO, 'tools', 'wpt_gate_exemptions.txt')
+EXEMPT = 'EXEMPT'
+EXEMPTION_KEYS = ('why', 'spec', 'chrome.result', 'chrome.intent', 'firefox.result',
+                  'firefox.intent', 'safari.result', 'safari.intent')
+BROWSERS = (('chrome', 'Chrome'), ('firefox', 'Firefox'), ('safari', 'Safari'))
+_URL = re.compile(r'https?://\S+$')
+_RESULT = re.compile(r'wpt\.fyi run \d+: *\d+/\d+')
+# path -> entry (key -> value), set by main() from EXEMPTIONS_FILE.
+EXEMPTIONS = {}
+
+
+class ExemptionError(Exception):
+    pass
+
+
+def parse_exemptions(text, worklist):
+    """tools/wpt_gate_exemptions.txt -> {path: {key: value}}; ExemptionError on
+    any invalid entry (with its line), including a path outside `worklist`."""
+    out = {}
+    cur = None
+
+    def finish(entry):
+        for k in EXEMPTION_KEYS:
+            if k not in entry['values']:
+                raise ExemptionError(f"line {entry['line']}: [{entry['path']}]: missing \"{k}\" - "
+                                     "an exemption needs the spec and every browser's evidence")
+        out[entry['path']] = dict(entry['values'])
+
+    for n, raw in enumerate(text.split('\n'), 1):
+        line = raw.strip()
+        if not line or line.startswith('#'):
+            continue
+        if line.startswith('['):
+            inner = line[1:-1] if line.endswith(']') else ''
+            if not inner or any(ch in inner for ch in ' \t[]'):
+                raise ExemptionError(f'line {n}: "{line}": expected [path], a worklist path in brackets')
+            if cur:
+                finish(cur)
+            if inner in out:
+                raise ExemptionError(f'line {n}: [{inner}] is listed twice')
+            cur = {'path': inner, 'line': n, 'values': {}}
+            continue
+        if '=' not in line:
+            raise ExemptionError(f'line {n}: "{line}": expected key = value')
+        key, value = (x.strip() for x in line.split('=', 1))
+        if cur is None:
+            raise ExemptionError(f'line {n}: "{key}" before any [path]')
+        if key not in EXEMPTION_KEYS:
+            raise ExemptionError(f'line {n}: [{cur["path"]}]: unknown key "{key}"')
+        if key in cur['values']:
+            raise ExemptionError(f'line {n}: [{cur["path"]}]: "{key}" given twice')
+        if not value:
+            raise ExemptionError(f'line {n}: [{cur["path"]}]: "{key}" is empty')
+        if key.endswith('.result') and not _RESULT.match(value):
+            raise ExemptionError(f'line {n}: [{cur["path"]}]: {key} must read "wpt.fyi run <id>: <passes>/<total>"')
+        if (key == 'spec' or key.endswith('.intent')) and not _URL.match(value):
+            raise ExemptionError(f'line {n}: [{cur["path"]}]: {key} must be an http(s) URL')
+        cur['values'][key] = value
+    if cur:
+        finish(cur)
+    in_worklist = set(worklist)
+    for path in out:
+        if path not in in_worklist:
+            raise ExemptionError(f'[{path}]: an exempt path is not in the worklist')
+    return out
+
+
+def load_exemptions(worklist, path=EXEMPTIONS_FILE):
+    """The exemptions file, validated; exits loudly when it is invalid."""
+    try:
+        with open(path) as f:
+            text = f.read()
+    except FileNotFoundError:
+        return {}
+    try:
+        return parse_exemptions(text, worklist)
+    except ExemptionError as err:
+        sys.exit(f'wpt_progress: {os.path.relpath(path, REPO)}: {err}')
+
+
+def render_exempt(records, worklist):
+    """The exempt group: each listed file, its standing, and every browser's evidence."""
+    if not EXEMPTIONS:
+        return ''
+    items = []
+    for path, e in EXEMPTIONS.items():
+        rec = records.get(path)
+        st = status_of(rec, path)
+        ev = ''.join(
+            f'<li>{label}: {html.escape(e[key + ".result"])}; intent: '
+            f'<a href="{html.escape(e[key + ".intent"])}">{html.escape(e[key + ".intent"])}</a></li>'
+            for key, label in BROWSERS)
+        items.append(
+            f'<li><code>{html.escape(path)}</code> <span class="dim">{html.escape(st)}</span>'
+            f'<div>{html.escape(e["why"])}</div>'
+            f'<ul class="samples"><li>spec: <a href="{html.escape(e["spec"])}">{html.escape(e["spec"])}</a></li>{ev}</ul></li>')
+    n = sum(1 for p in EXEMPTIONS if status_of(records.get(p), p) == EXEMPT)
+    return f"""
+<div class="panel">
+  <h2 class="panelh">Exempt (all three browsers intentionally deviate)</h2>
+  <div class="dim sub2"><b>{n:,}</b> files that would block are not counted as blocking: all three of
+    Chrome, Firefox and Safari intentionally deviate from the spec each tests, with the evidence
+    below (<code>tools/wpt_gate_exemptions.txt</code>). A listed file that does not block keeps its standing.</div>
+  <ol>{''.join(items)}</ol>
+</div>"""
 
 # When a variant's query started reaching the page: 71ffd213a (2026-09-22
 # 11:42 -0400) put the navigated URL into location.*. Before it
@@ -516,9 +636,13 @@ def build(worklist, records, shape=None):
         if rec is None:
             areas[a]['unrun'] += 1
             continue
-        status = gate_status(rec)
+        status = gate_status(rec, path)
         areas[a]['run'] += 1
-        if status in GATING:
+        if status == EXEMPT:
+            areas[a]['exempt'] += 1
+            areas[a]['sub_pass'] += rec.get('passed', 0)
+            areas[a]['sub_fail'] += rec.get('failed', 0)
+        elif status in GATING:
             areas[a]['gating'] += 1
             areas[a][status.lower()] += 1
             if status == NONE_PASSED:
@@ -570,7 +694,7 @@ def area_stats(prefixes, worklist, records):
             continue
         c['total'] += 1
         rec = records.get(p)
-        st = status_of(rec)
+        st = status_of(rec, p)
         if st == 'UNRUN':
             c['unrun'] += 1
         elif st in GATING:
@@ -843,13 +967,13 @@ def generation_sources(worklist, records, cur, prev, last_idents, idents):
     return sorted(by.values(), key=lambda s_: (-s_['moved'], -s_['files'], s_['label']))
 
 
-def status_of(rec):
-    """One word per file for the history diff: OK, UNRUN, or the gating status."""
+def status_of(rec, path=None):
+    """One word per file for the history diff: OK, UNRUN, EXEMPT, or the gating status."""
     if rec is None:
         return 'UNRUN'
-    st = gate_status(rec)
-    if st == 'OK':
-        return 'OK'
+    st = gate_status(rec, path)
+    if st in ('OK', EXEMPT):
+        return st
     return st if st in GATING else 'ERROR'
 
 
@@ -879,7 +1003,7 @@ def record_generation(worklist, records, areas):
     except (OSError, json.JSONDecodeError):
         history = {'generations': [], 'last_statuses': None}
 
-    cur = {p: status_of(records.get(p)) for p in worklist}
+    cur = {p: status_of(records.get(p), p) for p in worklist}
     prev = history.get('last_statuses')
     # `prev` was computed under the rule the history records (1 if it records none).
     rule_changed = prev is not None and history.get('gate_rule', 1) != GATE_RULE
@@ -906,6 +1030,7 @@ def record_generation(worklist, records, areas):
         'blocking': tot['gating'], 'crash': tot['crash'], 'timeout': tot['timeout'],
         'error': tot['gating'] - tot['crash'] - tot['timeout'] - tot['none-passed'],
         'none_passed': tot['none-passed'],
+        'exempt': tot['exempt'],
         'clean': tot['clean'], 'partial': tot['partial'],
         'sub_pass': tot['sub_pass'], 'sub_fail': tot['sub_fail'],
         'sub_targeted': round(tot['sub_targeted']),
@@ -929,6 +1054,10 @@ def record_generation(worklist, records, areas):
             moves['changed'] += 1
             if before == 'UNRUN':
                 key = 'newly_run_blocking' if now in GATING else 'newly_run_ok'
+            elif now == EXEMPT:
+                key = 'exempted'     # listed in tools/wpt_gate_exemptions.txt
+            elif before == EXEMPT and now in GATING:
+                key = 'unexempted'   # its entry was removed
             elif now == 'OK' and before in GATING:
                 key = 'unblocked'
             elif before == 'OK' and now == NONE_PASSED and rule_changed:
@@ -1000,7 +1129,7 @@ def rebuild_history(worklist, records, shape=None):
         tot = collections.Counter()
         for c in areas.values():
             tot.update(c)
-        cur = {p: status_of(seen.get(p)) for p in worklist}
+        cur = {p: status_of(seen.get(p), p) for p in worklist}
         prev = history['last_statuses']
         snap = {
             'n': len(history['generations']) + 1,
@@ -1455,6 +1584,7 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
 
     history_html = render_history(history) if history else ''
     roadmap_html = render_roadmap(roadmap, worklist, records)
+    exempt_html = render_exempt(records, worklist)
     doc = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1602,15 +1732,17 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
   <h2>WPT 0.1 release gate</h2>
   <div class="verdict">{'MET' if gate_met else f'{gating:,} blocking'}
     <small>{'Zero crashes, timeouts, errors and files with none passing; whole subset run.' if gate_met else
-      f'0.1 ships when no file crashes, times out, errors, or passes none of its subtests. {unrun:,} of {total:,} sources not yet run.'}</small>
+      f'0.1 ships when no file crashes, times out, errors, or passes none of its subtests. {unrun:,} of {total:,} sources not yet run.'}{f' Not counted: {tot["exempt"]:,} exempt (all three browsers intentionally deviate).' if tot['exempt'] else ''}</small>
   </div>
 </div>
+{exempt_html}
 
 <div class="cards">
   <div class="card"><div class="k">Run</div><div class="v">{run:,}<span class="dim" style="font-size:14px"> / {total:,}</span></div></div>
   <div class="card"><div class="k">Timeouts</div><div class="v" style="color:var(--bad)">{tot['timeout']:,}</div></div>
   <div class="card"><div class="k">Crashes</div><div class="v" style="color:var(--bad)">{tot['crash']:,}</div></div>
   <div class="card"><div class="k">OK, none passed</div><div class="v" style="color:var(--bad)">{tot['none-passed']:,}</div></div>
+  {f'<div class="card"><div class="k">Exempt</div><div class="v">{tot["exempt"]:,}</div></div>' if EXEMPTIONS else ''}
   <div class="card"><div class="k">Clean files</div><div class="v" style="color:var(--ok)">{clean:,}</div></div>
   <div class="card"><div class="k">Subtests passing</div><div class="v">{sub_passing:,}<span class="dim" style="font-size:14px"> / {sub_targeted:,}</span></div></div>
   <div class="card"><div class="k">Pass rate outside encoding/</div><div class="v">{non_enc_pct:.1f}%</div></div>
@@ -1643,7 +1775,8 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
   back together, since a variant partitions a file's subtests rather than adding any.
   Where a file has never reported a subtest the number is estimated from its source and
   labelled as such above; nothing estimated is presented as measured.
-  <br><br><strong>Blocking</strong> = timeouts + crashes + errors. That is the gate:
+  <br><br><strong>Blocking</strong> = timeouts + crashes + errors + files with none passing,
+  less the files <code>tools/wpt_gate_exemptions.txt</code> exempts. That is the gate:
   a crash means the engine is unsound, a failing subtest only means a feature
   is missing. <strong>Clean</strong> = ran to OK with zero failing subtests.
   <strong>Partial</strong> = ran to completion with some subtests failing,
@@ -1664,8 +1797,10 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
 
 
 def main():
+    global EXEMPTIONS
     out = sys.argv[sys.argv.index('--out') + 1] if '--out' in sys.argv else DEFAULT_OUT
     worklist = load_worklist()
+    EXEMPTIONS = load_exemptions(worklist)
     records, files = load_results()
     shape, rescanned = load_shape(worklist)
     areas, _, model = build(worklist, records, shape)
@@ -1685,6 +1820,8 @@ def main():
           f"({passing / targeted * 100 if targeted else 0:.2f}%)  |  "
           f"files clean {clean / total * 100 if total else 0:.2f}%")
     non_enc_pct, file_mean_pct = alt_rates(worklist, records)
+    print(f"  exempt (all three browsers intentionally deviate; not blocking): {tot['exempt']:,} "
+          f"of {len(EXEMPTIONS):,} listed in {os.path.relpath(EXEMPTIONS_FILE, REPO)}")
     print(f"  of which OK with none passed: {tot['none-passed']:,}  |  pass rate outside encoding/ "
           f"{non_enc_pct:.1f}%  |  mean per-file pass rate {file_mean_pct:.1f}%")
     print('  composition: ' + '  '.join(
@@ -1864,6 +2001,82 @@ def _check_history_sources():
         HISTORY, RESULTS, STATE, git_head = saved
 
 
+_EXEMPTION_FIXTURE = """# a comment
+[css/x/declined.html]
+why = all three keep the old behaviour on purpose
+spec = https://example.org/spec#step
+chrome.result = wpt.fyi run 6218298311311360: 0/4
+chrome.intent = https://issues.chromium.org/issues/1
+firefox.result = wpt.fyi run 4877098740350976: 0/4
+firefox.intent = https://bugzilla.mozilla.org/show_bug.cgi?id=2
+safari.result = wpt.fyi run 5164107446878208: 1/4
+safari.intent = https://github.com/WebKit/standards-positions/issues/3
+"""
+
+
+def _check_exemptions():
+    """The gate's exemptions (tools/wpt_gate_exemptions.txt), pinned by the same
+    rules tools/wpt_site/model.zig tests: every key required, URLs and wpt.fyi
+    results checked, worklist paths only, an invalid entry an error; a listed
+    file that would block is EXEMPT and counted apart, never as blocking."""
+    global EXEMPTIONS
+    wl = ['css/x/declined.html', 'css/x/other.html', 'css/x/clean.html']
+    ex = parse_exemptions(_EXEMPTION_FIXTURE, wl)
+    e = ex['css/x/declined.html']
+    assert e['why'] == 'all three keep the old behaviour on purpose'
+    assert e['safari.intent'] == 'https://github.com/WebKit/standards-positions/issues/3'
+    assert parse_exemptions('', wl) == {} and parse_exemptions('# only comments\n\n', wl) == {}
+
+    def invalid(text, needle, worklist=wl):
+        try:
+            parse_exemptions(text, worklist)
+        except ExemptionError as err:
+            assert needle in str(err), (needle, str(err))
+            return
+        raise AssertionError('accepted an invalid exemption: ' + needle)
+
+    for key in EXEMPTION_KEYS:
+        text = '\n'.join(l for l in _EXEMPTION_FIXTURE.split('\n') if not l.startswith(key + ' '))
+        invalid(text, 'missing')
+    invalid(_EXEMPTION_FIXTURE.replace('https://bugzilla.mozilla.org/show_bug.cgi?id=2', 'bug 2'), 'URL')
+    invalid(_EXEMPTION_FIXTURE.replace('https://example.org/spec#step', 'the spec'), 'URL')
+    invalid(_EXEMPTION_FIXTURE.replace('wpt.fyi run 6218298311311360: 0/4', 'fails'), 'wpt.fyi run')
+    invalid(_EXEMPTION_FIXTURE.replace('chrome.intent', 'edge.intent'), 'unknown key')
+    invalid(_EXEMPTION_FIXTURE.replace('why = all', 'why all'), 'key = value')
+    invalid(_EXEMPTION_FIXTURE.replace('[css/x/declined.html]', '[]'), 'path')
+    invalid('why = x\n', 'before')
+    invalid(_EXEMPTION_FIXTURE.replace('spec = ', 'spec = https://a.example/\nspec = '), 'twice')
+    invalid(_EXEMPTION_FIXTURE + _EXEMPTION_FIXTURE, 'listed twice')
+    invalid(_EXEMPTION_FIXTURE, 'not in the worklist', ['css/x/other.html'])
+
+    saved = EXEMPTIONS
+    try:
+        EXEMPTIONS = parse_exemptions(_EXEMPTION_FIXTURE +
+                                      _EXEMPTION_FIXTURE.replace('css/x/declined.html', 'css/x/clean.html'), wl)
+        none_passed = {'status': 'OK', 'passed': 0, 'failed': 4}
+        clean = {'status': 'OK', 'passed': 4, 'failed': 0}
+        assert gate_status(none_passed, 'css/x/declined.html') == EXEMPT
+        assert gate_status({'status': 'TIMEOUT'}, 'css/x/declined.html') == EXEMPT
+        assert gate_status(none_passed, 'css/x/other.html') == NONE_PASSED
+        assert gate_status(none_passed) == NONE_PASSED
+        # A listed file that does not block keeps its standing.
+        assert gate_status(clean, 'css/x/clean.html') == 'OK'
+        assert EXEMPT not in GATING
+        assert status_of(none_passed, 'css/x/declined.html') == EXEMPT
+        recs = {'css/x/declined.html': none_passed, 'css/x/other.html': none_passed, 'css/x/clean.html': clean}
+        areas, _, _ = build(wl, recs)
+        tot = collections.Counter()
+        for c in areas.values():
+            tot.update(c)
+        assert tot['gating'] == 1 and tot['exempt'] == 1 and tot['clean'] == 1, dict(tot)
+        assert area_stats(['css/'], wl, recs)['blocking'] == 1
+        html_out = render_exempt(recs, wl)
+        assert 'css/x/declined.html' in html_out and 'https://github.com/WebKit/standards-positions/issues/3' in html_out
+        assert 'wpt.fyi run 4877098740350976: 0/4' in html_out
+    finally:
+        EXEMPTIONS = saved
+
+
 if __name__ == '__main__':
     if sys.argv[1:] == ['--self-test']:
         _check_declared_variants()
@@ -1871,6 +2084,7 @@ if __name__ == '__main__':
         _check_gate_rule()
         _check_history_subs()
         _check_history_sources()
+        _check_exemptions()
         print('wpt_progress self-test: ok')
     else:
         main()
