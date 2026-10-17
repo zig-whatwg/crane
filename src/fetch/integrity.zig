@@ -2,8 +2,8 @@
 //! and match the full response body (SRI 3.3.2-3.3.4).
 //!
 //! Browser behavior takes precedence over the draft's literal-space split
-//! and encoded-string comparison: ASCII whitespace, case-insensitive hash
-//! names, base64url and omitted padding are accepted. Malformed tokens are
+//! and encoded-string comparison: ASCII whitespace, base64url and omitted
+//! padding are accepted. Malformed tokens are
 //! ignored, but an undecodable hash with valid syntax still participates in
 //! strongest selection. WebKit's SubresourceIntegrity.cpp and
 //! ResourceCryptographicDigest.cpp use the same parse/select/decode order.
@@ -13,6 +13,8 @@
 //!
 //! https://w3c.github.io/webappsec-subresource-integrity/#parse-metadata
 //! https://github.com/WebKit/WebKit/blob/main/Source/WebCore/loader/SubresourceIntegrity.cpp
+//! https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/platform/loader/subresource_integrity.cc
+//! https://github.com/mozilla-firefox/firefox/blob/main/dom/security/SRIMetadata.cpp
 
 const std = @import("std");
 const platform = @import("platform");
@@ -38,7 +40,12 @@ const Metadata = struct { algorithm: Algorithm, digest: []const u8 };
 fn parse(token: []const u8) ?Metadata {
     const dash = std.mem.indexOfScalar(u8, token, '-') orelse return null;
     const name = token[0..dash];
-    const algorithm: Algorithm = if (std.ascii.eqlIgnoreCase(name, "sha256")) .sha256 else if (std.ascii.eqlIgnoreCase(name, "sha384")) .sha384 else if (std.ascii.eqlIgnoreCase(name, "sha512")) .sha512 else return null;
+    // Browser-majority deviation from the draft's ASCII-lowercase rule:
+    // Blink ParseAttributeAlgorithm uses case-sensitive starts_with and
+    // Gecko SRIMetadata uses EqualsLiteral. WebKit's
+    // ResourceCryptographicDigest.cpp ignores ASCII case (the minority).
+    // Blink-only sha-256/384/512 spellings likewise remain unsupported.
+    const algorithm: Algorithm = if (std.mem.eql(u8, name, "sha256")) .sha256 else if (std.mem.eql(u8, name, "sha384")) .sha384 else if (std.mem.eql(u8, name, "sha512")) .sha512 else return null;
     const start = dash + 1;
     var end = start;
     while (end < token.len and isBase64(token[end])) : (end += 1) {}

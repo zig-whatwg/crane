@@ -51,12 +51,25 @@ test "SRI chooses the strongest algorithm and accepts any equal-strength match" 
     try check(sha256 ++ " sha512-A", false);
 }
 
-test "SRI accepts ASCII whitespace options case-insensitive algorithms and base64url" {
+test "SRI accepts ASCII whitespace options and base64url" {
     try check("\tsha256-AAAA\r\n" ++ sha384 ++ "?future=1?other\x0c", true);
-    try check("SHA256-ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=", true);
     try check("sha256-ungWv48Bz-pBQUDeXa4iI7ADYaOWF3qctBD_YfIAFa0", true);
     try check(sha512[0 .. sha512.len - 2], true);
     try check("sha256-UngWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=", false);
+}
+
+test "SRI ignores uppercase and mixed-case algorithm names before strongest selection" {
+    // Browser-majority evidence, rather than an existing WPT case:
+    // Blink subresource_integrity.cc ParseAttributeAlgorithm uses starts_with;
+    // Gecko SRIMetadata.cpp uses EqualsLiteral. WebKit's
+    // ResourceCryptographicDigest.cpp ignores ASCII case (the minority).
+    // A matching uppercase digest alone cannot distinguish ignoring it
+    // from recognizing it; the mismatches and stronger-token case can.
+    try check("SHA256-ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=", true);
+    for ([_][]const u8{ "SHA256-AAAA", "Sha256-AAAA", "sHa384-AAAA", "SHA512-AAAA", "sha-256-AAAA" }) |metadata| {
+        try check(metadata, true);
+    }
+    try check(sha256 ++ " SHA512-AAAA", true);
 }
 
 test "SRI distinguishes an empty body from a null body" {
