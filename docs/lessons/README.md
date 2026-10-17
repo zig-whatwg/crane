@@ -617,6 +617,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A service worker variant is https whatever the file's name says](testing-a-service-worker-variant-is-https-whatever-the-file-name-says.md) - A runner's URL for a variant must follow every rule the manifest applies to it, not only the file name's markers - measure a sample before and after turning a variant on, and read the failure messages, not just the counts.
 - [A leak total that grows with the Browsers a run makes is a per-Browser leak](testing-a-leak-total-that-grows-with-the-browsers-a-run-makes-is-a-per-browser-leak.md) - A leak total is a sum of per-something leaks; find the something before reading the total as the change's - group by stack, and divide by the Browsers, isolates or calls each run made.
 - [A matching hash does not prove the algorithm was recognized](testing-a-matching-hash-does-not-prove-recognition.md) - Before trusting a passing parser test, ask whether ignoring its input would pass it too.
+- [WPT query flags choose the test origin](testing-wpt-query-flags-choose-the-test-origin.md) - A test's query flags can change its origin; verify that origin before diagnosing a secure-context or cookie failure.
 
 ### Debugging
 - [A per-call allocation in a lonely size class maps a page every call](debugging-a-per-call-allocation-in-a-lonely-size-class-maps-a-page.md) - Count allocations AND look at where they land: a per-call allocation that empties a DebugAllocator page costs a syscall pair; put call-lifetime data on the stack.
