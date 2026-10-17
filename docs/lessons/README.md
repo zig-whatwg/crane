@@ -306,6 +306,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A traced value read still owns its handle](architecture-a-traced-value-read-still-owns-its-handle.md) - Object identity, reachability and ownership of the returned handle are three separate questions: a `tracedValue` read is Owned, so a getter may hand it on with `take()`, but it never goes into a record whose converter only borrows it.
 - [An isolate borrows its snapshot blob - find the owner that outlives it, never copy it per isolate](architecture-an-isolate-borrows-its-snapshot-blob-find-the-owner-that-outlives-it.md) - A copy made because "we don't own it" is a second owner; find the first owner's lifetime and borrow from it - and if you do copy, give the copy an end.
 - [A release rule read off the converter belongs to every caller of the converter](architecture-a-release-rule-read-off-the-converter-belongs-to-every-caller.md) - A release rule proven from the converter's branches belongs to the converter: give every site that converts the same way the one predicate, not just the site that first needed it.
+- [Publish owned unions only after initialization](architecture-publish-owned-unions-only-after-initialization.md) - An errdefer destructor is safe only when every field it can observe is fully initialized. Stage fallible union payloads before publishing them.
 
 ### Spec Compliance
 - [A wait that the page's own load waits on deadlocks](spec-compliance-a-wait-the-page-s-own-load-waits-on-deadlocks.md) - Before implementing a spec wait, check whether what it waits for waits on the caller; if it does, follow the browser majority's break of the cycle and state it, rather than adding a special case per caller.
@@ -460,6 +461,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A byte-color quantizer may preserve floating-point alpha](spec-compliance-byte-color-quantizers-may-preserve-alpha.md) - Check the precision of alpha separately from RGB; apply the caller's required rounding at its own boundary.
 - [Input stepping uses the signed count](spec-compliance-input-stepping-uses-the-signed-count.md) - Preserve decimal inputs through arithmetic, and test direction as a signed count rather than a method name.
 - [Node algorithms read the owning interface's fields](spec-compliance-node-algorithms-read-the-owning-interface.md) - Inheritance shares algorithms, not duplicate copies of every subclass's data.
+- [Data workers inherit a mixed-content restriction](spec-compliance-data-workers-inherit-a-mixed-content-restriction.md) - Treat worker origin, secure-context status and inherited mixed-content restriction as separate facts; measure opaque-origin behavior in browsers.
+- [Policy inheritance allocation failure must abort navigation](spec-compliance-policy-inheritance-allocation-failure-must-abort-navigation.md) - Trace an allocation failure through its caller before adding security state to an existing optional snapshot.
 
 ### Codegen
 
