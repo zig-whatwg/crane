@@ -193,21 +193,20 @@ pub const Responder = struct {
         const inner: *InternalResponse = @ptrCast(@alignCast(dom.fetch_objects.responseOf(object) orelse return error.TypeError));
         // 10.2.4. potentialResponse: a copy of the response, but its body.
         const allocator = self.manager.allocator;
-        const copy = try copyResponse(allocator, inner);
+        const copy = try potentialResponse(allocator, inner);
         errdefer copy.deinit();
+        // An opaque response's body is its internal response's, which script
+        // cannot read (the Response's body is null): it is copied as the
+        // associated response is, from Zig.
+        const internal_body: ?*fetch.internal.Body = if (isOpaque(inner)) (inner.internal orelse inner).body else null;
         // 10.2.5.2's body info: a body whose bytes are all here already
         // (a constructed response's) has its sizes now - the fetching side
         // reports its timing when the response is handed over, before a
         // body still arriving is known.
-        if (inner.body) |b| if (b.pipe == null and (b.source != .none or b.data.items.len > 0)) {
+        if (internal_body orelse inner.body) |b| if (b.pipe == null and (b.source != .none or b.data.items.len > 0)) {
             copy.body_info.encoded_size = b.getBytes().len;
             copy.body_info.decoded_size = b.getBytes().len;
         };
-        // An opaque response's body is its internal response's, which script
-        // cannot read (the Response's body is null): it is copied as the
-        // associated response is, from Zig.
-        const filtered = inner.response_type == .@"opaque" or inner.response_type == .opaqueredirect;
-        const internal_body: ?*fetch.internal.Body = if (filtered) inner.body else null;
         // 10.2.5. Its body: read from the body's stream, chunk by chunk.
         const has_body = stream != null or internal_body != null;
         const relay: ?*BodyRelay = if (has_body) try BodyRelay.create(allocator) else null;
@@ -225,6 +224,24 @@ pub const Responder = struct {
         self.settleHandled(true);
     }
 };
+
+fn isOpaque(response: *const InternalResponse) bool {
+    return response.response_type == .@"opaque" or response.response_type == .opaqueredirect;
+}
+
+/// respondWith() step 10.2.4's potentialResponse for the Response object
+/// whose response is `inner`: a copy of it but its body. An opaque or
+/// opaque-redirect filtered response is copied with its internal
+/// response's fields (InternalResponse.internal) and marked with its
+/// filter, as main fetch hands one on: the fetching side reads the internal
+/// response - a script element its status and body - and applies the filter
+/// where script reads it. OWNED by the caller.
+pub fn potentialResponse(allocator: Allocator, inner: *const InternalResponse) Allocator.Error!*InternalResponse {
+    const source = if (isOpaque(inner)) inner.internal orelse inner else inner;
+    const copy = try copyResponse(allocator, source);
+    copy.response_type = inner.response_type;
+    return copy;
+}
 
 /// A copy of `from`'s response but its body (respondWith() step 10.2.4),
 /// made with `allocator` - the Browser's: it crosses to the fetching thread.

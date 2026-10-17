@@ -205,11 +205,15 @@ pub fn serviceWorkerResponse(allocator: Allocator, params: *FetchParams, respons
     // on the response and applies it where script reads it.
     // 3.5.7. The response may not be used for this request: a network error.
     const kind = response.response_type;
+    // The URL list as the filtered response has it: an opaque one's is
+    // empty (its internal response's, which the response carries here, is
+    // the network's).
+    const url_count = if (kind == .@"opaque") 0 else response.url_list.items.len;
     if (kind == .@"error" or
         (request.mode == .same_origin and kind == .cors) or
         (request.mode != .no_cors and kind == .@"opaque") or
         (request.redirect_mode != .manual and kind == .opaqueredirect) or
-        (request.redirect_mode != .follow and response.url_list.items.len > 1))
+        (request.redirect_mode != .follow and url_count > 1))
     {
         response.deinit();
         return .{ .response = try internal_response.networkError(allocator) };
