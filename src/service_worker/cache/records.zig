@@ -71,6 +71,17 @@ pub const StoredResponse = struct {
     range_requested: bool = false,
     request_includes_credentials: bool = true,
 
+    /// Fetch's ResponseType values of the opaque and opaque-redirect
+    /// filtered responses (api.zig checks them at compile time).
+    pub const opaque_types = [_]u8{ 4, 5 };
+
+    /// Whether this is an opaque or opaque-redirect filtered response's
+    /// record - its internal response's fields, kept for the user agent:
+    /// the filtered response script sees has an empty header list.
+    pub fn hidesHeaders(self: *const StoredResponse) bool {
+        return std.mem.indexOfScalar(u8, &opaque_types, self.response_type) != null;
+    }
+
     pub fn deinit(self: *StoredResponse, allocator: Allocator) void {
         freeStrings(allocator, self.url_list);
         allocator.free(self.status_message);

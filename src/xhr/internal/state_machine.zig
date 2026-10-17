@@ -288,6 +288,9 @@ pub const XMLHttpRequestState = struct {
             // Borrowed, as the client's: the global the request's resource
             // timing is marked for (Fetch "report timing").
             .timing_reporter = client.timing_reporter,
+            // Borrowed, as the jar: the route to the service worker that
+            // controls the client when open() ran (Handle Fetch step 10).
+            .service_worker = client.service_worker,
         };
     }
 

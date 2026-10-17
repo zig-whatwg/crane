@@ -112,6 +112,18 @@ pub const InternalResponse = struct {
     /// Redirect taint
     redirect_taint: RedirectTaint = .same_origin,
 
+    /// An opaque or opaque-redirect filtered response's internal response
+    /// (Fetch: "a filtered response ... has an associated internal
+    /// response"): what the filter hides - status, status message, header
+    /// list, URL list and body - moved here by `filter`. Script never reads
+    /// it; the user agent does - a script element's or an image's response
+    /// is the unsafe response, a service worker hands it on through
+    /// respondWith(), the Cache API stores it. OWNED. Null for every other
+    /// response: Crane marks a basic or CORS filter on the response itself
+    /// (`applyFilter`), and main fetch's response is unfiltered until a
+    /// consumer applies it.
+    internal: ?*Self = null,
+
     const Self = @This();
 
     /// Initialize a new response.
@@ -156,6 +168,8 @@ pub const InternalResponse = struct {
             body.deinit();
         }
 
+        if (self.internal) |internal| internal.deinit();
+
         self.allocator.destroy(self);
     }
 
@@ -170,10 +184,59 @@ pub const InternalResponse = struct {
         self.status_message = copy;
     }
 
+    /// Apply this response's filter in place, as `applyFilter` does, but
+    /// keep what an opaque or opaque-redirect filter hides as the filtered
+    /// response's internal response (`internal`): a Response object's
+    /// response, which script sees filtered and the user agent reads whole
+    /// (a service worker's respondWith(), the Cache API). On failure - no
+    /// memory for the internal response - nothing has moved and nothing is
+    /// filtered: the caller drops the response.
+    ///
+    /// Spec: https://fetch.spec.whatwg.org/#concept-internal-response
+    pub fn filter(self: *Self) Allocator.Error!void {
+        const hides_all = self.response_type == .@"opaque" or self.response_type == .opaqueredirect;
+        if (hides_all and self.internal == null) self.internal = try self.splitInternal();
+        self.applyFilter();
+    }
+
+    /// The internal response of this response, about to be filtered opaque:
+    /// a new response holding what the filter clears, moved out of this one.
+    /// Every allocation comes before the first move.
+    fn splitInternal(self: *Self) Allocator.Error!*Self {
+        const kept = try Self.init(self.allocator);
+        errdefer kept.deinit();
+        // The opaque-redirect filter keeps its URL list: the internal
+        // response gets a copy. The opaque filter empties it: it moves.
+        if (self.response_type == .opaqueredirect) {
+            try kept.url_list.ensureTotalCapacity(self.allocator, self.url_list.items.len);
+            for (self.url_list.items) |u| kept.url_list.appendAssumeCapacity(try self.allocator.dupe(u8, u));
+        } else {
+            std.mem.swap(std.ArrayListUnmanaged([]const u8), &kept.url_list, &self.url_list);
+        }
+        // From here nothing fails.
+        kept.response_type = .default;
+        kept.status = self.status;
+        kept.status_message = self.status_message;
+        self.status_message = "";
+        std.mem.swap(HeaderList, &kept.header_list, &self.header_list);
+        kept.body = self.body;
+        self.body = null;
+        kept.aborted = self.aborted;
+        kept.cache_state = self.cache_state;
+        kept.range_requested = self.range_requested;
+        kept.request_includes_credentials = self.request_includes_credentials;
+        kept.timing_allow_passed = self.timing_allow_passed;
+        kept.body_info = self.body_info;
+        kept.redirect_taint = self.redirect_taint;
+        return kept;
+    }
+
     /// Apply this response's filter - its type, from main fetch step 15 - in
-    /// place, for a consumer that is shown only the filtered response: a
-    /// Response object, an XMLHttpRequest. What the filter hides is gone
-    /// after, so this is only for a response nothing reads unfiltered.
+    /// place, for a consumer that is shown only the filtered response: an
+    /// XMLHttpRequest (never opaque: its mode is "cors"), or a response
+    /// turned into a network error. What the filter hides is gone after,
+    /// so this is only for a response nothing reads unfiltered; a Response
+    /// object's response is filtered with `filter`, which keeps it.
     ///
     /// Spec: https://fetch.spec.whatwg.org/#concept-filtered-response
     pub fn applyFilter(self: *Self) void {
@@ -200,11 +263,11 @@ pub const InternalResponse = struct {
         }
     }
 
-    fn keepHeaders(self: *Self, comptime filter: enum { basic, cors }) void {
+    fn keepHeaders(self: *Self, comptime kind: enum { basic, cors }) void {
         var i: usize = 0;
         while (i < self.header_list.entries.items.len) {
             const name = self.header_list.entries.items[i].name;
-            const keep = switch (filter) {
+            const keep = switch (kind) {
                 .basic => !validation.isForbiddenResponseHeaderName(name),
                 .cors => validation.isCORSSafelistedResponseHeaderName(name, self.cors_exposed_header_name_list.items),
             };
@@ -239,6 +302,7 @@ pub const InternalResponse = struct {
     /// Add a URL to the URL list.
     pub fn addUrl(self: *Self, new_url: []const u8) !void {
         const owned = try self.allocator.dupe(u8, new_url);
+        errdefer self.allocator.free(owned);
         try self.url_list.append(self.allocator, owned);
     }
 
@@ -248,7 +312,10 @@ pub const InternalResponse = struct {
     /// Spec: https://fetch.spec.whatwg.org/#concept-response-clone
     pub fn clone(self: *Self) !*Self {
         const new_response = try self.allocator.create(Self);
-        errdefer self.allocator.destroy(new_response);
+        // Until its fields are set, a failure frees the allocation alone;
+        // after, the response with whatever it holds.
+        var initialized = false;
+        errdefer if (!initialized) self.allocator.destroy(new_response);
 
         // Each response frees its own status message, so the clone needs its
         // own copy - sharing it is a double free.
@@ -256,7 +323,7 @@ pub const InternalResponse = struct {
             try self.allocator.dupe(u8, self.status_message)
         else
             "";
-        errdefer if (status_message.len > 0) self.allocator.free(status_message);
+        errdefer if (!initialized and status_message.len > 0) self.allocator.free(status_message);
 
         new_response.* = .{
             .allocator = self.allocator,
@@ -276,23 +343,23 @@ pub const InternalResponse = struct {
             .service_worker_timing_info = self.service_worker_timing_info,
             .redirect_taint = self.redirect_taint,
         };
+        initialized = true;
+        errdefer new_response.deinit();
 
         // Clone URL list
-        for (self.url_list.items) |u| {
-            const owned = try self.allocator.dupe(u8, u);
-            try new_response.url_list.append(self.allocator, owned);
-        }
+        for (self.url_list.items) |u| try new_response.addUrl(u);
 
         // Clone CORS exposed headers
-        for (self.cors_exposed_header_name_list.items) |name| {
-            const owned = try self.allocator.dupe(u8, name);
-            try new_response.cors_exposed_header_name_list.append(self.allocator, owned);
-        }
+        for (self.cors_exposed_header_name_list.items) |name| try new_response.addCorsExposedHeaderName(name);
 
         // Clone body
         if (self.body) |body| {
             new_response.body = try body.clone(self.allocator);
         }
+
+        // A filtered response's clone is a filtered response of its internal
+        // response's clone (Fetch "clone a response" step 1).
+        if (self.internal) |internal| new_response.internal = try internal.clone();
 
         return new_response;
     }
@@ -302,6 +369,7 @@ pub const InternalResponse = struct {
     /// Add a CORS-exposed header name.
     pub fn addCorsExposedHeaderName(self: *Self, name: []const u8) !void {
         const owned = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(owned);
         try self.cors_exposed_header_name_list.append(self.allocator, owned);
     }
 };
@@ -730,4 +798,128 @@ test "applyFilter: basic drops Set-Cookie, cors keeps the safelisted and exposed
     try std.testing.expectEqual(@as(usize, 0), opaque_response.header_list.len());
     try std.testing.expect(opaque_response.url() == null);
     try std.testing.expect(opaque_response.body == null);
+}
+
+test "filter keeps an opaque response's internal response: script's view is filtered, the internal one whole" {
+    const allocator = std.testing.allocator;
+    const response = try InternalResponse.init(allocator);
+    defer response.deinit();
+    response.response_type = .@"opaque";
+    try response.addUrl("https://b.test/x.js");
+    try response.setStatusMessage("OK");
+    try response.header_list.append("Content-Type", "text/javascript");
+    response.body = try Body.fromBytes(allocator, "f()");
+    try response.filter();
+    // What a Response object reads: an opaque filtered response.
+    try std.testing.expectEqual(ResponseType.@"opaque", response.response_type);
+    try std.testing.expectEqual(@as(u16, 0), response.status);
+    try std.testing.expectEqualStrings("", response.status_message);
+    try std.testing.expectEqual(@as(usize, 0), response.header_list.len());
+    try std.testing.expect(response.url() == null);
+    try std.testing.expect(response.body == null);
+    // Its internal response: the network's, moved, not copied.
+    const internal = response.internal orelse return error.TestExpectedInternal;
+    try std.testing.expectEqual(ResponseType.default, internal.response_type);
+    try std.testing.expectEqual(@as(u16, 200), internal.status);
+    try std.testing.expectEqualStrings("OK", internal.status_message);
+    try std.testing.expect(internal.header_list.contains("Content-Type"));
+    try std.testing.expectEqualStrings("https://b.test/x.js", internal.url().?);
+    try std.testing.expectEqualStrings("f()", internal.body.?.getBytes());
+    // Filtering again changes nothing.
+    try response.filter();
+    try std.testing.expect(response.internal == internal);
+}
+
+test "filter keeps an opaque-redirect response's URL list on both" {
+    const allocator = std.testing.allocator;
+    const response = try InternalResponse.init(allocator);
+    defer response.deinit();
+    response.response_type = .opaqueredirect;
+    response.status = 302;
+    try response.addUrl("https://a.test/from");
+    try response.header_list.append("Location", "/to");
+    try response.filter();
+    try std.testing.expectEqual(@as(u16, 0), response.status);
+    try std.testing.expectEqualStrings("https://a.test/from", response.url().?);
+    try std.testing.expectEqual(@as(usize, 0), response.header_list.len());
+    const internal = response.internal orelse return error.TestExpectedInternal;
+    try std.testing.expectEqual(@as(u16, 302), internal.status);
+    try std.testing.expectEqualStrings("https://a.test/from", internal.url().?);
+    try std.testing.expectEqualStrings("/to", internal.header_list.getFirstValue("Location").?);
+}
+
+test "filter keeps no internal response for basic, cors and default responses" {
+    const allocator = std.testing.allocator;
+    for ([_]ResponseType{ .basic, .cors, .default }) |kind| {
+        const response = try InternalResponse.init(allocator);
+        defer response.deinit();
+        response.response_type = kind;
+        response.body = try Body.fromBytes(allocator, "x");
+        try response.filter();
+        try std.testing.expect(response.internal == null);
+        try std.testing.expectEqualStrings("x", response.body.?.getBytes());
+    }
+}
+
+test "clone copies an opaque response's internal response, each freed on its own" {
+    const allocator = std.testing.allocator;
+    const response = try InternalResponse.init(allocator);
+    response.response_type = .@"opaque";
+    try response.addUrl("https://b.test/x");
+    response.body = try Body.fromBytes(allocator, "bytes");
+    try response.filter();
+    const copy = try response.clone();
+    defer copy.deinit();
+    response.deinit();
+    try std.testing.expectEqual(@as(u16, 0), copy.status);
+    try std.testing.expect(copy.body == null);
+    const internal = copy.internal orelse return error.TestExpectedInternal;
+    try std.testing.expectEqual(@as(u16, 200), internal.status);
+    try std.testing.expectEqualStrings("https://b.test/x", internal.url().?);
+    try std.testing.expectEqualStrings("bytes", internal.body.?.getBytes());
+}
+
+fn filterUnderAllocationFailure(allocator: Allocator, kind: ResponseType) !void {
+    const response = try InternalResponse.init(allocator);
+    defer response.deinit();
+    response.response_type = kind;
+    response.status = 302;
+    try response.addUrl("https://a.test/1");
+    try response.addUrl("https://a.test/2");
+    try response.setStatusMessage("Found");
+    try response.header_list.append("Location", "/2");
+    response.body = try Body.fromBytes(allocator, "b");
+    response.filter() catch |err| {
+        // No memory for the internal response: nothing moved, nothing
+        // filtered - the caller drops the response whole.
+        try std.testing.expect(response.internal == null);
+        try std.testing.expectEqual(@as(u16, 302), response.status);
+        try std.testing.expectEqualStrings("Found", response.status_message);
+        try std.testing.expect(response.header_list.contains("Location"));
+        try std.testing.expectEqual(@as(usize, 2), response.url_list.items.len);
+        try std.testing.expectEqualStrings("b", response.body.?.getBytes());
+        return err;
+    };
+    try std.testing.expect(response.internal != null);
+}
+
+test "filter with no memory for the internal response moves nothing and leaks nothing" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, filterUnderAllocationFailure, .{ResponseType.@"opaque"});
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, filterUnderAllocationFailure, .{ResponseType.opaqueredirect});
+}
+
+fn cloneUnderAllocationFailure(allocator: Allocator) !void {
+    const response = try InternalResponse.init(allocator);
+    defer response.deinit();
+    response.response_type = .@"opaque";
+    try response.addUrl("https://b.test/x");
+    try response.addCorsExposedHeaderName("x-a");
+    response.body = try Body.fromBytes(allocator, "bytes");
+    try response.filter();
+    const copy = try response.clone();
+    copy.deinit();
+}
+
+test "clone with no memory leaks nothing" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, cloneUnderAllocationFailure, .{});
 }

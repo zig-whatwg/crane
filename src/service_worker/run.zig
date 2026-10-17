@@ -35,6 +35,7 @@ pub const host: manager_mod.Host = .{
     .start = start,
     .dispatch = dispatch,
     .post_message = postMessage,
+    .dispatch_fetch = dispatchFetch,
 };
 
 // ============================================================================
@@ -547,3 +548,56 @@ fn fireMessage(manager: *Manager, realm: runtime.Context, global_scope: *runtime
     // flight while it is active, and reports its end once it is not.
     lifetime.dispatchEnded();
 }
+
+// ============================================================================
+// The fetch event (Create Fetch Event and Dispatch step 17.4)
+// ============================================================================
+
+const fetch_event = @import("fetch_event.zig");
+
+fn dispatchFetch(manager: *Manager, started: manager_mod.Started, fetch_dispatch: *manager_mod.FetchDispatch, worker_id: u64, generation: u64) void {
+    const done: fetch_event.FetchDone = .{
+        .manager = manager,
+        .worker_id = worker_id,
+        .generation = generation,
+        // Create Fetch Event and Dispatch step 19.
+        .soft_update = if (fetch_dispatch.soft_update) fetch_dispatch.registration_id else 0,
+    };
+    const link = started.link orelse return fetchLost(fetch_dispatch, done);
+    const handle = started.handle orelse return fetchLost(fetch_dispatch, done);
+    const task = manager.allocator.create(FetchTask) catch return fetchLost(fetch_dispatch, done);
+    task.* = .{ .dispatch = fetch_dispatch, .done = done };
+    worker_host.postServiceTask(manager.allocator, link, handle, .{ .run = FetchTask.run, .drop = FetchTask.drop, .data = task });
+}
+
+/// "If task is discarded, set handleFetchFailed to true": a network error,
+/// and the event reported done.
+fn fetchLost(fetch_dispatch: *manager_mod.FetchDispatch, done: fetch_event.FetchDone) void {
+    fetch_dispatch.fail();
+    done.report();
+}
+
+/// The task queued on the worker's event loop, using the handle fetch task
+/// source.
+const FetchTask = struct {
+    dispatch: *manager_mod.FetchDispatch,
+    done: fetch_event.FetchDone,
+
+    /// On the worker's thread, in its realm.
+    fn run(data: ?*anyopaque, realm: runtime.Context, global_scope: *runtime.Instance) void {
+        const self: *FetchTask = @ptrCast(@alignCast(data.?));
+        const fetch_dispatch = self.dispatch;
+        const done = self.done;
+        done.manager.allocator.destroy(self);
+        fetch_event.fire(done.manager, realm, global_scope, fetch_dispatch, done);
+    }
+
+    /// Discarded (the worker is ending). Any thread.
+    fn drop(data: ?*anyopaque) void {
+        const self: *FetchTask = @ptrCast(@alignCast(data.?));
+        const fetch_dispatch = self.dispatch;
+        const done = self.done;
+        done.manager.allocator.destroy(self);
+        fetchLost(fetch_dispatch, done);
+    }
+};

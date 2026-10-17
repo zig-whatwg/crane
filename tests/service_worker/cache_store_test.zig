@@ -139,6 +139,20 @@ test "Request Matches Cached Item: Vary compares the named headers' combined val
     try testing.expect(try cache.store.requestMatchesCachedItem(a, .{ .url = "https://a.test/c" }, &post, null, .{ .ignore_method = true }));
 }
 
+test "Request Matches Cached Item: an opaque response's record shows no Vary - its filtered header list is empty" {
+    const a = testing.allocator;
+    const cached_req = request("https://a.test/c", "GET", &.{header("Cookies", "is-for-cookie")});
+    // The record keeps the internal response's headers, Vary among them.
+    for (records.StoredResponse.opaque_types) |kind| {
+        var kept = response(200, &.{header("Vary", "*")}, "x");
+        kept.response_type = kind;
+        try testing.expect(kept.hidesHeaders());
+        try testing.expect(try cache.store.requestMatchesCachedItem(a, .{ .url = "https://a.test/c" }, &cached_req, &kept, .{}));
+    }
+    const basic = response(200, &.{header("Vary", "*")}, "x");
+    try testing.expect(!basic.hidesHeaders());
+}
+
 test "Batch Cache Operations is atomic: a failing operation leaves the cache as it was" {
     var f = try Fixture.init();
     defer f.deinit();

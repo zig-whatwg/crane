@@ -14,7 +14,9 @@
 //!   object maps, its promises) and the steps of the API members script
 //!   calls; objects.zig: the ServiceWorker and ServiceWorkerRegistration
 //!   objects' state; extend_lifetime.zig: an ExtendableEvent's extended
-//!   lifetime.
+//!   lifetime; fetch_event.zig: Create Fetch Event and Dispatch on the
+//!   worker's thread, respondWith(), and a response body read for the
+//!   fetching thread.
 //!
 //! - cache/: Cache Storage - a Browser's caches in its store, and the
 //!   steps of CacheStorage's and Cache's members.
@@ -28,6 +30,7 @@ pub const update_fetch = @import("update_fetch.zig");
 pub const run = @import("run.zig");
 pub const realm = @import("realm.zig");
 pub const objects = @import("objects.zig");
+pub const fetch_event = @import("fetch_event.zig");
 pub const cache = @import("cache/root.zig");
 
 pub const Registry = registry.Registry;

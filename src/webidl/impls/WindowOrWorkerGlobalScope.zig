@@ -504,8 +504,13 @@ const FetchCall = struct {
 
         // Step 4: responseObject is the result of creating a Response
         // object given response, "immutable" and relevantRealm - the
-        // filtered response main fetch made, which is all script sees.
-        response.applyFilter();
+        // filtered response main fetch made, which is all script sees. An
+        // opaque one keeps its internal response (InternalResponse.filter),
+        // which a service worker's respondWith() and the Cache API read.
+        response.filter() catch {
+            response.deinit();
+            return self.rejectTypeError("Failed to fetch");
+        };
         const response_object = interfaces.Response.call_constructor(self.ctx, webidl.Opt(?typedefs.BodyInit).notPassed(), webidl.Opt(dictionaries.ResponseInit).notPassed()) catch {
             response.deinit();
             return self.rejectTypeError("Failed to fetch");

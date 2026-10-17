@@ -23,6 +23,8 @@ const NetworkError = network.NetworkError;
 const LibcurlBackend = network.LibcurlBackend;
 const fetch_job = @import("fetch_job.zig");
 const FetchJob = fetch_job.FetchJob;
+const service_worker_fetch = @import("../internal/service_worker_fetch.zig");
+const Body = @import("../internal/body.zig").Body;
 
 pub const FetchError = fetch_job.FetchError;
 pub const FetchResult = fetch_job.FetchResult;
@@ -49,6 +51,46 @@ pub fn fetch(
         .body => step = try job.resumeBody(),
         .done => return job.takeResult(),
         .network => |needed| step = try job.resumeNetwork(sendBlocking(allocator, needed)),
+        .service_worker => |call| step = try job.resumeServiceWorker(try settleBlocking(call.wait(service_worker_fetch.blocking_wait_limit_ms) orelse blk: {
+            // No answer within the limit: given up on, a network error.
+            call.abandon();
+            break :blk .network_error;
+        })),
+    };
+}
+
+/// A service worker's answer, waited for: a response's body is its relay's
+/// whole body, collected as it is written. A body that fails is a network
+/// error, as the network's does for a blocking fetch.
+fn settleBlocking(answer: service_worker_fetch.Call.Answer) FetchError!FetchJob.ServiceWorkerAnswer {
+    return switch (answer) {
+        .fallback => .fallback,
+        .network_error => .network_error,
+        .response => |r| blk: {
+            const relay = r.body orelse break :blk .{ .response = r.response };
+            defer relay.release();
+            const response = r.response;
+            const bytes = relay.collect(response.allocator, service_worker_fetch.blocking_wait_limit_ms) catch |err| {
+                relay.cancel();
+                response.deinit();
+                break :blk switch (err) {
+                    error.OutOfMemory => FetchError.OutOfMemory,
+                    error.NetworkError => .network_error,
+                };
+            };
+            // The body takes the bytes (fromBytes would borrow them as its
+            // source).
+            const body = response.allocator.create(Body) catch {
+                response.allocator.free(bytes);
+                response.deinit();
+                break :blk FetchError.OutOfMemory;
+            };
+            body.* = Body.init(response.allocator);
+            body.data = .fromOwnedSlice(bytes);
+            body.length = bytes.len;
+            response.body = body;
+            break :blk .{ .response = response };
+        },
     };
 }
 

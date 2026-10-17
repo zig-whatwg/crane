@@ -18,7 +18,14 @@ const fake_host: manager_mod.Host = .{
     .start = fakeStart,
     .dispatch = fakeDispatch,
     .post_message = fakePostMessage,
+    .dispatch_fetch = fallbackDispatchFetch,
 };
+
+fn fallbackDispatchFetch(manager: *Manager, _: manager_mod.Started, dispatch: *manager_mod.FetchDispatch, worker_id: u64, generation: u64) void {
+    dispatch.call.answer(.fallback);
+    dispatch.destroy();
+    manager.report(.{ .fetch_done = .{ .worker = worker_id, .generation = generation } });
+}
 
 fn fakeFetch(manager: *Manager, plan: *const registry.FetchPlan) registry.FetchOutcome {
     var outcome: registry.FetchOutcome = .{ .has_updated_resources = true, .checked_network = true };
@@ -75,7 +82,7 @@ fn run(manager: *Manager, index: usize) !void {
     const allocator = manager.allocator;
     const sink = try runtime.TaskSink.create(allocator);
     defer sink.release();
-    var realm: Realm = .{ .endpoint = .{ .sink = sink, .deliver = Realm.deliver, .window_data = noWindowData, .realm = @ptrCast(sink) } };
+    var realm: Realm = .{ .endpoint = .{ .sink = sink, .deliver = Realm.deliver, .window_data = noWindowData, .window_data_now = noWindowData, .realm = @ptrCast(sink) } };
     var origin_buffer: [64]u8 = undefined;
     const origin = try std.fmt.bufPrint(&origin_buffer, "https://r{d}.example", .{index});
     var page_buffer: [96]u8 = undefined;

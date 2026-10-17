@@ -526,6 +526,10 @@ pub fn requestMatchesCachedItem(allocator: Allocator, request_query: Query, requ
     // 6. No response, ignoreVary, or no Vary header: a match.
     const cached_response = response orelse return true;
     if (options.ignore_vary) return true;
+    // An opaque response's header list is empty: no Vary (its record keeps
+    // the internal response's headers, which the spec's stored response,
+    // the filtered one, does not show).
+    if (cached_response.hidesHeaders()) return true;
     const vary = (try cached_response.header(allocator, "Vary")) orelse return true;
     defer allocator.free(vary);
     // 7-8. Each field-value: "*" never matches; otherwise the combined

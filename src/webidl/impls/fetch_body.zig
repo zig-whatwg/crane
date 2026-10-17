@@ -940,6 +940,14 @@ const PipeStream = struct {
             // Errored at once, read or not: an aborted body's stream
             // errors with the abort reason even while nobody reads.
             self.errorStream(realm, controller, pipe);
+        } else if (pipe.state == .closed and !pipe.hasBytes() and self.pending_pull == null) {
+            // Closed at once too, read or not, once nothing is left to
+            // enqueue: the body's end closes its stream ("fully read",
+            // Streams ReadableByteStreamControllerClose - with an empty
+            // queue the stream closes now). A reader waiting on `closed`
+            // with no read in flight - a service worker's body that ended
+            // after its last chunk was read - hears it.
+            srd.byteControllerClose(realm, controller) catch {};
         } else if (self.pending_pull != null) {
             if (self.deliver(realm)) {
                 if (self.pending_pull) |d| {

@@ -216,6 +216,9 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     // Fetch "report timing": the global its requests' resource timing is
     // marked for (Resource Timing 4).
     client.request.timing_reporter = @import("performance_timeline.zig").timingReporterFor(global);
+    // Service Workers "Handle Fetch" step 10: the route of a controlled
+    // client's requests to its active service worker.
+    client.request.service_worker = @import("service_worker_clients.zig").routeForGlobal(global);
     client.request.integrity_violation_reporter = @import("sri_reporting.zig").reporterFor(global);
     return client;
 }

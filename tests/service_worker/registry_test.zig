@@ -785,3 +785,178 @@ test "get(id) finds a client of the worker's storage key by its id, and nothing 
     try testing.expect(registry.getClient(worker, &own_global.client_id) == null);
     try testing.expect(registry.getClient(worker, "not-an-id") == null);
 }
+
+// ============================================================================
+// Clients at creation, and Handle Fetch's decision (batch 3)
+// ============================================================================
+
+const page_reserve: reg.Registry.ReserveInit = .{
+    .kind = .window,
+    .origin = "https://example.com",
+    .creation_url = "https://example.com/frame.html",
+};
+
+test "a reserved client is no client until it is adopted: not execution ready, told nothing, not claimed or matched" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 31);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    const worker_id = try installAndActivate(&recorder, &registry, page, "https://example.com/sw.js", "https://example.com/", "v1");
+    const worker = registry.findWorker(worker_id).?;
+
+    const reserved = try registry.reserveEnvironment(page_reserve);
+    try testing.expect(!reserved.execution_ready);
+    try testing.expect(reserved.endpoint == null);
+    // Its id is a client id (a fetch event's resultingClientId names it).
+    try testing.expectEqual(reserved, registry.findClient(&reserved.client_id).?);
+    // claim() skips it, and so does matchAll(): it is not execution ready.
+    try registry.claim(worker_id);
+    try testing.expect(reserved.active_worker == null);
+    const all = try registry.matchAllClients(testing.allocator, worker, true);
+    defer testing.allocator.free(all);
+    for (all) |client| try testing.expect(client != reserved);
+    // Nothing is posted to an environment with no realm: claim() told only
+    // the page.
+    try recorder.expectLog(&.{"1: controllerchange"});
+}
+
+test "Handle Fetch for a navigation: Match, then the reserved client is made and controlled (step 9.8) - not for a report" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 32);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+
+    // No registration: null, and no reserved environment is made.
+    try testing.expect((try registry.handleFetchNonSubresource(.{ .url = "https://example.com/scope/frame.html", .reserve = page_reserve })) == null);
+    const environments_before = registry.environments.items.len;
+
+    const worker_id = try installAndActivate(&recorder, &registry, page, "https://example.com/sw.js", "https://example.com/scope/", "v1");
+    // Out of scope: null.
+    try testing.expect((try registry.handleFetchNonSubresource(.{ .url = "https://example.com/other.html", .reserve = page_reserve })) == null);
+    try testing.expectEqual(environments_before, registry.environments.items.len);
+
+    const matched = (try registry.handleFetchNonSubresource(.{ .url = "https://example.com/scope/frame.html", .reserve = page_reserve })).?;
+    try testing.expectEqual(worker_id, matched.worker.id);
+    // A non-subresource request always soft-updates (step 12).
+    try testing.expect(matched.soft_update);
+    const reserved = matched.reserved.?;
+    try testing.expect(!reserved.execution_ready);
+    try testing.expectEqual(worker_id, reserved.active_worker.?.id);
+
+    // Given the reserved environment again (another hop), it is reused.
+    const again = (try registry.handleFetchNonSubresource(.{ .url = "https://example.com/scope/frame.html", .reserve = page_reserve, .reserved = reserved })).?;
+    try testing.expectEqual(reserved, again.reserved.?);
+
+    // A report's reserved client is not controlled (step 9.8).
+    const report = (try registry.handleFetchNonSubresource(.{ .url = "https://example.com/scope/r", .reserve = page_reserve, .destination_is_report = true })).?;
+    try testing.expectEqual(worker_id, report.worker.id);
+    if (report.reserved) |r| try testing.expect(r.active_worker == null);
+}
+
+test "Handle Fetch for a subresource: the client's active worker, soft update only when stale" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 33);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    const worker_id = try installAndActivate(&recorder, &registry, page, "https://example.com/sw.js", "https://example.com/", "v1");
+
+    // Not controlled: null (step 10.2).
+    try testing.expect(registry.handleFetchSubresource(page) == null);
+    try registry.claim(worker_id);
+    const matched = registry.handleFetchSubresource(page).?;
+    try testing.expectEqual(worker_id, matched.worker.id);
+    try testing.expect(!matched.soft_update);
+    // Stale: more than 86400 s since the last update check.
+    const registration = registry.getRegistration("https://example.com", "https://example.com/").?;
+    registration.last_update_check_time = recorder.now - 86_400_001;
+    try testing.expect(registry.handleFetchSubresource(page).?.soft_update);
+}
+
+test "adopting a reserved client keeps its id and its controller; discarding one removes it" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 34);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    const worker_id = try installAndActivate(&recorder, &registry, page, "https://example.com/sw.js", "https://example.com/", "v1");
+    const worker = registry.findWorker(worker_id).?;
+
+    const matched = (try registry.handleFetchNonSubresource(.{ .url = "https://example.com/frame.html", .reserve = page_reserve })).?;
+    const reserved = matched.reserved.?;
+    const id = reserved.client_id;
+    try registry.adoptEnvironment(reserved, .{
+        .endpoint = &endpoint_dummy,
+        .creation_url = "https://example.com/frame.html?final",
+        .frame_type = .nested,
+    });
+    try testing.expect(reserved.execution_ready);
+    try testing.expect(reserved.endpoint != null);
+    try testing.expectEqualStrings(&id, &reserved.client_id);
+    try testing.expectEqualStrings("https://example.com/frame.html?final", reserved.creation_url);
+    try testing.expectEqual(reserved.frame_type, .nested);
+    try testing.expectEqual(worker, reserved.active_worker.?);
+    const controlled = try registry.matchAllClients(testing.allocator, worker, false);
+    defer testing.allocator.free(controlled);
+    try testing.expectEqual(@as(usize, 1), controlled.len);
+
+    // Another navigation's reserved client is discarded: it is gone.
+    const other = (try registry.handleFetchNonSubresource(.{ .url = "https://example.com/frame2.html", .reserve = page_reserve })).?.reserved.?;
+    const other_id = other.client_id;
+    registry.removeEnvironment(other);
+    try testing.expect(registry.findClient(&other_id) == null);
+}
+
+test "a fetch for an activating worker waits until it is activated; one whose worker goes redundant fails" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 35);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    try registerJob(&registry, page, "https://example.com/sw.js", "https://example.com/", 1);
+    var plan = (try recorder.runQueuedJobs(&registry)).?;
+    try answerFetch(&registry, &plan, "v1", true);
+    const worker_id = recorder.started.items[recorder.started.items.len - 1];
+    try registry.workerEvaluated(worker_id, true);
+    // The install event ends: Activate runs, and the worker is activating
+    // until its activate event's lifetime ends.
+    try registry.lifecycleEventDone(recorder.lifecycle.items[recorder.lifecycle.items.len - 1].op, false);
+    const worker = registry.findWorker(worker_id).?;
+    try testing.expectEqual(reg.WorkerState.activating, worker.state);
+
+    // Create Fetch Event and Dispatch step 15: wait for "activated".
+    try registry.runServiceWorkerForFetch(worker, .{ .other = 40 });
+    try testing.expectEqual(@as(usize, 0), recorder.answered.items.len);
+    try registry.lifecycleEventDone(recorder.lifecycle.items[recorder.lifecycle.items.len - 1].op, false);
+    try testing.expectEqual(reg.WorkerState.activated, worker.state);
+    try testing.expectEqual(@as(usize, 1), recorder.answered.items.len);
+    try testing.expectEqual(@as(u64, 40), recorder.answered.items[0].waiter);
+    try testing.expect(recorder.answered.items[0].ok);
+    try registry.functionalEventDone(worker_id, worker.run_generation);
+
+    // An activated worker answers at once.
+    try registry.runServiceWorkerForFetch(worker, .{ .other = 41 });
+    try testing.expectEqual(@as(usize, 2), recorder.answered.items.len);
+    try registry.functionalEventDone(worker_id, worker.run_generation);
+
+    // A second worker, activating, is replaced before it activates: the
+    // fetch waiting on it fails.
+    try registerJob(&registry, page, "https://example.com/sw2.js", "https://example.com/", 2);
+    var plan2 = (try recorder.runQueuedJobs(&registry)).?;
+    try answerFetch(&registry, &plan2, "v2", true);
+    const second_id = recorder.started.items[recorder.started.items.len - 1];
+    try registry.workerEvaluated(second_id, true);
+    try registry.lifecycleEventDone(recorder.lifecycle.items[recorder.lifecycle.items.len - 1].op, false);
+    try registry.skipWaiting(second_id);
+    const second = registry.findWorker(second_id).?;
+    try testing.expectEqual(reg.WorkerState.activating, second.state);
+    try registry.runServiceWorkerForFetch(second, .{ .other = 42 });
+    try testing.expectEqual(@as(usize, 2), recorder.answered.items.len);
+    // It goes redundant (as Activate step 2 or Clear Registration make a
+    // worker): the fetch waiting for it fails.
+    registry.updateWorkerState(second, .redundant);
+    try testing.expectEqual(@as(usize, 3), recorder.answered.items.len);
+    try testing.expect(!recorder.answered.items[2].ok);
+}

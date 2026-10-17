@@ -20,7 +20,7 @@ const TestEndpoint = struct {
 
     fn create(allocator: std.mem.Allocator, sink: *runtime.TaskSink) TestEndpoint {
         return .{
-            .endpoint = .{ .sink = sink, .deliver = deliver, .window_data = noWindowData, .realm = @ptrCast(sink) },
+            .endpoint = .{ .sink = sink, .deliver = deliver, .window_data = noWindowData, .window_data_now = noWindowData, .realm = @ptrCast(sink) },
             .allocator = allocator,
         };
     }
@@ -71,7 +71,14 @@ const fake_host: manager_mod.Host = .{
     .start = fakeStart,
     .dispatch = fakeDispatch,
     .post_message = fakePostMessage,
+    .dispatch_fetch = fallbackDispatchFetch,
 };
+
+fn fallbackDispatchFetch(manager: *Manager, _: manager_mod.Started, dispatch: *manager_mod.FetchDispatch, worker_id: u64, generation: u64) void {
+    dispatch.call.answer(.fallback);
+    dispatch.destroy();
+    manager.report(.{ .fetch_done = .{ .worker = worker_id, .generation = generation } });
+}
 
 fn fakeFetch(manager: *Manager, plan: *const registry.FetchPlan) registry.FetchOutcome {
     var outcome: registry.FetchOutcome = .{ .has_updated_resources = true, .checked_network = true };
@@ -207,6 +214,7 @@ const stuck_host: manager_mod.Host = .{
     .start = fakeStart,
     .dispatch = stuckDispatch,
     .post_message = fakePostMessage,
+    .dispatch_fetch = fallbackDispatchFetch,
 };
 
 fn stuckDispatch(_: *Manager, _: manager_mod.Started, _: registry.LifecycleEvent, _: u64) void {}

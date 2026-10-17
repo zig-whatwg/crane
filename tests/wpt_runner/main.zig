@@ -902,8 +902,9 @@ pub fn executeTests(
         // wptrunner does after an unexpected result (it restarts the browser;
         // Crane keeps no expectations, so every TIMEOUT and every ERROR is
         // unexpected): end this Browser and start the next file with a fresh
-        // one.
-        if (tally.status.restartsBrowser()) {
+        // one. The same after a file that left a service worker registration
+        // behind, whatever its status (journal.Status.restartsBrowser).
+        if (tally.status.restartsBrowser(browser.leftovers())) {
             browser.deinit();
             browser = try browser_adapter.BrowserAdapter.init(allocator, options.wpt_root);
         }

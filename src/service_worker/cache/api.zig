@@ -12,9 +12,15 @@
 //!
 //! Stated deviations:
 //! - matchAll()'s step 5.4 (an opaque response that the cross-origin
-//!   resource policy check blocks rejects) is not run: an opaque response
-//!   kept here has lost the headers the check reads (Crane filters a
-//!   response in place).
+//!   resource policy check blocks rejects) is not run: Crane has no
+//!   cross-origin resource policy check yet (Fetch's is not run either).
+//!
+//! An opaque or opaque-redirect response is kept as the spec keeps the
+//! filtered response: with its internal response (InternalResponse
+//! .internal) - the network's status, headers, URL list and body, which
+//! script never reads - and filtered again when match() makes a Response
+//! object of it, so a service worker answering from the cache hands a
+//! script element what the network would have.
 //! - addAll() step 5.3 (a request a service worker's Cache makes skips the
 //!   service workers) waits for batch 3's Handle Fetch, which is what it
 //!   skips.
@@ -141,6 +147,11 @@ fn intOf(value: anytype) u8 {
     return @intCast(@intFromEnum(value));
 }
 
+comptime {
+    std.debug.assert(records.StoredResponse.opaque_types[0] == @intFromEnum(fetch.internal.ResponseType.@"opaque"));
+    std.debug.assert(records.StoredResponse.opaque_types[1] == @intFromEnum(fetch.internal.ResponseType.opaqueredirect));
+}
+
 fn enumOf(comptime T: type, value: u8, default: T) T {
     return std.enums.fromInt(T, value) orelse default;
 }
@@ -198,10 +209,23 @@ fn internalRequestOf(allocator: Allocator, stored: *const records.StoredRequest)
     return request;
 }
 
-/// A response's record, without its body (put() reads it after). OWNED.
-fn storedResponseOf(allocator: Allocator, response: *const InternalResponse) Allocator.Error!records.StoredResponse {
+fn isOpaque(response: *const InternalResponse) bool {
+    return response.response_type == .@"opaque" or response.response_type == .opaqueredirect;
+}
+
+/// The response whose fields and body a cache keeps for `response`, a
+/// Response object's: an opaque or opaque-redirect filtered response's
+/// internal response, else the response itself.
+fn keptOf(response: *const InternalResponse) *const InternalResponse {
+    return if (isOpaque(response)) response.internal orelse response else response;
+}
+
+/// A response's record, without its body (put() reads it after): an opaque
+/// response's internal response's fields, marked with its filter. OWNED.
+fn storedResponseOf(allocator: Allocator, filtered: *const InternalResponse) Allocator.Error!records.StoredResponse {
+    const response = keptOf(filtered);
     var out: records.StoredResponse = .{
-        .response_type = intOf(response.response_type),
+        .response_type = intOf(filtered.response_type),
         .status = response.status,
         .range_requested = response.range_requested,
         .request_includes_credentials = response.request_includes_credentials,
@@ -245,6 +269,10 @@ fn internalResponseOf(allocator: Allocator, stored: *const records.StoredRespons
     if (stored.body) |body| response.body = try fetch.internal.Body.fromBytes(allocator, body);
     response.range_requested = stored.range_requested;
     response.request_includes_credentials = stored.request_includes_credentials;
+    // An opaque record is the internal response's: filtered again, as the
+    // Response object script gets shows it, the record kept as its
+    // internal response.
+    if (isOpaque(response)) try response.filter();
     return response;
 }
 
@@ -545,8 +573,11 @@ pub fn put(cache_object: *runtime.Instance, handle: CacheHandle, request: Reques
     stored_response = undefined;
     defer op.release();
     // 10-11. A non-null body: read all its bytes - which locks and disturbs
-    // the response's body - then 19, the batch.
-    if (inner.body != null) {
+    // the response's body - then 19, the batch. An opaque response's body
+    // is its internal response's, which script cannot read: read from Zig.
+    if (isOpaque(inner) and keptOf(inner).body != null) {
+        try InternalBodyRead.start(op, 0, keptOf(inner).body.?);
+    } else if (inner.body != null) {
         const read = try interfaces.Response.call_arrayBuffer(response);
         try op.readBody(read, 0);
     } else {
@@ -853,15 +884,20 @@ const PutOp = struct {
         const op = item.op;
         const index = item.index;
         defer item.destroy();
-        if (op.settled) return;
-        const bytes = engine.borrowArrayBufferBytes(op.realm, value) orelse &.{};
-        const copy = op.allocator.dupe(u8, bytes) catch return op.failWith(error.OutOfMemory);
-        if (op.slots[index].response) |*response| {
-            if (response.body) |old| op.allocator.free(old);
+        op.bodyBytes(index, engine.borrowArrayBufferBytes(op.realm, value) orelse &.{});
+    }
+
+    /// Slot `index`'s body is `bytes` (borrowed): kept, then the batch once
+    /// every slot has its own.
+    fn bodyBytes(self: *PutOp, index: usize, bytes: []const u8) void {
+        if (self.settled) return;
+        const copy = self.allocator.dupe(u8, bytes) catch return self.failWith(error.OutOfMemory);
+        if (self.slots[index].response) |*response| {
+            if (response.body) |old| self.allocator.free(old);
             response.body = copy;
-        } else op.allocator.free(copy);
-        op.slots[index].read = true;
-        op.maybeCommit();
+        } else self.allocator.free(copy);
+        self.slots[index].read = true;
+        self.maybeCommit();
     }
 
     /// A fetch or a body read rejected: so does the op, with its reason.
@@ -875,6 +911,84 @@ const PutOp = struct {
     fn dropped(data: ?*anyopaque) void {
         const item: *Item = @ptrCast(@alignCast(data.?));
         item.destroy();
+    }
+};
+
+/// put() steps 10-11 for an opaque or opaque-redirect response: its
+/// internal response's body, read to its end from Zig - its bytes at once,
+/// or, still arriving from the network, through a reader of its own (a
+/// tee, so the Response's own body is left as it was) - then the op hears
+/// it in a task of its realm, since a pipe's news arrives outside it.
+const InternalBodyRead = struct {
+    op: *PutOp,
+    index: usize,
+    pipe: *fetch.internal.BodyPipe,
+    allocator: Allocator,
+    bytes: std.ArrayListUnmanaged(u8) = .empty,
+    /// How the body ended, once it has: closed (true) or errored.
+    closed: ?bool = null,
+
+    fn start(op: *PutOp, index: usize, body: *fetch.internal.Body) !void {
+        const pipe = body.pipe orelse return op.bodyBytes(index, body.getBytes());
+        const branch = try pipe.tee();
+        const self = op.allocator.create(InternalBodyRead) catch |err| {
+            branch.release();
+            return err;
+        };
+        self.* = .{ .op = op.retain(), .index = index, .pipe = branch, .allocator = body.allocator };
+        branch.consumer = .{ .context = self, .notify = notify };
+        // What it holds already.
+        notify(self);
+    }
+
+    fn notify(context: *anyopaque) void {
+        const self: *InternalBodyRead = @ptrCast(@alignCast(context));
+        if (self.closed != null) return;
+        if (self.pipe.hasBytes()) {
+            const chunk = self.pipe.take() catch return self.end(false);
+            defer self.allocator.free(chunk);
+            self.bytes.appendSlice(self.op.allocator, chunk) catch return self.end(false);
+        }
+        switch (self.pipe.state) {
+            .open => {},
+            .closed => self.end(true),
+            .errored => self.end(false),
+        }
+    }
+
+    fn end(self: *InternalBodyRead, closed: bool) void {
+        self.closed = closed;
+        self.pipe.consumer = null;
+        // A realm with no event loop (a bare test realm) hears it now.
+        const loop = self.op.realm.getOptionalEventLoop() orelse return runTask(self);
+        loop.queueTask(.{ .callback = runTask, .context = self, .drop = dropTask });
+    }
+
+    fn runTask(context: ?*anyopaque) void {
+        const self: *InternalBodyRead = @ptrCast(@alignCast(context.?));
+        defer self.destroy();
+        engine.runTaskInRealm(self.op.realm, steps, self) catch {};
+    }
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *InternalBodyRead = @ptrCast(@alignCast(data.?));
+        if (self.closed orelse false)
+            self.op.bodyBytes(self.index, self.bytes.items)
+        else
+            self.op.rejectWithTypeError("The response's body failed");
+    }
+
+    fn dropTask(context: ?*anyopaque) void {
+        const self: *InternalBodyRead = @ptrCast(@alignCast(context.?));
+        self.destroy();
+    }
+
+    fn destroy(self: *InternalBodyRead) void {
+        self.pipe.release();
+        self.bytes.deinit(self.op.allocator);
+        const op = self.op;
+        op.allocator.destroy(self);
+        op.release();
     }
 };
 

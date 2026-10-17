@@ -35,6 +35,7 @@ const BodyPipe = @import("../internal/body_pipe.zig").BodyPipe;
 const main_fetch = @import("main_fetch.zig");
 const http_fetch = @import("http_fetch.zig");
 const scheme_fetch = @import("scheme_fetch.zig");
+const service_worker_fetch = @import("../internal/service_worker_fetch.zig");
 
 /// Error types for fetch.
 pub const FetchError = error{
@@ -106,12 +107,23 @@ pub const FetchJob = struct {
     pending_response: ?*InternalResponse = null,
     is_authentication_fetch: bool = false,
     authentication_realm: ?[]u8 = null,
+    /// HTTP fetch step 3's call to a service worker, while its answer is
+    /// awaited (the job's reference), with step 3.3's serviceWorkerStartTime
+    /// and whether step 4 would make a CORS-preflight request.
+    service_worker_call: ?*service_worker_fetch.Call = null,
+    service_worker_start_time: f64 = 0,
+    service_worker_preflight: bool = false,
 
     /// What the job needs next.
     pub const Step = union(enum) {
         /// HTTP-network fetch's request, for the network to answer. Hand the
         /// answer to `resumeNetwork`. Borrowed from the job until then.
         network: NetworkStep,
+        /// HTTP fetch step 3: a service worker handles the request. Wait for
+        /// the call's answer (`take` from the event loop, `wait` blocking),
+        /// give a response its body (its relay's), and hand it to
+        /// `resumeServiceWorker`. Borrowed from the job until then.
+        service_worker: *service_worker_fetch.Call,
         /// Main fetch step 23 needs the whole response body. Resume with
         /// resumeBody once its pipe has ended (finished or failed).
         body,
@@ -124,6 +136,16 @@ pub const FetchJob = struct {
     /// answer's (algorithms/cookies.zig).
     pub const NetworkStep = struct {
         request: *const NetworkRequest,
+    };
+
+    /// A service worker's answer, as `resumeServiceWorker` takes it: a
+    /// response's body is attached by the driver (a pipe its relay fills, or
+    /// the relay's bytes), so the response is all there is.
+    pub const ServiceWorkerAnswer = union(enum) {
+        fallback,
+        network_error,
+        /// Taken.
+        response: *InternalResponse,
     };
 
     /// A job fetching `request`. With `owns_request`, the job frees it.
@@ -156,6 +178,11 @@ pub const FetchJob = struct {
         const allocator = self.allocator;
         if (self.authentication_realm) |realm| allocator.free(realm);
         if (self.network_request) |request| http_fetch.freeNetworkRequest(allocator, request);
+        // A service worker still answering: its answer is freed when it comes.
+        if (self.service_worker_call) |call| {
+            call.abandon();
+            call.release();
+        }
         if (self.response) |response| response.deinit();
         if (self.pending_response) |response| response.deinit();
         self.params.deinit();
@@ -273,11 +300,61 @@ pub const FetchJob = struct {
         const begun = main_fetch.mainFetchStart(allocator, self.params, self.depth > 0) catch {
             return FetchError.OutOfMemory;
         };
-        switch (begun) {
+        const make_cors_preflight = switch (begun) {
             .response => |response| return self.mainFetchFetched(response),
-            .http_fetch => return self.httpNetworkOrCacheFetch(),
-            .http_fetch_with_cors_preflight => {},
+            .http_fetch => false,
+            .http_fetch_with_cors_preflight => true,
+        };
+
+        // HTTP fetch step 3: a service worker, before any request goes out
+        // (a preflight is the network's, step 4.1).
+        const handled = http_fetch.handleFetchStart(self.params) catch |err| return self.httpFetchFailed(err);
+        if (handled) |started| {
+            self.service_worker_call = started.call;
+            self.service_worker_start_time = started.start_time;
+            self.service_worker_preflight = make_cors_preflight;
+            return .{ .service_worker = started.call };
         }
+        return self.httpFetchFromNetwork(make_cors_preflight);
+    }
+
+    /// Carry on from a service worker's answer to the `.service_worker`
+    /// step: HTTP fetch step 3.5 - or 3.6, nothing: step 4, the network.
+    pub fn resumeServiceWorker(self: *FetchJob, answer: ServiceWorkerAnswer) FetchError!Step {
+        const call = self.service_worker_call orelse unreachable; // no service worker was asked
+        self.service_worker_call = null;
+        call.release();
+        switch (answer) {
+            .fallback => return self.httpFetchFromNetwork(self.service_worker_preflight),
+            .network_error => return self.mainFetchFetched(try networkError(self.allocator)),
+            .response => |response| {
+                const next = http_fetch.serviceWorkerResponse(self.allocator, self.params, response, self.service_worker_start_time) catch |err| {
+                    return self.httpFetchFailed(err);
+                };
+                switch (next) {
+                    .response => |r| return self.mainFetchFetched(r),
+                    .recursive_main_fetch => {
+                        // HTTP-redirect fetch steps 20-22 for the service
+                        // worker's redirect: main fetch again, one deeper.
+                        self.depth += 1;
+                        return self.mainFetch();
+                    },
+                }
+            },
+        }
+    }
+
+    /// HTTP fetch step 4, from the network: a CORS-preflight first when
+    /// `make_cors_preflight` asks for one (4.1), then HTTP-network-or-cache
+    /// fetch.
+    fn httpFetchFromNetwork(self: *FetchJob, make_cors_preflight: bool) FetchError!Step {
+        const allocator = self.allocator;
+        // 4.2. "If request's redirect mode is "follow", then set request's
+        // service-workers mode to "none"": redirects from the network are
+        // not exposed to a service worker - the recursive main fetch of one
+        // goes to the network too.
+        if (self.request.redirect_mode == .follow) self.request.service_workers_mode = .none;
+        if (!make_cors_preflight) return self.httpNetworkOrCacheFetch();
 
         // HTTP fetch step 4.1, with makeCORSPreflight: a CORS-preflight fetch
         // first, when the request needs one. Its answer arrives through
@@ -718,4 +795,188 @@ test "fetch result: the request's referrer as main fetch determined it" {
         defer result.deinit();
         try std.testing.expect(result.referrer == null);
     }
+}
+
+/// A route's owner for the tests: Handle Fetch hands every request to a
+/// "service worker" (or to none), and the test answers as the worker would.
+const TestServiceWorkers = struct {
+    handles: bool = true,
+    asked: u32 = 0,
+    /// The worker side's reference to the last call.
+    call: ?*service_worker_fetch.Call = null,
+
+    fn route(self: *TestServiceWorkers) internal_request.ServiceWorkerRoute {
+        return .{ .context = self, .client = 7, .handle = handle };
+    }
+
+    fn handle(context: *anyopaque, request: *const InternalRequest, client: u64) std.mem.Allocator.Error!service_worker_fetch.Route.Start {
+        const self: *TestServiceWorkers = @ptrCast(@alignCast(context));
+        _ = request;
+        std.debug.assert(client == 7);
+        self.asked += 1;
+        if (!self.handles) return .network;
+        const call = try service_worker_fetch.Call.create(std.testing.allocator);
+        self.call = call;
+        return .{ .call = call };
+    }
+
+    /// The worker answers the last call and lets go of it.
+    fn answer(self: *TestServiceWorkers, value: service_worker_fetch.Call.Answer) void {
+        const call = self.call.?;
+        self.call = null;
+        call.answer(value);
+        call.release();
+    }
+};
+
+fn testServiceWorkerResponse(status: u16) !*InternalResponse {
+    const response = try InternalResponse.init(std.testing.allocator);
+    response.status = status;
+    return response;
+}
+
+test "HTTP fetch step 3: Handle Fetch returning null goes to the network, and the network's redirects never reach a service worker" {
+    const allocator = std.testing.allocator;
+    var workers: TestServiceWorkers = .{ .handles = false };
+    const request = try InternalRequest.init(allocator, "http://a.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    request.service_worker = workers.route();
+    const job = try FetchJob.create(allocator, request, false, .{});
+    defer job.destroy();
+    try std.testing.expect(try job.start() == .network);
+    try std.testing.expectEqual(@as(u32, 1), workers.asked);
+    // Step 4.2: a request that follows redirects is "none" from here: the
+    // recursive main fetch of a redirect the network answers asks no one.
+    try std.testing.expectEqual(internal_request.ServiceWorkersMode.none, request.service_workers_mode);
+
+    // A request whose mode is "none" never asks.
+    const other = try InternalRequest.init(allocator, "http://a.test/y");
+    defer other.deinit();
+    try other.setOrigin("http://a.test");
+    other.service_worker = workers.route();
+    other.service_workers_mode = .none;
+    const other_job = try FetchJob.create(allocator, other, false, .{});
+    defer other_job.destroy();
+    try std.testing.expect(try other_job.start() == .network);
+    try std.testing.expectEqual(@as(u32, 1), workers.asked);
+}
+
+test "HTTP fetch step 3.5: a service worker's response is fetch's, with no network step and its start time recorded" {
+    const allocator = std.testing.allocator;
+    var workers: TestServiceWorkers = .{};
+    const request = try InternalRequest.init(allocator, "http://a.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    request.service_worker = workers.route();
+    const job = try FetchJob.create(allocator, request, false, .{});
+    defer job.destroy();
+    const step = try job.start();
+    try std.testing.expect(step == .service_worker);
+    workers.answer(.{ .response = .{ .response = try testServiceWorkerResponse(201) } });
+    const answer = step.service_worker.take().?;
+    const done = try job.resumeServiceWorker(.{ .response = answer.response.response });
+    try std.testing.expect(done == .done);
+    var result = job.takeResult();
+    defer result.deinit();
+    try std.testing.expectEqual(@as(u16, 201), result.response.status);
+    // Main fetch step 14 filtered the service worker's new Response().
+    try std.testing.expectEqual(internal_response.ResponseType.basic, result.response.response_type);
+    try std.testing.expect(result.timing_info.final_service_worker_start_time > 0);
+}
+
+test "HTTP fetch step 3: a fallback answer goes to the network; a network error answer is fetch's" {
+    const allocator = std.testing.allocator;
+    var workers: TestServiceWorkers = .{};
+    {
+        const request = try InternalRequest.init(allocator, "http://a.test/x");
+        defer request.deinit();
+        try request.setOrigin("http://a.test");
+        request.service_worker = workers.route();
+        const job = try FetchJob.create(allocator, request, false, .{});
+        defer job.destroy();
+        const step = try job.start();
+        workers.answer(.fallback);
+        _ = step.service_worker.take().?;
+        try std.testing.expect(try job.resumeServiceWorker(.fallback) == .network);
+        try std.testing.expect(try job.resumeNetwork(testAnswer(200)) == .done);
+    }
+    {
+        const request = try InternalRequest.init(allocator, "http://a.test/x");
+        defer request.deinit();
+        try request.setOrigin("http://a.test");
+        request.service_worker = workers.route();
+        const job = try FetchJob.create(allocator, request, false, .{});
+        defer job.destroy();
+        const step = try job.start();
+        workers.answer(.network_error);
+        _ = step.service_worker.take().?;
+        try std.testing.expect(try job.resumeServiceWorker(.network_error) == .done);
+        var result = job.takeResult();
+        defer result.deinit();
+        try std.testing.expectEqual(internal_response.ResponseType.@"error", result.response.response_type);
+    }
+}
+
+test "HTTP fetch step 3.5.7: a response the request may not use is a network error" {
+    const allocator = std.testing.allocator;
+    var workers: TestServiceWorkers = .{};
+    const request = try InternalRequest.init(allocator, "http://a.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    request.mode = .same_origin;
+    request.service_worker = workers.route();
+    const job = try FetchJob.create(allocator, request, false, .{});
+    defer job.destroy();
+    const step = try job.start();
+    const cors = try testServiceWorkerResponse(200);
+    cors.response_type = .cors;
+    workers.answer(.{ .response = .{ .response = cors } });
+    const answer = step.service_worker.take().?;
+    try std.testing.expect(try job.resumeServiceWorker(.{ .response = answer.response.response }) == .done);
+    var result = job.takeResult();
+    defer result.deinit();
+    try std.testing.expectEqual(internal_response.ResponseType.@"error", result.response.response_type);
+}
+
+test "a service worker's redirect is followed by main fetch again, which asks the service worker again" {
+    const allocator = std.testing.allocator;
+    var workers: TestServiceWorkers = .{};
+    const request = try InternalRequest.init(allocator, "http://a.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    request.service_worker = workers.route();
+    const job = try FetchJob.create(allocator, request, false, .{});
+    defer job.destroy();
+    const first = try job.start();
+    const redirect = try testServiceWorkerResponse(302);
+    // Response.redirect() makes an absolute Location: a service worker's
+    // response has no URL to resolve a relative one against.
+    try redirect.header_list.append("Location", "http://a.test/y");
+    workers.answer(.{ .response = .{ .response = redirect } });
+    const answer = first.service_worker.take().?;
+    const second = try job.resumeServiceWorker(.{ .response = answer.response.response });
+    try std.testing.expect(second == .service_worker);
+    try std.testing.expectEqual(@as(u32, 2), workers.asked);
+    try std.testing.expectEqualStrings("http://a.test/y", request.currentUrl());
+    workers.answer(.{ .response = .{ .response = try testServiceWorkerResponse(200) } });
+    const final = second.service_worker.take().?;
+    try std.testing.expect(try job.resumeServiceWorker(.{ .response = final.response.response }) == .done);
+    var result = job.takeResult();
+    defer result.deinit();
+    try std.testing.expectEqual(@as(usize, 2), result.response.url_list.items.len);
+}
+
+test "a fetch ended while a service worker answers abandons the call: the late answer is freed" {
+    const allocator = std.testing.allocator;
+    var workers: TestServiceWorkers = .{};
+    const request = try InternalRequest.init(allocator, "http://a.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    request.service_worker = workers.route();
+    const job = try FetchJob.create(allocator, request, false, .{});
+    try std.testing.expect(try job.start() == .service_worker);
+    job.destroy();
+    try std.testing.expect(workers.call.?.isAbandoned());
+    workers.answer(.{ .response = .{ .response = try testServiceWorkerResponse(200) } });
 }

@@ -334,6 +334,12 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     // constructor returns - a blob URL revoked right after `new Worker(url)`
     // still runs (Blink starts the fetch in the constructor too); the rest
     // runs on the worker's own thread.
+    // "Run a worker" step 7: the worker's environment exists before its
+    // script is fetched - here, as its reserved client, which Handle Fetch
+    // may make controlled and the worker's realm adopts (Service Workers
+    // 2.5.2). Released unless the worker's thread takes it.
+    var reserved_client = dom.service_worker_clients.reserve(ctx, .dedicated_worker, worker_url);
+    defer dom.service_worker_clients.release(reserved_client);
     var fetched = workers.fetchWorkerScript(ctx.allocator, worker_url, .{
         .worker_type = worker_type,
         .requesting_origin = requesting_origin,
@@ -347,6 +353,8 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
         .policy_container = worker_host.creatorPolicyContainer(ctx),
         // Its violations are reported to the outside settings' global.
         .csp_violation_reporter = dom.csp_violations.reporterForRealm(ctx),
+        .reserved_client = reserved_client,
+        .service_worker = dom.service_worker_clients.routeOfReserved(reserved_client),
     }) catch |err| {
         // onComplete 1: script is null - a network error, a status that is
         // not ok, a MIME type that is not JavaScript - so `error` is fired at
@@ -375,6 +383,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
         },
         .inside_end = inside_end,
         .time_origin_ns = creation_time_ns,
+        .service_worker_client = reserved_client,
     };
     defer if (start.policy_container) |*container| container.deinit();
     internal.link = worker_host.startDedicatedWorker(ctx.allocator, &start) catch |err| {
@@ -382,8 +391,9 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
         queueStartFailure(instance);
         return instance;
     };
-    // The thread took the implicit port.
+    // The thread took the implicit port, and the reserved client.
     inside_end = start.inside_end;
+    reserved_client = start.service_worker_client;
     return instance;
 }
 

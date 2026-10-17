@@ -12,16 +12,33 @@
 //! sink; an environment ends only on its own thread (its realm's unloading
 //! cleanup, `environmentEnded`), so a Delivery that finds it finds it alive.
 //!
-//! Stated deviations (tmp/plans/sw1-design.md):
-//! - A realm becomes an environment when it first reaches the API (its
-//!   navigator's ServiceWorkerContainer, or a service worker global's
-//!   members), not when it is created: there is no realm-creation hook yet,
-//!   so claim() and Activate step 8 reach only realms that did.
+//! Clients at creation (batch 3): a frame's or popup's window realm, and a
+//! dedicated or shared worker's, is a client from its creation
+//! (dom.service_worker_clients, `clientCreated`), its active service worker
+//! decided then - the reserved client Handle Fetch controlled, or its
+//! creator's (SW 2.5).
+//!
+//! Stated deviations (tmp/plans/sw1-design.md, tmp/plans/sw1-b3-design.md):
+//! - The top-level page (Browser.navigate) and a javascript: URL's document
+//!   become an environment when they first reach the API (its navigator's
+//!   ServiceWorkerContainer, or a service worker global's members): no
+//!   realm-creation hook reaches them, and the top-level page's navigation
+//!   goes to no service worker.
+//! - A frame's initial about:blank client ends when its document is
+//!   unloaded, and the document that replaces it - in the same Window - is a
+//!   client of its own, the navigation's reserved client (Chrome's model:
+//!   wpt.fyi 2026-10-16, about-blank-replacement.https.html Chrome 2/7,
+//!   Firefox 7/7, Safari 4/7; clients-get-resultingClientId.https.html 6/6 in
+//!   all three, which Firefox's reuse of the about:blank client also passes).
 //! - A window realm whose document is not fully active - a removed frame's,
-//!   a closed window's - becomes no environment: what it calls is rejected
-//!   with an "InvalidStateError" (Chromium's answer for a detached context),
-//!   and the promises it was waiting on when its environment ended stay
-//!   pending (nothing runs in a realm that has gone).
+//!   a closed window's - or whose `closed` is already true (close() was
+//!   called and its traversable is closing) becomes no environment: what it
+//!   calls is rejected with an "InvalidStateError" (Chromium's answer for a
+//!   detached context), and the promises it was waiting on when its
+//!   environment ended stay pending (nothing runs in a realm that has gone).
+//! - ServiceWorker.postMessage() sends as the ServiceWorker object's
+//!   relevant settings object, not the incumbent (`postMessageToWorker`):
+//!   what all three browsers do.
 //!
 //! Spec: https://w3c.github.io/ServiceWorker/#client-context
 
@@ -369,6 +386,20 @@ pub const RealmEnvironment = struct {
                 defer array.release();
                 try engine.resolvePromise(&capability, array.borrow());
             },
+            // WindowClient.navigate() step 7, on this client's loop: 7.2, a
+            // document that is not fully active, and 7.4, a navigation that
+            // throws, reject; 7.3 navigates the browsing context as its
+            // document's Location would.
+            .navigate => |m| {
+                const navigated = blk: {
+                    const global = globalOf(self.realm) orelse break :blk false;
+                    if (!dom.document_activity.fullyActive(global, runtime.SlabAllocator.generationOf(global))) break :blk false;
+                    const location = interfaces.Window.get_location(global) catch break :blk false;
+                    interfaces.Location.call_assign(location, m.url) catch break :blk false;
+                    break :blk true;
+                };
+                if (!navigated) self.manager.navigateEnded(m.id);
+            },
             // get(id): Resolve Get Client Promise's resolution, or undefined.
             .resolve_client => |*m| {
                 var capability = self.takePromise(m.promise) orelse return;
@@ -580,7 +611,22 @@ pub fn environmentOf(realm: runtime.Context, create: bool) ?*RealmEnvironment {
     const manager = Manager.of(realm) orelse return null;
     if (manager.endpointOf(realm)) |endpoint| {
         const found = RealmEnvironment.ofEndpoint(endpoint);
-        return if (found.ended) null else found;
+        if (found.ended) return null;
+        // A window whose document is no longer fully active - a closed
+        // popup's, a removed frame's, before its environment ends - is no
+        // environment to reach (stated deviation 2). Nor is one whose
+        // `closed` is already true - close() set its traversable's is
+        // closing, and the task that definitely closes it is queued: a job
+        // started now would settle its promise after that task, through a
+        // realm that has gone, and the promise would never settle
+        // (register-closed-window.https.html, which all three browsers
+        // pass, awaits register() on such a window).
+        if (found.kind == .window) {
+            const global = globalOf(realm) orelse return null;
+            if (!dom.document_activity.fullyActive(global, runtime.SlabAllocator.generationOf(global))) return null;
+            if (interfaces.Window.get_closed(global) catch true) return null;
+        }
+        return found;
     }
     if (!create) return null;
     return makeEnvironment(manager, realm) catch |err| {
@@ -592,6 +638,55 @@ pub fn environmentOf(realm: runtime.Context, create: bool) ?*RealmEnvironment {
 fn globalOf(realm: runtime.Context) ?*runtime.Instance {
     const record = realm.getRealm() orelse return null;
     return @ptrCast(@alignCast(record.global_object orelse return null));
+}
+
+/// What a realm's environment is made with.
+const EnvironmentValues = struct {
+    kind: registry_mod.EnvironmentKind,
+    origin: []const u8,
+    creation_url: []const u8,
+    secure_context: bool,
+    service_worker_id: u64 = 0,
+    frame_type: registry_mod.FrameType = .none,
+    client_queue_enabled: bool,
+};
+
+/// A RealmEnvironment for `realm`, not yet in the manager (its id 0).
+fn newRealmEnvironment(manager: *Manager, realm: runtime.Context, values: EnvironmentValues) !*RealmEnvironment {
+    const sink = realm.task_sink orelse return error.NoEventLoop;
+    const allocator = manager.allocator;
+    const self = try allocator.create(RealmEnvironment);
+    errdefer allocator.destroy(self);
+    const owned_origin = try allocator.dupe(u8, values.origin);
+    errdefer allocator.free(owned_origin);
+    const owned_url = try allocator.dupe(u8, values.creation_url);
+    errdefer allocator.free(owned_url);
+    self.* = .{
+        .endpoint = .{
+            .sink = sink.retain(),
+            .deliver = RealmEnvironment.deliver,
+            .window_data = endpointWindowData,
+            .window_data_now = endpointWindowDataNow,
+            .realm = realm,
+        },
+        .allocator = allocator,
+        .manager = manager,
+        .realm = realm,
+        .id = 0,
+        .kind = values.kind,
+        .origin = owned_origin,
+        .creation_url = owned_url,
+        .service_worker_id = values.service_worker_id,
+        .frame_type = values.frame_type,
+        .client_queue_enabled = values.client_queue_enabled,
+    };
+    return self;
+}
+
+/// Free a RealmEnvironment the manager never took.
+fn discardRealmEnvironment(self: *RealmEnvironment) void {
+    self.ended = true;
+    self.destroy();
 }
 
 fn makeEnvironment(manager: *Manager, realm: runtime.Context) !?*RealmEnvironment {
@@ -611,8 +706,7 @@ fn makeEnvironment(manager: *Manager, realm: runtime.Context) !?*RealmEnvironmen
     if (kind != .window) {
         if (html.worker_host.scopeClosing(realm) orelse false) return null;
     }
-    const sink = realm.task_sink orelse return null;
-    const allocator = manager.allocator;
+    if (realm.task_sink == null) return null;
     const settings = dom.global_settings.of(global) orelse return null;
     const origin = try settings.origin(global);
     defer realm.allocator.free(origin);
@@ -637,41 +731,150 @@ fn makeEnvironment(manager: *Manager, realm: runtime.Context) !?*RealmEnvironmen
         .service_worker => false,
     };
 
-    const self = try allocator.create(RealmEnvironment);
-    errdefer allocator.destroy(self);
-    const owned_origin = try allocator.dupe(u8, origin);
-    errdefer allocator.free(owned_origin);
-    const owned_url = try allocator.dupe(u8, creation_url);
-    errdefer allocator.free(owned_url);
-    self.* = .{
-        .endpoint = .{
-            .sink = sink.retain(),
-            .deliver = RealmEnvironment.deliver,
-            .window_data = endpointWindowData,
-            .realm = realm,
-        },
-        .allocator = allocator,
-        .manager = manager,
-        .realm = realm,
-        .id = 0,
+    const self = try newRealmEnvironment(manager, realm, .{
         .kind = kind,
-        .origin = owned_origin,
-        .creation_url = owned_url,
+        .origin = origin,
+        .creation_url = creation_url,
+        .secure_context = is_secure,
         .service_worker_id = service_worker_id,
         .frame_type = frame_type,
         .client_queue_enabled = queue_enabled,
-    };
-    errdefer sink.release();
+    });
+    errdefer discardRealmEnvironment(self);
     self.id = try manager.addEnvironment(.{
         .kind = kind,
-        .origin = owned_origin,
-        .creation_url = owned_url,
+        .origin = self.origin,
+        .creation_url = self.creation_url,
         .secure_context = is_secure,
         .frame_type = frame_type,
         .service_worker_id = service_worker_id,
         .endpoint = &self.endpoint,
     });
     return self;
+}
+
+// ============================================================================
+// Clients at creation (dom.service_worker_clients)
+// ============================================================================
+
+const ClientKind = dom.service_worker_clients.ClientKind;
+
+fn environmentKindOf(kind: ClientKind) registry_mod.EnvironmentKind {
+    return switch (kind) {
+        .window => .window,
+        .dedicated_worker => .dedicated_worker,
+        .shared_worker => .shared_worker,
+    };
+}
+
+/// dom.service_worker_clients' `reserve`, on the creator's thread: the
+/// reserved client of a navigation or a worker made from `creator`. A
+/// worker's blob: script inherits its owner's active service worker when it
+/// is of the owner's origin (SW 2.5.2: decided here, where the owner is).
+pub fn reserveClient(creator: runtime.Context, kind: ClientKind, url: []const u8) ?*anyopaque {
+    const manager = Manager.of(creator) orelse return null;
+    // The creator is a client itself (its navigation request's client).
+    const creator_environment = environmentOf(creator, true);
+    const creator_id: u64 = if (creator_environment) |e| e.id else 0;
+    var inherited: u64 = 0;
+    if (kind != .window and std.mem.startsWith(u8, url, "blob:")) {
+        if (creator_environment) |owner| {
+            const origin = scope_mod.originOf(manager.allocator, url["blob:".len..]) catch null;
+            defer if (origin) |o| manager.allocator.free(o);
+            if (origin) |o| inherited = manager.controllerOfSameOrigin(owner.id, o);
+        }
+    }
+    const handle = manager.reserveClient(environmentKindOf(kind), creator_id, inherited) orelse return null;
+    return handle;
+}
+
+/// dom.service_worker_clients' `route_of_reserved`.
+pub fn routeOfReserved(reserved: *anyopaque) ?@import("fetch").internal.ServiceWorkerRoute {
+    const handle: *manager_mod.ReservedClient = @ptrCast(@alignCast(reserved));
+    return handle.manager.routeOfReserved();
+}
+
+/// dom.service_worker_clients' `release`.
+pub fn releaseReserved(reserved: *anyopaque) void {
+    const handle: *manager_mod.ReservedClient = @ptrCast(@alignCast(reserved));
+    handle.manager.releaseReserved(handle);
+}
+
+/// dom.service_worker_clients' `registration_count`: the registrations in
+/// the map of the Browser whose scope is `scope` (none made: 0).
+pub fn registrationCount(scope: *runtime.BrowserScope) usize {
+    const manager = scope.existing(Manager) orelse return 0;
+    return manager.registrationCount();
+}
+
+/// dom.service_worker_clients' `route_for_global`: "populate request from
+/// client" - the route of a controlled client's requests.
+pub fn routeForGlobal(global: *runtime.Instance) ?@import("fetch").internal.ServiceWorkerRoute {
+    const manager = Manager.existingOf(global.ctx) orelse return null;
+    return manager.routeForRealm(global.ctx);
+}
+
+/// dom.service_worker_clients' `created`: `realm` is a service worker client
+/// from now on, before any of its script runs (SW 2.5.1, 2.5.2). An
+/// environment the realm still has - its previous document's - ends first.
+/// A realm of an opaque origin is no client (as `environmentOf` decides).
+pub fn clientCreated(realm: runtime.Context, init: dom.service_worker_clients.ClientInit) void {
+    const reserved: ?*manager_mod.ReservedClient = if (init.reserved) |r| @ptrCast(@alignCast(r)) else null;
+    const manager = Manager.of(realm) orelse {
+        if (reserved) |r| r.manager.releaseReserved(r);
+        return;
+    };
+    const global_for_navigable = globalOf(realm);
+    const navigable: usize = blk: {
+        if (init.kind != .window) break :blk 0;
+        const g = global_for_navigable orelse break :blk 0;
+        const browsing_context = dom.browser_state.browsingContextOf(g) orelse break :blk 0;
+        break :blk @intFromPtr(browsing_context);
+    };
+    if (std.mem.eql(u8, init.origin, "null")) {
+        if (reserved) |r| manager.releaseReserved(r);
+        // A navigate() that brought this document resolves with null.
+        manager.navigatedToOpaque(navigable);
+        return;
+    }
+    if (manager.endpointOf(realm)) |endpoint| RealmEnvironment.ofEndpoint(endpoint).end();
+    const kind = environmentKindOf(init.kind);
+    const global = globalOf(realm);
+    const frame_type: registry_mod.FrameType = if (kind == .window) (if (global) |g| frameTypeOf(g) else .none) else .none;
+    const self = newRealmEnvironment(manager, realm, .{
+        .kind = kind,
+        .origin = init.origin,
+        .creation_url = init.creation_url,
+        .secure_context = init.secure_context,
+        .frame_type = frame_type,
+        // A window's queue is enabled after DOMContentLoaded ("the end"
+        // step 6.4); a worker's once its script has run, before any task.
+        .client_queue_enabled = kind != .window,
+    }) catch |err| {
+        log.debug("no service worker client for a new realm: {s}", .{@errorName(err)});
+        if (reserved) |r| manager.releaseReserved(r);
+        return;
+    };
+    const creator: u64 = if (init.creator) |c| blk: {
+        const found = environmentOf(c, false) orelse break :blk 0;
+        break :blk found.id;
+    } else 0;
+    if (global) |g| manager.noteCookieJar(dom.global_settings.cookieJarOf(g));
+    self.id = manager.createClient(.{
+        .kind = kind,
+        .origin = self.origin,
+        .creation_url = self.creation_url,
+        .secure_context = init.secure_context,
+        .frame_type = frame_type,
+        .endpoint = &self.endpoint,
+        .reserved = reserved,
+        .creator = creator,
+        .navigable = navigable,
+    }) catch |err| {
+        log.debug("no service worker client for a new realm: {s}", .{@errorName(err)});
+        discardRealmEnvironment(self);
+        return;
+    };
 }
 
 /// Whether the document of the Window `global` is still loading (its
@@ -739,6 +942,16 @@ fn endpointWindowData(endpoint: *manager_mod.Endpoint, allocator: std.mem.Alloca
     if (self.ended or self.kind != .window) return null;
     var task: WindowDataInRealm = .{ .realm = self.realm, .allocator = allocator };
     engine.runTaskInRealm(self.realm, WindowDataInRealm.steps, &task) catch return null;
+    return task.result;
+}
+
+/// The endpoint's window data read at once, on the realm's thread, from
+/// inside script that blocks it (no task boundary, no checkpoint).
+fn endpointWindowDataNow(endpoint: *manager_mod.Endpoint, allocator: std.mem.Allocator) ?WindowData {
+    const self = RealmEnvironment.ofEndpoint(endpoint);
+    if (self.ended or self.kind != .window) return null;
+    var task: WindowDataInRealm = .{ .realm = self.realm, .allocator = allocator };
+    engine.runInRealm(self.realm, WindowDataInRealm.steps, &task) catch return null;
     return task.result;
 }
 
@@ -1097,8 +1310,20 @@ pub fn claim(clients: *runtime.Instance) !runtime.JSValue {
 pub fn postMessageToWorker(service_worker: *runtime.Instance, data: *const objects.ServiceWorkerObject, message: runtime.JSValue, transfer: []const runtime.JSValue) !void {
     const manager = Manager.of(service_worker.ctx) orelse return;
     const realm = engine.currentRealm() orelse service_worker.ctx;
-    // 2-3. incumbentSettings and incumbentGlobal.
-    const incumbent = engine.incumbentRealm() orelse service_worker.ctx;
+    // 2-3. incumbentSettings and incumbentGlobal. Deviation, the browsers'
+    // (AGENTS.md golden rule 2): the ServiceWorker object's relevant
+    // settings object, not the incumbent - the client whose ServiceWorker
+    // object it is sends the message. A top-level page calling
+    // frame.contentWindow.navigator.serviceWorker.controller.postMessage()
+    // sends it as the frame: ServiceWorkerGlobalScope/
+    // extendable-message-event.https.html "Post an extendable message from a
+    // nested client" asserts the event's source is the frame's WindowClient
+    // (its URL, frameType "nested") and passes in Chrome, Firefox and Safari
+    // (wpt.fyi 2026-10-16, 4/4 in each); the incumbent, the top-level page,
+    // fails it. Chromium posts through the object's own container host,
+    // Gecko from its owner window's client, WebKit from its script
+    // execution context.
+    const incumbent = service_worker.ctx;
     // 4. StructuredSerializeWithTransfer(message, options["transfer"]);
     // rethrow any exceptions.
     const port_message = try html.worker_host.serializePortMessage(realm, message, transfer, manager.allocator);
@@ -1248,12 +1473,14 @@ pub fn focusClient(window_client: *runtime.Instance) !runtime.JSValue {
     return rejected(window_client.ctx, .invalid_access_error, "Not allowed to focus a window: no window has transient activation");
 }
 
-/// WindowClient.navigate(url) steps 1-4, for the WindowClient whose client
-/// has the id `client_id`. Steps 5-8 navigate the client's browsing context
-/// from its own event loop, which is the navigation integration of batch 3
-/// (tmp/plans/lane-sw1-handoff.md): until then a client this service worker
-/// controls answers a "NotSupportedError" - a promise that settles, never
-/// one that waits for a navigation nothing makes.
+/// WindowClient.navigate(url), for the WindowClient whose client has the id
+/// `client_id`: steps 1-4 here; 5-7 navigate the client's browsing context
+/// from its own event loop (the manager's `navigate` Delivery, as its
+/// Location's assign() would), and the promise settles with the browsing
+/// context's next window client - null when it is of another origin (7.9) -
+/// as Chromium answers once the navigation has committed
+/// (ServiceWorkerClientUtils' NavigateClient waits for the navigation to
+/// finish).
 pub fn navigateClient(window_client: *runtime.Instance, client_id: []const u8, url: []const u8) !runtime.JSValue {
     const realm = window_client.ctx;
     const allocator = realm.allocator;
@@ -1268,5 +1495,9 @@ pub fn navigateClient(window_client: *runtime.Instance, client_id: []const u8, u
     if (!environment.manager.clientControlledBy(client_id, environment.service_worker_id)) {
         return rejected(realm, .type_error, "The client is not controlled by this service worker");
     }
-    return rejected(realm, .not_supported_error, "Navigating a client from its service worker is not supported yet");
+    // 5-8. In parallel - the manager's, its answer a task here.
+    const made = try environment.newPromise();
+    errdefer made.promise.release();
+    try environment.manager.navigateClient(client_id, parsed, environment.id, environment.origin, made.id);
+    return made.promise.take();
 }
