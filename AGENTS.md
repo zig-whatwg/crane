@@ -753,27 +753,32 @@ generation check is only a teardown net. Collected trees are freed in slices fro
 2. **Browsers decide - unless they are only behind the spec.** Where the
    browsers and the spec text disagree, find out WHY before choosing (the
    user, 2026-10-08, refined 2026-10-17):
-   - **The browsers have not caught up yet** - the spec changed and they still
-     ship the older behaviour, with no sign they reject the change:
-     implement the NEWER spec. Evidence of a lag: the spec change was merged
-     with implementer support (WHATWG PRs list an implementation bug per
-     engine), those engine bugs are open, not WontFix, and WPT was updated to
-     the new behaviour.
-   - **The browsers have intentionally not implemented it** - a negative or
-     deferred standards position (mozilla/standards-positions,
-     WebKit/standards-positions), a WontFix engine bug, an implementer's
-     objection on the spec PR or issue, or long-standing behaviour all three
-     keep on purpose: do what the browsers do. That intent weighs heavily.
-   - **Neither applies, or the spec text never said otherwise** - the
-     browsers simply differ from the spec: do what the browsers do.
+   - **The spec was updated and at least one of Chrome, Firefox and Safari
+     ships the newer behaviour:** implement the NEWER spec, even when the
+     other two do not ("if one implements but two don't then we implement").
+   - **The spec was updated and none of the three ships it yet, because they
+     have not caught up:** implement the NEWER spec. Evidence of a lag: the
+     change was merged with implementer support (WHATWG PRs list an
+     implementation bug per engine), those engine bugs are open, not WontFix,
+     and WPT was updated to the new behaviour.
+   - **The spec was updated and ALL THREE have intentionally not implemented
+     it:** do what the browsers do. This needs all three aligned, each with
+     evidence of intent - a negative or deferred standards position
+     (mozilla/standards-positions, WebKit/standards-positions), a WontFix
+     engine bug, an implementer's objection on the spec PR or issue. One
+     browser declining while another merely lags is not alignment: implement
+     the newer spec.
+   - **No newer spec is involved** - the browsers simply differ from the
+     spec text: do what the browsers do. Where they split, follow the
+     majority of Chrome, Firefox and Safari and say so; with no majority, ask
+     the integrator.
 
    Whichever you choose, state it in a comment citing the evidence: the
    wpt.fyi results (Chrome, Firefox, Safari), the engine code, the spec
-   change and its implementation bugs, the standards positions. Where the
-   browsers split, follow the majority of Chrome, Firefox and Safari and say
-   so; with no majority, ask the integrator. A browser that does not ship the
-   feature at all does not count. Not a licence to skip spec work: where they
-   agree with the spec, the spec's steps are the implementation.
+   change and its implementation bugs, the standards positions. A browser
+   that does not ship the feature at all does not count toward a majority.
+   Not a licence to skip spec work: where they agree with the spec, the
+   spec's steps are the implementation.
 3. **Performance matters**, but spec compliance comes first. Never sacrifice
    correctness for speed.
 4. **Commit after every logical unit of work.** A feature, a fix, a passing
