@@ -56,6 +56,8 @@ pub const FileView = struct {
     /// The run its record came from.
     run: ?[]const u8,
     has_detail: bool,
+    /// Its entry in tools/wpt_gate_exemptions.txt, when it has one.
+    exemption: ?*const model.Exemption = null,
 };
 
 pub const DirView = struct {
@@ -91,6 +93,8 @@ pub const Site = struct {
     site_url: []const u8,
     /// The social card's path under the site, with its cache-busting query.
     card_ref: []const u8,
+    /// tools/wpt_gate_exemptions.txt's entries, in the file's order.
+    exemptions: []const model.Exemption = &.{},
 
     pub fn root(s: *const Site) *const DirView {
         return s.dirs.getPtr("").?;
@@ -146,6 +150,7 @@ pub fn gateLabel(g: model.Gate) []const u8 {
         .timeout => "TIMEOUT",
         .err => "ERROR",
         .crash => "CRASH",
+        .exempt => "Exempt",
     };
 }
 
@@ -163,7 +168,7 @@ fn markClass(status: []const u8) []const u8 {
     return "s-other";
 }
 
-const reserved_ids = [_][]const u8{ "status", "contents", "history", "main", "toc", "gens", "chart", "hl-label", "toc-title" };
+const reserved_ids = [_][]const u8{ "status", "exempt", "contents", "history", "main", "toc", "gens", "chart", "hl-label", "toc-title" };
 
 /// The index section id of a suite ("dom/" -> "dom"), `suite-` prefixed
 /// when it would collide with one of the page's own ids.
@@ -424,11 +429,12 @@ fn writeFigures(w: W, label: []const u8, f: Figures) Error!void {
 
 const Seg = struct { class: []const u8, v: u64 };
 
-fn segments(t: model.Totals) [5]Seg {
+fn segments(t: model.Totals) [6]Seg {
     return .{
         .{ .class = "m-clean", .v = t.clean },
         .{ .class = "m-partial", .v = t.partial },
         .{ .class = "m-empty", .v = t.empty },
+        .{ .class = "m-exempt", .v = t.exempt },
         .{ .class = "m-blocking", .v = t.blocking() },
         .{ .class = "m-unrun", .v = t.unrun },
     };
@@ -453,7 +459,12 @@ fn writeStandingWords(w: W, t: model.Totals) Error!void {
     try html.num(w, t.empty);
     try w.writeAll(" with no subtests, ");
     try html.num(w, t.unrun);
-    try w.writeAll(" not run, of ");
+    try w.writeAll(" not run, ");
+    if (t.exempt > 0) {
+        try html.num(w, t.exempt);
+        try w.writeAll(" exempt, ");
+    }
+    try w.writeAll("of ");
     try html.plural(w, t.files, "file", "files");
 }
 
@@ -474,6 +485,7 @@ fn writeConformance(w: W, label: []const u8, t: model.Totals) Error!void {
         .{ .key = "blocking", .label = "Blocking", .v = t.blocking(), .always = true },
         .{ .key = "empty", .label = "No subtests", .v = t.empty, .always = false },
         .{ .key = "unrun", .label = "Not run", .v = t.unrun, .always = false },
+        .{ .key = "exempt", .label = "Exempt", .v = t.exempt, .always = false },
     };
     for (rows) |r| {
         if (!r.always and r.v == 0) continue;
@@ -643,6 +655,7 @@ pub fn writeIndex(w: W, site: *const Site) Error!void {
     try w.writeAll("</span></a></dd></div>\n</dl>\n</header>\n");
 
     try writeStatus(w, site, tot);
+    try writeExempt(w, site);
     try writeContents(w, site);
     for (site.suites, 1..) |s, i| try writeSuite(w, site, s, i);
     try writeHistory(w, site, tot);
@@ -777,7 +790,13 @@ fn writeStatus(w: W, site: *const Site, tot: model.Totals) Error!void {
     }
     try w.writeAll(". A file <strong>blocks</strong> the 0.1 gate when it times out, errors, crashes or finishes with no subtest passing (<span class=\"st st-issue\">TIMEOUT</span>, <span class=\"st st-issue\">ERROR</span>, <span class=\"st st-issue\">CRASH</span>, <span class=\"st st-issue\">NONE-PASSED</span>): ");
     try html.plural(w, tot.blocking(), "file blocks", "files block");
-    try w.writeAll(" today. Per-subtest detail comes from the runner&rsquo;s result streams: ");
+    try w.writeAll(" today.");
+    if (site.exemptions.len > 0) {
+        try w.writeAll(" Not counted among them: ");
+        try html.plural(w, tot.exempt, "file that would block is", "files that would block are");
+        try w.writeAll(" <a href=\"#exempt\">exempt</a>, because all three of Chrome, Firefox and Safari intentionally deviate from the spec they test.");
+    }
+    try w.writeAll(" Per-subtest detail comes from the runner&rsquo;s result streams: ");
     if (site.detail_files > 0) {
         try html.num(w, site.detail_files);
         try w.writeAll(" of ");
@@ -786,7 +805,52 @@ fn writeStatus(w: W, site: *const Site, tot: model.Totals) Error!void {
     } else {
         try w.writeAll("no file has it in this generation yet, so each file&rsquo;s page gives its counts.");
     }
-    try w.writeAll("</p>\n</div>\n<div class=\"note\" role=\"note\">\n<p class=\"note-label\">How to read a section</p>\n<p>Each suite is a numbered section that opens with its own subtest numbers. Its <em>Conformance</em> box counts files by standing; its <em>Tests</em> tables link to a page for every directory and every test file, and a test file&rsquo;s page lists its subtests. Everything has a permanent link, <span class=\"self-demo\" aria-hidden=\"true\">&para;</span>.</p>\n<dl class=\"legend\" aria-label=\"File standings\">\n<div><dt><span class=\"key key-clean\"></span>Clean</dt><dd>every reported subtest passed</dd></div>\n<div><dt><span class=\"key key-partial\"></span>With failures</dt><dd>some subtests passed, some did not</dd></div>\n<div><dt><span class=\"key key-blocking\"></span>Blocking</dt><dd>NONE-PASSED, TIMEOUT, ERROR, CRASH</dd></div>\n<div><dt><span class=\"key key-empty\"></span>No subtests</dt><dd>the file ran and reported none</dd></div>\n<div><dt><span class=\"key key-unrun\"></span>Not run</dt><dd>no result yet</dd></div>\n</dl>\n</div>\n</section>\n");
+    try w.writeAll("</p>\n</div>\n<div class=\"note\" role=\"note\">\n<p class=\"note-label\">How to read a section</p>\n<p>Each suite is a numbered section that opens with its own subtest numbers. Its <em>Conformance</em> box counts files by standing; its <em>Tests</em> tables link to a page for every directory and every test file, and a test file&rsquo;s page lists its subtests. Everything has a permanent link, <span class=\"self-demo\" aria-hidden=\"true\">&para;</span>.</p>\n<dl class=\"legend\" aria-label=\"File standings\">\n<div><dt><span class=\"key key-clean\"></span>Clean</dt><dd>every reported subtest passed</dd></div>\n<div><dt><span class=\"key key-partial\"></span>With failures</dt><dd>some subtests passed, some did not</dd></div>\n<div><dt><span class=\"key key-blocking\"></span>Blocking</dt><dd>NONE-PASSED, TIMEOUT, ERROR, CRASH</dd></div>\n<div><dt><span class=\"key key-empty\"></span>No subtests</dt><dd>the file ran and reported none</dd></div>\n<div><dt><span class=\"key key-unrun\"></span>Not run</dt><dd>no result yet</dd></div>\n");
+    if (site.exemptions.len > 0) try w.writeAll("<div><dt><span class=\"key key-exempt\"></span>Exempt</dt><dd>would block, but all three browsers intentionally deviate from the spec it tests</dd></div>\n");
+    try w.writeAll("</dl>\n</div>\n</section>\n");
+}
+
+/// One exemption's evidence: what the browsers do instead, the spec, and
+/// each browser's wpt.fyi result and evidence of intent.
+fn writeEvidence(w: W, e: *const model.Exemption) Error!void {
+    try w.writeAll("<p>");
+    try html.text(w, e.why);
+    try w.writeAll("</p>\n<dl class=\"evidence\"><div><dt>Spec</dt><dd><a href=\"");
+    try html.text(w, e.spec);
+    try w.writeAll("\">");
+    try html.text(w, e.spec);
+    try w.writeAll("</a></dd></div>");
+    inline for (comptime std.enums.values(model.Browser)) |b| {
+        const i = @intFromEnum(b);
+        try w.print("<div><dt>{s}</dt><dd>", .{b.label()});
+        try html.text(w, e.result[i]);
+        try w.writeAll("; intent: <a href=\"");
+        try html.text(w, e.intent[i]);
+        try w.writeAll("\">");
+        try html.text(w, e.intent[i]);
+        try w.writeAll("</a></dd></div>");
+    }
+    try w.writeAll("</dl>\n");
+}
+
+/// The exempt group: every file tools/wpt_gate_exemptions.txt lists, with its
+/// evidence. Written only when the file lists one, so an empty list changes
+/// no byte of the page.
+fn writeExempt(w: W, site: *const Site) Error!void {
+    if (site.exemptions.len == 0) return;
+    try w.writeAll("<section class=\"front\" id=\"exempt\" aria-labelledby=\"exempt-h\">\n<h2 id=\"exempt-h\">Exempt from the gate</h2>\n<div class=\"front-prose\">\n<p>These files are omitted from the blocking count: all three of Chrome, Firefox and Safari intentionally deviate from the spec each tests, each with evidence of intent (a standards position, a WontFix bug or an implementer&rsquo;s objection), and Crane does as they do. A listed file that does not block keeps its own standing.</p>\n<ol class=\"exempt-list\">\n");
+    for (site.exemptions) |*e| {
+        try w.writeAll("<li><a href=\"");
+        try html.href(w, e.path);
+        try w.writeAll("/\"><code>");
+        try html.text(w, e.path);
+        try w.writeAll("</code></a> ");
+        for (site.files) |f| if (std.mem.eql(u8, f.path, e.path)) try gateSpan(w, f.gate);
+        try w.writeAll("\n");
+        try writeEvidence(w, e);
+        try w.writeAll("</li>\n");
+    }
+    try w.writeAll("</ol>\n</div>\n</section>\n");
 }
 
 fn writeContents(w: W, site: *const Site) Error!void {
@@ -1077,6 +1141,11 @@ pub fn writeFilePage(w: W, site: *const Site, f: *const FileView, runs: []const 
     try w.writeAll("\">");
     try html.path(w, f.path);
     try w.writeAll("</a></dd></div>\n</dl>\n");
+    if (f.exemption) |e| {
+        try w.writeAll("<div class=\"note\" role=\"note\"><p class=\"note-label\">Exempt from the 0.1 gate</p>\n");
+        try writeEvidence(w, e);
+        try w.writeAll("</div>\n");
+    }
     if (f.message) |m| {
         try w.writeAll("<div class=\"harness\"><p class=\"harness-label\">Harness message</p><pre class=\"msg\">");
         try html.text(w, m);

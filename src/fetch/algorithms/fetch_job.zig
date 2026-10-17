@@ -583,12 +583,13 @@ pub const FetchJob = struct {
             opaque_timing = @import("../internal/fetch_timing.zig").createOpaqueTimingInfo(self.allocator, &self.timing_info);
             timing_info = &opaque_timing.?;
             cache_state = "";
-            // Browser deviation from Fetch 4.2.4 / Resource Timing 3.5.1:
-            // Chrome and Safari still hide body sizes without TAO, even
-            // for CORS responses (WPT body-size-cross-origin). Metadata
-            // such as a CORS response's content encoding stays visible.
-            body_info.encoded_size = 0;
-            body_info.decoded_size = 0;
+            // Body sizes are CORS-protected, not TAO-protected (whatwg/fetch
+            // PR #1556, 2023-01-25): a CORS response's body info stays, and
+            // only the opaque filters below hide it. Firefox 157 ships it
+            // (resource-timing/body-size-cross-origin.https.html 6/6; Chrome
+            // 154 4/6, Safari 27 3/6 at wpt.fyi cc74d2669f). Golden rule 2 as
+            // refined 2026-10-17: a newer spec one browser ships wins
+            // (gr2audit D4).
         }
         // 4.2.4 reads the filtered response's body info. Both opaque and
         // opaque-redirect filters hide it, including a same-origin manual

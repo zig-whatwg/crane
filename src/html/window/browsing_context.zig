@@ -234,6 +234,17 @@ pub const BrowsingContext = struct {
     /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#one-permitted-sandboxed-navigator
     one_permitted_sandboxed_navigator: ?*const BrowsingContext = null,
 
+    /// The `iframe` element referrer policy its active document was created
+    /// with: navigationParams's (navigate step 8's target snapshot params,
+    /// taken as the navigation started), or for the initial about:blank
+    /// document its embedder's referrerpolicy attribute then ("create a new
+    /// browsing context and document" step 16). Empty for a top-level
+    /// traversable and any container that is not an iframe. The internal
+    /// ancestor origin objects list creation steps 8-9 read it
+    /// (Location.ancestorOrigins).
+    /// Spec: https://html.spec.whatwg.org/multipage/document-sequences.html#internal-ancestor-origin-objects-list-creation-steps
+    ancestor_origins_policy: @import("fetch").internal.ReferrerPolicy = .empty,
+
     // === Cross-Origin Isolation (HTML Standard §7.2.5) ===
 
     /// Cross-Origin-Opener-Policy value

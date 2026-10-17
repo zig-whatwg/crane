@@ -96,7 +96,7 @@ test "resource timing hides the status of a same-origin manual redirect" {
     try std.testing.expectEqual(@as(u16, 0), report.status);
 }
 
-fn bodyReport(manual: bool) !Report {
+fn bodyReport(manual: bool, tao: bool) !Report {
     const allocator = std.testing.allocator;
     const request = try fetch.internal.InternalRequest.init(allocator, if (manual) "http://a.test/redirect" else "http://b.test/encoded");
     defer request.deinit();
@@ -109,10 +109,11 @@ fn bodyReport(manual: bool) !Report {
     const job = try fetch.algorithms.FetchJob.create(allocator, request, false, .{});
     defer job.destroy();
     try std.testing.expect(try job.start() == .network);
-    const headers = try allocator.alloc(fetch.network.NetworkResponse.Header, 3);
+    const headers = try allocator.alloc(fetch.network.NetworkResponse.Header, if (tao) 4 else 3);
     headers[0] = .{ .name = try allocator.dupe(u8, if (manual) "Location" else "Access-Control-Allow-Origin"), .value = try allocator.dupe(u8, if (manual) "http://a.test/target" else "*") };
     headers[1] = .{ .name = try allocator.dupe(u8, "Content-Type"), .value = try allocator.dupe(u8, "text/plain") };
     headers[2] = .{ .name = try allocator.dupe(u8, "Content-Encoding"), .value = try allocator.dupe(u8, "gzip") };
+    if (tao) headers[3] = .{ .name = try allocator.dupe(u8, "Timing-Allow-Origin"), .value = try allocator.dupe(u8, "*") };
     const done = try job.resumeNetwork(.{
         .allocator = allocator,
         .status = if (manual) 302 else 200,
@@ -133,20 +134,23 @@ fn bodyReport(manual: bool) !Report {
 }
 
 test "opaque redirect timing hides internal body metadata" {
-    const report = try bodyReport(true);
+    const report = try bodyReport(true, false);
     try std.testing.expect(report.content_type_empty);
     try std.testing.expect(report.content_encoding_empty);
     try std.testing.expectEqual(@as(u64, 0), report.encoded_size);
     try std.testing.expectEqual(@as(u64, 0), report.decoded_size);
 }
 
-test "CORS timing without TAO retains content encoding but follows browser size gating" {
-    const report = try bodyReport(false);
+test "CORS timing without TAO exposes body sizes: they are CORS-protected, not TAO-protected" {
+    // whatwg/fetch PR #1556 (2023-01-25), which Firefox 157 ships: a CORS
+    // response's body info reaches resource timing whatever its
+    // Timing-Allow-Origin; only an opaque response's is hidden.
+    const report = try bodyReport(false, false);
     try std.testing.expect(report.content_encoding_gzip);
     try std.testing.expect(!report.content_type_empty);
     try std.testing.expectEqual(@as(u16, 200), report.status);
-    // Chrome 154 and Safari 27 still require TAO for CORS body sizes;
-    // Firefox 157 follows the newer CORS-only rule. Keep the majority.
-    try std.testing.expectEqual(@as(u64, 0), report.encoded_size);
-    try std.testing.expectEqual(@as(u64, 0), report.decoded_size);
+    try std.testing.expectEqual(@as(u64, "decoded".len), report.decoded_size);
+    const with_tao = try bodyReport(false, true);
+    try std.testing.expectEqual(with_tao.encoded_size, report.encoded_size);
+    try std.testing.expectEqual(with_tao.decoded_size, report.decoded_size);
 }
