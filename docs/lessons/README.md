@@ -441,6 +441,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Created Blob types do not use constructor normalization](spec-compliance-created-blob-types-do-not-use-constructor-normalization.md) - Follow the creating algorithm's type rules, and name whether each MIME value is a string or header bytes.
 - [Nonce hiding changes the security reader](spec-compliance-nonce-hiding-changes-the-security-reader.md) - The content attribute is not the authorization value; audit every nonce consumer when moving the value into a private slot.
 - [A report endpoint belongs to the policy's delivery URL](spec-compliance-a-report-endpoint-belongs-to-the-policy-delivery-url.md) - A violation's document URL, its blocked resource URL, and its report endpoint base are separate inputs. Preserve each input through inheritance instead of deriving one from another.
+- [A new token kind falls into every `else` branch](spec-compliance-a-new-token-kind-falls-into-every-else-branch.md) - When a union gains a kind, the compiler finds the exhaustive switches; the `else` branches are yours to find - map every spec rule for the new kind to its switch before trusting a green build.
 
 ### Codegen
 

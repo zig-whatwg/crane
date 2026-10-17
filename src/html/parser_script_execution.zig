@@ -719,6 +719,7 @@ pub const DomTreeAdapter = struct {
             .element => try self.createElementNode(tree_node),
             .text => try self.createTextNode(tree_node),
             .comment => try self.createCommentNode(tree_node),
+            .processing_instruction => try self.createProcessingInstructionNode(tree_node),
             .doctype => try self.createDoctypeNode(tree_node),
             .document => self.document, // Document already exists
         };
@@ -850,6 +851,21 @@ pub const DomTreeAdapter = struct {
 
         self.last_creation = .ran_no_script;
         return comment;
+    }
+
+    /// HTML "insert a processing instruction" step 4, through Document's
+    /// createProcessingInstruction (DOM 4.5: "creating a processing
+    /// instruction node" given the document, target and data). Made in the
+    /// adapter's document, as its comments are; inserting it into a
+    /// template's contents adopts it there.
+    fn createProcessingInstructionNode(self: *DomTreeAdapter, tree_node: *TreeNode) !*runtime.Instance {
+        const pi = try interfaces.Document.call_createProcessingInstruction(
+            self.document,
+            runtime.DOMString.initInterned(tree_node.pi_target orelse ""),
+            runtime.DOMString.initInterned(tree_node.text_content.toSlice()),
+        );
+        self.last_creation = .ran_no_script;
+        return pi;
     }
 
     fn createDoctypeNode(self: *DomTreeAdapter, tree_node: *TreeNode) !*runtime.Instance {

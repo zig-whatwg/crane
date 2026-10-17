@@ -23,6 +23,13 @@ fn collect(tokenizer: *Tokenizer, output: *std.ArrayList(u8)) !void {
                 try output.appendSlice(allocator, comment.getData());
                 try output.appendSlice(allocator, "-->");
             },
+            .processing_instruction => |pi| {
+                try output.appendSlice(allocator, "<?");
+                try output.appendSlice(allocator, pi.getTarget());
+                try output.append(allocator, '|');
+                try output.appendSlice(allocator, pi.getData());
+                try output.appendSlice(allocator, "?>");
+            },
             .doctype => |doctype| {
                 try output.appendSlice(allocator, "<!doctype ");
                 try output.appendSlice(allocator, doctype.getName() orelse "(missing)");
@@ -90,4 +97,11 @@ test "script-created parser retains declaration lookahead at every write boundar
 
 test "script-created parser retains CRLF preprocessing across writes" {
     try expectAllSplits("<p>a\r\nb\rc\nd</p>");
+}
+
+test "script-created parser retains processing instruction state at every write boundary" {
+    // Each processing instruction state (HTML 13.2.5.72-76) keeps its
+    // temporary buffer or token across a write boundary, and the bogus
+    // comment fallbacks still start from the "?".
+    try expectAllSplits("<?target data?><?xml x?><?a$b><?t d > ?><?q a??b>");
 }

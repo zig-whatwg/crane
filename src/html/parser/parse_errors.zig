@@ -74,8 +74,17 @@ pub const ParseErrorCode = enum {
     unexpected_character_in_unquoted_attribute_value,
     unexpected_equals_sign_before_attribute_name,
     unexpected_null_character,
-    unexpected_question_mark_instead_of_tag_name,
     unexpected_solidus_in_tag,
+
+    // Processing instruction errors. Spec: HTML 13.2.2 - each one names the
+    // processing instruction states (13.2.5.72-73) that report it. (The
+    // tag open state's former unexpected-question-mark-instead-of-tag-name
+    // went with whatwg/html#12118, which made "<?" open a processing
+    // instruction.)
+    disallowed_processing_instruction_target,
+    eof_in_processing_instruction,
+    invalid_first_character_of_processing_instruction_target,
+    invalid_processing_instruction_target,
 
     // Input stream errors
     control_character_in_input_stream,
@@ -133,8 +142,11 @@ pub fn getErrorDescription(code: ParseErrorCode) []const u8 {
         .unexpected_character_in_unquoted_attribute_value => "Unexpected character in unquoted attribute value",
         .unexpected_equals_sign_before_attribute_name => "Unexpected = before attribute name",
         .unexpected_null_character => "Unexpected null character",
-        .unexpected_question_mark_instead_of_tag_name => "Unexpected ? instead of tag name",
         .unexpected_solidus_in_tag => "Unexpected / in tag",
+        .disallowed_processing_instruction_target => "Processing instruction target is xml or xml-stylesheet",
+        .eof_in_processing_instruction => "End of file in processing instruction",
+        .invalid_first_character_of_processing_instruction_target => "Invalid first character of processing instruction target",
+        .invalid_processing_instruction_target => "Invalid character in processing instruction target",
         .control_character_in_input_stream => "Control character in input stream",
         .noncharacter_in_input_stream => "Noncharacter in input stream",
         .surrogate_in_input_stream => "Surrogate in input stream",
