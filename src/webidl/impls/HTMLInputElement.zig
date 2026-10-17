@@ -827,7 +827,7 @@ fn runActivationBehavior(instance: *runtime.Instance, event: *runtime.Instance) 
                 log.warn("form not reset: {}", .{err});
             };
         },
-        // File Upload and Color show a picker: there is none to show.
+        .file, .color => showPickerIfApplicable(instance, input_type),
         else => {},
     }
     // 3-4. The popover target attribute activation behavior is not
@@ -2109,8 +2109,28 @@ pub fn set_popoverTargetAction(instance: *runtime.Instance, value: runtime.DOMSt
 
 /// Operation: showPicker
 pub fn call_showPicker(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
+    const input_type = typeOf(instance);
+    // HTML showPicker steps 1–3: mutability, origin, then activation.
+    if (!isMutable(instance, input_type)) return error.InvalidStateError;
+    if (input_type != .file and input_type != .color) try forms.picker.requireSameOriginWithTop(instance);
+    _ = try forms.picker.requireActivation(instance);
+    // Step 4: also the file/color states' input activation behavior.
+    showPickerIfApplicable(instance, input_type);
+}
+
+fn showPickerIfApplicable(instance: *runtime.Instance, input_type: InputType) void {
+    const activation = @import("html").user_activation;
+    const window = activation.windowOfRealm(instance.ctx) orelse return;
+    // "Show the picker, if applicable", steps 1–3: return quietly from
+    // activation behavior when inactive/immutable; otherwise consume.
+    if (!activation.hasTransientActivation(window) or !isMutable(instance, input_type)) return;
+    activation.consume(window);
+    // Step 4: an unsupported file dialog is dismissed without a selection.
+    // Use the existing kept-control element-task mechanism for cancel.
+    // Other pickers need host operations that the current protocol lacks.
+    if (input_type == .file and @import("platform").capabilities.file_picker == .unsupported) {
+        form_associated.queueCancelEvent(instance, &pendingSelectTasks);
+    }
 }
 
 /// Operation: setCustomValidity

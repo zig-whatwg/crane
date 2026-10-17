@@ -4,6 +4,7 @@ const runtime = @import("runtime");
 const form_associated = @import("../form_associated.zig");
 pub const ValidityFlags = @import("dictionaries").ValidityStateFlags;
 pub const options = @import("options.zig");
+pub const picker = @import("picker.zig");
 pub const color_values = @import("color_values.zig");
 
 /// HTML 4.10.5.1.14, update/serialize a color well control: parse without
