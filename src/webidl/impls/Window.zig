@@ -3536,9 +3536,10 @@ const WindowFeatures = struct {
         }
     };
 
-    /// A feature separator: ASCII whitespace, `=` or `,`.
+    /// A feature separator: Infra ASCII whitespace, `=` or `,`. VT is not
+    /// ASCII whitespace (unlike std.ascii.isWhitespace).
     fn isSeparator(c: u8) bool {
-        return std.ascii.isWhitespace(c) or c == '=' or c == ',';
+        return @import("infra").code_point.isAsciiWhitespaceCodePoint(c) or c == '=' or c == ',';
     }
 
     /// ASCII lowercase into `buf`; a longer token than any feature name is
@@ -3575,7 +3576,8 @@ const WindowFeatures = struct {
     /// The rules for parsing integers, 0 on an error.
     fn parseInteger(value: []const u8) i64 {
         var i: usize = 0;
-        while (i < value.len and std.ascii.isWhitespace(value[i])) i += 1;
+        // Integer parsing step 4 skips Infra ASCII whitespace, not VT.
+        while (i < value.len and @import("infra").code_point.isAsciiWhitespaceCodePoint(value[i])) i += 1;
         var sign: i64 = 1;
         if (i < value.len and (value[i] == '-' or value[i] == '+')) {
             if (value[i] == '-') sign = -1;
