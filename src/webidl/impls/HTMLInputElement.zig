@@ -1531,8 +1531,7 @@ fn numberToString(allocator: std.mem.Allocator, input_type: InputType, number: f
 
 /// An attribute parsed with the type's string-to-number algorithm, or null.
 fn numberAttribute(instance: *runtime.Instance, input_type: InputType, comptime name: []const u8) ?f64 {
-    const value = attribute(instance, name) orelse return null;
-    defer instance.ctx.allocator.free(value);
+    const value = borrowedAttribute(instance, name) orelse return null;
     return stringToNumber(input_type, value);
 }
 
@@ -1574,8 +1573,7 @@ fn stepDefaults(input_type: InputType) struct { step: f64, scale: f64 } {
 /// times the step scale factor; null when step is "any".
 fn allowedValueStep(instance: *runtime.Instance, input_type: InputType) ?f64 {
     const defaults = stepDefaults(input_type);
-    const value = attribute(instance, "step") orelse return defaults.step * defaults.scale;
-    defer instance.ctx.allocator.free(value);
+    const value = borrowedAttribute(instance, "step") orelse return defaults.step * defaults.scale;
     if (std.ascii.eqlIgnoreCase(value, "any")) return null;
     const parsed = parseValidFloat(value) orelse return defaults.step * defaults.scale;
     if (parsed <= 0) return defaults.step * defaults.scale;
@@ -1603,8 +1601,7 @@ fn numericStepMismatch(instance: *runtime.Instance, value: []const u8, fallback_
     const number = std.fmt.parseFloat(f128, value) catch return false;
     const base = numberAttributeForStep(instance, "min") orelse numberAttributeForStep(instance, "value") orelse 0;
     var step: f128 = fallback_step;
-    if (attribute(instance, "step")) |text| {
-        defer instance.ctx.allocator.free(text);
+    if (borrowedAttribute(instance, "step")) |text| {
         if (parseValidFloat(text)) |parsed| {
             if (parsed > 0) step = std.fmt.parseFloat(f128, text) catch step;
         }
@@ -1613,8 +1610,7 @@ fn numericStepMismatch(instance: *runtime.Instance, value: []const u8, fallback_
 }
 
 fn numberAttributeForStep(instance: *runtime.Instance, comptime name: []const u8) ?f128 {
-    const text = attribute(instance, name) orelse return null;
-    defer instance.ctx.allocator.free(text);
+    const text = borrowedAttribute(instance, name) orelse return null;
     if (parseValidFloat(text) == null) return null;
     return std.fmt.parseFloat(f128, text) catch null;
 }
@@ -1626,46 +1622,81 @@ fn stepValue(instance: *runtime.Instance, n: i32, comptime up: bool) !void {
     // 1. The method does not apply: InvalidStateError.
     if (!input_type.numeric()) return error.InvalidStateError;
     // 2. No allowed value step: InvalidStateError.
-    const step = allowedValueStep(instance, input_type) orelse return error.InvalidStateError;
-    const minimum = minimumOf(instance, input_type);
-    const maximum = maximumOf(instance, input_type);
-    const base = stepBase(instance, input_type);
+    const allowed_step = allowedValueStep(instance, input_type) orelse return error.InvalidStateError;
+    const decimal = input_type == .number or input_type == .range;
+    // Blink/WebKit use Decimal for ApplyStep. Keep the original decimal
+    // strings in f128 through the arithmetic, narrowing only for the
+    // state's final number-to-string conversion (as for stepMismatch).
+    const step: f128 = if (decimal) blk: {
+        const candidate = numberAttributeForStep(instance, "step") orelse break :blk allowed_step;
+        break :blk if (candidate > 0) candidate else allowed_step;
+    } else allowed_step;
+    const minimum: ?f128 = if (minimumOf(instance, input_type)) |value|
+        (if (decimal) numberAttributeForStep(instance, "min") orelse value else value)
+    else
+        null;
+    const maximum: ?f128 = if (maximumOf(instance, input_type)) |value|
+        (if (decimal) numberAttributeForStep(instance, "max") orelse value else value)
+    else
+        null;
+    const base: f128 = if (decimal)
+        numberAttributeForStep(instance, "min") orelse numberAttributeForStep(instance, "value") orelse 0
+    else
+        stepBase(instance, input_type);
     if (minimum != null and maximum != null) {
         // 3. A minimum greater than the maximum: nothing.
         if (minimum.? > maximum.?) return;
         // 4. No allowed value between them: nothing.
-        const first = base + @ceil((minimum.? - base) / step) * step;
+        const first = alignedStep(minimum.?, base, step, true);
         if (first > maximum.?) return;
     }
     // 5. The value as a number, or zero.
     const current = try currentValue(instance);
     defer internal.allocator.free(current);
-    var value = stringToNumber(input_type, current) orelse 0;
+    var value: f128 = if (stringToNumber(input_type, current)) |number|
+        (if (decimal) std.fmt.parseFloat(f128, current) catch number else number)
+    else
+        0;
     // 6.
     const before = value;
-    // 7. Off a step: to the nearest step below (stepDown) or above (stepUp).
-    const steps = (value - base) / step;
-    if (!isIntegral(steps)) {
-        value = base + (if (up) @ceil(steps) else @floor(steps)) * step;
-    } else {
-        // 7.1-7.4: delta = step × n, negated for stepDown.
-        const delta = step * @as(f64, @floatFromInt(n));
-        value += if (up) delta else -delta;
+    // 7: browsers use the SIGNED count, and count an off-step snap as the
+    // first requested step (Blink InputType::ApplyStep; WebKit applyStep).
+    // This differs from the text's method-name direction / one-snap branch.
+    var count: i64 = if (up) @as(i64, n) else -@as(i64, n);
+    const mismatch = forms.numericStepMismatch(value, base, step);
+    if (mismatch and count != 0) {
+        value = alignedStep(value, base, step, count > 0);
+        count += if (count < 0) @as(i64, 1) else -1;
     }
+    value += step * @as(f128, @floatFromInt(count));
+    if (!mismatch or n != 0) value = base + @round((value - base) / step) * step;
     // 8. Below the minimum: the smallest step at or above it.
     if (minimum) |min| {
-        if (value < min) value = base + @ceil((min - base) / step) * step;
+        if (value < min) value = alignedStep(min, base, step, true);
     }
     // 9. Above the maximum: the largest step at or below it.
     if (maximum) |max| {
-        if (value > max) value = base + @floor((max - base) / step) * step;
+        if (value > max) value = alignedStep(max, base, step, false);
     }
     // 10. Moving the wrong way: nothing.
-    if ((!up and value > before) or (up and value < before)) return;
+    if ((count < 0 and value > before) or (count > 0 and value < before)) return;
     // 11-12. Set the value to its string.
-    const text = try numberToString(internal.allocator, input_type, value);
+    const result: f64 = @floatCast(value);
+    if (!std.math.isFinite(result)) return;
+    const text = try numberToString(internal.allocator, input_type, result);
     defer internal.allocator.free(text);
     try set_value(instance, runtime.DOMString.initInterned(text));
+}
+
+fn alignedStep(value: f128, base: f128, step: f128, up: bool) f128 {
+    const quotient = (value - base) / step;
+    const integral = if (!forms.numericStepMismatch(value, base, step))
+        @round(quotient)
+    else if (up)
+        @ceil(quotient)
+    else
+        @floor(quotient);
+    return base + integral * step;
 }
 
 /// Operation: stepUp
