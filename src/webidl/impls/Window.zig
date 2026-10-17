@@ -557,6 +557,16 @@ fn settingsProhibitsMixedSecurityContexts(instance: *runtime.Instance) error{Out
     const mixed = @import("fetch").mixed_content;
     // 1. Check this environment settings object's origin.
     if (try mixed.isOriginAuthenticated(instance.ctx.allocator, effectiveOrigin(instance, internal))) return true;
+    // Deviation, stated (golden rule 2): an origin made opaque by the
+    // document's sandboxed origin browsing context flag is judged by its
+    // precursor, the tuple origin of the document's URL, as Blink does
+    // (MixedContentChecker::IsMixedContent asks
+    // GetOriginOrPrecursorOriginIfOpaque). The text's opaque origin is never
+    // potentially trustworthy, which would let an https page under a CSP
+    // sandbox load http subresources; Chrome 154, Firefox 157 and Safari 27
+    // each pass mixed-content/csp.https.window.html 3/3 (aligned wpt.fyi
+    // revision cc74d2669f), whose top-level page is exactly that.
+    if (try sandboxedPrecursorIsAuthenticated(internal)) return true;
     // 2.2.1. Check each ancestor navigable's active document origin. This is not
     // isSecureContext: one authenticated ancestor is sufficient.
     const navigable = navigableOf(instance, internal) orelse return false;
@@ -575,6 +585,22 @@ fn settingsProhibitsMixedSecurityContexts(instance: *runtime.Instance) error{Out
     }
     // 3. Does not restrict mixed security contexts.
     return false;
+}
+
+/// Whether the window's document is sandboxed into an opaque origin (its
+/// active sandboxing flag set has the sandboxed origin browsing context flag)
+/// and its URL's origin - the opaque origin's precursor - is potentially
+/// trustworthy.
+fn sandboxedPrecursorIsAuthenticated(internal: *InternalState) error{OutOfMemory}!bool {
+    const document = internal.document orelse return false;
+    if (!@import("dom").document_scripts.activeSandboxingFlags(document).origin) return false;
+    const url = interfaces.Document.get_URL(document) catch return false;
+    defer document.ctx.allocator.free(url);
+    const allocator = internal.allocator;
+    // An unreadable precursor must not authorize a downgrade.
+    const precursor = @import("fetch").internal.origins.serializedOriginOf(allocator, url) catch return true;
+    defer allocator.free(precursor);
+    return @import("fetch").mixed_content.isOriginAuthenticated(allocator, precursor);
 }
 
 /// The user agent's cookie jar, which a window reaches through its browsing
