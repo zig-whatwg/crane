@@ -219,6 +219,11 @@ pub const InitiatorType = enum {
     img,
     input,
     link,
+    /// Not one of Fetch's initiator types: a navigation preload request's
+    /// (Service Workers Handle Fetch step 15.1), which Chromium reports to
+    /// the service worker's timeline as "navigation"
+    /// (navigation-preload/resource-timing.https.html expects it).
+    navigation,
     object,
     ping,
     script,

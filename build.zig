@@ -5769,6 +5769,9 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     service_worker_mod.addImport("url_serializer", url_serializer_mod);
     service_worker_mod.addImport("url_record", url_internal_url_record_mod);
     service_worker_mod.addImport("origin", url_origin_mod_internal);
+    // Static routing: a router condition's URL pattern (Parse URL Pattern,
+    // Match Router Condition).
+    service_worker_mod.addImport("urlpattern", urlpattern_mod);
     impls_mod.addImport("service_worker", service_worker_mod);
 
     // Permissions module (W3C Permissions API)

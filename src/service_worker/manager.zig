@@ -43,6 +43,7 @@ const runtime = @import("runtime");
 const platform = @import("platform");
 const html = @import("html");
 const registry_mod = @import("registry.zig");
+const router = @import("router.zig");
 
 const Registry = registry_mod.Registry;
 const TaskSink = runtime.TaskSink;
@@ -288,6 +289,9 @@ pub const Delivery = union(enum) {
     /// browsing context to `url` (OWNED) from its own event loop; the
     /// manager's navigate `id` hears how it went.
     navigate: struct { id: u64, url: []u8 },
+    /// NavigationPreloadManager.getState() step 2.5: a NavigationPreloadState
+    /// with the registration's flag and header value (OWNED).
+    resolve_preload_state: struct { promise: u64, enabled: bool, header_value: []u8 },
 
     /// `message`, copied - with the registry's lock held (its borrowed
     /// strings are valid until then). `registration`: the record a
@@ -330,6 +334,7 @@ pub const Delivery = union(enum) {
             },
             .resolve_client => |*m| if (m.client) |*info| info.deinit(allocator),
             .navigate => |m| allocator.free(m.url),
+            .resolve_preload_state => |m| allocator.free(m.header_value),
             else => {},
         }
     }
@@ -373,6 +378,30 @@ pub const Endpoint = struct {
     /// task): what a thread about to block in a synchronous fetch leaves for
     /// the manager to answer from while it cannot run a task.
     window_data_now: *const fn (endpoint: *Endpoint, allocator: Allocator) ?WindowData,
+    /// Static routing on the realm's thread (Handle Fetch step 13), for a
+    /// request whose client - or whose reserved client's creator - this
+    /// environment is. Null for an endpoint with no realm to lend (a test's):
+    /// URL patterns then match nothing, and the cache finds nothing.
+    router: ?*const RouterSteps = null,
+};
+
+/// What Handle Fetch's router asks of a realm on the fetching thread.
+pub const RouterSteps = struct {
+    /// Match Router Condition step 3.1.3: whether `url` matches `pattern` (a
+    /// rule's compiled URL pattern), its regexps run in this realm.
+    match_url_pattern: *const fn (endpoint: *Endpoint, pattern: *anyopaque, url: []const u8) bool,
+    /// Step 13.3.3's cache source: the Browser's Cache Storage's response
+    /// for `request` in `storage_key`'s caches (`cache_name`'s, or the first
+    /// one), as fetch takes a service worker's - its body null, its bytes
+    /// apart. OWNED by `allocator`; null: the network.
+    cache_match: *const fn (endpoint: *Endpoint, allocator: Allocator, storage_key: []const u8, cache_name: ?[]const u8, request: *const InternalRequest) ?CacheHit,
+};
+
+/// A cache source's answer: the response (its body null) and its body's
+/// bytes. OWNED.
+pub const CacheHit = struct {
+    response: *fetch.internal.InternalResponse,
+    body: ?[]u8 = null,
 };
 
 /// A navigation's or a worker's reserved client (HTML "create navigation
@@ -415,10 +444,15 @@ pub const FetchDispatch = struct {
     registration_id: u64,
     /// Handle Fetch step 12: Soft Update once the event was dispatched.
     soft_update: bool,
+    /// Handle Fetch step 15.1: the registration's navigation preload header
+    /// value, when its navigation preload is to be fetched for this request
+    /// (a GET navigation of a registration whose flag is set). OWNED.
+    preload_header: ?[]u8 = null,
 
     pub fn destroy(self: *FetchDispatch) void {
         self.request.deinit();
         self.allocator.free(self.replaces_client_id);
+        if (self.preload_header) |value| self.allocator.free(value);
         self.call.release();
         self.allocator.destroy(self);
     }
@@ -941,6 +975,70 @@ pub const Manager = struct {
         return try WorkerInfo.of(allocator, Registry.snapshotWorker(worker));
     }
 
+    /// A NavigationPreloadManager method's "in parallel" steps (3.6.1-3.6.4).
+    pub const PreloadOp = union(enum) {
+        enable,
+        disable,
+        /// The normalized header value (BORROWED for the call).
+        set_header_value: []const u8,
+        get_state,
+    };
+
+    /// NavigationPreloadManager's in parallel steps for the registration
+    /// `registration_id`, for the promise `promise` of the environment
+    /// `environment_id`: atomic reads and writes of the registration's
+    /// navigation preload enabled flag and header value - its record holds
+    /// them for as long as it lives - done under the lock, then the promise
+    /// settled in a later task of the environment's loop (steps 2.2 and 2.4:
+    /// "queue a task on promise's relevant settings object's responsible
+    /// event loop, using the DOM manipulation task source").
+    pub fn navigationPreload(self: *Manager, environment_id: u64, registration_id: u64, op: PreloadOp, promise: u64) void {
+        const delivery = self.navigationPreloadSteps(registration_id, op, promise) catch
+            Delivery{ .reject = .{ .promise = promise, .kind = .type_error, .message = "Out of memory" } };
+        self.deliverLater(environment_id, delivery);
+    }
+
+    fn navigationPreloadSteps(self: *Manager, registration_id: u64, op: PreloadOp, promise: u64) Allocator.Error!Delivery {
+        self.lock();
+        defer self.unlock();
+        const registration = self.registry.findRegistration(registration_id);
+        switch (op) {
+            .get_state => {
+                // 2.2-2.4. A new NavigationPreloadState: enabled when the
+                // flag is set; headerValue the registration's.
+                const r = registration orelse return .{ .reject = .{ .promise = promise, .kind = .invalid_state_error, .message = "The registration has gone" } };
+                return .{ .resolve_preload_state = .{
+                    .promise = promise,
+                    .enabled = r.navigation_preload_enabled,
+                    .header_value = try self.allocator.dupe(u8, r.navigation_preload_header_value),
+                } };
+            },
+            else => {},
+        }
+        // 2.2 (enable, disable) / 4.2 (setHeaderValue): no active worker -
+        // an InvalidStateError.
+        const r = registration orelse return noActiveWorker(promise);
+        if (r.active == null) return noActiveWorker(promise);
+        switch (op) {
+            // 2.3. Set / unset the navigation preload enabled flag.
+            .enable => r.navigation_preload_enabled = true,
+            .disable => r.navigation_preload_enabled = false,
+            // 4.3. Set the navigation preload header value.
+            .set_header_value => |value| {
+                const owned = try self.allocator.dupe(u8, value);
+                self.allocator.free(r.navigation_preload_header_value);
+                r.navigation_preload_header_value = owned;
+            },
+            .get_state => unreachable,
+        }
+        // 2.4 / 4.4. Resolve with undefined.
+        return .{ .resolve_undefined = .{ .promise = promise } };
+    }
+
+    fn noActiveWorker(promise: u64) Delivery {
+        return .{ .reject = .{ .promise = promise, .kind = .invalid_state_error, .message = "The registration has no active worker" } };
+    }
+
     /// What `update()` needs of the registration `id`: its storage key,
     /// scope url and newest worker (steps 2-7). Null when it has no newest
     /// worker - step 3's InvalidStateError.
@@ -986,8 +1084,10 @@ pub const Manager = struct {
     /// What a service worker's thread reports.
     pub const Report = union(enum) {
         /// Run Service Worker step 9: its script was evaluated (`ok` false:
-        /// it did not run to completion, or its global could not be made).
-        evaluated: struct { worker: u64, ok: bool },
+        /// it did not run to completion, or its global could not be made);
+        /// `handles_fetch`: its global has a listener of type fetch now (the
+        /// set of event types to handle, kept the first time).
+        evaluated: struct { worker: u64, ok: bool, handles_fetch: bool },
         /// The install or activate event `op` is no longer active, and its
         /// extend lifetime promises settled - `failed` when one rejected, it
         /// timed out, or its task was discarded.
@@ -1016,11 +1116,23 @@ pub const Manager = struct {
         /// registration `soft_update` (0: none) is to be soft-updated
         /// (Create Fetch Event and Dispatch step 19).
         fetch_done: struct { worker: u64, generation: u64, soft_update: u64 = 0 },
+        /// Soft Update for the registration (Create Fetch Event and Dispatch
+        /// step 11.1 for a skipped event; Handle Fetch step 13's router
+        /// sources).
+        soft_update: u64,
+        /// InstallEvent.addRoutes() step 9, enqueued to the worker's
+        /// [[service worker queue]] (this thread): `rules` (OWNED, made with
+        /// the manager's allocator, freed through `ops`) joins the worker's
+        /// list of router rules if Check Router Registration Limit allows;
+        /// the promise `promise` of the worker's environment `environment`
+        /// settles either way.
+        add_routes: struct { allocator: Allocator, worker: u64, rules: []router.Rule, ops: router.PatternOps, environment: u64, promise: u64 },
 
         fn deinit(self: *Report) void {
             switch (self.*) {
                 .post_message => |r| r.message.destroy(),
                 .fetch => |dispatch| dispatch.fail(),
+                .add_routes => |r| router.freeRules(r.allocator, r.rules, r.ops),
                 else => {},
             }
         }
@@ -1062,7 +1174,7 @@ pub const Manager = struct {
         self.lock();
         defer self.unlock();
         switch (from) {
-            .evaluated => |r| try self.registry.workerEvaluated(r.worker, r.ok),
+            .evaluated => |r| try self.registry.workerEvaluated(r.worker, r.ok, r.handles_fetch),
             .lifecycle_done => |r| try self.registry.lifecycleEventDone(r.op, r.failed),
             .extended_events => |r| try self.registry.extendedEventsChanged(r.worker, r.active),
             .skip_waiting => |r| {
@@ -1094,6 +1206,8 @@ pub const Manager = struct {
                 try self.registry.functionalEventDone(r.worker, r.generation);
                 if (r.soft_update != 0) self.scheduleSoftUpdate(r.soft_update);
             },
+            .soft_update => |id| self.scheduleSoftUpdate(id),
+            .add_routes => |r| try self.addRoutesNow(r.worker, r.rules, r.ops, r.environment, r.promise),
         }
     }
 
@@ -1352,6 +1466,16 @@ pub const Manager = struct {
         var client_id: ?[36]u8 = null;
         var resulting_client_id: ?[36]u8 = null;
         var blocked: u64 = 0;
+        // Create Fetch Event and Dispatch step 11: Should Skip Event.
+        var skip = false;
+        // Handle Fetch step 15.1's preloadRequest header value.
+        var preload_header: ?[]u8 = null;
+        defer if (preload_header) |value| self.allocator.free(value);
+        // Step 13: the active worker's list of router rules (a reference),
+        // whether it runs, the environment whose realm evaluates them on
+        // this thread, and the storage key a cache source reads.
+        var routing: Routing = .{};
+        defer routing.deinit(self.allocator);
         if (request.isNonSubresourceRequest()) {
             // 9. A navigation's or a worker's: its reserved client decides.
             const opaque_reserved = request.reserved_client orelse return .network;
@@ -1390,6 +1514,21 @@ pub const Manager = struct {
             registration_id = matched.worker.registration.id;
             soft_update = matched.soft_update;
             blocked = reserved.creator;
+            skip = shouldSkipFetchEvent(matched.worker);
+            // 13.3.3.4: a non-subresource request's cache source reads the
+            // reserved client's storage - its origin's.
+            try routing.take(self, matched.worker, reserved.creator, origin);
+            // 15. A GET navigation request of a registration whose active
+            // worker handles fetch: with its navigation preload enabled flag
+            // set, the preload request is fetched (15.1) - by the service
+            // worker's thread, from its fetch event's task (navigation_preload
+            // .zig says why there). The active worker's all fetch listeners
+            // are empty flag is not tracked (stated, batch 1).
+            if (!skip and request.isNavigationRequest() and std.mem.eql(u8, request.method, "GET") and
+                matched.worker.registration.navigation_preload_enabled)
+            {
+                preload_header = try self.allocator.dupe(u8, matched.worker.registration.navigation_preload_header_value);
+            }
         } else {
             // 10. A subresource request: its client's active service worker.
             if (client == 0) return .network;
@@ -1402,6 +1541,52 @@ pub const Manager = struct {
             registration_id = matched.worker.registration.id;
             soft_update = matched.soft_update;
             blocked = client;
+            skip = shouldSkipFetchEvent(matched.worker);
+            // 13.3.3.5: a subresource request's, its client's.
+            try routing.take(self, matched.worker, client, environment.origin);
+        }
+        // 13. Router rules: their source decides, before any fetch event.
+        if (routing.rules) |list| {
+            // 13.1 (the worker router evaluation start) is no timing Crane
+            // reports. 13.2. Get Router Source.
+            const facts: router.RequestFacts = .{
+                .url = request.currentUrl(),
+                .method = request.method,
+                .mode = request.mode,
+                .destination = request.destination,
+            };
+            const matcher: ?router.Matcher = if (routing.endpoint) |endpoint|
+                (if (endpoint.router != null) router.Matcher{ .context = endpoint, .matches = endpointMatches } else null)
+            else
+                null;
+            if (router.getRouterSource(list.rules, routing.running, facts, matcher)) |source| switch (source.*) {
+                // 13.3.2. network: Soft Update when due; Handle Fetch
+                // returns the timing info - the network.
+                .network => {
+                    if (soft_update) self.report(.{ .soft_update = registration_id });
+                    return .network;
+                },
+                // 13.3.3. cache: Soft Update when due; the cache's response,
+                // or the network.
+                .cache => |name| {
+                    if (soft_update) self.report(.{ .soft_update = registration_id });
+                    if (try self.cacheSourceAnswer(&routing, name, request)) |call| return .{ .call = call };
+                    return .network;
+                },
+                // 13.3.4. race-network-and-fetch-handler (a GET): not raced
+                // yet - the fetch event answers alone (stated).
+                .race_network_and_fetch_handler => {},
+                // 13.3.5. fetch-event: on to step 14.
+                .fetch_event => {},
+            };
+        }
+        // Create Fetch Event and Dispatch step 11: the event is skipped - Soft
+        // Update if it was due, and Handle Fetch returns null (the network).
+        // The client a navigation reserved is controlled all the same (step
+        // 9.8 ran).
+        if (skip) {
+            if (soft_update) self.report(.{ .soft_update = registration_id });
+            return .network;
         }
         // 3.1-3.2 (HTTP fetch): requestForServiceWorker, for the worker's
         // thread. A body only a stream holds goes to the network (stated).
@@ -1422,7 +1607,9 @@ pub const Manager = struct {
             .worker_id = worker_id,
             .registration_id = registration_id,
             .soft_update = soft_update,
+            .preload_header = preload_header,
         };
+        preload_header = null;
         // A fetch that blocks its thread leaves that thread's window data
         // answerable meanwhile (`beforeBlockingWait`).
         call.blocking = .{ .context = self, .data = blocked, .before_wait = beforeBlockingWait, .after_wait = afterBlockingWait };
@@ -1430,6 +1617,145 @@ pub const Manager = struct {
         // thread.
         self.report(.{ .fetch = dispatch });
         return .{ .call = call };
+    }
+
+    /// What Handle Fetch step 13 needs, gathered under the lock and used
+    /// after it.
+    const Routing = struct {
+        /// The active worker's list of router rules: a reference.
+        rules: ?*router.Rules = null,
+        /// The active worker is running (runningStatus).
+        running: bool = false,
+        /// The environment - the request's client, or the reserved client's
+        /// creator - whose realm, on this thread, matches URL patterns and
+        /// reads the cache. It ends only on this thread: it outlives the
+        /// call.
+        endpoint: ?*Endpoint = null,
+        /// The storage key a cache source reads. OWNED.
+        storage_key: ?[]u8 = null,
+
+        /// For `worker`'s rules, if it has any (a registration with none
+        /// pays nothing more).
+        fn take(self: *Routing, manager: *Manager, worker: *const registry_mod.Worker, environment_id: u64, storage_key: []const u8) Allocator.Error!void {
+            const list = worker.router_rules orelse return;
+            self.storage_key = try manager.allocator.dupe(u8, storage_key);
+            self.rules = list.retain();
+            self.running = worker.run == .running;
+            if (environment_id != 0) {
+                if (manager.registry.findEnvironment(environment_id)) |environment| self.endpoint = endpointOfEnvironment(environment);
+            }
+        }
+
+        fn deinit(self: *Routing, allocator: Allocator) void {
+            if (self.rules) |list| list.release();
+            if (self.storage_key) |key| allocator.free(key);
+            self.* = .{};
+        }
+    };
+
+    fn endpointMatches(context: ?*anyopaque, pattern: *anyopaque, url: []const u8) bool {
+        const endpoint: *Endpoint = @ptrCast(@alignCast(context.?));
+        const steps = endpoint.router orelse return false;
+        return steps.match_url_pattern(endpoint, pattern, url);
+    }
+
+    /// Handle Fetch step 13.3.3 for the cache source `cache_name`: the
+    /// response the Browser's Cache Storage holds for `request`, as a call
+    /// already answered - fetch takes it as it takes a service worker's,
+    /// its body through a relay. Null: none, the network.
+    fn cacheSourceAnswer(self: *Manager, routing: *const Routing, cache_name: ?[]const u8, request: *const InternalRequest) Allocator.Error!?*Call {
+        const endpoint = routing.endpoint orelse return null;
+        const steps = endpoint.router orelse return null;
+        const hit = steps.cache_match(endpoint, self.allocator, routing.storage_key.?, cache_name, request) orelse return null;
+        const call = Call.create(self.allocator) catch |err| {
+            hit.response.deinit();
+            if (hit.body) |b| self.allocator.free(b);
+            return err;
+        };
+        var relay: ?*service_worker_fetch.BodyRelay = null;
+        if (hit.body) |bytes| {
+            defer self.allocator.free(bytes);
+            const r = service_worker_fetch.BodyRelay.create(self.allocator) catch |err| {
+                hit.response.deinit();
+                call.release();
+                call.release();
+                return err;
+            };
+            _ = r.write(bytes);
+            r.close();
+            // The writer's reference: all written.
+            r.release();
+            relay = r;
+        }
+        // The answer, and the side that gave it lets go.
+        call.answer(.{ .response = .{ .response = hit.response, .body = relay } });
+        call.release();
+        return call;
+    }
+
+    /// InstallEvent.addRoutes() steps 9.1-9.5 on the job thread, locked:
+    /// allRules, the worker's list with `rules` (taken) appended; Check
+    /// Router Registration Limit; the list set; the promise settled.
+    fn addRoutesNow(self: *Manager, worker_id: u64, rules: []router.Rule, ops: router.PatternOps, environment: u64, promise: u64) Allocator.Error!void {
+        const worker = self.registry.findWorker(worker_id) orelse {
+            router.freeRules(self.allocator, rules, ops);
+            return self.settle(environment, .{ .reject = .{ .promise = promise, .kind = .invalid_state_error, .message = "The service worker has gone" } });
+        };
+        // 9.1-9.2. allRules: a copy of the worker's list, then each rule.
+        const existing: []const router.Rule = if (worker.router_rules) |list| list.rules else &.{};
+        const all = self.allocator.alloc(router.Rule, existing.len + rules.len) catch |err| {
+            router.freeRules(self.allocator, rules, ops);
+            self.settle(environment, .{ .reject = .{ .promise = promise, .kind = .type_error, .message = "Out of memory" } });
+            return err;
+        };
+        @memcpy(all[0..existing.len], existing);
+        @memcpy(all[existing.len..], rules);
+        // 9.3. Over the limit: the promise rejects with a TypeError, and the
+        // list stays as it was.
+        if (!router.checkRegistrationLimit(all)) {
+            self.allocator.free(all);
+            router.freeRules(self.allocator, rules, ops);
+            return self.settle(environment, .{ .reject = .{ .promise = promise, .kind = .type_error, .message = "Too many router conditions" } });
+        }
+        // 9.4. The worker's list of router rules is allRules. Nothing else
+        // holds an installing worker's list (Handle Fetch reads only an
+        // active worker's), so its rules move into the new one.
+        if (worker.router_rules) |old| {
+            const moved = old.unwrap() orelse {
+                self.allocator.free(all);
+                router.freeRules(self.allocator, rules, ops);
+                return self.settle(environment, .{ .reject = .{ .promise = promise, .kind = .invalid_state_error, .message = "The service worker's routes are in use" } });
+            };
+            self.allocator.free(moved);
+            worker.router_rules = null;
+        }
+        self.allocator.free(rules);
+        worker.router_rules = router.Rules.create(self.allocator, all, ops) catch |err| {
+            router.freeRules(self.allocator, all, ops);
+            self.settle(environment, .{ .reject = .{ .promise = promise, .kind = .type_error, .message = "Out of memory" } });
+            return err;
+        };
+        // 9.5. Resolve the promise with undefined.
+        self.settle(environment, .{ .resolve_undefined = .{ .promise = promise } });
+    }
+
+    /// Whether the service worker `id`'s set of event types to handle
+    /// contains fetch (InstallEvent.addRoutes() step 3.2).
+    pub fn workerHandlesFetch(self: *Manager, id: u64) bool {
+        self.lock();
+        defer self.unlock();
+        const worker = self.registry.findWorker(id) orelse return false;
+        return worker.handles_fetch;
+    }
+
+    /// Should Skip Event ("fetch", `worker`): "If serviceWorker's set of
+    /// event types to handle does not contain eventName, then the user agent
+    /// may return true" - Crane does, as Chromium (ServiceWorkerVersion's
+    /// fetch_handler_existence), Gecko (ServiceWorkerInfo::HandlesFetch) and
+    /// WebKit (SWServerWorker::shouldSkipFetchEvent) do: a worker with no fetch
+    /// listener is not started for a fetch.
+    fn shouldSkipFetchEvent(worker: *const registry_mod.Worker) bool {
+        return !worker.handles_fetch;
     }
 
     /// Steps 15-16 on the job thread, locked: wait for "activated", then Run

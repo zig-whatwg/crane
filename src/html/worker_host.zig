@@ -3111,8 +3111,11 @@ pub const ServiceScope = struct {
 pub const ServiceHooks = struct {
     /// Run Service Worker step 9: the script has been evaluated - `ok` false
     /// when it was not, or threw (its start status an abrupt completion), or
-    /// its global scope could not be set up.
-    evaluated: *const fn (manager: *anyopaque, worker_id: u64, ok: bool) void,
+    /// its global scope could not be set up. `global` is the worker's
+    /// ServiceWorkerGlobalScope (null when none was made), on this thread for
+    /// the call: whose event listeners make the service worker's set of
+    /// event types to handle.
+    evaluated: *const fn (manager: *anyopaque, worker_id: u64, ok: bool, global: ?*runtime.Instance) void,
     /// importScripts() in the service worker (Service Workers 6.3.2): the
     /// fetch hook's steps - answered from its script resource map, or
     /// fetched and recorded there. NetworkError for a network error.
@@ -3335,7 +3338,8 @@ const ServiceThreadHost = struct {
         };
         // Step 9.7: its start status, for its owner. A worker whose script
         // was not evaluated, or threw, does not stay: its owner terminates it.
-        service.hooks.evaluated(service.manager, service.worker_id, ok);
+        const global: ?*runtime.Instance = if (self.host) |h| h.global_scope else null;
+        service.hooks.evaluated(service.manager, service.worker_id, ok, global);
         return ok;
     }
 

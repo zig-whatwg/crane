@@ -78,7 +78,7 @@ fn fakeFetch(manager: *Manager, plan: *const registry.FetchPlan) registry.FetchO
 }
 
 fn fakeStart(manager: *Manager, start: *const manager_mod.WorkerStart) anyerror!manager_mod.Started {
-    manager.report(.{ .evaluated = .{ .worker = start.worker_id, .ok = true } });
+    manager.report(.{ .evaluated = .{ .worker = start.worker_id, .ok = true, .handles_fetch = true } });
     return .{ .link = null };
 }
 
@@ -129,6 +129,9 @@ const TestEndpoint = struct {
                 std.fmt.allocPrint(self.allocator, "client {s}", .{client.url})
             else
                 std.fmt.allocPrint(self.allocator, "client undefined", .{}),
+            .resolve_preload_state => |m| std.fmt.allocPrint(self.allocator, "preload {d} {} {s}", .{ m.promise, m.enabled, m.header_value }),
+            .resolve_undefined => |m| std.fmt.allocPrint(self.allocator, "undefined {d}", .{m.promise}),
+            .reject => |m| std.fmt.allocPrint(self.allocator, "reject {d} {s}", .{ m.promise, @tagName(m.kind) }),
             else => std.fmt.allocPrint(self.allocator, "{s}", .{@tagName(delivery.*)}),
         } catch return;
         self.log.append(self.allocator, line) catch self.allocator.free(line);
@@ -503,6 +506,242 @@ test "a thread blocked in a synchronous fetch still has its window clients' data
     try testing.expectEqual(@as(u32, 2), answered);
     // The page's late window data task finds its query gone.
     try runPosted(fixture.sink, a);
+    manager.removeEnvironment(fixture.page_environment);
+    manager.removeEnvironment(fixture.sw_environment);
+}
+
+test "navigation preload: the registration's state, set and read through its active worker; none rejects with InvalidStateError" {
+    var fixture: Fixture = .{};
+    try fixture.setUp();
+    defer fixture.tearDown();
+    const manager = &fixture.harness.manager;
+    const registration_id = blk: {
+        var info = (try manager.registrationOfWorker(fixture.allocator(), fixture.worker_id)).?;
+        defer info.deinit(fixture.allocator());
+        break :blk info.id;
+    };
+    // getState() of a new registration: disabled, header value `true`.
+    manager.navigationPreload(fixture.page_environment, registration_id, .get_state, 1);
+    try drainUntil(fixture.sink, &fixture.page, "preload 1 false true", 10_000);
+    // enable(), setHeaderValue(), then getState() - from the worker's realm too.
+    manager.navigationPreload(fixture.page_environment, registration_id, .enable, 2);
+    try drainUntil(fixture.sink, &fixture.page, "undefined 2", 10_000);
+    manager.navigationPreload(fixture.sw_environment, registration_id, .{ .set_header_value = "insightful" }, 3);
+    try drainUntil(fixture.sw_sink, &fixture.worker_realm, "undefined 3", 10_000);
+    manager.navigationPreload(fixture.sw_environment, registration_id, .get_state, 4);
+    try drainUntil(fixture.sw_sink, &fixture.worker_realm, "preload 4 true insightful", 10_000);
+    manager.navigationPreload(fixture.page_environment, registration_id, .disable, 5);
+    try drainUntil(fixture.sink, &fixture.page, "undefined 5", 10_000);
+    manager.navigationPreload(fixture.page_environment, registration_id, .get_state, 6);
+    try drainUntil(fixture.sink, &fixture.page, "preload 6 false insightful", 10_000);
+    // A registration with no active worker (here: none at all) rejects
+    // enable(), disable() and setHeaderValue() with an InvalidStateError.
+    manager.navigationPreload(fixture.page_environment, registration_id + 1000, .enable, 7);
+    try drainUntil(fixture.sink, &fixture.page, "reject 7 invalid_state_error", 10_000);
+    manager.navigationPreload(fixture.page_environment, registration_id + 1000, .{ .set_header_value = "x" }, 8);
+    try drainUntil(fixture.sink, &fixture.page, "reject 8 invalid_state_error", 10_000);
+    manager.removeEnvironment(fixture.page_environment);
+    manager.removeEnvironment(fixture.sw_environment);
+}
+
+test "Handle Fetch step 15: a GET navigation of a registration with navigation preload enabled carries its header value; a POST, a subresource or a disabled one none" {
+    var fixture: Fixture = .{};
+    try fixture.setUp();
+    defer fixture.tearDown();
+    const manager = &fixture.harness.manager;
+    const a = fixture.allocator();
+    const registration_id = blk: {
+        var info = (try manager.registrationOfWorker(a, fixture.worker_id)).?;
+        defer info.deinit(a);
+        break :blk info.id;
+    };
+    const Case = struct { method: []const u8, enabled: bool, expect: ?[]const u8 };
+    const cases = [_]Case{
+        .{ .method = "GET", .enabled = false, .expect = null },
+        .{ .method = "GET", .enabled = true, .expect = "hello" },
+        .{ .method = "POST", .enabled = true, .expect = null },
+    };
+    manager.navigationPreload(fixture.page_environment, registration_id, .{ .set_header_value = "hello" }, 1);
+    try drainUntil(fixture.sink, &fixture.page, "undefined 1", 10_000);
+    for (cases, 0..) |case, i| {
+        manager.navigationPreload(fixture.page_environment, registration_id, if (case.enabled) .enable else .disable, 10 + i);
+        var line_buffer: [32]u8 = undefined;
+        try drainUntil(fixture.sink, &fixture.page, try std.fmt.bufPrint(&line_buffer, "undefined {d}", .{10 + i}), 10_000);
+        const reserved = manager.reserveClient(.window, fixture.page_environment, 0).?;
+        const request = try InternalRequest.init(a, "https://example.com/frame.html");
+        defer request.deinit();
+        request.destination = .iframe;
+        request.mode = .navigate;
+        try request.setMethod(case.method);
+        request.reserved_client = reserved;
+        const route = manager.routeOfReserved();
+        const call = (try route.handle(route.context, request, 0)).call;
+        defer call.release();
+        const kept = try fixture.harness.nextDispatch(10_000);
+        if (case.expect) |value| {
+            try testing.expectEqualStrings(value, kept.dispatch.preload_header.?);
+        } else {
+            try testing.expect(kept.dispatch.preload_header == null);
+        }
+        kept.dispatch.call.answer(.fallback);
+        kept.dispatch.destroy();
+        fixture.harness.done(kept);
+        _ = call.wait(5_000) orelse return error.TestUnexpectedTimeout;
+        manager.releaseReserved(reserved);
+    }
+    // A subresource request of a controlled client: never preloaded.
+    try claim(manager, fixture.worker_id);
+    const route = manager.routeForRealm(fixture.page.endpoint.realm).?;
+    const request = try InternalRequest.init(a, "https://example.com/data.txt");
+    defer request.deinit();
+    const call = (try route.handle(route.context, request, route.client)).call;
+    defer call.release();
+    const kept = try fixture.harness.nextDispatch(10_000);
+    try testing.expect(kept.dispatch.preload_header == null);
+    kept.dispatch.call.answer(.fallback);
+    kept.dispatch.destroy();
+    fixture.harness.done(kept);
+    _ = call.wait(5_000) orelse return error.TestUnexpectedTimeout;
+    manager.removeEnvironment(fixture.page_environment);
+    manager.removeEnvironment(fixture.sw_environment);
+}
+
+/// A realm's router steps, as the test plays them: URL patterns are test
+/// suffixes; the cache holds one response for "https://example.com/cached".
+const test_router_steps: manager_mod.RouterSteps = .{ .match_url_pattern = testMatchUrl, .cache_match = testCacheMatch };
+
+fn testMatchUrl(_: *manager_mod.Endpoint, pattern: *anyopaque, url: []const u8) bool {
+    const suffix: *const []const u8 = @ptrCast(@alignCast(pattern));
+    return std.mem.endsWith(u8, url, suffix.*);
+}
+
+fn testCacheMatch(_: *manager_mod.Endpoint, allocator: std.mem.Allocator, storage_key: []const u8, cache_name: ?[]const u8, request: *const InternalRequest) ?manager_mod.CacheHit {
+    if (!std.mem.eql(u8, storage_key, "https://example.com")) return null;
+    if (cache_name) |name| if (!std.mem.eql(u8, name, "v1")) return null;
+    if (!std.mem.eql(u8, request.currentUrl(), "https://example.com/cached")) return null;
+    const response = testResponse(allocator, 299) catch return null;
+    const body = allocator.dupe(u8, "From cache") catch {
+        response.deinit();
+        return null;
+    };
+    return .{ .response = response, .body = body };
+}
+
+fn noFreePattern(_: *anyopaque, _: std.mem.Allocator) void {}
+
+/// Give the worker `rules` (taken) as addRoutes() would have.
+fn setRules(manager: *Manager, worker_id: u64, rules: []sw.router.Rule) !void {
+    std.Io.Threaded.mutexLock(&manager.mutex);
+    defer std.Io.Threaded.mutexUnlock(&manager.mutex);
+    const worker = manager.registry.findWorker(worker_id).?;
+    worker.router_rules = try sw.router.Rules.create(manager.allocator, rules, .{ .free = noFreePattern });
+}
+
+fn setHandlesFetch(manager: *Manager, worker_id: u64, value: bool) void {
+    std.Io.Threaded.mutexLock(&manager.mutex);
+    defer std.Io.Threaded.mutexUnlock(&manager.mutex);
+    manager.registry.findWorker(worker_id).?.handles_fetch = value;
+}
+
+test "Handle Fetch step 13: a matching rule's network source goes to the network; its cache source answers from the cache; fetch-event, and no match, fire the event" {
+    var fixture: Fixture = .{};
+    try fixture.setUp();
+    defer fixture.tearDown();
+    const manager = &fixture.harness.manager;
+    const a = manager.allocator;
+    fixture.page.endpoint.router = &test_router_steps;
+    try claim(manager, fixture.worker_id);
+    var direct: []const u8 = "/direct.txt";
+    const rules = try a.alloc(sw.router.Rule, 3);
+    rules[0] = .{ .condition = .{ .url_pattern = @ptrCast(&direct) }, .source = .network };
+    rules[1] = .{ .condition = .{ .method = try a.dupe(u8, "GET"), .mode = .cors }, .source = .{ .cache = try a.dupe(u8, "v1") } };
+    rules[2] = .{ .condition = .{ .mode = .same_origin }, .source = .fetch_event };
+    try setRules(manager, fixture.worker_id, rules);
+    const route = manager.routeForRealm(fixture.page.endpoint.realm).?;
+
+    // network: matched by the URL pattern.
+    const direct_request = try InternalRequest.init(a, "https://example.com/x/direct.txt");
+    defer direct_request.deinit();
+    try testing.expect(try route.handle(route.context, direct_request, route.client) == .network);
+
+    // cache: answered at once, from the cache, body and all.
+    const cached = try InternalRequest.init(a, "https://example.com/cached");
+    defer cached.deinit();
+    cached.mode = .cors;
+    const call = (try route.handle(route.context, cached, route.client)).call;
+    defer call.release();
+    const answer = call.take() orelse return error.TestExpectedAnswer;
+    try testing.expectEqual(@as(u16, 299), answer.response.response.status);
+    const relay = answer.response.body.?;
+    const body = try relay.collect(a, 1_000);
+    defer a.free(body);
+    try testing.expectEqualStrings("From cache", body);
+    answer.response.response.deinit();
+    relay.release();
+
+    // cache, but the cache has none: the network.
+    const missing = try InternalRequest.init(a, "https://example.com/not-cached");
+    defer missing.deinit();
+    missing.mode = .cors;
+    try testing.expect(try route.handle(route.context, missing, route.client) == .network);
+
+    // fetch-event, and no rule at all: the event fires.
+    for ([_]fetch.internal.RequestMode{ .same_origin, .no_cors }) |mode| {
+        const other = try InternalRequest.init(a, "https://example.com/other");
+        defer other.deinit();
+        other.mode = mode;
+        const event_call = (try route.handle(route.context, other, route.client)).call;
+        defer event_call.release();
+        const kept = try fixture.harness.nextDispatch(10_000);
+        kept.dispatch.call.answer(.fallback);
+        kept.dispatch.destroy();
+        fixture.harness.done(kept);
+        _ = event_call.wait(5_000) orelse return error.TestUnexpectedTimeout;
+    }
+    manager.removeEnvironment(fixture.page_environment);
+    manager.removeEnvironment(fixture.sw_environment);
+}
+
+test "Should Skip Event: a worker with no fetch listener is not asked - the network - but its router rules still are" {
+    var fixture: Fixture = .{};
+    try fixture.setUp();
+    defer fixture.tearDown();
+    const manager = &fixture.harness.manager;
+    const a = manager.allocator;
+    fixture.page.endpoint.router = &test_router_steps;
+    try claim(manager, fixture.worker_id);
+    setHandlesFetch(manager, fixture.worker_id, false);
+    const route = manager.routeForRealm(fixture.page.endpoint.realm).?;
+    const request = try InternalRequest.init(a, "https://example.com/data.txt");
+    defer request.deinit();
+    try testing.expect(try route.handle(route.context, request, route.client) == .network);
+    // A navigation too - its reserved client controlled all the same.
+    const reserved = manager.reserveClient(.window, fixture.page_environment, 0).?;
+    const navigation = try InternalRequest.init(a, "https://example.com/frame.html");
+    defer navigation.deinit();
+    navigation.destination = .iframe;
+    navigation.mode = .navigate;
+    navigation.reserved_client = reserved;
+    const reserved_route = manager.routeOfReserved();
+    try testing.expect(try reserved_route.handle(reserved_route.context, navigation, 0) == .network);
+    try testing.expectEqual(fixture.worker_id, controllerOf(manager, reserved.environment));
+    manager.releaseReserved(reserved);
+    // A cache rule answers without the worker.
+    const rules = try a.alloc(sw.router.Rule, 1);
+    rules[0] = .{ .condition = .{ .mode = .cors }, .source = .{ .cache = null } };
+    try setRules(manager, fixture.worker_id, rules);
+    const cached = try InternalRequest.init(a, "https://example.com/cached");
+    defer cached.deinit();
+    cached.mode = .cors;
+    const call = (try route.handle(route.context, cached, route.client)).call;
+    defer call.release();
+    const answer = call.take() orelse return error.TestExpectedAnswer;
+    try testing.expectEqual(@as(u16, 299), answer.response.response.status);
+    answer.response.response.deinit();
+    if (answer.response.body) |relay| {
+        relay.cancel();
+        relay.release();
+    }
     manager.removeEnvironment(fixture.page_environment);
     manager.removeEnvironment(fixture.sw_environment);
 }

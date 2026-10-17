@@ -1,8 +1,8 @@
 //! Implementation for InstallEvent interface
 //!
 //! Spec: Service Workers 4.5 InstallEvent. The install event a service
-//! worker's thread fires (Install step 11.3.1) is one; addRoutes() (the
-//! static router) waits for Handle Fetch.
+//! worker's thread fires (Install step 11.3.1) is one; addRoutes() gives the
+//! worker its static router rules (src/service_worker/add_routes.zig).
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -34,9 +34,8 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     return instance;
 }
 
-/// Operation: addRoutes
+/// Operation: addRoutes (4.5.1): the static router's rules for this service
+/// worker (service_worker.add_routes).
 pub fn call_addRoutes(instance: *runtime.Instance, rules: runtime.JSValue) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = rules;
-    return error.NotImplemented;
+    return @import("service_worker").add_routes.addRoutes(instance, rules);
 }

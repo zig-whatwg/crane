@@ -209,7 +209,7 @@ pub const RealmEnvironment = struct {
 
     /// A new promise in the realm, kept under a new id until a Delivery
     /// settles it. The promise, held for the caller (an impl's result).
-    fn newPromise(self: *RealmEnvironment) !struct { id: u64, promise: engine.Owned } {
+    pub fn newPromise(self: *RealmEnvironment) !struct { id: u64, promise: engine.Owned } {
         var capability = try engine.createPromise(self.realm);
         errdefer engine.releasePromiseCapability(&capability);
         const promise = try engine.retainValue(self.realm, capability.promise);
@@ -399,6 +399,19 @@ pub const RealmEnvironment = struct {
                     break :blk true;
                 };
                 if (!navigated) self.manager.navigateEnded(m.id);
+            },
+            // NavigationPreloadManager.getState() step 2.5: a new
+            // NavigationPreloadState - enabled, then headerValue (WebIDL's
+            // member order) - in the promise's realm.
+            .resolve_preload_state => |m| {
+                var capability = self.takePromise(m.promise) orelse return;
+                defer engine.releasePromiseCapability(&capability);
+                const state = try engine.createDictionaryObject(self.realm, &.{
+                    .{ .name = "enabled", .value = runtime.JSValue.fromBoolean(m.enabled) },
+                    .{ .name = "headerValue", .value = runtime.JSValue.fromStringRef(m.header_value) },
+                });
+                defer state.release();
+                try engine.resolvePromise(&capability, state.borrow());
             },
             // get(id): Resolve Get Client Promise's resolution, or undefined.
             .resolve_client => |*m| {
@@ -668,6 +681,7 @@ fn newRealmEnvironment(manager: *Manager, realm: runtime.Context, values: Enviro
             .window_data = endpointWindowData,
             .window_data_now = endpointWindowDataNow,
             .realm = realm,
+            .router = &router_steps,
         },
         .allocator = allocator,
         .manager = manager,
@@ -937,6 +951,42 @@ fn windowDataOf(allocator: std.mem.Allocator, realm: runtime.Context) !?WindowDa
 
 /// The endpoint's window data, on the realm's thread: entered in its realm
 /// (a task from the sink runs in none).
+/// Handle Fetch's router on this realm's thread (manager.RouterSteps).
+const router_steps: manager_mod.RouterSteps = .{
+    .match_url_pattern = endpointMatchUrlPattern,
+    .cache_match = endpointCacheMatch,
+};
+
+fn endpointMatchUrlPattern(endpoint: *manager_mod.Endpoint, pattern: *anyopaque, url: []const u8) bool {
+    const self = RealmEnvironment.ofEndpoint(endpoint);
+    if (self.realm.engine_ctx == null) return false;
+    return @import("add_routes.zig").patternMatches(self.realm, pattern, url);
+}
+
+/// The cache source's answer, shaped as a service worker's response is when
+/// it crosses to fetch (fetch_event.potentialResponse): an opaque one as
+/// its internal response's fields, marked opaque; the body's bytes apart.
+fn endpointCacheMatch(endpoint: *manager_mod.Endpoint, allocator: std.mem.Allocator, storage_key: []const u8, cache_name: ?[]const u8, request: *const @import("fetch").internal.InternalRequest) ?manager_mod.CacheHit {
+    const self = RealmEnvironment.ofEndpoint(endpoint);
+    if (self.realm.engine_ctx == null) return null;
+    const filtered = @import("cache/root.zig").api.routerMatch(self.realm, allocator, storage_key, cache_name, request) orelse return null;
+    defer filtered.deinit();
+    const fetch_event = @import("fetch_event.zig");
+    const copy = fetch_event.potentialResponse(allocator, filtered) catch return null;
+    const opaque_kind = filtered.response_type == .@"opaque" or filtered.response_type == .opaqueredirect;
+    const holder = if (opaque_kind) filtered.internal orelse filtered else filtered;
+    const body: ?[]u8 = if (holder.body) |b| allocator.dupe(u8, b.getBytes()) catch {
+        copy.deinit();
+        return null;
+    } else null;
+    // Its sizes are known now (a constructed body's are, at handover).
+    if (body) |bytes| {
+        copy.body_info.encoded_size = bytes.len;
+        copy.body_info.decoded_size = bytes.len;
+    }
+    return .{ .response = copy, .body = body };
+}
+
 fn endpointWindowData(endpoint: *manager_mod.Endpoint, allocator: std.mem.Allocator) ?WindowData {
     const self = RealmEnvironment.ofEndpoint(endpoint);
     if (self.ended or self.kind != .window) return null;
@@ -1245,6 +1295,43 @@ pub fn unregister(registration: *runtime.Instance, data: *const objects.Registra
         .referrer = environment.creation_url,
     });
     return made.promise.take();
+}
+
+// ============================================================================
+// NavigationPreloadManager (3.6)
+// ============================================================================
+
+/// enable(), disable(), setHeaderValue() (from its step 3) and getState() of
+/// the NavigationPreloadManager `manager_object`, whose registration is
+/// `registration_id`: a new promise in its realm, the in parallel steps run
+/// by the manager, and the promise settled in a later task of this realm.
+pub fn navigationPreload(manager_object: *runtime.Instance, registration_id: u64, op: Manager.PreloadOp) !runtime.JSValue {
+    const realm = manager_object.ctx;
+    const environment = environmentOf(realm, true) orelse return noEnvironment(realm);
+    // 1. promise: a new promise.
+    const made = try environment.newPromise();
+    errdefer made.promise.release();
+    // 2. In parallel.
+    environment.manager.navigationPreload(environment.id, registration_id, op, made.id);
+    return made.promise.take();
+}
+
+/// setHeaderValue(value) steps 1-2: a value that is no header value is a
+/// promise rejected with a TypeError. Not normalized first, as the spec's
+/// step 1 now says (w3c/ServiceWorker#1474): every browser rejects a value
+/// with a CR or LF at either end rather than trimming it - Blink's
+/// NavigationPreloadManager::setHeaderValue (IsValidHTTPHeaderValue), Gecko's
+/// (NS_IsReasonableHTTPHeaderValue) and WebKit's (isValidHTTPHeaderValue) -
+/// and WPT agrees (navigation-preload/get-state.https.html, upstream too:
+/// '\rcarriage' and 'newline\n' reject). What they share is the check here:
+/// no 0x00, 0x0A or 0x0D; leading and trailing spaces and tabs are kept
+/// (Chromium and Gecko; WebKit alone rejects them).
+pub fn rejectedHeaderValue(manager_object: *runtime.Instance, value: []const u8) !?runtime.JSValue {
+    for (value) |byte| switch (byte) {
+        0x00, 0x0A, 0x0D => return try rejected(manager_object.ctx, .type_error, "The value is not a valid header value"),
+        else => {},
+    };
+    return null;
 }
 
 // ============================================================================

@@ -91,7 +91,7 @@ fn fakeFetch(manager: *Manager, plan: *const registry.FetchPlan) registry.FetchO
 }
 
 fn fakeStart(manager: *Manager, start: *const manager_mod.WorkerStart) anyerror!manager_mod.Started {
-    manager.report(.{ .evaluated = .{ .worker = start.worker_id, .ok = true } });
+    manager.report(.{ .evaluated = .{ .worker = start.worker_id, .ok = true, .handles_fetch = true } });
     return .{ .link = null };
 }
 
