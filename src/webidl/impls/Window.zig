@@ -1130,7 +1130,9 @@ fn sameOriginDomain(a: *runtime.Instance, b: *runtime.Instance) bool {
 /// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.browsing_context.target_name);
+    // HTML name getter steps 1-2: a Window without a navigable has no name.
+    const navigable = navigableOf(instance, internal) orelse return runtime.DOMString.initInterned("");
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, navigable.target_name);
 }
 
 /// Getter for location
@@ -1811,8 +1813,10 @@ pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance 
 /// This is used for targeting links (e.g., target="myframe") and window.open().
 pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // HTML name setter step 1: a Window without a navigable ignores writes.
+    const navigable = navigableOf(instance, internal) orelse return;
     const str_slice = value.asSlice();
-    try internal.browsing_context.setTargetName(str_slice);
+    try navigable.setTargetName(str_slice);
 }
 
 /// Setter for status - Set the status bar text
