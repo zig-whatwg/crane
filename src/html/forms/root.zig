@@ -4,6 +4,7 @@ const runtime = @import("runtime");
 const form_associated = @import("../form_associated.zig");
 pub const ValidityFlags = @import("dictionaries").ValidityStateFlags;
 pub const options = @import("options.zig");
+pub const color_values = @import("color_values.zig");
 
 /// HTML 4.10.5.1.14, update/serialize a color well control: parse without
 /// an element context (steps 3–4), make it opaque (serialization step 3),
@@ -192,4 +193,9 @@ pub fn checkValidity(instance: *runtime.Instance, candidate: bool, flags: Validi
     if (!instance.ctx.hasEngine()) return false;
     try form_associated.fireSimpleEvent(instance, "invalid", .{ .cancelable = true });
     return false;
+}
+
+test {
+    // Pure color-value tests require both HTML sanitization and CSS parsing.
+    _ = color_values;
 }

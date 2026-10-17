@@ -139,9 +139,13 @@ pub const ValueMode = enum { value, default, default_on, filename };
 
 /// The element's type attribute's state.
 pub fn typeOf(instance: *runtime.Instance) InputType {
-    const value = attribute(instance, "type") orelse return .text;
-    defer instance.ctx.allocator.free(value);
-    return InputType.fromAttribute(value);
+    return InputType.fromAttribute(borrowedAttribute(instance, "type"));
+}
+
+/// Borrow only across synchronous parsing, never across a mutation/callback.
+fn borrowedAttribute(instance: *runtime.Instance, comptime name: []const u8) ?[]const u8 {
+    const data = dom.element_data.of(instance) orelse return null;
+    return (dom.element_data.getAttributeByNamespaceAndLocalName(data, null, name) orelse return null).value;
 }
 
 /// The value of a content attribute in no namespace, owned by the element's
@@ -442,11 +446,12 @@ fn userEdit(instance: *runtime.Instance, edit: dom.form_controls.UserEdit) !void
         raw[0 .. raw.len - 1]
     else
         raw;
-    const sanitized = try sanitize(internal.allocator, instance, input_type, visible);
-    defer internal.allocator.free(sanitized);
-    try internal.setValue(sanitized);
+    var sanitized = try sanitize(internal.allocator, instance, input_type, visible);
+    defer sanitized.deinit(internal.allocator);
+    const empty = sanitized.isEmpty();
+    try internal.setValue(sanitized.asSlice());
     internal.editor_text = raw;
-    internal.bad_input = input_type == .number and raw.len != 0 and sanitized.len == 0;
+    internal.bad_input = input_type == .number and raw.len != 0 and empty;
     // HTML 4.10.19.3–4: only this non-IDL path records a user edit.
     internal.selection = .{ .start = edit.selection_start, .end = edit.selection_end, .direction = .none };
 }
@@ -565,6 +570,15 @@ fn attributeChangeSteps(
         const previous = InputType.fromAttribute(old_value);
         const now = InputType.fromAttribute(value);
         if (previous != now) typeChangeSteps(instance, previous, now);
+    } else if (std.mem.eql(u8, local_name, "alpha") or std.mem.eql(u8, local_name, "colorspace")) {
+        // Color state: update a color well control color on either attribute
+        // change. Clean values still reparse their value attribute on read.
+        if (typeOf(instance) != .color) return;
+        if (internal.value) |dirty| {
+            var sanitized = sanitize(internal.allocator, instance, .color, dirty) catch return;
+            defer sanitized.deinit(internal.allocator);
+            internal.setValue(sanitized.asSlice()) catch {};
+        }
     } else if (std.mem.eql(u8, local_name, "checked")) {
         // "When the checked content attribute is added, if the control does
         // not have dirty checkedness, the user agent must set the checkedness
@@ -619,9 +633,9 @@ fn typeChangeSteps(instance: *runtime.Instance, previous: InputType, now: InputT
     // 6. The value sanitization algorithm of the new state, on a dirty value
     // (a clean one is sanitized when read).
     if (internal.value) |dirty| {
-        const sanitized = sanitize(internal.allocator, instance, now, dirty) catch return;
-        defer internal.allocator.free(sanitized);
-        internal.setValue(sanitized) catch {};
+        var sanitized = sanitize(internal.allocator, instance, now, dirty) catch return;
+        defer sanitized.deinit(internal.allocator);
+        internal.setValue(sanitized.asSlice()) catch {};
     }
     // 7-9. Newly selectable: the text entry cursor at the beginning, the
     // direction "none".
@@ -878,9 +892,12 @@ fn valueIn(instance: *runtime.Instance, input_type: InputType) ![]u8 {
         // "value": the element's value - the dirty one, or the value
         // attribute sanitized.
         .value => if (internal.value) |v| allocator.dupe(u8, v) else blk: {
-            const given = attribute(instance, "value");
-            defer if (given) |g| instance.ctx.allocator.free(g);
-            break :blk sanitize(allocator, instance, input_type, given orelse "");
+            const given = borrowedAttribute(instance, "value") orelse "";
+            var sanitized = try sanitize(allocator, instance, input_type, given);
+            // The getter promises owned storage; a clean sanitizer result
+            // borrows its input only until this synchronous copy.
+            defer sanitized.deinit(allocator);
+            break :blk allocator.dupe(u8, sanitized.asSlice());
         },
         // "default": the value attribute, or the empty string.
         .default => attribute(instance, "value") orelse allocator.dupe(u8, ""),
@@ -931,16 +948,17 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
             defer internal.allocator.free(old);
             // 2-4. Set the value to the new value, set the dirty value flag,
             // and invoke the value sanitization algorithm.
-            const sanitized = try sanitize(internal.allocator, instance, input_type, value.asSlice());
-            defer internal.allocator.free(sanitized);
-            try internal.setValue(sanitized);
+            var sanitized = try sanitize(internal.allocator, instance, input_type, value.asSlice());
+            defer sanitized.deinit(internal.allocator);
+            const changed = !std.mem.eql(u8, old, sanitized.asSlice());
+            const end = if (changed) form_associated.utf16Length(sanitized.asSlice()) else 0;
+            try internal.setValue(sanitized.asSlice());
             // 5. "If the element's value (after applying the value
             // sanitization algorithm) is different from oldValue, and the
             // element has a text entry cursor position, move the text entry
             // cursor position to the end of the text control, unselecting any
             // selected text and resetting the selection direction to "none"."
-            if (!std.mem.eql(u8, old, sanitized)) {
-                const end = form_associated.utf16Length(sanitized);
+            if (changed) {
                 internal.selection = .{ .start = end, .end = end, .direction = .none };
             }
         },
@@ -982,22 +1000,39 @@ fn trimAsciiWhitespace(text: []const u8) []const u8 {
 }
 
 /// The value sanitization algorithm of `input_type`, applied to `value`.
-/// The result is owned by `allocator`.
-fn sanitize(allocator: std.mem.Allocator, instance: *runtime.Instance, input_type: InputType, value: []const u8) ![]u8 {
+/// Clean values are borrowed. Only a changed serialization allocates.
+fn sanitize(allocator: std.mem.Allocator, instance: *runtime.Instance, input_type: InputType, value: []const u8) !runtime.DOMString {
     switch (input_type) {
         // "Strip newlines from the value."
-        .text, .search, .tel, .password => return stripNewlines(allocator, value),
+        .text, .search, .tel, .password => return if (std.mem.indexOfAny(u8, value, "\r\n") == null)
+            runtime.DOMString.initInterned(value)
+        else
+            runtime.DOMString.initOwned(try stripNewlines(allocator, value)),
         // "Strip newlines from the value, then strip leading and trailing
         // ASCII whitespace from the value."
         .url => {
+            if (std.mem.indexOfAny(u8, value, "\r\n") == null) return runtime.DOMString.initInterned(trimAsciiWhitespace(value));
             const stripped = try stripNewlines(allocator, value);
             defer allocator.free(stripped);
-            return allocator.dupe(u8, trimAsciiWhitespace(stripped));
+            return runtime.DOMString.initDupe(allocator, trimAsciiWhitespace(stripped));
         },
         .email => {
+            const multiple = hasAttribute(instance, "multiple");
+            if (std.mem.indexOfAny(u8, value, "\r\n") == null) {
+                if (!multiple) return runtime.DOMString.initInterned(trimAsciiWhitespace(value));
+                var clean = true;
+                var tokens = std.mem.splitScalar(u8, value, ',');
+                while (tokens.next()) |token| {
+                    if (trimAsciiWhitespace(token).len != token.len) {
+                        clean = false;
+                        break;
+                    }
+                }
+                if (clean) return runtime.DOMString.initInterned(value);
+            }
             const stripped = try stripNewlines(allocator, value);
             defer allocator.free(stripped);
-            if (!hasAttribute(instance, "multiple")) return allocator.dupe(u8, trimAsciiWhitespace(stripped));
+            if (!multiple) return runtime.DOMString.initDupe(allocator, trimAsciiWhitespace(stripped));
             // multiple: "split on commas, strip leading and trailing ASCII
             // whitespace from each resulting token, if any, and let the
             // element's values be the (possibly empty) resulting list of
@@ -1012,31 +1047,33 @@ fn sanitize(allocator: std.mem.Allocator, instance: *runtime.Instance, input_typ
                 first = false;
                 try out.appendSlice(allocator, trimAsciiWhitespace(token));
             }
-            return out.toOwnedSlice(allocator);
+            return runtime.DOMString.initOwned(try out.toOwnedSlice(allocator));
         },
         // "If the value of the element is not a valid date string, then set
         // it to the empty string instead" - and likewise for the others.
-        .date => return allocator.dupe(u8, if (parseDate(value) != null) value else ""),
-        .month => return allocator.dupe(u8, if (parseMonth(value) != null) value else ""),
-        .week => return allocator.dupe(u8, if (parseWeek(value) != null) value else ""),
-        .time => return allocator.dupe(u8, if (parseTime(value) != null) value else ""),
+        .date => return runtime.DOMString.initInterned(if (parseDate(value) != null) value else ""),
+        .month => return runtime.DOMString.initInterned(if (parseMonth(value) != null) value else ""),
+        .week => return runtime.DOMString.initInterned(if (parseWeek(value) != null) value else ""),
+        .time => return runtime.DOMString.initInterned(if (parseTime(value) != null) value else ""),
         // "If the value of the element is a valid local date and time string,
         // then set it to a valid normalized local date and time string
         // representing the same date and time; otherwise, set it to the empty
         // string instead."
         .@"datetime-local" => {
-            const parsed = parseLocalDateTime(value) orelse return allocator.dupe(u8, "");
-            return formatLocalDateTime(allocator, parsed);
+            const parsed = parseLocalDateTime(value) orelse return .empty;
+            if (isNormalizedLocalDateTime(value, parsed)) return runtime.DOMString.initInterned(value);
+            return runtime.DOMString.initOwned(try formatLocalDateTime(allocator, parsed));
         },
         // "If the value of the element is not a valid floating-point number,
         // then set it to the empty string instead."
-        .number => return allocator.dupe(u8, if (parseValidFloat(value) != null) value else ""),
+        .number => return runtime.DOMString.initInterned(if (parseValidFloat(value) != null) value else ""),
         .range => return sanitizeRange(allocator, instance, value),
         // HTML 4.10.5.1.14: update a color well control color.
-        // TODO: display-p3 output and alpha serialization need the style
-        // system's non-sRGB value representation (Q20's deferred scope).
-        .color => return forms.sanitizeColor(allocator, value),
-        else => return allocator.dupe(u8, value),
+        .color => return forms.color_values.sanitize(allocator, value, .{
+            .alpha = hasAttribute(instance, "alpha"),
+            .space = if (std.ascii.eqlIgnoreCase(borrowedAttribute(instance, "colorspace") orelse "", "display-p3")) .display_p3 else .limited_srgb,
+        }),
+        else => return runtime.DOMString.initInterned(value),
     }
 }
 
@@ -1045,7 +1082,7 @@ fn sanitize(allocator: std.mem.Allocator, instance: *runtime.Instance, input_typ
 /// a floating-point number, of the default value" - then the state's
 /// underflow, overflow and step mismatch rules, which set the value to the
 /// minimum, the maximum, or the nearest allowed step (rounding up on a tie).
-fn sanitizeRange(allocator: std.mem.Allocator, instance: *runtime.Instance, value: []const u8) ![]u8 {
+fn sanitizeRange(allocator: std.mem.Allocator, instance: *runtime.Instance, value: []const u8) !runtime.DOMString {
     const minimum = numberAttribute(instance, .range, "min") orelse 0;
     const maximum_given = numberAttribute(instance, .range, "max") orelse 100;
     // "The default maximum is 100 ... if the maximum is less than the
@@ -1068,7 +1105,19 @@ fn sanitizeRange(allocator: std.mem.Allocator, instance: *runtime.Instance, valu
             number = snapped;
         }
     }
-    return formatFloat(allocator, number);
+    var buffer: [32]u8 = undefined;
+    const serialized = reflection.numberToString(&buffer, number);
+    return if (std.mem.eql(u8, value, serialized)) runtime.DOMString.initInterned(value) else runtime.DOMString.initDupe(allocator, serialized);
+}
+
+fn isNormalizedLocalDateTime(value: []const u8, parsed: LocalDateTime) bool {
+    const separator = std.mem.indexOfScalar(u8, value, 'T') orelse return false;
+    const year_end = std.mem.indexOfScalar(u8, value, '-') orelse return false;
+    if (year_end > 4 and value[0] == '0') return false;
+    const time = value[separator + 1 ..];
+    if (parsed.time.millisecond == 0) return time.len == 5;
+    if (parsed.time.millisecond % 1000 == 0) return time.len == 8;
+    return time.len > 9 and time[time.len - 1] != '0';
 }
 
 // ============================================================================
