@@ -325,9 +325,7 @@ pub fn mainFetchStart(
 /// trustworthy URL, if appropriate" - main fetch step 5, so a redirect's
 /// main fetch upgrades the redirected request too.
 ///
-/// Not modelled, stated: the "upgrade insecure navigations set" (step 2.3-
-/// 2.4) - a top-level navigation is never upgraded - and HSTS preload
-/// knowledge for the header (step 1).
+/// Not modelled, stated: HSTS preload knowledge for the header (step 1).
 /// Shared with the WebSocket handshake, which connects outside main fetch.
 pub fn upgradeRequestToPotentiallyTrustworthyUrl(request: *InternalRequest) !void {
     const url = request.currentUrl();
@@ -352,18 +350,19 @@ pub fn upgradeRequestToPotentiallyTrustworthyUrl(request: *InternalRequest) !voi
 /// uses this for immediate acceptance while leaving main fetch step 4's
 /// report-only CSP check ahead of the actual upgrade.
 pub fn wouldUpgradeToPotentiallyTrustworthyUrl(request: *const InternalRequest) bool {
-    // 2. A navigation request is upgraded only when it is a form submission
-    // or its client's target browsing context is nested: a frame's
-    // navigation (destination "iframe" or "frame"). A top-level navigation
-    // returns here.
-    if (request.destination == .document) return false;
-    // 3-4. "Let upgrade state be the result of executing Should insecure
-    // requests be upgraded for client? upon request's client": its
-    // policy container's (UIR 4.2). Do Not Upgrade returns.
     const container = switch (request.policy_container) {
         .client => return false,
         .container => |*c| c,
     };
+    // 2.1. Form submissions continue, including GET.
+    // 2.2. iframe/frame/object/embed target nested navigables and continue.
+    // 2.3-2.4. A top-level navigation continues only for a (host, port) in
+    // its client's captured set. 2.5. Otherwise return without upgrading.
+    if (request.destination == .document and !request.form_submission and
+        !container.upgradesNavigationTo(request.currentUrl())) return false;
+    // 3-4. "Let upgrade state be the result of executing Should insecure
+    // requests be upgraded for client? upon request's client": its
+    // policy container's (UIR 4.2). Do Not Upgrade returns.
     if (!container.upgradesInsecureRequests()) return false;
     // 5. "If request's URL's scheme is "http", set request's URL's scheme to
     // "https", and return." The port is left as it is.
@@ -1128,7 +1127,7 @@ test "main fetch step 5: a client that upgrades insecure requests upgrades http 
     _ = try mainFetchStart(allocator, params, true);
     try std.testing.expectEqualStrings("https://www1.web-platform.test:8443/x?y", request.currentUrl());
 
-    // A top-level navigation is not upgraded, and says it would like to be.
+    // A top-level navigation to an opted-in host/port upgrades too.
     const navigation = try InternalRequest.init(allocator, "http://a.test/");
     defer navigation.deinit();
     navigation.destination = .document;
@@ -1138,7 +1137,7 @@ test "main fetch step 5: a client that upgrades insecure requests upgrades http 
     const nav_params = try FetchParams.init(allocator, navigation, controller, &timing);
     defer nav_params.deinit();
     _ = try mainFetchStart(allocator, nav_params, true);
-    try std.testing.expectEqualStrings("http://a.test/", navigation.currentUrl());
+    try std.testing.expectEqualStrings("https://a.test/", navigation.currentUrl());
     try std.testing.expect(navigation.header_list.contains("Upgrade-Insecure-Requests"));
 
     // A frame's navigation is.
