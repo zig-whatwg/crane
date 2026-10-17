@@ -3249,6 +3249,13 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
     // popup sandboxing flag set."
     const current_flags = sandboxingFlagsOfWindow(current_window);
     const popup_flags = @import("dom").sandboxing.popupSandboxingFlags(current_flags);
+    // Choosing a navigable, step 8.1: consume only when creating a new
+    // traversable. `window` is the entry global for open(), or the element's
+    // document's Window for links/forms; `current_window` is open()'s this.
+    // HTML PR 10547 deliberately chose the entry global. The multi-global
+    // failures in Chromium 379674022 and Gecko 1931035 are spec lag, not a
+    // contrary browser policy: https://github.com/whatwg/html/pull/10547.
+    @import("html").user_activation.consume(window);
     const created = auxiliary_navigables.create(allocator, @ptrCast(internal.browsing_context), internal.origin, is_popup, popup_flags) orelse return null;
     const integration: *html_core.IFrameIntegration = @ptrCast(@alignCast(created.integration));
     internal.auxiliary_navigables.append(allocator, integration) catch {
