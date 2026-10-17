@@ -737,16 +737,8 @@ src/webcrypto/secret_keys.zig std.Io 1
 src/webcrypto/tasks.zig std.Io 1
 src/webidl/impls/BeforeUnloadEvent.zig clock.@import 1
 src/webidl/impls/BeforeUnloadEvent.zig clock.monotonicMillis 1
-src/webidl/impls/CloseEvent.zig clock.@import 1
-src/webidl/impls/CloseEvent.zig clock.monotonicMillis 2
 src/webidl/impls/Crypto.zig host.@import 1
 src/webidl/impls/Crypto.zig host.io 3
-src/webidl/impls/CustomEvent.zig clock.@import 1
-src/webidl/impls/CustomEvent.zig clock.monotonicMillis 1
-src/webidl/impls/ErrorEvent.zig clock.@import 1
-src/webidl/impls/ErrorEvent.zig clock.monotonicMillis 1
-src/webidl/impls/Event.zig clock.@import 1
-src/webidl/impls/Event.zig clock.monotonicMillis 2
 src/webidl/impls/ExtendableCookieChangeEvent.zig clock.@import 1
 src/webidl/impls/ExtendableCookieChangeEvent.zig clock.monotonicMillis 2
 src/webidl/impls/File.zig clock.@import 1
@@ -778,10 +770,6 @@ src/webidl/impls/PageTransitionEvent.zig clock.@import 1
 src/webidl/impls/PageTransitionEvent.zig clock.monotonicMillis 1
 src/webidl/impls/PopStateEvent.zig clock.@import 1
 src/webidl/impls/PopStateEvent.zig clock.monotonicMillis 1
-src/webidl/impls/ProgressEvent.zig clock.@import 1
-src/webidl/impls/ProgressEvent.zig clock.monotonicMillis 1
-src/webidl/impls/PromiseRejectionEvent.zig clock.@import 1
-src/webidl/impls/PromiseRejectionEvent.zig clock.monotonicMillis 1
 src/webidl/impls/SubtleCrypto.zig host.@import 1
 src/webidl/impls/Window.zig clock.@import 1
 src/webidl/impls/XMLHttpRequest.zig clock.@import 1
