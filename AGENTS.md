@@ -778,8 +778,13 @@ generation check is only a teardown net. Collected trees are freed in slices fro
      the newer spec.
    - **No newer spec is involved** - the browsers simply differ from the
      spec text: do what the browsers do. Where they split, follow the
-     majority of Chrome, Firefox and Safari and say so; with no majority, ask
-     the integrator.
+     majority of Chrome, Firefox and Safari and say so. With no majority -
+     all three differ - compare them mechanism by mechanism: if each
+     mechanism has a majority AND those majorities together are one shipping
+     browser's behaviour, do that; otherwise follow the spec (the user,
+     2026-10-17; lesson
+     spec-compliance-a-fatal-decode-drops-input-not-handler-state.md). Ask the
+     integrator only when even that leaves the choice open.
 
    Whichever you choose, state it in a comment citing the evidence: the
    wpt.fyi results (Chrome, Firefox, Safari), the engine code, the spec
