@@ -1726,7 +1726,7 @@ pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instanc
     const backend = internal.allocator.create(WebStorage) catch return error.OutOfMemory;
     errdefer internal.allocator.destroy(backend);
 
-    backend.* = getSessionStorageBackend(internal.allocator, user_agent_storage, context_id, internal.origin) catch |err| {
+    backend.* = getSessionStorageBackend(internal.allocator, user_agent_storage, context_id, effectiveOrigin(instance, internal)) catch |err| {
         // Note: errdefer above handles cleanup, just return the error
         return switch (err) {
             web_storage.StorageError.SecurityError => error.SecurityError,
@@ -1777,7 +1777,7 @@ pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance 
     const backend = internal.allocator.create(WebStorage) catch return error.OutOfMemory;
     errdefer internal.allocator.destroy(backend);
 
-    backend.* = getLocalStorageBackend(internal.allocator, user_agent_storage, internal.origin) catch |err| {
+    backend.* = getLocalStorageBackend(internal.allocator, user_agent_storage, effectiveOrigin(instance, internal)) catch |err| {
         // The errdefer above destroys the block. Destroyed here as well, every
         // read in an opaque origin (SecurityError: a sandboxed frame without
         // allow-same-origin) freed it twice.
