@@ -171,6 +171,13 @@ EXCLUDE = [
     ('fetch/orb/',                   'opaque response blocking'),
     ('fetch/content-encoding/zstd/', 'zstd'),
     ('websockets/stream/',           'WebSocketStream, not shipping'),
+    # The WebSocketInit option bag (and its targetAddressSpace member) is
+    # whatwg/websockets#76, still open; no stable browser ships it (wpt.fyi
+    # 2026-10-17: Chrome 155, Firefox 158 and Safari 27 pass 0 of 2 and 0 of 6
+    # in every variant; only Chrome 158 dev's experimental run passes).
+    # Re-include when the PR merges or a stable browser ships it.
+    ('websockets/constructor/option-bag.any.js',           'WebSocketInit, unmerged whatwg/websockets#76'),
+    ('websockets/constructor/target-address-space.any.js', 'WebSocketInit, unmerged whatwg/websockets#76'),
 
     # XML-serialised documents: .xhtml, .svg, .xml.
     #
