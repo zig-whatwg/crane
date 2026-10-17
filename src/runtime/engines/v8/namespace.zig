@@ -317,9 +317,10 @@ pub fn V8Namespace(comptime Namespace: type) type {
             // [[Enumerable]] and [[Configurable]] true, a getter and no
             // setter (a namespace attribute is readonly).
             inline for (attributes) |attribute| {
-                const name_str = v8.v8_String_NewFromUtf8(isolate, attribute.name.ptr, @intCast(attribute.name.len)) orelse continue;
-                defer v8.v8_String_Dispose(name_str);
-                _ = v8.v8_Object_SetAccessorProperty(object, context, name_str, comptime generateGetter(attribute), null);
+                if (v8.v8_String_NewFromUtf8(isolate, attribute.name.ptr, @intCast(attribute.name.len))) |name_str| {
+                    defer v8.v8_String_Dispose(name_str);
+                    _ = v8.v8_Object_SetAccessorProperty(object, context, name_str, comptime generateGetter(attribute), null);
+                }
             }
 
             return object;
