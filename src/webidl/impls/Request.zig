@@ -239,6 +239,20 @@ fn relevantWindow(ctx: runtime.Context) ?*runtime.Instance {
     return global;
 }
 
+/// This realm's actual settings origin, including an inheriting Window or
+/// any worker global. OWNED by ctx.allocator. An unavailable origin cannot
+/// authorize an explicit referrer; allocation failure remains an error.
+fn relevantSettingsOrigin(ctx: runtime.Context) error{OutOfMemory}!?[]const u8 {
+    const record = ctx.getRealm() orelse return null;
+    const raw = record.global_object orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(raw));
+    const settings = @import("dom").global_settings.of(global) orelse return null;
+    return settings.origin(global) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return null,
+    };
+}
+
 /// Constructor - implements full Request(input, init) constructor algorithm
 /// Spec: https://fetch.spec.whatwg.org/#dom-request
 pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) !*runtime.Instance {
@@ -392,13 +406,15 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
             defer ctx.allocator.free(serialized);
 
             // Step 14.3.3: about:client, or another origin than this's
-            // relevant settings object's, means "client". The settings
-            // object's origin is taken as its API base URL's, which it is for
-            // a document or worker created from a network URL.
+            // relevant settings object's, means "client". An inherited
+            // origin is independent of the document's about: URL (also
+            // Blink Request::CreateRequestWithRequestOrString).
             const is_about_client = std.mem.eql(u8, parsed_referrer.scheme(), "about") and
                 std.mem.startsWith(u8, serialized, "about:client") and
                 (serialized.len == "about:client".len or serialized["about:client".len] == '?' or serialized["about:client".len] == '#');
-            if (is_about_client or !sameTupleOrigin(serialized, relevantBaseURL(ctx))) {
+            const origin = if (is_about_client) null else try relevantSettingsOrigin(ctx);
+            defer if (origin) |owned| ctx.allocator.free(owned);
+            if (is_about_client or !sameTupleOrigin(serialized, origin)) {
                 base_request.setReferrer(.client);
             } else {
                 // Step 14.3.4: Otherwise, set request's referrer to
