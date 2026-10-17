@@ -12,8 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const Element = @import("interfaces").Element;
 const GlobalEventHandlers = @import("mixins").GlobalEventHandlers;
-const SVGElementInstance = @import("mixins").SVGElementInstance;
-const HTMLOrSVGElement = @import("mixins").HTMLOrSVGElement;
+const HTMLOrSVGOrMathMLElement = @import("mixins").HTMLOrSVGOrMathMLElement;
 const ElementCSSInlineStyle = @import("mixins").ElementCSSInlineStyle;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -45,7 +44,6 @@ const DOMString = @import("typedefs").DOMString;
 const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
 const Document = @import("interfaces").Document;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
-const SVGUseElement = @import("interfaces").SVGUseElement;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
@@ -72,6 +70,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const SVGSVGElement = @import("interfaces").SVGSVGElement;
@@ -89,8 +88,7 @@ pub const SVGElement = struct {
         pub const ParentInterface = Element;
         pub const MixinTypes = &.{
             GlobalEventHandlers,
-            SVGElementInstance,
-            HTMLOrSVGElement,
+            HTMLOrSVGOrMathMLElement,
             ElementCSSInlineStyle,
         };
         pub const extended_attributes = .{
@@ -210,8 +208,6 @@ pub const SVGElement = struct {
             .{ "ontouchmove", "get_ontouchmove", "set_ontouchmove" },
             .{ "ontouchcancel", "get_ontouchcancel", "set_ontouchcancel" },
             .{ "onbeforexrselect", "get_onbeforexrselect", "set_onbeforexrselect" },
-            .{ "correspondingElement", "get_correspondingElement", null },
-            .{ "correspondingUseElement", "get_correspondingUseElement", null },
             .{ "dataset", "get_dataset", null },
             .{ "nonce", "get_nonce", "set_nonce" },
             .{ "autofocus", "get_autofocus", "set_autofocus" },
@@ -308,6 +304,7 @@ pub const SVGElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -315,7 +312,6 @@ pub const SVGElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -331,6 +327,7 @@ pub const SVGElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
         };
@@ -445,8 +442,6 @@ pub const SVGElement = struct {
             .{ "ontouchmove", "get_ontouchmove", "set_ontouchmove" },
             .{ "ontouchcancel", "get_ontouchcancel", "set_ontouchcancel" },
             .{ "onbeforexrselect", "get_onbeforexrselect", "set_onbeforexrselect" },
-            .{ "correspondingElement", "get_correspondingElement", null },
-            .{ "correspondingUseElement", "get_correspondingUseElement", null },
             .{ "dataset", "get_dataset", null },
             .{ "nonce", "get_nonce", "set_nonce" },
             .{ "autofocus", "get_autofocus", "set_autofocus" },
@@ -476,17 +471,13 @@ pub const SVGElement = struct {
             ownerSVGElement: ?*runtime.Instance = null,
             viewportElement: ?*runtime.Instance = null,
             onerror: typedefs.OnErrorEventHandler = undefined,
-            correspondingElement: ?*runtime.Instance = null,
-            correspondingUseElement: ?*runtime.Instance = null,
             dataset: *runtime.Instance = undefined,
-            nonce: typedefs.DOMString = undefined,
+            nonce: runtime.DOMString = undefined,
             autofocus: bool = undefined,
             tabIndex: i32 = undefined,
             style: *runtime.Instance = undefined,
             attributeStyleMap: *runtime.Instance = undefined,
             cached_className: ?*runtime.Instance = null,
-            cached_correspondingElement: ?*runtime.Instance = null,
-            cached_correspondingUseElement: ?*runtime.Instance = null,
             cached_dataset: ?*runtime.Instance = null,
             cached_style: ?*runtime.Instance = null,
             cached_attributeStyleMap: ?*runtime.Instance = null,
@@ -498,8 +489,6 @@ pub const SVGElement = struct {
         .get_attributeStyleMap = &get_attributeStyleMap,
         .get_autofocus = &get_autofocus,
         .get_className = &get_className,
-        .get_correspondingElement = &get_correspondingElement,
-        .get_correspondingUseElement = &get_correspondingUseElement,
         .get_dataset = &get_dataset,
         .get_nonce = &get_nonce,
         .get_onabort = &get_onabort,
@@ -1156,32 +1145,6 @@ pub const SVGElement = struct {
     pub const set_onbeforexrselect = mixins.GlobalEventHandlers.set_onbeforexrselect;
 
     /// Extended attributes: [SameObject]
-    pub fn get_correspondingElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_correspondingElement) |cached| {
-            return cached;
-        }
-        const value = try SVGElementImpl.get_correspondingElement(instance);
-        state.own.cached_correspondingElement = value;
-        if (value) |child| @import("dom").same_object_cache.made(instance, child, "correspondingElement");
-        return value;
-    }
-
-    /// Extended attributes: [SameObject]
-    pub fn get_correspondingUseElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_correspondingUseElement) |cached| {
-            return cached;
-        }
-        const value = try SVGElementImpl.get_correspondingUseElement(instance);
-        state.own.cached_correspondingUseElement = value;
-        if (value) |child| @import("dom").same_object_cache.made(instance, child, "correspondingUseElement");
-        return value;
-    }
-
-    /// Extended attributes: [SameObject]
     pub fn get_dataset(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -1194,11 +1157,11 @@ pub const SVGElement = struct {
         return value;
     }
 
-    pub fn get_nonce(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_nonce(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SVGElementImpl.get_nonce(instance);
     }
 
-    pub fn set_nonce(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_nonce(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try SVGElementImpl.set_nonce(instance, value);
     }
 

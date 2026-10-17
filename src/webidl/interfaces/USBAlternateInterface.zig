@@ -76,7 +76,7 @@ pub const USBAlternateInterface = struct {
             interfaceClass: u8 = undefined,
             interfaceSubclass: u8 = undefined,
             interfaceProtocol: u8 = undefined,
-            interfaceName: ?typedefs.DOMString = null,
+            interfaceName: ?runtime.DOMString = null,
             endpoints: runtime.JSValue = undefined,
             _internal: ?*USBAlternateInterfaceImpl.InternalState = null,
         },
@@ -202,7 +202,7 @@ pub const USBAlternateInterface = struct {
         return try USBAlternateInterfaceImpl.get_interfaceProtocol(instance);
     }
 
-    pub fn get_interfaceName(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_interfaceName(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try USBAlternateInterfaceImpl.get_interfaceName(instance);
     }
 

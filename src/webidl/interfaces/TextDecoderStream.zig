@@ -72,7 +72,7 @@ pub const TextDecoderStream = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            encoding: typedefs.DOMString = undefined,
+            encoding: runtime.DOMString = undefined,
             fatal: bool = undefined,
             ignoreBOM: bool = undefined,
             readable: *runtime.Instance = undefined,
@@ -179,12 +179,12 @@ pub const TextDecoderStream = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, label: webidl.Opt(DOMString), options: webidl.Opt(TextDecoderOptions)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), options: webidl.Opt(TextDecoderOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try TextDecoderStreamImpl.call_constructor(ctx, label, options);
     }
 
-    pub fn get_encoding(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TextDecoderStreamImpl.get_encoding(instance);
     }
 

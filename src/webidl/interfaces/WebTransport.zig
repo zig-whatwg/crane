@@ -13,6 +13,7 @@ const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 const WebTransportConnectionStats = @import("dictionaries").WebTransportConnectionStats;
 const WebTransportSendStream = @import("interfaces").WebTransportSendStream;
+const WebTransportCongestionControl = @import("enums").WebTransportCongestionControl;
 const WebTransportDatagramDuplexStream = @import("interfaces").WebTransportDatagramDuplexStream;
 const WebTransportReliabilityMode = @import("enums").WebTransportReliabilityMode;
 const USVString = @import("typedefs").USVString;
@@ -22,8 +23,8 @@ const ReadableStream = @import("interfaces").ReadableStream;
 const BufferSource = @import("typedefs").BufferSource;
 const WebTransportSendStreamOptions = @import("dictionaries").WebTransportSendStreamOptions;
 const WebTransportCloseInfo = @import("dictionaries").WebTransportCloseInfo;
+const Headers = @import("interfaces").Headers;
 const WebTransportSendGroup = @import("interfaces").WebTransportSendGroup;
-const WebTransportCongestionControl = @import("enums").WebTransportCongestionControl;
 
 pub const WebTransport = struct {
     pub const Meta = struct {
@@ -51,6 +52,7 @@ pub const WebTransport = struct {
             .{ "congestionControl", "get_congestionControl", null },
             .{ "anticipatedConcurrentIncomingUnidirectionalStreams", "get_anticipatedConcurrentIncomingUnidirectionalStreams", "set_anticipatedConcurrentIncomingUnidirectionalStreams" },
             .{ "anticipatedConcurrentIncomingBidirectionalStreams", "get_anticipatedConcurrentIncomingBidirectionalStreams", "set_anticipatedConcurrentIncomingBidirectionalStreams" },
+            .{ "responseHeaders", "get_responseHeaders", null },
             .{ "protocol", "get_protocol", null },
             .{ "closed", "get_closed", null },
             .{ "draining", "get_draining", null },
@@ -62,7 +64,7 @@ pub const WebTransport = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getStats", "call_getStats", 0 },
-            .{ "exportKeyingMaterial", "call_exportKeyingMaterial", 1 },
+            .{ "exportKeyingMaterial", "call_exportKeyingMaterial", 3 },
             .{ "close", "call_close", 0 },
             .{ "createBidirectionalStream", "call_createBidirectionalStream", 0 },
             .{ "createUnidirectionalStream", "call_createUnidirectionalStream", 0 },
@@ -94,6 +96,7 @@ pub const WebTransport = struct {
             .{ "congestionControl", "get_congestionControl", null },
             .{ "anticipatedConcurrentIncomingUnidirectionalStreams", "get_anticipatedConcurrentIncomingUnidirectionalStreams", "set_anticipatedConcurrentIncomingUnidirectionalStreams" },
             .{ "anticipatedConcurrentIncomingBidirectionalStreams", "get_anticipatedConcurrentIncomingBidirectionalStreams", "set_anticipatedConcurrentIncomingBidirectionalStreams" },
+            .{ "responseHeaders", "get_responseHeaders", null },
             .{ "protocol", "get_protocol", null },
             .{ "closed", "get_closed", null },
             .{ "draining", "get_draining", null },
@@ -117,12 +120,14 @@ pub const WebTransport = struct {
             congestionControl: enums.WebTransportCongestionControl = undefined,
             anticipatedConcurrentIncomingUnidirectionalStreams: ?u16 = null,
             anticipatedConcurrentIncomingBidirectionalStreams: ?u16 = null,
-            protocol: typedefs.DOMString = undefined,
+            responseHeaders: ?*runtime.Instance = null,
+            protocol: runtime.DOMString = undefined,
             closed: runtime.JSValue = undefined,
             draining: runtime.JSValue = undefined,
             datagrams: *runtime.Instance = undefined,
             incomingBidirectionalStreams: *runtime.Instance = undefined,
             incomingUnidirectionalStreams: *runtime.Instance = undefined,
+            cached_responseHeaders: ?*runtime.Instance = null,
             _internal: ?*WebTransportImpl.InternalState = null,
         },
     );
@@ -139,6 +144,7 @@ pub const WebTransport = struct {
         .get_protocol = &get_protocol,
         .get_ready = &get_ready,
         .get_reliability = &get_reliability,
+        .get_responseHeaders = &get_responseHeaders,
 
         .set_anticipatedConcurrentIncomingBidirectionalStreams = &set_anticipatedConcurrentIncomingBidirectionalStreams,
         .set_anticipatedConcurrentIncomingUnidirectionalStreams = &set_anticipatedConcurrentIncomingUnidirectionalStreams,
@@ -225,6 +231,7 @@ pub const WebTransport = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(WebTransportImpl, "deinit") and @hasDecl(WebTransportImpl, "deinitOwn")) @compileError("WebTransportImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(WebTransportImpl, "deinit")) return WebTransportImpl.deinit(instance);
         if (comptime @hasDecl(WebTransportImpl, "deinitOwn")) WebTransportImpl.deinitOwn(instance);
     }
@@ -278,7 +285,20 @@ pub const WebTransport = struct {
         try WebTransportImpl.set_anticipatedConcurrentIncomingBidirectionalStreams(instance, value);
     }
 
-    pub fn get_protocol(instance: *runtime.Instance) anyerror!DOMString {
+    /// Extended attributes: [SameObject]
+    pub fn get_responseHeaders(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_responseHeaders) |cached| {
+            return cached;
+        }
+        const value = try WebTransportImpl.get_responseHeaders(instance);
+        state.own.cached_responseHeaders = value;
+        if (value) |child| @import("dom").same_object_cache.made(instance, child, "responseHeaders");
+        return value;
+    }
+
+    pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WebTransportImpl.get_protocol(instance);
     }
 
@@ -319,10 +339,10 @@ pub const WebTransport = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_exportKeyingMaterial(instance: *runtime.Instance, label: BufferSource, context: webidl.Opt(BufferSource)) anyerror!runtime.JSValue {
+    pub fn call_exportKeyingMaterial(instance: *runtime.Instance, label: BufferSource, context: BufferSource, outputLength: u32) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
 
-        return try WebTransportImpl.call_exportKeyingMaterial(instance, label, context);
+        return try WebTransportImpl.call_exportKeyingMaterial(instance, label, context, outputLength);
     }
 
     pub fn call_createSendGroup(instance: *runtime.Instance) anyerror!*runtime.Instance {

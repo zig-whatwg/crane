@@ -93,7 +93,7 @@ pub const MediaStream = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: typedefs.DOMString = undefined,
+            id: runtime.DOMString = undefined,
             active: bool = undefined,
             onaddtrack: typedefs.EventHandler = undefined,
             onremovetrack: typedefs.EventHandler = undefined,
@@ -235,7 +235,7 @@ pub const MediaStream = struct {
         return try MediaStreamImpl.call_constructor(ctx, args);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MediaStreamImpl.get_id(instance);
     }
 
@@ -281,7 +281,7 @@ pub const MediaStream = struct {
         return try MediaStreamImpl.call_removeTrack(instance, track);
     }
 
-    pub fn call_getTrackById(instance: *runtime.Instance, trackId: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_getTrackById(instance: *runtime.Instance, trackId: runtime.DOMString) anyerror!?*runtime.Instance {
         return try MediaStreamImpl.call_getTrackById(instance, trackId);
     }
 

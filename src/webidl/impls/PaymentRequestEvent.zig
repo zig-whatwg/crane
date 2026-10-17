@@ -125,7 +125,7 @@ pub fn call_openWindow(instance: *runtime.Instance, url: runtime.USVString) anye
 }
 
 /// Operation: changeShippingAddress
-pub fn call_changeShippingAddress(instance: *runtime.Instance, shippingAddress: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
+pub fn call_changeShippingAddress(instance: *runtime.Instance, shippingAddress: webidl.Opt(dictionaries.AddressInit)) anyerror!runtime.JSValue {
     _ = instance;
     _ = shippingAddress;
     return error.NotImplemented;

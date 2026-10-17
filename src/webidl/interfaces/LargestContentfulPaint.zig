@@ -84,8 +84,8 @@ pub const LargestContentfulPaint = struct {
             loadTime: typedefs.DOMHighResTimeStamp = undefined,
             renderTime: typedefs.DOMHighResTimeStamp = undefined,
             size: u32 = undefined,
-            id: typedefs.DOMString = undefined,
-            url: typedefs.DOMString = undefined,
+            id: runtime.DOMString = undefined,
+            url: runtime.DOMString = undefined,
             element: ?*runtime.Instance = null,
             paintTime: typedefs.DOMHighResTimeStamp = undefined,
             presentationTime: ?typedefs.DOMHighResTimeStamp = null,
@@ -231,11 +231,11 @@ pub const LargestContentfulPaint = struct {
         return try LargestContentfulPaintImpl.get_size(instance);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try LargestContentfulPaintImpl.get_id(instance);
     }
 
-    pub fn get_url(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_url(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try LargestContentfulPaintImpl.get_url(instance);
     }
 

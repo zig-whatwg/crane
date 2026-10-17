@@ -1,0 +1,16 @@
+// The Geometry shapes svg_geometry_aliases_test needs: interfaces whose
+// legacy window aliases SVG 2 uses as type names.
+[Exposed=Window, LegacyWindowAlias=SVGPoint]
+interface DOMPoint {
+  constructor();
+};
+
+[Exposed=Window, LegacyWindowAlias=SVGRect]
+interface DOMRect {
+  constructor();
+};
+
+[Exposed=Window, LegacyWindowAlias=(SVGMatrix,WebKitCSSMatrix)]
+interface DOMMatrix {
+  constructor();
+};

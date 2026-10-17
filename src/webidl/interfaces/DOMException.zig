@@ -90,8 +90,8 @@ pub const DOMException = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
-            message: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
+            message: runtime.DOMString = undefined,
             code: u16 = undefined,
             _internal: ?*DOMExceptionImpl.InternalState = null,
         },
@@ -384,16 +384,16 @@ pub const DOMException = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, message: webidl.Opt(DOMString), name: webidl.Opt(DOMString)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, message: webidl.Opt(runtime.DOMString), name: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try DOMExceptionImpl.call_constructor(ctx, message, name);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DOMExceptionImpl.get_name(instance);
     }
 
-    pub fn get_message(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DOMExceptionImpl.get_message(instance);
     }
 

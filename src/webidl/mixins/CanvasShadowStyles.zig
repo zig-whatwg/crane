@@ -47,10 +47,10 @@ pub fn set_shadowBlur(instance: *runtime.Instance, value: f64) anyerror!void {
     try CanvasShadowStylesImpl.set_shadowBlur(instance, value);
 }
 
-pub fn get_shadowColor(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_shadowColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try CanvasShadowStylesImpl.get_shadowColor(instance);
 }
 
-pub fn set_shadowColor(instance: *runtime.Instance, value: DOMString) anyerror!void {
+pub fn set_shadowColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try CanvasShadowStylesImpl.set_shadowColor(instance, value);
 }

@@ -65,7 +65,7 @@ pub const RTCSessionDescription = struct {
         Meta.MixinTypes,
         struct {
             type: enums.RTCSdpType = undefined,
-            sdp: typedefs.DOMString = undefined,
+            sdp: runtime.DOMString = undefined,
             _internal: ?*RTCSessionDescriptionImpl.InternalState = null,
         },
     );
@@ -189,7 +189,7 @@ pub const RTCSessionDescription = struct {
         return try RTCSessionDescriptionImpl.get_type(instance);
     }
 
-    pub fn get_sdp(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_sdp(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try RTCSessionDescriptionImpl.get_sdp(instance);
     }
 

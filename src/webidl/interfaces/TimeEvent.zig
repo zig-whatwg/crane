@@ -185,7 +185,7 @@ pub const TimeEvent = struct {
         return try TimeEventImpl.get_detail(instance);
     }
 
-    pub fn call_initTimeEvent(instance: *runtime.Instance, typeArg: DOMString, viewArg: webidl.Opt(?*runtime.Instance), detailArg: webidl.Opt(i32)) anyerror!void {
+    pub fn call_initTimeEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, viewArg: webidl.Opt(?*runtime.Instance), detailArg: webidl.Opt(i32)) anyerror!void {
         return try TimeEventImpl.call_initTimeEvent(instance, typeArg, viewArg, detailArg);
     }
 };

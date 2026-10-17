@@ -62,10 +62,10 @@ const ObservableEventListenerOptions = @import("dictionaries").ObservableEventLi
 const DeferredRequestInit = @import("dictionaries").DeferredRequestInit;
 const Navigation = @import("interfaces").Navigation;
 const WindowPostMessageOptions = @import("dictionaries").WindowPostMessageOptions;
+const CrashReportContext = @import("interfaces").CrashReportContext;
 const EventHandler = @import("typedefs").EventHandler;
 const Fence = @import("interfaces").Fence;
 const QueryOptions = @import("dictionaries").QueryOptions;
-const SharedStorage = @import("interfaces").SharedStorage;
 const OnBeforeUnloadEventHandler = @import("typedefs").OnBeforeUnloadEventHandler;
 const ImageBitmap = @import("interfaces").ImageBitmap;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
@@ -145,6 +145,7 @@ pub const Window = struct {
             .{ "orientation", "get_orientation", null },
             .{ "onorientationchange", "get_onorientationchange", "set_onorientationchange" },
             .{ "cookieStore", "get_cookieStore", null },
+            .{ "crashReport", "get_crashReport", null },
             .{ "viewport", "get_viewport", "set_viewport" },
             .{ "screen", "get_screen", "set_screen" },
             .{ "visualViewport", "get_visualViewport", "set_visualViewport" },
@@ -171,7 +172,6 @@ pub const Window = struct {
             .{ "ondeviceorientationabsolute", "get_ondeviceorientationabsolute", "set_ondeviceorientationabsolute" },
             .{ "ondevicemotion", "get_ondevicemotion", "set_ondevicemotion" },
             .{ "portalHost", "get_portalHost", null },
-            .{ "sharedStorage", "get_sharedStorage", null },
             .{ "speechSynthesis", "get_speechSynthesis", null },
             .{ "launchQueue", "get_launchQueue", null },
             .{ "onabort", "get_onabort", "set_onabort" },
@@ -341,6 +341,7 @@ pub const Window = struct {
             .{ "postMessage", "call_postMessage", 1 },
             .{ "item", "call_item", 1 },
             .{ "navigate", "call_navigate", 1 },
+            .{ "requestResize", "call_requestResize", 0 },
             .{ "matchMedia", "call_matchMedia", 1 },
             .{ "moveTo", "call_moveTo", 2 },
             .{ "moveBy", "call_moveBy", 2 },
@@ -362,6 +363,10 @@ pub const Window = struct {
             .{ "cancelIdleCallback", "call_cancelIdleCallback", 1 },
             .{ "getSelection", "call_getSelection", 0 },
             .{ "getScreenDetails", "call_getScreenDetails", 0 },
+            .{ "minimize", "call_minimize", 0 },
+            .{ "maximize", "call_maximize", 0 },
+            .{ "restore", "call_restore", 0 },
+            .{ "setResizable", "call_setResizable", 1 },
             .{ "reportError", "call_reportError", 1 },
             .{ "btoa", "call_btoa", 1 },
             .{ "atob", "call_atob", 1 },
@@ -391,6 +396,7 @@ pub const Window = struct {
             "postMessage",
             "item",
             "navigate",
+            "requestResize",
             "matchMedia",
             "moveTo",
             "moveBy",
@@ -412,6 +418,10 @@ pub const Window = struct {
             "cancelIdleCallback",
             "getSelection",
             "getScreenDetails",
+            "minimize",
+            "maximize",
+            "restore",
+            "setResizable",
             "reportError",
             "btoa",
             "atob",
@@ -466,6 +476,7 @@ pub const Window = struct {
             .{ "orientation", "get_orientation", null },
             .{ "onorientationchange", "get_onorientationchange", "set_onorientationchange" },
             .{ "cookieStore", "get_cookieStore", null },
+            .{ "crashReport", "get_crashReport", null },
             .{ "viewport", "get_viewport", "set_viewport" },
             .{ "screen", "get_screen", "set_screen" },
             .{ "visualViewport", "get_visualViewport", "set_visualViewport" },
@@ -492,7 +503,6 @@ pub const Window = struct {
             .{ "ondeviceorientationabsolute", "get_ondeviceorientationabsolute", "set_ondeviceorientationabsolute" },
             .{ "ondevicemotion", "get_ondevicemotion", "set_ondevicemotion" },
             .{ "portalHost", "get_portalHost", null },
-            .{ "sharedStorage", "get_sharedStorage", null },
             .{ "speechSynthesis", "get_speechSynthesis", null },
             .{ "launchQueue", "get_launchQueue", null },
             .{ "onabort", "get_onabort", "set_onabort" },
@@ -659,7 +669,6 @@ pub const Window = struct {
             "ondeviceorientation",
             "ondeviceorientationabsolute",
             "ondevicemotion",
-            "sharedStorage",
             "onpointerrawupdate",
             "caches",
             "pushManager",
@@ -670,6 +679,10 @@ pub const Window = struct {
             "showDirectoryPicker",
             "queryLocalFonts",
             "getScreenDetails",
+            "minimize",
+            "maximize",
+            "restore",
+            "setResizable",
         };
     };
 
@@ -680,7 +693,7 @@ pub const Window = struct {
             window: typedefs.WindowProxy = undefined,
             self: typedefs.WindowProxy = undefined,
             document: *runtime.Instance = undefined,
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             location: *runtime.Instance = undefined,
             history: *runtime.Instance = undefined,
             navigation: *runtime.Instance = undefined,
@@ -691,7 +704,7 @@ pub const Window = struct {
             scrollbars: *runtime.Instance = undefined,
             statusbar: *runtime.Instance = undefined,
             toolbar: *runtime.Instance = undefined,
-            status: typedefs.DOMString = undefined,
+            status: runtime.DOMString = undefined,
             closed: bool = undefined,
             frames: typedefs.WindowProxy = undefined,
             length: u32 = undefined,
@@ -705,6 +718,7 @@ pub const Window = struct {
             credentialless: bool = undefined,
             orientation: i16 = undefined,
             cookieStore: *runtime.Instance = undefined,
+            crashReport: *runtime.Instance = undefined,
             viewport: *runtime.Instance = undefined,
             screen: *runtime.Instance = undefined,
             visualViewport: ?*runtime.Instance = null,
@@ -729,7 +743,6 @@ pub const Window = struct {
             fence: ?*runtime.Instance = null,
             external: *runtime.Instance = undefined,
             portalHost: ?*runtime.Instance = null,
-            sharedStorage: ?*runtime.Instance = null,
             speechSynthesis: *runtime.Instance = undefined,
             launchQueue: *runtime.Instance = undefined,
             onerror: typedefs.OnErrorEventHandler = undefined,
@@ -765,6 +778,7 @@ pub const Window = struct {
         .get_clientInformation = &get_clientInformation,
         .get_closed = &get_closed,
         .get_cookieStore = &get_cookieStore,
+        .get_crashReport = &get_crashReport,
         .get_credentialless = &get_credentialless,
         .get_crossOriginIsolated = &get_crossOriginIsolated,
         .get_crypto = &get_crypto,
@@ -947,7 +961,6 @@ pub const Window = struct {
         .get_scrollbars = &get_scrollbars,
         .get_self = &get_self,
         .get_sessionStorage = &get_sessionStorage,
-        .get_sharedStorage = &get_sharedStorage,
         .get_speechSynthesis = &get_speechSynthesis,
         .get_status = &get_status,
         .get_statusbar = &get_statusbar,
@@ -1149,6 +1162,8 @@ pub const Window = struct {
         .call_getSelection = &call_getSelection,
         .call_item = &call_item,
         .call_matchMedia = &call_matchMedia,
+        .call_maximize = &call_maximize,
+        .call_minimize = &call_minimize,
         .call_moveBy = &call_moveBy,
         .call_moveTo = &call_moveTo,
         .call_navigate = &call_navigate,
@@ -1162,12 +1177,15 @@ pub const Window = struct {
         .call_reportError = &call_reportError,
         .call_requestAnimationFrame = &call_requestAnimationFrame,
         .call_requestIdleCallback = &call_requestIdleCallback,
+        .call_requestResize = &call_requestResize,
         .call_resizeBy = &call_resizeBy,
         .call_resizeTo = &call_resizeTo,
+        .call_restore = &call_restore,
         .call_scroll = &call_scroll,
         .call_scrollBy = &call_scrollBy,
         .call_scrollTo = &call_scrollTo,
         .call_setInterval = &call_setInterval,
+        .call_setResizable = &call_setResizable,
         .call_setTimeout = &call_setTimeout,
         .call_showDirectoryPicker = &call_showDirectoryPicker,
         .call_showOpenFilePicker = &call_showOpenFilePicker,
@@ -1289,11 +1307,11 @@ pub const Window = struct {
         return try WindowImpl.get_document(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WindowImpl.get_name(instance);
     }
 
-    pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try WindowImpl.set_name(instance, value);
     }
 
@@ -1412,11 +1430,11 @@ pub const Window = struct {
         try runtime.defineOwnProperty(instance, "toolbar", value);
     }
 
-    pub fn get_status(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_status(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WindowImpl.get_status(instance);
     }
 
-    pub fn set_status(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_status(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try WindowImpl.set_status(instance, value);
     }
 
@@ -1532,6 +1550,10 @@ pub const Window = struct {
         state.own.cached_cookieStore = value;
         @import("dom").same_object_cache.made(instance, value, "cookieStore");
         return value;
+    }
+
+    pub fn get_crashReport(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try WindowImpl.get_crashReport(instance);
     }
 
     /// Extended attributes: [SameObject], [Replaceable]
@@ -1875,11 +1897,6 @@ pub const Window = struct {
 
     pub fn get_portalHost(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try WindowImpl.get_portalHost(instance);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn get_sharedStorage(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try WindowImpl.get_sharedStorage(instance);
     }
 
     /// Extended attributes: [SameObject]
@@ -2348,7 +2365,7 @@ pub const Window = struct {
     /// Extended attributes: [SecureContext]
     pub const get_pushManager = mixins.PushManagerAttribute.get_pushManager;
 
-    pub fn call_getter(instance: *runtime.Instance, name: DOMString) anyerror!runtime.JSValue {
+    pub fn call_getter(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
         if (comptime @hasDecl(WindowImpl, "call_getter")) {
             return try WindowImpl.call_getter(instance, name);
         } else {
@@ -2358,11 +2375,13 @@ pub const Window = struct {
 
     pub const call_structuredClone = mixins.WindowOrWorkerGlobalScope.call_structuredClone;
 
+    pub fn call_requestResize(instance: *runtime.Instance) anyerror!void {
+        return try WindowImpl.call_requestResize(instance);
+    }
+
     pub const call_atob = mixins.WindowOrWorkerGlobalScope.call_atob;
 
-    pub const call_btoa = mixins.WindowOrWorkerGlobalScope.call_btoa;
-
-    pub fn call_open(instance: *runtime.Instance, url: webidl.Opt(runtime.USVString), target: webidl.Opt(DOMString), features: webidl.Opt(DOMString)) anyerror!?WindowProxy {
+    pub fn call_open(instance: *runtime.Instance, url: webidl.Opt(runtime.USVString), target: webidl.Opt(runtime.DOMString), features: webidl.Opt(runtime.DOMString)) anyerror!?WindowProxy {
         return try WindowImpl.call_open(instance, url, target, features);
     }
 
@@ -2370,12 +2389,7 @@ pub const Window = struct {
         return try WindowImpl.call_moveTo(instance, x, y);
     }
 
-    /// Extended attributes: [SecureContext]
-    pub fn call_showSaveFilePicker(instance: *runtime.Instance, options: webidl.Opt(SaveFilePickerOptions)) anyerror!runtime.JSValue {
-        return try WindowImpl.call_showSaveFilePicker(instance, options);
-    }
-
-    pub fn call_confirm(instance: *runtime.Instance, message: webidl.Opt(DOMString)) anyerror!bool {
+    pub fn call_confirm(instance: *runtime.Instance, message: webidl.Opt(runtime.DOMString)) anyerror!bool {
         return try WindowImpl.call_confirm(instance, message);
     }
 
@@ -2387,46 +2401,17 @@ pub const Window = struct {
         return try WindowImpl.call_cancelIdleCallback(instance, handle);
     }
 
-    pub fn call_focus(instance: *runtime.Instance) anyerror!void {
-        return try WindowImpl.call_focus(instance);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_getDigitalGoodsService(instance: *runtime.Instance, serviceProvider: DOMString) anyerror!runtime.JSValue {
-        return try WindowImpl.call_getDigitalGoodsService(instance, serviceProvider);
-    }
+    pub const call_clearInterval = mixins.WindowOrWorkerGlobalScope.call_clearInterval;
 
     /// Extended attributes: [SecureContext]
     pub fn call_getScreenDetails(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try WindowImpl.call_getScreenDetails(instance);
     }
 
-    pub const call_reportError = mixins.WindowOrWorkerGlobalScope.call_reportError;
-
     pub const call_clearTimeout = mixins.WindowOrWorkerGlobalScope.call_clearTimeout;
 
-    pub const call_clearInterval = mixins.WindowOrWorkerGlobalScope.call_clearInterval;
-
-    pub const call_queueMicrotask = mixins.WindowOrWorkerGlobalScope.call_queueMicrotask;
-
-    pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: FrameRequestCallback) anyerror!u32 {
-        return try WindowImpl.call_requestAnimationFrame(instance, callback);
-    }
-
-    pub fn call_blur(instance: *runtime.Instance) anyerror!void {
-        return try WindowImpl.call_blur(instance);
-    }
-
-    pub fn call_prompt(instance: *runtime.Instance, message: webidl.Opt(DOMString), default: webidl.Opt(DOMString)) anyerror!?DOMString {
+    pub fn call_prompt(instance: *runtime.Instance, message: webidl.Opt(runtime.DOMString), default: webidl.Opt(runtime.DOMString)) anyerror!?runtime.DOMString {
         return try WindowImpl.call_prompt(instance, message, default);
-    }
-
-    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, targetOrigin: runtime.USVString, transfer: webidl.Opt(runtime.JSValue)) anyerror!void {
-        return try WindowImpl.call_postMessage(instance, message, targetOrigin, transfer);
-    }
-
-    pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
-        return try WindowImpl.call_scrollBy(instance, options);
     }
 
     /// Extended attributes: [NewObject]
@@ -2449,30 +2434,13 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn call_showDirectoryPicker(instance: *runtime.Instance, options: webidl.Opt(DirectoryPickerOptions)) anyerror!runtime.JSValue {
-        return try WindowImpl.call_showDirectoryPicker(instance, options);
-    }
-
-    pub fn call_captureEvents(instance: *runtime.Instance) anyerror!void {
-        return try WindowImpl.call_captureEvents(instance);
-    }
-
-    pub fn call_releaseEvents(instance: *runtime.Instance) anyerror!void {
-        return try WindowImpl.call_releaseEvents(instance);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_queryLocalFonts(instance: *runtime.Instance, options: webidl.Opt(QueryOptions)) anyerror!runtime.JSValue {
-        return try WindowImpl.call_queryLocalFonts(instance, options);
-    }
-
-    pub const call_setTimeout = mixins.WindowOrWorkerGlobalScope.call_setTimeout;
-
-    pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
-        return try WindowImpl.call_scrollTo(instance, options);
+    pub fn call_maximize(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try WindowImpl.call_maximize(instance);
     }
 
     pub const call_setInterval = mixins.WindowOrWorkerGlobalScope.call_setInterval;
+
+    pub const call_createImageBitmap = mixins.WindowOrWorkerGlobalScope.call_createImageBitmap;
 
     pub fn call_print(instance: *runtime.Instance) anyerror!void {
         return try WindowImpl.call_print(instance);
@@ -2482,15 +2450,9 @@ pub const Window = struct {
         return try WindowImpl.call_navigate(instance, dir);
     }
 
-    pub const call_createImageBitmap = mixins.WindowOrWorkerGlobalScope.call_createImageBitmap;
-
     /// Extended attributes: [SecureContext]
     pub fn call_showOpenFilePicker(instance: *runtime.Instance, options: webidl.Opt(OpenFilePickerOptions)) anyerror!runtime.JSValue {
         return try WindowImpl.call_showOpenFilePicker(instance, options);
-    }
-
-    pub fn call_resizeTo(instance: *runtime.Instance, width: i32, height: i32) anyerror!void {
-        return try WindowImpl.call_resizeTo(instance, width, height);
     }
 
     /// Extended attributes: [NewObject], [SecureContext]
@@ -2498,6 +2460,84 @@ pub const Window = struct {
         // [NewObject] - Caller owns the returned object
 
         return try WindowImpl.call_fetchLater(instance, input, init_data);
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn call_minimize(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try WindowImpl.call_minimize(instance);
+    }
+
+    pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
+        return try WindowImpl.call_scroll(instance, options);
+    }
+
+    pub const call_btoa = mixins.WindowOrWorkerGlobalScope.call_btoa;
+
+    pub const call_reportError = mixins.WindowOrWorkerGlobalScope.call_reportError;
+
+    /// Extended attributes: [SecureContext]
+    pub fn call_showSaveFilePicker(instance: *runtime.Instance, options: webidl.Opt(SaveFilePickerOptions)) anyerror!runtime.JSValue {
+        return try WindowImpl.call_showSaveFilePicker(instance, options);
+    }
+
+    pub const call_queueMicrotask = mixins.WindowOrWorkerGlobalScope.call_queueMicrotask;
+
+    pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: FrameRequestCallback) anyerror!u32 {
+        return try WindowImpl.call_requestAnimationFrame(instance, callback);
+    }
+
+    pub fn call_focus(instance: *runtime.Instance) anyerror!void {
+        return try WindowImpl.call_focus(instance);
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn call_getDigitalGoodsService(instance: *runtime.Instance, serviceProvider: runtime.DOMString) anyerror!runtime.JSValue {
+        return try WindowImpl.call_getDigitalGoodsService(instance, serviceProvider);
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn call_setResizable(instance: *runtime.Instance, resizable: bool) anyerror!runtime.JSValue {
+        return try WindowImpl.call_setResizable(instance, resizable);
+    }
+
+    pub fn call_blur(instance: *runtime.Instance) anyerror!void {
+        return try WindowImpl.call_blur(instance);
+    }
+
+    pub fn call_captureEvents(instance: *runtime.Instance) anyerror!void {
+        return try WindowImpl.call_captureEvents(instance);
+    }
+
+    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, targetOrigin: runtime.USVString, transfer: webidl.Opt(runtime.JSValue)) anyerror!void {
+        return try WindowImpl.call_postMessage(instance, message, targetOrigin, transfer);
+    }
+
+    pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
+        return try WindowImpl.call_scrollBy(instance, options);
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn call_queryLocalFonts(instance: *runtime.Instance, options: webidl.Opt(QueryOptions)) anyerror!runtime.JSValue {
+        return try WindowImpl.call_queryLocalFonts(instance, options);
+    }
+
+    pub fn call_releaseEvents(instance: *runtime.Instance) anyerror!void {
+        return try WindowImpl.call_releaseEvents(instance);
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn call_showDirectoryPicker(instance: *runtime.Instance, options: webidl.Opt(DirectoryPickerOptions)) anyerror!runtime.JSValue {
+        return try WindowImpl.call_showDirectoryPicker(instance, options);
+    }
+
+    pub const call_setTimeout = mixins.WindowOrWorkerGlobalScope.call_setTimeout;
+
+    pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
+        return try WindowImpl.call_scrollTo(instance, options);
+    }
+
+    pub fn call_resizeTo(instance: *runtime.Instance, width: i32, height: i32) anyerror!void {
+        return try WindowImpl.call_resizeTo(instance, width, height);
     }
 
     pub const call_fetch = mixins.WindowOrWorkerGlobalScope.call_fetch;
@@ -2517,6 +2557,11 @@ pub const Window = struct {
         return try WindowImpl.call_getSelection(instance);
     }
 
+    /// Extended attributes: [SecureContext]
+    pub fn call_restore(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try WindowImpl.call_restore(instance);
+    }
+
     pub fn call_stop(instance: *runtime.Instance) anyerror!void {
         return try WindowImpl.call_stop(instance);
     }
@@ -2525,12 +2570,26 @@ pub const Window = struct {
         return try WindowImpl.call_cancelAnimationFrame(instance, handle);
     }
 
-    pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
-        return try WindowImpl.call_scroll(instance, options);
-    }
-
     pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?WindowProxy {
         return try WindowImpl.call_item(instance, index);
+    }
+
+    pub fn call_alert__1(instance: *runtime.Instance, message: runtime.DOMString) anyerror!void {
+        if (comptime @hasDecl(WindowImpl, "call_alert__1")) {
+            return try WindowImpl.call_alert__1(instance, message);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub const call_createImageBitmap__1 = mixins.WindowOrWorkerGlobalScope.call_createImageBitmap__1;
+
+    pub fn call_scroll__1(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(WindowImpl, "call_scroll__1")) {
+            return try WindowImpl.call_scroll__1(instance, x, y);
+        } else {
+            return error.NotImplemented;
+        }
     }
 
     pub fn call_postMessage__1(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(WindowPostMessageOptions)) anyerror!void {
@@ -2549,27 +2608,9 @@ pub const Window = struct {
         }
     }
 
-    pub fn call_alert__1(instance: *runtime.Instance, message: DOMString) anyerror!void {
-        if (comptime @hasDecl(WindowImpl, "call_alert__1")) {
-            return try WindowImpl.call_alert__1(instance, message);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
     pub fn call_scrollTo__1(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
         if (comptime @hasDecl(WindowImpl, "call_scrollTo__1")) {
             return try WindowImpl.call_scrollTo__1(instance, x, y);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub const call_createImageBitmap__1 = mixins.WindowOrWorkerGlobalScope.call_createImageBitmap__1;
-
-    pub fn call_scroll__1(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
-        if (comptime @hasDecl(WindowImpl, "call_scroll__1")) {
-            return try WindowImpl.call_scroll__1(instance, x, y);
         } else {
             return error.NotImplemented;
         }
@@ -2580,21 +2621,9 @@ pub const Window = struct {
     /// (webidl.overload_resolution). The binding is installed for the first
     /// overload and forwards to the one the arguments select.
     pub const overloads = .{
-        .{ "postMessage", &[_]webidl.overload_resolution.Overload{
-            .{ .function = "call_postMessage", .args = &.{ .{ .kinds = &.{.any} }, .{ .kinds = &.{.string} }, .{ .kinds = &.{.sequence}, .optionality = .optional } } },
-            .{ .function = "call_postMessage__1", .implemented = @hasDecl(WindowImpl, "call_postMessage__1"), .args = &.{ .{ .kinds = &.{.any} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
-        } },
-        .{ "scrollBy", &[_]webidl.overload_resolution.Overload{
-            .{ .function = "call_scrollBy", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
-            .{ .function = "call_scrollBy__1", .implemented = @hasDecl(WindowImpl, "call_scrollBy__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
-        } },
         .{ "alert", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_alert", .args = &.{} },
             .{ .function = "call_alert__1", .implemented = @hasDecl(WindowImpl, "call_alert__1"), .args = &.{.{ .kinds = &.{.string} }} },
-        } },
-        .{ "scrollTo", &[_]webidl.overload_resolution.Overload{
-            .{ .function = "call_scrollTo", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
-            .{ .function = "call_scrollTo__1", .implemented = @hasDecl(WindowImpl, "call_scrollTo__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
         } },
         .{ "createImageBitmap", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_createImageBitmap", .args = &.{ .{ .kinds = &.{ (if (@hasDecl(@import("interfaces"), "HTMLImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "SVGImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").SVGImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLVideoElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLVideoElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLCanvasElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLCanvasElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageBitmap")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageBitmap.State) } else .other), (if (@hasDecl(@import("interfaces"), "OffscreenCanvas")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").OffscreenCanvas.State) } else .other), (if (@hasDecl(@import("interfaces"), "VideoFrame")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").VideoFrame.State) } else .other), (if (@hasDecl(@import("interfaces"), "Blob")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Blob.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other) } }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
@@ -2603,6 +2632,18 @@ pub const Window = struct {
         .{ "scroll", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_scroll", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
             .{ .function = "call_scroll__1", .implemented = @hasDecl(WindowImpl, "call_scroll__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+        } },
+        .{ "postMessage", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_postMessage", .args = &.{ .{ .kinds = &.{.any} }, .{ .kinds = &.{.string} }, .{ .kinds = &.{.sequence}, .optionality = .optional } } },
+            .{ .function = "call_postMessage__1", .implemented = @hasDecl(WindowImpl, "call_postMessage__1"), .args = &.{ .{ .kinds = &.{.any} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
+        } },
+        .{ "scrollBy", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_scrollBy", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+            .{ .function = "call_scrollBy__1", .implemented = @hasDecl(WindowImpl, "call_scrollBy__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+        } },
+        .{ "scrollTo", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_scrollTo", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+            .{ .function = "call_scrollTo__1", .implemented = @hasDecl(WindowImpl, "call_scrollTo__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
         } },
     };
 
@@ -2615,21 +2656,25 @@ pub const Window = struct {
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{
-        "call_showSaveFilePicker",
-        "call_getDigitalGoodsService",
         "call_getScreenDetails",
-        "call_scrollBy",
-        "call_scrollBy__1",
-        "call_showDirectoryPicker",
-        "call_queryLocalFonts",
-        "call_scrollTo",
-        "call_scrollTo__1",
+        "call_maximize",
         "call_createImageBitmap",
         "call_createImageBitmap__1",
         "call_showOpenFilePicker",
-        "call_fetch",
+        "call_minimize",
         "call_scroll",
         "call_scroll__1",
+        "call_showSaveFilePicker",
+        "call_getDigitalGoodsService",
+        "call_setResizable",
+        "call_scrollBy",
+        "call_scrollBy__1",
+        "call_queryLocalFonts",
+        "call_showDirectoryPicker",
+        "call_scrollTo",
+        "call_scrollTo__1",
+        "call_fetch",
+        "call_restore",
     };
 
     /// Get supported property names for named property enumeration (Reflect.ownKeys, etc.)

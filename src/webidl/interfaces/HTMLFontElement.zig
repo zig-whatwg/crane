@@ -71,6 +71,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -169,6 +170,7 @@ pub const HTMLFontElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -176,7 +178,6 @@ pub const HTMLFontElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -192,6 +193,7 @@ pub const HTMLFontElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -225,9 +227,9 @@ pub const HTMLFontElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            color: typedefs.DOMString = undefined,
-            face: typedefs.DOMString = undefined,
-            size: typedefs.DOMString = undefined,
+            color: runtime.DOMString = undefined,
+            face: runtime.DOMString = undefined,
+            size: runtime.DOMString = undefined,
             _internal: ?*HTMLFontElementImpl.InternalState = null,
         },
     );
@@ -342,51 +344,51 @@ pub const HTMLFontElement = struct {
     const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
-    pub fn get_color(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_color(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLFontElementImpl, "get_color")) return try HTMLFontElementImpl.get_color(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "color" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "color" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
-    pub fn set_color(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_color(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFontElementImpl, "set_color")) return try HTMLFontElementImpl.set_color(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "color" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "color" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_face(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_face(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLFontElementImpl, "get_face")) return try HTMLFontElementImpl.get_face(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "face" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "face" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_face(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_face(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFontElementImpl, "set_face")) return try HTMLFontElementImpl.set_face(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "face" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "face" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_size(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_size(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLFontElementImpl, "get_size")) return try HTMLFontElementImpl.get_size(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "size" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "size" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_size(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_size(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFontElementImpl, "set_size")) return try HTMLFontElementImpl.set_size(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "size" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "size" }, value);
     }
 
     /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for

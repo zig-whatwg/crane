@@ -114,7 +114,7 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue,
     return try WindowOrWorkerGlobalScopeImpl.call_structuredClone(instance, value, options);
 }
 
-pub fn call_atob(instance: *runtime.Instance, data: DOMString) anyerror!runtime.ByteString {
+pub fn call_atob(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.ByteString {
     return try WindowOrWorkerGlobalScopeImpl.call_atob(instance, data);
 }
 
@@ -122,7 +122,7 @@ pub fn call_setInterval(instance: *runtime.Instance, handler: TimerHandler, time
     return try WindowOrWorkerGlobalScopeImpl.call_setInterval(instance, handler, timeout, arguments);
 }
 
-pub fn call_btoa(instance: *runtime.Instance, data: DOMString) anyerror!DOMString {
+pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.DOMString {
     return try WindowOrWorkerGlobalScopeImpl.call_btoa(instance, data);
 }
 

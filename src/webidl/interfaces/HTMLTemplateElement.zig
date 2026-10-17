@@ -72,6 +72,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -97,10 +98,12 @@ pub const HTMLTemplateElement = struct {
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "content", "get_content", null },
+            .{ "htmlFor", "get_htmlFor", "set_htmlFor" },
             .{ "shadowRootMode", "get_shadowRootMode", "set_shadowRootMode" },
             .{ "shadowRootDelegatesFocus", "get_shadowRootDelegatesFocus", "set_shadowRootDelegatesFocus" },
-            .{ "shadowRootClonable", "get_shadowRootClonable", "set_shadowRootClonable" },
             .{ "shadowRootSerializable", "get_shadowRootSerializable", "set_shadowRootSerializable" },
+            .{ "shadowRootSlotAssignment", "get_shadowRootSlotAssignment", "set_shadowRootSlotAssignment" },
+            .{ "shadowRootClonable", "get_shadowRootClonable", "set_shadowRootClonable" },
             .{ "shadowRootCustomElementRegistry", "get_shadowRootCustomElementRegistry", "set_shadowRootCustomElementRegistry" },
         };
 
@@ -173,6 +176,7 @@ pub const HTMLTemplateElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -180,7 +184,6 @@ pub const HTMLTemplateElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -196,6 +199,7 @@ pub const HTMLTemplateElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -210,10 +214,12 @@ pub const HTMLTemplateElement = struct {
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "content", "get_content", null },
+            .{ "htmlFor", "get_htmlFor", "set_htmlFor" },
             .{ "shadowRootMode", "get_shadowRootMode", "set_shadowRootMode" },
             .{ "shadowRootDelegatesFocus", "get_shadowRootDelegatesFocus", "set_shadowRootDelegatesFocus" },
-            .{ "shadowRootClonable", "get_shadowRootClonable", "set_shadowRootClonable" },
             .{ "shadowRootSerializable", "get_shadowRootSerializable", "set_shadowRootSerializable" },
+            .{ "shadowRootSlotAssignment", "get_shadowRootSlotAssignment", "set_shadowRootSlotAssignment" },
+            .{ "shadowRootClonable", "get_shadowRootClonable", "set_shadowRootClonable" },
             .{ "shadowRootCustomElementRegistry", "get_shadowRootCustomElementRegistry", "set_shadowRootCustomElementRegistry" },
         };
 
@@ -233,28 +239,34 @@ pub const HTMLTemplateElement = struct {
         Meta.MixinTypes,
         struct {
             content: *runtime.Instance = undefined,
-            shadowRootMode: typedefs.DOMString = undefined,
+            htmlFor: runtime.DOMString = undefined,
+            shadowRootMode: runtime.DOMString = undefined,
             shadowRootDelegatesFocus: bool = undefined,
-            shadowRootClonable: bool = undefined,
             shadowRootSerializable: bool = undefined,
-            shadowRootCustomElementRegistry: typedefs.DOMString = undefined,
+            shadowRootSlotAssignment: runtime.DOMString = undefined,
+            shadowRootClonable: bool = undefined,
+            shadowRootCustomElementRegistry: runtime.DOMString = undefined,
             _internal: ?*HTMLTemplateElementImpl.InternalState = null,
         },
     );
 
     const delegates = .{
         .get_content = &get_content,
+        .get_htmlFor = &get_htmlFor,
         .get_shadowRootClonable = &get_shadowRootClonable,
         .get_shadowRootCustomElementRegistry = &get_shadowRootCustomElementRegistry,
         .get_shadowRootDelegatesFocus = &get_shadowRootDelegatesFocus,
         .get_shadowRootMode = &get_shadowRootMode,
         .get_shadowRootSerializable = &get_shadowRootSerializable,
+        .get_shadowRootSlotAssignment = &get_shadowRootSlotAssignment,
 
+        .set_htmlFor = &set_htmlFor,
         .set_shadowRootClonable = &set_shadowRootClonable,
         .set_shadowRootCustomElementRegistry = &set_shadowRootCustomElementRegistry,
         .set_shadowRootDelegatesFocus = &set_shadowRootDelegatesFocus,
         .set_shadowRootMode = &set_shadowRootMode,
         .set_shadowRootSerializable = &set_shadowRootSerializable,
+        .set_shadowRootSlotAssignment = &set_shadowRootSlotAssignment,
 
         .deinit = &deinit,
     };
@@ -358,21 +370,37 @@ pub const HTMLTemplateElement = struct {
         return try HTMLTemplateElementImpl.get_content(instance);
     }
 
+    const reflection = @import("dom").reflection;
+
+    /// Extended attributes: [CEReactions], [Reflect="for"]
+    pub fn get_htmlFor(instance: *runtime.Instance) anyerror!runtime.DOMString {
+        if (comptime @hasDecl(HTMLTemplateElementImpl, "get_htmlFor")) return try HTMLTemplateElementImpl.get_htmlFor(instance);
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "for" });
+    }
+
+    /// Extended attributes: [CEReactions], [Reflect="for"]
+    pub fn set_htmlFor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
+
+        if (comptime @hasDecl(HTMLTemplateElementImpl, "set_htmlFor")) return try HTMLTemplateElementImpl.set_htmlFor(instance, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "for" }, value);
+    }
+
     /// Extended attributes: [CEReactions]
-    pub fn get_shadowRootMode(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_shadowRootMode(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLTemplateElementImpl.get_shadowRootMode(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_shadowRootMode(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_shadowRootMode(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         try HTMLTemplateElementImpl.set_shadowRootMode(instance, value);
     }
-
-    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_shadowRootDelegatesFocus(instance: *runtime.Instance) anyerror!bool {
@@ -388,6 +416,36 @@ pub const HTMLTemplateElement = struct {
 
         if (comptime @hasDecl(HTMLTemplateElementImpl, "set_shadowRootDelegatesFocus")) return try HTMLTemplateElementImpl.set_shadowRootDelegatesFocus(instance, value);
         try reflection.set(bool, instance, .{ .name = "shadowrootdelegatesfocus" }, value);
+    }
+
+    /// Extended attributes: [CEReactions], [Reflect]
+    pub fn get_shadowRootSerializable(instance: *runtime.Instance) anyerror!bool {
+        if (comptime @hasDecl(HTMLTemplateElementImpl, "get_shadowRootSerializable")) return try HTMLTemplateElementImpl.get_shadowRootSerializable(instance);
+        return try reflection.get(bool, instance, .{ .name = "shadowrootserializable" });
+    }
+
+    /// Extended attributes: [CEReactions], [Reflect]
+    pub fn set_shadowRootSerializable(instance: *runtime.Instance, value: bool) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
+
+        if (comptime @hasDecl(HTMLTemplateElementImpl, "set_shadowRootSerializable")) return try HTMLTemplateElementImpl.set_shadowRootSerializable(instance, value);
+        try reflection.set(bool, instance, .{ .name = "shadowrootserializable" }, value);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn get_shadowRootSlotAssignment(instance: *runtime.Instance) anyerror!runtime.DOMString {
+        return try HTMLTemplateElementImpl.get_shadowRootSlotAssignment(instance);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn set_shadowRootSlotAssignment(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
+
+        try HTMLTemplateElementImpl.set_shadowRootSlotAssignment(instance, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -407,35 +465,19 @@ pub const HTMLTemplateElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_shadowRootSerializable(instance: *runtime.Instance) anyerror!bool {
-        if (comptime @hasDecl(HTMLTemplateElementImpl, "get_shadowRootSerializable")) return try HTMLTemplateElementImpl.get_shadowRootSerializable(instance);
-        return try reflection.get(bool, instance, .{ .name = "shadowrootserializable" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_shadowRootSerializable(instance: *runtime.Instance, value: bool) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(HTMLTemplateElementImpl, "set_shadowRootSerializable")) return try HTMLTemplateElementImpl.set_shadowRootSerializable(instance, value);
-        try reflection.set(bool, instance, .{ .name = "shadowrootserializable" }, value);
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_shadowRootCustomElementRegistry(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_shadowRootCustomElementRegistry(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLTemplateElementImpl, "get_shadowRootCustomElementRegistry")) return try HTMLTemplateElementImpl.get_shadowRootCustomElementRegistry(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "shadowrootcustomelementregistry" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "shadowrootcustomelementregistry" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_shadowRootCustomElementRegistry(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_shadowRootCustomElementRegistry(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTemplateElementImpl, "set_shadowRootCustomElementRegistry")) return try HTMLTemplateElementImpl.set_shadowRootCustomElementRegistry(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "shadowrootcustomelementregistry" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "shadowrootcustomelementregistry" }, value);
     }
 
     /// HTML [CEReactions]: the functions that run a custom element reactions
@@ -443,10 +485,12 @@ pub const HTMLTemplateElement = struct {
     /// engine.withPendingExceptionSetAside sets aside what the member leaves
     /// pending.
     pub const ce_reactions = .{
+        "set_htmlFor",
         "set_shadowRootMode",
         "set_shadowRootDelegatesFocus",
-        "set_shadowRootClonable",
         "set_shadowRootSerializable",
+        "set_shadowRootSlotAssignment",
+        "set_shadowRootClonable",
         "set_shadowRootCustomElementRegistry",
     };
 };

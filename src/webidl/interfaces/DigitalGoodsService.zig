@@ -169,7 +169,7 @@ pub const DigitalGoodsService = struct {
         return try DigitalGoodsServiceImpl.call_getDetails(instance, itemIds);
     }
 
-    pub fn call_consume(instance: *runtime.Instance, purchaseToken: DOMString) anyerror!runtime.JSValue {
+    pub fn call_consume(instance: *runtime.Instance, purchaseToken: runtime.DOMString) anyerror!runtime.JSValue {
         return try DigitalGoodsServiceImpl.call_consume(instance, purchaseToken);
     }
 

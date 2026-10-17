@@ -31,16 +31,14 @@ pub fn deinit(instance: *runtime.Instance) void {
     }
 }
 
-/// `view` - § 4.8.3: Return this.[[view]]. The request keeps its handle; a
-/// view result is the binding's (ArrayBufferView.jsHandle), so the view goes
-/// back over a hold of the binding's own.
-pub fn get_view(instance: *runtime.Instance) anyerror!?typedefs.ArrayBufferView {
+/// `view` - § 4.8.3: Return this.[[view]]. The IDL type is `Uint8Array?`
+/// (the view is always the Uint8Array ReadableByteStreamControllerGetBYOBRequest
+/// constructs), which binds as a JSValue. The request keeps its handle, so
+/// the view goes back over a hold of the binding's own.
+pub fn get_view(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     const request = srd.byobRequestOf(instance) orelse return error.TypeError;
     const view = request.view orelse return null;
-    const info = js.describeView(view) orelse return null;
-    const borrowed = typedefs.ArrayBufferView.fromEngine(@intCast(@intFromEnum(info.kind)), info.byte_offset, info.length, js.handleOf(view) orelse return null) orelse return null;
-    const kept = try js.toReturnKept(view);
-    return borrowed.withJsHandle(kept.asEngineHandle().?);
+    return try js.toReturnKept(view);
 }
 
 /// `respond(bytesWritten)` - § 4.8.3.

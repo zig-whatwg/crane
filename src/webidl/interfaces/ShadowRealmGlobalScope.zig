@@ -96,7 +96,7 @@ pub const ShadowRealmGlobalScope = struct {
         Meta.MixinTypes,
         struct {
             self: *runtime.Instance = undefined,
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             origin: runtime.USVString = undefined,
             isSecureContext: bool = undefined,
             crossOriginIsolated: bool = undefined,
@@ -222,7 +222,7 @@ pub const ShadowRealmGlobalScope = struct {
         try runtime.defineOwnProperty(instance, "self", value);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ShadowRealmGlobalScopeImpl.get_name(instance);
     }
 
@@ -246,11 +246,11 @@ pub const ShadowRealmGlobalScope = struct {
         return try ShadowRealmGlobalScopeImpl.call_structuredClone(instance, value, options);
     }
 
-    pub fn call_atob(instance: *runtime.Instance, data: DOMString) anyerror!runtime.ByteString {
+    pub fn call_atob(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.ByteString {
         return try ShadowRealmGlobalScopeImpl.call_atob(instance, data);
     }
 
-    pub fn call_btoa(instance: *runtime.Instance, data: DOMString) anyerror!DOMString {
+    pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.DOMString {
         return try ShadowRealmGlobalScopeImpl.call_btoa(instance, data);
     }
 

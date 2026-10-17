@@ -91,7 +91,7 @@ pub const XPathResult = struct {
         struct {
             resultType: u16 = undefined,
             numberValue: f64 = undefined,
-            stringValue: typedefs.DOMString = undefined,
+            stringValue: runtime.DOMString = undefined,
             booleanValue: bool = undefined,
             singleNodeValue: ?*runtime.Instance = null,
             invalidIteratorState: bool = undefined,
@@ -272,7 +272,7 @@ pub const XPathResult = struct {
         return try XPathResultImpl.get_numberValue(instance);
     }
 
-    pub fn get_stringValue(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_stringValue(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try XPathResultImpl.get_stringValue(instance);
     }
 

@@ -68,7 +68,7 @@ pub const RTCDTMFToneChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            tone: typedefs.DOMString = undefined,
+            tone: runtime.DOMString = undefined,
             _internal: ?*RTCDTMFToneChangeEventImpl.InternalState = null,
         },
     );
@@ -169,12 +169,12 @@ pub const RTCDTMFToneChangeEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(RTCDTMFToneChangeEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(RTCDTMFToneChangeEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try RTCDTMFToneChangeEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
 
-    pub fn get_tone(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_tone(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try RTCDTMFToneChangeEventImpl.get_tone(instance);
     }
 };

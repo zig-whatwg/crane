@@ -316,3 +316,16 @@ pub fn call_static_install(instance: *runtime.Instance, options: dictionaries.Sp
     _ = options;
     return error.NotImplemented;
 }
+
+/// Getter for unspokenPunctuation
+pub fn get_unspokenPunctuation(instance: *runtime.Instance) anyerror!bool {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Setter for unspokenPunctuation
+pub fn set_unspokenPunctuation(instance: *runtime.Instance, value: bool) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}

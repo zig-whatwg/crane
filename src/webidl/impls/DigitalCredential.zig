@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for protocol
-pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.DOMString {
+pub fn get_protocol(instance: *runtime.Instance) anyerror!typedefs.DigitalCredentialProtocol {
     _ = instance;
     return error.NotImplemented;
 }

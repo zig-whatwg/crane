@@ -3,7 +3,6 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const typedefs = @import("typedefs");
 const Point2D = @import("Point2D.zig").Point2D;
 
 pub const MediaTrackSettings = struct {
@@ -40,6 +39,14 @@ pub const MediaTrackSettings = struct {
     tilt: ?f64 = null,
     zoom: ?f64 = null,
     torch: ?bool = null,
+    powerEfficient: ?bool = null,
+    powerEfficientPixelFormat: ?bool = null,
+    gestureReactions: ?bool = null,
+    faceFraming: ?bool = null,
+    eyeGazeCorrection: ?bool = null,
+    voiceIsolation: ?bool = null,
+    humanFaceDetectionMode: ?runtime.DOMString = null,
+    backgroundSegmentationMask: ?bool = null,
     displaySurface: ?runtime.DOMString = null,
     logicalSurface: ?bool = null,
     cursor: ?runtime.DOMString = null,

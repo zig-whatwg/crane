@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DOMPoint = @import("interfaces").DOMPoint;
+const SVGPoint = @import("typedefs").SVGPoint;
 
 pub const SVGPointList = struct {
     pub const Meta = struct {
@@ -196,7 +196,7 @@ pub const SVGPointList = struct {
         return try SVGPointListImpl.get_numberOfItems(instance);
     }
 
-    pub fn call_setter(instance: *runtime.Instance, index: u32, newItem: *runtime.Instance) anyerror!void {
+    pub fn call_setter(instance: *runtime.Instance, index: u32, newItem: SVGPoint) anyerror!void {
         if (comptime @hasDecl(SVGPointListImpl, "call_setter")) {
             return try SVGPointListImpl.call_setter(instance, index, newItem);
         } else {
@@ -204,7 +204,7 @@ pub const SVGPointList = struct {
         }
     }
 
-    pub fn call_removeItem(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+    pub fn call_removeItem(instance: *runtime.Instance, index: u32) anyerror!SVGPoint {
         return try SVGPointListImpl.call_removeItem(instance, index);
     }
 
@@ -212,23 +212,23 @@ pub const SVGPointList = struct {
         return try SVGPointListImpl.call_clear(instance);
     }
 
-    pub fn call_appendItem(instance: *runtime.Instance, newItem: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_appendItem(instance: *runtime.Instance, newItem: SVGPoint) anyerror!SVGPoint {
         return try SVGPointListImpl.call_appendItem(instance, newItem);
     }
 
-    pub fn call_insertItemBefore(instance: *runtime.Instance, newItem: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+    pub fn call_insertItemBefore(instance: *runtime.Instance, newItem: SVGPoint, index: u32) anyerror!SVGPoint {
         return try SVGPointListImpl.call_insertItemBefore(instance, newItem, index);
     }
 
-    pub fn call_initialize(instance: *runtime.Instance, newItem: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_initialize(instance: *runtime.Instance, newItem: SVGPoint) anyerror!SVGPoint {
         return try SVGPointListImpl.call_initialize(instance, newItem);
     }
 
-    pub fn call_getItem(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+    pub fn call_getItem(instance: *runtime.Instance, index: u32) anyerror!SVGPoint {
         return try SVGPointListImpl.call_getItem(instance, index);
     }
 
-    pub fn call_replaceItem(instance: *runtime.Instance, newItem: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+    pub fn call_replaceItem(instance: *runtime.Instance, newItem: SVGPoint, index: u32) anyerror!SVGPoint {
         return try SVGPointListImpl.call_replaceItem(instance, newItem, index);
     }
 };

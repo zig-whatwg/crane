@@ -37,7 +37,7 @@ interface CSSStyleSheet : StyleSheet {
 };
 
 dictionary CSSStyleSheetInit {
-  DOMString baseURL = null;
+  DOMString? baseURL = null;
   (MediaList or DOMString) media = "";
   boolean disabled = false;
 };
@@ -137,7 +137,7 @@ interface CSSPageRule : CSSGroupingRule {
 [Exposed=Window]
 interface CSSMarginRule : CSSRule {
   readonly attribute CSSOMString name;
-  [SameObject, PutForwards=cssText] readonly attribute CSSMarginDescriptors style;
+  [SameObject, PutForwards=cssText] readonly attribute CSSStyleDeclaration style;
 };
 
 [Exposed=Window]

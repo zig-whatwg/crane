@@ -80,7 +80,7 @@ pub const SVGAngle = struct {
             unitType: u16 = undefined,
             value: f32 = undefined,
             valueInSpecifiedUnits: f32 = undefined,
-            valueAsString: typedefs.DOMString = undefined,
+            valueAsString: runtime.DOMString = undefined,
             _internal: ?*SVGAngleImpl.InternalState = null,
         },
     );
@@ -240,11 +240,11 @@ pub const SVGAngle = struct {
         try SVGAngleImpl.set_valueInSpecifiedUnits(instance, value);
     }
 
-    pub fn get_valueAsString(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_valueAsString(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SVGAngleImpl.get_valueAsString(instance);
     }
 
-    pub fn set_valueAsString(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_valueAsString(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try SVGAngleImpl.set_valueAsString(instance, value);
     }
 

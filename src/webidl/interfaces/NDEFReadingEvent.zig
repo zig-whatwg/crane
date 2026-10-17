@@ -72,7 +72,7 @@ pub const NDEFReadingEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            serialNumber: typedefs.DOMString = undefined,
+            serialNumber: runtime.DOMString = undefined,
             message: *runtime.Instance = undefined,
             cached_message: ?*runtime.Instance = null,
             _internal: ?*NDEFReadingEventImpl.InternalState = null,
@@ -177,12 +177,12 @@ pub const NDEFReadingEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, readingEventInitDict: NDEFReadingEventInit) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, readingEventInitDict: NDEFReadingEventInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try NDEFReadingEventImpl.call_constructor(ctx, @"type", readingEventInitDict);
     }
 
-    pub fn get_serialNumber(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_serialNumber(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NDEFReadingEventImpl.get_serialNumber(instance);
     }
 

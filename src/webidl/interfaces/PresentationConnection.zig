@@ -282,7 +282,7 @@ pub const PresentationConnection = struct {
         try event_handlers.setValue(EventHandler, instance, "onmessage", value);
     }
 
-    pub fn call_send(instance: *runtime.Instance, message: DOMString) anyerror!void {
+    pub fn call_send(instance: *runtime.Instance, message: runtime.DOMString) anyerror!void {
         return try PresentationConnectionImpl.call_send(instance, message);
     }
 

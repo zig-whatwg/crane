@@ -75,7 +75,7 @@ pub const TextEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: typedefs.DOMString = undefined,
+            data: runtime.DOMString = undefined,
             _internal: ?*TextEventImpl.InternalState = null,
         },
     );
@@ -175,11 +175,11 @@ pub const TextEvent = struct {
         }
     }
 
-    pub fn get_data(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_data(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TextEventImpl.get_data(instance);
     }
 
-    pub fn call_initTextEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), view: webidl.Opt(?*runtime.Instance), data: webidl.Opt(DOMString)) anyerror!void {
+    pub fn call_initTextEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), view: webidl.Opt(?*runtime.Instance), data: webidl.Opt(runtime.DOMString)) anyerror!void {
         return try TextEventImpl.call_initTextEvent(instance, @"type", bubbles, cancelable, view, data);
     }
 };

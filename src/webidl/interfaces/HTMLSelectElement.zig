@@ -76,6 +76,7 @@ const HTMLOptionsCollection = @import("interfaces").HTMLOptionsCollection;
 const NodeList = @import("interfaces").NodeList;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -206,6 +207,7 @@ pub const HTMLSelectElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -213,7 +215,6 @@ pub const HTMLSelectElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -228,6 +229,7 @@ pub const HTMLSelectElement = struct {
             "before",
             "after",
             "replaceWith",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -283,22 +285,22 @@ pub const HTMLSelectElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            autocomplete: typedefs.DOMString = undefined,
+            autocomplete: runtime.DOMString = undefined,
             disabled: bool = undefined,
             form: ?*runtime.Instance = null,
             multiple: bool = undefined,
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             required: bool = undefined,
             size: u32 = undefined,
-            type: typedefs.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             options: *runtime.Instance = undefined,
             length: u32 = undefined,
             selectedOptions: *runtime.Instance = undefined,
             selectedIndex: i32 = undefined,
-            value: typedefs.DOMString = undefined,
+            value: runtime.DOMString = undefined,
             willValidate: bool = undefined,
             validity: *runtime.Instance = undefined,
-            validationMessage: typedefs.DOMString = undefined,
+            validationMessage: runtime.DOMString = undefined,
             labels: *runtime.Instance = undefined,
             cached_options: ?*runtime.Instance = null,
             cached_selectedOptions: ?*runtime.Instance = null,
@@ -446,18 +448,18 @@ pub const HTMLSelectElement = struct {
     const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
-    pub fn get_autocomplete(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_autocomplete(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLSelectElementImpl.get_autocomplete(instance);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
-    pub fn set_autocomplete(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_autocomplete(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLSelectElementImpl, "set_autocomplete")) return try HTMLSelectElementImpl.set_autocomplete(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "autocomplete" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "autocomplete" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -497,19 +499,19 @@ pub const HTMLSelectElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLSelectElementImpl, "get_name")) return try HTMLSelectElementImpl.get_name(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "name" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLSelectElementImpl, "set_name")) return try HTMLSelectElementImpl.set_name(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "name" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -544,7 +546,7 @@ pub const HTMLSelectElement = struct {
         try reflection.set(u32, instance, .{ .name = "size", .default = 0 }, value);
     }
 
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLSelectElementImpl.get_type(instance);
     }
 
@@ -596,11 +598,11 @@ pub const HTMLSelectElement = struct {
         try HTMLSelectElementImpl.set_selectedIndex(instance, value);
     }
 
-    pub fn get_value(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLSelectElementImpl.get_value(instance);
     }
 
-    pub fn set_value(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try HTMLSelectElementImpl.set_value(instance, value);
     }
 
@@ -612,7 +614,7 @@ pub const HTMLSelectElement = struct {
         return try HTMLSelectElementImpl.get_validity(instance);
     }
 
-    pub fn get_validationMessage(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLSelectElementImpl.get_validationMessage(instance);
     }
 
@@ -637,11 +639,11 @@ pub const HTMLSelectElement = struct {
         return try HTMLSelectElementImpl.call_item(instance, index);
     }
 
-    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?*runtime.Instance {
         return try HTMLSelectElementImpl.call_namedItem(instance, name);
     }
 
-    pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": DOMString) anyerror!void {
+    pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOMString) anyerror!void {
         return try HTMLSelectElementImpl.call_setCustomValidity(instance, @"error");
     }
 

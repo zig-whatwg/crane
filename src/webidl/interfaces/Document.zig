@@ -18,7 +18,9 @@ const DocumentOrShadowRoot = @import("mixins").DocumentOrShadowRoot;
 const ParentNode = @import("mixins").ParentNode;
 const XPathEvaluatorBase = @import("mixins").XPathEvaluatorBase;
 const GlobalEventHandlers = @import("mixins").GlobalEventHandlers;
+const ARIANotifyMixin = @import("mixins").ARIANotifyMixin;
 const HTMLOrSVGScriptElement = @import("typedefs").HTMLOrSVGScriptElement;
+const ModelContext = @import("interfaces").ModelContext;
 const HTMLCollection = @import("interfaces").HTMLCollection;
 const HTMLHeadElement = @import("interfaces").HTMLHeadElement;
 const FontMetrics = @import("interfaces").FontMetrics;
@@ -42,7 +44,6 @@ const NamedFlowMap = @import("interfaces").NamedFlowMap;
 const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const StorageAccessHandle = @import("interfaces").StorageAccessHandle;
 const ImportNodeOptions = @import("dictionaries").ImportNodeOptions;
 const DOMImplementation = @import("interfaces").DOMImplementation;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
@@ -58,7 +59,6 @@ const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
 const ParseHTMLUnsafeOptions = @import("dictionaries").ParseHTMLUnsafeOptions;
 const DOMString = @import("typedefs").DOMString;
 const FontFaceSet = @import("interfaces").FontFaceSet;
-const BrowsingTopicsOptions = @import("dictionaries").BrowsingTopicsOptions;
 const DOMQuad = @import("interfaces").DOMQuad;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -75,16 +75,16 @@ const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const HTMLElement = @import("interfaces").HTMLElement;
 const WindowProxy = @import("typedefs").WindowProxy;
 const Attr = @import("interfaces").Attr;
-const StorageAccessTypes = @import("dictionaries").StorageAccessTypes;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const ElementCreationOptions = @import("dictionaries").ElementCreationOptions;
 const DOMPoint = @import("interfaces").DOMPoint;
 const Observable = @import("interfaces").Observable;
 const CaretPosition = @import("interfaces").CaretPosition;
-const CaretPositionFromPointOptions = @import("dictionaries").CaretPositionFromPointOptions;
 const ProcessingInstruction = @import("interfaces").ProcessingInstruction;
 const SVGSVGElement = @import("interfaces").SVGSVGElement;
+const CaretPositionFromPointOptions = @import("dictionaries").CaretPositionFromPointOptions;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
 const DocumentVisibilityState = @import("enums").DocumentVisibilityState;
 const NodeFilter = @import("interfaces").NodeFilter;
@@ -106,6 +106,7 @@ pub const Document = struct {
             ParentNode,
             XPathEvaluatorBase,
             GlobalEventHandlers,
+            ARIANotifyMixin,
         };
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
@@ -177,6 +178,7 @@ pub const Document = struct {
             .{ "onprerenderingchange", "get_onprerenderingchange", "set_onprerenderingchange" },
             .{ "fragmentDirective", "get_fragmentDirective", null },
             .{ "timeline", "get_timeline", null },
+            .{ "modelContext", "get_modelContext", null },
             .{ "fonts", "get_fonts", null },
             .{ "customElementRegistry", "get_customElementRegistry", null },
             .{ "styleSheets", "get_styleSheets", null },
@@ -362,12 +364,10 @@ pub const Document = struct {
             .{ "releaseEvents", "call_releaseEvents", 0 },
             .{ "exitPictureInPicture", "call_exitPictureInPicture", 0 },
             .{ "exitPointerLock", "call_exitPointerLock", 0 },
-            .{ "requestStorageAccessFor", "call_requestStorageAccessFor", 1 },
             .{ "hasUnpartitionedCookieAccess", "call_hasUnpartitionedCookieAccess", 0 },
-            .{ "requestStorageAccess", "call_requestStorageAccess", 0 },
             .{ "getSelection", "call_getSelection", 0 },
             .{ "hasStorageAccess", "call_hasStorageAccess", 0 },
-            .{ "browsingTopics", "call_browsingTopics", 0 },
+            .{ "requestStorageAccess", "call_requestStorageAccess", 0 },
             .{ "hasPrivateToken", "call_hasPrivateToken", 1 },
             .{ "hasRedemptionRecord", "call_hasRedemptionRecord", 1 },
             .{ "getBoxQuads", "call_getBoxQuads", 0 },
@@ -385,6 +385,7 @@ pub const Document = struct {
             .{ "createExpression", "call_createExpression", 1 },
             .{ "createNSResolver", "call_createNSResolver", 1 },
             .{ "evaluate", "call_evaluate", 2 },
+            .{ "ariaNotify", "call_ariaNotify", 1 },
         };
 
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
@@ -422,6 +423,7 @@ pub const Document = struct {
             "measureText",
             "exitFullscreen",
             "parseHTMLUnsafe",
+            "parseHTML",
             "getElementsByName",
             "open",
             "close",
@@ -438,13 +440,10 @@ pub const Document = struct {
             "releaseEvents",
             "exitPictureInPicture",
             "exitPointerLock",
-            "requestStorageAccessFor",
             "hasUnpartitionedCookieAccess",
-            "requestStorageAccess",
-            "parseHTML",
             "getSelection",
             "hasStorageAccess",
-            "browsingTopics",
+            "requestStorageAccess",
             "hasPrivateToken",
             "hasRedemptionRecord",
             "getBoxQuads",
@@ -462,6 +461,7 @@ pub const Document = struct {
             "createExpression",
             "createNSResolver",
             "evaluate",
+            "ariaNotify",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -549,6 +549,7 @@ pub const Document = struct {
             .{ "onprerenderingchange", "get_onprerenderingchange", "set_onprerenderingchange" },
             .{ "fragmentDirective", "get_fragmentDirective", null },
             .{ "timeline", "get_timeline", null },
+            .{ "modelContext", "get_modelContext", null },
             .{ "fonts", "get_fonts", null },
             .{ "customElementRegistry", "get_customElementRegistry", null },
             .{ "styleSheets", "get_styleSheets", null },
@@ -686,8 +687,8 @@ pub const Document = struct {
         /// their mixin's: hidden in a realm that is not a secure context
         /// (WebIDL 3.3.13).
         pub const secure_context_members = .{
+            "modelContext",
             "onpointerrawupdate",
-            "browsingTopics",
         };
 
         /// Members marked with [Unscopable] extended attribute
@@ -706,11 +707,11 @@ pub const Document = struct {
             implementation: *runtime.Instance = undefined,
             URL: runtime.USVString = undefined,
             documentURI: runtime.USVString = undefined,
-            compatMode: typedefs.DOMString = undefined,
-            characterSet: typedefs.DOMString = undefined,
-            charset: typedefs.DOMString = undefined,
-            inputEncoding: typedefs.DOMString = undefined,
-            contentType: typedefs.DOMString = undefined,
+            compatMode: runtime.DOMString = undefined,
+            characterSet: runtime.DOMString = undefined,
+            charset: runtime.DOMString = undefined,
+            inputEncoding: runtime.DOMString = undefined,
+            contentType: runtime.DOMString = undefined,
             doctype: ?*runtime.Instance = null,
             documentElement: ?*runtime.Instance = null,
             rootElement: ?*runtime.Instance = null,
@@ -723,10 +724,10 @@ pub const Document = struct {
             domain: runtime.USVString = undefined,
             referrer: runtime.USVString = undefined,
             cookie: runtime.USVString = undefined,
-            lastModified: typedefs.DOMString = undefined,
+            lastModified: runtime.DOMString = undefined,
             readyState: enums.DocumentReadyState = undefined,
-            title: typedefs.DOMString = undefined,
-            dir: typedefs.DOMString = undefined,
+            title: runtime.DOMString = undefined,
+            dir: runtime.DOMString = undefined,
             body: ?*runtime.Instance = null,
             head: ?*runtime.Instance = null,
             images: *runtime.Instance = undefined,
@@ -737,14 +738,14 @@ pub const Document = struct {
             scripts: *runtime.Instance = undefined,
             currentScript: ?typedefs.HTMLOrSVGScriptElement = null,
             defaultView: ?typedefs.WindowProxy = null,
-            designMode: typedefs.DOMString = undefined,
+            designMode: runtime.DOMString = undefined,
             hidden: bool = undefined,
             visibilityState: enums.DocumentVisibilityState = undefined,
-            fgColor: typedefs.DOMString = undefined,
-            linkColor: typedefs.DOMString = undefined,
-            vlinkColor: typedefs.DOMString = undefined,
-            alinkColor: typedefs.DOMString = undefined,
-            bgColor: typedefs.DOMString = undefined,
+            fgColor: runtime.DOMString = undefined,
+            linkColor: runtime.DOMString = undefined,
+            vlinkColor: runtime.DOMString = undefined,
+            alinkColor: runtime.DOMString = undefined,
+            bgColor: runtime.DOMString = undefined,
             anchors: *runtime.Instance = undefined,
             applets: *runtime.Instance = undefined,
             all: *runtime.Instance = undefined,
@@ -754,6 +755,7 @@ pub const Document = struct {
             prerendering: bool = undefined,
             fragmentDirective: *runtime.Instance = undefined,
             timeline: *runtime.Instance = undefined,
+            modelContext: *runtime.Instance = undefined,
             fonts: *runtime.Instance = undefined,
             customElementRegistry: ?*runtime.Instance = null,
             styleSheets: *runtime.Instance = undefined,
@@ -779,6 +781,7 @@ pub const Document = struct {
             cached_all: ?*runtime.Instance = null,
             cached_permissionsPolicy: ?*runtime.Instance = null,
             cached_fragmentDirective: ?*runtime.Instance = null,
+            cached_modelContext: ?*runtime.Instance = null,
             cached_styleSheets: ?*runtime.Instance = null,
             cached_children: ?*runtime.Instance = null,
             _internal: ?*DocumentImpl.InternalState = null,
@@ -831,6 +834,7 @@ pub const Document = struct {
         .get_linkColor = &get_linkColor,
         .get_links = &get_links,
         .get_location = &get_location,
+        .get_modelContext = &get_modelContext,
         .get_namedFlows = &get_namedFlows,
         .get_onabort = &get_onabort,
         .get_onanimationcancel = &get_onanimationcancel,
@@ -1097,7 +1101,7 @@ pub const Document = struct {
 
         .call_adoptNode = &call_adoptNode,
         .call_append = &call_append,
-        .call_browsingTopics = &call_browsingTopics,
+        .call_ariaNotify = &call_ariaNotify,
         .call_captureEvents = &call_captureEvents,
         .call_caretPositionFromPoint = &call_caretPositionFromPoint,
         .call_clear = &call_clear,
@@ -1156,7 +1160,6 @@ pub const Document = struct {
         .call_releaseEvents = &call_releaseEvents,
         .call_replaceChildren = &call_replaceChildren,
         .call_requestStorageAccess = &call_requestStorageAccess,
-        .call_requestStorageAccessFor = &call_requestStorageAccessFor,
         .call_startViewTransition = &call_startViewTransition,
         .call_write = &call_write,
         .call_writeln = &call_writeln,
@@ -1281,23 +1284,23 @@ pub const Document = struct {
         return try DocumentImpl.get_documentURI(instance);
     }
 
-    pub fn get_compatMode(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_compatMode(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DocumentImpl.get_compatMode(instance);
     }
 
-    pub fn get_characterSet(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_characterSet(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DocumentImpl.get_characterSet(instance);
     }
 
-    pub fn get_charset(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_charset(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DocumentImpl.get_charset(instance);
     }
 
-    pub fn get_inputEncoding(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_inputEncoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DocumentImpl.get_inputEncoding(instance);
     }
 
-    pub fn get_contentType(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_contentType(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DocumentImpl.get_contentType(instance);
     }
 
@@ -1411,7 +1414,7 @@ pub const Document = struct {
         try DocumentImpl.set_cookie(instance, value);
     }
 
-    pub fn get_lastModified(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_lastModified(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DocumentImpl.get_lastModified(instance);
     }
 
@@ -1420,12 +1423,12 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_title(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_title(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DocumentImpl.get_title(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_title(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_title(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -1434,12 +1437,12 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_dir(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_dir(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DocumentImpl.get_dir(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_dir(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_dir(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -1552,12 +1555,12 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_designMode(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_designMode(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DocumentImpl.get_designMode(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_designMode(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_designMode(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -1596,12 +1599,12 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
-    pub fn get_fgColor(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_fgColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DocumentImpl.get_fgColor(instance);
     }
 
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
-    pub fn set_fgColor(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_fgColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -1610,12 +1613,12 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
-    pub fn get_linkColor(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_linkColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DocumentImpl.get_linkColor(instance);
     }
 
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
-    pub fn set_linkColor(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_linkColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -1624,12 +1627,12 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
-    pub fn get_vlinkColor(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_vlinkColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DocumentImpl.get_vlinkColor(instance);
     }
 
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
-    pub fn set_vlinkColor(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_vlinkColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -1638,12 +1641,12 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
-    pub fn get_alinkColor(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_alinkColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DocumentImpl.get_alinkColor(instance);
     }
 
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
-    pub fn set_alinkColor(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_alinkColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -1652,12 +1655,12 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
-    pub fn get_bgColor(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_bgColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DocumentImpl.get_bgColor(instance);
     }
 
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
-    pub fn set_bgColor(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_bgColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -1794,6 +1797,19 @@ pub const Document = struct {
 
     pub fn get_timeline(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.get_timeline(instance);
+    }
+
+    /// Extended attributes: [SecureContext], [SameObject]
+    pub fn get_modelContext(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_modelContext) |cached| {
+            return cached;
+        }
+        const value = try DocumentImpl.get_modelContext(instance);
+        state.own.cached_modelContext = value;
+        @import("dom").same_object_cache.made(instance, value, "modelContext");
+        return value;
     }
 
     pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -2187,7 +2203,7 @@ pub const Document = struct {
     pub const get_onbeforexrselect = mixins.GlobalEventHandlers.get_onbeforexrselect;
     pub const set_onbeforexrselect = mixins.GlobalEventHandlers.set_onbeforexrselect;
 
-    pub fn call_getter(instance: *runtime.Instance, name: DOMString) anyerror!runtime.JSValue {
+    pub fn call_getter(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
         if (comptime @hasDecl(DocumentImpl, "call_getter")) {
             return try DocumentImpl.call_getter(instance, name);
         } else {
@@ -2201,13 +2217,8 @@ pub const Document = struct {
 
     pub const call_getElementById = mixins.NonElementParentNode.call_getElementById;
 
-    /// Extended attributes: [SecureContext]
-    pub fn call_browsingTopics(instance: *runtime.Instance, options: webidl.Opt(BrowsingTopicsOptions)) anyerror!runtime.JSValue {
-        return try DocumentImpl.call_browsingTopics(instance, options);
-    }
-
     /// Extended attributes: [CEReactions]
-    pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(DOMString), unused2: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
+    pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMString), unused2: webidl.Opt(runtime.DOMString)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
 
@@ -2249,7 +2260,7 @@ pub const Document = struct {
 
     pub const call_append = mixins.ParentNode.call_append;
 
-    pub fn call_queryCommandSupported(instance: *runtime.Instance, commandId: DOMString) anyerror!bool {
+    pub fn call_queryCommandSupported(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!bool {
         return try DocumentImpl.call_queryCommandSupported(instance, commandId);
     }
 
@@ -2264,7 +2275,7 @@ pub const Document = struct {
         return try DocumentImpl.call_createTreeWalker(instance, root, whatToShow, filter);
     }
 
-    pub fn call_static_parseHTML(instance: *runtime.Instance, html: DOMString, options: webidl.Opt(SetHTMLOptions)) anyerror!*runtime.Instance {
+    pub fn call_static_parseHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(SetHTMLOptions)) anyerror!*runtime.Instance {
         return try DocumentImpl.call_static_parseHTML(instance, html, options);
     }
 
@@ -2273,7 +2284,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+    pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         // [NewObject] - Caller owns the returned object
@@ -2302,7 +2313,7 @@ pub const Document = struct {
         return try DocumentImpl.call_close(instance);
     }
 
-    pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: DOMString) anyerror!*runtime.Instance {
+    pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runtime.DOMString) anyerror!*runtime.Instance {
         return try DocumentImpl.call_getElementsByClassName(instance, classNames);
     }
 
@@ -2311,7 +2322,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createEvent(instance: *runtime.Instance, interface: DOMString) anyerror!*runtime.Instance {
+    pub fn call_createEvent(instance: *runtime.Instance, interface: runtime.DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try DocumentImpl.call_createEvent(instance, interface);
@@ -2324,7 +2335,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_createElement(instance: *runtime.Instance, localName: DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+    pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         // [NewObject] - Caller owns the returned object
@@ -2350,30 +2361,30 @@ pub const Document = struct {
 
     pub const call_querySelector = mixins.ParentNode.call_querySelector;
 
-    pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!*runtime.Instance {
+    pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!*runtime.Instance {
         return try DocumentImpl.call_getElementsByTagName(instance, qualifiedName);
     }
 
-    pub fn call_measureText(instance: *runtime.Instance, text: DOMString, styleMap: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_measureText(instance: *runtime.Instance, text: runtime.DOMString, styleMap: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.call_measureText(instance, text, styleMap);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createAttribute(instance: *runtime.Instance, localName: DOMString) anyerror!*runtime.Instance {
+    pub fn call_createAttribute(instance: *runtime.Instance, localName: runtime.DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try DocumentImpl.call_createAttribute(instance, localName);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createComment(instance: *runtime.Instance, data: DOMString) anyerror!*runtime.Instance {
+    pub fn call_createComment(instance: *runtime.Instance, data: runtime.DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try DocumentImpl.call_createComment(instance, data);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createTextNode(instance: *runtime.Instance, data: DOMString) anyerror!*runtime.Instance {
+    pub fn call_createTextNode(instance: *runtime.Instance, data: runtime.DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try DocumentImpl.call_createTextNode(instance, data);
@@ -2385,7 +2396,7 @@ pub const Document = struct {
         return try DocumentImpl.call_elementFromPoint(instance, x, y);
     }
 
-    pub fn call_queryCommandState(instance: *runtime.Instance, commandId: DOMString) anyerror!bool {
+    pub fn call_queryCommandState(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!bool {
         return try DocumentImpl.call_queryCommandState(instance, commandId);
     }
 
@@ -2395,19 +2406,15 @@ pub const Document = struct {
         return try DocumentImpl.call_createRange(instance);
     }
 
-    pub fn call_queryCommandEnabled(instance: *runtime.Instance, commandId: DOMString) anyerror!bool {
+    pub fn call_queryCommandEnabled(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!bool {
         return try DocumentImpl.call_queryCommandEnabled(instance, commandId);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString) anyerror!*runtime.Instance {
+    pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try DocumentImpl.call_createAttributeNS(instance, namespace, qualifiedName);
-    }
-
-    pub fn call_requestStorageAccessFor(instance: *runtime.Instance, requestedOrigin: runtime.USVString) anyerror!runtime.JSValue {
-        return try DocumentImpl.call_requestStorageAccessFor(instance, requestedOrigin);
     }
 
     /// Extended attributes: [CEReactions]
@@ -2440,7 +2447,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_execCommand(instance: *runtime.Instance, commandId: DOMString, showUI: webidl.Opt(bool), value: webidl.Opt(TrustedHTMLOrDOMString)) anyerror!bool {
+    pub fn call_execCommand(instance: *runtime.Instance, commandId: runtime.DOMString, showUI: webidl.Opt(bool), value: webidl.Opt(TrustedHTMLOrDOMString)) anyerror!bool {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -2467,11 +2474,11 @@ pub const Document = struct {
         return try DocumentImpl.call_releaseEvents(instance);
     }
 
-    pub fn call_requestStorageAccess(instance: *runtime.Instance, types: webidl.Opt(StorageAccessTypes)) anyerror!runtime.JSValue {
-        return try DocumentImpl.call_requestStorageAccess(instance, types);
+    pub fn call_requestStorageAccess(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try DocumentImpl.call_requestStorageAccess(instance);
     }
 
-    pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!*runtime.Instance {
+    pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!*runtime.Instance {
         return try DocumentImpl.call_getElementsByTagNameNS(instance, namespace, localName);
     }
 
@@ -2479,7 +2486,7 @@ pub const Document = struct {
         return try DocumentImpl.call_exitFullscreen(instance);
     }
 
-    pub fn call_getElementsByName(instance: *runtime.Instance, elementName: DOMString) anyerror!*runtime.Instance {
+    pub fn call_getElementsByName(instance: *runtime.Instance, elementName: runtime.DOMString) anyerror!*runtime.Instance {
         return try DocumentImpl.call_getElementsByName(instance, elementName);
     }
 
@@ -2491,12 +2498,12 @@ pub const Document = struct {
         return try DocumentImpl.call_convertRectFromNode(instance, rect, from, options);
     }
 
-    pub fn call_queryCommandIndeterm(instance: *runtime.Instance, commandId: DOMString) anyerror!bool {
+    pub fn call_queryCommandIndeterm(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!bool {
         return try DocumentImpl.call_queryCommandIndeterm(instance, commandId);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createCDATASection(instance: *runtime.Instance, data: DOMString) anyerror!*runtime.Instance {
+    pub fn call_createCDATASection(instance: *runtime.Instance, data: runtime.DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try DocumentImpl.call_createCDATASection(instance, data);
@@ -2529,15 +2536,19 @@ pub const Document = struct {
 
     pub const call_replaceChildren = mixins.ParentNode.call_replaceChildren;
 
+    pub fn call_ariaNotify(instance: *runtime.Instance, announcement: runtime.DOMString, options: webidl.Opt(AriaNotificationOptions)) anyerror!void {
+        return try DocumentImpl.call_ariaNotify(instance, announcement, options);
+    }
+
     pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.call_getSelection(instance);
     }
 
-    pub fn call_queryCommandValue(instance: *runtime.Instance, commandId: DOMString) anyerror!DOMString {
+    pub fn call_queryCommandValue(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!runtime.DOMString {
         return try DocumentImpl.call_queryCommandValue(instance, commandId);
     }
 
-    pub fn call_evaluate(instance: *runtime.Instance, expression: DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(??*runtime.CallbackWrapper), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
+    pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(??*runtime.CallbackWrapper), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
         return try DocumentImpl.call_evaluate(instance, expression, contextNode, resolver, @"type", result);
     }
 
@@ -2554,7 +2565,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createProcessingInstruction(instance: *runtime.Instance, target: DOMString, data: DOMString) anyerror!*runtime.Instance {
+    pub fn call_createProcessingInstruction(instance: *runtime.Instance, target: runtime.DOMString, data: runtime.DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try DocumentImpl.call_createProcessingInstruction(instance, target, data);
@@ -2563,23 +2574,15 @@ pub const Document = struct {
     pub const call_moveBefore = mixins.ParentNode.call_moveBefore;
 
     /// Extended attributes: [NewObject]
-    pub fn call_createExpression(instance: *runtime.Instance, expression: DOMString, resolver: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
+    pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try DocumentImpl.call_createExpression(instance, expression, resolver);
     }
 
-    pub fn call_open__1(instance: *runtime.Instance, url: runtime.USVString, name: DOMString, features: DOMString) anyerror!?WindowProxy {
+    pub fn call_open__1(instance: *runtime.Instance, url: runtime.USVString, name: runtime.DOMString, features: runtime.DOMString) anyerror!?WindowProxy {
         if (comptime @hasDecl(DocumentImpl, "call_open__1")) {
             return try DocumentImpl.call_open__1(instance, url, name, features);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_requestStorageAccess__1(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        if (comptime @hasDecl(DocumentImpl, "call_requestStorageAccess__1")) {
-            return try DocumentImpl.call_requestStorageAccess__1(instance);
         } else {
             return error.NotImplemented;
         }
@@ -2593,10 +2596,6 @@ pub const Document = struct {
         .{ "open", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_open", .args = &.{ .{ .kinds = &.{.string}, .optionality = .optional }, .{ .kinds = &.{.string}, .optionality = .optional } } },
             .{ .function = "call_open__1", .implemented = @hasDecl(DocumentImpl, "call_open__1"), .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{.string} }, .{ .kinds = &.{.string} } } },
-        } },
-        .{ "requestStorageAccess", &[_]webidl.overload_resolution.Overload{
-            .{ .function = "call_requestStorageAccess", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
-            .{ .function = "call_requestStorageAccess__1", .implemented = @hasDecl(DocumentImpl, "call_requestStorageAccess__1"), .args = &.{} },
         } },
     };
 
@@ -2622,13 +2621,10 @@ pub const Document = struct {
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{
-        "call_browsingTopics",
         "call_exitPictureInPicture",
         "call_hasRedemptionRecord",
-        "call_requestStorageAccessFor",
         "call_hasStorageAccess",
         "call_requestStorageAccess",
-        "call_requestStorageAccess__1",
         "call_exitFullscreen",
         "call_hasPrivateToken",
         "call_hasUnpartitionedCookieAccess",

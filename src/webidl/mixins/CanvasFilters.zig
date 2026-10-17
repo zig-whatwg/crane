@@ -23,10 +23,10 @@ pub fn installHooks() void {
     }
 }
 
-pub fn get_filter(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_filter(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try CanvasFiltersImpl.get_filter(instance);
 }
 
-pub fn set_filter(instance: *runtime.Instance, value: DOMString) anyerror!void {
+pub fn set_filter(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try CanvasFiltersImpl.set_filter(instance, value);
 }

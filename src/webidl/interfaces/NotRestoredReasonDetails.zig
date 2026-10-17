@@ -60,7 +60,7 @@ pub const NotRestoredReasonDetails = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            reason: typedefs.DOMString = undefined,
+            reason: runtime.DOMString = undefined,
             _internal: ?*NotRestoredReasonDetailsImpl.InternalState = null,
         },
     );
@@ -170,7 +170,7 @@ pub const NotRestoredReasonDetails = struct {
         }
     }
 
-    pub fn get_reason(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_reason(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NotRestoredReasonDetailsImpl.get_reason(instance);
     }
 

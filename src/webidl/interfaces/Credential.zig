@@ -41,13 +41,11 @@ pub const Credential = struct {
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "isConditionalMediationAvailable", "call_static_isConditionalMediationAvailable", 0 },
-            .{ "willRequestConditionalCreation", "call_static_willRequestConditionalCreation", 0 },
         };
 
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "isConditionalMediationAvailable",
-            "willRequestConditionalCreation",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -70,7 +68,7 @@ pub const Credential = struct {
         Meta.MixinTypes,
         struct {
             id: runtime.USVString = undefined,
-            type: typedefs.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             _internal: ?*CredentialImpl.InternalState = null,
         },
     );
@@ -171,12 +169,8 @@ pub const Credential = struct {
         return try CredentialImpl.get_id(instance);
     }
 
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try CredentialImpl.get_type(instance);
-    }
-
-    pub fn call_static_willRequestConditionalCreation(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try CredentialImpl.call_static_willRequestConditionalCreation(instance);
     }
 
     pub fn call_static_isConditionalMediationAvailable(instance: *runtime.Instance) anyerror!runtime.JSValue {
@@ -186,7 +180,6 @@ pub const Credential = struct {
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{
-        "call_static_willRequestConditionalCreation",
         "call_static_isConditionalMediationAvailable",
     };
 };

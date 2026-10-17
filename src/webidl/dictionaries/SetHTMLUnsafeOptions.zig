@@ -8,4 +8,5 @@ const SanitizerConfig = @import("SanitizerConfig.zig").SanitizerConfig;
 
 pub const SetHTMLUnsafeOptions = struct {
     sanitizer: ?runtime.JSValue = null,
+    runScripts: ?bool = null,
 };

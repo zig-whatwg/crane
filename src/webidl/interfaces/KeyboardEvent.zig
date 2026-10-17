@@ -106,8 +106,8 @@ pub const KeyboardEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            key: typedefs.DOMString = undefined,
-            code: typedefs.DOMString = undefined,
+            key: runtime.DOMString = undefined,
+            code: runtime.DOMString = undefined,
             location: u32 = undefined,
             ctrlKey: bool = undefined,
             shiftKey: bool = undefined,
@@ -258,16 +258,16 @@ pub const KeyboardEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(KeyboardEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(KeyboardEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try KeyboardEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
 
-    pub fn get_key(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_key(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try KeyboardEventImpl.get_key(instance);
     }
 
-    pub fn get_code(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_code(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try KeyboardEventImpl.get_code(instance);
     }
 
@@ -307,11 +307,11 @@ pub const KeyboardEvent = struct {
         return try KeyboardEventImpl.get_keyCode(instance);
     }
 
-    pub fn call_getModifierState(instance: *runtime.Instance, keyArg: DOMString) anyerror!bool {
+    pub fn call_getModifierState(instance: *runtime.Instance, keyArg: runtime.DOMString) anyerror!bool {
         return try KeyboardEventImpl.call_getModifierState(instance, keyArg);
     }
 
-    pub fn call_initKeyboardEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: webidl.Opt(bool), cancelableArg: webidl.Opt(bool), viewArg: webidl.Opt(?*runtime.Instance), keyArg: webidl.Opt(DOMString), locationArg: webidl.Opt(u32), ctrlKey: webidl.Opt(bool), altKey: webidl.Opt(bool), shiftKey: webidl.Opt(bool), metaKey: webidl.Opt(bool)) anyerror!void {
+    pub fn call_initKeyboardEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, bubblesArg: webidl.Opt(bool), cancelableArg: webidl.Opt(bool), viewArg: webidl.Opt(?*runtime.Instance), keyArg: webidl.Opt(runtime.DOMString), locationArg: webidl.Opt(u32), ctrlKey: webidl.Opt(bool), altKey: webidl.Opt(bool), shiftKey: webidl.Opt(bool), metaKey: webidl.Opt(bool)) anyerror!void {
         return try KeyboardEventImpl.call_initKeyboardEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, keyArg, locationArg, ctrlKey, altKey, shiftKey, metaKey);
     }
 };

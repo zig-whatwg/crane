@@ -169,7 +169,7 @@ pub const HTMLFormControlsCollection = struct {
         }
     }
 
-    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!?runtime.JSValue {
+    pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.JSValue {
         return try HTMLFormControlsCollectionImpl.call_namedItem(instance, name);
     }
 

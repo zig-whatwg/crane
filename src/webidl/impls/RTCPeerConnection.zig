@@ -396,3 +396,23 @@ pub fn call_getTransceivers(instance: *runtime.Instance) anyerror!runtime.JSValu
     _ = instance;
     return error.NotImplemented;
 }
+
+/// Operation: finishDiagnosticLogging
+pub fn call_static_finishDiagnosticLogging(instance: *runtime.Instance, options: webidl.Opt(dictionaries.RTCDiagnosticLoggingOptions)) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = options;
+    return error.NotImplemented;
+}
+
+/// Operation: startDiagnosticLogging
+pub fn call_static_startDiagnosticLogging(instance: *runtime.Instance, options: webidl.Opt(dictionaries.RTCDiagnosticLoggingOptions)) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = options;
+    return error.NotImplemented;
+}
+
+/// Operation: discardDiagnosticLogging
+pub fn call_static_discardDiagnosticLogging(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    _ = instance;
+    return error.NotImplemented;
+}

@@ -86,8 +86,8 @@ pub const NavigationHistoryEntry = struct {
         Meta.MixinTypes,
         struct {
             url: ?runtime.USVString = null,
-            key: typedefs.DOMString = undefined,
-            id: typedefs.DOMString = undefined,
+            key: runtime.DOMString = undefined,
+            id: runtime.DOMString = undefined,
             index: i64 = undefined,
             sameDocument: bool = undefined,
             ondispose: typedefs.EventHandler = undefined,
@@ -201,11 +201,11 @@ pub const NavigationHistoryEntry = struct {
         return try NavigationHistoryEntryImpl.get_url(instance);
     }
 
-    pub fn get_key(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_key(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigationHistoryEntryImpl.get_key(instance);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigationHistoryEntryImpl.get_id(instance);
     }
 

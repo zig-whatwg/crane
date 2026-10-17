@@ -75,7 +75,7 @@ pub const Client = struct {
         struct {
             url: runtime.USVString = undefined,
             frameType: enums.FrameType = undefined,
-            id: typedefs.DOMString = undefined,
+            id: runtime.DOMString = undefined,
             type: enums.ClientType = undefined,
             lifecycleState: enums.ClientLifecycleState = undefined,
             _internal: ?*ClientImpl.InternalState = null,
@@ -187,7 +187,7 @@ pub const Client = struct {
         return try ClientImpl.get_frameType(instance);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ClientImpl.get_id(instance);
     }
 

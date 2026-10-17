@@ -98,20 +98,20 @@ pub const RTCIceCandidate = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            candidate: typedefs.DOMString = undefined,
-            sdpMid: ?typedefs.DOMString = null,
+            candidate: runtime.DOMString = undefined,
+            sdpMid: ?runtime.DOMString = null,
             sdpMLineIndex: ?u16 = null,
-            foundation: ?typedefs.DOMString = null,
+            foundation: ?runtime.DOMString = null,
             component: ?enums.RTCIceComponent = null,
             priority: ?u32 = null,
-            address: ?typedefs.DOMString = null,
+            address: ?runtime.DOMString = null,
             protocol: ?enums.RTCIceProtocol = null,
             port: ?u16 = null,
             type: ?enums.RTCIceCandidateType = null,
             tcpType: ?enums.RTCIceTcpCandidateType = null,
-            relatedAddress: ?typedefs.DOMString = null,
+            relatedAddress: ?runtime.DOMString = null,
             relatedPort: ?u16 = null,
-            usernameFragment: ?typedefs.DOMString = null,
+            usernameFragment: ?runtime.DOMString = null,
             relayProtocol: ?enums.RTCIceServerTransportProtocol = null,
             url: ?runtime.USVString = null,
             _internal: ?*RTCIceCandidateImpl.InternalState = null,
@@ -234,11 +234,11 @@ pub const RTCIceCandidate = struct {
         return try RTCIceCandidateImpl.call_constructor(ctx, candidateInitDict);
     }
 
-    pub fn get_candidate(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_candidate(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try RTCIceCandidateImpl.get_candidate(instance);
     }
 
-    pub fn get_sdpMid(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_sdpMid(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try RTCIceCandidateImpl.get_sdpMid(instance);
     }
 
@@ -246,7 +246,7 @@ pub const RTCIceCandidate = struct {
         return try RTCIceCandidateImpl.get_sdpMLineIndex(instance);
     }
 
-    pub fn get_foundation(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_foundation(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try RTCIceCandidateImpl.get_foundation(instance);
     }
 
@@ -258,7 +258,7 @@ pub const RTCIceCandidate = struct {
         return try RTCIceCandidateImpl.get_priority(instance);
     }
 
-    pub fn get_address(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_address(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try RTCIceCandidateImpl.get_address(instance);
     }
 
@@ -278,7 +278,7 @@ pub const RTCIceCandidate = struct {
         return try RTCIceCandidateImpl.get_tcpType(instance);
     }
 
-    pub fn get_relatedAddress(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_relatedAddress(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try RTCIceCandidateImpl.get_relatedAddress(instance);
     }
 
@@ -286,7 +286,7 @@ pub const RTCIceCandidate = struct {
         return try RTCIceCandidateImpl.get_relatedPort(instance);
     }
 
-    pub fn get_usernameFragment(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_usernameFragment(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try RTCIceCandidateImpl.get_usernameFragment(instance);
     }
 

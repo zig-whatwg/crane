@@ -64,7 +64,7 @@ pub const CSSParserFunction = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             args: runtime.JSValue = undefined,
             _internal: ?*CSSParserFunctionImpl.InternalState = null,
         },
@@ -167,12 +167,12 @@ pub const CSSParserFunction = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, name: DOMString, args: runtime.JSValue) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, name: runtime.DOMString, args: runtime.JSValue) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try CSSParserFunctionImpl.call_constructor(ctx, name, args);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try CSSParserFunctionImpl.get_name(instance);
     }
 
@@ -180,7 +180,7 @@ pub const CSSParserFunction = struct {
         return try CSSParserFunctionImpl.get_args(instance);
     }
 
-    pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn call_stringifier(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try CSSParserFunctionImpl.call_stringifier(instance);
     }
 

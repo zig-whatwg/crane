@@ -79,12 +79,12 @@ pub const TaskAttributionTiming = struct {
         struct {
             startTime: typedefs.DOMHighResTimeStamp = undefined,
             duration: typedefs.DOMHighResTimeStamp = undefined,
-            name: typedefs.DOMString = undefined,
-            entryType: typedefs.DOMString = undefined,
-            containerType: typedefs.DOMString = undefined,
-            containerSrc: typedefs.DOMString = undefined,
-            containerId: typedefs.DOMString = undefined,
-            containerName: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
+            entryType: runtime.DOMString = undefined,
+            containerType: runtime.DOMString = undefined,
+            containerSrc: runtime.DOMString = undefined,
+            containerId: runtime.DOMString = undefined,
+            containerName: runtime.DOMString = undefined,
             _internal: ?*TaskAttributionTimingImpl.InternalState = null,
         },
     );
@@ -220,27 +220,27 @@ pub const TaskAttributionTiming = struct {
         return try TaskAttributionTimingImpl.get_duration(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TaskAttributionTimingImpl.get_name(instance);
     }
 
-    pub fn get_entryType(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_entryType(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TaskAttributionTimingImpl.get_entryType(instance);
     }
 
-    pub fn get_containerType(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_containerType(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TaskAttributionTimingImpl.get_containerType(instance);
     }
 
-    pub fn get_containerSrc(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_containerSrc(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TaskAttributionTimingImpl.get_containerSrc(instance);
     }
 
-    pub fn get_containerId(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_containerId(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TaskAttributionTimingImpl.get_containerId(instance);
     }
 
-    pub fn get_containerName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_containerName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TaskAttributionTimingImpl.get_containerName(instance);
     }
 

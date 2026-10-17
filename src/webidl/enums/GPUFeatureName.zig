@@ -3,6 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 pub const GPUFeatureName = enum {
+    _atomic_vec2u_min_max_,
     _core_features_and_limits_,
     _depth_clip_control_,
     _depth32float_stencil8_,
@@ -25,7 +26,9 @@ pub const GPUFeatureName = enum {
     _texture_formats_tier2_,
     _primitive_index_,
     _texture_component_swizzle_,
+    _subgroup_size_control_,
+    _texture_compression_unaligned_,
 
     /// Each variant's value exactly as the IDL spells it, by variant index.
-    pub const idl_values = [_][]const u8{ "core-features-and-limits", "depth-clip-control", "depth32float-stencil8", "texture-compression-bc", "texture-compression-bc-sliced-3d", "texture-compression-etc2", "texture-compression-astc", "texture-compression-astc-sliced-3d", "timestamp-query", "indirect-first-instance", "shader-f16", "rg11b10ufloat-renderable", "bgra8unorm-storage", "float32-filterable", "float32-blendable", "clip-distances", "dual-source-blending", "subgroups", "texture-formats-tier1", "texture-formats-tier2", "primitive-index", "texture-component-swizzle" };
+    pub const idl_values = [_][]const u8{ "atomic-vec2u-min-max", "core-features-and-limits", "depth-clip-control", "depth32float-stencil8", "texture-compression-bc", "texture-compression-bc-sliced-3d", "texture-compression-etc2", "texture-compression-astc", "texture-compression-astc-sliced-3d", "timestamp-query", "indirect-first-instance", "shader-f16", "rg11b10ufloat-renderable", "bgra8unorm-storage", "float32-filterable", "float32-blendable", "clip-distances", "dual-source-blending", "subgroups", "texture-formats-tier1", "texture-formats-tier2", "primitive-index", "texture-component-swizzle", "subgroup-size-control", "texture-compression-unaligned" };
 };

@@ -45,7 +45,6 @@ pub const OTPCredential = struct {
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "isConditionalMediationAvailable",
-            "willRequestConditionalCreation",
         };
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
@@ -63,7 +62,7 @@ pub const OTPCredential = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            code: typedefs.DOMString = undefined,
+            code: runtime.DOMString = undefined,
             _internal: ?*OTPCredentialImpl.InternalState = null,
         },
     );
@@ -161,7 +160,7 @@ pub const OTPCredential = struct {
         }
     }
 
-    pub fn get_code(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_code(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try OTPCredentialImpl.get_code(instance);
     }
 };

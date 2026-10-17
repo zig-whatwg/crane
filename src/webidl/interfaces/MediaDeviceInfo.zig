@@ -68,10 +68,10 @@ pub const MediaDeviceInfo = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            deviceId: typedefs.DOMString = undefined,
+            deviceId: runtime.DOMString = undefined,
             kind: enums.MediaDeviceKind = undefined,
-            label: typedefs.DOMString = undefined,
-            groupId: typedefs.DOMString = undefined,
+            label: runtime.DOMString = undefined,
+            groupId: runtime.DOMString = undefined,
             _internal: ?*MediaDeviceInfoImpl.InternalState = null,
         },
     );
@@ -187,7 +187,7 @@ pub const MediaDeviceInfo = struct {
         }
     }
 
-    pub fn get_deviceId(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_deviceId(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MediaDeviceInfoImpl.get_deviceId(instance);
     }
 
@@ -195,11 +195,11 @@ pub const MediaDeviceInfo = struct {
         return try MediaDeviceInfoImpl.get_kind(instance);
     }
 
-    pub fn get_label(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_label(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MediaDeviceInfoImpl.get_label(instance);
     }
 
-    pub fn get_groupId(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_groupId(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MediaDeviceInfoImpl.get_groupId(instance);
     }
 

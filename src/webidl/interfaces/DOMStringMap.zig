@@ -157,7 +157,7 @@ pub const DOMStringMap = struct {
         }
     }
 
-    pub fn call_getter(instance: *runtime.Instance, name: DOMString) anyerror!DOMString {
+    pub fn call_getter(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.DOMString {
         if (comptime @hasDecl(DOMStringMapImpl, "call_getter")) {
             return try DOMStringMapImpl.call_getter(instance, name);
         } else {
@@ -166,7 +166,7 @@ pub const DOMStringMap = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setter(instance: *runtime.Instance, name: DOMString, value: DOMString) anyerror!void {
+    pub fn call_setter(instance: *runtime.Instance, name: runtime.DOMString, value: runtime.DOMString) anyerror!void {
         if (comptime @hasDecl(DOMStringMapImpl, "call_setter")) {
             // [CEReactions] - Trigger Custom Element lifecycle callbacks
             const ce_scope = runtime.CEReactions.begin(instance);
@@ -179,7 +179,7 @@ pub const DOMStringMap = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_deleter(instance: *runtime.Instance, name: DOMString) anyerror!void {
+    pub fn call_deleter(instance: *runtime.Instance, name: runtime.DOMString) anyerror!void {
         if (comptime @hasDecl(DOMStringMapImpl, "call_deleter")) {
             // [CEReactions] - Trigger Custom Element lifecycle callbacks
             const ce_scope = runtime.CEReactions.begin(instance);

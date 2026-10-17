@@ -2714,13 +2714,6 @@ pub fn call_hasPrivateToken(instance: *runtime.Instance, issuer: runtime.USVStri
     return error.NotImplemented;
 }
 
-/// Operation: requestStorageAccessFor
-pub fn call_requestStorageAccessFor(instance: *runtime.Instance, requestedOrigin: runtime.USVString) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = requestedOrigin;
-    return error.NotImplemented;
-}
-
 /// Operation: open
 /// HTML §8.4.1 - Opens the document for writing
 /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-document-open
@@ -5024,18 +5017,10 @@ fn firePageTransition(document: *runtime.Instance, window: *runtime.Instance, ev
     event.releaseIfUnwrapped(generation);
 }
 
-/// Operation: requestStorageAccess(optional StorageAccessTypes types = {})
-/// (saa-non-cookie-storage.idl). Overload 0: codegen numbers overloads in
-/// member order, partials by file name, and saa-non-cookie-storage.idl sorts
-/// before storage-access.idl, whose requestStorageAccess() is overload 1.
-pub fn call_requestStorageAccess(instance: *runtime.Instance, types: webidl.Opt(dictionaries.StorageAccessTypes)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = types;
-    return error.NotImplemented;
-}
-
-/// Operation: requestStorageAccess() (storage-access.idl), overload 1.
-pub fn call_requestStorageAccess__1(instance: *runtime.Instance) anyerror!runtime.JSValue {
+/// Operation: requestStorageAccess() (storage-access.idl). The
+/// requestStorageAccess(StorageAccessTypes) overload is gone from
+/// saa-non-cookie-storage.idl, so this is the only one.
+pub fn call_requestStorageAccess(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -5083,13 +5068,6 @@ pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOM
 /// Operation: captureEvents
 pub fn call_captureEvents(instance: *runtime.Instance) anyerror!void {
     _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: browsingTopics
-pub fn call_browsingTopics(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BrowsingTopicsOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
     return error.NotImplemented;
 }
 
@@ -5817,4 +5795,18 @@ pub fn call_getter(instance: *runtime.Instance, name: runtime.DOMString) anyerro
 /// `scope`'s table - an orphan's no teardown reached - frees what it owns.
 fn sweepRemaining(scope: *runtime.BrowserScope) void {
     Registry.deinitAllAndClear(scope);
+}
+
+/// Getter for modelContext
+pub fn get_modelContext(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: ariaNotify
+pub fn call_ariaNotify(instance: *runtime.Instance, announcement: runtime.DOMString, options: webidl.Opt(dictionaries.AriaNotificationOptions)) anyerror!void {
+    _ = instance;
+    _ = announcement;
+    _ = options;
+    return error.NotImplemented;
 }

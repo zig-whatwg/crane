@@ -73,8 +73,8 @@ pub const ToggleEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            oldState: typedefs.DOMString = undefined,
-            newState: typedefs.DOMString = undefined,
+            oldState: runtime.DOMString = undefined,
+            newState: runtime.DOMString = undefined,
             source: ?*runtime.Instance = null,
             _internal: ?*ToggleEventImpl.InternalState = null,
         },
@@ -178,16 +178,16 @@ pub const ToggleEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(ToggleEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(ToggleEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try ToggleEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
 
-    pub fn get_oldState(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_oldState(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ToggleEventImpl.get_oldState(instance);
     }
 
-    pub fn get_newState(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_newState(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ToggleEventImpl.get_newState(instance);
     }
 

@@ -107,7 +107,7 @@ pub const NavigateEvent = struct {
             hashChange: bool = undefined,
             signal: *runtime.Instance = undefined,
             formData: ?*runtime.Instance = null,
-            downloadRequest: ?typedefs.DOMString = null,
+            downloadRequest: ?runtime.DOMString = null,
             info: runtime.JSValue = undefined,
             hasUAVisualTransition: bool = undefined,
             sourceElement: ?*runtime.Instance = null,
@@ -224,7 +224,7 @@ pub const NavigateEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: NavigateEventInit) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: NavigateEventInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try NavigateEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
@@ -257,7 +257,7 @@ pub const NavigateEvent = struct {
         return try NavigateEventImpl.get_formData(instance);
     }
 
-    pub fn get_downloadRequest(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_downloadRequest(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try NavigateEventImpl.get_downloadRequest(instance);
     }
 

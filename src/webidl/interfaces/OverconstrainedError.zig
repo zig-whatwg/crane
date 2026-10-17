@@ -58,7 +58,7 @@ pub const OverconstrainedError = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            constraint: typedefs.DOMString = undefined,
+            constraint: runtime.DOMString = undefined,
             _internal: ?*OverconstrainedErrorImpl.InternalState = null,
         },
     );
@@ -159,12 +159,12 @@ pub const OverconstrainedError = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, constraint: DOMString, message: webidl.Opt(DOMString)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, constraint: runtime.DOMString, message: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try OverconstrainedErrorImpl.call_constructor(ctx, constraint, message);
     }
 
-    pub fn get_constraint(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_constraint(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try OverconstrainedErrorImpl.get_constraint(instance);
     }
 };

@@ -16,10 +16,10 @@ const MediaStream = @import("interfaces").MediaStream;
 const RTCRtpSendParameters = @import("dictionaries").RTCRtpSendParameters;
 const RTCStatsReport = @import("interfaces").RTCStatsReport;
 const RTCDtlsTransport = @import("interfaces").RTCDtlsTransport;
-const RTCRtpTransform = @import("typedefs").RTCRtpTransform;
-const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
 const RTCDTMFSender = @import("interfaces").RTCDTMFSender;
+const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
 const DOMString = @import("typedefs").DOMString;
+const RTCRtpSenderTransform = @import("typedefs").RTCRtpSenderTransform;
 
 pub const RTCRtpSender = struct {
     pub const Meta = struct {
@@ -91,7 +91,7 @@ pub const RTCRtpSender = struct {
         struct {
             track: ?*runtime.Instance = null,
             transport: ?*runtime.Instance = null,
-            transform: ?typedefs.RTCRtpTransform = null,
+            transform: ?typedefs.RTCRtpSenderTransform = null,
             dtmf: ?*runtime.Instance = null,
             _internal: ?*RTCRtpSenderImpl.InternalState = null,
         },
@@ -207,11 +207,11 @@ pub const RTCRtpSender = struct {
         return try RTCRtpSenderImpl.get_transport(instance);
     }
 
-    pub fn get_transform(instance: *runtime.Instance) anyerror!?RTCRtpTransform {
+    pub fn get_transform(instance: *runtime.Instance) anyerror!?RTCRtpSenderTransform {
         return try RTCRtpSenderImpl.get_transform(instance);
     }
 
-    pub fn set_transform(instance: *runtime.Instance, value: ?RTCRtpTransform) anyerror!void {
+    pub fn set_transform(instance: *runtime.Instance, value: ?RTCRtpSenderTransform) anyerror!void {
         try RTCRtpSenderImpl.set_transform(instance, value);
     }
 
@@ -231,7 +231,7 @@ pub const RTCRtpSender = struct {
         return try RTCRtpSenderImpl.call_getStats(instance);
     }
 
-    pub fn call_static_getCapabilities(instance: *runtime.Instance, kind: DOMString) anyerror!?RTCRtpCapabilities {
+    pub fn call_static_getCapabilities(instance: *runtime.Instance, kind: runtime.DOMString) anyerror!?RTCRtpCapabilities {
         return try RTCRtpSenderImpl.call_static_getCapabilities(instance, kind);
     }
 

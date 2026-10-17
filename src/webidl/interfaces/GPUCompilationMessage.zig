@@ -72,7 +72,7 @@ pub const GPUCompilationMessage = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            message: typedefs.DOMString = undefined,
+            message: runtime.DOMString = undefined,
             type: enums.GPUCompilationMessageType = undefined,
             lineNum: u64 = undefined,
             linePos: u64 = undefined,
@@ -215,7 +215,7 @@ pub const GPUCompilationMessage = struct {
         break :blk @hasDecl(impls.GPUCompilationMessage, "serializationSteps") and @hasDecl(impls.GPUCompilationMessage, "deserializationSteps");
     };
 
-    pub fn get_message(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try GPUCompilationMessageImpl.get_message(instance);
     }
 

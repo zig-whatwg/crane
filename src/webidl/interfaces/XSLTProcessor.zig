@@ -199,7 +199,7 @@ pub const XSLTProcessor = struct {
         return result;
     }
 
-    pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: DOMString, localName: DOMString, value: runtime.JSValue) anyerror!void {
+    pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString, value: runtime.JSValue) anyerror!void {
         return try XSLTProcessorImpl.call_setParameter(instance, namespaceURI, localName, value);
     }
 
@@ -207,7 +207,7 @@ pub const XSLTProcessor = struct {
         return try XSLTProcessorImpl.call_clearParameters(instance);
     }
 
-    pub fn call_removeParameter(instance: *runtime.Instance, namespaceURI: DOMString, localName: DOMString) anyerror!void {
+    pub fn call_removeParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString) anyerror!void {
         return try XSLTProcessorImpl.call_removeParameter(instance, namespaceURI, localName);
     }
 
@@ -227,7 +227,7 @@ pub const XSLTProcessor = struct {
         return result;
     }
 
-    pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: DOMString, localName: DOMString) anyerror!runtime.JSValue {
+    pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString) anyerror!runtime.JSValue {
         return try XSLTProcessorImpl.call_getParameter(instance, namespaceURI, localName);
     }
 

@@ -65,7 +65,7 @@ pub const MediaKeySystemAccess = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            keySystem: typedefs.DOMString = undefined,
+            keySystem: runtime.DOMString = undefined,
             _internal: ?*MediaKeySystemAccessImpl.InternalState = null,
         },
     );
@@ -164,7 +164,7 @@ pub const MediaKeySystemAccess = struct {
         }
     }
 
-    pub fn get_keySystem(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_keySystem(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MediaKeySystemAccessImpl.get_keySystem(instance);
     }
 

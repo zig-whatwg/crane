@@ -261,7 +261,7 @@ pub const OffscreenCanvasRenderingContext2D = struct {
         struct {
             canvas: *runtime.Instance = undefined,
             globalAlpha: f64 = undefined,
-            globalCompositeOperation: typedefs.DOMString = undefined,
+            globalCompositeOperation: runtime.DOMString = undefined,
             imageSmoothingEnabled: bool = undefined,
             imageSmoothingQuality: enums.ImageSmoothingQuality = undefined,
             strokeStyle: union(enum) {
@@ -277,24 +277,24 @@ pub const OffscreenCanvasRenderingContext2D = struct {
             shadowOffsetX: f64 = undefined,
             shadowOffsetY: f64 = undefined,
             shadowBlur: f64 = undefined,
-            shadowColor: typedefs.DOMString = undefined,
-            filter: typedefs.DOMString = undefined,
+            shadowColor: runtime.DOMString = undefined,
+            filter: runtime.DOMString = undefined,
             lineWidth: f64 = undefined,
             lineCap: enums.CanvasLineCap = undefined,
             lineJoin: enums.CanvasLineJoin = undefined,
             miterLimit: f64 = undefined,
             lineDashOffset: f64 = undefined,
-            lang: typedefs.DOMString = undefined,
-            font: typedefs.DOMString = undefined,
+            lang: runtime.DOMString = undefined,
+            font: runtime.DOMString = undefined,
             textAlign: enums.CanvasTextAlign = undefined,
             textBaseline: enums.CanvasTextBaseline = undefined,
             direction: enums.CanvasDirection = undefined,
-            letterSpacing: typedefs.DOMString = undefined,
+            letterSpacing: runtime.DOMString = undefined,
             fontKerning: enums.CanvasFontKerning = undefined,
             fontStretch: enums.CanvasFontStretch = undefined,
             fontVariantCaps: enums.CanvasFontVariantCaps = undefined,
             textRendering: enums.CanvasTextRendering = undefined,
-            wordSpacing: typedefs.DOMString = undefined,
+            wordSpacing: runtime.DOMString = undefined,
             _internal: ?*OffscreenCanvasRenderingContext2DImpl.InternalState = null,
         },
     );
@@ -704,7 +704,7 @@ pub const OffscreenCanvasRenderingContext2D = struct {
 
     pub const call_strokeText = mixins.CanvasText.call_strokeText;
 
-    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: runtime.DOMString) anyerror!?*runtime.Instance {
         return try OffscreenCanvasRenderingContext2DImpl.call_createPattern(instance, image, repetition);
     }
 

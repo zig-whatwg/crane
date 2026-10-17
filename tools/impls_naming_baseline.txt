@@ -177,16 +177,6 @@ src/webidl/impls/GeometryUtils.zig call_convertQuadFromNode 1
 src/webidl/impls/GeometryUtils.zig call_convertRectFromNode 1
 src/webidl/impls/GeometryUtils.zig call_getBoxQuads 1
 src/webidl/impls/GetSVGDocument.zig call_getSVGDocument 1
-src/webidl/impls/HTMLAttributionSrcElementUtils.zig get_attributionSrc 1
-src/webidl/impls/HTMLAttributionSrcElementUtils.zig set_attributionSrc 1
-src/webidl/impls/HTMLOrSVGElement.zig call_blur 1
-src/webidl/impls/HTMLOrSVGElement.zig call_focus 1
-src/webidl/impls/HTMLOrSVGElement.zig get_dataset 1
-src/webidl/impls/HTMLOrSVGElement.zig get_nonce 1
-src/webidl/impls/HTMLOrSVGElement.zig get_tabIndex 1
-src/webidl/impls/HTMLOrSVGElement.zig set_nonce 1
-src/webidl/impls/HTMLSharedStorageWritableElementUtils.zig get_sharedStorageWritable 1
-src/webidl/impls/HTMLSharedStorageWritableElementUtils.zig set_sharedStorageWritable 1
 src/webidl/impls/MessageEventTarget.zig get_onmessage 1
 src/webidl/impls/MessageEventTarget.zig get_onmessageerror 1
 src/webidl/impls/MessageEventTarget.zig set_onmessage 1
@@ -225,8 +215,6 @@ src/webidl/impls/Region.zig call_getRegionFlowRanges 1
 src/webidl/impls/Region.zig get_regionOverset 1
 src/webidl/impls/SVGAnimatedPoints.zig get_animatedPoints 1
 src/webidl/impls/SVGAnimatedPoints.zig get_points 1
-src/webidl/impls/SVGElementInstance.zig get_correspondingElement 1
-src/webidl/impls/SVGElementInstance.zig get_correspondingUseElement 1
 src/webidl/impls/SVGFitToViewBox.zig get_preserveAspectRatio 1
 src/webidl/impls/SVGFitToViewBox.zig get_viewBox 1
 src/webidl/impls/SVGTests.zig get_requiredExtensions 1

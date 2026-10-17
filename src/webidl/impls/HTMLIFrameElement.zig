@@ -92,10 +92,7 @@ pub const InternalState = struct {
 
     /// Boolean attributes
     allow_fullscreen: bool = false,
-    browsing_topics: bool = false,
     credentialless: bool = false,
-    ad_auction_headers: bool = false,
-    shared_storage_writable: bool = false,
 
     /// A new state, its integration from `arena` - its element's Browser's
     /// (runtime.arenaOf). The state's own block is the registry's
@@ -4732,18 +4729,6 @@ pub fn set_loading(instance: *runtime.Instance, value: runtime.DOMString) anyerr
     try dom_module.reflection.set(runtime.DOMString, instance, .{ .name = "loading" }, value);
 }
 
-/// Getter for browsingTopics
-pub fn get_browsingTopics(instance: *runtime.Instance) anyerror!bool {
-    const internal = getInternal(instance) orelse return false;
-    return internal.browsing_topics;
-}
-
-/// Setter for browsingTopics
-pub fn set_browsingTopics(instance: *runtime.Instance, value: bool) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-    internal.browsing_topics = value;
-}
-
 /// Getter for csp
 pub fn get_csp(instance: *runtime.Instance) anyerror!runtime.DOMString {
     // CSP Embedded Enforcement §2.1: reflect the content attribute.
@@ -4765,18 +4750,6 @@ pub fn get_credentialless(instance: *runtime.Instance) anyerror!bool {
 pub fn set_credentialless(instance: *runtime.Instance, value: bool) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
     internal.credentialless = value;
-}
-
-/// Getter for adAuctionHeaders
-pub fn get_adAuctionHeaders(instance: *runtime.Instance) anyerror!bool {
-    const internal = getInternal(instance) orelse return false;
-    return internal.ad_auction_headers;
-}
-
-/// Setter for adAuctionHeaders
-pub fn set_adAuctionHeaders(instance: *runtime.Instance, value: bool) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-    internal.ad_auction_headers = value;
 }
 
 // ============================================================================
@@ -4808,18 +4781,6 @@ pub fn get_permissionsPolicy(instance: *runtime.Instance) anyerror!*runtime.Inst
     _ = instance;
     // TODO: Implement PermissionsPolicy interface
     return error.NotImplemented;
-}
-
-/// Getter for sharedStorageWritable
-pub fn get_sharedStorageWritable(instance: *runtime.Instance) anyerror!bool {
-    const internal = getInternal(instance) orelse return false;
-    return internal.shared_storage_writable;
-}
-
-/// Setter for sharedStorageWritable
-pub fn set_sharedStorageWritable(instance: *runtime.Instance, value: bool) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-    internal.shared_storage_writable = value;
 }
 
 // ============================================================================
@@ -4939,4 +4900,17 @@ fn windowOfChildNavigable(bc_ptr: *anyopaque) ?*runtime.Instance {
     if (element.stateAs(interfaces.HTMLIFrameElement.State) == null) return null;
     const proxy = (get_contentWindow(element) catch return null) orelse return null;
     return @ptrCast(proxy);
+}
+
+/// Getter for connectionAllowlist
+pub fn get_connectionAllowlist(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Setter for connectionAllowlist
+pub fn set_connectionAllowlist(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }

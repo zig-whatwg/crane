@@ -40,8 +40,6 @@ pub const XRWebGLSubImage = struct {
             .{ "colorTextureHeight", "get_colorTextureHeight", null },
             .{ "depthStencilTextureWidth", "get_depthStencilTextureWidth", null },
             .{ "depthStencilTextureHeight", "get_depthStencilTextureHeight", null },
-            .{ "motionVectorTextureWidth", "get_motionVectorTextureWidth", null },
-            .{ "motionVectorTextureHeight", "get_motionVectorTextureHeight", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -63,8 +61,6 @@ pub const XRWebGLSubImage = struct {
             .{ "colorTextureHeight", "get_colorTextureHeight", null },
             .{ "depthStencilTextureWidth", "get_depthStencilTextureWidth", null },
             .{ "depthStencilTextureHeight", "get_depthStencilTextureHeight", null },
-            .{ "motionVectorTextureWidth", "get_motionVectorTextureWidth", null },
-            .{ "motionVectorTextureHeight", "get_motionVectorTextureHeight", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -85,8 +81,6 @@ pub const XRWebGLSubImage = struct {
             colorTextureHeight: u32 = undefined,
             depthStencilTextureWidth: ?u32 = null,
             depthStencilTextureHeight: ?u32 = null,
-            motionVectorTextureWidth: ?u32 = null,
-            motionVectorTextureHeight: ?u32 = null,
             cached_colorTexture: ?*runtime.Instance = null,
             cached_depthStencilTexture: ?*runtime.Instance = null,
             cached_motionVectorTexture: ?*runtime.Instance = null,
@@ -103,8 +97,6 @@ pub const XRWebGLSubImage = struct {
         .get_depthStencilTextureWidth = &get_depthStencilTextureWidth,
         .get_imageIndex = &get_imageIndex,
         .get_motionVectorTexture = &get_motionVectorTexture,
-        .get_motionVectorTextureHeight = &get_motionVectorTextureHeight,
-        .get_motionVectorTextureWidth = &get_motionVectorTextureWidth,
 
         .deinit = &deinit,
     };
@@ -254,13 +246,5 @@ pub const XRWebGLSubImage = struct {
 
     pub fn get_depthStencilTextureHeight(instance: *runtime.Instance) anyerror!?u32 {
         return try XRWebGLSubImageImpl.get_depthStencilTextureHeight(instance);
-    }
-
-    pub fn get_motionVectorTextureWidth(instance: *runtime.Instance) anyerror!?u32 {
-        return try XRWebGLSubImageImpl.get_motionVectorTextureWidth(instance);
-    }
-
-    pub fn get_motionVectorTextureHeight(instance: *runtime.Instance) anyerror!?u32 {
-        return try XRWebGLSubImageImpl.get_motionVectorTextureHeight(instance);
     }
 };

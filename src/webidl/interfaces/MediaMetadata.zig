@@ -66,9 +66,9 @@ pub const MediaMetadata = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            title: typedefs.DOMString = undefined,
-            artist: typedefs.DOMString = undefined,
-            album: typedefs.DOMString = undefined,
+            title: runtime.DOMString = undefined,
+            artist: runtime.DOMString = undefined,
+            album: runtime.DOMString = undefined,
             artwork: runtime.JSValue = undefined,
             chapterInfo: runtime.JSValue = undefined,
             cached_chapterInfo: ?runtime.JSValue = null,
@@ -185,27 +185,27 @@ pub const MediaMetadata = struct {
         return try MediaMetadataImpl.call_constructor(ctx, init_data);
     }
 
-    pub fn get_title(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_title(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MediaMetadataImpl.get_title(instance);
     }
 
-    pub fn set_title(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_title(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try MediaMetadataImpl.set_title(instance, value);
     }
 
-    pub fn get_artist(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_artist(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MediaMetadataImpl.get_artist(instance);
     }
 
-    pub fn set_artist(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_artist(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try MediaMetadataImpl.set_artist(instance, value);
     }
 
-    pub fn get_album(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_album(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MediaMetadataImpl.get_album(instance);
     }
 
-    pub fn set_album(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_album(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try MediaMetadataImpl.set_album(instance, value);
     }
 

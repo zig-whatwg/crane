@@ -83,7 +83,7 @@ pub const StorageBucket = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             indexedDB: *runtime.Instance = undefined,
             caches: *runtime.Instance = undefined,
             cached_indexedDB: ?*runtime.Instance = null,
@@ -193,7 +193,7 @@ pub const StorageBucket = struct {
         }
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try StorageBucketImpl.get_name(instance);
     }
 

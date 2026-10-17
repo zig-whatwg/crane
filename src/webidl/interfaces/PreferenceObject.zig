@@ -83,8 +83,8 @@ pub const PreferenceObject = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            override: ?typedefs.DOMString = null,
-            value: typedefs.DOMString = undefined,
+            override: ?runtime.DOMString = null,
+            value: runtime.DOMString = undefined,
             validValues: runtime.JSValue = undefined,
             onchange: typedefs.EventHandler = undefined,
             _internal: ?*PreferenceObjectImpl.InternalState = null,
@@ -192,11 +192,11 @@ pub const PreferenceObject = struct {
         }
     }
 
-    pub fn get_override(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_override(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try PreferenceObjectImpl.get_override(instance);
     }
 
-    pub fn get_value(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PreferenceObjectImpl.get_value(instance);
     }
 
@@ -216,7 +216,7 @@ pub const PreferenceObject = struct {
         try event_handlers.setValue(EventHandler, instance, "onchange", value);
     }
 
-    pub fn call_requestOverride(instance: *runtime.Instance, value: ?DOMString) anyerror!runtime.JSValue {
+    pub fn call_requestOverride(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!runtime.JSValue {
         return try PreferenceObjectImpl.call_requestOverride(instance, value);
     }
 

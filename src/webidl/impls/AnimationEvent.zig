@@ -93,3 +93,12 @@ pub fn get_elapsedTime(instance: *runtime.Instance) anyerror!f64 {
 pub fn get_pseudoElement(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     return runtime.DOMString.initInterned(instance.getState(State).own.pseudoElement.asSlice());
 }
+
+/// Getter for animation (css-animations-2): the CSSAnimation the event was fired for, or the
+/// init dictionary's animation member. Always null here: Crane runs no CSS
+/// animations or transitions, so no CSSAnimation exists to fire for, and CSSAnimation has
+/// no constructor, so script cannot pass one in the init dictionary either.
+pub fn get_animation(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+    _ = instance;
+    return null;
+}

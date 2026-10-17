@@ -72,7 +72,7 @@ pub const XRPlane = struct {
             polygon: runtime.JSValue = undefined,
             orientation: ?enums.XRPlaneOrientation = null,
             lastChangedTime: typedefs.DOMHighResTimeStamp = undefined,
-            semanticLabel: ?typedefs.DOMString = null,
+            semanticLabel: ?runtime.DOMString = null,
             cached_planeSpace: ?*runtime.Instance = null,
             _internal: ?*XRPlaneImpl.InternalState = null,
         },
@@ -199,7 +199,7 @@ pub const XRPlane = struct {
         return try XRPlaneImpl.get_lastChangedTime(instance);
     }
 
-    pub fn get_semanticLabel(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_semanticLabel(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try XRPlaneImpl.get_semanticLabel(instance);
     }
 };

@@ -12,9 +12,9 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const RTCRtpCapabilities = @import("dictionaries").RTCRtpCapabilities;
 const RTCRtpReceiveParameters = @import("dictionaries").RTCRtpReceiveParameters;
+const RTCRtpReceiverTransform = @import("typedefs").RTCRtpReceiverTransform;
 const RTCRtpSynchronizationSource = @import("dictionaries").RTCRtpSynchronizationSource;
 const RTCStatsReport = @import("interfaces").RTCStatsReport;
-const RTCRtpTransform = @import("typedefs").RTCRtpTransform;
 const RTCDtlsTransport = @import("interfaces").RTCDtlsTransport;
 const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
@@ -90,7 +90,7 @@ pub const RTCRtpReceiver = struct {
             track: *runtime.Instance = undefined,
             transport: ?*runtime.Instance = null,
             jitterBufferTarget: ?typedefs.DOMHighResTimeStamp = null,
-            transform: ?typedefs.RTCRtpTransform = null,
+            transform: ?typedefs.RTCRtpReceiverTransform = null,
             _internal: ?*RTCRtpReceiverImpl.InternalState = null,
         },
     );
@@ -213,11 +213,11 @@ pub const RTCRtpReceiver = struct {
         try RTCRtpReceiverImpl.set_jitterBufferTarget(instance, value);
     }
 
-    pub fn get_transform(instance: *runtime.Instance) anyerror!?RTCRtpTransform {
+    pub fn get_transform(instance: *runtime.Instance) anyerror!?RTCRtpReceiverTransform {
         return try RTCRtpReceiverImpl.get_transform(instance);
     }
 
-    pub fn set_transform(instance: *runtime.Instance, value: ?RTCRtpTransform) anyerror!void {
+    pub fn set_transform(instance: *runtime.Instance, value: ?RTCRtpReceiverTransform) anyerror!void {
         try RTCRtpReceiverImpl.set_transform(instance, value);
     }
 
@@ -229,7 +229,7 @@ pub const RTCRtpReceiver = struct {
         return try RTCRtpReceiverImpl.call_getStats(instance);
     }
 
-    pub fn call_static_getCapabilities(instance: *runtime.Instance, kind: DOMString) anyerror!?RTCRtpCapabilities {
+    pub fn call_static_getCapabilities(instance: *runtime.Instance, kind: runtime.DOMString) anyerror!?RTCRtpCapabilities {
         return try RTCRtpReceiverImpl.call_static_getCapabilities(instance, kind);
     }
 

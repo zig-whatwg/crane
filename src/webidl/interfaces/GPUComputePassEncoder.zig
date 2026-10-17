@@ -14,9 +14,10 @@ const GPUObjectBase = @import("mixins").GPUObjectBase;
 const GPUCommandsMixin = @import("mixins").GPUCommandsMixin;
 const GPUDebugCommandsMixin = @import("mixins").GPUDebugCommandsMixin;
 const GPUBindingCommandsMixin = @import("mixins").GPUBindingCommandsMixin;
+const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const GPUIndex32 = @import("typedefs").GPUIndex32;
-const GPUBufferDynamicOffset = @import("typedefs").GPUBufferDynamicOffset;
 const GPUSize32 = @import("typedefs").GPUSize32;
+const GPUBufferDynamicOffset = @import("typedefs").GPUBufferDynamicOffset;
 const USVString = @import("typedefs").USVString;
 const GPUBuffer = @import("interfaces").GPUBuffer;
 const GPUComputePipeline = @import("interfaces").GPUComputePipeline;
@@ -62,6 +63,7 @@ pub const GPUComputePassEncoder = struct {
             .{ "popDebugGroup", "call_popDebugGroup", 0 },
             .{ "insertDebugMarker", "call_insertDebugMarker", 1 },
             .{ "setBindGroup", "call_setBindGroup", 2 },
+            .{ "setImmediates", "call_setImmediates", 2 },
         };
 
         /// Methods defined/overridden by this interface
@@ -74,6 +76,7 @@ pub const GPUComputePassEncoder = struct {
             "popDebugGroup",
             "insertDebugMarker",
             "setBindGroup",
+            "setImmediates",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -111,6 +114,7 @@ pub const GPUComputePassEncoder = struct {
         .call_popDebugGroup = &call_popDebugGroup,
         .call_pushDebugGroup = &call_pushDebugGroup,
         .call_setBindGroup = &call_setBindGroup,
+        .call_setImmediates = &call_setImmediates,
         .call_setPipeline = &call_setPipeline,
 
         .deinit = &deinit,
@@ -213,6 +217,8 @@ pub const GPUComputePassEncoder = struct {
     pub fn call_dispatchWorkgroups(instance: *runtime.Instance, workgroupCountX: GPUSize32, workgroupCountY: webidl.Opt(GPUSize32), workgroupCountZ: webidl.Opt(GPUSize32)) anyerror!void {
         return try GPUComputePassEncoderImpl.call_dispatchWorkgroups(instance, workgroupCountX, workgroupCountY, workgroupCountZ);
     }
+
+    pub const call_setImmediates = mixins.GPUBindingCommandsMixin.call_setImmediates;
 
     pub const call_insertDebugMarker = mixins.GPUDebugCommandsMixin.call_insertDebugMarker;
 

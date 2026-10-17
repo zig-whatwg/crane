@@ -62,7 +62,7 @@ pub const ReadableStreamBYOBRequest = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            view: ?typedefs.ArrayBufferView = null,
+            view: ?runtime.Uint8Array = null,
             _internal: ?*ReadableStreamBYOBRequestImpl.InternalState = null,
         },
     );
@@ -161,7 +161,7 @@ pub const ReadableStreamBYOBRequest = struct {
         }
     }
 
-    pub fn get_view(instance: *runtime.Instance) anyerror!?ArrayBufferView {
+    pub fn get_view(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ReadableStreamBYOBRequestImpl.get_view(instance);
     }
 

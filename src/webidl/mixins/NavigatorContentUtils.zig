@@ -25,11 +25,11 @@ pub fn installHooks() void {
 }
 
 /// Extended attributes: [SecureContext]
-pub fn call_registerProtocolHandler(instance: *runtime.Instance, scheme: DOMString, url: runtime.USVString) anyerror!void {
+pub fn call_registerProtocolHandler(instance: *runtime.Instance, scheme: runtime.DOMString, url: runtime.USVString) anyerror!void {
     return try NavigatorContentUtilsImpl.call_registerProtocolHandler(instance, scheme, url);
 }
 
 /// Extended attributes: [SecureContext]
-pub fn call_unregisterProtocolHandler(instance: *runtime.Instance, scheme: DOMString, url: runtime.USVString) anyerror!void {
+pub fn call_unregisterProtocolHandler(instance: *runtime.Instance, scheme: runtime.DOMString, url: runtime.USVString) anyerror!void {
     return try NavigatorContentUtilsImpl.call_unregisterProtocolHandler(instance, scheme, url);
 }

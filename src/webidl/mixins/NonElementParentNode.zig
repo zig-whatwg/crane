@@ -24,6 +24,6 @@ pub fn installHooks() void {
     }
 }
 
-pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!?*runtime.Instance {
+pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMString) anyerror!?*runtime.Instance {
     return try NonElementParentNodeImpl.call_getElementById(instance, elementId);
 }

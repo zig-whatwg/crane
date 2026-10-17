@@ -169,7 +169,7 @@ pub const TextFormatUpdateEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, options: webidl.Opt(TextFormatUpdateEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, options: webidl.Opt(TextFormatUpdateEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try TextFormatUpdateEventImpl.call_constructor(ctx, @"type", options);
     }

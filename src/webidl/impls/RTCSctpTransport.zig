@@ -52,7 +52,7 @@ pub fn get_state(instance: *runtime.Instance) anyerror!enums.RTCSctpTransportSta
 }
 
 /// Getter for maxMessageSize
-pub fn get_maxMessageSize(instance: *runtime.Instance) anyerror!f64 {
+pub fn get_maxMessageSize(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return error.NotImplemented;
 }

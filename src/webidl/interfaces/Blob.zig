@@ -47,6 +47,7 @@ pub const Blob = struct {
             .{ "stream", "call_stream", 0 },
             .{ "text", "call_text", 0 },
             .{ "arrayBuffer", "call_arrayBuffer", 0 },
+            .{ "textStream", "call_textStream", 0 },
             .{ "bytes", "call_bytes", 0 },
         };
 
@@ -56,6 +57,7 @@ pub const Blob = struct {
             "stream",
             "text",
             "arrayBuffer",
+            "textStream",
             "bytes",
         };
 
@@ -79,7 +81,7 @@ pub const Blob = struct {
         Meta.MixinTypes,
         struct {
             size: u64 = undefined,
-            type: typedefs.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             _internal: ?*BlobImpl.InternalState = null,
         },
     );
@@ -93,6 +95,7 @@ pub const Blob = struct {
         .call_slice = &call_slice,
         .call_stream = &call_stream,
         .call_text = &call_text,
+        .call_textStream = &call_textStream,
 
         .deinit = &deinit,
     };
@@ -231,7 +234,7 @@ pub const Blob = struct {
         return try BlobImpl.get_size(instance);
     }
 
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try BlobImpl.get_type(instance);
     }
 
@@ -247,20 +250,26 @@ pub const Blob = struct {
         return try BlobImpl.call_text(instance);
     }
 
-    pub fn call_slice(instance: *runtime.Instance, start: webidl.Opt(i64), end: webidl.Opt(i64), contentType: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
+    pub fn call_slice(instance: *runtime.Instance, start: webidl.Opt(i64), end: webidl.Opt(i64), contentType: webidl.Opt(runtime.DOMString)) anyerror!*runtime.Instance {
         return try BlobImpl.call_slice(instance, start, end, contentType);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_textStream(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        return try BlobImpl.call_bytes(instance);
+        return try BlobImpl.call_textStream(instance);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_stream(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try BlobImpl.call_stream(instance);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        // [NewObject] - Caller owns the returned object
+        return try BlobImpl.call_bytes(instance);
     }
 
     /// WebIDL [Clamp]: the integer arguments and attribute values

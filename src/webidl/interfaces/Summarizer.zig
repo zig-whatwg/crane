@@ -12,12 +12,13 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const DestroyableModel = @import("mixins").DestroyableModel;
 const Availability = @import("enums").Availability;
-const ReadableStream = @import("interfaces").ReadableStream;
-const SummarizerSummarizeOptions = @import("dictionaries").SummarizerSummarizeOptions;
-const SummarizerCreateCoreOptions = @import("dictionaries").SummarizerCreateCoreOptions;
-const SummarizerType = @import("enums").SummarizerType;
 const SummarizerCreateOptions = @import("dictionaries").SummarizerCreateOptions;
 const SummarizerLength = @import("enums").SummarizerLength;
+const PerformancePreference = @import("enums").PerformancePreference;
+const ReadableStream = @import("interfaces").ReadableStream;
+const SummarizerSummarizeOptions = @import("dictionaries").SummarizerSummarizeOptions;
+const SummarizerType = @import("enums").SummarizerType;
+const SummarizerCreateCoreOptions = @import("dictionaries").SummarizerCreateCoreOptions;
 const SummarizerFormat = @import("enums").SummarizerFormat;
 const DOMString = @import("typedefs").DOMString;
 
@@ -45,6 +46,7 @@ pub const Summarizer = struct {
             .{ "type", "get_type", null },
             .{ "format", "get_format", null },
             .{ "length", "get_length", null },
+            .{ "preference", "get_preference", null },
             .{ "expectedInputLanguages", "get_expectedInputLanguages", null },
             .{ "expectedContextLanguages", "get_expectedContextLanguages", null },
             .{ "outputLanguage", "get_outputLanguage", null },
@@ -84,6 +86,7 @@ pub const Summarizer = struct {
             .{ "type", "get_type", null },
             .{ "format", "get_format", null },
             .{ "length", "get_length", null },
+            .{ "preference", "get_preference", null },
             .{ "expectedInputLanguages", "get_expectedInputLanguages", null },
             .{ "expectedContextLanguages", "get_expectedContextLanguages", null },
             .{ "outputLanguage", "get_outputLanguage", null },
@@ -100,13 +103,14 @@ pub const Summarizer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sharedContext: typedefs.DOMString = undefined,
+            sharedContext: runtime.DOMString = undefined,
             type: enums.SummarizerType = undefined,
             format: enums.SummarizerFormat = undefined,
             length: enums.SummarizerLength = undefined,
+            preference: enums.PerformancePreference = undefined,
             expectedInputLanguages: ?runtime.JSValue = null,
             expectedContextLanguages: ?runtime.JSValue = null,
-            outputLanguage: ?typedefs.DOMString = null,
+            outputLanguage: ?runtime.DOMString = null,
             inputQuota: f64 = undefined,
             _internal: ?*SummarizerImpl.InternalState = null,
         },
@@ -119,6 +123,7 @@ pub const Summarizer = struct {
         .get_inputQuota = &get_inputQuota,
         .get_length = &get_length,
         .get_outputLanguage = &get_outputLanguage,
+        .get_preference = &get_preference,
         .get_sharedContext = &get_sharedContext,
         .get_type = &get_type,
 
@@ -215,7 +220,7 @@ pub const Summarizer = struct {
         }
     }
 
-    pub fn get_sharedContext(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_sharedContext(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SummarizerImpl.get_sharedContext(instance);
     }
 
@@ -231,6 +236,10 @@ pub const Summarizer = struct {
         return try SummarizerImpl.get_length(instance);
     }
 
+    pub fn get_preference(instance: *runtime.Instance) anyerror!PerformancePreference {
+        return try SummarizerImpl.get_preference(instance);
+    }
+
     pub fn get_expectedInputLanguages(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try SummarizerImpl.get_expectedInputLanguages(instance);
     }
@@ -239,7 +248,7 @@ pub const Summarizer = struct {
         return try SummarizerImpl.get_expectedContextLanguages(instance);
     }
 
-    pub fn get_outputLanguage(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_outputLanguage(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try SummarizerImpl.get_outputLanguage(instance);
     }
 
@@ -247,13 +256,13 @@ pub const Summarizer = struct {
         return try SummarizerImpl.get_inputQuota(instance);
     }
 
-    pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(SummarizerSummarizeOptions)) anyerror!runtime.JSValue {
+    pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(SummarizerSummarizeOptions)) anyerror!runtime.JSValue {
         return try SummarizerImpl.call_measureInputUsage(instance, input, options);
     }
 
     pub const call_destroy = mixins.DestroyableModel.call_destroy;
 
-    pub fn call_summarizeStreaming(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(SummarizerSummarizeOptions)) anyerror!*runtime.Instance {
+    pub fn call_summarizeStreaming(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(SummarizerSummarizeOptions)) anyerror!*runtime.Instance {
         return try SummarizerImpl.call_summarizeStreaming(instance, input, options);
     }
 
@@ -265,7 +274,7 @@ pub const Summarizer = struct {
         return try SummarizerImpl.call_static_availability(instance, options);
     }
 
-    pub fn call_summarize(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(SummarizerSummarizeOptions)) anyerror!runtime.JSValue {
+    pub fn call_summarize(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(SummarizerSummarizeOptions)) anyerror!runtime.JSValue {
         return try SummarizerImpl.call_summarize(instance, input, options);
     }
 

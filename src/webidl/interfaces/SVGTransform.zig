@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
-const DOMMatrix = @import("interfaces").DOMMatrix;
+const SVGMatrix = @import("typedefs").SVGMatrix;
 
 pub const SVGTransform = struct {
     pub const Meta = struct {
@@ -87,9 +87,9 @@ pub const SVGTransform = struct {
         Meta.MixinTypes,
         struct {
             type: u16 = undefined,
-            matrix: *runtime.Instance = undefined,
+            matrix: typedefs.SVGMatrix = undefined,
             angle: f32 = undefined,
-            cached_matrix: ?*runtime.Instance = null,
+            cached_matrix: ?SVGMatrix = null,
             _internal: ?*SVGTransformImpl.InternalState = null,
         },
     );
@@ -246,7 +246,7 @@ pub const SVGTransform = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_matrix(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_matrix(instance: *runtime.Instance) anyerror!SVGMatrix {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_matrix) |cached| {
@@ -254,7 +254,6 @@ pub const SVGTransform = struct {
         }
         const value = try SVGTransformImpl.get_matrix(instance);
         state.own.cached_matrix = value;
-        @import("dom").same_object_cache.made(instance, value, "matrix");
         return value;
     }
 

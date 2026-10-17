@@ -45,6 +45,10 @@ pub fn call_constructor(ctx: runtime.Context, format: enums.CompressionFormat) !
         ._deflate_ => .deflate,
         ._deflate_raw_ => .deflate_raw,
         ._gzip_ => .gzip,
+        // Compression 1 added "brotli"; Crane has no brotli codec yet, so it
+        // is refused with the TypeError an engine without the enum value
+        // gives - what this constructor did before the IDL listed it.
+        ._brotli_ => return error.TypeError,
     });
     // setUp takes ownership at the call, including on failure.
     instance.getState(State).own._internal.?.transform = try st.setUp(realm, ctx, .{ .ctx = codec, .vtable = &transformer });

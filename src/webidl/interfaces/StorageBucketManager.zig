@@ -163,7 +163,7 @@ pub const StorageBucketManager = struct {
         }
     }
 
-    pub fn call_delete(instance: *runtime.Instance, name: DOMString) anyerror!runtime.JSValue {
+    pub fn call_delete(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
         return try StorageBucketManagerImpl.call_delete(instance, name);
     }
 
@@ -171,7 +171,7 @@ pub const StorageBucketManager = struct {
         return try StorageBucketManagerImpl.call_keys(instance);
     }
 
-    pub fn call_open(instance: *runtime.Instance, name: DOMString, options: webidl.Opt(StorageBucketOptions)) anyerror!runtime.JSValue {
+    pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, options: webidl.Opt(StorageBucketOptions)) anyerror!runtime.JSValue {
         return try StorageBucketManagerImpl.call_open(instance, name, options);
     }
 

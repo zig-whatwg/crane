@@ -11,7 +11,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const HTMLElement = @import("interfaces").HTMLElement;
-const HTMLSharedStorageWritableElementUtils = @import("mixins").HTMLSharedStorageWritableElementUtils;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
@@ -74,6 +73,7 @@ const Attr = @import("interfaces").Attr;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -88,9 +88,7 @@ pub const HTMLIFrameElement = struct {
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = HTMLElement.State;
         pub const ParentInterface = HTMLElement;
-        pub const MixinTypes = &.{
-            HTMLSharedStorageWritableElementUtils,
-        };
+        pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
@@ -113,6 +111,7 @@ pub const HTMLIFrameElement = struct {
             .{ "contentDocument", "get_contentDocument", null },
             .{ "contentWindow", "get_contentWindow", null },
             .{ "credentialless", "get_credentialless", "set_credentialless" },
+            .{ "connectionAllowlist", "get_connectionAllowlist", "set_connectionAllowlist" },
             .{ "csp", "get_csp", "set_csp" },
             .{ "align", "get_align", "set_align" },
             .{ "scrolling", "get_scrolling", "set_scrolling" },
@@ -121,10 +120,7 @@ pub const HTMLIFrameElement = struct {
             .{ "marginHeight", "get_marginHeight", "set_marginHeight" },
             .{ "marginWidth", "get_marginWidth", "set_marginWidth" },
             .{ "permissionsPolicy", "get_permissionsPolicy", null },
-            .{ "browsingTopics", "get_browsingTopics", "set_browsingTopics" },
             .{ "privateToken", "get_privateToken", "set_privateToken" },
-            .{ "adAuctionHeaders", "get_adAuctionHeaders", "set_adAuctionHeaders" },
-            .{ "sharedStorageWritable", "get_sharedStorageWritable", "set_sharedStorageWritable" },
         };
 
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
@@ -206,6 +202,7 @@ pub const HTMLIFrameElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -213,7 +210,6 @@ pub const HTMLIFrameElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -229,6 +225,7 @@ pub const HTMLIFrameElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -255,6 +252,7 @@ pub const HTMLIFrameElement = struct {
             .{ "contentDocument", "get_contentDocument", null },
             .{ "contentWindow", "get_contentWindow", null },
             .{ "credentialless", "get_credentialless", "set_credentialless" },
+            .{ "connectionAllowlist", "get_connectionAllowlist", "set_connectionAllowlist" },
             .{ "csp", "get_csp", "set_csp" },
             .{ "align", "get_align", "set_align" },
             .{ "scrolling", "get_scrolling", "set_scrolling" },
@@ -263,10 +261,7 @@ pub const HTMLIFrameElement = struct {
             .{ "marginHeight", "get_marginHeight", "set_marginHeight" },
             .{ "marginWidth", "get_marginWidth", "set_marginWidth" },
             .{ "permissionsPolicy", "get_permissionsPolicy", null },
-            .{ "browsingTopics", "get_browsingTopics", "set_browsingTopics" },
             .{ "privateToken", "get_privateToken", "set_privateToken" },
-            .{ "adAuctionHeaders", "get_adAuctionHeaders", "set_adAuctionHeaders" },
-            .{ "sharedStorageWritable", "get_sharedStorageWritable", "set_sharedStorageWritable" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -279,7 +274,6 @@ pub const HTMLIFrameElement = struct {
         /// (WebIDL 3.3.13).
         pub const secure_context_members = .{
             "privateToken",
-            "sharedStorageWritable",
         };
     };
 
@@ -297,29 +291,27 @@ pub const HTMLIFrameElement = struct {
                 TrustedHTML: TrustedHTML,
                 DOMString: runtime.DOMString,
             } = undefined,
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             sandbox: *runtime.Instance = undefined,
-            allow: typedefs.DOMString = undefined,
+            allow: runtime.DOMString = undefined,
             allowFullscreen: bool = undefined,
-            width: typedefs.DOMString = undefined,
-            height: typedefs.DOMString = undefined,
-            referrerPolicy: typedefs.DOMString = undefined,
-            loading: typedefs.DOMString = undefined,
+            width: runtime.DOMString = undefined,
+            height: runtime.DOMString = undefined,
+            referrerPolicy: runtime.DOMString = undefined,
+            loading: runtime.DOMString = undefined,
             contentDocument: ?*runtime.Instance = null,
             contentWindow: ?typedefs.WindowProxy = null,
             credentialless: bool = undefined,
-            csp: typedefs.DOMString = undefined,
-            @"align": typedefs.DOMString = undefined,
-            scrolling: typedefs.DOMString = undefined,
-            frameBorder: typedefs.DOMString = undefined,
+            connectionAllowlist: runtime.DOMString = undefined,
+            csp: runtime.DOMString = undefined,
+            @"align": runtime.DOMString = undefined,
+            scrolling: runtime.DOMString = undefined,
+            frameBorder: runtime.DOMString = undefined,
             longDesc: runtime.USVString = undefined,
-            marginHeight: typedefs.DOMString = undefined,
-            marginWidth: typedefs.DOMString = undefined,
+            marginHeight: runtime.DOMString = undefined,
+            marginWidth: runtime.DOMString = undefined,
             permissionsPolicy: *runtime.Instance = undefined,
-            browsingTopics: bool = undefined,
-            privateToken: typedefs.DOMString = undefined,
-            adAuctionHeaders: bool = undefined,
-            sharedStorageWritable: bool = undefined,
+            privateToken: runtime.DOMString = undefined,
             cached_sandbox: ?*runtime.Instance = null,
             cached_permissionsPolicy: ?*runtime.Instance = null,
             _internal: ?*HTMLIFrameElementImpl.InternalState = null,
@@ -327,11 +319,10 @@ pub const HTMLIFrameElement = struct {
     );
 
     const delegates = .{
-        .get_adAuctionHeaders = &get_adAuctionHeaders,
         .get_align = &get_align,
         .get_allow = &get_allow,
         .get_allowFullscreen = &get_allowFullscreen,
-        .get_browsingTopics = &get_browsingTopics,
+        .get_connectionAllowlist = &get_connectionAllowlist,
         .get_contentDocument = &get_contentDocument,
         .get_contentWindow = &get_contentWindow,
         .get_credentialless = &get_credentialless,
@@ -348,16 +339,14 @@ pub const HTMLIFrameElement = struct {
         .get_referrerPolicy = &get_referrerPolicy,
         .get_sandbox = &get_sandbox,
         .get_scrolling = &get_scrolling,
-        .get_sharedStorageWritable = &get_sharedStorageWritable,
         .get_src = &get_src,
         .get_srcdoc = &get_srcdoc,
         .get_width = &get_width,
 
-        .set_adAuctionHeaders = &set_adAuctionHeaders,
         .set_align = &set_align,
         .set_allow = &set_allow,
         .set_allowFullscreen = &set_allowFullscreen,
-        .set_browsingTopics = &set_browsingTopics,
+        .set_connectionAllowlist = &set_connectionAllowlist,
         .set_credentialless = &set_credentialless,
         .set_csp = &set_csp,
         .set_frameBorder = &set_frameBorder,
@@ -371,7 +360,6 @@ pub const HTMLIFrameElement = struct {
         .set_referrerPolicy = &set_referrerPolicy,
         .set_sandbox = &set_sandbox,
         .set_scrolling = &set_scrolling,
-        .set_sharedStorageWritable = &set_sharedStorageWritable,
         .set_src = &set_src,
         .set_srcdoc = &set_srcdoc,
         .set_width = &set_width,
@@ -510,19 +498,19 @@ pub const HTMLIFrameElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLIFrameElementImpl, "get_name")) return try HTMLIFrameElementImpl.get_name(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "name" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "name" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_name")) return try HTMLIFrameElementImpl.set_name(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "name" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "name" }, value);
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value], [Reflect]
@@ -550,19 +538,19 @@ pub const HTMLIFrameElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_allow(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_allow(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLIFrameElementImpl, "get_allow")) return try HTMLIFrameElementImpl.get_allow(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "allow" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "allow" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_allow(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_allow(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_allow")) return try HTMLIFrameElementImpl.set_allow(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "allow" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "allow" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -582,44 +570,44 @@ pub const HTMLIFrameElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_width(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_width(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLIFrameElementImpl, "get_width")) return try HTMLIFrameElementImpl.get_width(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "width" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "width" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_width(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_width(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_width")) return try HTMLIFrameElementImpl.set_width(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "width" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "width" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_height(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_height(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLIFrameElementImpl, "get_height")) return try HTMLIFrameElementImpl.get_height(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "height" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "height" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_height(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_height(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_height")) return try HTMLIFrameElementImpl.set_height(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "height" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "height" }, value);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLIFrameElementImpl.get_referrerPolicy(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_referrerPolicy(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_referrerPolicy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -628,12 +616,12 @@ pub const HTMLIFrameElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_loading(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_loading(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLIFrameElementImpl.get_loading(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_loading(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_loading(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -658,12 +646,26 @@ pub const HTMLIFrameElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_csp(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_connectionAllowlist(instance: *runtime.Instance) anyerror!runtime.DOMString {
+        return try HTMLIFrameElementImpl.get_connectionAllowlist(instance);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn set_connectionAllowlist(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
+
+        try HTMLIFrameElementImpl.set_connectionAllowlist(instance, value);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn get_csp(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLIFrameElementImpl.get_csp(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_csp(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_csp(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -672,51 +674,51 @@ pub const HTMLIFrameElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_align(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLIFrameElementImpl, "get_align")) return try HTMLIFrameElementImpl.get_align(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "align" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "align" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_align(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_align(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_align")) return try HTMLIFrameElementImpl.set_align(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "align" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "align" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_scrolling(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_scrolling(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLIFrameElementImpl, "get_scrolling")) return try HTMLIFrameElementImpl.get_scrolling(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "scrolling" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "scrolling" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_scrolling(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_scrolling(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_scrolling")) return try HTMLIFrameElementImpl.set_scrolling(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "scrolling" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "scrolling" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_frameBorder(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_frameBorder(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLIFrameElementImpl, "get_frameBorder")) return try HTMLIFrameElementImpl.get_frameBorder(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "frameborder" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "frameborder" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_frameBorder(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_frameBorder(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_frameBorder")) return try HTMLIFrameElementImpl.set_frameBorder(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "frameborder" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "frameborder" }, value);
     }
 
     /// Extended attributes: [CEReactions], [ReflectURL]
@@ -736,35 +738,35 @@ pub const HTMLIFrameElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
-    pub fn get_marginHeight(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_marginHeight(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLIFrameElementImpl, "get_marginHeight")) return try HTMLIFrameElementImpl.get_marginHeight(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "marginheight" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "marginheight" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
-    pub fn set_marginHeight(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_marginHeight(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_marginHeight")) return try HTMLIFrameElementImpl.set_marginHeight(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "marginheight" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "marginheight" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
-    pub fn get_marginWidth(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_marginWidth(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLIFrameElementImpl, "get_marginWidth")) return try HTMLIFrameElementImpl.get_marginWidth(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "marginwidth" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "marginwidth" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
-    pub fn set_marginWidth(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_marginWidth(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_marginWidth")) return try HTMLIFrameElementImpl.set_marginWidth(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "marginwidth" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "marginwidth" }, value);
     }
 
     /// Extended attributes: [SameObject]
@@ -780,56 +782,14 @@ pub const HTMLIFrameElement = struct {
         return value;
     }
 
-    /// Extended attributes: [CEReactions]
-    pub fn get_browsingTopics(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLIFrameElementImpl.get_browsingTopics(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn set_browsingTopics(instance: *runtime.Instance, value: bool) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        try HTMLIFrameElementImpl.set_browsingTopics(instance, value);
-    }
-
     /// Extended attributes: [SecureContext]
-    pub fn get_privateToken(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_privateToken(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLIFrameElementImpl.get_privateToken(instance);
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn set_privateToken(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_privateToken(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try HTMLIFrameElementImpl.set_privateToken(instance, value);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn get_adAuctionHeaders(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLIFrameElementImpl.get_adAuctionHeaders(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn set_adAuctionHeaders(instance: *runtime.Instance, value: bool) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        try HTMLIFrameElementImpl.set_adAuctionHeaders(instance, value);
-    }
-
-    /// Extended attributes: [CEReactions], [SecureContext]
-    pub fn get_sharedStorageWritable(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLIFrameElementImpl.get_sharedStorageWritable(instance);
-    }
-
-    /// Extended attributes: [CEReactions], [SecureContext]
-    pub fn set_sharedStorageWritable(instance: *runtime.Instance, value: bool) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        try HTMLIFrameElementImpl.set_sharedStorageWritable(instance, value);
     }
 
     pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -857,6 +817,7 @@ pub const HTMLIFrameElement = struct {
         "set_height",
         "set_referrerPolicy",
         "set_loading",
+        "set_connectionAllowlist",
         "set_csp",
         "set_align",
         "set_scrolling",
@@ -864,8 +825,5 @@ pub const HTMLIFrameElement = struct {
         "set_longDesc",
         "set_marginHeight",
         "set_marginWidth",
-        "set_browsingTopics",
-        "set_adAuctionHeaders",
-        "set_sharedStorageWritable",
     };
 };

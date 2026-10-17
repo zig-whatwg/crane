@@ -71,6 +71,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -167,6 +168,7 @@ pub const HTMLDataElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -174,7 +176,6 @@ pub const HTMLDataElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -190,6 +191,7 @@ pub const HTMLDataElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -221,7 +223,7 @@ pub const HTMLDataElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: typedefs.DOMString = undefined,
+            value: runtime.DOMString = undefined,
             _internal: ?*HTMLDataElementImpl.InternalState = null,
         },
     );
@@ -332,19 +334,19 @@ pub const HTMLDataElement = struct {
     const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_value(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLDataElementImpl, "get_value")) return try HTMLDataElementImpl.get_value(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "value" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "value" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_value(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLDataElementImpl, "set_value")) return try HTMLDataElementImpl.set_value(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "value" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "value" }, value);
     }
 
     /// HTML [CEReactions]: the functions that run a custom element reactions

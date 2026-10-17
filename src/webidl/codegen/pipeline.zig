@@ -345,6 +345,14 @@ pub fn processFiles(
             typedef_count += 1;
         }
 
+        // The string types the generated files import from typedefs, written
+        // whether or not an IDL file declares them (generator.string_typedef_names).
+        for (generator.string_typedef_names) |name| {
+            if (ir.typedefs.contains(name)) continue;
+            try typedef_names.append(allocator, try allocator.dupe(u8, name));
+            try generator.generateStringTypedef(name, typedefs_path);
+        }
+
         if (typedef_count > 0) {
             std.debug.print("  ✓ Generated {d} typedef files to {s}\n", .{ typedef_count, typedefs_path });
         }

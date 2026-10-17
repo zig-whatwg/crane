@@ -348,17 +348,6 @@ pub fn get_htmlFor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return getContentAttribute(instance, "for") orelse runtime.DOMString.initEmpty();
 }
 
-/// Getter for attributionSrc
-/// Spec: [CEReactions, Reflect] attribute USVString attributionSrc;
-/// Reflects the attributionsrc content attribute.
-pub fn get_attributionSrc(instance: *runtime.Instance) anyerror!runtime.USVString {
-    // IMPORTANT: Clone the value - the interface layer will free the returned slice
-    if (getContentAttribute(instance, "attributionsrc")) |attr| {
-        return try instance.ctx.allocator.dupe(u8, attr.asSlice());
-    }
-    return "";
-}
-
 /// Setter for type
 /// Spec: [CEReactions, Reflect] attribute DOMString type;
 pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
@@ -525,13 +514,6 @@ pub fn set_event(instance: *runtime.Instance, value: runtime.DOMString) anyerror
 /// Spec: [CEReactions, Reflect=for] attribute DOMString htmlFor;
 pub fn set_htmlFor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try setContentAttribute(instance, "for", value);
-}
-
-/// Setter for attributionSrc
-/// Setter for attributionSrc
-/// Spec: [CEReactions, Reflect] attribute USVString attributionSrc;
-pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    try setContentAttribute(instance, "attributionsrc", runtime.DOMString.initInterned(value));
 }
 
 /// Operation: supports (static method)

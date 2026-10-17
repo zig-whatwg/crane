@@ -14,20 +14,19 @@ const Animation = @import("interfaces").Animation;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const AnimationPlayState = @import("enums").AnimationPlayState;
-const TimelineRangeOffset = @import("dictionaries").TimelineRangeOffset;
-const CSSKeywordValue = @import("interfaces").CSSKeywordValue;
+const EventHandler = @import("typedefs").EventHandler;
 const AnimationTrigger = @import("interfaces").AnimationTrigger;
 const AnimationTimeline = @import("interfaces").AnimationTimeline;
 const Event = @import("interfaces").Event;
-const CSSNumericValue = @import("interfaces").CSSNumericValue;
 const Observable = @import("interfaces").Observable;
+const Element = @import("interfaces").Element;
 const AnimationEffect = @import("interfaces").AnimationEffect;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const AnimationReplaceState = @import("enums").AnimationReplaceState;
 const EventListener = @import("interfaces").EventListener;
 const CSSNumberish = @import("typedefs").CSSNumberish;
+const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
 const DOMString = @import("typedefs").DOMString;
-const EventHandler = @import("typedefs").EventHandler;
 
 pub const ShadowAnimation = struct {
     pub const Meta = struct {
@@ -39,7 +38,6 @@ pub const ShadowAnimation = struct {
         pub const ParentInterface = Animation;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
-            .{ .name = "Constructor" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
 
@@ -81,7 +79,7 @@ pub const ShadowAnimation = struct {
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{};
 
-        pub const has_constructor = false;
+        pub const has_constructor = true;
     };
 
     pub const State = runtime.FlattenedState(
@@ -186,6 +184,14 @@ pub const ShadowAnimation = struct {
         if (comptime @hasDecl(impls, "ShadowAnimation")) {
             if (comptime @hasDecl(impls.ShadowAnimation, "installHooks")) impls.ShadowAnimation.installHooks();
         }
+    }
+
+    /// WebIDL constructor
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, source: *runtime.Instance, newTarget: runtime.JSValue) !*runtime.Instance {
+        // Directly return result from impl.call_constructor
+        return try ShadowAnimationImpl.call_constructor(ctx, source, newTarget);
     }
 
     /// Extended attributes: [SameObject]

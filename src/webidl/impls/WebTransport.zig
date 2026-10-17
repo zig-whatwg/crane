@@ -157,10 +157,11 @@ pub fn call_getStats(instance: *runtime.Instance) anyerror!runtime.JSValue {
 }
 
 /// Operation: exportKeyingMaterial
-pub fn call_exportKeyingMaterial(instance: *runtime.Instance, label: typedefs.BufferSource, context: webidl.Opt(typedefs.BufferSource)) anyerror!runtime.JSValue {
+pub fn call_exportKeyingMaterial(instance: *runtime.Instance, label: typedefs.BufferSource, context: typedefs.BufferSource, outputLength: u32) anyerror!runtime.JSValue {
     _ = instance;
     _ = label;
     _ = context;
+    _ = outputLength;
     return error.NotImplemented;
 }
 
@@ -182,5 +183,11 @@ pub fn call_createBidirectionalStream(instance: *runtime.Instance, options: webi
 pub fn call_createUnidirectionalStream(instance: *runtime.Instance, options: webidl.Opt(dictionaries.WebTransportSendStreamOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
+    return error.NotImplemented;
+}
+
+/// Getter for responseHeaders
+pub fn get_responseHeaders(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+    _ = instance;
     return error.NotImplemented;
 }

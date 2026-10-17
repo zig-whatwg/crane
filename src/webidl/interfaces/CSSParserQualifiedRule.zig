@@ -182,7 +182,7 @@ pub const CSSParserQualifiedRule = struct {
         return try CSSParserQualifiedRuleImpl.get_body(instance);
     }
 
-    pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn call_stringifier(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try CSSParserQualifiedRuleImpl.call_stringifier(instance);
     }
 

@@ -242,7 +242,7 @@ pub const AudioTrackList = struct {
         }
     }
 
-    pub fn call_getTrackById(instance: *runtime.Instance, id: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_getTrackById(instance: *runtime.Instance, id: runtime.DOMString) anyerror!?*runtime.Instance {
         return try AudioTrackListImpl.call_getTrackById(instance, id);
     }
 };

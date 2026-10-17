@@ -55,7 +55,7 @@ pub const TextDecoderCommon = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            encoding: typedefs.DOMString = undefined,
+            encoding: runtime.DOMString = undefined,
             fatal: bool = undefined,
             ignoreBOM: bool = undefined,
             _internal: ?*TextDecoderCommonImpl.InternalState = null,
@@ -71,7 +71,7 @@ pub const TextDecoderCommon = struct {
         }
     }
 
-    pub fn get_encoding(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TextDecoderCommonImpl.get_encoding(instance);
     }
 

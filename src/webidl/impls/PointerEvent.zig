@@ -80,15 +80,15 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.base.base.own.detail = ui_init.detail orelse 0;
 
     // Initialize MouseEvent attributes (in state.base.own)
-    const screenX_f = mouse_init.screenX orelse 0.0;
-    const screenY_f = mouse_init.screenY orelse 0.0;
-    const clientX_f = mouse_init.clientX orelse 0.0;
-    const clientY_f = mouse_init.clientY orelse 0.0;
+    const screenX: i32 = mouse_init.screenX orelse 0;
+    const screenY: i32 = mouse_init.screenY orelse 0;
+    const clientX: i32 = mouse_init.clientX orelse 0;
+    const clientY: i32 = mouse_init.clientY orelse 0;
 
-    state.base.own.screenX = @intFromFloat(screenX_f);
-    state.base.own.screenY = @intFromFloat(screenY_f);
-    state.base.own.clientX = @intFromFloat(clientX_f);
-    state.base.own.clientY = @intFromFloat(clientY_f);
+    state.base.own.screenX = screenX;
+    state.base.own.screenY = screenY;
+    state.base.own.clientX = clientX;
+    state.base.own.clientY = clientY;
     state.base.own.ctrlKey = modifier_init.ctrlKey orelse false;
     state.base.own.shiftKey = modifier_init.shiftKey orelse false;
     state.base.own.altKey = modifier_init.altKey orelse false;
@@ -99,14 +99,14 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     try event_construction.setMouseRelatedTarget(instance, mouse_init.relatedTarget orelse null);
     state.base.own.movementX = mouse_init.movementX orelse 0.0;
     state.base.own.movementY = mouse_init.movementY orelse 0.0;
-    state.base.own.pageX = clientX_f;
-    state.base.own.pageY = clientY_f;
-    state.base.own.x = clientX_f;
-    state.base.own.y = clientY_f;
-    state.base.own.offsetX = clientX_f;
-    state.base.own.offsetY = clientY_f;
-    state.base.own.layerX = @intFromFloat(clientX_f);
-    state.base.own.layerY = @intFromFloat(clientY_f);
+    state.base.own.pageX = @floatFromInt(clientX);
+    state.base.own.pageY = @floatFromInt(clientY);
+    state.base.own.x = @floatFromInt(clientX);
+    state.base.own.y = @floatFromInt(clientY);
+    state.base.own.offsetX = @floatFromInt(clientX);
+    state.base.own.offsetY = @floatFromInt(clientY);
+    state.base.own.layerX = clientX;
+    state.base.own.layerY = clientY;
 
     // Initialize PointerEvent-specific attributes (in state.own)
     state.own.pointerId = event_init.pointerId orelse 0;

@@ -238,7 +238,7 @@ pub const WindowOrWorkerGlobalScope = struct {
         return try WindowOrWorkerGlobalScopeImpl.call_structuredClone(instance, value, options);
     }
 
-    pub fn call_atob(instance: *runtime.Instance, data: DOMString) anyerror!runtime.ByteString {
+    pub fn call_atob(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.ByteString {
         return try WindowOrWorkerGlobalScopeImpl.call_atob(instance, data);
     }
 
@@ -246,7 +246,7 @@ pub const WindowOrWorkerGlobalScope = struct {
         return try WindowOrWorkerGlobalScopeImpl.call_setInterval(instance, handler, timeout, arguments);
     }
 
-    pub fn call_btoa(instance: *runtime.Instance, data: DOMString) anyerror!DOMString {
+    pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.DOMString {
         return try WindowOrWorkerGlobalScopeImpl.call_btoa(instance, data);
     }
 

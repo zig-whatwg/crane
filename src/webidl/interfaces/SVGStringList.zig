@@ -196,7 +196,7 @@ pub const SVGStringList = struct {
         return try SVGStringListImpl.get_numberOfItems(instance);
     }
 
-    pub fn call_setter(instance: *runtime.Instance, index: u32, newItem: DOMString) anyerror!void {
+    pub fn call_setter(instance: *runtime.Instance, index: u32, newItem: runtime.DOMString) anyerror!void {
         if (comptime @hasDecl(SVGStringListImpl, "call_setter")) {
             return try SVGStringListImpl.call_setter(instance, index, newItem);
         } else {
@@ -204,7 +204,7 @@ pub const SVGStringList = struct {
         }
     }
 
-    pub fn call_removeItem(instance: *runtime.Instance, index: u32) anyerror!DOMString {
+    pub fn call_removeItem(instance: *runtime.Instance, index: u32) anyerror!runtime.DOMString {
         return try SVGStringListImpl.call_removeItem(instance, index);
     }
 
@@ -212,23 +212,23 @@ pub const SVGStringList = struct {
         return try SVGStringListImpl.call_clear(instance);
     }
 
-    pub fn call_appendItem(instance: *runtime.Instance, newItem: DOMString) anyerror!DOMString {
+    pub fn call_appendItem(instance: *runtime.Instance, newItem: runtime.DOMString) anyerror!runtime.DOMString {
         return try SVGStringListImpl.call_appendItem(instance, newItem);
     }
 
-    pub fn call_insertItemBefore(instance: *runtime.Instance, newItem: DOMString, index: u32) anyerror!DOMString {
+    pub fn call_insertItemBefore(instance: *runtime.Instance, newItem: runtime.DOMString, index: u32) anyerror!runtime.DOMString {
         return try SVGStringListImpl.call_insertItemBefore(instance, newItem, index);
     }
 
-    pub fn call_initialize(instance: *runtime.Instance, newItem: DOMString) anyerror!DOMString {
+    pub fn call_initialize(instance: *runtime.Instance, newItem: runtime.DOMString) anyerror!runtime.DOMString {
         return try SVGStringListImpl.call_initialize(instance, newItem);
     }
 
-    pub fn call_getItem(instance: *runtime.Instance, index: u32) anyerror!DOMString {
+    pub fn call_getItem(instance: *runtime.Instance, index: u32) anyerror!runtime.DOMString {
         return try SVGStringListImpl.call_getItem(instance, index);
     }
 
-    pub fn call_replaceItem(instance: *runtime.Instance, newItem: DOMString, index: u32) anyerror!DOMString {
+    pub fn call_replaceItem(instance: *runtime.Instance, newItem: runtime.DOMString, index: u32) anyerror!runtime.DOMString {
         return try SVGStringListImpl.call_replaceItem(instance, newItem, index);
     }
 };

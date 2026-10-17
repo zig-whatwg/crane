@@ -122,7 +122,7 @@ pub const PointerEvent = struct {
             twist: i32 = undefined,
             altitudeAngle: f64 = undefined,
             azimuthAngle: f64 = undefined,
-            pointerType: typedefs.DOMString = undefined,
+            pointerType: runtime.DOMString = undefined,
             isPrimary: bool = undefined,
             persistentDeviceId: i32 = undefined,
             _internal: ?*PointerEventImpl.InternalState = null,
@@ -240,7 +240,7 @@ pub const PointerEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(PointerEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(PointerEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try PointerEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
@@ -285,7 +285,7 @@ pub const PointerEvent = struct {
         return try PointerEventImpl.get_azimuthAngle(instance);
     }
 
-    pub fn get_pointerType(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_pointerType(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PointerEventImpl.get_pointerType(instance);
     }
 

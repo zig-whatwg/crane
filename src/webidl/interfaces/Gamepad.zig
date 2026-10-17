@@ -85,7 +85,7 @@ pub const Gamepad = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: typedefs.DOMString = undefined,
+            id: runtime.DOMString = undefined,
             index: i32 = undefined,
             connected: bool = undefined,
             timestamp: typedefs.DOMHighResTimeStamp = undefined,
@@ -205,7 +205,7 @@ pub const Gamepad = struct {
         }
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try GamepadImpl.get_id(instance);
     }
 

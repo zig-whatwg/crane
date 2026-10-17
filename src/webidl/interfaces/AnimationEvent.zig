@@ -13,6 +13,7 @@ const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const AnimationEventInit = @import("dictionaries").AnimationEventInit;
 const CSSOMString = @import("typedefs").CSSOMString;
+const CSSAnimation = @import("interfaces").CSSAnimation;
 const EventTarget = @import("interfaces").EventTarget;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
@@ -39,6 +40,7 @@ pub const AnimationEvent = struct {
             .{ "animationName", "get_animationName", null },
             .{ "elapsedTime", "get_elapsedTime", null },
             .{ "pseudoElement", "get_pseudoElement", null },
+            .{ "animation", "get_animation", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -61,6 +63,7 @@ pub const AnimationEvent = struct {
             .{ "animationName", "get_animationName", null },
             .{ "elapsedTime", "get_elapsedTime", null },
             .{ "pseudoElement", "get_pseudoElement", null },
+            .{ "animation", "get_animation", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -76,11 +79,13 @@ pub const AnimationEvent = struct {
             animationName: typedefs.CSSOMString = undefined,
             elapsedTime: f64 = undefined,
             pseudoElement: typedefs.CSSOMString = undefined,
+            animation: ?*runtime.Instance = null,
             _internal: ?*AnimationEventImpl.InternalState = null,
         },
     );
 
     const delegates = .{
+        .get_animation = &get_animation,
         .get_animationName = &get_animationName,
         .get_elapsedTime = &get_elapsedTime,
         .get_pseudoElement = &get_pseudoElement,
@@ -193,5 +198,9 @@ pub const AnimationEvent = struct {
 
     pub fn get_pseudoElement(instance: *runtime.Instance) anyerror!CSSOMString {
         return try AnimationEventImpl.get_pseudoElement(instance);
+    }
+
+    pub fn get_animation(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try AnimationEventImpl.get_animation(instance);
     }
 };

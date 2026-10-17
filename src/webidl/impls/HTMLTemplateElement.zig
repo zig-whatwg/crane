@@ -164,3 +164,22 @@ pub fn get_shadowRootMode(instance: *runtime.Instance) anyerror!runtime.DOMStrin
 pub fn set_shadowRootMode(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try interfaces.Element.call_setAttributeNS(instance, null, runtime.DOMString.initInterned("shadowrootmode"), .{ .domstring = value });
 }
+
+/// Getter for shadowRootSlotAssignment: HTML 4.12.3 - the IDL attribute
+/// reflects the shadowrootslotassignment content attribute, limited to only
+/// known values ("named", "manual"); its missing and invalid value defaults
+/// are both Named.
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#dom-template-shadowrootslotassignment
+pub fn get_shadowRootSlotAssignment(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    return dom.reflection.getEnumerated(runtime.DOMString, instance, .{
+        .name = "shadowrootslotassignment",
+        .keywords = &.{ "named", "manual" },
+        .missing = "named",
+        .invalid = "named",
+    });
+}
+
+/// Setter for shadowRootSlotAssignment: reflection sets the content attribute.
+pub fn set_shadowRootSlotAssignment(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+    try dom.reflection.set(runtime.DOMString, instance, .{ .name = "shadowrootslotassignment" }, value);
+}

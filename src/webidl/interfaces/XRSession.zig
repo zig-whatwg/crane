@@ -87,6 +87,7 @@ pub const XRSession = struct {
             .{ "depthActive", "get_depthActive", null },
             .{ "domOverlayState", "get_domOverlayState", null },
             .{ "preferredReflectionFormat", "get_preferredReflectionFormat", null },
+            .{ "maxRenderLayers", "get_maxRenderLayers", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -162,12 +163,20 @@ pub const XRSession = struct {
             .{ "depthActive", "get_depthActive", null },
             .{ "domOverlayState", "get_domOverlayState", null },
             .{ "preferredReflectionFormat", "get_preferredReflectionFormat", null },
+            .{ "maxRenderLayers", "get_maxRenderLayers", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "maxRenderLayers",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -201,6 +210,7 @@ pub const XRSession = struct {
             depthActive: ?bool = null,
             domOverlayState: ?dictionaries.XRDOMOverlayState = null,
             preferredReflectionFormat: enums.XRReflectionFormat = undefined,
+            maxRenderLayers: u32 = undefined,
             cached_renderState: ?*runtime.Instance = null,
             cached_inputSources: ?*runtime.Instance = null,
             cached_trackedSources: ?*runtime.Instance = null,
@@ -220,6 +230,7 @@ pub const XRSession = struct {
         .get_inputSources = &get_inputSources,
         .get_interactionMode = &get_interactionMode,
         .get_isSystemKeyboardSupported = &get_isSystemKeyboardSupported,
+        .get_maxRenderLayers = &get_maxRenderLayers,
         .get_onend = &get_onend,
         .get_onframeratechange = &get_onframeratechange,
         .get_oninputsourceschange = &get_oninputsourceschange,
@@ -551,6 +562,11 @@ pub const XRSession = struct {
         return try XRSessionImpl.get_preferredReflectionFormat(instance);
     }
 
+    /// Extended attributes: [SecureContext]
+    pub fn get_maxRenderLayers(instance: *runtime.Instance) anyerror!u32 {
+        return try XRSessionImpl.get_maxRenderLayers(instance);
+    }
+
     pub fn call_updateTargetFrameRate(instance: *runtime.Instance, rate: f32) anyerror!runtime.JSValue {
         return try XRSessionImpl.call_updateTargetFrameRate(instance, rate);
     }
@@ -567,11 +583,11 @@ pub const XRSession = struct {
         return try XRSessionImpl.call_requestAnimationFrame(instance, callback);
     }
 
-    pub fn call_restorePersistentAnchor(instance: *runtime.Instance, uuid: DOMString) anyerror!runtime.JSValue {
+    pub fn call_restorePersistentAnchor(instance: *runtime.Instance, uuid: runtime.DOMString) anyerror!runtime.JSValue {
         return try XRSessionImpl.call_restorePersistentAnchor(instance, uuid);
     }
 
-    pub fn call_deletePersistentAnchor(instance: *runtime.Instance, uuid: DOMString) anyerror!runtime.JSValue {
+    pub fn call_deletePersistentAnchor(instance: *runtime.Instance, uuid: runtime.DOMString) anyerror!runtime.JSValue {
         return try XRSessionImpl.call_deletePersistentAnchor(instance, uuid);
     }
 

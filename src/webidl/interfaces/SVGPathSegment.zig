@@ -21,8 +21,12 @@ pub const SVGPathSegment = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
-            .{ .name = "NoInterfaceObject" },
+            .{ .name = "LegacyNoInterfaceObject" },
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
+
+        /// Global contexts where this interface is exposed
+        pub const exposed_in = .{ .Window = true };
 
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
@@ -55,7 +59,7 @@ pub const SVGPathSegment = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: typedefs.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             values: runtime.JSValue = undefined,
             _internal: ?*SVGPathSegmentImpl.InternalState = null,
         },
@@ -156,11 +160,11 @@ pub const SVGPathSegment = struct {
         }
     }
 
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SVGPathSegmentImpl.get_type(instance);
     }
 
-    pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try SVGPathSegmentImpl.set_type(instance, value);
     }
 

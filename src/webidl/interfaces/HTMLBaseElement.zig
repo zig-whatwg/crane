@@ -71,6 +71,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -168,6 +169,7 @@ pub const HTMLBaseElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -175,7 +177,6 @@ pub const HTMLBaseElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -191,6 +192,7 @@ pub const HTMLBaseElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -224,7 +226,7 @@ pub const HTMLBaseElement = struct {
         Meta.MixinTypes,
         struct {
             href: runtime.USVString = undefined,
-            target: typedefs.DOMString = undefined,
+            target: runtime.DOMString = undefined,
             _internal: ?*HTMLBaseElementImpl.InternalState = null,
         },
     );
@@ -352,19 +354,19 @@ pub const HTMLBaseElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_target(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_target(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLBaseElementImpl, "get_target")) return try HTMLBaseElementImpl.get_target(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "target" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "target" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_target(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_target(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLBaseElementImpl, "set_target")) return try HTMLBaseElementImpl.set_target(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "target" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "target" }, value);
     }
 
     /// HTML [CEReactions]: the functions that run a custom element reactions

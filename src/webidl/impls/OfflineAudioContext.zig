@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -54,7 +55,7 @@ pub fn call_constructor(ctx: runtime.Context, args: interfaces.OfflineAudioConte
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!?u32 {
     _ = instance;
     return error.NotImplemented;
 }
@@ -80,13 +81,20 @@ pub fn call_suspend(instance: *runtime.Instance, suspendTime: f64) anyerror!runt
 }
 
 /// Operation: startRendering
-pub fn call_startRendering(instance: *runtime.Instance) anyerror!runtime.JSValue {
+pub fn call_startRendering(instance: *runtime.Instance, chunkSize: webidl.Opt(?u32)) anyerror!runtime.JSValue {
     _ = instance;
+    _ = chunkSize;
     return error.NotImplemented;
 }
 
 /// Operation: resume
 pub fn call_resume(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Operation: close
+pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

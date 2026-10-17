@@ -23,47 +23,47 @@ pub fn installHooks() void {
     }
 }
 
-pub fn get_appCodeName(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_appCodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try NavigatorIDImpl.get_appCodeName(instance);
 }
 
-pub fn get_appName(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_appName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try NavigatorIDImpl.get_appName(instance);
 }
 
-pub fn get_appVersion(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_appVersion(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try NavigatorIDImpl.get_appVersion(instance);
 }
 
-pub fn get_platform(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_platform(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try NavigatorIDImpl.get_platform(instance);
 }
 
-pub fn get_product(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_product(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try NavigatorIDImpl.get_product(instance);
 }
 
 /// Extended attributes: [Exposed=Window]
-pub fn get_productSub(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_productSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try NavigatorIDImpl.get_productSub(instance);
 }
 
-pub fn get_userAgent(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_userAgent(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try NavigatorIDImpl.get_userAgent(instance);
 }
 
 /// Extended attributes: [Exposed=Window]
-pub fn get_vendor(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_vendor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try NavigatorIDImpl.get_vendor(instance);
 }
 
 /// Extended attributes: [Exposed=Window]
-pub fn get_vendorSub(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_vendorSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try NavigatorIDImpl.get_vendorSub(instance);
 }
 
 /// Extended attributes: [Exposed=Window]
-pub fn get_oscpu(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_oscpu(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try NavigatorIDImpl.get_oscpu(instance);
 }
 

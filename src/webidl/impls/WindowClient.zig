@@ -60,10 +60,12 @@ fn internalOf(instance: *runtime.Instance) !*InternalState {
     return instance.getState(State).own._internal orelse error.InvalidStateError;
 }
 
-/// Getter for visibilityState (4.2.7): its visibility state.
-pub fn get_visibilityState(instance: *runtime.Instance) anyerror!runtime.JSValue {
+/// Getter for visibilityState (4.2.7): its visibility state. The IDL type is
+/// DocumentVisibilityState (service-workers.idl used to name an undefined
+/// VisibilityState, which bound as a JSValue).
+pub fn get_visibilityState(instance: *runtime.Instance) anyerror!enums.DocumentVisibilityState {
     const internal = try internalOf(instance);
-    return runtime.JSValue.fromStringRef(if (internal.window.visible) "visible" else "hidden");
+    return if (internal.window.visible) ._visible_ else ._hidden_;
 }
 
 /// Getter for focused (4.2.8): its focus state.

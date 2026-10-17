@@ -73,6 +73,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -198,6 +199,7 @@ pub const HTMLLinkElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -205,7 +207,6 @@ pub const HTMLLinkElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -221,6 +222,7 @@ pub const HTMLLinkElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -272,24 +274,24 @@ pub const HTMLLinkElement = struct {
         Meta.MixinTypes,
         struct {
             href: runtime.USVString = undefined,
-            crossOrigin: ?typedefs.DOMString = null,
-            rel: typedefs.DOMString = undefined,
-            as: typedefs.DOMString = undefined,
+            crossOrigin: ?runtime.DOMString = null,
+            rel: runtime.DOMString = undefined,
+            as: runtime.DOMString = undefined,
             relList: *runtime.Instance = undefined,
-            media: typedefs.DOMString = undefined,
-            integrity: typedefs.DOMString = undefined,
-            hreflang: typedefs.DOMString = undefined,
-            type: typedefs.DOMString = undefined,
+            media: runtime.DOMString = undefined,
+            integrity: runtime.DOMString = undefined,
+            hreflang: runtime.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             sizes: *runtime.Instance = undefined,
             imageSrcset: runtime.USVString = undefined,
-            imageSizes: typedefs.DOMString = undefined,
-            referrerPolicy: typedefs.DOMString = undefined,
+            imageSizes: runtime.DOMString = undefined,
+            referrerPolicy: runtime.DOMString = undefined,
             blocking: *runtime.Instance = undefined,
             disabled: bool = undefined,
-            fetchPriority: typedefs.DOMString = undefined,
-            charset: typedefs.DOMString = undefined,
-            rev: typedefs.DOMString = undefined,
-            target: typedefs.DOMString = undefined,
+            fetchPriority: runtime.DOMString = undefined,
+            charset: runtime.DOMString = undefined,
+            rev: runtime.DOMString = undefined,
+            target: runtime.DOMString = undefined,
             sheet: ?*runtime.Instance = null,
             cached_relList: ?*runtime.Instance = null,
             cached_sizes: ?*runtime.Instance = null,
@@ -458,12 +460,12 @@ pub const HTMLLinkElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try HTMLLinkElementImpl.get_crossOrigin(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_crossOrigin(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_crossOrigin(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -472,28 +474,28 @@ pub const HTMLLinkElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_rel(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_rel(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLLinkElementImpl, "get_rel")) return try HTMLLinkElementImpl.get_rel(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "rel" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "rel" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_rel(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_rel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_rel")) return try HTMLLinkElementImpl.set_rel(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "rel" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "rel" }, value);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_as(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_as(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLLinkElementImpl.get_as(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_as(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_as(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -526,67 +528,67 @@ pub const HTMLLinkElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_media(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_media(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLLinkElementImpl, "get_media")) return try HTMLLinkElementImpl.get_media(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "media" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "media" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_media(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_media(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_media")) return try HTMLLinkElementImpl.set_media(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "media" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "media" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_integrity(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_integrity(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLLinkElementImpl, "get_integrity")) return try HTMLLinkElementImpl.get_integrity(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "integrity" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "integrity" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_integrity(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_integrity(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_integrity")) return try HTMLLinkElementImpl.set_integrity(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "integrity" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "integrity" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_hreflang(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_hreflang(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLLinkElementImpl, "get_hreflang")) return try HTMLLinkElementImpl.get_hreflang(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "hreflang" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "hreflang" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_hreflang(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_hreflang(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_hreflang")) return try HTMLLinkElementImpl.set_hreflang(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "hreflang" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "hreflang" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLLinkElementImpl, "get_type")) return try HTMLLinkElementImpl.get_type(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "type" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "type" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_type")) return try HTMLLinkElementImpl.set_type(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "type" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "type" }, value);
     }
 
     /// Extended attributes: [SameObject], [PutForwards=value], [Reflect]
@@ -630,28 +632,28 @@ pub const HTMLLinkElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_imageSizes(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_imageSizes(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLLinkElementImpl, "get_imageSizes")) return try HTMLLinkElementImpl.get_imageSizes(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "imagesizes" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "imagesizes" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_imageSizes(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_imageSizes(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_imageSizes")) return try HTMLLinkElementImpl.set_imageSizes(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "imagesizes" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "imagesizes" }, value);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLLinkElementImpl.get_referrerPolicy(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_referrerPolicy(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_referrerPolicy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -700,12 +702,12 @@ pub const HTMLLinkElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_fetchPriority(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_fetchPriority(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLLinkElementImpl.get_fetchPriority(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_fetchPriority(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_fetchPriority(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -714,51 +716,51 @@ pub const HTMLLinkElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_charset(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_charset(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLLinkElementImpl, "get_charset")) return try HTMLLinkElementImpl.get_charset(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "charset" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "charset" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_charset(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_charset(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_charset")) return try HTMLLinkElementImpl.set_charset(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "charset" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "charset" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_rev(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_rev(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLLinkElementImpl, "get_rev")) return try HTMLLinkElementImpl.get_rev(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "rev" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "rev" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_rev(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_rev(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_rev")) return try HTMLLinkElementImpl.set_rev(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "rev" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "rev" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_target(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_target(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLLinkElementImpl, "get_target")) return try HTMLLinkElementImpl.get_target(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "target" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "target" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_target(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_target(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_target")) return try HTMLLinkElementImpl.set_target(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "target" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "target" }, value);
     }
 
     pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {

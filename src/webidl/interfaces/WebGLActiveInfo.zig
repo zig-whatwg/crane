@@ -67,7 +67,7 @@ pub const WebGLActiveInfo = struct {
         struct {
             size: typedefs.GLint = undefined,
             type: typedefs.GLenum = undefined,
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             _internal: ?*WebGLActiveInfoImpl.InternalState = null,
         },
     );
@@ -173,7 +173,7 @@ pub const WebGLActiveInfo = struct {
         return try WebGLActiveInfoImpl.get_type(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WebGLActiveInfoImpl.get_name(instance);
     }
 };

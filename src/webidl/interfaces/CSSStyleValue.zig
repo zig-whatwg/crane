@@ -163,7 +163,7 @@ pub const CSSStyleValue = struct {
         }
     }
 
-    pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn call_stringifier(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try CSSStyleValueImpl.call_stringifier(instance);
     }
 

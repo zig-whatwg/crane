@@ -63,6 +63,7 @@ pub const Response = struct {
             .{ "formData", "call_formData", 0 },
             .{ "json", "call_json", 0 },
             .{ "text", "call_text", 0 },
+            .{ "textStream", "call_textStream", 0 },
         };
 
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
@@ -84,6 +85,7 @@ pub const Response = struct {
             "formData",
             "json",
             "text",
+            "textStream",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -144,6 +146,7 @@ pub const Response = struct {
         .call_formData = &call_formData,
         .call_json = &call_json,
         .call_text = &call_text,
+        .call_textStream = &call_textStream,
 
         .deinit = &deinit,
     };
@@ -335,6 +338,12 @@ pub const Response = struct {
     pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try ResponseImpl.call_bytes(instance);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_textStream(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        return try ResponseImpl.call_textStream(instance);
     }
 
     /// Extended attributes: [NewObject]

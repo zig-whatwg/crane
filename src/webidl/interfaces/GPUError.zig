@@ -60,7 +60,7 @@ pub const GPUError = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            message: typedefs.DOMString = undefined,
+            message: runtime.DOMString = undefined,
             _internal: ?*GPUErrorImpl.InternalState = null,
         },
     );
@@ -156,7 +156,7 @@ pub const GPUError = struct {
         }
     }
 
-    pub fn get_message(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try GPUErrorImpl.get_message(instance);
     }
 };

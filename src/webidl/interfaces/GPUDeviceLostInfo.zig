@@ -64,7 +64,7 @@ pub const GPUDeviceLostInfo = struct {
         Meta.MixinTypes,
         struct {
             reason: enums.GPUDeviceLostReason = undefined,
-            message: typedefs.DOMString = undefined,
+            message: runtime.DOMString = undefined,
             _internal: ?*GPUDeviceLostInfoImpl.InternalState = null,
         },
     );
@@ -165,7 +165,7 @@ pub const GPUDeviceLostInfo = struct {
         return try GPUDeviceLostInfoImpl.get_reason(instance);
     }
 
-    pub fn get_message(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try GPUDeviceLostInfoImpl.get_message(instance);
     }
 };

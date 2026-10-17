@@ -77,8 +77,8 @@ pub const DataTransfer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            dropEffect: typedefs.DOMString = undefined,
-            effectAllowed: typedefs.DOMString = undefined,
+            dropEffect: runtime.DOMString = undefined,
+            effectAllowed: runtime.DOMString = undefined,
             items: *runtime.Instance = undefined,
             types: runtime.JSValue = undefined,
             files: *runtime.Instance = undefined,
@@ -200,19 +200,19 @@ pub const DataTransfer = struct {
         return try DataTransferImpl.call_constructor(ctx);
     }
 
-    pub fn get_dropEffect(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_dropEffect(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DataTransferImpl.get_dropEffect(instance);
     }
 
-    pub fn set_dropEffect(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_dropEffect(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try DataTransferImpl.set_dropEffect(instance, value);
     }
 
-    pub fn get_effectAllowed(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_effectAllowed(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DataTransferImpl.get_effectAllowed(instance);
     }
 
-    pub fn set_effectAllowed(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_effectAllowed(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try DataTransferImpl.set_effectAllowed(instance, value);
     }
 
@@ -246,15 +246,15 @@ pub const DataTransfer = struct {
         return value;
     }
 
-    pub fn call_getData(instance: *runtime.Instance, format: DOMString) anyerror!DOMString {
+    pub fn call_getData(instance: *runtime.Instance, format: runtime.DOMString) anyerror!runtime.DOMString {
         return try DataTransferImpl.call_getData(instance, format);
     }
 
-    pub fn call_clearData(instance: *runtime.Instance, format: webidl.Opt(DOMString)) anyerror!void {
+    pub fn call_clearData(instance: *runtime.Instance, format: webidl.Opt(runtime.DOMString)) anyerror!void {
         return try DataTransferImpl.call_clearData(instance, format);
     }
 
-    pub fn call_setData(instance: *runtime.Instance, format: DOMString, data: DOMString) anyerror!void {
+    pub fn call_setData(instance: *runtime.Instance, format: runtime.DOMString, data: runtime.DOMString) anyerror!void {
         return try DataTransferImpl.call_setData(instance, format, data);
     }
 

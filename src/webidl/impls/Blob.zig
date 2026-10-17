@@ -663,3 +663,9 @@ test "Blob - slice negative indices" {
     const size = try get_size(sliced);
     try std.testing.expectEqual(@as(u64, 6), size);
 }
+
+/// Operation: textStream
+pub fn call_textStream(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    _ = instance;
+    return error.NotImplemented;
+}

@@ -53,7 +53,7 @@ pub const NavigatorLanguage = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            language: typedefs.DOMString = undefined,
+            language: runtime.DOMString = undefined,
             languages: runtime.JSValue = undefined,
             _internal: ?*NavigatorLanguageImpl.InternalState = null,
         },
@@ -68,7 +68,7 @@ pub const NavigatorLanguage = struct {
         }
     }
 
-    pub fn get_language(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorLanguageImpl.get_language(instance);
     }
 

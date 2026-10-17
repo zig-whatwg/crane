@@ -54,7 +54,7 @@ pub const CanvasCompositing = struct {
         Meta.MixinTypes,
         struct {
             globalAlpha: f64 = undefined,
-            globalCompositeOperation: typedefs.DOMString = undefined,
+            globalCompositeOperation: runtime.DOMString = undefined,
             _internal: ?*CanvasCompositingImpl.InternalState = null,
         },
     );
@@ -76,11 +76,11 @@ pub const CanvasCompositing = struct {
         try CanvasCompositingImpl.set_globalAlpha(instance, value);
     }
 
-    pub fn get_globalCompositeOperation(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_globalCompositeOperation(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try CanvasCompositingImpl.get_globalCompositeOperation(instance);
     }
 
-    pub fn set_globalCompositeOperation(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_globalCompositeOperation(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try CanvasCompositingImpl.set_globalCompositeOperation(instance, value);
     }
 };

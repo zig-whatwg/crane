@@ -117,7 +117,7 @@ pub const CanvasFillStrokeStyles = struct {
         return try CanvasFillStrokeStylesImpl.call_createLinearGradient(instance, x0, y0, x1, y1);
     }
 
-    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: runtime.DOMString) anyerror!?*runtime.Instance {
         return try CanvasFillStrokeStylesImpl.call_createPattern(instance, image, repetition);
     }
 

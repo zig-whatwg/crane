@@ -155,7 +155,7 @@ pub const Node = struct {
         Meta.MixinTypes,
         struct {
             nodeType: u16 = undefined,
-            nodeName: typedefs.DOMString = undefined,
+            nodeName: runtime.DOMString = undefined,
             baseURI: runtime.USVString = undefined,
             isConnected: bool = undefined,
             ownerDocument: ?*runtime.Instance = null,
@@ -166,8 +166,8 @@ pub const Node = struct {
             lastChild: ?*runtime.Instance = null,
             previousSibling: ?*runtime.Instance = null,
             nextSibling: ?*runtime.Instance = null,
-            nodeValue: ?typedefs.DOMString = null,
-            textContent: ?typedefs.DOMString = null,
+            nodeValue: ?runtime.DOMString = null,
+            textContent: ?runtime.DOMString = null,
             cached_childNodes: ?*runtime.Instance = null,
             _internal: ?*NodeImpl.InternalState = null,
         },
@@ -415,7 +415,7 @@ pub const Node = struct {
         return try NodeImpl.get_nodeType(instance);
     }
 
-    pub fn get_nodeName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_nodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NodeImpl.get_nodeName(instance);
     }
 
@@ -469,12 +469,12 @@ pub const Node = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_nodeValue(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_nodeValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try NodeImpl.get_nodeValue(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_nodeValue(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_nodeValue(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -483,12 +483,12 @@ pub const Node = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_textContent(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_textContent(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try NodeImpl.get_textContent(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_textContent(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
+    pub fn set_textContent(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -532,7 +532,7 @@ pub const Node = struct {
         return result;
     }
 
-    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?DOMString) anyerror!?DOMString {
+    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?runtime.DOMString) anyerror!?runtime.DOMString {
         return try NodeImpl.call_lookupNamespaceURI(instance, prefix);
     }
 
@@ -569,7 +569,7 @@ pub const Node = struct {
         return try NodeImpl.call_isEqualNode(instance, otherNode);
     }
 
-    pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: ?DOMString) anyerror!bool {
+    pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: ?runtime.DOMString) anyerror!bool {
         return try NodeImpl.call_isDefaultNamespace(instance, namespace);
     }
 
@@ -614,7 +614,7 @@ pub const Node = struct {
         return try NodeImpl.call_getRootNode(instance, options);
     }
 
-    pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: ?DOMString) anyerror!?DOMString {
+    pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: ?runtime.DOMString) anyerror!?runtime.DOMString {
         return try NodeImpl.call_lookupPrefix(instance, namespace);
     }
 

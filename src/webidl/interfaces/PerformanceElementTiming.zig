@@ -92,10 +92,10 @@ pub const PerformanceElementTiming = struct {
             renderTime: typedefs.DOMHighResTimeStamp = undefined,
             loadTime: typedefs.DOMHighResTimeStamp = undefined,
             intersectionRect: *runtime.Instance = undefined,
-            identifier: typedefs.DOMString = undefined,
+            identifier: runtime.DOMString = undefined,
             naturalWidth: u32 = undefined,
             naturalHeight: u32 = undefined,
-            id: typedefs.DOMString = undefined,
+            id: runtime.DOMString = undefined,
             element: ?*runtime.Instance = null,
             url: runtime.USVString = undefined,
             paintTime: typedefs.DOMHighResTimeStamp = undefined,
@@ -248,7 +248,7 @@ pub const PerformanceElementTiming = struct {
         return try PerformanceElementTimingImpl.get_intersectionRect(instance);
     }
 
-    pub fn get_identifier(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_identifier(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceElementTimingImpl.get_identifier(instance);
     }
 
@@ -260,7 +260,7 @@ pub const PerformanceElementTiming = struct {
         return try PerformanceElementTimingImpl.get_naturalHeight(instance);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceElementTimingImpl.get_id(instance);
     }
 

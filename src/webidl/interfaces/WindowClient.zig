@@ -11,12 +11,13 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const Client = @import("interfaces").Client;
-const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
+const ClientType = @import("enums").ClientType;
 const FrameType = @import("enums").FrameType;
+const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
 const ClientLifecycleState = @import("enums").ClientLifecycleState;
+const DocumentVisibilityState = @import("enums").DocumentVisibilityState;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
-const ClientType = @import("enums").ClientType;
 
 pub const WindowClient = struct {
     pub const Meta = struct {
@@ -76,7 +77,7 @@ pub const WindowClient = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            visibilityState: runtime.JSValue = undefined,
+            visibilityState: enums.DocumentVisibilityState = undefined,
             focused: bool = undefined,
             ancestorOrigins: runtime.JSValue = undefined,
             cached_ancestorOrigins: ?runtime.JSValue = null,
@@ -183,7 +184,7 @@ pub const WindowClient = struct {
         }
     }
 
-    pub fn get_visibilityState(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn get_visibilityState(instance: *runtime.Instance) anyerror!DocumentVisibilityState {
         return try WindowClientImpl.get_visibilityState(instance);
     }
 

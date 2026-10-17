@@ -10,6 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
+const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const GPUIndex32 = @import("typedefs").GPUIndex32;
 const GPUSize64 = @import("typedefs").GPUSize64;
 const GPUBindGroup = @import("interfaces").GPUBindGroup;
@@ -25,6 +26,10 @@ pub fn installHooks() void {
     if (comptime @hasDecl(impls, "GPUBindingCommandsMixin")) {
         if (comptime @hasDecl(impls.GPUBindingCommandsMixin, "installHooks")) impls.GPUBindingCommandsMixin.installHooks();
     }
+}
+
+pub fn call_setImmediates(instance: *runtime.Instance, rangeOffset: GPUSize32, data: AllowSharedBufferSource, dataOffset: webidl.Opt(GPUSize64), dataSize: webidl.Opt(GPUSize64)) anyerror!void {
+    return try GPUBindingCommandsMixinImpl.call_setImmediates(instance, rangeOffset, data, dataOffset, dataSize);
 }
 
 pub fn call_setBindGroup(instance: *runtime.Instance, index: GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: webidl.Opt(runtime.JSValue)) anyerror!void {

@@ -11,6 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const Credential = @import("interfaces").Credential;
+const DigitalCredentialProtocol = @import("typedefs").DigitalCredentialProtocol;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
@@ -56,7 +57,6 @@ pub const DigitalCredential = struct {
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "isConditionalMediationAvailable",
-            "willRequestConditionalCreation",
         };
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
@@ -75,7 +75,7 @@ pub const DigitalCredential = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            protocol: typedefs.DOMString = undefined,
+            protocol: typedefs.DigitalCredentialProtocol = undefined,
             data: runtime.JSValue = undefined,
             cached_data: ?runtime.JSValue = null,
             _internal: ?*DigitalCredentialImpl.InternalState = null,
@@ -91,7 +91,7 @@ pub const DigitalCredential = struct {
     pub const DigitalCredentialToJSON = struct {
         id: runtime.USVString,
         type: runtime.DOMString,
-        protocol: runtime.DOMString,
+        protocol: DigitalCredentialProtocol,
         data: runtime.JSValue,
 
         pub const default_to_json = true;
@@ -194,7 +194,7 @@ pub const DigitalCredential = struct {
         }
     }
 
-    pub fn get_protocol(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_protocol(instance: *runtime.Instance) anyerror!DigitalCredentialProtocol {
         return try DigitalCredentialImpl.get_protocol(instance);
     }
 
@@ -203,7 +203,7 @@ pub const DigitalCredential = struct {
         return try DigitalCredentialImpl.get_data(instance);
     }
 
-    pub fn call_static_userAgentAllowsProtocol(instance: *runtime.Instance, protocol: DOMString) anyerror!bool {
+    pub fn call_static_userAgentAllowsProtocol(instance: *runtime.Instance, protocol: runtime.DOMString) anyerror!bool {
         return try DigitalCredentialImpl.call_static_userAgentAllowsProtocol(instance, protocol);
     }
 

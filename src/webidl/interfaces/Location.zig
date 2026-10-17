@@ -95,7 +95,6 @@ pub const Location = struct {
             search: runtime.USVString = undefined,
             hash: runtime.USVString = undefined,
             ancestorOrigins: *runtime.Instance = undefined,
-            cached_ancestorOrigins: ?*runtime.Instance = null,
             _internal: ?*LocationImpl.InternalState = null,
         },
     );
@@ -200,7 +199,6 @@ pub const Location = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(LocationImpl, "deinit") and @hasDecl(LocationImpl, "deinitOwn")) @compileError("LocationImpl defines both deinit and deinitOwn");
-        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(LocationImpl, "deinit")) return LocationImpl.deinit(instance);
         if (comptime @hasDecl(LocationImpl, "deinitOwn")) LocationImpl.deinitOwn(instance);
     }
@@ -299,17 +297,9 @@ pub const Location = struct {
         try LocationImpl.set_hash(instance, value);
     }
 
-    /// Extended attributes: [LegacyUnforgeable], [SameObject]
+    /// Extended attributes: [LegacyUnforgeable]
     pub fn get_ancestorOrigins(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_ancestorOrigins) |cached| {
-            return cached;
-        }
-        const value = try LocationImpl.get_ancestorOrigins(instance);
-        state.own.cached_ancestorOrigins = value;
-        @import("dom").same_object_cache.made(instance, value, "ancestorOrigins");
-        return value;
+        return try LocationImpl.get_ancestorOrigins(instance);
     }
 
     /// Extended attributes: [LegacyUnforgeable]

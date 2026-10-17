@@ -58,7 +58,7 @@ pub const Font = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             glyphsRendered: u32 = undefined,
             _internal: ?*FontImpl.InternalState = null,
         },
@@ -156,7 +156,7 @@ pub const Font = struct {
         }
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try FontImpl.get_name(instance);
     }
 

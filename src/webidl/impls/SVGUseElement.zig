@@ -62,15 +62,3 @@ pub fn get_height(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
-
-/// Getter for instanceRoot
-pub fn get_instanceRoot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
-}
-
-/// Getter for animatedInstanceRoot
-pub fn get_animatedInstanceRoot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
-}

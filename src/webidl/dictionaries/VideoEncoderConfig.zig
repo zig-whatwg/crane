@@ -3,7 +3,6 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const typedefs = @import("typedefs");
 const enums = @import("enums");
 const HevcEncoderConfig = @import("HevcEncoderConfig.zig").HevcEncoderConfig;
 const AvcEncoderConfig = @import("AvcEncoderConfig.zig").AvcEncoderConfig;

@@ -74,7 +74,7 @@ pub const NotificationEvent = struct {
         Meta.MixinTypes,
         struct {
             notification: *runtime.Instance = undefined,
-            action: typedefs.DOMString = undefined,
+            action: runtime.DOMString = undefined,
             _internal: ?*NotificationEventImpl.InternalState = null,
         },
     );
@@ -176,7 +176,7 @@ pub const NotificationEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: NotificationEventInit) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: NotificationEventInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try NotificationEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
@@ -185,7 +185,7 @@ pub const NotificationEvent = struct {
         return try NotificationEventImpl.get_notification(instance);
     }
 
-    pub fn get_action(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_action(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NotificationEventImpl.get_action(instance);
     }
 };

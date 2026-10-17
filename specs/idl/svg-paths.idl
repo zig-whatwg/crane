@@ -3,21 +3,22 @@
 // (https://github.com/w3c/webref)
 // Source: SVG Paths (https://svgwg.org/specs/paths/)
 
-[NoInterfaceObject]
+[LegacyNoInterfaceObject, Exposed=Window]
 interface SVGPathSegment {
-  DOMString type;
-  sequence<float> values;
+  attribute DOMString type;
+  attribute FrozenArray<float> values;
 };
 
 dictionary SVGPathDataSettings {
    boolean normalize = false;
-}
+};
 
 interface mixin SVGPathData {
    sequence<SVGPathSegment> getPathData(optional SVGPathDataSettings settings = {});
    undefined setPathData(sequence<SVGPathSegment> pathData);
 };
 
+[Exposed=Window]
 interface SVGPathElement : SVGGeometryElement {
 
   readonly attribute SVGAnimatedNumber pathLength;

@@ -22,10 +22,10 @@ const Element = @import("interfaces").Element;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
 const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
-const DOMMatrix = @import("interfaces").DOMMatrix;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
 const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
+const SVGRect = @import("typedefs").SVGRect;
 const EventListener = @import("interfaces").EventListener;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
@@ -48,16 +48,17 @@ const Document = @import("interfaces").Document;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
+const SVGPoint = @import("typedefs").SVGPoint;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const SVGUseElement = @import("interfaces").SVGUseElement;
-const DOMRectList = @import("interfaces").DOMRectList;
+const SVGMatrix = @import("typedefs").SVGMatrix;
 const SVGAnimatedEnumeration = @import("interfaces").SVGAnimatedEnumeration;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
+const DOMRectList = @import("interfaces").DOMRectList;
 const DOMRect = @import("interfaces").DOMRect;
 const ViewTransition = @import("interfaces").ViewTransition;
 const SpatialNavigationSearchOptions = @import("dictionaries").SpatialNavigationSearchOptions;
@@ -75,6 +76,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -201,6 +203,7 @@ pub const SVGTextContentElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -208,7 +211,6 @@ pub const SVGTextContentElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -224,6 +226,7 @@ pub const SVGTextContentElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "focus",
@@ -418,11 +421,11 @@ pub const SVGTextContentElement = struct {
         return try SVGTextContentElementImpl.call_getCharNumAtPosition(instance, point);
     }
 
-    pub fn call_getEndPositionOfChar(instance: *runtime.Instance, charnum: u32) anyerror!*runtime.Instance {
+    pub fn call_getEndPositionOfChar(instance: *runtime.Instance, charnum: u32) anyerror!SVGPoint {
         return try SVGTextContentElementImpl.call_getEndPositionOfChar(instance, charnum);
     }
 
-    pub fn call_getExtentOfChar(instance: *runtime.Instance, charnum: u32) anyerror!*runtime.Instance {
+    pub fn call_getExtentOfChar(instance: *runtime.Instance, charnum: u32) anyerror!SVGRect {
         return try SVGTextContentElementImpl.call_getExtentOfChar(instance, charnum);
     }
 
@@ -438,7 +441,7 @@ pub const SVGTextContentElement = struct {
         return try SVGTextContentElementImpl.call_getRotationOfChar(instance, charnum);
     }
 
-    pub fn call_getStartPositionOfChar(instance: *runtime.Instance, charnum: u32) anyerror!*runtime.Instance {
+    pub fn call_getStartPositionOfChar(instance: *runtime.Instance, charnum: u32) anyerror!SVGPoint {
         return try SVGTextContentElementImpl.call_getStartPositionOfChar(instance, charnum);
     }
 

@@ -198,7 +198,7 @@ pub const AudioWorkletNode = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, context: *runtime.Instance, name: DOMString, options: webidl.Opt(AudioWorkletNodeOptions)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, context: *runtime.Instance, name: runtime.DOMString, options: webidl.Opt(AudioWorkletNodeOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try AudioWorkletNodeImpl.call_constructor(ctx, context, name, options);
     }

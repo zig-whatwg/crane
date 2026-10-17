@@ -75,6 +75,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -184,6 +185,7 @@ pub const HTMLCanvasElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -191,7 +193,6 @@ pub const HTMLCanvasElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -207,6 +208,7 @@ pub const HTMLCanvasElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -384,7 +386,7 @@ pub const HTMLCanvasElement = struct {
         try HTMLCanvasElementImpl.set_height(instance, value);
     }
 
-    pub fn call_getContext(instance: *runtime.Instance, contextId: DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!?RenderingContext {
+    pub fn call_getContext(instance: *runtime.Instance, contextId: runtime.DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!?RenderingContext {
         return try HTMLCanvasElementImpl.call_getContext(instance, contextId, options);
     }
 
@@ -392,7 +394,7 @@ pub const HTMLCanvasElement = struct {
         return try HTMLCanvasElementImpl.call_transferControlToOffscreen(instance);
     }
 
-    pub fn call_toBlob(instance: *runtime.Instance, callback: BlobCallback, @"type": webidl.Opt(DOMString), quality: webidl.Opt(runtime.JSValue)) anyerror!void {
+    pub fn call_toBlob(instance: *runtime.Instance, callback: BlobCallback, @"type": webidl.Opt(runtime.DOMString), quality: webidl.Opt(runtime.JSValue)) anyerror!void {
         return try HTMLCanvasElementImpl.call_toBlob(instance, callback, @"type", quality);
     }
 
@@ -400,7 +402,7 @@ pub const HTMLCanvasElement = struct {
         return try HTMLCanvasElementImpl.call_captureStream(instance, frameRequestRate);
     }
 
-    pub fn call_toDataURL(instance: *runtime.Instance, @"type": webidl.Opt(DOMString), quality: webidl.Opt(runtime.JSValue)) anyerror!runtime.USVString {
+    pub fn call_toDataURL(instance: *runtime.Instance, @"type": webidl.Opt(runtime.DOMString), quality: webidl.Opt(runtime.JSValue)) anyerror!runtime.USVString {
         return try HTMLCanvasElementImpl.call_toDataURL(instance, @"type", quality);
     }
 

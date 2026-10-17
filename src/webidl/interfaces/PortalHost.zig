@@ -15,7 +15,7 @@ const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
 const Event = @import("interfaces").Event;
-const PostMessageOptions = @import("dictionaries").PostMessageOptions;
+const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const EventListener = @import("interfaces").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
@@ -204,7 +204,7 @@ pub const PortalHost = struct {
         try event_handlers.setValue(EventHandler, instance, "onmessageerror", value);
     }
 
-    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(PostMessageOptions)) anyerror!void {
+    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(StructuredSerializeOptions)) anyerror!void {
         return try PortalHostImpl.call_postMessage(instance, message, options);
     }
 };

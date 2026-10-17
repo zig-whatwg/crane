@@ -48,3 +48,13 @@ pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32
     _ = dynamicOffsets;
     return error.NotImplemented;
 }
+
+/// Operation: setImmediates
+pub fn call_setImmediates(instance: *runtime.Instance, rangeOffset: typedefs.GPUSize32, data: typedefs.AllowSharedBufferSource, dataOffset: webidl.Opt(typedefs.GPUSize64), dataSize: webidl.Opt(typedefs.GPUSize64)) anyerror!void {
+    _ = instance;
+    _ = rangeOffset;
+    _ = data;
+    _ = dataOffset;
+    _ = dataSize;
+    return error.NotImplemented;
+}

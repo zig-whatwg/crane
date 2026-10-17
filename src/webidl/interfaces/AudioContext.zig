@@ -26,6 +26,7 @@ const ConvolverNode = @import("interfaces").ConvolverNode;
 const MediaElementAudioSourceNode = @import("interfaces").MediaElementAudioSourceNode;
 const AudioContextState = @import("enums").AudioContextState;
 const DynamicsCompressorNode = @import("interfaces").DynamicsCompressorNode;
+const AudioPlaybackStats = @import("interfaces").AudioPlaybackStats;
 const MediaStream = @import("interfaces").MediaStream;
 const PannerNode = @import("interfaces").PannerNode;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
@@ -79,6 +80,7 @@ pub const AudioContext = struct {
             .{ "sinkId", "get_sinkId", null },
             .{ "onsinkchange", "get_onsinkchange", "set_onsinkchange" },
             .{ "onerror", "get_onerror", "set_onerror" },
+            .{ "playbackStats", "get_playbackStats", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -141,6 +143,7 @@ pub const AudioContext = struct {
             .{ "sinkId", "get_sinkId", null },
             .{ "onsinkchange", "get_onsinkchange", "set_onsinkchange" },
             .{ "onerror", "get_onerror", "set_onerror" },
+            .{ "playbackStats", "get_playbackStats", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -169,6 +172,8 @@ pub const AudioContext = struct {
             } = undefined,
             onsinkchange: typedefs.EventHandler = undefined,
             onerror: typedefs.EventHandler = undefined,
+            playbackStats: *runtime.Instance = undefined,
+            cached_playbackStats: ?*runtime.Instance = null,
             _internal: ?*AudioContextImpl.InternalState = null,
         },
     );
@@ -178,6 +183,7 @@ pub const AudioContext = struct {
         .get_onerror = &get_onerror,
         .get_onsinkchange = &get_onsinkchange,
         .get_outputLatency = &get_outputLatency,
+        .get_playbackStats = &get_playbackStats,
         .get_sinkId = &get_sinkId,
 
         .set_onerror = &set_onerror,
@@ -269,6 +275,7 @@ pub const AudioContext = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(AudioContextImpl, "deinit") and @hasDecl(AudioContextImpl, "deinitOwn")) @compileError("AudioContextImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(AudioContextImpl, "deinit")) return AudioContextImpl.deinit(instance);
         if (comptime @hasDecl(AudioContextImpl, "deinitOwn")) AudioContextImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -324,6 +331,19 @@ pub const AudioContext = struct {
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         if (comptime @hasDecl(AudioContextImpl, "set_onerror")) return try AudioContextImpl.set_onerror(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onerror", value);
+    }
+
+    /// Extended attributes: [SameObject]
+    pub fn get_playbackStats(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_playbackStats) |cached| {
+            return cached;
+        }
+        const value = try AudioContextImpl.get_playbackStats(instance);
+        state.own.cached_playbackStats = value;
+        @import("dom").same_object_cache.made(instance, value, "playbackStats");
+        return value;
     }
 
     pub fn call_createMediaStreamTrackSource(instance: *runtime.Instance, mediaStreamTrack: *runtime.Instance) anyerror!*runtime.Instance {

@@ -1,4 +1,4 @@
-//! Generated from: payment-handler.idl
+//! Generated from: web-based-payment-handler.idl
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -169,7 +169,7 @@ pub const CanMakePaymentEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try CanMakePaymentEventImpl.call_constructor(ctx, @"type");
     }

@@ -3,7 +3,6 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const typedefs = @import("typedefs");
 const EventInit = @import("EventInit.zig").EventInit;
 
 pub const TextUpdateEventInit = struct {
@@ -15,6 +14,4 @@ pub const TextUpdateEventInit = struct {
     text: ?runtime.DOMString = null,
     selectionStart: ?u32 = null,
     selectionEnd: ?u32 = null,
-    compositionStart: ?u32 = null,
-    compositionEnd: ?u32 = null,
 };

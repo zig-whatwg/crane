@@ -78,7 +78,7 @@ pub const PerformanceEventTiming = struct {
             processingEnd: typedefs.DOMHighResTimeStamp = undefined,
             cancelable: bool = undefined,
             target: ?*runtime.Instance = null,
-            targetSelector: typedefs.DOMString = undefined,
+            targetSelector: runtime.DOMString = undefined,
             interactionId: u64 = undefined,
             _internal: ?*PerformanceEventTimingImpl.InternalState = null,
         },
@@ -223,7 +223,7 @@ pub const PerformanceEventTiming = struct {
         return try PerformanceEventTimingImpl.get_target(instance);
     }
 
-    pub fn get_targetSelector(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_targetSelector(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceEventTimingImpl.get_targetSelector(instance);
     }
 

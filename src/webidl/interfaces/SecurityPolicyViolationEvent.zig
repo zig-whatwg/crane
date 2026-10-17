@@ -98,11 +98,11 @@ pub const SecurityPolicyViolationEvent = struct {
             documentURI: runtime.USVString = undefined,
             referrer: runtime.USVString = undefined,
             blockedURI: runtime.USVString = undefined,
-            effectiveDirective: typedefs.DOMString = undefined,
-            violatedDirective: typedefs.DOMString = undefined,
-            originalPolicy: typedefs.DOMString = undefined,
+            effectiveDirective: runtime.DOMString = undefined,
+            violatedDirective: runtime.DOMString = undefined,
+            originalPolicy: runtime.DOMString = undefined,
             sourceFile: runtime.USVString = undefined,
-            sample: typedefs.DOMString = undefined,
+            sample: runtime.DOMString = undefined,
             disposition: enums.SecurityPolicyViolationEventDisposition = undefined,
             statusCode: u16 = undefined,
             lineNumber: u32 = undefined,
@@ -218,7 +218,7 @@ pub const SecurityPolicyViolationEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(SecurityPolicyViolationEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(SecurityPolicyViolationEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try SecurityPolicyViolationEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
@@ -235,15 +235,15 @@ pub const SecurityPolicyViolationEvent = struct {
         return try SecurityPolicyViolationEventImpl.get_blockedURI(instance);
     }
 
-    pub fn get_effectiveDirective(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_effectiveDirective(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SecurityPolicyViolationEventImpl.get_effectiveDirective(instance);
     }
 
-    pub fn get_violatedDirective(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_violatedDirective(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SecurityPolicyViolationEventImpl.get_violatedDirective(instance);
     }
 
-    pub fn get_originalPolicy(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_originalPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SecurityPolicyViolationEventImpl.get_originalPolicy(instance);
     }
 
@@ -251,7 +251,7 @@ pub const SecurityPolicyViolationEvent = struct {
         return try SecurityPolicyViolationEventImpl.get_sourceFile(instance);
     }
 
-    pub fn get_sample(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_sample(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SecurityPolicyViolationEventImpl.get_sample(instance);
     }
 

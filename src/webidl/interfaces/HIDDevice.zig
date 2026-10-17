@@ -105,7 +105,7 @@ pub const HIDDevice = struct {
             opened: bool = undefined,
             vendorId: u16 = undefined,
             productId: u16 = undefined,
-            productName: typedefs.DOMString = undefined,
+            productName: runtime.DOMString = undefined,
             collections: runtime.JSValue = undefined,
             _internal: ?*HIDDeviceImpl.InternalState = null,
         },
@@ -242,7 +242,7 @@ pub const HIDDevice = struct {
         return try HIDDeviceImpl.get_productId(instance);
     }
 
-    pub fn get_productName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_productName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HIDDeviceImpl.get_productName(instance);
     }
 

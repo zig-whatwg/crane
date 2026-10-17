@@ -71,6 +71,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -167,6 +168,7 @@ pub const HTMLTimeElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -174,7 +176,6 @@ pub const HTMLTimeElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -190,6 +191,7 @@ pub const HTMLTimeElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -221,7 +223,7 @@ pub const HTMLTimeElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            dateTime: typedefs.DOMString = undefined,
+            dateTime: runtime.DOMString = undefined,
             _internal: ?*HTMLTimeElementImpl.InternalState = null,
         },
     );
@@ -332,19 +334,19 @@ pub const HTMLTimeElement = struct {
     const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_dateTime(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_dateTime(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLTimeElementImpl, "get_dateTime")) return try HTMLTimeElementImpl.get_dateTime(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "datetime" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "datetime" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_dateTime(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_dateTime(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTimeElementImpl, "set_dateTime")) return try HTMLTimeElementImpl.set_dateTime(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "datetime" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "datetime" }, value);
     }
 
     /// HTML [CEReactions]: the functions that run a custom element reactions

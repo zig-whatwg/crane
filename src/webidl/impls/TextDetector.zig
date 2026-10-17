@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -55,5 +56,19 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 pub fn call_detect(instance: *runtime.Instance, image: typedefs.ImageBitmapSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = image;
+    return error.NotImplemented;
+}
+
+/// Operation: availability
+pub fn call_static_availability(instance: *runtime.Instance, options: dictionaries.TextDetectorOptions) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = options;
+    return error.NotImplemented;
+}
+
+/// Operation: create
+pub fn call_static_create(instance: *runtime.Instance, options: webidl.Opt(dictionaries.TextDetectorCreateOptions)) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = options;
     return error.NotImplemented;
 }

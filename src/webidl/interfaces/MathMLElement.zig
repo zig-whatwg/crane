@@ -13,6 +13,8 @@ const dictionaries = @import("dictionaries");
 const Element = @import("interfaces").Element;
 const ElementCSSInlineStyle = @import("mixins").ElementCSSInlineStyle;
 const GlobalEventHandlers = @import("mixins").GlobalEventHandlers;
+const HTMLOrSVGOrMathMLElement = @import("mixins").HTMLOrSVGOrMathMLElement;
+const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
@@ -33,6 +35,7 @@ const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCa
 const Node = @import("interfaces").Node;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
 const SetHTMLUnsafeOptions = @import("dictionaries").SetHTMLUnsafeOptions;
+const FocusOptions = @import("dictionaries").FocusOptions;
 const Range = @import("interfaces").Range;
 const Event = @import("interfaces").Event;
 const Animation = @import("interfaces").Animation;
@@ -66,6 +69,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -83,6 +87,7 @@ pub const MathMLElement = struct {
         pub const MixinTypes = &.{
             ElementCSSInlineStyle,
             GlobalEventHandlers,
+            HTMLOrSVGOrMathMLElement,
         };
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
@@ -200,6 +205,10 @@ pub const MathMLElement = struct {
             .{ "ontouchmove", "get_ontouchmove", "set_ontouchmove" },
             .{ "ontouchcancel", "get_ontouchcancel", "set_ontouchcancel" },
             .{ "onbeforexrselect", "get_onbeforexrselect", "set_onbeforexrselect" },
+            .{ "dataset", "get_dataset", null },
+            .{ "nonce", "get_nonce", "set_nonce" },
+            .{ "autofocus", "get_autofocus", "set_autofocus" },
+            .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
 
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
@@ -216,10 +225,16 @@ pub const MathMLElement = struct {
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
+        pub const methods = .{
+            .{ "focus", "call_focus", 0 },
+            .{ "blur", "call_blur", 0 },
+        };
 
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
+        pub const own_methods = .{
+            "focus",
+            "blur",
+        };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
@@ -284,6 +299,7 @@ pub const MathMLElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -291,7 +307,6 @@ pub const MathMLElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -307,6 +322,7 @@ pub const MathMLElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
         };
@@ -420,6 +436,10 @@ pub const MathMLElement = struct {
             .{ "ontouchmove", "get_ontouchmove", "set_ontouchmove" },
             .{ "ontouchcancel", "get_ontouchcancel", "set_ontouchcancel" },
             .{ "onbeforexrselect", "get_onbeforexrselect", "set_onbeforexrselect" },
+            .{ "dataset", "get_dataset", null },
+            .{ "nonce", "get_nonce", "set_nonce" },
+            .{ "autofocus", "get_autofocus", "set_autofocus" },
+            .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -442,14 +462,22 @@ pub const MathMLElement = struct {
             style: *runtime.Instance = undefined,
             attributeStyleMap: *runtime.Instance = undefined,
             onerror: typedefs.OnErrorEventHandler = undefined,
+            dataset: *runtime.Instance = undefined,
+            nonce: runtime.DOMString = undefined,
+            autofocus: bool = undefined,
+            tabIndex: i32 = undefined,
             cached_style: ?*runtime.Instance = null,
             cached_attributeStyleMap: ?*runtime.Instance = null,
+            cached_dataset: ?*runtime.Instance = null,
             _internal: ?*MathMLElementImpl.InternalState = null,
         },
     );
 
     const delegates = .{
         .get_attributeStyleMap = &get_attributeStyleMap,
+        .get_autofocus = &get_autofocus,
+        .get_dataset = &get_dataset,
+        .get_nonce = &get_nonce,
         .get_onabort = &get_onabort,
         .get_onanimationcancel = &get_onanimationcancel,
         .get_onanimationend = &get_onanimationend,
@@ -556,7 +584,10 @@ pub const MathMLElement = struct {
         .get_onwebkittransitionend = &get_onwebkittransitionend,
         .get_onwheel = &get_onwheel,
         .get_style = &get_style,
+        .get_tabIndex = &get_tabIndex,
 
+        .set_autofocus = &set_autofocus,
+        .set_nonce = &set_nonce,
         .set_onabort = &set_onabort,
         .set_onanimationcancel = &set_onanimationcancel,
         .set_onanimationend = &set_onanimationend,
@@ -663,6 +694,10 @@ pub const MathMLElement = struct {
         .set_onwebkittransitionend = &set_onwebkittransitionend,
         .set_onwheel = &set_onwheel,
         .set_style = &set_style,
+        .set_tabIndex = &set_tabIndex,
+
+        .call_blur = &call_blur,
+        .call_focus = &call_focus,
 
         .deinit = &deinit,
     };
@@ -1109,4 +1144,75 @@ pub const MathMLElement = struct {
 
     pub const get_onbeforexrselect = mixins.GlobalEventHandlers.get_onbeforexrselect;
     pub const set_onbeforexrselect = mixins.GlobalEventHandlers.set_onbeforexrselect;
+
+    /// Extended attributes: [SameObject]
+    pub fn get_dataset(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_dataset) |cached| {
+            return cached;
+        }
+        const value = try MathMLElementImpl.get_dataset(instance);
+        state.own.cached_dataset = value;
+        @import("dom").same_object_cache.made(instance, value, "dataset");
+        return value;
+    }
+
+    pub fn get_nonce(instance: *runtime.Instance) anyerror!runtime.DOMString {
+        return try MathMLElementImpl.get_nonce(instance);
+    }
+
+    pub fn set_nonce(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        try MathMLElementImpl.set_nonce(instance, value);
+    }
+
+    const reflection = @import("dom").reflection;
+
+    /// Extended attributes: [CEReactions], [Reflect]
+    pub fn get_autofocus(instance: *runtime.Instance) anyerror!bool {
+        if (comptime @hasDecl(MathMLElementImpl, "get_autofocus")) return try MathMLElementImpl.get_autofocus(instance);
+        return try reflection.get(bool, instance, .{ .name = "autofocus" });
+    }
+
+    /// Extended attributes: [CEReactions], [Reflect]
+    pub fn set_autofocus(instance: *runtime.Instance, value: bool) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
+
+        if (comptime @hasDecl(MathMLElementImpl, "set_autofocus")) return try MathMLElementImpl.set_autofocus(instance, value);
+        try reflection.set(bool, instance, .{ .name = "autofocus" }, value);
+    }
+
+    /// Extended attributes: [CEReactions], [ReflectSetter]
+    pub fn get_tabIndex(instance: *runtime.Instance) anyerror!i32 {
+        return try MathMLElementImpl.get_tabIndex(instance);
+    }
+
+    /// Extended attributes: [CEReactions], [ReflectSetter]
+    pub fn set_tabIndex(instance: *runtime.Instance, value: i32) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
+
+        if (comptime @hasDecl(MathMLElementImpl, "set_tabIndex")) return try MathMLElementImpl.set_tabIndex(instance, value);
+        try reflection.set(i32, instance, .{ .name = "tabindex" }, value);
+    }
+
+    pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(FocusOptions)) anyerror!void {
+        return try MathMLElementImpl.call_focus(instance, options);
+    }
+
+    pub fn call_blur(instance: *runtime.Instance) anyerror!void {
+        return try MathMLElementImpl.call_blur(instance);
+    }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_autofocus",
+        "set_tabIndex",
+    };
 };

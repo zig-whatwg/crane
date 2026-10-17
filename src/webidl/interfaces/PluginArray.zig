@@ -180,7 +180,7 @@ pub const PluginArray = struct {
         return try PluginArrayImpl.get_length(instance);
     }
 
-    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?*runtime.Instance {
         return try PluginArrayImpl.call_namedItem(instance, name);
     }
 

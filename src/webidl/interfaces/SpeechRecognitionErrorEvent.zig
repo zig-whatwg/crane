@@ -73,7 +73,7 @@ pub const SpeechRecognitionErrorEvent = struct {
         Meta.MixinTypes,
         struct {
             @"error": enums.SpeechRecognitionErrorCode = undefined,
-            message: typedefs.DOMString = undefined,
+            message: runtime.DOMString = undefined,
             _internal: ?*SpeechRecognitionErrorEventImpl.InternalState = null,
         },
     );
@@ -175,7 +175,7 @@ pub const SpeechRecognitionErrorEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: SpeechRecognitionErrorEventInit) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: SpeechRecognitionErrorEventInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try SpeechRecognitionErrorEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
@@ -184,7 +184,7 @@ pub const SpeechRecognitionErrorEvent = struct {
         return try SpeechRecognitionErrorEventImpl.get_error(instance);
     }
 
-    pub fn get_message(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SpeechRecognitionErrorEventImpl.get_message(instance);
     }
 };

@@ -96,7 +96,7 @@ pub const MediaKeySession = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sessionId: typedefs.DOMString = undefined,
+            sessionId: runtime.DOMString = undefined,
             expiration: f64 = undefined,
             closed: runtime.JSValue = undefined,
             keyStatuses: *runtime.Instance = undefined,
@@ -213,7 +213,7 @@ pub const MediaKeySession = struct {
         }
     }
 
-    pub fn get_sessionId(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_sessionId(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MediaKeySessionImpl.get_sessionId(instance);
     }
 
@@ -263,11 +263,11 @@ pub const MediaKeySession = struct {
         return try MediaKeySessionImpl.call_close(instance);
     }
 
-    pub fn call_load(instance: *runtime.Instance, sessionId: DOMString) anyerror!runtime.JSValue {
+    pub fn call_load(instance: *runtime.Instance, sessionId: runtime.DOMString) anyerror!runtime.JSValue {
         return try MediaKeySessionImpl.call_load(instance, sessionId);
     }
 
-    pub fn call_generateRequest(instance: *runtime.Instance, initDataType: DOMString, initData: BufferSource) anyerror!runtime.JSValue {
+    pub fn call_generateRequest(instance: *runtime.Instance, initDataType: runtime.DOMString, initData: BufferSource) anyerror!runtime.JSValue {
         return try MediaKeySessionImpl.call_generateRequest(instance, initDataType, initData);
     }
 

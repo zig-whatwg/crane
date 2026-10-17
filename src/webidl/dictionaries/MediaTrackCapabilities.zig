@@ -3,7 +3,6 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const typedefs = @import("typedefs");
 const ULongRange = @import("ULongRange.zig").ULongRange;
 const DoubleRange = @import("DoubleRange.zig").DoubleRange;
 const MediaSettingsRange = @import("MediaSettingsRange.zig").MediaSettingsRange;
@@ -41,6 +40,14 @@ pub const MediaTrackCapabilities = struct {
     tilt: ?MediaSettingsRange = null,
     zoom: ?MediaSettingsRange = null,
     torch: ?[]const bool = null,
+    powerEfficient: ?[]const bool = null,
+    powerEfficientPixelFormat: ?[]const bool = null,
+    gestureReactions: ?[]const bool = null,
+    faceFraming: ?[]const bool = null,
+    eyeGazeCorrection: ?[]const bool = null,
+    voiceIsolation: ?[]const bool = null,
+    humanFaceDetectionMode: ?[]const runtime.DOMString = null,
+    backgroundSegmentationMask: ?[]const bool = null,
     displaySurface: ?runtime.DOMString = null,
     logicalSurface: ?bool = null,
     cursor: ?[]const runtime.DOMString = null,

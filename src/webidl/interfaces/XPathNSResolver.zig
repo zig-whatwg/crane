@@ -146,7 +146,7 @@ pub const XPathNSResolver = struct {
         }
     }
 
-    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?DOMString) anyerror!?DOMString {
+    pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?runtime.DOMString) anyerror!?runtime.DOMString {
         return try XPathNSResolverImpl.call_lookupNamespaceURI(instance, prefix);
     }
 };

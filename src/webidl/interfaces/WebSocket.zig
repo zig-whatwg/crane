@@ -115,8 +115,8 @@ pub const WebSocket = struct {
             onopen: typedefs.EventHandler = undefined,
             onerror: typedefs.EventHandler = undefined,
             onclose: typedefs.EventHandler = undefined,
-            extensions: typedefs.DOMString = undefined,
-            protocol: typedefs.DOMString = undefined,
+            extensions: runtime.DOMString = undefined,
+            protocol: runtime.DOMString = undefined,
             onmessage: typedefs.EventHandler = undefined,
             binaryType: enums.BinaryType = undefined,
             _internal: ?*WebSocketImpl.InternalState = null,
@@ -314,11 +314,11 @@ pub const WebSocket = struct {
         try event_handlers.setValue(EventHandler, instance, "onclose", value);
     }
 
-    pub fn get_extensions(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_extensions(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WebSocketImpl.get_extensions(instance);
     }
 
-    pub fn get_protocol(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WebSocketImpl.get_protocol(instance);
     }
 

@@ -68,9 +68,9 @@ pub const PerformanceServerTiming = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             duration: typedefs.DOMHighResTimeStamp = undefined,
-            description: typedefs.DOMString = undefined,
+            description: runtime.DOMString = undefined,
             _internal: ?*PerformanceServerTimingImpl.InternalState = null,
         },
     );
@@ -184,7 +184,7 @@ pub const PerformanceServerTiming = struct {
         }
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceServerTimingImpl.get_name(instance);
     }
 
@@ -192,7 +192,7 @@ pub const PerformanceServerTiming = struct {
         return try PerformanceServerTimingImpl.get_duration(instance);
     }
 
-    pub fn get_description(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_description(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceServerTimingImpl.get_description(instance);
     }
 

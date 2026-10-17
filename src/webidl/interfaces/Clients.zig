@@ -177,7 +177,7 @@ pub const Clients = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_get(instance: *runtime.Instance, id: DOMString) anyerror!runtime.JSValue {
+    pub fn call_get(instance: *runtime.Instance, id: runtime.DOMString) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
 
         return try ClientsImpl.call_get(instance, id);

@@ -67,8 +67,8 @@ pub const FontFaceVariationAxis = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
-            axisTag: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
+            axisTag: runtime.DOMString = undefined,
             minimumValue: f64 = undefined,
             maximumValue: f64 = undefined,
             defaultValue: f64 = undefined,
@@ -171,11 +171,11 @@ pub const FontFaceVariationAxis = struct {
         }
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try FontFaceVariationAxisImpl.get_name(instance);
     }
 
-    pub fn get_axisTag(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_axisTag(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try FontFaceVariationAxisImpl.get_axisTag(instance);
     }
 

@@ -48,6 +48,7 @@ pub const SpeechRecognition = struct {
             .{ "lang", "get_lang", "set_lang" },
             .{ "continuous", "get_continuous", "set_continuous" },
             .{ "interimResults", "get_interimResults", "set_interimResults" },
+            .{ "unspokenPunctuation", "get_unspokenPunctuation", "set_unspokenPunctuation" },
             .{ "maxAlternatives", "get_maxAlternatives", "set_maxAlternatives" },
             .{ "processLocally", "get_processLocally", "set_processLocally" },
             .{ "phrases", "get_phrases", "set_phrases" },
@@ -100,6 +101,7 @@ pub const SpeechRecognition = struct {
             .{ "lang", "get_lang", "set_lang" },
             .{ "continuous", "get_continuous", "set_continuous" },
             .{ "interimResults", "get_interimResults", "set_interimResults" },
+            .{ "unspokenPunctuation", "get_unspokenPunctuation", "set_unspokenPunctuation" },
             .{ "maxAlternatives", "get_maxAlternatives", "set_maxAlternatives" },
             .{ "processLocally", "get_processLocally", "set_processLocally" },
             .{ "phrases", "get_phrases", "set_phrases" },
@@ -127,9 +129,10 @@ pub const SpeechRecognition = struct {
         Meta.MixinTypes,
         struct {
             grammars: *runtime.Instance = undefined,
-            lang: typedefs.DOMString = undefined,
+            lang: runtime.DOMString = undefined,
             continuous: bool = undefined,
             interimResults: bool = undefined,
+            unspokenPunctuation: bool = undefined,
             maxAlternatives: u32 = undefined,
             processLocally: bool = undefined,
             phrases: runtime.JSValue = undefined,
@@ -167,6 +170,7 @@ pub const SpeechRecognition = struct {
         .get_onstart = &get_onstart,
         .get_phrases = &get_phrases,
         .get_processLocally = &get_processLocally,
+        .get_unspokenPunctuation = &get_unspokenPunctuation,
 
         .set_continuous = &set_continuous,
         .set_grammars = &set_grammars,
@@ -186,6 +190,7 @@ pub const SpeechRecognition = struct {
         .set_onstart = &set_onstart,
         .set_phrases = &set_phrases,
         .set_processLocally = &set_processLocally,
+        .set_unspokenPunctuation = &set_unspokenPunctuation,
 
         .call_abort = &call_abort,
         .call_start = &call_start,
@@ -297,11 +302,11 @@ pub const SpeechRecognition = struct {
         try SpeechRecognitionImpl.set_grammars(instance, value);
     }
 
-    pub fn get_lang(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_lang(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SpeechRecognitionImpl.get_lang(instance);
     }
 
-    pub fn set_lang(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_lang(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try SpeechRecognitionImpl.set_lang(instance, value);
     }
 
@@ -319,6 +324,14 @@ pub const SpeechRecognition = struct {
 
     pub fn set_interimResults(instance: *runtime.Instance, value: bool) anyerror!void {
         try SpeechRecognitionImpl.set_interimResults(instance, value);
+    }
+
+    pub fn get_unspokenPunctuation(instance: *runtime.Instance) anyerror!bool {
+        return try SpeechRecognitionImpl.get_unspokenPunctuation(instance);
+    }
+
+    pub fn set_unspokenPunctuation(instance: *runtime.Instance, value: bool) anyerror!void {
+        try SpeechRecognitionImpl.set_unspokenPunctuation(instance, value);
     }
 
     pub fn get_maxAlternatives(instance: *runtime.Instance) anyerror!u32 {

@@ -41,7 +41,7 @@ pub const Exception = struct {
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "getArg", "call_getArg", 1 },
+            .{ "getArg", "call_getArg", 2 },
             .{ "is", "call_is", 1 },
         };
 
@@ -183,8 +183,8 @@ pub const Exception = struct {
         return try ExceptionImpl.get_stack(instance);
     }
 
-    pub fn call_getArg(instance: *runtime.Instance, index: u32) anyerror!runtime.JSValue {
-        return try ExceptionImpl.call_getArg(instance, index);
+    pub fn call_getArg(instance: *runtime.Instance, exceptionTag: *runtime.Instance, index: u32) anyerror!runtime.JSValue {
+        return try ExceptionImpl.call_getArg(instance, exceptionTag, index);
     }
 
     pub fn call_is(instance: *runtime.Instance, exceptionTag: *runtime.Instance) anyerror!bool {
@@ -195,6 +195,6 @@ pub const Exception = struct {
     /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
     /// an attribute setter's value is bit 0).
     pub const enforce_range = .{
-        .{ "call_getArg", 0b1 },
+        .{ "call_getArg", 0b10 },
     };
 };

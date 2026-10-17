@@ -177,7 +177,7 @@ pub const DragEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(DragEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(DragEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try DragEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }

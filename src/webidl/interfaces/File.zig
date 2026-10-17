@@ -57,6 +57,7 @@ pub const File = struct {
             "stream",
             "text",
             "arrayBuffer",
+            "textStream",
             "bytes",
         };
 
@@ -77,7 +78,7 @@ pub const File = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             lastModified: i64 = undefined,
             webkitRelativePath: runtime.USVString = undefined,
             _internal: ?*FileImpl.InternalState = null,
@@ -224,7 +225,7 @@ pub const File = struct {
         return try FileImpl.call_constructor(ctx, fileBits, fileName, options);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try FileImpl.get_name(instance);
     }
 

@@ -72,6 +72,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -176,6 +177,7 @@ pub const HTMLOptionElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -183,7 +185,6 @@ pub const HTMLOptionElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -199,6 +200,7 @@ pub const HTMLOptionElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -239,11 +241,11 @@ pub const HTMLOptionElement = struct {
         struct {
             disabled: bool = undefined,
             form: ?*runtime.Instance = null,
-            label: typedefs.DOMString = undefined,
+            label: runtime.DOMString = undefined,
             defaultSelected: bool = undefined,
             selected: bool = undefined,
-            value: typedefs.DOMString = undefined,
-            text: typedefs.DOMString = undefined,
+            value: runtime.DOMString = undefined,
+            text: runtime.DOMString = undefined,
             index: i32 = undefined,
             _internal: ?*HTMLOptionElementImpl.InternalState = null,
         },
@@ -387,18 +389,18 @@ pub const HTMLOptionElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
-    pub fn get_label(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_label(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLOptionElementImpl.get_label(instance);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
-    pub fn set_label(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_label(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLOptionElementImpl, "set_label")) return try HTMLOptionElementImpl.set_label(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "label" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "label" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="selected"]
@@ -426,27 +428,27 @@ pub const HTMLOptionElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
-    pub fn get_value(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLOptionElementImpl.get_value(instance);
     }
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
-    pub fn set_value(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLOptionElementImpl, "set_value")) return try HTMLOptionElementImpl.set_value(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "value" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "value" }, value);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_text(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_text(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLOptionElementImpl.get_text(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_text(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_text(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);

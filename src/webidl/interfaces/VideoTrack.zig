@@ -67,10 +67,10 @@ pub const VideoTrack = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: typedefs.DOMString = undefined,
-            kind: typedefs.DOMString = undefined,
-            label: typedefs.DOMString = undefined,
-            language: typedefs.DOMString = undefined,
+            id: runtime.DOMString = undefined,
+            kind: runtime.DOMString = undefined,
+            label: runtime.DOMString = undefined,
+            language: runtime.DOMString = undefined,
             selected: bool = undefined,
             sourceBuffer: ?*runtime.Instance = null,
             _internal: ?*VideoTrackImpl.InternalState = null,
@@ -175,19 +175,19 @@ pub const VideoTrack = struct {
         }
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try VideoTrackImpl.get_id(instance);
     }
 
-    pub fn get_kind(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_kind(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try VideoTrackImpl.get_kind(instance);
     }
 
-    pub fn get_label(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_label(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try VideoTrackImpl.get_label(instance);
     }
 
-    pub fn get_language(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try VideoTrackImpl.get_language(instance);
     }
 

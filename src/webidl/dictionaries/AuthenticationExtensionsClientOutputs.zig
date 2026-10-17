@@ -10,6 +10,8 @@ const AuthenticationExtensionsPaymentOutputs = @import("AuthenticationExtensions
 const AuthenticationExtensionsLargeBlobOutputs = @import("AuthenticationExtensionsLargeBlobOutputs.zig").AuthenticationExtensionsLargeBlobOutputs;
 
 pub const AuthenticationExtensionsClientOutputs = struct {
+    credBlob: ?bool = null,
+    getCredBlob: ?runtime.JSValue = null,
     hmacCreateSecret: ?bool = null,
     hmacGetSecret: ?HMACGetSecretOutput = null,
     payment: ?AuthenticationExtensionsPaymentOutputs = null,
@@ -18,4 +20,5 @@ pub const AuthenticationExtensionsClientOutputs = struct {
     credProps: ?CredentialPropertiesOutput = null,
     prf: ?AuthenticationExtensionsPRFOutputs = null,
     largeBlob: ?AuthenticationExtensionsLargeBlobOutputs = null,
+    remoteClientDataJSON: ?bool = null,
 };

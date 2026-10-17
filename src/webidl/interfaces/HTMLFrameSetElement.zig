@@ -73,6 +73,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -193,6 +194,7 @@ pub const HTMLFrameSetElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -200,7 +202,6 @@ pub const HTMLFrameSetElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -216,6 +217,7 @@ pub const HTMLFrameSetElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -269,8 +271,8 @@ pub const HTMLFrameSetElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cols: typedefs.DOMString = undefined,
-            rows: typedefs.DOMString = undefined,
+            cols: runtime.DOMString = undefined,
+            rows: runtime.DOMString = undefined,
             onbeforeunload: typedefs.OnBeforeUnloadEventHandler = undefined,
             _internal: ?*HTMLFrameSetElementImpl.InternalState = null,
         },
@@ -426,35 +428,35 @@ pub const HTMLFrameSetElement = struct {
     const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_cols(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_cols(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLFrameSetElementImpl, "get_cols")) return try HTMLFrameSetElementImpl.get_cols(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "cols" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "cols" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_cols(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_cols(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFrameSetElementImpl, "set_cols")) return try HTMLFrameSetElementImpl.set_cols(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "cols" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "cols" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_rows(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_rows(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLFrameSetElementImpl, "get_rows")) return try HTMLFrameSetElementImpl.get_rows(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "rows" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "rows" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_rows(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_rows(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFrameSetElementImpl, "set_rows")) return try HTMLFrameSetElementImpl.set_rows(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "rows" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "rows" }, value);
     }
 
     pub const get_onafterprint = mixins.WindowEventHandlers.get_onafterprint;

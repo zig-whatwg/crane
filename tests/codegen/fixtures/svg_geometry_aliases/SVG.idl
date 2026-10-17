@@ -1,0 +1,13 @@
+// SVG 2 as webref has it: SVGRect, SVGMatrix and SVGPoint used as types.
+[Exposed=Window]
+interface SVGGraphicsElement {
+  SVGRect getBBox();
+  SVGMatrix? getCTM();
+};
+
+[Exposed=Window]
+interface SVGSVGElement {
+  [NewObject] SVGPoint createSVGPoint();
+  [NewObject] SVGMatrix createSVGMatrix();
+  [NewObject] SVGRect createSVGRect();
+};

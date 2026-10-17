@@ -46,7 +46,7 @@ pub fn get_name(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
 }
 
 /// Getter for style
-pub fn get_style(instance: *runtime.Instance) anyerror!runtime.JSValue {
+pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

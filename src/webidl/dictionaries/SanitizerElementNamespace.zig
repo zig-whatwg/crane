@@ -4,7 +4,6 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const typedefs = @import("typedefs");
 
 pub const SanitizerElementNamespace = struct {
     name: runtime.DOMString,

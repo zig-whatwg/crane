@@ -21,7 +21,6 @@ const XMLHttpRequestUpload = @import("interfaces").XMLHttpRequestUpload;
 const USVString = @import("typedefs").USVString;
 const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
-const AttributionReportingRequestOptions = @import("dictionaries").AttributionReportingRequestOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const EventListener = @import("interfaces").EventListener;
 const PrivateToken = @import("dictionaries").PrivateToken;
@@ -73,7 +72,6 @@ pub const XMLHttpRequest = struct {
             .{ "getResponseHeader", "call_getResponseHeader", 1 },
             .{ "getAllResponseHeaders", "call_getAllResponseHeaders", 0 },
             .{ "overrideMimeType", "call_overrideMimeType", 1 },
-            .{ "setAttributionReporting", "call_setAttributionReporting", 1 },
             .{ "setPrivateToken", "call_setPrivateToken", 1 },
         };
 
@@ -95,7 +93,6 @@ pub const XMLHttpRequest = struct {
             "getResponseHeader",
             "getAllResponseHeaders",
             "overrideMimeType",
-            "setAttributionReporting",
             "setPrivateToken",
         };
 
@@ -127,13 +124,6 @@ pub const XMLHttpRequest = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
-
-        /// [SecureContext] members - their own, their partial interface's or
-        /// their mixin's: hidden in a realm that is not a secure context
-        /// (WebIDL 3.3.13).
-        pub const secure_context_members = .{
-            "setAttributionReporting",
-        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -216,7 +206,6 @@ pub const XMLHttpRequest = struct {
         .call_open = &call_open,
         .call_overrideMimeType = &call_overrideMimeType,
         .call_send = &call_send,
-        .call_setAttributionReporting = &call_setAttributionReporting,
         .call_setPrivateToken = &call_setPrivateToken,
         .call_setRequestHeader = &call_setRequestHeader,
 
@@ -421,17 +410,12 @@ pub const XMLHttpRequest = struct {
         return try XMLHttpRequestImpl.call_open(instance, method, url);
     }
 
-    pub fn call_overrideMimeType(instance: *runtime.Instance, mime: DOMString) anyerror!void {
+    pub fn call_overrideMimeType(instance: *runtime.Instance, mime: runtime.DOMString) anyerror!void {
         return try XMLHttpRequestImpl.call_overrideMimeType(instance, mime);
     }
 
     pub fn call_getAllResponseHeaders(instance: *runtime.Instance) anyerror!runtime.ByteString {
         return try XMLHttpRequestImpl.call_getAllResponseHeaders(instance);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_setAttributionReporting(instance: *runtime.Instance, options: AttributionReportingRequestOptions) anyerror!void {
-        return try XMLHttpRequestImpl.call_setAttributionReporting(instance, options);
     }
 
     pub fn call_open__1(instance: *runtime.Instance, method: runtime.ByteString, url: runtime.USVString, async: bool, username: webidl.Opt(?runtime.USVString), password: webidl.Opt(?runtime.USVString)) anyerror!void {

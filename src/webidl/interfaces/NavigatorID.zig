@@ -73,16 +73,16 @@ pub const NavigatorID = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            appCodeName: typedefs.DOMString = undefined,
-            appName: typedefs.DOMString = undefined,
-            appVersion: typedefs.DOMString = undefined,
-            platform: typedefs.DOMString = undefined,
-            product: typedefs.DOMString = undefined,
-            productSub: typedefs.DOMString = undefined,
-            userAgent: typedefs.DOMString = undefined,
-            vendor: typedefs.DOMString = undefined,
-            vendorSub: typedefs.DOMString = undefined,
-            oscpu: typedefs.DOMString = undefined,
+            appCodeName: runtime.DOMString = undefined,
+            appName: runtime.DOMString = undefined,
+            appVersion: runtime.DOMString = undefined,
+            platform: runtime.DOMString = undefined,
+            product: runtime.DOMString = undefined,
+            productSub: runtime.DOMString = undefined,
+            userAgent: runtime.DOMString = undefined,
+            vendor: runtime.DOMString = undefined,
+            vendorSub: runtime.DOMString = undefined,
+            oscpu: runtime.DOMString = undefined,
             _internal: ?*NavigatorIDImpl.InternalState = null,
         },
     );
@@ -96,47 +96,47 @@ pub const NavigatorID = struct {
         }
     }
 
-    pub fn get_appCodeName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_appCodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorIDImpl.get_appCodeName(instance);
     }
 
-    pub fn get_appName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_appName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorIDImpl.get_appName(instance);
     }
 
-    pub fn get_appVersion(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_appVersion(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorIDImpl.get_appVersion(instance);
     }
 
-    pub fn get_platform(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_platform(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorIDImpl.get_platform(instance);
     }
 
-    pub fn get_product(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_product(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorIDImpl.get_product(instance);
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn get_productSub(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_productSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorIDImpl.get_productSub(instance);
     }
 
-    pub fn get_userAgent(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_userAgent(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorIDImpl.get_userAgent(instance);
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn get_vendor(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_vendor(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorIDImpl.get_vendor(instance);
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn get_vendorSub(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_vendorSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorIDImpl.get_vendorSub(instance);
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn get_oscpu(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_oscpu(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigatorIDImpl.get_oscpu(instance);
     }
 

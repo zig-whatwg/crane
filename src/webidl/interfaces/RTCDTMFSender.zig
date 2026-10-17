@@ -80,7 +80,7 @@ pub const RTCDTMFSender = struct {
         struct {
             ontonechange: typedefs.EventHandler = undefined,
             canInsertDTMF: bool = undefined,
-            toneBuffer: typedefs.DOMString = undefined,
+            toneBuffer: runtime.DOMString = undefined,
             _internal: ?*RTCDTMFSenderImpl.InternalState = null,
         },
     );
@@ -200,11 +200,11 @@ pub const RTCDTMFSender = struct {
         return try RTCDTMFSenderImpl.get_canInsertDTMF(instance);
     }
 
-    pub fn get_toneBuffer(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_toneBuffer(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try RTCDTMFSenderImpl.get_toneBuffer(instance);
     }
 
-    pub fn call_insertDTMF(instance: *runtime.Instance, tones: DOMString, duration: webidl.Opt(u32), interToneGap: webidl.Opt(u32)) anyerror!void {
+    pub fn call_insertDTMF(instance: *runtime.Instance, tones: runtime.DOMString, duration: webidl.Opt(u32), interToneGap: webidl.Opt(u32)) anyerror!void {
         return try RTCDTMFSenderImpl.call_insertDTMF(instance, tones, duration, interToneGap);
     }
 };

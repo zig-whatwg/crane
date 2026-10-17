@@ -125,8 +125,8 @@ pub const PerformanceResourceTiming = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            initiatorType: typedefs.DOMString = undefined,
-            deliveryType: typedefs.DOMString = undefined,
+            initiatorType: runtime.DOMString = undefined,
+            deliveryType: runtime.DOMString = undefined,
             nextHopProtocol: runtime.ByteString = undefined,
             workerStart: typedefs.DOMHighResTimeStamp = undefined,
             redirectStart: typedefs.DOMHighResTimeStamp = undefined,
@@ -144,15 +144,15 @@ pub const PerformanceResourceTiming = struct {
             responseEnd: typedefs.DOMHighResTimeStamp = undefined,
             workerRouterEvaluationStart: typedefs.DOMHighResTimeStamp = undefined,
             workerCacheLookupStart: typedefs.DOMHighResTimeStamp = undefined,
-            workerMatchedRouterSource: typedefs.DOMString = undefined,
-            workerFinalRouterSource: typedefs.DOMString = undefined,
+            workerMatchedRouterSource: runtime.DOMString = undefined,
+            workerFinalRouterSource: runtime.DOMString = undefined,
             transferSize: u64 = undefined,
             encodedBodySize: u64 = undefined,
             decodedBodySize: u64 = undefined,
             responseStatus: u16 = undefined,
             renderBlockingStatus: enums.RenderBlockingStatusType = undefined,
-            contentType: typedefs.DOMString = undefined,
-            contentEncoding: typedefs.DOMString = undefined,
+            contentType: runtime.DOMString = undefined,
+            contentEncoding: runtime.DOMString = undefined,
             serverTiming: runtime.JSValue = undefined,
             _internal: ?*PerformanceResourceTimingImpl.InternalState = null,
         },
@@ -327,11 +327,11 @@ pub const PerformanceResourceTiming = struct {
         }
     }
 
-    pub fn get_initiatorType(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_initiatorType(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceResourceTimingImpl.get_initiatorType(instance);
     }
 
-    pub fn get_deliveryType(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_deliveryType(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceResourceTimingImpl.get_deliveryType(instance);
     }
 
@@ -403,11 +403,11 @@ pub const PerformanceResourceTiming = struct {
         return try PerformanceResourceTimingImpl.get_workerCacheLookupStart(instance);
     }
 
-    pub fn get_workerMatchedRouterSource(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_workerMatchedRouterSource(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceResourceTimingImpl.get_workerMatchedRouterSource(instance);
     }
 
-    pub fn get_workerFinalRouterSource(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_workerFinalRouterSource(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceResourceTimingImpl.get_workerFinalRouterSource(instance);
     }
 
@@ -431,11 +431,11 @@ pub const PerformanceResourceTiming = struct {
         return try PerformanceResourceTimingImpl.get_renderBlockingStatus(instance);
     }
 
-    pub fn get_contentType(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_contentType(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceResourceTimingImpl.get_contentType(instance);
     }
 
-    pub fn get_contentEncoding(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_contentEncoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceResourceTimingImpl.get_contentEncoding(instance);
     }
 

@@ -153,7 +153,7 @@ pub const EpubReadingSystem = struct {
         }
     }
 
-    pub fn call_hasFeature(instance: *runtime.Instance, feature: DOMString, version: webidl.Opt(DOMString)) anyerror!bool {
+    pub fn call_hasFeature(instance: *runtime.Instance, feature: runtime.DOMString, version: webidl.Opt(runtime.DOMString)) anyerror!bool {
         return try EpubReadingSystemImpl.call_hasFeature(instance, feature, version);
     }
 };

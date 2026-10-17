@@ -360,7 +360,7 @@ pub const FileReader = struct {
         return try FileReaderImpl.call_readAsBinaryString(instance, blob);
     }
 
-    pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: webidl.Opt(DOMString)) anyerror!void {
+    pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: webidl.Opt(runtime.DOMString)) anyerror!void {
         return try FileReaderImpl.call_readAsText(instance, blob, encoding);
     }
 };

@@ -325,7 +325,7 @@ pub const MediaSource = struct {
         return try MediaSourceImpl.call_clearLiveSeekableRange(instance);
     }
 
-    pub fn call_static_isTypeSupported(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
+    pub fn call_static_isTypeSupported(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
         return try MediaSourceImpl.call_static_isTypeSupported(instance, @"type");
     }
 
@@ -337,7 +337,7 @@ pub const MediaSource = struct {
         return try MediaSourceImpl.call_endOfStream(instance, @"error");
     }
 
-    pub fn call_addSourceBuffer(instance: *runtime.Instance, @"type": DOMString) anyerror!*runtime.Instance {
+    pub fn call_addSourceBuffer(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!*runtime.Instance {
         return try MediaSourceImpl.call_addSourceBuffer(instance, @"type");
     }
 

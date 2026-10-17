@@ -14,12 +14,9 @@ const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const AnimationPlayState = @import("enums").AnimationPlayState;
-const TimelineRangeOffset = @import("dictionaries").TimelineRangeOffset;
-const CSSKeywordValue = @import("interfaces").CSSKeywordValue;
 const AnimationTrigger = @import("interfaces").AnimationTrigger;
 const AnimationTimeline = @import("interfaces").AnimationTimeline;
 const Observable = @import("interfaces").Observable;
-const CSSNumericValue = @import("interfaces").CSSNumericValue;
 const Event = @import("interfaces").Event;
 const AnimationEffect = @import("interfaces").AnimationEffect;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
@@ -50,8 +47,6 @@ pub const Animation = struct {
             .{ "id", "get_id", "set_id" },
             .{ "effect", "get_effect", "set_effect" },
             .{ "timeline", "get_timeline", "set_timeline" },
-            .{ "startTime", "get_startTime", "set_startTime" },
-            .{ "currentTime", "get_currentTime", "set_currentTime" },
             .{ "playbackRate", "get_playbackRate", "set_playbackRate" },
             .{ "playState", "get_playState", null },
             .{ "replaceState", "get_replaceState", null },
@@ -61,9 +56,9 @@ pub const Animation = struct {
             .{ "onfinish", "get_onfinish", "set_onfinish" },
             .{ "oncancel", "get_oncancel", "set_oncancel" },
             .{ "onremove", "get_onremove", "set_onremove" },
+            .{ "startTime", "get_startTime", "set_startTime" },
+            .{ "currentTime", "get_currentTime", "set_currentTime" },
             .{ "trigger", "get_trigger", "set_trigger" },
-            .{ "rangeStart", "get_rangeStart", "set_rangeStart" },
-            .{ "rangeEnd", "get_rangeEnd", "set_rangeEnd" },
             .{ "overallProgress", "get_overallProgress", null },
         };
 
@@ -104,8 +99,6 @@ pub const Animation = struct {
             .{ "id", "get_id", "set_id" },
             .{ "effect", "get_effect", "set_effect" },
             .{ "timeline", "get_timeline", "set_timeline" },
-            .{ "startTime", "get_startTime", "set_startTime" },
-            .{ "currentTime", "get_currentTime", "set_currentTime" },
             .{ "playbackRate", "get_playbackRate", "set_playbackRate" },
             .{ "playState", "get_playState", null },
             .{ "replaceState", "get_replaceState", null },
@@ -115,9 +108,9 @@ pub const Animation = struct {
             .{ "onfinish", "get_onfinish", "set_onfinish" },
             .{ "oncancel", "get_oncancel", "set_oncancel" },
             .{ "onremove", "get_onremove", "set_onremove" },
+            .{ "startTime", "get_startTime", "set_startTime" },
+            .{ "currentTime", "get_currentTime", "set_currentTime" },
             .{ "trigger", "get_trigger", "set_trigger" },
-            .{ "rangeStart", "get_rangeStart", "set_rangeStart" },
-            .{ "rangeEnd", "get_rangeEnd", "set_rangeEnd" },
             .{ "overallProgress", "get_overallProgress", null },
         };
 
@@ -131,11 +124,9 @@ pub const Animation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: typedefs.DOMString = undefined,
+            id: runtime.DOMString = undefined,
             effect: ?*runtime.Instance = null,
             timeline: ?*runtime.Instance = null,
-            startTime: ?f64 = null,
-            currentTime: ?f64 = null,
             playbackRate: f64 = undefined,
             playState: enums.AnimationPlayState = undefined,
             replaceState: enums.AnimationReplaceState = undefined,
@@ -145,19 +136,9 @@ pub const Animation = struct {
             onfinish: typedefs.EventHandler = undefined,
             oncancel: typedefs.EventHandler = undefined,
             onremove: typedefs.EventHandler = undefined,
+            startTime: ?typedefs.CSSNumberish = null,
+            currentTime: ?typedefs.CSSNumberish = null,
             trigger: ?*runtime.Instance = null,
-            rangeStart: union(enum) {
-                TimelineRangeOffset: TimelineRangeOffset,
-                CSSNumericValue: CSSNumericValue,
-                CSSKeywordValue: CSSKeywordValue,
-                DOMString: runtime.DOMString,
-            } = undefined,
-            rangeEnd: union(enum) {
-                TimelineRangeOffset: TimelineRangeOffset,
-                CSSNumericValue: CSSNumericValue,
-                CSSKeywordValue: CSSKeywordValue,
-                DOMString: runtime.DOMString,
-            } = undefined,
             overallProgress: ?f64 = null,
             _internal: ?*AnimationImpl.InternalState = null,
         },
@@ -175,8 +156,6 @@ pub const Animation = struct {
         .get_pending = &get_pending,
         .get_playState = &get_playState,
         .get_playbackRate = &get_playbackRate,
-        .get_rangeEnd = &get_rangeEnd,
-        .get_rangeStart = &get_rangeStart,
         .get_ready = &get_ready,
         .get_replaceState = &get_replaceState,
         .get_startTime = &get_startTime,
@@ -190,8 +169,6 @@ pub const Animation = struct {
         .set_onfinish = &set_onfinish,
         .set_onremove = &set_onremove,
         .set_playbackRate = &set_playbackRate,
-        .set_rangeEnd = &set_rangeEnd,
-        .set_rangeStart = &set_rangeStart,
         .set_startTime = &set_startTime,
         .set_timeline = &set_timeline,
         .set_trigger = &set_trigger,
@@ -303,11 +280,11 @@ pub const Animation = struct {
         return try AnimationImpl.call_constructor(ctx, effect, timeline);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try AnimationImpl.get_id(instance);
     }
 
-    pub fn set_id(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_id(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try AnimationImpl.set_id(instance, value);
     }
 
@@ -325,22 +302,6 @@ pub const Animation = struct {
 
     pub fn set_timeline(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         try AnimationImpl.set_timeline(instance, value);
-    }
-
-    pub fn get_startTime(instance: *runtime.Instance) anyerror!?f64 {
-        return try AnimationImpl.get_startTime(instance);
-    }
-
-    pub fn set_startTime(instance: *runtime.Instance, value: ?f64) anyerror!void {
-        try AnimationImpl.set_startTime(instance, value);
-    }
-
-    pub fn get_currentTime(instance: *runtime.Instance) anyerror!?f64 {
-        return try AnimationImpl.get_currentTime(instance);
-    }
-
-    pub fn set_currentTime(instance: *runtime.Instance, value: ?f64) anyerror!void {
-        try AnimationImpl.set_currentTime(instance, value);
     }
 
     pub fn get_playbackRate(instance: *runtime.Instance) anyerror!f64 {
@@ -403,28 +364,28 @@ pub const Animation = struct {
         try event_handlers.setValue(EventHandler, instance, "onremove", value);
     }
 
+    pub fn get_startTime(instance: *runtime.Instance) anyerror!?CSSNumberish {
+        return try AnimationImpl.get_startTime(instance);
+    }
+
+    pub fn set_startTime(instance: *runtime.Instance, value: ?CSSNumberish) anyerror!void {
+        try AnimationImpl.set_startTime(instance, value);
+    }
+
+    pub fn get_currentTime(instance: *runtime.Instance) anyerror!?CSSNumberish {
+        return try AnimationImpl.get_currentTime(instance);
+    }
+
+    pub fn set_currentTime(instance: *runtime.Instance, value: ?CSSNumberish) anyerror!void {
+        try AnimationImpl.set_currentTime(instance, value);
+    }
+
     pub fn get_trigger(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try AnimationImpl.get_trigger(instance);
     }
 
     pub fn set_trigger(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         try AnimationImpl.set_trigger(instance, value);
-    }
-
-    pub fn get_rangeStart(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try AnimationImpl.get_rangeStart(instance);
-    }
-
-    pub fn set_rangeStart(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-        try AnimationImpl.set_rangeStart(instance, value);
-    }
-
-    pub fn get_rangeEnd(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try AnimationImpl.get_rangeEnd(instance);
-    }
-
-    pub fn set_rangeEnd(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-        try AnimationImpl.set_rangeEnd(instance, value);
     }
 
     pub fn get_overallProgress(instance: *runtime.Instance) anyerror!?f64 {
@@ -472,8 +433,6 @@ pub const Animation = struct {
     /// the infinities throw a TypeError for (bit i = argument i; an attribute
     /// setter's value is bit 0).
     pub const restricted_floats = .{
-        .{ "set_startTime", 0b1 },
-        .{ "set_currentTime", 0b1 },
         .{ "set_playbackRate", 0b1 },
         .{ "call_updatePlaybackRate", 0b1 },
     };

@@ -143,9 +143,9 @@ pub const USBDevice = struct {
             deviceVersionMajor: u8 = undefined,
             deviceVersionMinor: u8 = undefined,
             deviceVersionSubminor: u8 = undefined,
-            manufacturerName: ?typedefs.DOMString = null,
-            productName: ?typedefs.DOMString = null,
-            serialNumber: ?typedefs.DOMString = null,
+            manufacturerName: ?runtime.DOMString = null,
+            productName: ?runtime.DOMString = null,
+            serialNumber: ?runtime.DOMString = null,
             configuration: ?*runtime.Instance = null,
             configurations: runtime.JSValue = undefined,
             opened: bool = undefined,
@@ -320,15 +320,15 @@ pub const USBDevice = struct {
         return try USBDeviceImpl.get_deviceVersionSubminor(instance);
     }
 
-    pub fn get_manufacturerName(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_manufacturerName(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try USBDeviceImpl.get_manufacturerName(instance);
     }
 
-    pub fn get_productName(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_productName(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try USBDeviceImpl.get_productName(instance);
     }
 
-    pub fn get_serialNumber(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_serialNumber(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try USBDeviceImpl.get_serialNumber(instance);
     }
 

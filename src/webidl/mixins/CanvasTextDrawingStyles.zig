@@ -30,19 +30,19 @@ pub fn installHooks() void {
     }
 }
 
-pub fn get_lang(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_lang(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try CanvasTextDrawingStylesImpl.get_lang(instance);
 }
 
-pub fn set_lang(instance: *runtime.Instance, value: DOMString) anyerror!void {
+pub fn set_lang(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try CanvasTextDrawingStylesImpl.set_lang(instance, value);
 }
 
-pub fn get_font(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_font(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try CanvasTextDrawingStylesImpl.get_font(instance);
 }
 
-pub fn set_font(instance: *runtime.Instance, value: DOMString) anyerror!void {
+pub fn set_font(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try CanvasTextDrawingStylesImpl.set_font(instance, value);
 }
 
@@ -70,11 +70,11 @@ pub fn set_direction(instance: *runtime.Instance, value: CanvasDirection) anyerr
     try CanvasTextDrawingStylesImpl.set_direction(instance, value);
 }
 
-pub fn get_letterSpacing(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_letterSpacing(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try CanvasTextDrawingStylesImpl.get_letterSpacing(instance);
 }
 
-pub fn set_letterSpacing(instance: *runtime.Instance, value: DOMString) anyerror!void {
+pub fn set_letterSpacing(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try CanvasTextDrawingStylesImpl.set_letterSpacing(instance, value);
 }
 
@@ -110,10 +110,10 @@ pub fn set_textRendering(instance: *runtime.Instance, value: CanvasTextRendering
     try CanvasTextDrawingStylesImpl.set_textRendering(instance, value);
 }
 
-pub fn get_wordSpacing(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_wordSpacing(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try CanvasTextDrawingStylesImpl.get_wordSpacing(instance);
 }
 
-pub fn set_wordSpacing(instance: *runtime.Instance, value: DOMString) anyerror!void {
+pub fn set_wordSpacing(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try CanvasTextDrawingStylesImpl.set_wordSpacing(instance, value);
 }

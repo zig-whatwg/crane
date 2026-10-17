@@ -73,6 +73,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -198,6 +199,7 @@ pub const HTMLBodyElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -205,7 +207,6 @@ pub const HTMLBodyElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -221,6 +222,7 @@ pub const HTMLBodyElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -279,12 +281,12 @@ pub const HTMLBodyElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            text: typedefs.DOMString = undefined,
-            link: typedefs.DOMString = undefined,
-            vLink: typedefs.DOMString = undefined,
-            aLink: typedefs.DOMString = undefined,
-            bgColor: typedefs.DOMString = undefined,
-            background: typedefs.DOMString = undefined,
+            text: runtime.DOMString = undefined,
+            link: runtime.DOMString = undefined,
+            vLink: runtime.DOMString = undefined,
+            aLink: runtime.DOMString = undefined,
+            bgColor: runtime.DOMString = undefined,
+            background: runtime.DOMString = undefined,
             onbeforeunload: typedefs.OnBeforeUnloadEventHandler = undefined,
             _internal: ?*HTMLBodyElementImpl.InternalState = null,
         },
@@ -462,99 +464,99 @@ pub const HTMLBodyElement = struct {
     const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
-    pub fn get_text(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_text(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLBodyElementImpl, "get_text")) return try HTMLBodyElementImpl.get_text(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "text" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "text" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
-    pub fn set_text(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_text(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLBodyElementImpl, "set_text")) return try HTMLBodyElementImpl.set_text(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "text" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "text" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
-    pub fn get_link(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_link(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLBodyElementImpl, "get_link")) return try HTMLBodyElementImpl.get_link(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "link" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "link" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
-    pub fn set_link(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_link(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLBodyElementImpl, "set_link")) return try HTMLBodyElementImpl.set_link(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "link" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "link" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
-    pub fn get_vLink(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_vLink(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLBodyElementImpl, "get_vLink")) return try HTMLBodyElementImpl.get_vLink(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "vlink" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "vlink" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
-    pub fn set_vLink(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_vLink(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLBodyElementImpl, "set_vLink")) return try HTMLBodyElementImpl.set_vLink(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "vlink" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "vlink" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
-    pub fn get_aLink(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_aLink(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLBodyElementImpl, "get_aLink")) return try HTMLBodyElementImpl.get_aLink(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "alink" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "alink" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
-    pub fn set_aLink(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_aLink(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLBodyElementImpl, "set_aLink")) return try HTMLBodyElementImpl.set_aLink(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "alink" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "alink" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
-    pub fn get_bgColor(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_bgColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLBodyElementImpl, "get_bgColor")) return try HTMLBodyElementImpl.get_bgColor(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "bgcolor" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "bgcolor" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
-    pub fn set_bgColor(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_bgColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLBodyElementImpl, "set_bgColor")) return try HTMLBodyElementImpl.set_bgColor(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "bgcolor" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "bgcolor" }, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_background(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_background(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLBodyElementImpl, "get_background")) return try HTMLBodyElementImpl.get_background(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "background" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "background" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_background(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_background(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLBodyElementImpl, "set_background")) return try HTMLBodyElementImpl.set_background(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "background" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "background" }, value);
     }
 
     pub const get_onafterprint = mixins.WindowEventHandlers.get_onafterprint;

@@ -192,7 +192,7 @@ pub const LanguageDetector = struct {
         return try LanguageDetectorImpl.get_inputQuota(instance);
     }
 
-    pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(LanguageDetectorDetectOptions)) anyerror!runtime.JSValue {
+    pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(LanguageDetectorDetectOptions)) anyerror!runtime.JSValue {
         return try LanguageDetectorImpl.call_measureInputUsage(instance, input, options);
     }
 
@@ -206,7 +206,7 @@ pub const LanguageDetector = struct {
         return try LanguageDetectorImpl.call_static_availability(instance, options);
     }
 
-    pub fn call_detect(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(LanguageDetectorDetectOptions)) anyerror!runtime.JSValue {
+    pub fn call_detect(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(LanguageDetectorDetectOptions)) anyerror!runtime.JSValue {
         return try LanguageDetectorImpl.call_detect(instance, input, options);
     }
 

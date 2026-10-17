@@ -78,15 +78,15 @@ pub const ContactAddress = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            city: typedefs.DOMString = undefined,
-            country: typedefs.DOMString = undefined,
-            dependentLocality: typedefs.DOMString = undefined,
-            organization: typedefs.DOMString = undefined,
-            phone: typedefs.DOMString = undefined,
-            postalCode: typedefs.DOMString = undefined,
-            recipient: typedefs.DOMString = undefined,
-            region: typedefs.DOMString = undefined,
-            sortingCode: typedefs.DOMString = undefined,
+            city: runtime.DOMString = undefined,
+            country: runtime.DOMString = undefined,
+            dependentLocality: runtime.DOMString = undefined,
+            organization: runtime.DOMString = undefined,
+            phone: runtime.DOMString = undefined,
+            postalCode: runtime.DOMString = undefined,
+            recipient: runtime.DOMString = undefined,
+            region: runtime.DOMString = undefined,
+            sortingCode: runtime.DOMString = undefined,
             addressLine: runtime.JSValue = undefined,
             _internal: ?*ContactAddressImpl.InternalState = null,
         },
@@ -215,39 +215,39 @@ pub const ContactAddress = struct {
         }
     }
 
-    pub fn get_city(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_city(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ContactAddressImpl.get_city(instance);
     }
 
-    pub fn get_country(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_country(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ContactAddressImpl.get_country(instance);
     }
 
-    pub fn get_dependentLocality(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_dependentLocality(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ContactAddressImpl.get_dependentLocality(instance);
     }
 
-    pub fn get_organization(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_organization(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ContactAddressImpl.get_organization(instance);
     }
 
-    pub fn get_phone(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_phone(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ContactAddressImpl.get_phone(instance);
     }
 
-    pub fn get_postalCode(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_postalCode(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ContactAddressImpl.get_postalCode(instance);
     }
 
-    pub fn get_recipient(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_recipient(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ContactAddressImpl.get_recipient(instance);
     }
 
-    pub fn get_region(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_region(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ContactAddressImpl.get_region(instance);
     }
 
-    pub fn get_sortingCode(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_sortingCode(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ContactAddressImpl.get_sortingCode(instance);
     }
 

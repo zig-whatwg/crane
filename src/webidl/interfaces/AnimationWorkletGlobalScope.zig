@@ -157,7 +157,7 @@ pub const AnimationWorkletGlobalScope = struct {
         }
     }
 
-    pub fn call_registerAnimator(instance: *runtime.Instance, name: DOMString, animatorCtor: AnimatorInstanceConstructor) anyerror!void {
+    pub fn call_registerAnimator(instance: *runtime.Instance, name: runtime.DOMString, animatorCtor: AnimatorInstanceConstructor) anyerror!void {
         return try AnimationWorkletGlobalScopeImpl.call_registerAnimator(instance, name, animatorCtor);
     }
 };

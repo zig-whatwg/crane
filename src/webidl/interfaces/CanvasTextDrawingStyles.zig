@@ -78,17 +78,17 @@ pub const CanvasTextDrawingStyles = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            lang: typedefs.DOMString = undefined,
-            font: typedefs.DOMString = undefined,
+            lang: runtime.DOMString = undefined,
+            font: runtime.DOMString = undefined,
             textAlign: enums.CanvasTextAlign = undefined,
             textBaseline: enums.CanvasTextBaseline = undefined,
             direction: enums.CanvasDirection = undefined,
-            letterSpacing: typedefs.DOMString = undefined,
+            letterSpacing: runtime.DOMString = undefined,
             fontKerning: enums.CanvasFontKerning = undefined,
             fontStretch: enums.CanvasFontStretch = undefined,
             fontVariantCaps: enums.CanvasFontVariantCaps = undefined,
             textRendering: enums.CanvasTextRendering = undefined,
-            wordSpacing: typedefs.DOMString = undefined,
+            wordSpacing: runtime.DOMString = undefined,
             _internal: ?*CanvasTextDrawingStylesImpl.InternalState = null,
         },
     );
@@ -102,19 +102,19 @@ pub const CanvasTextDrawingStyles = struct {
         }
     }
 
-    pub fn get_lang(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_lang(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try CanvasTextDrawingStylesImpl.get_lang(instance);
     }
 
-    pub fn set_lang(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_lang(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try CanvasTextDrawingStylesImpl.set_lang(instance, value);
     }
 
-    pub fn get_font(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_font(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try CanvasTextDrawingStylesImpl.get_font(instance);
     }
 
-    pub fn set_font(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_font(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try CanvasTextDrawingStylesImpl.set_font(instance, value);
     }
 
@@ -142,11 +142,11 @@ pub const CanvasTextDrawingStyles = struct {
         try CanvasTextDrawingStylesImpl.set_direction(instance, value);
     }
 
-    pub fn get_letterSpacing(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_letterSpacing(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try CanvasTextDrawingStylesImpl.get_letterSpacing(instance);
     }
 
-    pub fn set_letterSpacing(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_letterSpacing(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try CanvasTextDrawingStylesImpl.set_letterSpacing(instance, value);
     }
 
@@ -182,11 +182,11 @@ pub const CanvasTextDrawingStyles = struct {
         try CanvasTextDrawingStylesImpl.set_textRendering(instance, value);
     }
 
-    pub fn get_wordSpacing(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_wordSpacing(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try CanvasTextDrawingStylesImpl.get_wordSpacing(instance);
     }
 
-    pub fn set_wordSpacing(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_wordSpacing(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try CanvasTextDrawingStylesImpl.set_wordSpacing(instance, value);
     }
 };

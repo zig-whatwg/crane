@@ -178,7 +178,7 @@ pub const SpeechRecognitionResult = struct {
         return try SpeechRecognitionResultImpl.get_isFinal(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
         return try SpeechRecognitionResultImpl.call_item(instance, index);
     }
 };

@@ -177,7 +177,7 @@ pub const HTMLCollection = struct {
         return try HTMLCollectionImpl.get_length(instance);
     }
 
-    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?*runtime.Instance {
         return try HTMLCollectionImpl.call_namedItem(instance, name);
     }
 

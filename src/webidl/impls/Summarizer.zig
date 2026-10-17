@@ -125,3 +125,9 @@ pub fn call_static_create(instance: *runtime.Instance, options: webidl.Opt(dicti
     _ = options;
     return error.NotImplemented;
 }
+
+/// Getter for preference
+pub fn get_preference(instance: *runtime.Instance) anyerror!enums.PerformancePreference {
+    _ = instance;
+    return error.NotImplemented;
+}

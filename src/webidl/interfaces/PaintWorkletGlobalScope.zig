@@ -168,7 +168,7 @@ pub const PaintWorkletGlobalScope = struct {
         return try PaintWorkletGlobalScopeImpl.get_devicePixelRatio(instance);
     }
 
-    pub fn call_registerPaint(instance: *runtime.Instance, name: DOMString, paintCtor: VoidFunction) anyerror!void {
+    pub fn call_registerPaint(instance: *runtime.Instance, name: runtime.DOMString, paintCtor: VoidFunction) anyerror!void {
         return try PaintWorkletGlobalScopeImpl.call_registerPaint(instance, name, paintCtor);
     }
 };

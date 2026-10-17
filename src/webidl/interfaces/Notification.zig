@@ -138,12 +138,12 @@ pub const Notification = struct {
             onshow: typedefs.EventHandler = undefined,
             onerror: typedefs.EventHandler = undefined,
             onclose: typedefs.EventHandler = undefined,
-            title: typedefs.DOMString = undefined,
+            title: runtime.DOMString = undefined,
             dir: enums.NotificationDirection = undefined,
-            lang: typedefs.DOMString = undefined,
-            body: typedefs.DOMString = undefined,
+            lang: runtime.DOMString = undefined,
+            body: runtime.DOMString = undefined,
             navigate: runtime.USVString = undefined,
-            tag: typedefs.DOMString = undefined,
+            tag: runtime.DOMString = undefined,
             image: runtime.USVString = undefined,
             icon: runtime.USVString = undefined,
             badge: runtime.USVString = undefined,
@@ -284,7 +284,7 @@ pub const Notification = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, title: DOMString, options: webidl.Opt(NotificationOptions)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, title: runtime.DOMString, options: webidl.Opt(NotificationOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try NotificationImpl.call_constructor(ctx, title, options);
     }
@@ -339,7 +339,7 @@ pub const Notification = struct {
         try event_handlers.setValue(EventHandler, instance, "onclose", value);
     }
 
-    pub fn get_title(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_title(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NotificationImpl.get_title(instance);
     }
 
@@ -347,11 +347,11 @@ pub const Notification = struct {
         return try NotificationImpl.get_dir(instance);
     }
 
-    pub fn get_lang(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_lang(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NotificationImpl.get_lang(instance);
     }
 
-    pub fn get_body(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_body(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NotificationImpl.get_body(instance);
     }
 
@@ -359,7 +359,7 @@ pub const Notification = struct {
         return try NotificationImpl.get_navigate(instance);
     }
 
-    pub fn get_tag(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_tag(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NotificationImpl.get_tag(instance);
     }
 

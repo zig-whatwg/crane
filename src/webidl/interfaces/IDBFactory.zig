@@ -165,7 +165,7 @@ pub const IDBFactory = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_deleteDatabase(instance: *runtime.Instance, name: DOMString) anyerror!*runtime.Instance {
+    pub fn call_deleteDatabase(instance: *runtime.Instance, name: runtime.DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try IDBFactoryImpl.call_deleteDatabase(instance, name);
@@ -180,7 +180,7 @@ pub const IDBFactory = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_open(instance: *runtime.Instance, name: DOMString, version: webidl.Opt(u64)) anyerror!*runtime.Instance {
+    pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, version: webidl.Opt(u64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try IDBFactoryImpl.call_open(instance, name, version);

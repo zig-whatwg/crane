@@ -116,8 +116,8 @@ pub const Selection = struct {
             focusOffset: u32 = undefined,
             isCollapsed: bool = undefined,
             rangeCount: u32 = undefined,
-            type: typedefs.DOMString = undefined,
-            direction: typedefs.DOMString = undefined,
+            type: runtime.DOMString = undefined,
+            direction: runtime.DOMString = undefined,
             _internal: ?*SelectionImpl.InternalState = null,
         },
     );
@@ -261,11 +261,11 @@ pub const Selection = struct {
         return try SelectionImpl.get_rangeCount(instance);
     }
 
-    pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SelectionImpl.get_type(instance);
     }
 
-    pub fn get_direction(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_direction(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SelectionImpl.get_direction(instance);
     }
 
@@ -273,7 +273,7 @@ pub const Selection = struct {
         return try SelectionImpl.call_setBaseAndExtent(instance, anchorNode, anchorOffset, focusNode, focusOffset);
     }
 
-    pub fn call_modify(instance: *runtime.Instance, alter: webidl.Opt(DOMString), direction: webidl.Opt(DOMString), granularity: webidl.Opt(DOMString)) anyerror!void {
+    pub fn call_modify(instance: *runtime.Instance, alter: webidl.Opt(runtime.DOMString), direction: webidl.Opt(runtime.DOMString), granularity: webidl.Opt(runtime.DOMString)) anyerror!void {
         return try SelectionImpl.call_modify(instance, alter, direction, granularity);
     }
 
@@ -289,7 +289,7 @@ pub const Selection = struct {
         return try SelectionImpl.call_getComposedRanges(instance, options);
     }
 
-    pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn call_stringifier(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SelectionImpl.call_stringifier(instance);
     }
 

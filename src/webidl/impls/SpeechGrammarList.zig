@@ -59,7 +59,7 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 }
 
 /// Operation: item
-pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
     _ = instance;
     _ = index;
     return error.NotImplemented;

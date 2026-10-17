@@ -560,7 +560,7 @@ pub const DOMMatrix = struct {
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn call_setMatrixValue(instance: *runtime.Instance, transformList: DOMString) anyerror!*runtime.Instance {
+    pub fn call_setMatrixValue(instance: *runtime.Instance, transformList: runtime.DOMString) anyerror!*runtime.Instance {
         return try DOMMatrixImpl.call_setMatrixValue(instance, transformList);
     }
 

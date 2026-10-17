@@ -72,6 +72,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -178,6 +179,7 @@ pub const HTMLFencedFrameElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -185,7 +187,6 @@ pub const HTMLFencedFrameElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -201,6 +202,7 @@ pub const HTMLFencedFrameElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -237,10 +239,10 @@ pub const HTMLFencedFrameElement = struct {
         Meta.MixinTypes,
         struct {
             config: ?*runtime.Instance = null,
-            width: typedefs.DOMString = undefined,
-            height: typedefs.DOMString = undefined,
+            width: runtime.DOMString = undefined,
+            height: runtime.DOMString = undefined,
             sandbox: *runtime.Instance = undefined,
-            allow: typedefs.DOMString = undefined,
+            allow: runtime.DOMString = undefined,
             cached_sandbox: ?*runtime.Instance = null,
             _internal: ?*HTMLFencedFrameElementImpl.InternalState = null,
         },
@@ -373,12 +375,12 @@ pub const HTMLFencedFrameElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_width(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_width(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLFencedFrameElementImpl.get_width(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_width(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_width(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -387,12 +389,12 @@ pub const HTMLFencedFrameElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_height(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_height(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLFencedFrameElementImpl.get_height(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_height(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_height(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -425,12 +427,12 @@ pub const HTMLFencedFrameElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_allow(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_allow(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try HTMLFencedFrameElementImpl.get_allow(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_allow(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_allow(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);

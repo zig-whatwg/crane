@@ -70,7 +70,7 @@ pub const ContentIndexEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: typedefs.DOMString = undefined,
+            id: runtime.DOMString = undefined,
             _internal: ?*ContentIndexEventImpl.InternalState = null,
         },
     );
@@ -171,12 +171,12 @@ pub const ContentIndexEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, init_data: ContentIndexEventInit) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, init_data: ContentIndexEventInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try ContentIndexEventImpl.call_constructor(ctx, @"type", init_data);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ContentIndexEventImpl.get_id(instance);
     }
 };

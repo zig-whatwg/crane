@@ -10,4 +10,7 @@ pub const AesKeyAlgorithm = struct {
     base: KeyAlgorithm,
 
     length: u16,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"length"};
 };

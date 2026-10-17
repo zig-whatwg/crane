@@ -86,15 +86,3 @@ pub fn get_depthStencilTextureHeight(instance: *runtime.Instance) anyerror!?u32 
     _ = instance;
     return null;
 }
-
-/// Getter for motionVectorTextureWidth
-pub fn get_motionVectorTextureWidth(instance: *runtime.Instance) anyerror!?u32 {
-    _ = instance;
-    return null;
-}
-
-/// Getter for motionVectorTextureHeight
-pub fn get_motionVectorTextureHeight(instance: *runtime.Instance) anyerror!?u32 {
-    _ = instance;
-    return null;
-}

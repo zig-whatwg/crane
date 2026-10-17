@@ -127,7 +127,7 @@ pub const Text = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            wholeText: typedefs.DOMString = undefined,
+            wholeText: runtime.DOMString = undefined,
             assignedSlot: ?*runtime.Instance = null,
             _internal: ?*TextImpl.InternalState = null,
         },
@@ -236,12 +236,12 @@ pub const Text = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, data: webidl.Opt(DOMString)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, data: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try TextImpl.call_constructor(ctx, data);
     }
 
-    pub fn get_wholeText(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_wholeText(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TextImpl.get_wholeText(instance);
     }
 

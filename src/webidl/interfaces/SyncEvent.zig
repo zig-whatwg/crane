@@ -72,7 +72,7 @@ pub const SyncEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            tag: typedefs.DOMString = undefined,
+            tag: runtime.DOMString = undefined,
             lastChance: bool = undefined,
             _internal: ?*SyncEventImpl.InternalState = null,
         },
@@ -175,12 +175,12 @@ pub const SyncEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, init_data: SyncEventInit) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, init_data: SyncEventInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try SyncEventImpl.call_constructor(ctx, @"type", init_data);
     }
 
-    pub fn get_tag(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_tag(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SyncEventImpl.get_tag(instance);
     }
 

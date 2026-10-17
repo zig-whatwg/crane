@@ -11,4 +11,7 @@ pub const HmacKeyAlgorithm = struct {
 
     hash: KeyAlgorithm,
     length: u32,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"length"};
 };

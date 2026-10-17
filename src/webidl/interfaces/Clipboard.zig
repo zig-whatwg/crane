@@ -190,7 +190,7 @@ pub const Clipboard = struct {
         return try ClipboardImpl.call_write(instance, data);
     }
 
-    pub fn call_writeText(instance: *runtime.Instance, data: DOMString) anyerror!runtime.JSValue {
+    pub fn call_writeText(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.JSValue {
         return try ClipboardImpl.call_writeText(instance, data);
     }
 

@@ -160,7 +160,7 @@ pub const XMLSerializer = struct {
         return try XMLSerializerImpl.call_constructor(ctx);
     }
 
-    pub fn call_serializeToString(instance: *runtime.Instance, root: *runtime.Instance) anyerror!DOMString {
+    pub fn call_serializeToString(instance: *runtime.Instance, root: *runtime.Instance) anyerror!runtime.DOMString {
         return try XMLSerializerImpl.call_serializeToString(instance, root);
     }
 };

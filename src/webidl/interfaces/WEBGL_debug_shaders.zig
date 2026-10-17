@@ -156,7 +156,7 @@ pub const WEBGL_debug_shaders = struct {
         }
     }
 
-    pub fn call_getTranslatedShaderSource(instance: *runtime.Instance, shader: *runtime.Instance) anyerror!DOMString {
+    pub fn call_getTranslatedShaderSource(instance: *runtime.Instance, shader: *runtime.Instance) anyerror!runtime.DOMString {
         return try WEBGL_debug_shadersImpl.call_getTranslatedShaderSource(instance, shader);
     }
 };

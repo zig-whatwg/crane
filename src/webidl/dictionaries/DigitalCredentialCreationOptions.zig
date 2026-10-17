@@ -6,5 +6,5 @@ const runtime = @import("runtime");
 const DigitalCredentialCreateRequest = @import("DigitalCredentialCreateRequest.zig").DigitalCredentialCreateRequest;
 
 pub const DigitalCredentialCreationOptions = struct {
-    requests: ?[]const DigitalCredentialCreateRequest = null,
+    requests: []const DigitalCredentialCreateRequest,
 };

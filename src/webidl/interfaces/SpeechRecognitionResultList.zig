@@ -170,7 +170,7 @@ pub const SpeechRecognitionResultList = struct {
         return try SpeechRecognitionResultListImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
         return try SpeechRecognitionResultListImpl.call_item(instance, index);
     }
 };

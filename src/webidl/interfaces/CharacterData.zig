@@ -128,7 +128,7 @@ pub const CharacterData = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: typedefs.DOMString = undefined,
+            data: runtime.DOMString = undefined,
             length: u32 = undefined,
             previousElementSibling: ?*runtime.Instance = null,
             nextElementSibling: ?*runtime.Instance = null,
@@ -245,12 +245,12 @@ pub const CharacterData = struct {
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn get_data(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_data(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try CharacterDataImpl.get_data(instance);
     }
 
     /// Extended attributes: [LegacyNullToEmptyString]
-    pub fn set_data(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_data(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try CharacterDataImpl.set_data(instance, value);
     }
 
@@ -262,7 +262,7 @@ pub const CharacterData = struct {
 
     pub const get_nextElementSibling = mixins.NonDocumentTypeChildNode.get_nextElementSibling;
 
-    pub fn call_replaceData(instance: *runtime.Instance, offset: u32, count: u32, data: DOMString) anyerror!void {
+    pub fn call_replaceData(instance: *runtime.Instance, offset: u32, count: u32, data: runtime.DOMString) anyerror!void {
         return try CharacterDataImpl.call_replaceData(instance, offset, count, data);
     }
 
@@ -276,15 +276,15 @@ pub const CharacterData = struct {
 
     pub const call_after = mixins.ChildNode.call_after;
 
-    pub fn call_appendData(instance: *runtime.Instance, data: DOMString) anyerror!void {
+    pub fn call_appendData(instance: *runtime.Instance, data: runtime.DOMString) anyerror!void {
         return try CharacterDataImpl.call_appendData(instance, data);
     }
 
-    pub fn call_substringData(instance: *runtime.Instance, offset: u32, count: u32) anyerror!DOMString {
+    pub fn call_substringData(instance: *runtime.Instance, offset: u32, count: u32) anyerror!runtime.DOMString {
         return try CharacterDataImpl.call_substringData(instance, offset, count);
     }
 
-    pub fn call_insertData(instance: *runtime.Instance, offset: u32, data: DOMString) anyerror!void {
+    pub fn call_insertData(instance: *runtime.Instance, offset: u32, data: runtime.DOMString) anyerror!void {
         return try CharacterDataImpl.call_insertData(instance, offset, data);
     }
 

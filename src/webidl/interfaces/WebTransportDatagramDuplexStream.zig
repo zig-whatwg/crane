@@ -39,8 +39,8 @@ pub const WebTransportDatagramDuplexStream = struct {
             .{ "maxDatagramSize", "get_maxDatagramSize", null },
             .{ "incomingMaxAge", "get_incomingMaxAge", "set_incomingMaxAge" },
             .{ "outgoingMaxAge", "get_outgoingMaxAge", "set_outgoingMaxAge" },
-            .{ "incomingHighWaterMark", "get_incomingHighWaterMark", "set_incomingHighWaterMark" },
-            .{ "outgoingHighWaterMark", "get_outgoingHighWaterMark", "set_outgoingHighWaterMark" },
+            .{ "incomingMaxBufferedDatagrams", "get_incomingMaxBufferedDatagrams", "set_incomingMaxBufferedDatagrams" },
+            .{ "outgoingMaxBufferedDatagrams", "get_outgoingMaxBufferedDatagrams", "set_outgoingMaxBufferedDatagrams" },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -62,8 +62,8 @@ pub const WebTransportDatagramDuplexStream = struct {
             .{ "maxDatagramSize", "get_maxDatagramSize", null },
             .{ "incomingMaxAge", "get_incomingMaxAge", "set_incomingMaxAge" },
             .{ "outgoingMaxAge", "get_outgoingMaxAge", "set_outgoingMaxAge" },
-            .{ "incomingHighWaterMark", "get_incomingHighWaterMark", "set_incomingHighWaterMark" },
-            .{ "outgoingHighWaterMark", "get_outgoingHighWaterMark", "set_outgoingHighWaterMark" },
+            .{ "incomingMaxBufferedDatagrams", "get_incomingMaxBufferedDatagrams", "set_incomingMaxBufferedDatagrams" },
+            .{ "outgoingMaxBufferedDatagrams", "get_outgoingMaxBufferedDatagrams", "set_outgoingMaxBufferedDatagrams" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -80,24 +80,24 @@ pub const WebTransportDatagramDuplexStream = struct {
             maxDatagramSize: u32 = undefined,
             incomingMaxAge: ?f64 = null,
             outgoingMaxAge: ?f64 = null,
-            incomingHighWaterMark: f64 = undefined,
-            outgoingHighWaterMark: f64 = undefined,
+            incomingMaxBufferedDatagrams: u32 = undefined,
+            outgoingMaxBufferedDatagrams: u32 = undefined,
             _internal: ?*WebTransportDatagramDuplexStreamImpl.InternalState = null,
         },
     );
 
     const delegates = .{
-        .get_incomingHighWaterMark = &get_incomingHighWaterMark,
         .get_incomingMaxAge = &get_incomingMaxAge,
+        .get_incomingMaxBufferedDatagrams = &get_incomingMaxBufferedDatagrams,
         .get_maxDatagramSize = &get_maxDatagramSize,
-        .get_outgoingHighWaterMark = &get_outgoingHighWaterMark,
         .get_outgoingMaxAge = &get_outgoingMaxAge,
+        .get_outgoingMaxBufferedDatagrams = &get_outgoingMaxBufferedDatagrams,
         .get_readable = &get_readable,
 
-        .set_incomingHighWaterMark = &set_incomingHighWaterMark,
         .set_incomingMaxAge = &set_incomingMaxAge,
-        .set_outgoingHighWaterMark = &set_outgoingHighWaterMark,
+        .set_incomingMaxBufferedDatagrams = &set_incomingMaxBufferedDatagrams,
         .set_outgoingMaxAge = &set_outgoingMaxAge,
+        .set_outgoingMaxBufferedDatagrams = &set_outgoingMaxBufferedDatagrams,
 
         .call_createWritable = &call_createWritable,
 
@@ -213,20 +213,20 @@ pub const WebTransportDatagramDuplexStream = struct {
         try WebTransportDatagramDuplexStreamImpl.set_outgoingMaxAge(instance, value);
     }
 
-    pub fn get_incomingHighWaterMark(instance: *runtime.Instance) anyerror!f64 {
-        return try WebTransportDatagramDuplexStreamImpl.get_incomingHighWaterMark(instance);
+    pub fn get_incomingMaxBufferedDatagrams(instance: *runtime.Instance) anyerror!u32 {
+        return try WebTransportDatagramDuplexStreamImpl.get_incomingMaxBufferedDatagrams(instance);
     }
 
-    pub fn set_incomingHighWaterMark(instance: *runtime.Instance, value: f64) anyerror!void {
-        try WebTransportDatagramDuplexStreamImpl.set_incomingHighWaterMark(instance, value);
+    pub fn set_incomingMaxBufferedDatagrams(instance: *runtime.Instance, value: u32) anyerror!void {
+        try WebTransportDatagramDuplexStreamImpl.set_incomingMaxBufferedDatagrams(instance, value);
     }
 
-    pub fn get_outgoingHighWaterMark(instance: *runtime.Instance) anyerror!f64 {
-        return try WebTransportDatagramDuplexStreamImpl.get_outgoingHighWaterMark(instance);
+    pub fn get_outgoingMaxBufferedDatagrams(instance: *runtime.Instance) anyerror!u32 {
+        return try WebTransportDatagramDuplexStreamImpl.get_outgoingMaxBufferedDatagrams(instance);
     }
 
-    pub fn set_outgoingHighWaterMark(instance: *runtime.Instance, value: f64) anyerror!void {
-        try WebTransportDatagramDuplexStreamImpl.set_outgoingHighWaterMark(instance, value);
+    pub fn set_outgoingMaxBufferedDatagrams(instance: *runtime.Instance, value: u32) anyerror!void {
+        try WebTransportDatagramDuplexStreamImpl.set_outgoingMaxBufferedDatagrams(instance, value);
     }
 
     pub fn call_createWritable(instance: *runtime.Instance, options: webidl.Opt(WebTransportSendOptions)) anyerror!*runtime.Instance {

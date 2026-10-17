@@ -156,7 +156,7 @@ pub const GPUInternalError = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, message: DOMString) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, message: runtime.DOMString) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try GPUInternalErrorImpl.call_constructor(ctx, message);
     }

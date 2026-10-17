@@ -70,7 +70,7 @@ pub const TrustedTypePolicy = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             _internal: ?*TrustedTypePolicyImpl.InternalState = null,
         },
     );
@@ -170,19 +170,19 @@ pub const TrustedTypePolicy = struct {
         }
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TrustedTypePolicyImpl.get_name(instance);
     }
 
-    pub fn call_createHTML(instance: *runtime.Instance, input: DOMString, arguments: []const runtime.JSValue) anyerror!*runtime.Instance {
+    pub fn call_createHTML(instance: *runtime.Instance, input: runtime.DOMString, arguments: []const runtime.JSValue) anyerror!*runtime.Instance {
         return try TrustedTypePolicyImpl.call_createHTML(instance, input, arguments);
     }
 
-    pub fn call_createScript(instance: *runtime.Instance, input: DOMString, arguments: []const runtime.JSValue) anyerror!*runtime.Instance {
+    pub fn call_createScript(instance: *runtime.Instance, input: runtime.DOMString, arguments: []const runtime.JSValue) anyerror!*runtime.Instance {
         return try TrustedTypePolicyImpl.call_createScript(instance, input, arguments);
     }
 
-    pub fn call_createScriptURL(instance: *runtime.Instance, input: DOMString, arguments: []const runtime.JSValue) anyerror!*runtime.Instance {
+    pub fn call_createScriptURL(instance: *runtime.Instance, input: runtime.DOMString, arguments: []const runtime.JSValue) anyerror!*runtime.Instance {
         return try TrustedTypePolicyImpl.call_createScriptURL(instance, input, arguments);
     }
 };

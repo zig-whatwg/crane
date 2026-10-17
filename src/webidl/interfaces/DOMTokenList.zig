@@ -90,7 +90,7 @@ pub const DOMTokenList = struct {
         Meta.MixinTypes,
         struct {
             length: u32 = undefined,
-            value: typedefs.DOMString = undefined,
+            value: runtime.DOMString = undefined,
             _internal: ?*DOMTokenListImpl.InternalState = null,
         },
     );
@@ -202,12 +202,12 @@ pub const DOMTokenList = struct {
     }
 
     /// Extended attributes: [CEReactions], [Stringifier]
-    pub fn get_value(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try DOMTokenListImpl.get_value(instance);
     }
 
     /// Extended attributes: [CEReactions], [Stringifier]
-    pub fn set_value(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -215,12 +215,12 @@ pub const DOMTokenList = struct {
         try DOMTokenListImpl.set_value(instance, value);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?DOMString {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?runtime.DOMString {
         return try DOMTokenListImpl.call_item(instance, index);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_toggle(instance: *runtime.Instance, token: DOMString, force: webidl.Opt(bool)) anyerror!bool {
+    pub fn call_toggle(instance: *runtime.Instance, token: runtime.DOMString, force: webidl.Opt(bool)) anyerror!bool {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -229,7 +229,7 @@ pub const DOMTokenList = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_replace(instance: *runtime.Instance, token: DOMString, newToken: DOMString) anyerror!bool {
+    pub fn call_replace(instance: *runtime.Instance, token: runtime.DOMString, newToken: runtime.DOMString) anyerror!bool {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -238,7 +238,7 @@ pub const DOMTokenList = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_remove(instance: *runtime.Instance, tokens: []const DOMString) anyerror!void {
+    pub fn call_remove(instance: *runtime.Instance, tokens: []const runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -246,16 +246,16 @@ pub const DOMTokenList = struct {
         return try DOMTokenListImpl.call_remove(instance, tokens);
     }
 
-    pub fn call_contains(instance: *runtime.Instance, token: DOMString) anyerror!bool {
+    pub fn call_contains(instance: *runtime.Instance, token: runtime.DOMString) anyerror!bool {
         return try DOMTokenListImpl.call_contains(instance, token);
     }
 
-    pub fn call_supports(instance: *runtime.Instance, token: DOMString) anyerror!bool {
+    pub fn call_supports(instance: *runtime.Instance, token: runtime.DOMString) anyerror!bool {
         return try DOMTokenListImpl.call_supports(instance, token);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_add(instance: *runtime.Instance, tokens: []const DOMString) anyerror!void {
+    pub fn call_add(instance: *runtime.Instance, tokens: []const runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);

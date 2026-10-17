@@ -88,11 +88,6 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     return instance;
 }
 
-/// Getter for target: reflects the target content attribute.
-pub fn get_target(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return reflectGet(instance, "target");
-}
-
 /// Getter for download: reflects the download content attribute.
 pub fn get_download(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return reflectGet(instance, "download");
@@ -147,16 +142,6 @@ pub fn get_relList(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return token_list;
 }
 
-/// Getter for hreflang: reflects the hreflang content attribute.
-pub fn get_hreflang(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return reflectGet(instance, "hreflang");
-}
-
-/// Getter for type: reflects the type content attribute.
-pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return reflectGet(instance, "type");
-}
-
 /// Getter for text: HTML "the same as the textContent IDL attribute".
 pub fn get_text(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return (try interfaces.Node.get_textContent(instance)) orelse runtime.DOMString.initEmpty();
@@ -169,12 +154,6 @@ pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!runtime.DOMStrin
 
 /// Getter for attributionSourceId
 pub fn get_attributionSourceId(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for attributionDestination
-pub fn get_attributionDestination(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
@@ -204,17 +183,6 @@ pub fn get_shape(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return reflectGet(instance, "shape");
 }
 
-/// Getter for attributionSrc
-pub fn get_attributionSrc(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for target: sets the target content attribute.
-pub fn set_target(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    return reflectSet(instance, "target", value);
-}
-
 /// Setter for download: sets the download content attribute.
 pub fn set_download(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return reflectSet(instance, "download", value);
@@ -233,16 +201,6 @@ pub fn set_rel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!v
     try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("rel"), .{ .domstring = value });
 }
 
-/// Setter for hreflang: sets the hreflang content attribute.
-pub fn set_hreflang(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    return reflectSet(instance, "hreflang", value);
-}
-
-/// Setter for type: sets the type content attribute.
-pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    return reflectSet(instance, "type", value);
-}
-
 /// Setter for text: the textContent setter.
 pub fn set_text(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return interfaces.Node.set_textContent(instance, value);
@@ -255,13 +213,6 @@ pub fn set_referrerPolicy(instance: *runtime.Instance, value: runtime.DOMString)
 
 /// Setter for attributionSourceId
 pub fn set_attributionSourceId(instance: *runtime.Instance, value: u32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for attributionDestination
-pub fn set_attributionDestination(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -290,13 +241,6 @@ pub fn set_rev(instance: *runtime.Instance, value: runtime.DOMString) anyerror!v
 /// Setter for shape: sets the shape content attribute.
 pub fn set_shape(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return reflectSet(instance, "shape", value);
-}
-
-/// Setter for attributionSrc
-pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
 }
 
 // =============================================================================

@@ -70,8 +70,8 @@ pub const NavigationDestination = struct {
         Meta.MixinTypes,
         struct {
             url: runtime.USVString = undefined,
-            key: typedefs.DOMString = undefined,
-            id: typedefs.DOMString = undefined,
+            key: runtime.DOMString = undefined,
+            id: runtime.DOMString = undefined,
             index: i64 = undefined,
             sameDocument: bool = undefined,
             _internal: ?*NavigationDestinationImpl.InternalState = null,
@@ -179,11 +179,11 @@ pub const NavigationDestination = struct {
         return try NavigationDestinationImpl.get_url(instance);
     }
 
-    pub fn get_key(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_key(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigationDestinationImpl.get_key(instance);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try NavigationDestinationImpl.get_id(instance);
     }
 

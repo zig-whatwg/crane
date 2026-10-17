@@ -157,7 +157,7 @@ pub const TrustedScriptURL = struct {
         }
     }
 
-    pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn call_stringifier(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TrustedScriptURLImpl.call_stringifier(instance);
     }
 

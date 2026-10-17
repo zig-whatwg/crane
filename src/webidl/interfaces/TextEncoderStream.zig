@@ -67,7 +67,7 @@ pub const TextEncoderStream = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            encoding: typedefs.DOMString = undefined,
+            encoding: runtime.DOMString = undefined,
             readable: *runtime.Instance = undefined,
             writable: *runtime.Instance = undefined,
             _internal: ?*TextEncoderStreamImpl.InternalState = null,
@@ -175,7 +175,7 @@ pub const TextEncoderStream = struct {
         return try TextEncoderStreamImpl.call_constructor(ctx);
     }
 
-    pub fn get_encoding(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TextEncoderStreamImpl.get_encoding(instance);
     }
 

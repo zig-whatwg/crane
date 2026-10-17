@@ -13,6 +13,8 @@ const dictionaries = @import("dictionaries");
 const MLTensor = @import("interfaces").MLTensor;
 const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const MLNamedTensors = @import("typedefs").MLNamedTensors;
+const GPUBuffer = @import("interfaces").GPUBuffer;
+const GPUDevice = @import("interfaces").GPUDevice;
 const MLOpSupportLimits = @import("dictionaries").MLOpSupportLimits;
 const MLTensorDescriptor = @import("dictionaries").MLTensorDescriptor;
 const MLGraph = @import("interfaces").MLGraph;
@@ -48,9 +50,11 @@ pub const MLContext = struct {
         pub const methods = .{
             .{ "dispatch", "call_dispatch", 3 },
             .{ "createTensor", "call_createTensor", 1 },
+            .{ "createExportableTensor", "call_createExportableTensor", 2 },
             .{ "createConstantTensor", "call_createConstantTensor", 2 },
             .{ "readTensor", "call_readTensor", 1 },
             .{ "writeTensor", "call_writeTensor", 2 },
+            .{ "exportToGPU", "call_exportToGPU", 1 },
             .{ "opSupportLimits", "call_opSupportLimits", 0 },
             .{ "destroy", "call_destroy", 0 },
         };
@@ -59,9 +63,11 @@ pub const MLContext = struct {
         pub const own_methods = .{
             "dispatch",
             "createTensor",
+            "createExportableTensor",
             "createConstantTensor",
             "readTensor",
             "writeTensor",
+            "exportToGPU",
             "opSupportLimits",
             "destroy",
         };
@@ -96,9 +102,11 @@ pub const MLContext = struct {
         .get_lost = &get_lost,
 
         .call_createConstantTensor = &call_createConstantTensor,
+        .call_createExportableTensor = &call_createExportableTensor,
         .call_createTensor = &call_createTensor,
         .call_destroy = &call_destroy,
         .call_dispatch = &call_dispatch,
+        .call_exportToGPU = &call_exportToGPU,
         .call_opSupportLimits = &call_opSupportLimits,
         .call_readTensor = &call_readTensor,
         .call_writeTensor = &call_writeTensor,
@@ -223,6 +231,14 @@ pub const MLContext = struct {
         return try MLContextImpl.call_createTensor(instance, descriptor);
     }
 
+    pub fn call_exportToGPU(instance: *runtime.Instance, tensor: *runtime.Instance) anyerror!*runtime.Instance {
+        return try MLContextImpl.call_exportToGPU(instance, tensor);
+    }
+
+    pub fn call_createExportableTensor(instance: *runtime.Instance, descriptor: MLTensorDescriptor, gpuDevice: *runtime.Instance) anyerror!runtime.JSValue {
+        return try MLContextImpl.call_createExportableTensor(instance, descriptor, gpuDevice);
+    }
+
     pub fn call_readTensor(instance: *runtime.Instance, tensor: *runtime.Instance) anyerror!runtime.JSValue {
         return try MLContextImpl.call_readTensor(instance, tensor);
     }
@@ -251,6 +267,7 @@ pub const MLContext = struct {
     pub const promise_returning = .{
         "call_createConstantTensor",
         "call_createTensor",
+        "call_createExportableTensor",
         "call_readTensor",
         "call_readTensor__1",
     };

@@ -75,8 +75,8 @@ pub const PerformanceEntry = struct {
         Meta.MixinTypes,
         struct {
             id: u64 = undefined,
-            name: typedefs.DOMString = undefined,
-            entryType: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
+            entryType: runtime.DOMString = undefined,
             startTime: typedefs.DOMHighResTimeStamp = undefined,
             duration: typedefs.DOMHighResTimeStamp = undefined,
             navigationId: u64 = undefined,
@@ -203,11 +203,11 @@ pub const PerformanceEntry = struct {
         return try PerformanceEntryImpl.get_id(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceEntryImpl.get_name(instance);
     }
 
-    pub fn get_entryType(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_entryType(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceEntryImpl.get_entryType(instance);
     }
 

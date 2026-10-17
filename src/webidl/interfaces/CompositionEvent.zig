@@ -181,7 +181,7 @@ pub const CompositionEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(CompositionEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(CompositionEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try CompositionEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
@@ -190,7 +190,7 @@ pub const CompositionEvent = struct {
         return try CompositionEventImpl.get_data(instance);
     }
 
-    pub fn call_initCompositionEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: webidl.Opt(bool), cancelableArg: webidl.Opt(bool), viewArg: webidl.Opt(?WindowProxy), dataArg: webidl.Opt(DOMString)) anyerror!void {
+    pub fn call_initCompositionEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, bubblesArg: webidl.Opt(bool), cancelableArg: webidl.Opt(bool), viewArg: webidl.Opt(?WindowProxy), dataArg: webidl.Opt(runtime.DOMString)) anyerror!void {
         return try CompositionEventImpl.call_initCompositionEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, dataArg);
     }
 };

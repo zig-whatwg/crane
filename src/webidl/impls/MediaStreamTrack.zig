@@ -222,3 +222,9 @@ pub fn call_applyConstraints(instance: *runtime.Instance, constraints: webidl.Op
     _ = constraints;
     return error.NotImplemented;
 }
+
+/// Getter for stats
+pub fn get_stats(instance: *runtime.Instance) anyerror!?runtime.JSValue {
+    _ = instance;
+    return error.NotImplemented;
+}

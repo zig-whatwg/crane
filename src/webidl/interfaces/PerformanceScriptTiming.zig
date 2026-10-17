@@ -94,13 +94,13 @@ pub const PerformanceScriptTiming = struct {
         struct {
             startTime: typedefs.DOMHighResTimeStamp = undefined,
             duration: typedefs.DOMHighResTimeStamp = undefined,
-            name: typedefs.DOMString = undefined,
-            entryType: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
+            entryType: runtime.DOMString = undefined,
             invokerType: enums.ScriptInvokerType = undefined,
-            invoker: typedefs.DOMString = undefined,
+            invoker: runtime.DOMString = undefined,
             executionStart: typedefs.DOMHighResTimeStamp = undefined,
-            sourceURL: typedefs.DOMString = undefined,
-            sourceFunctionName: typedefs.DOMString = undefined,
+            sourceURL: runtime.DOMString = undefined,
+            sourceFunctionName: runtime.DOMString = undefined,
             sourceCharPosition: i64 = undefined,
             pauseDuration: typedefs.DOMHighResTimeStamp = undefined,
             forcedStyleAndLayoutDuration: typedefs.DOMHighResTimeStamp = undefined,
@@ -253,11 +253,11 @@ pub const PerformanceScriptTiming = struct {
         return try PerformanceScriptTimingImpl.get_duration(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceScriptTimingImpl.get_name(instance);
     }
 
-    pub fn get_entryType(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_entryType(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceScriptTimingImpl.get_entryType(instance);
     }
 
@@ -265,7 +265,7 @@ pub const PerformanceScriptTiming = struct {
         return try PerformanceScriptTimingImpl.get_invokerType(instance);
     }
 
-    pub fn get_invoker(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_invoker(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceScriptTimingImpl.get_invoker(instance);
     }
 
@@ -273,11 +273,11 @@ pub const PerformanceScriptTiming = struct {
         return try PerformanceScriptTimingImpl.get_executionStart(instance);
     }
 
-    pub fn get_sourceURL(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_sourceURL(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceScriptTimingImpl.get_sourceURL(instance);
     }
 
-    pub fn get_sourceFunctionName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_sourceFunctionName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceScriptTimingImpl.get_sourceFunctionName(instance);
     }
 

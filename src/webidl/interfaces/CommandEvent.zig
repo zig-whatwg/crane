@@ -72,7 +72,7 @@ pub const CommandEvent = struct {
         Meta.MixinTypes,
         struct {
             source: ?*runtime.Instance = null,
-            command: typedefs.DOMString = undefined,
+            command: runtime.DOMString = undefined,
             _internal: ?*CommandEventImpl.InternalState = null,
         },
     );
@@ -174,7 +174,7 @@ pub const CommandEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(CommandEventInit)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(CommandEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try CommandEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
@@ -183,7 +183,7 @@ pub const CommandEvent = struct {
         return try CommandEventImpl.get_source(instance);
     }
 
-    pub fn get_command(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_command(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try CommandEventImpl.get_command(instance);
     }
 };

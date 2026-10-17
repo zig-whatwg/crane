@@ -85,8 +85,8 @@ pub const IntersectionObserver = struct {
                 Element: Element,
                 Document: Document,
             } = null,
-            rootMargin: typedefs.DOMString = undefined,
-            scrollMargin: typedefs.DOMString = undefined,
+            rootMargin: runtime.DOMString = undefined,
+            scrollMargin: runtime.DOMString = undefined,
             thresholds: runtime.JSValue = undefined,
             delay: i32 = undefined,
             trackVisibility: bool = undefined,
@@ -207,11 +207,11 @@ pub const IntersectionObserver = struct {
         return try IntersectionObserverImpl.get_root(instance);
     }
 
-    pub fn get_rootMargin(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_rootMargin(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try IntersectionObserverImpl.get_rootMargin(instance);
     }
 
-    pub fn get_scrollMargin(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_scrollMargin(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try IntersectionObserverImpl.get_scrollMargin(instance);
     }
 

@@ -58,7 +58,7 @@ pub fn get_jitterBufferTarget(instance: *runtime.Instance) anyerror!?typedefs.DO
 }
 
 /// Getter for transform
-pub fn get_transform(instance: *runtime.Instance) anyerror!?typedefs.RTCRtpTransform {
+pub fn get_transform(instance: *runtime.Instance) anyerror!?typedefs.RTCRtpReceiverTransform {
     _ = instance;
     return null;
 }
@@ -71,7 +71,7 @@ pub fn set_jitterBufferTarget(instance: *runtime.Instance, value: ?typedefs.DOMH
 }
 
 /// Setter for transform
-pub fn set_transform(instance: *runtime.Instance, value: ?typedefs.RTCRtpTransform) anyerror!void {
+pub fn set_transform(instance: *runtime.Instance, value: ?typedefs.RTCRtpReceiverTransform) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

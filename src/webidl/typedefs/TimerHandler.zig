@@ -4,7 +4,6 @@
 
 const runtime = @import("runtime");
 const callbacks = @import("callbacks");
-const typedefs = @import("root.zig");
 
 pub const TimerHandler = union(enum) {
     domstring: runtime.DOMString,

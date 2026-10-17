@@ -103,13 +103,13 @@ pub fn get_timeline(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 }
 
 /// Getter for startTime
-pub fn get_startTime(instance: *runtime.Instance) anyerror!?f64 {
+pub fn get_startTime(instance: *runtime.Instance) anyerror!?typedefs.CSSNumberish {
     _ = instance;
     return null;
 }
 
 /// Getter for currentTime
-pub fn get_currentTime(instance: *runtime.Instance) anyerror!?f64 {
+pub fn get_currentTime(instance: *runtime.Instance) anyerror!?typedefs.CSSNumberish {
     _ = instance;
     return null;
 }
@@ -174,18 +174,6 @@ pub fn get_trigger(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return null;
 }
 
-/// Getter for rangeStart
-pub fn get_rangeStart(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for rangeEnd
-pub fn get_rangeEnd(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for overallProgress
 pub fn get_overallProgress(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
@@ -227,14 +215,14 @@ pub fn set_timeline(instance: *runtime.Instance, value: ?*runtime.Instance) anye
 }
 
 /// Setter for startTime
-pub fn set_startTime(instance: *runtime.Instance, value: ?f64) anyerror!void {
+pub fn set_startTime(instance: *runtime.Instance, value: ?typedefs.CSSNumberish) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for currentTime
-pub fn set_currentTime(instance: *runtime.Instance, value: ?f64) anyerror!void {
+pub fn set_currentTime(instance: *runtime.Instance, value: ?typedefs.CSSNumberish) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -270,20 +258,6 @@ pub fn set_onremove(instance: *runtime.Instance, value: typedefs.EventHandler) a
 
 /// Setter for trigger
 pub fn set_trigger(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for rangeStart
-pub fn set_rangeStart(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for rangeEnd
-pub fn set_rangeEnd(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

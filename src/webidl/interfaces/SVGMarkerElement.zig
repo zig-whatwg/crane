@@ -51,7 +51,6 @@ const ScrollToOptions = @import("dictionaries").ScrollToOptions;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const SVGUseElement = @import("interfaces").SVGUseElement;
 const DOMRectList = @import("interfaces").DOMRectList;
 const SVGAnimatedEnumeration = @import("interfaces").SVGAnimatedEnumeration;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
@@ -76,6 +75,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -201,6 +201,7 @@ pub const SVGMarkerElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -208,7 +209,6 @@ pub const SVGMarkerElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -224,6 +224,7 @@ pub const SVGMarkerElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "focus",
@@ -261,7 +262,7 @@ pub const SVGMarkerElement = struct {
             markerHeight: *runtime.Instance = undefined,
             orientType: *runtime.Instance = undefined,
             orientAngle: *runtime.Instance = undefined,
-            orient: typedefs.DOMString = undefined,
+            orient: runtime.DOMString = undefined,
             viewBox: *runtime.Instance = undefined,
             preserveAspectRatio: *runtime.Instance = undefined,
             cached_refX: ?*runtime.Instance = null,
@@ -522,11 +523,11 @@ pub const SVGMarkerElement = struct {
         return value;
     }
 
-    pub fn get_orient(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_orient(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SVGMarkerElementImpl.get_orient(instance);
     }
 
-    pub fn set_orient(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_orient(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try SVGMarkerElementImpl.set_orient(instance, value);
     }
 

@@ -64,9 +64,9 @@ pub const SpeechSynthesisVoice = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            voiceURI: typedefs.DOMString = undefined,
-            name: typedefs.DOMString = undefined,
-            lang: typedefs.DOMString = undefined,
+            voiceURI: runtime.DOMString = undefined,
+            name: runtime.DOMString = undefined,
+            lang: runtime.DOMString = undefined,
             localService: bool = undefined,
             default: bool = undefined,
             _internal: ?*SpeechSynthesisVoiceImpl.InternalState = null,
@@ -168,15 +168,15 @@ pub const SpeechSynthesisVoice = struct {
         }
     }
 
-    pub fn get_voiceURI(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_voiceURI(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SpeechSynthesisVoiceImpl.get_voiceURI(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SpeechSynthesisVoiceImpl.get_name(instance);
     }
 
-    pub fn get_lang(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_lang(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SpeechSynthesisVoiceImpl.get_lang(instance);
     }
 

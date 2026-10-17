@@ -88,9 +88,9 @@ pub const FetchEvent = struct {
         struct {
             request: *runtime.Instance = undefined,
             preloadResponse: runtime.JSValue = undefined,
-            clientId: typedefs.DOMString = undefined,
-            resultingClientId: typedefs.DOMString = undefined,
-            replacesClientId: typedefs.DOMString = undefined,
+            clientId: runtime.DOMString = undefined,
+            resultingClientId: runtime.DOMString = undefined,
+            replacesClientId: runtime.DOMString = undefined,
             handled: runtime.JSValue = undefined,
             cached_request: ?*runtime.Instance = null,
             _internal: ?*FetchEventImpl.InternalState = null,
@@ -201,7 +201,7 @@ pub const FetchEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: FetchEventInit) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: FetchEventInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try FetchEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
@@ -223,15 +223,15 @@ pub const FetchEvent = struct {
         return try FetchEventImpl.get_preloadResponse(instance);
     }
 
-    pub fn get_clientId(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_clientId(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try FetchEventImpl.get_clientId(instance);
     }
 
-    pub fn get_resultingClientId(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_resultingClientId(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try FetchEventImpl.get_resultingClientId(instance);
     }
 
-    pub fn get_replacesClientId(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_replacesClientId(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try FetchEventImpl.get_replacesClientId(instance);
     }
 

@@ -278,14 +278,17 @@ pub const SourceBuffer = struct {
         try SourceBufferImpl.set_timestampOffset(instance, value);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_audioTracks(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SourceBufferImpl.get_audioTracks(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_videoTracks(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SourceBufferImpl.get_videoTracks(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_textTracks(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SourceBufferImpl.get_textTracks(instance);
     }
@@ -366,7 +369,7 @@ pub const SourceBuffer = struct {
         return try SourceBufferImpl.call_appendBuffer(instance, data);
     }
 
-    pub fn call_changeType(instance: *runtime.Instance, @"type": DOMString) anyerror!void {
+    pub fn call_changeType(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!void {
         return try SourceBufferImpl.call_changeType(instance, @"type");
     }
 

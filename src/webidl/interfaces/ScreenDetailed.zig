@@ -82,7 +82,7 @@ pub const ScreenDetailed = struct {
             isPrimary: bool = undefined,
             isInternal: bool = undefined,
             devicePixelRatio: f32 = undefined,
-            label: typedefs.DOMString = undefined,
+            label: runtime.DOMString = undefined,
             _internal: ?*ScreenDetailedImpl.InternalState = null,
         },
     );
@@ -215,7 +215,7 @@ pub const ScreenDetailed = struct {
         return try ScreenDetailedImpl.get_devicePixelRatio(instance);
     }
 
-    pub fn get_label(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_label(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try ScreenDetailedImpl.get_label(instance);
     }
 };

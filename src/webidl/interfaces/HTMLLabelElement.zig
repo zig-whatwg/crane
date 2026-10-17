@@ -72,6 +72,7 @@ const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
+const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
@@ -170,6 +171,7 @@ pub const HTMLLabelElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
+            "setHTML",
             "setHTMLUnsafe",
             "getHTML",
             "insertAdjacentHTML",
@@ -177,7 +179,6 @@ pub const HTMLLabelElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
-            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -193,6 +194,7 @@ pub const HTMLLabelElement = struct {
             "after",
             "replaceWith",
             "remove",
+            "ariaNotify",
             "animate",
             "getAnimations",
             "click",
@@ -227,7 +229,7 @@ pub const HTMLLabelElement = struct {
         Meta.MixinTypes,
         struct {
             form: ?*runtime.Instance = null,
-            htmlFor: typedefs.DOMString = undefined,
+            htmlFor: runtime.DOMString = undefined,
             control: ?*runtime.Instance = null,
             _internal: ?*HTMLLabelElementImpl.InternalState = null,
         },
@@ -345,19 +347,19 @@ pub const HTMLLabelElement = struct {
     const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect="for"]
-    pub fn get_htmlFor(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_htmlFor(instance: *runtime.Instance) anyerror!runtime.DOMString {
         if (comptime @hasDecl(HTMLLabelElementImpl, "get_htmlFor")) return try HTMLLabelElementImpl.get_htmlFor(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "for" });
+        return try reflection.get(runtime.DOMString, instance, .{ .name = "for" });
     }
 
     /// Extended attributes: [CEReactions], [Reflect="for"]
-    pub fn set_htmlFor(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_htmlFor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLabelElementImpl, "set_htmlFor")) return try HTMLLabelElementImpl.set_htmlFor(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "for" }, value);
+        try reflection.set(runtime.DOMString, instance, .{ .name = "for" }, value);
     }
 
     pub fn get_control(instance: *runtime.Instance) anyerror!?*runtime.Instance {

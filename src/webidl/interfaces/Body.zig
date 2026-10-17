@@ -39,6 +39,7 @@ pub const Body = struct {
             .{ "formData", "call_formData", 0 },
             .{ "json", "call_json", 0 },
             .{ "text", "call_text", 0 },
+            .{ "textStream", "call_textStream", 0 },
         };
 
         /// Methods defined/overridden by this interface
@@ -49,6 +50,7 @@ pub const Body = struct {
             "formData",
             "json",
             "text",
+            "textStream",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -100,21 +102,9 @@ pub const Body = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        // [NewObject] - Caller owns the returned object
-        return try BodyImpl.call_bytes(instance);
-    }
-
-    /// Extended attributes: [NewObject]
     pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try BodyImpl.call_json(instance);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        // [NewObject] - Caller owns the returned object
-        return try BodyImpl.call_formData(instance);
     }
 
     /// Extended attributes: [NewObject]
@@ -129,14 +119,32 @@ pub const Body = struct {
         return try BodyImpl.call_blob(instance);
     }
 
+    /// Extended attributes: [NewObject]
+    pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        // [NewObject] - Caller owns the returned object
+        return try BodyImpl.call_bytes(instance);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_textStream(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        return try BodyImpl.call_textStream(instance);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        // [NewObject] - Caller owns the returned object
+        return try BodyImpl.call_formData(instance);
+    }
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{
         "call_arrayBuffer",
-        "call_bytes",
         "call_json",
-        "call_formData",
         "call_text",
         "call_blob",
+        "call_bytes",
+        "call_formData",
     };
 };

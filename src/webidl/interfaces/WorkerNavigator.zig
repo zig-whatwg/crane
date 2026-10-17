@@ -11,6 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const NavigatorBadge = @import("mixins").NavigatorBadge;
+const NavigatorCrossOriginStorage = @import("mixins").NavigatorCrossOriginStorage;
 const NavigatorDeviceMemory = @import("mixins").NavigatorDeviceMemory;
 const GlobalPrivacyControl = @import("mixins").GlobalPrivacyControl;
 const NavigatorID = @import("mixins").NavigatorID;
@@ -26,13 +27,13 @@ const NavigatorGPU = @import("mixins").NavigatorGPU;
 const NavigatorML = @import("mixins").NavigatorML;
 const NetworkInformation = @import("interfaces").NetworkInformation;
 const Serial = @import("interfaces").Serial;
-const SmartCardResourceManager = @import("interfaces").SmartCardResourceManager;
-const HID = @import("interfaces").HID;
 const LockManager = @import("interfaces").LockManager;
+const HID = @import("interfaces").HID;
 const ML = @import("interfaces").ML;
 const NavigatorUAData = @import("interfaces").NavigatorUAData;
 const GPU = @import("interfaces").GPU;
 const StorageBucketManager = @import("interfaces").StorageBucketManager;
+const CrossOriginStorageManager = @import("interfaces").CrossOriginStorageManager;
 const USB = @import("interfaces").USB;
 const StorageManager = @import("interfaces").StorageManager;
 const ServiceWorkerContainer = @import("interfaces").ServiceWorkerContainer;
@@ -49,6 +50,7 @@ pub const WorkerNavigator = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{
             NavigatorBadge,
+            NavigatorCrossOriginStorage,
             NavigatorDeviceMemory,
             GlobalPrivacyControl,
             NavigatorID,
@@ -76,9 +78,9 @@ pub const WorkerNavigator = struct {
             .{ "permissions", "get_permissions", null },
             .{ "serial", "get_serial", null },
             .{ "serviceWorker", "get_serviceWorker", null },
-            .{ "smartCard", "get_smartCard", null },
             .{ "hid", "get_hid", null },
             .{ "usb", "get_usb", null },
+            .{ "crossOriginStorage", "get_crossOriginStorage", null },
             .{ "deviceMemory", "get_deviceMemory", null },
             .{ "globalPrivacyControl", "get_globalPrivacyControl", null },
             .{ "appCodeName", "get_appCodeName", null },
@@ -127,9 +129,9 @@ pub const WorkerNavigator = struct {
             .{ "permissions", "get_permissions", null },
             .{ "serial", "get_serial", null },
             .{ "serviceWorker", "get_serviceWorker", null },
-            .{ "smartCard", "get_smartCard", null },
             .{ "hid", "get_hid", null },
             .{ "usb", "get_usb", null },
+            .{ "crossOriginStorage", "get_crossOriginStorage", null },
             .{ "deviceMemory", "get_deviceMemory", null },
             .{ "globalPrivacyControl", "get_globalPrivacyControl", null },
             .{ "appCodeName", "get_appCodeName", null },
@@ -166,9 +168,9 @@ pub const WorkerNavigator = struct {
         pub const secure_context_members = .{
             "serial",
             "serviceWorker",
-            "smartCard",
             "hid",
             "usb",
+            "crossOriginStorage",
             "deviceMemory",
             "storageBuckets",
             "storage",
@@ -189,22 +191,22 @@ pub const WorkerNavigator = struct {
             permissions: *runtime.Instance = undefined,
             serial: *runtime.Instance = undefined,
             serviceWorker: *runtime.Instance = undefined,
-            smartCard: *runtime.Instance = undefined,
             hid: *runtime.Instance = undefined,
             usb: *runtime.Instance = undefined,
+            crossOriginStorage: *runtime.Instance = undefined,
             deviceMemory: f64 = undefined,
             globalPrivacyControl: bool = undefined,
-            appCodeName: typedefs.DOMString = undefined,
-            appName: typedefs.DOMString = undefined,
-            appVersion: typedefs.DOMString = undefined,
-            platform: typedefs.DOMString = undefined,
-            product: typedefs.DOMString = undefined,
-            productSub: typedefs.DOMString = undefined,
-            userAgent: typedefs.DOMString = undefined,
-            vendor: typedefs.DOMString = undefined,
-            vendorSub: typedefs.DOMString = undefined,
-            oscpu: typedefs.DOMString = undefined,
-            language: typedefs.DOMString = undefined,
+            appCodeName: runtime.DOMString = undefined,
+            appName: runtime.DOMString = undefined,
+            appVersion: runtime.DOMString = undefined,
+            platform: runtime.DOMString = undefined,
+            product: runtime.DOMString = undefined,
+            productSub: runtime.DOMString = undefined,
+            userAgent: runtime.DOMString = undefined,
+            vendor: runtime.DOMString = undefined,
+            vendorSub: runtime.DOMString = undefined,
+            oscpu: runtime.DOMString = undefined,
+            language: runtime.DOMString = undefined,
             languages: runtime.JSValue = undefined,
             onLine: bool = undefined,
             hardwareConcurrency: u64 = undefined,
@@ -219,9 +221,9 @@ pub const WorkerNavigator = struct {
             cached_permissions: ?*runtime.Instance = null,
             cached_serial: ?*runtime.Instance = null,
             cached_serviceWorker: ?*runtime.Instance = null,
-            cached_smartCard: ?*runtime.Instance = null,
             cached_hid: ?*runtime.Instance = null,
             cached_usb: ?*runtime.Instance = null,
+            cached_crossOriginStorage: ?*runtime.Instance = null,
             cached_connection: ?*runtime.Instance = null,
             cached_storageBuckets: ?*runtime.Instance = null,
             cached_storage: ?*runtime.Instance = null,
@@ -236,6 +238,7 @@ pub const WorkerNavigator = struct {
         .get_appName = &get_appName,
         .get_appVersion = &get_appVersion,
         .get_connection = &get_connection,
+        .get_crossOriginStorage = &get_crossOriginStorage,
         .get_deviceMemory = &get_deviceMemory,
         .get_globalPrivacyControl = &get_globalPrivacyControl,
         .get_gpu = &get_gpu,
@@ -254,7 +257,6 @@ pub const WorkerNavigator = struct {
         .get_productSub = &get_productSub,
         .get_serial = &get_serial,
         .get_serviceWorker = &get_serviceWorker,
-        .get_smartCard = &get_smartCard,
         .get_storage = &get_storage,
         .get_storageBuckets = &get_storageBuckets,
         .get_usb = &get_usb,
@@ -408,19 +410,6 @@ pub const WorkerNavigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject], [SecureContext], [IsolatedContext]
-    pub fn get_smartCard(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_smartCard) |cached| {
-            return cached;
-        }
-        const value = try WorkerNavigatorImpl.get_smartCard(instance);
-        state.own.cached_smartCard = value;
-        @import("dom").same_object_cache.made(instance, value, "smartCard");
-        return value;
-    }
-
     /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_hid(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
@@ -447,56 +436,69 @@ pub const WorkerNavigator = struct {
         return value;
     }
 
+    /// Extended attributes: [SameObject], [SecureContext]
+    pub fn get_crossOriginStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_crossOriginStorage) |cached| {
+            return cached;
+        }
+        const value = try WorkerNavigatorImpl.get_crossOriginStorage(instance);
+        state.own.cached_crossOriginStorage = value;
+        @import("dom").same_object_cache.made(instance, value, "crossOriginStorage");
+        return value;
+    }
+
     /// Extended attributes: [SecureContext]
     pub const get_deviceMemory = mixins.NavigatorDeviceMemory.get_deviceMemory;
 
     pub const get_globalPrivacyControl = mixins.GlobalPrivacyControl.get_globalPrivacyControl;
 
-    pub fn get_appCodeName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_appCodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WorkerNavigatorImpl.get_appCodeName(instance);
     }
 
-    pub fn get_appName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_appName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WorkerNavigatorImpl.get_appName(instance);
     }
 
-    pub fn get_appVersion(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_appVersion(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WorkerNavigatorImpl.get_appVersion(instance);
     }
 
-    pub fn get_platform(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_platform(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WorkerNavigatorImpl.get_platform(instance);
     }
 
-    pub fn get_product(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_product(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WorkerNavigatorImpl.get_product(instance);
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn get_productSub(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_productSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WorkerNavigatorImpl.get_productSub(instance);
     }
 
-    pub fn get_userAgent(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_userAgent(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WorkerNavigatorImpl.get_userAgent(instance);
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn get_vendor(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_vendor(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WorkerNavigatorImpl.get_vendor(instance);
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn get_vendorSub(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_vendorSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WorkerNavigatorImpl.get_vendorSub(instance);
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn get_oscpu(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_oscpu(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WorkerNavigatorImpl.get_oscpu(instance);
     }
 
-    pub fn get_language(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WorkerNavigatorImpl.get_language(instance);
     }
 

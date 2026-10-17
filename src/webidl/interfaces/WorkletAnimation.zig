@@ -14,13 +14,10 @@ const Animation = @import("interfaces").Animation;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const AnimationPlayState = @import("enums").AnimationPlayState;
-const TimelineRangeOffset = @import("dictionaries").TimelineRangeOffset;
-const CSSKeywordValue = @import("interfaces").CSSKeywordValue;
 const AnimationTrigger = @import("interfaces").AnimationTrigger;
 const AnimationTimeline = @import("interfaces").AnimationTimeline;
-const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
-const CSSNumericValue = @import("interfaces").CSSNumericValue;
+const Observable = @import("interfaces").Observable;
 const AnimationEffect = @import("interfaces").AnimationEffect;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const AnimationReplaceState = @import("enums").AnimationReplaceState;
@@ -87,7 +84,7 @@ pub const WorkletAnimation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            animatorName: typedefs.DOMString = undefined,
+            animatorName: runtime.DOMString = undefined,
             _internal: ?*WorkletAnimationImpl.InternalState = null,
         },
     );
@@ -188,12 +185,12 @@ pub const WorkletAnimation = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, animatorName: DOMString, effects: webidl.Opt(?runtime.JSValue), timeline: webidl.Opt(?*runtime.Instance), options: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, animatorName: runtime.DOMString, effects: webidl.Opt(?runtime.JSValue), timeline: webidl.Opt(?*runtime.Instance), options: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try WorkletAnimationImpl.call_constructor(ctx, animatorName, effects, timeline, options);
     }
 
-    pub fn get_animatorName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_animatorName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try WorkletAnimationImpl.get_animatorName(instance);
     }
 };

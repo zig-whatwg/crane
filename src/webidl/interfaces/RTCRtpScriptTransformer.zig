@@ -217,7 +217,7 @@ pub const RTCRtpScriptTransformer = struct {
         return try RTCRtpScriptTransformerImpl.get_options(instance);
     }
 
-    pub fn call_generateKeyFrame(instance: *runtime.Instance, rid: webidl.Opt(DOMString)) anyerror!runtime.JSValue {
+    pub fn call_generateKeyFrame(instance: *runtime.Instance, rid: webidl.Opt(runtime.DOMString)) anyerror!runtime.JSValue {
         return try RTCRtpScriptTransformerImpl.call_generateKeyFrame(instance, rid);
     }
 

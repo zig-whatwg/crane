@@ -74,8 +74,8 @@ pub const PerformanceLongTaskTiming = struct {
         struct {
             startTime: typedefs.DOMHighResTimeStamp = undefined,
             duration: typedefs.DOMHighResTimeStamp = undefined,
-            name: typedefs.DOMString = undefined,
-            entryType: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
+            entryType: runtime.DOMString = undefined,
             attribution: runtime.JSValue = undefined,
             _internal: ?*PerformanceLongTaskTimingImpl.InternalState = null,
         },
@@ -206,11 +206,11 @@ pub const PerformanceLongTaskTiming = struct {
         return try PerformanceLongTaskTimingImpl.get_duration(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceLongTaskTimingImpl.get_name(instance);
     }
 
-    pub fn get_entryType(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_entryType(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try PerformanceLongTaskTimingImpl.get_entryType(instance);
     }
 

@@ -23,7 +23,7 @@ pub fn installHooks() void {
     }
 }
 
-pub fn get_language(instance: *runtime.Instance) anyerror!DOMString {
+pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try NavigatorLanguageImpl.get_language(instance);
 }
 

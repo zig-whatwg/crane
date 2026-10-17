@@ -5,7 +5,6 @@
 const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
-const AttributionReportingRequestOptions = @import("AttributionReportingRequestOptions.zig").AttributionReportingRequestOptions;
 const PrivateToken = @import("PrivateToken.zig").PrivateToken;
 
 pub const RequestInit = struct {
@@ -24,12 +23,8 @@ pub const RequestInit = struct {
     duplex: ?enums.RequestDuplex = null,
     priority: ?enums.RequestPriority = null,
     window: ?runtime.JSValue = null,
-    attributionReporting: ?AttributionReportingRequestOptions = null,
     targetAddressSpace: ?enums.IPAddressSpace = null,
-    sharedStorageWritable: ?bool = null,
-    browsingTopics: ?bool = null,
     privateToken: ?PrivateToken = null,
-    adAuctionHeaders: ?bool = null,
 
     /// WebIDL ByteString members: a code unit above 0xFF throws a TypeError
     /// when the dictionary is converted.

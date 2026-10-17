@@ -73,6 +73,7 @@ pub const OfflineAudioContext = struct {
             .{ "startRendering", "call_startRendering", 0 },
             .{ "resume", "call_resume", 0 },
             .{ "suspend", "call_suspend", 1 },
+            .{ "close", "call_close", 0 },
         };
 
         /// Methods defined/overridden by this interface
@@ -80,6 +81,7 @@ pub const OfflineAudioContext = struct {
             "startRendering",
             "resume",
             "suspend",
+            "close",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -125,7 +127,7 @@ pub const OfflineAudioContext = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
+            length: ?u32 = null,
             oncomplete: typedefs.EventHandler = undefined,
             _internal: ?*OfflineAudioContextImpl.InternalState = null,
         },
@@ -137,6 +139,7 @@ pub const OfflineAudioContext = struct {
 
         .set_oncomplete = &set_oncomplete,
 
+        .call_close = &call_close,
         .call_resume = &call_resume,
         .call_startRendering = &call_startRendering,
         .call_suspend = &call_suspend,
@@ -259,7 +262,7 @@ pub const OfflineAudioContext = struct {
         return try OfflineAudioContextImpl.call_constructor(ctx, args);
     }
 
-    pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
+    pub fn get_length(instance: *runtime.Instance) anyerror!?u32 {
         return try OfflineAudioContextImpl.get_length(instance);
     }
 
@@ -279,12 +282,16 @@ pub const OfflineAudioContext = struct {
         return try OfflineAudioContextImpl.call_resume(instance);
     }
 
-    pub fn call_startRendering(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try OfflineAudioContextImpl.call_startRendering(instance);
+    pub fn call_startRendering(instance: *runtime.Instance, chunkSize: webidl.Opt(?u32)) anyerror!runtime.JSValue {
+        return try OfflineAudioContextImpl.call_startRendering(instance, chunkSize);
     }
 
     pub fn call_suspend(instance: *runtime.Instance, suspendTime: f64) anyerror!runtime.JSValue {
         return try OfflineAudioContextImpl.call_suspend(instance, suspendTime);
+    }
+
+    pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try OfflineAudioContextImpl.call_close(instance);
     }
 
     /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
@@ -300,5 +307,6 @@ pub const OfflineAudioContext = struct {
         "call_resume",
         "call_startRendering",
         "call_suspend",
+        "call_close",
     };
 };

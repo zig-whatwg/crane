@@ -10,6 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
+const Availability = @import("enums").Availability;
+const TextDetectorOptions = @import("dictionaries").TextDetectorOptions;
+const TextDetectorCreateOptions = @import("dictionaries").TextDetectorCreateOptions;
 const ImageBitmapSource = @import("typedefs").ImageBitmapSource;
 
 pub const TextDetector = struct {
@@ -39,8 +42,16 @@ pub const TextDetector = struct {
             .{ "detect", "call_detect", 1 },
         };
 
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "availability", "call_static_availability", 1 },
+            .{ "create", "call_static_create", 0 },
+        };
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "availability",
+            "create",
             "detect",
         };
 
@@ -163,6 +174,14 @@ pub const TextDetector = struct {
         return try TextDetectorImpl.call_constructor(ctx);
     }
 
+    pub fn call_static_availability(instance: *runtime.Instance, options: TextDetectorOptions) anyerror!runtime.JSValue {
+        return try TextDetectorImpl.call_static_availability(instance, options);
+    }
+
+    pub fn call_static_create(instance: *runtime.Instance, options: webidl.Opt(TextDetectorCreateOptions)) anyerror!runtime.JSValue {
+        return try TextDetectorImpl.call_static_create(instance, options);
+    }
+
     pub fn call_detect(instance: *runtime.Instance, image: ImageBitmapSource) anyerror!runtime.JSValue {
         return try TextDetectorImpl.call_detect(instance, image);
     }
@@ -170,6 +189,8 @@ pub const TextDetector = struct {
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{
+        "call_static_availability",
+        "call_static_create",
         "call_detect",
     };
 };

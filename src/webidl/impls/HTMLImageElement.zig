@@ -506,18 +506,6 @@ pub fn get_y(instance: *runtime.Instance) anyerror!i32 {
     return error.NotImplemented;
 }
 
-/// Getter for attributionSrc
-pub fn get_attributionSrc(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for sharedStorageWritable
-pub fn get_sharedStorageWritable(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
@@ -1349,20 +1337,6 @@ pub fn set_loading(instance: *runtime.Instance, value: runtime.DOMString) anyerr
 /// Setter for fetchPriority
 pub fn set_fetchPriority(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try reflection.set(runtime.DOMString, instance, .{ .name = "fetchpriority" }, value);
-}
-
-/// Setter for attributionSrc
-pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for sharedStorageWritable
-pub fn set_sharedStorageWritable(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
 }
 
 /// Operation: decode. HTML 4.8.4.1's decode() method steps.

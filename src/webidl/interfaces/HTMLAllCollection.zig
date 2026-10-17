@@ -186,11 +186,11 @@ pub const HTMLAllCollection = struct {
         }
     }
 
-    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!?runtime.JSValue {
+    pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.JSValue {
         return try HTMLAllCollectionImpl.call_namedItem(instance, name);
     }
 
-    pub fn call_item(instance: *runtime.Instance, nameOrIndex: webidl.Opt(DOMString)) anyerror!?runtime.JSValue {
+    pub fn call_item(instance: *runtime.Instance, nameOrIndex: webidl.Opt(runtime.DOMString)) anyerror!?runtime.JSValue {
         return try HTMLAllCollectionImpl.call_item(instance, nameOrIndex);
     }
 

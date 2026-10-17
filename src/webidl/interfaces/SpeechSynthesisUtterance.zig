@@ -95,8 +95,8 @@ pub const SpeechSynthesisUtterance = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            text: typedefs.DOMString = undefined,
-            lang: typedefs.DOMString = undefined,
+            text: runtime.DOMString = undefined,
+            lang: runtime.DOMString = undefined,
             voice: ?*runtime.Instance = null,
             volume: f32 = undefined,
             rate: f32 = undefined,
@@ -234,24 +234,24 @@ pub const SpeechSynthesisUtterance = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, text: webidl.Opt(DOMString)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, text: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try SpeechSynthesisUtteranceImpl.call_constructor(ctx, text);
     }
 
-    pub fn get_text(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_text(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SpeechSynthesisUtteranceImpl.get_text(instance);
     }
 
-    pub fn set_text(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_text(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try SpeechSynthesisUtteranceImpl.set_text(instance, value);
     }
 
-    pub fn get_lang(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_lang(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SpeechSynthesisUtteranceImpl.get_lang(instance);
     }
 
-    pub fn set_lang(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_lang(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try SpeechSynthesisUtteranceImpl.set_lang(instance, value);
     }
 

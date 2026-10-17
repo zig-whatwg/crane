@@ -101,11 +101,11 @@ pub const Attr = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            namespaceURI: ?typedefs.DOMString = null,
-            prefix: ?typedefs.DOMString = null,
-            localName: typedefs.DOMString = undefined,
-            name: typedefs.DOMString = undefined,
-            value: typedefs.DOMString = undefined,
+            namespaceURI: ?runtime.DOMString = null,
+            prefix: ?runtime.DOMString = null,
+            localName: runtime.DOMString = undefined,
+            name: runtime.DOMString = undefined,
+            value: runtime.DOMString = undefined,
             ownerElement: ?*runtime.Instance = null,
             specified: bool = undefined,
             _internal: ?*AttrImpl.InternalState = null,
@@ -213,29 +213,29 @@ pub const Attr = struct {
         }
     }
 
-    pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try AttrImpl.get_namespaceURI(instance);
     }
 
-    pub fn get_prefix(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_prefix(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try AttrImpl.get_prefix(instance);
     }
 
-    pub fn get_localName(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_localName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try AttrImpl.get_localName(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try AttrImpl.get_name(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_value(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try AttrImpl.get_value(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_value(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);

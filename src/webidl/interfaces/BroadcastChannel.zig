@@ -83,7 +83,7 @@ pub const BroadcastChannel = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.DOMString = undefined,
+            name: runtime.DOMString = undefined,
             onmessage: typedefs.EventHandler = undefined,
             onmessageerror: typedefs.EventHandler = undefined,
             _internal: ?*BroadcastChannelImpl.InternalState = null,
@@ -194,12 +194,12 @@ pub const BroadcastChannel = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, name: DOMString) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, name: runtime.DOMString) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try BroadcastChannelImpl.call_constructor(ctx, name);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try BroadcastChannelImpl.get_name(instance);
     }
 

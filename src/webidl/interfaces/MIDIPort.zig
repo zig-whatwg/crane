@@ -97,11 +97,11 @@ pub const MIDIPort = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: typedefs.DOMString = undefined,
-            manufacturer: ?typedefs.DOMString = null,
-            name: ?typedefs.DOMString = null,
+            id: runtime.DOMString = undefined,
+            manufacturer: ?runtime.DOMString = null,
+            name: ?runtime.DOMString = null,
             type: enums.MIDIPortType = undefined,
-            version: ?typedefs.DOMString = null,
+            version: ?runtime.DOMString = null,
             state: enums.MIDIPortDeviceState = undefined,
             connection: enums.MIDIPortConnectionState = undefined,
             onstatechange: typedefs.EventHandler = undefined,
@@ -214,15 +214,15 @@ pub const MIDIPort = struct {
         }
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MIDIPortImpl.get_id(instance);
     }
 
-    pub fn get_manufacturer(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_manufacturer(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try MIDIPortImpl.get_manufacturer(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try MIDIPortImpl.get_name(instance);
     }
 
@@ -230,7 +230,7 @@ pub const MIDIPort = struct {
         return try MIDIPortImpl.get_type(instance);
     }
 
-    pub fn get_version(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_version(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try MIDIPortImpl.get_version(instance);
     }
 

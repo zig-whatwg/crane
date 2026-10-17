@@ -89,7 +89,7 @@ pub const BluetoothAdvertisingEvent = struct {
         struct {
             device: *runtime.Instance = undefined,
             uuids: runtime.JSValue = undefined,
-            name: ?typedefs.DOMString = null,
+            name: ?runtime.DOMString = null,
             appearance: ?u16 = null,
             txPower: ?i8 = null,
             rssi: ?i8 = null,
@@ -206,7 +206,7 @@ pub const BluetoothAdvertisingEvent = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, init_data: BluetoothAdvertisingEventInit) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, init_data: BluetoothAdvertisingEventInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try BluetoothAdvertisingEventImpl.call_constructor(ctx, @"type", init_data);
     }
@@ -228,7 +228,7 @@ pub const BluetoothAdvertisingEvent = struct {
         return try BluetoothAdvertisingEventImpl.get_uuids(instance);
     }
 
-    pub fn get_name(instance: *runtime.Instance) anyerror!?DOMString {
+    pub fn get_name(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         return try BluetoothAdvertisingEventImpl.get_name(instance);
     }
 

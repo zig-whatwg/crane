@@ -20,9 +20,11 @@ const MediaStreamTrackState = @import("enums").MediaStreamTrackState;
 const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
 const CaptureAction = @import("enums").CaptureAction;
+const MediaStreamTrackVideoStats = @import("interfaces").MediaStreamTrackVideoStats;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const MediaTrackCapabilities = @import("dictionaries").MediaTrackCapabilities;
 const EventListener = @import("interfaces").EventListener;
+const MediaStreamTrackAudioStats = @import("interfaces").MediaStreamTrackAudioStats;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
 
@@ -37,6 +39,7 @@ pub const MediaStreamTrack = struct {
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+            .{ .name = "Transferable" },
         };
 
         /// Global contexts where this interface is exposed
@@ -54,6 +57,8 @@ pub const MediaStreamTrack = struct {
             .{ "readyState", "get_readyState", null },
             .{ "onended", "get_onended", "set_onended" },
             .{ "oncapturehandlechange", "get_oncapturehandlechange", "set_oncapturehandlechange" },
+            .{ "stats", "get_stats", null },
+            .{ "onconfigurationchange", "get_onconfigurationchange", "set_onconfigurationchange" },
             .{ "contentHint", "get_contentHint", "set_contentHint" },
             .{ "isolated", "get_isolated", null },
             .{ "onisolationchange", "get_onisolationchange", "set_onisolationchange" },
@@ -105,6 +110,8 @@ pub const MediaStreamTrack = struct {
             .{ "readyState", "get_readyState", null },
             .{ "onended", "get_onended", "set_onended" },
             .{ "oncapturehandlechange", "get_oncapturehandlechange", "set_oncapturehandlechange" },
+            .{ "stats", "get_stats", null },
+            .{ "onconfigurationchange", "get_onconfigurationchange", "set_onconfigurationchange" },
             .{ "contentHint", "get_contentHint", "set_contentHint" },
             .{ "isolated", "get_isolated", null },
             .{ "onisolationchange", "get_onisolationchange", "set_onisolationchange" },
@@ -120,9 +127,9 @@ pub const MediaStreamTrack = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            kind: typedefs.DOMString = undefined,
-            id: typedefs.DOMString = undefined,
-            label: typedefs.DOMString = undefined,
+            kind: runtime.DOMString = undefined,
+            id: runtime.DOMString = undefined,
+            label: runtime.DOMString = undefined,
             enabled: bool = undefined,
             muted: bool = undefined,
             onmute: typedefs.EventHandler = undefined,
@@ -130,9 +137,15 @@ pub const MediaStreamTrack = struct {
             readyState: enums.MediaStreamTrackState = undefined,
             onended: typedefs.EventHandler = undefined,
             oncapturehandlechange: typedefs.EventHandler = undefined,
-            contentHint: typedefs.DOMString = undefined,
+            stats: ?union(enum) {
+                MediaStreamTrackAudioStats: MediaStreamTrackAudioStats,
+                MediaStreamTrackVideoStats: MediaStreamTrackVideoStats,
+            } = null,
+            onconfigurationchange: typedefs.EventHandler = undefined,
+            contentHint: runtime.DOMString = undefined,
             isolated: bool = undefined,
             onisolationchange: typedefs.EventHandler = undefined,
+            cached_stats: ?runtime.JSValue = null,
             _internal: ?*MediaStreamTrackImpl.InternalState = null,
         },
     );
@@ -146,15 +159,18 @@ pub const MediaStreamTrack = struct {
         .get_label = &get_label,
         .get_muted = &get_muted,
         .get_oncapturehandlechange = &get_oncapturehandlechange,
+        .get_onconfigurationchange = &get_onconfigurationchange,
         .get_onended = &get_onended,
         .get_onisolationchange = &get_onisolationchange,
         .get_onmute = &get_onmute,
         .get_onunmute = &get_onunmute,
         .get_readyState = &get_readyState,
+        .get_stats = &get_stats,
 
         .set_contentHint = &set_contentHint,
         .set_enabled = &set_enabled,
         .set_oncapturehandlechange = &set_oncapturehandlechange,
+        .set_onconfigurationchange = &set_onconfigurationchange,
         .set_onended = &set_onended,
         .set_onisolationchange = &set_onisolationchange,
         .set_onmute = &set_onmute,
@@ -246,6 +262,7 @@ pub const MediaStreamTrack = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(MediaStreamTrackImpl, "deinit") and @hasDecl(MediaStreamTrackImpl, "deinitOwn")) @compileError("MediaStreamTrackImpl defines both deinit and deinitOwn");
+        @import("dom").same_object_cache.end(State, instance);
         if (comptime @hasDecl(MediaStreamTrackImpl, "deinit")) return MediaStreamTrackImpl.deinit(instance);
         if (comptime @hasDecl(MediaStreamTrackImpl, "deinitOwn")) MediaStreamTrackImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -260,15 +277,15 @@ pub const MediaStreamTrack = struct {
         }
     }
 
-    pub fn get_kind(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_kind(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MediaStreamTrackImpl.get_kind(instance);
     }
 
-    pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MediaStreamTrackImpl.get_id(instance);
     }
 
-    pub fn get_label(instance: *runtime.Instance) anyerror!DOMString {
+    pub fn get_label(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MediaStreamTrackImpl.get_label(instance);
     }
 
@@ -330,11 +347,26 @@ pub const MediaStreamTrack = struct {
         try event_handlers.setValue(EventHandler, instance, "oncapturehandlechange", value);
     }
 
-    pub fn get_contentHint(instance: *runtime.Instance) anyerror!DOMString {
+    /// Extended attributes: [SameObject]
+    pub fn get_stats(instance: *runtime.Instance) anyerror!?runtime.JSValue {
+        return try MediaStreamTrackImpl.get_stats(instance);
+    }
+
+    pub fn get_onconfigurationchange(instance: *runtime.Instance) anyerror!EventHandler {
+        if (comptime @hasDecl(MediaStreamTrackImpl, "get_onconfigurationchange")) return try MediaStreamTrackImpl.get_onconfigurationchange(instance);
+        return event_handlers.value(EventHandler, instance, "onconfigurationchange");
+    }
+
+    pub fn set_onconfigurationchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        if (comptime @hasDecl(MediaStreamTrackImpl, "set_onconfigurationchange")) return try MediaStreamTrackImpl.set_onconfigurationchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onconfigurationchange", value);
+    }
+
+    pub fn get_contentHint(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try MediaStreamTrackImpl.get_contentHint(instance);
     }
 
-    pub fn set_contentHint(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_contentHint(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         try MediaStreamTrackImpl.set_contentHint(instance, value);
     }
 
