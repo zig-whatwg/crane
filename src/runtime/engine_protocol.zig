@@ -438,6 +438,8 @@ pub const TransferableCheck = runtime.TransferableCheck;
 pub const WindowOperations = runtime.WindowOperations;
 pub const WorkerRealmOptions = runtime.WorkerRealmOptions;
 pub const WorkerRealm = runtime.WorkerRealm;
+pub const WorkletRealmOptions = runtime.WorkletRealmOptions;
+pub const WorkletRealm = runtime.WorkletRealm;
 pub const BuiltinFunction = runtime.BuiltinFunction;
 
 /// The process-wide engine: its heap snapshot, when it restores realms from
@@ -982,6 +984,26 @@ pub inline fn createWorkerRealm(agent: *Agent, options: *const WorkerRealmOption
 /// Destroy a worker realm; `retire(data)` runs once it is retired.
 pub inline fn destroyWorkerRealm(realm: Context, retire: ?RealmSteps, data: ?*anyopaque) void {
     impl.destroyWorkerRealm(realm, retire, data);
+}
+
+/// HTML 11.3.1.2 "create a worklet global scope" step 3: a new realm in
+/// `agent` - the agent of `options.owner`, the worklet's outside settings'
+/// realm, on its thread (see WorkletRealmOptions) - whose global object is a
+/// new object of the worklet global scope type `options.global` names, with
+/// every interface [Exposed] to that worklet installed on it and no `self`
+/// (HTML 11.1.2). OWNED: `destroyWorkletRealm`.
+pub inline fn createWorkletRealm(agent: *Agent, options: *const WorkletRealmOptions) Error!WorkletRealm {
+    return impl.createWorkletRealm(agent, options);
+}
+
+/// The engine half of HTML 11.3.1.2 "terminate a worklet global scope" step 5:
+/// the realm ends - its global scope, its wrapper cache and every platform
+/// object in it go, and the realm reads as ended (`engine_ctx` null) - while
+/// its agent, its owner and the agent's other realms go on. The host has
+/// discarded the realm's tasks and released what it held of the realm first.
+/// After it the Context may only be compared.
+pub inline fn destroyWorkletRealm(realm: Context) void {
+    impl.destroyWorkletRealm(realm);
 }
 
 /// ECMAScript's current realm: the realm of the running execution context -

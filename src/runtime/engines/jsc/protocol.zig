@@ -128,6 +128,13 @@ pub fn createWorkerRealm(_: *Agent, _: *const engine.WorkerRealmOptions) Error!e
     return error.NotSupported;
 }
 pub fn destroyWorkerRealm(_: Context, _: ?engine.RealmSteps, _: ?*anyopaque) void {}
+/// No worklet realm: HTML 11.3.1.2's realm is made only where the adapter
+/// runs module scripts and binds worklet global scopes, which this one does
+/// not yet; addModule then rejects.
+pub fn createWorkletRealm(_: *Agent, _: *const engine.WorkletRealmOptions) Error!engine.WorkletRealm {
+    return error.NotSupported;
+}
+pub fn destroyWorkletRealm(_: Context) void {}
 pub fn currentRealm() ?Context {
     return null;
 }

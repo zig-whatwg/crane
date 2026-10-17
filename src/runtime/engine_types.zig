@@ -298,6 +298,52 @@ pub const WorkerRealm = struct {
     global_scope: *Instance,
 };
 
+/// What a host gives the engine for a worklet's realm (HTML 11.3.1.2 "create
+/// a worklet global scope" steps 2-3).
+///
+/// The realm is made in `owner`'s agent and runs on its thread. That is
+/// Blink's main-thread worklet (WorkletGlobalScope(LocalFrame*) uses the
+/// frame's isolate, ThreadType::kMainThread); Blink gives that worklet an
+/// Agent of its own with a v8::MicrotaskQueue of its own, while Crane's
+/// shares its owner's agent - its event loop and microtask queue - which
+/// nothing can observe: worklet script runs only inside tasks the worklet
+/// host queues, and a task boundary leaves the owner's microtask queue empty.
+pub const WorkletRealmOptions = struct {
+    /// The worklet global scope type (HTML 11.3.2) of the worklet the realm
+    /// is for: what "create a worklet global scope" step 3 makes the realm's
+    /// global object - a PaintWorkletGlobalScope (CSS Painting API), a
+    /// LayoutWorkletGlobalScope (CSS Layout API), an
+    /// AnimationWorkletGlobalScope (CSS Animation Worklet) or an
+    /// AudioWorkletGlobalScope (Web Audio API) - and so the interfaces
+    /// [Exposed] in it.
+    pub const WorkletGlobal = enum { paint, layout, animation, audio };
+
+    global: WorkletGlobal,
+    /// The realm of the worklet's outside settings (step 1): its agent is the
+    /// agent the realm is made in, and its event loop, task sink and Browser
+    /// scope are recorded as the new realm's. BORROWED; it outlives the
+    /// worklet realm (the worklet's global scopes end with their document,
+    /// HTML 11.3.3).
+    owner: Context,
+    /// The settings object's API base URL (HTML 11.3.1.3 step 2: the outside
+    /// settings'). Borrowed.
+    api_base_url: []const u8,
+    allocator: std.mem.Allocator,
+    /// Called once the realm exists and before its global object is made, so
+    /// the host can record the realm's settings the global scope reads.
+    on_realm: ?*const fn (data: ?*anyopaque, realm: Context) void = null,
+    /// Passed to `on_realm`.
+    data: ?*anyopaque = null,
+};
+
+/// A worklet realm and its global object.
+pub const WorkletRealm = struct {
+    realm: Context,
+    /// The worklet global scope behind the global object, of the type
+    /// `WorkletRealmOptions.global` asked. The realm owns it.
+    global_scope: *Instance,
+};
+
 /// The steps of a built-in function a host defines (`defineBuiltinFunction`):
 /// `data` is the pointer the host gave; `args` are BORROWED for the call (a
 /// primitive as itself, a string as UTF-8, anything else a handle). The

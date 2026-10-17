@@ -43,6 +43,7 @@ const support = @import("protocol_support.zig");
 
 /// The worker and agent operations.
 const worker_realm = @import("worker_realm.zig");
+const worklet_realm = @import("worklet_realm.zig");
 
 const Context = engine.Context;
 const JSValue = engine.JSValue;
@@ -220,6 +221,14 @@ pub fn createWorkerRealm(agent: *Agent, options: *const engine.WorkerRealmOption
 
 pub fn destroyWorkerRealm(realm: Context, retire: ?engine.RealmSteps, data: ?*anyopaque) void {
     worker_realm.destroyWorkerRealm(realm, retire, data);
+}
+
+pub fn createWorkletRealm(agent: *Agent, options: *const engine.WorkletRealmOptions) Error!engine.WorkletRealm {
+    return worklet_realm.createWorkletRealm(agent, options.*) catch |err| protocolError(err);
+}
+
+pub fn destroyWorkletRealm(realm: Context) void {
+    worklet_realm.destroyWorkletRealm(realm);
 }
 
 pub fn currentRealm() ?Context {

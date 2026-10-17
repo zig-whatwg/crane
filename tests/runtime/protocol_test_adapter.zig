@@ -90,6 +90,10 @@ pub fn createWorkerRealm(_: *Agent, _: *const engine.WorkerRealmOptions) Error!e
     return error.NotSupported;
 }
 pub fn destroyWorkerRealm(_: Context, _: ?engine.RealmSteps, _: ?*anyopaque) void {}
+pub fn createWorkletRealm(_: *Agent, _: *const engine.WorkletRealmOptions) Error!engine.WorkletRealm {
+    return error.NotSupported;
+}
+pub fn destroyWorkletRealm(_: Context) void {}
 pub fn currentRealm() ?Context {
     return null;
 }

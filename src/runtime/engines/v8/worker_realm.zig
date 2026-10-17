@@ -167,7 +167,7 @@ fn GlobalKind(comptime global: runtime.WorkerRealmOptions.WorkerGlobal) type {
 /// later lookup - the interface object installForScope puts on the global, a
 /// subclass's Inherit() - finds this one, so the global object and
 /// `<Interface>.prototype` share a template.
-fn globalScopeTemplate(comptime Interface: type, isolate: *ffi.Isolate) *ffi.FunctionTemplate {
+pub fn globalScopeTemplate(comptime Interface: type, isolate: *ffi.Isolate) *ffi.FunctionTemplate {
     const name = Interface.Meta.name;
     if (template_registry.getTemplateForIsolate(name, isolate)) |template| return template;
     const template = V8Interface(Interface).createTemplate(isolate);
@@ -347,7 +347,7 @@ fn registerWorkerInterfaces(isolate: *ffi.Isolate, context: *ffi.Context) void {
 ///   WorkerGlobalScope.prototype -> EventTarget.prototype.
 /// - `Interface`'s own members as own properties of the global: WebIDL puts
 ///   a [Global] interface's members on the object.
-fn bindGlobalScope(comptime Interface: type, isolate: *ffi.Isolate, context: *ffi.Context, realm: runtime.Context) EngineError!*runtime.Instance {
+pub fn bindGlobalScope(comptime Interface: type, isolate: *ffi.Isolate, context: *ffi.Context, realm: runtime.Context) EngineError!*runtime.Instance {
     const instance = Interface.init(realm.allocator, realm) catch
         return EngineError.OperationFailed;
     bindGlobalFields(context, instance);
@@ -374,7 +374,7 @@ fn bindGlobalScope(comptime Interface: type, isolate: *ffi.Isolate, context: *ff
 
 /// Point internal field 0 of the global proxy, and of the global object
 /// behind it, at `instance` - or at nothing, before the instance is freed.
-fn bindGlobalFields(context: *ffi.Context, instance: ?*runtime.Instance) void {
+pub fn bindGlobalFields(context: *ffi.Context, instance: ?*runtime.Instance) void {
     const global = ffi.v8_Context_Global(context) orelse return;
     defer ffi.v8_Object_Dispose(global);
     ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(instance));
