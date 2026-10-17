@@ -1247,9 +1247,9 @@ bool v8_RunCatching(Isolate* isolate, void (*body)(void*), void* data, Global<Va
 //
 // The innermost scope is kept in the isolate's data slot 3 (a scope saves the
 // outer one and restores it on exit). Slot 3 held a snapshot isolate's copy
-// of its blob only "for cleanup", and nothing ever read it back: the copy is
-// the StartupData's `data`, kept by the isolate's record in slot 2
-// (kIsolateDataSlot).
+// of its blob only "for cleanup", and nothing ever read it back; the blob is
+// no longer copied at all (v8_Isolate_NewFromSnapshot), and its StartupData
+// is in the isolate's record in slot 2 (kIsolateDataSlot).
 static constexpr uint32_t kBindingCatchScopeSlot = 3;
 
 /// Run `body(data)` in a binding catch scope. A caught exception is rethrown
@@ -2010,11 +2010,14 @@ struct SyntheticJsonExport {
 };
 
 struct IsolateData {
-    /// A snapshot isolate's StartupData (v8_Isolate_NewFromSnapshot): V8 keeps
-    /// a pointer to it for the isolate's life. Null for an isolate made
-    /// afresh. Not freed with the record - as before - for the reason
-    /// v8_Isolate_NewFromSnapshot gives.
-    StartupData* startup_data = nullptr;
+    /// A snapshot isolate's StartupData (v8_Isolate_NewFromSnapshot), which
+    /// V8 keeps a pointer to for the isolate's life (CreateParams::
+    /// snapshot_blob) and reads again for every context it restores
+    /// (Snapshot::NewContextFromSnapshot). Its `data` is the CALLER'S bytes,
+    /// read in place, never copied; null for an isolate made afresh. It lives
+    /// in the record, made before the isolate, and v8_Isolate_Dispose
+    /// deletes the record only after Isolate::Dispose returns.
+    StartupData startup_data{nullptr, 0};
     /// The isolate's JSON (and default-export) modules waiting for
     /// evaluation, until V8 runs their evaluation steps or the module is
     /// disposed - or the isolate is: v8_Isolate_Dispose resets what is left.
@@ -2060,7 +2063,7 @@ Isolate* v8_Isolate_New() {
 /// Whether `isolate` was restored from a snapshot (v8_Isolate_NewFromSnapshot).
 bool v8_Isolate_IsFromSnapshot(Isolate* isolate) {
     IsolateData* data = isolateData(isolate);
-    return data && data->startup_data;
+    return data && data->startup_data.data;
 }
 
 /// The bytes V8 restores `isolate` from - its StartupData's `data` - and
@@ -2069,9 +2072,9 @@ bool v8_Isolate_IsFromSnapshot(Isolate* isolate) {
 const char* v8_Isolate_SnapshotBlob(Isolate* isolate, size_t* out_size) {
     IsolateData* data = isolateData(isolate);
     if (out_size) *out_size = 0;
-    if (!data || !data->startup_data) return nullptr;
-    if (out_size) *out_size = static_cast<size_t>(data->startup_data->raw_size);
-    return data->startup_data->data;
+    if (!data || !data->startup_data.data) return nullptr;
+    if (out_size) *out_size = static_cast<size_t>(data->startup_data.raw_size);
+    return data->startup_data.data;
 }
 
 /// How many of `isolate`'s JSON (and default-export) modules wait for
@@ -2084,11 +2087,13 @@ size_t v8_Isolate_PendingSyntheticModuleCount(Isolate* isolate) {
 void v8_Isolate_Dispose(Isolate* isolate) {
     if (isolate) {
         // The adapter's per-isolate record: its handles reset while their
-        // isolate lives, on its thread.
-        if (IsolateData* data = isolateData(isolate)) {
+        // isolate lives, on its thread. The record itself is deleted after
+        // Isolate::Dispose, below: it holds the StartupData V8 points at.
+        IsolateData* record = isolateData(isolate);
+        if (record) {
             isolate->SetData(kIsolateDataSlot, nullptr);
-            for (SyntheticJsonExport* entry : data->synthetic_json_exports) deleteSyntheticExport(entry);
-            delete data;
+            for (SyntheticJsonExport* entry : record->synthetic_json_exports) deleteSyntheticExport(entry);
+            record->synthetic_json_exports.clear();
         }
 
         // Records that a dispose detached from their Global while V8 still had
@@ -2137,6 +2142,11 @@ void v8_Isolate_Dispose(Isolate* isolate) {
             }
         }
 
+        // The record last: a snapshot isolate's StartupData is in it, and V8
+        // held a pointer to that until Dispose returned ("The embedder owns
+        // the blob", v8-isolate.h CreateParams::snapshot_blob). The bytes it
+        // points at are the caller's, freed by the caller after this.
+        delete record;
     }
 }
 
@@ -8646,7 +8656,22 @@ void v8_Snapshot_FreeData(const char* data) {
 /// CRITICAL: external_references MUST be the same array (same order)
 /// as was used when creating the snapshot.
 ///
-/// @param snapshot_data - Pointer to snapshot blob data
+/// The blob is read IN PLACE, never copied: V8 reads it when the isolate is
+/// made (Snapshot::Initialize) and again for every context restored from it
+/// (Snapshot::NewContextFromSnapshot), so `snapshot_data` is BORROWED until
+/// v8_Isolate_Dispose of the returned isolate returns - the embedder owns
+/// the blob (v8-isolate.h, CreateParams::snapshot_blob). Every caller's
+/// blob already outlives its isolates: the engine's, lent by the host until
+/// deinitializeEngine, which follows every agent's end (protocol_agents),
+/// and snapshot_loader's, kept until cleanupSnapshotData. Chromium does the
+/// same: every isolate's StartupData points into the one snapshot mapping,
+/// which is never unmapped (gin/v8_initializer.cc, GetMappedFileData).
+/// This function used to copy the 2.6 MB blob into a `new char[]` and a
+/// `new StartupData` per isolate and free neither: one leak per Browser
+/// (lesson testing-a-leak-total-that-grows-with-the-browsers-a-run-makes-
+/// is-a-per-browser-leak).
+///
+/// @param snapshot_data - Snapshot blob data, BORROWED for the isolate's life
 /// @param snapshot_size - Size of snapshot blob in bytes
 /// @param external_references - Null-terminated array of external references
 ///                              (must match snapshot creation order exactly)
@@ -8671,25 +8696,21 @@ Isolate* v8_Isolate_NewFromSnapshot(
         while (external_references[ref_count] != 0) ref_count++;
     }
     
-    // CRITICAL: Heap-allocate StartupData and snapshot copy.
-    // V8 stores only a POINTER to StartupData, so it must live for the
-    // entire lifetime of the isolate. Stack allocation would cause the
-    // pointer to become dangling when this function returns.
-    
-    // Copy snapshot data to heap (we don't own the input buffer)
-    char* data_copy = new char[snapshot_size];
-    memcpy(data_copy, snapshot_data, snapshot_size);
-    
-    // Heap-allocate StartupData struct
-    StartupData* startup_data = new StartupData();
-    startup_data->data = data_copy;
-    startup_data->raw_size = snapshot_size;
+    // The adapter's per-isolate record (kIsolateDataSlot), made first: it
+    // holds the StartupData, which V8 keeps a POINTER to for the isolate's
+    // life, so the record must exist before the isolate and outlive it
+    // (v8_Isolate_Dispose deletes it after Isolate::Dispose). The StartupData
+    // points at the caller's bytes - no copy. Slots 0-1 are the Zig side's
+    // (isolate_allocator.zig, isolate_templates.zig); slot 3 is the innermost
+    // binding catch scope (kBindingCatchScopeSlot).
+    IsolateData* isolate_data = new IsolateData();
+    isolate_data->startup_data.data = snapshot_data;
+    isolate_data->startup_data.raw_size = snapshot_size;
     
     // Validate the snapshot
-    if (!startup_data->IsValid()) {
+    if (!isolate_data->startup_data.IsValid()) {
         fprintf(stderr, "[v8_Isolate_NewFromSnapshot] ERROR: Snapshot data is not valid\n");
-        delete[] data_copy;
-        delete startup_data;
+        delete isolate_data;
         return nullptr;
     }
     
@@ -8699,23 +8720,15 @@ Isolate* v8_Isolate_NewFromSnapshot(
     Isolate::CreateParams create_params;
     create_params.array_buffer_allocator_shared =
         std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
-    create_params.snapshot_blob = startup_data;  // Heap-allocated, lives forever
+    create_params.snapshot_blob = &isolate_data->startup_data;
     create_params.external_references = external_references;
     
     Isolate* isolate = Isolate::New(create_params);
     if (!isolate) {
         fprintf(stderr, "[v8_Isolate_NewFromSnapshot] ERROR: Isolate::New returned nullptr\n");
-        delete[] data_copy;
-        delete startup_data;
+        delete isolate_data;
         return nullptr;
     }
-    
-    // The adapter's per-isolate record (kIsolateDataSlot), with the
-    // StartupData (its `data` is the blob's copy). Slots 0-1 are the Zig
-    // side's (isolate_allocator.zig, isolate_templates.zig); slot 3 is the
-    // innermost binding catch scope (kBindingCatchScopeSlot).
-    IsolateData* isolate_data = new IsolateData();
-    isolate_data->startup_data = startup_data;
     isolate->SetData(kIsolateDataSlot, isolate_data);
     
     return isolate;

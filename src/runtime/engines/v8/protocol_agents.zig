@@ -40,7 +40,13 @@ const log = std.log.scoped(.protocol_agents);
 
 /// V8's bytes of the snapshot initializeEngine was given (its stamp split
 /// off), BORROWED until deinitializeEngine. Read by createAgent on any
-/// thread, written only while no agent is being made.
+/// thread, written only while no agent is being made. Every agent restored
+/// from it reads these bytes IN PLACE for its whole life - no copy per
+/// isolate (v8_Isolate_NewFromSnapshot) - which the protocol allows: the
+/// host lends them until deinitializeEngine, and that comes after every
+/// agent is destroyed (engine_protocol.zig). One blob for every isolate of
+/// the process, as Chromium points every isolate's StartupData into its one
+/// snapshot mapping (gin/v8_initializer.cc, GetMappedFileData).
 var engine_snapshot: ?[]const u8 = null;
 
 /// Prepare V8 for agents: its flags and platform - once per process: V8
@@ -90,7 +96,17 @@ fn usableSnapshot(stamped_data: []const u8) Error![]const u8 {
 /// The end of the engine for the host: the snapshot is forgotten (the host
 /// may free it). V8's platform is kept - a V8 process cannot initialize it
 /// again - so a later initializeEngine starts from where this left off.
+///
+/// The protocol calls this after every agent is destroyed. An agent restored
+/// from the snapshot that is still alive reads the host's bytes in place, so
+/// freeing them now would leave it a dangling blob for its next realm: said
+/// loudly here, where the host broke the order, rather than as a crash in
+/// whatever realm that agent makes next.
 pub fn deinitializeEngine() void {
+    if (engine_snapshot != null) {
+        const live = liveSnapshotAgents();
+        if (live != 0) log.err("deinitializeEngine with {d} agent(s) restored from the snapshot still alive: they read its bytes in place, so the host must destroy them before it frees the snapshot", .{live});
+    }
     engine_snapshot = null;
 }
 

@@ -2678,7 +2678,12 @@ pub extern fn v8_Snapshot_ClearGlobalHandles() void;
 /// CRITICAL: external_references MUST be the same array (same order)
 /// as was used when creating the snapshot.
 ///
-/// @param snapshot_data - Pointer to snapshot blob data
+/// The blob is read in place, never copied: V8 reads it again for every
+/// context restored from it, so `snapshot_data` is BORROWED until
+/// v8_Isolate_Dispose of the returned isolate returns (v8_wrapper.cpp says
+/// why every caller's blob outlives its isolates).
+///
+/// @param snapshot_data - Snapshot blob data, BORROWED for the isolate's life
 /// @param snapshot_size - Size of snapshot blob in bytes
 /// @param external_references - Null-terminated array of external references
 ///                              (must match snapshot creation order exactly)

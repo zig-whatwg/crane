@@ -170,7 +170,10 @@ pub const InitResult = struct {
 pub const InitOptions = struct {
     /// Path to the snapshot file. If null, skips snapshot loading.
     snapshot_path: ?[]const u8 = null,
-    /// Embedded snapshot data (takes precedence over snapshot_path)
+    /// Embedded snapshot data (takes precedence over snapshot_path),
+    /// BORROWED for the life of the isolate made from it: V8 reads it in
+    /// place, again for every context restored from it
+    /// (v8_Isolate_NewFromSnapshot).
     embedded_snapshot: ?[]const u8 = null,
     /// Whether to log performance information
     log_performance: bool = true,
