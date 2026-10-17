@@ -451,6 +451,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Integrity checks precede response handover](spec-compliance-sri-checks-before-response-handover.md) - Put a security check before the operation that exposes its result, and preserve both streaming cancellation and the empty-metadata fast path.
 - [Restored decoder bytes outlive the input chunk](spec-compliance-restored-decoder-bytes-outlive-the-input-chunk.md) - Input consumption and output capacity are separate boundaries: preserve both the restored queue prefix and the state needed to retry unwritten output.
 - [A fatal decode drops input, not handler mode](spec-compliance-a-fatal-decode-drops-input-not-handler-state.md) - When whole browser outcomes split three ways, compare mechanism by mechanism; take the component majorities only if their combination is a shipping browser's behaviour, otherwise the spec.
+- [A handler form scope requires a form-associated element](spec-compliance-a-handler-form-scope-requires-a-form-associated-element.md) - Form ancestry alone does not establish a form owner, and supplying the right scope does not establish the right compilation time.
 
 ### Codegen
 
