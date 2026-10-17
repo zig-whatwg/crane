@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../streams/"><code>streams/</code></a></li><li><a href="../../../streams/readable-byte-streams/"><code>readable-<wbr>byte-<wbr>streams/</code></a></li><li aria-current="page"><code>templated.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>templated.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="streams/readable-byte-streams/templated.any.js">
-<p class="figures-main"><span class="fg-pass">66</span><span class="fg-of"> / 68</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">68</span><span class="fg-of"> / 68</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-ddd23ea1c2</code>, <span class="nowrap">16 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/ddd23ea1c2"><code>ddd23ea1c2</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-a781ab209a</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/a781ab209a"><code>a781ab209a</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/streams/readable-byte-streams/templated.any.js"><code>streams/<wbr>readable-<wbr>byte-<wbr>streams/<wbr>templated.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -34,11 +34,11 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/streams/readable-byte-streams/templated.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>33</b> / 34</span></h3>
+<h3 class="run-head"><code>/streams/readable-byte-streams/templated.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>34</b> / 34</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-f7dec882"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Running templatedRSEmpty with ReadableStream with byte source (empty)</span></div><a class="self" href="#s-f7dec882" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-4077b5b4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream with byte source (empty): instances have the correct methods and properties</span></div><a class="self" href="#s-4077b5b4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ae72934d"><details><summary><span class="mark">FAIL</span><span class="sub-name">ReadableStream with byte source (empty): calling getReader with invalid arguments should throw appropriate errors</span></summary><pre class="msg">assert_throws_js: null mode should throw function &quot;() =&gt; rs.getReader({ mode: null })&quot; did not throw</pre></details><a class="self" href="#s-ae72934d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ae72934d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream with byte source (empty): calling getReader with invalid arguments should throw appropriate errors</span></div><a class="self" href="#s-ae72934d" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-02f02f1c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Running templatedRSEmptyReader with ReadableStream with byte source (empty) default reader</span></div><a class="self" href="#s-02f02f1c" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ecaca239"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream with byte source (empty) default reader: instances have the correct methods and properties</span></div><a class="self" href="#s-ecaca239" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ce668e18"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream with byte source (empty) default reader: locked should be true</span></div><a class="self" href="#s-ce668e18" aria-label="Link to this subtest">&para;</a></li>
@@ -73,11 +73,11 @@
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/streams/readable-byte-streams/templated.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>33</b> / 34</span></h3>
+<h3 class="run-head"><code>/streams/readable-byte-streams/templated.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>34</b> / 34</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-cd77afcd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Running templatedRSEmpty with ReadableStream with byte source (empty)</span></div><a class="self" href="#s-cd77afcd" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-b442ed7e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream with byte source (empty): instances have the correct methods and properties</span></div><a class="self" href="#s-b442ed7e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b4558ef9"><details><summary><span class="mark">FAIL</span><span class="sub-name">ReadableStream with byte source (empty): calling getReader with invalid arguments should throw appropriate errors</span></summary><pre class="msg">assert_throws_js: null mode should throw function &quot;() =&gt; rs.getReader({ mode: null })&quot; did not throw</pre></details><a class="self" href="#s-b4558ef9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b4558ef9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream with byte source (empty): calling getReader with invalid arguments should throw appropriate errors</span></div><a class="self" href="#s-b4558ef9" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-e03f41c3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Running templatedRSEmptyReader with ReadableStream with byte source (empty) default reader</span></div><a class="self" href="#s-e03f41c3" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-83778671"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream with byte source (empty) default reader: instances have the correct methods and properties</span></div><a class="self" href="#s-83778671" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-86546c24"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream with byte source (empty) default reader: locked should be true</span></div><a class="self" href="#s-86546c24" aria-label="Link to this subtest">&para;</a></li>

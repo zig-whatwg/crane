@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../html/"><code>html/</code></a></li><li><a href="../../../html/dom/"><code>dom/</code></a></li><li aria-current="page"><code>idlharness.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>idlharness.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="html/dom/idlharness.any.js">
-<p class="figures-main"><span class="fg-pass">778</span><span class="fg-of"> / 805</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>27</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">781</span><span class="fg-of"> / 805</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>24</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-ddd23ea1c2</code>, <span class="nowrap">16 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/ddd23ea1c2"><code>ddd23ea1c2</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-a781ab209a</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/a781ab209a"><code>a781ab209a</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/dom/idlharness.any.js"><code>html/<wbr>dom/<wbr>idlharness.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -48,9 +48,6 @@
 <li class="sub s-fail" id="s-fb3c7611"><details><summary><span class="mark">FAIL</span><span class="sub-name">WorkerGlobalScope interface: operation clearInterval(optional long)</span></summary><pre class="msg">assert_throws_js: calling operation with this = null didn&#39;t throw TypeError function &quot;function() {
             fn.apply(obj, args);
         }&quot; threw object &quot;NotSupportedError: This feature is not yet implemented&quot; (&quot;NotSupportedError&quot;) expected instance of function &quot;function TypeError() { [native code] }&quot; (&quot;TypeError&quot;)</pre></details><a class="self" href="#s-fb3c7611" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9fe2b0e8"><details><summary><span class="mark">FAIL</span><span class="sub-name">DedicatedWorkerGlobalScope interface: attribute name</span></summary><pre class="msg">assert_false: The prototype object should not have a property &quot;name&quot; expected false got true</pre></details><a class="self" href="#s-9fe2b0e8" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a5ae2701"><details><summary><span class="mark">FAIL</span><span class="sub-name">DedicatedWorkerGlobalScope interface: attribute onmessage</span></summary><pre class="msg">assert_false: The prototype object should not have a property &quot;onmessage&quot; expected false got true</pre></details><a class="self" href="#s-a5ae2701" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9d839f53"><details><summary><span class="mark">FAIL</span><span class="sub-name">DedicatedWorkerGlobalScope interface: attribute onmessageerror</span></summary><pre class="msg">assert_false: The prototype object should not have a property &quot;onmessageerror&quot; expected false got true</pre></details><a class="self" href="#s-9d839f53" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-715b987d"><details><summary><span class="mark">FAIL</span><span class="sub-name">WorkerGlobalScope interface: self must inherit property &quot;setTimeout(TimerHandler, optional long, any...)&quot; with the proper type</span></summary><pre class="msg">assert_inherits: property &quot;setTimeout&quot; found on object expected in prototype chain</pre></details><a class="self" href="#s-715b987d" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-7c90f851"><details><summary><span class="mark">FAIL</span><span class="sub-name">WorkerGlobalScope interface: calling setTimeout(TimerHandler, optional long, any...) on self with too few arguments must throw TypeError</span></summary><pre class="msg">assert_inherits: property &quot;setTimeout&quot; found on object expected in prototype chain</pre></details><a class="self" href="#s-7c90f851" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-06a23148"><details><summary><span class="mark">FAIL</span><span class="sub-name">WorkerGlobalScope interface: self must inherit property &quot;clearTimeout(optional long)&quot; with the proper type</span></summary><pre class="msg">assert_inherits: property &quot;clearTimeout&quot; found on object expected in prototype chain</pre></details><a class="self" href="#s-06a23148" aria-label="Link to this subtest">&para;</a></li>
@@ -71,7 +68,7 @@
 <li class="sub s-fail" id="s-d3f15c9f"><details><summary><span class="mark">FAIL</span><span class="sub-name">WorkerNavigator interface: self.navigator must not have property &quot;oscpu&quot;</span></summary><pre class="msg">assert_false: expected false got true</pre></details><a class="self" href="#s-d3f15c9f" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-4d960613"><details><summary><span class="mark">FAIL</span><span class="sub-name">WorkerNavigator interface: self.navigator must inherit property &quot;languages&quot; with the proper type</span></summary><pre class="msg">assert_true: Value should be array expected true got false</pre></details><a class="self" href="#s-4d960613" aria-label="Link to this subtest">&para;</a></li>
 </ol>
-<p class="omitted">778 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+<p class="omitted">781 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
 </div>
 </section>
 <footer class="foot">

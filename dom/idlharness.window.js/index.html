@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../dom/"><code>dom/</code></a></li><li aria-current="page"><code>idlharness.<wbr>window.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>idlharness.<wbr>window.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="dom/idlharness.window.js">
-<p class="figures-main"><span class="fg-pass">1,953</span><span class="fg-of"> / 1,979</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>26</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">1,956</span><span class="fg-of"> / 1,979</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>23</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-ddd23ea1c2</code>, <span class="nowrap">16 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/ddd23ea1c2"><code>ddd23ea1c2</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-a781ab209a</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/a781ab209a"><code>a781ab209a</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/dom/idlharness.window.js"><code>dom/<wbr>idlharness.<wbr>window.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -34,17 +34,11 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/dom/idlharness.window.html?exclude=Node</code> <span class="gate">OK</span> <span class="fcount"><b>1,340</b> / 1,366</span></h3>
+<h3 class="run-head"><code>/dom/idlharness.window.html?exclude=Node</code> <span class="gate">OK</span> <span class="fcount"><b>1,343</b> / 1,366</span></h3>
 <ol class="subtests">
 <li class="sub s-fail" id="s-a957c1f2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event interface: document.createEvent(&quot;Event&quot;) must have own property &quot;isTrusted&quot;</span></summary><pre class="msg">assert_own_property: expected property &quot;isTrusted&quot; missing</pre></details><a class="self" href="#s-a957c1f2" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-24335018"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event interface: new Event(&quot;foo&quot;) must have own property &quot;isTrusted&quot;</span></summary><pre class="msg">assert_own_property: expected property &quot;isTrusted&quot; missing</pre></details><a class="self" href="#s-24335018" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-d2e3032b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event interface: new CustomEvent(&quot;foo&quot;) must have own property &quot;isTrusted&quot;</span></summary><pre class="msg">assert_own_property: expected property &quot;isTrusted&quot; missing</pre></details><a class="self" href="#s-d2e3032b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-46479c9d"><details><summary><span class="mark">FAIL</span><span class="sub-name">EventTarget interface: operation addEventListener(DOMString, EventListener?, optional (AddEventListenerOptions or boolean))</span></summary><pre class="msg">assert_throws_js: calling operation with this = null didn&#39;t throw TypeError function &quot;function() {
-            fn.apply(obj, args);
-        }&quot; did not throw</pre></details><a class="self" href="#s-46479c9d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9cfd2d64"><details><summary><span class="mark">FAIL</span><span class="sub-name">EventTarget interface: operation removeEventListener(DOMString, EventListener?, optional (EventListenerOptions or boolean))</span></summary><pre class="msg">assert_throws_js: calling operation with this = null didn&#39;t throw TypeError function &quot;function() {
-            fn.apply(obj, args);
-        }&quot; did not throw</pre></details><a class="self" href="#s-9cfd2d64" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-774a6829"><details><summary><span class="mark">FAIL</span><span class="sub-name">ProcessingInstruction interface object length</span></summary><pre class="msg">assert_equals: wrong value for ProcessingInstruction.length expected 1 but got 0</pre></details><a class="self" href="#s-774a6829" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-814326b6"><details><summary><span class="mark">FAIL</span><span class="sub-name">ProcessingInstruction interface: operation hasAttributes()</span></summary><pre class="msg">assert_own_property: interface prototype object missing non-static operation expected property &quot;hasAttributes&quot; missing</pre></details><a class="self" href="#s-814326b6" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-2b1d57a4"><details><summary><span class="mark">FAIL</span><span class="sub-name">ProcessingInstruction interface: operation getAttributeNames()</span></summary><pre class="msg">assert_own_property: interface prototype object missing non-static operation expected property &quot;getAttributeNames&quot; missing</pre></details><a class="self" href="#s-2b1d57a4" aria-label="Link to this subtest">&para;</a></li>
@@ -65,9 +59,8 @@
 <li class="sub s-fail" id="s-77150803"><details><summary><span class="mark">FAIL</span><span class="sub-name">ProcessingInstruction interface: calling toggleAttribute(DOMString, optional boolean) on xmlDoc.createProcessingInstruction(&quot;abc&quot;, &quot;def&quot;) with too few arguments must throw TypeError</span></summary><pre class="msg">assert_inherits: property &quot;toggleAttribute&quot; not found in prototype chain</pre></details><a class="self" href="#s-77150803" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-efd19063"><details><summary><span class="mark">FAIL</span><span class="sub-name">ProcessingInstruction interface: xmlDoc.createProcessingInstruction(&quot;abc&quot;, &quot;def&quot;) must inherit property &quot;hasAttribute(DOMString)&quot; with the proper type</span></summary><pre class="msg">assert_inherits: property &quot;hasAttribute&quot; not found in prototype chain</pre></details><a class="self" href="#s-efd19063" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-37ca86f3"><details><summary><span class="mark">FAIL</span><span class="sub-name">ProcessingInstruction interface: calling hasAttribute(DOMString) on xmlDoc.createProcessingInstruction(&quot;abc&quot;, &quot;def&quot;) with too few arguments must throw TypeError</span></summary><pre class="msg">assert_inherits: property &quot;hasAttribute&quot; not found in prototype chain</pre></details><a class="self" href="#s-37ca86f3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-38aeeca9"><details><summary><span class="mark">FAIL</span><span class="sub-name">Window interface: attribute event</span></summary><pre class="msg">assert_false: The prototype object should not have a property &quot;event&quot; expected false got true</pre></details><a class="self" href="#s-38aeeca9" aria-label="Link to this subtest">&para;</a></li>
 </ol>
-<p class="omitted">1,340 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+<p class="omitted">1,343 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
 </div>
 <div class="run">
 <h3 class="run-head"><code>/dom/idlharness.window.html?include=Node</code> <span class="gate">OK</span> <span class="fcount"><b>613</b> / 613</span></h3>

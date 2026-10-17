@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../performance-timeline/"><code>performance-<wbr>timeline/</code></a></li><li aria-current="page"><code>droppedentriescount.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>droppedentriescount.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="performance-timeline/droppedentriescount.any.js">
-<p class="figures-main"><span class="fg-pass">6</span><span class="fg-of"> / 10</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>4</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">10</span><span class="fg-of"> / 10</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-ddd23ea1c2</code>, <span class="nowrap">16 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/ddd23ea1c2"><code>ddd23ea1c2</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-a781ab209a</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/a781ab209a"><code>a781ab209a</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/performance-timeline/droppedentriescount.any.js"><code>performance-<wbr>timeline/<wbr>droppedentriescount.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -34,23 +34,23 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/performance-timeline/droppedentriescount.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 5</span></h3>
+<h3 class="run-head"><code>/performance-timeline/droppedentriescount.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>5</b> / 5</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-c6eac70c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Dropped entries count is 0 when there are no dropped entries of relevant type.</span></div><a class="self" href="#s-c6eac70c" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-a8dbccda"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Dropped entries correctly counted with multiple types.</span></div><a class="self" href="#s-a8dbccda" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-fbf99596"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Dropped entries counted even if observer was not registered at the time.</span></div><a class="self" href="#s-fbf99596" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9f6e0537"><details><summary><span class="mark">FAIL</span><span class="sub-name">Dropped entries only surfaced on the first callback.</span></summary><pre class="msg">assert_equals: There should be two dropped entries right now. expected 2 but got 1</pre></details><a class="self" href="#s-9f6e0537" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b551130e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Dropped entries surfaced after an observe() call!</span></summary><pre class="msg">assert_equals: There should be droppedEntriesCount due to the new observe(). expected 2 but got 3</pre></details><a class="self" href="#s-b551130e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9f6e0537"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Dropped entries only surfaced on the first callback.</span></div><a class="self" href="#s-9f6e0537" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b551130e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Dropped entries surfaced after an observe() call!</span></div><a class="self" href="#s-b551130e" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/performance-timeline/droppedentriescount.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 5</span></h3>
+<h3 class="run-head"><code>/performance-timeline/droppedentriescount.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>5</b> / 5</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-d3dea71e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Dropped entries count is 0 when there are no dropped entries of relevant type.</span></div><a class="self" href="#s-d3dea71e" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-e834211d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Dropped entries correctly counted with multiple types.</span></div><a class="self" href="#s-e834211d" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-e5aaeef6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Dropped entries counted even if observer was not registered at the time.</span></div><a class="self" href="#s-e5aaeef6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d9c23173"><details><summary><span class="mark">FAIL</span><span class="sub-name">Dropped entries only surfaced on the first callback.</span></summary><pre class="msg">assert_equals: There should be two dropped entries right now. expected 2 but got 1</pre></details><a class="self" href="#s-d9c23173" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c618f820"><details><summary><span class="mark">FAIL</span><span class="sub-name">Dropped entries surfaced after an observe() call!</span></summary><pre class="msg">assert_equals: There should be droppedEntriesCount due to the new observe(). expected 2 but got 3</pre></details><a class="self" href="#s-c618f820" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d9c23173"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Dropped entries only surfaced on the first callback.</span></div><a class="self" href="#s-d9c23173" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c618f820"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Dropped entries surfaced after an observe() call!</span></div><a class="self" href="#s-c618f820" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

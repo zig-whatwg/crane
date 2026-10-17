@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../streams/"><code>streams/</code></a></li><li><a href="../../../streams/piping/"><code>piping/</code></a></li><li aria-current="page"><code>pipe-<wbr>through.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>pipe-<wbr>through.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="streams/piping/pipe-through.any.js">
-<p class="figures-main"><span class="fg-pass">84</span><span class="fg-of"> / 86</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">86</span><span class="fg-of"> / 86</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-ddd23ea1c2</code>, <span class="nowrap">16 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/ddd23ea1c2"><code>ddd23ea1c2</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-a781ab209a</code>, <span class="nowrap">17 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/a781ab209a"><code>a781ab209a</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/streams/piping/pipe-through.any.js"><code>streams/<wbr>piping/<wbr>pipe-<wbr>through.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -34,7 +34,7 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/streams/piping/pipe-through.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>42</b> / 43</span></h3>
+<h3 class="run-head"><code>/streams/piping/pipe-through.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>43</b> / 43</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-910ac2ee"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Piping through a duck-typed pass-through transform stream should work</span></div><a class="self" href="#s-910ac2ee" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-b9e99205"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Piping through a transform errored on the writable end does not cause an unhandled promise rejection</span></div><a class="self" href="#s-b9e99205" aria-label="Link to this subtest">&para;</a></li>
@@ -62,7 +62,7 @@
 <li class="sub s-pass" id="s-2317583f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">pipeThrough should brand-check writable and not allow &#39;WritableStream&#39;</span></div><a class="self" href="#s-2317583f" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-0494413e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">pipeThrough should brand-check writable and not allow &#39;[object WritableStream]&#39;</span></div><a class="self" href="#s-0494413e" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-3ba08ce6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">pipeThrough should rethrow errors from accessing readable or writable</span></div><a class="self" href="#s-3ba08ce6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-0585782a"><details><summary><span class="mark">FAIL</span><span class="sub-name">invalid values of signal should throw; specifically &#39;null&#39;</span></summary><pre class="msg">assert_throws_js: pipeThrough should throw function &quot;() =&gt; rs.pipeThrough(uninterestingReadableWritablePair(), { signal })&quot; did not throw</pre></details><a class="self" href="#s-0585782a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0585782a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">invalid values of signal should throw; specifically &#39;null&#39;</span></div><a class="self" href="#s-0585782a" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-648686cf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">invalid values of signal should throw; specifically &#39;0&#39;</span></div><a class="self" href="#s-648686cf" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-4e6db087"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">invalid values of signal should throw; specifically &#39;NaN&#39;</span></div><a class="self" href="#s-4e6db087" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-b2033ab6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">invalid values of signal should throw; specifically &#39;true&#39;</span></div><a class="self" href="#s-b2033ab6" aria-label="Link to this subtest">&para;</a></li>
@@ -82,7 +82,7 @@
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/streams/piping/pipe-through.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>42</b> / 43</span></h3>
+<h3 class="run-head"><code>/streams/piping/pipe-through.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>43</b> / 43</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-f3d55a03"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Piping through a duck-typed pass-through transform stream should work</span></div><a class="self" href="#s-f3d55a03" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ce3f09ea"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Piping through a transform errored on the writable end does not cause an unhandled promise rejection</span></div><a class="self" href="#s-ce3f09ea" aria-label="Link to this subtest">&para;</a></li>
@@ -110,7 +110,7 @@
 <li class="sub s-pass" id="s-b4985ac7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">pipeThrough should brand-check writable and not allow &#39;WritableStream&#39;</span></div><a class="self" href="#s-b4985ac7" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-f0f2b798"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">pipeThrough should brand-check writable and not allow &#39;[object WritableStream]&#39;</span></div><a class="self" href="#s-f0f2b798" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-d5c95d6c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">pipeThrough should rethrow errors from accessing readable or writable</span></div><a class="self" href="#s-d5c95d6c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-cedb00e0"><details><summary><span class="mark">FAIL</span><span class="sub-name">invalid values of signal should throw; specifically &#39;null&#39;</span></summary><pre class="msg">assert_throws_js: pipeThrough should throw function &quot;() =&gt; rs.pipeThrough(uninterestingReadableWritablePair(), { signal })&quot; did not throw</pre></details><a class="self" href="#s-cedb00e0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cedb00e0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">invalid values of signal should throw; specifically &#39;null&#39;</span></div><a class="self" href="#s-cedb00e0" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ab3ade4b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">invalid values of signal should throw; specifically &#39;0&#39;</span></div><a class="self" href="#s-ab3ade4b" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-a1d4cc72"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">invalid values of signal should throw; specifically &#39;NaN&#39;</span></div><a class="self" href="#s-a1d4cc72" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-53600893"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">invalid values of signal should throw; specifically &#39;true&#39;</span></div><a class="self" href="#s-53600893" aria-label="Link to this subtest">&para;</a></li>
