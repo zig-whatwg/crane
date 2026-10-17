@@ -483,6 +483,10 @@ pub const InternalRequest = struct {
     /// History navigation flag
     history_navigation: bool = false,
 
+    /// UIR 4.1 step 2.1: this navigation was initiated by a form submission,
+    /// including GET. Captured from HTML's navigation record.
+    form_submission: bool = false,
+
     /// User activation flag
     user_activation: bool = false,
 
@@ -755,24 +759,23 @@ pub const InternalRequest = struct {
 
     // === Clone ===
 
-    /// Clone a request.
-    /// Spec: https://fetch.spec.whatwg.org/#concept-request-clone
-    ///
-    /// 1. Let newRequest be a copy of request, except for its body.
-    /// 2. If request's body is non-null, set newRequest's body to the result
-    ///    of cloning request's body.
-    /// 3. Return newRequest.
-    pub fn clone(self: *Self) !*Self {
+    /// Make an initialized copy whose remaining owned fields start empty.
+    /// Each allocation before the literal unwinds independently; after it,
+    /// deinit can release precisely the owned parts copied so far.
+    fn cloneShallow(self: *Self) !*Self {
         const partition = if (self.network_partition_key) |key| try self.allocator.dupe(u8, key) else null;
         errdefer if (partition) |key| self.allocator.free(key);
+        const method = try self.allocator.dupe(u8, self.method);
+        errdefer self.allocator.free(method);
+        var cloned_headers = try self.header_list.clone(self.allocator);
+        errdefer cloned_headers.deinit();
         const new_request = try self.allocator.create(Self);
-        errdefer self.allocator.destroy(new_request);
 
         // Copy all fields
         new_request.* = .{
             .allocator = self.allocator,
-            .method = try self.allocator.dupe(u8, self.method),
-            .header_list = try self.header_list.clone(self.allocator),
+            .method = method,
+            .header_list = cloned_headers,
             .body = null, // Handle body separately
             .client = self.client,
             .prohibits_mixed_security_contexts = self.prohibits_mixed_security_contexts,
@@ -815,6 +818,7 @@ pub const InternalRequest = struct {
             .parser_metadata = self.parser_metadata,
             .reload_navigation = self.reload_navigation,
             .history_navigation = self.history_navigation,
+            .form_submission = self.form_submission,
             .user_activation = self.user_activation,
             .render_blocking = self.render_blocking,
             .local_urls_only = self.local_urls_only,
@@ -826,6 +830,19 @@ pub const InternalRequest = struct {
             .done = self.done,
             .timing_allow_failed = self.timing_allow_failed,
         };
+        return new_request;
+    }
+
+    /// Clone a request.
+    /// Spec: https://fetch.spec.whatwg.org/#concept-request-clone
+    ///
+    /// 1. Let newRequest be a copy of request, except for its body.
+    /// 2. If request's body is non-null, set newRequest's body to the result
+    ///    of cloning request's body.
+    /// 3. Return newRequest.
+    pub fn clone(self: *Self) !*Self {
+        const new_request = try self.cloneShallow();
+        errdefer new_request.deinit();
 
         // The referrer, when it is a URL, is owned per request.
         if (self.referrer == .url) try new_request.setReferrerUrl(self.referrer.url);
@@ -833,7 +850,10 @@ pub const InternalRequest = struct {
         if (self.origin_owned and self.origin == .origin) try new_request.setOrigin(self.origin.origin);
         // And a policy container.
         if (self.policy_container == .container) {
-            new_request.policy_container = .{ .container = try self.policy_container.container.clone(self.allocator) };
+            // Stage the owned union payload before publishing its tag:
+            // result-location initialization can expose it before try fails.
+            const cloned_container = try self.policy_container.container.clone(self.allocator);
+            new_request.policy_container = .{ .container = cloned_container };
         }
 
         // So is non-empty integrity metadata: `deinit` frees it, and a shared
@@ -846,15 +866,21 @@ pub const InternalRequest = struct {
         // Clone URL list
         for (self.url_list.items) |url| {
             const owned = try self.allocator.dupe(u8, url);
-            try new_request.url_list.append(self.allocator, owned);
+            new_request.url_list.append(self.allocator, owned) catch |err| {
+                self.allocator.free(owned);
+                return err;
+            };
         }
 
         // Clone body if present
         if (self.body) |b| {
-            new_request.body = switch (b) {
+            // Keep the optional body empty until its union payload exists,
+            // so the request's errdefer always sees a destructible value.
+            const cloned_body: RequestBody = switch (b) {
                 .bytes => |bytes| .{ .bytes = bytes },
                 .body => |body| .{ .body = try body.clone(self.allocator) },
             };
+            new_request.body = cloned_body;
         }
 
         return new_request;

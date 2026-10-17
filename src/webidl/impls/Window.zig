@@ -487,6 +487,7 @@ pub fn installHooks() void {
         .trusted_types = &settingsTrustedTypes,
         .cookie_jar = &settingsCookieJar,
         .policy_container = &settingsPolicyContainer,
+        .referrer_source = &settingsReferrerSource,
         .reporting = &settingsReporting,
         .fetch_group = &settingsFetchGroup,
         .prohibits_mixed_security_contexts = &settingsProhibitsMixedSecurityContexts,
@@ -624,6 +625,28 @@ fn settingsPolicyContainer(instance: *runtime.Instance) ?*const @import("fetch")
     const internal = getInternal(instance) orelse return null;
     const document = internal.document orelse return null;
     return @import("dom").policy_containers.of(document);
+}
+
+/// Referrer Policy 8.3 step 3.1.3: while the document is srcdoc, use its
+/// container's node document. Borrow the first non-srcdoc document URL;
+/// neither a base element nor the opaque-origin rule changes this walk.
+fn settingsReferrerSource(instance: *runtime.Instance) ?[]const u8 {
+    var window = instance;
+    var source = window.ctx.documentUrl() orelse return null;
+    while (std.mem.eql(u8, source, "about:srcdoc") or std.mem.startsWith(u8, source, "about:srcdoc#")) {
+        const internal = getInternal(window) orelse break;
+        if (internal.document == null) break;
+        const navigable = navigableOf(window, internal) orelse break;
+        const parent = navigable.parent orelse break;
+        const active = parent.getActiveWindow() orelse break;
+        const parent_window: *runtime.Instance = @ptrCast(@alignCast(active));
+        const parent_internal = getInternal(parent_window) orelse break;
+        if (parent_internal.document == null) break;
+        const parent_url = parent_window.ctx.documentUrl() orelse break;
+        window = parent_window;
+        source = parent_url;
+    }
+    return source;
 }
 
 fn settingsIsSecureContext(instance: *runtime.Instance) bool {

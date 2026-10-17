@@ -56,11 +56,18 @@ pub const PolicyContainer = struct {
     /// - `upgradesInsecureRequests`.
     inherited_upgrade_insecure_requests: bool = false,
 
+    /// UIR 3.3: inherited upgrade-insecure-navigations (host, port) tuples.
+    /// Each host is OWNED. Own opt-ins are derived from enforced policies'
+    /// delivery URLs, so an uninherited set adds no allocation.
+    inherited_upgrade_insecure_navigations: std.ArrayListUnmanaged(NavigationUpgrade) = .empty,
+
     /// "A referrer policy, which is a referrer policy. It is initially the
     /// default referrer policy." The empty string is one too: "create a policy
     /// container from a fetch response" leaves it empty when the response
     /// names none, and main fetch then falls back to the default.
     referrer_policy: ReferrerPolicy = .strict_origin_when_cross_origin,
+
+    const NavigationUpgrade = struct { host: []const u8, port: ?u16 };
 
     /// A new policy container: every policy at its initial value.
     pub fn init(allocator: Allocator) PolicyContainer {
@@ -80,6 +87,15 @@ pub const PolicyContainer = struct {
         // 4. Set clone's referrer policy to policyContainer's referrer policy.
         copy.referrer_policy = self.referrer_policy;
         copy.inherited_upgrade_insecure_requests = self.inherited_upgrade_insecure_requests;
+        if (self.inherited_upgrade_insecure_navigations.items.len != 0) {
+            try copy.inherited_upgrade_insecure_navigations.ensureTotalCapacity(allocator, self.inherited_upgrade_insecure_navigations.items.len);
+            for (self.inherited_upgrade_insecure_navigations.items) |tuple| {
+                copy.inherited_upgrade_insecure_navigations.appendAssumeCapacity(.{
+                    .host = try allocator.dupe(u8, tuple.host),
+                    .port = tuple.port,
+                });
+            }
+        }
         // 5. Copy the integrity policy. DEVIATION from HTML's clone step 5,
         // which copies only the enforced policy: the report-only policy is
         // copied too, because SRI §3.8.2 step 6 reads it from the request's
@@ -99,6 +115,8 @@ pub const PolicyContainer = struct {
         if (self.integrity_policy) |policy| policy.deinit();
         if (self.integrity_policy_report_only) |policy| policy.deinit();
         if (self.required_csp) |required| self.allocator.free(required);
+        for (self.inherited_upgrade_insecure_navigations.items) |tuple| self.allocator.free(tuple.host);
+        self.inherited_upgrade_insecure_navigations.deinit(self.allocator);
         self.* = undefined;
     }
 
@@ -166,6 +184,59 @@ pub const PolicyContainer = struct {
             if (policy.disposition == .enforce and policy.containsDirective("upgrade-insecure-requests")) return true;
         }
         return false;
+    }
+
+    /// UIR 3.3: snapshot the parent's inherited and own navigation opt-ins.
+    /// An empty or already-inherited set allocates nothing. On failure, the
+    /// caller must discard this partial container rather than commit it.
+    pub fn inheritUpgradeInsecureNavigations(self: *PolicyContainer, parent: *const PolicyContainer) error{OutOfMemory}!void {
+        for (parent.inherited_upgrade_insecure_navigations.items) |tuple| try self.appendNavigationUpgrade(tuple);
+        for (parent.csp_list.policies.items) |*policy| {
+            if (ownNavigationUpgrade(policy)) |tuple| try self.appendNavigationUpgrade(tuple);
+        }
+    }
+
+    /// UIR 4.1 steps 2.3-2.4: test the canonical request URL's host and
+    /// port without allocating. Only top-level navigation asks this.
+    /// Gecko compares principals after http->https and WebKit compares
+    /// http-ified origins, both preserving nondefault ports; follow the
+    /// spec's pair, rather than Blink's host-only set (no newer spec).
+    pub fn upgradesNavigationTo(self: *const PolicyContainer, url: []const u8) bool {
+        const tuple = navigationUpgradeOf(url) orelse return false;
+        for (self.inherited_upgrade_insecure_navigations.items) |inherited| {
+            if (sameNavigationUpgrade(inherited, tuple)) return true;
+        }
+        for (self.csp_list.policies.items) |*policy| {
+            if (ownNavigationUpgrade(policy)) |own| {
+                if (sameNavigationUpgrade(own, tuple)) return true;
+            }
+        }
+        return false;
+    }
+
+    fn appendNavigationUpgrade(self: *PolicyContainer, tuple: NavigationUpgrade) error{OutOfMemory}!void {
+        for (self.inherited_upgrade_insecure_navigations.items) |existing| {
+            if (sameNavigationUpgrade(existing, tuple)) return;
+        }
+        const host = try self.allocator.dupe(u8, tuple.host);
+        errdefer self.allocator.free(host);
+        try self.inherited_upgrade_insecure_navigations.append(self.allocator, .{ .host = host, .port = tuple.port });
+    }
+
+    /// UIR 3.1 steps 3-4: only enforcement opts the protected resource in.
+    fn ownNavigationUpgrade(policy: *const csp.Policy) ?NavigationUpgrade {
+        if (policy.disposition != .enforce or !policy.containsDirective("upgrade-insecure-requests")) return null;
+        return navigationUpgradeOf(policy.delivery_url orelse return null);
+    }
+
+    /// Borrow the tuple of an already-parsed, serialized URL.
+    fn navigationUpgradeOf(url: []const u8) ?NavigationUpgrade {
+        const parts = @import("../algorithms/csp_check.zig").urlParts(url);
+        return .{ .host = parts.host orelse return null, .port = parts.port };
+    }
+
+    fn sameNavigationUpgrade(a: NavigationUpgrade, b: NavigationUpgrade) bool {
+        return a.port == b.port and std.mem.eql(u8, a.host, b.host);
     }
 };
 

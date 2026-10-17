@@ -99,10 +99,19 @@ pub const ReferrerPolicy = enum {
 
 /// Parse Referrer-Policy header value.
 ///
-/// Spec: § 4.3 "Parse a referrer policy from a Referrer-Policy header"
+/// Spec: § 8.1 "Parse a referrer policy from a Referrer-Policy header"
 ///
 /// The header can contain comma-separated values for fallback.
 /// Returns the LAST valid policy in the list, or null if none valid.
+///
+/// DEVIATION: 8.1 step 1 uses Fetch's "extract header list values", which
+/// fails the whole header on an ABNF-invalid value such as "origin
+/// no-referrer". Preserve earlier valid members, following the browser
+/// majority, no newer spec: at WPT cc74d2669f,
+/// generic/multiple-headers-one-invalid.html is Chrome 154 1/1, Firefox 157
+/// 0/1 and Safari 27 0/1; Firefox/Safari keep "origin", as this parser does.
+/// The failure-on-invalid rule predates the test (2017 CR and the editorial
+/// extract-hook change w3c/webappsec-referrer-policy 72c085bb59).
 ///
 /// Example: "no-referrer, strict-origin" -> returns .strict_origin
 pub fn parseReferrerPolicyHeader(header_value: []const u8) ?ReferrerPolicy {

@@ -1583,6 +1583,8 @@ fn startFetch(record: *Navigation) void {
         // destroy terminates it.
         if (record.csp_reporter) |*reporter| request.csp_violation_reporter = reporter.reporter();
         request.prohibits_mixed_security_contexts = record.prohibits_mixed_security_contexts;
+        // UIR 4.1 step 2.1: GET and POST form navigations both qualify.
+        request.form_submission = record.csp_navigation_type == .form_submission;
         // "Create navigation params by fetching" step 3: "If
         // sourceSnapshotParams's fetch client is navigable's container
         // document's relevant settings object, then set request's initiator
@@ -1842,6 +1844,13 @@ fn runCommit(context: ?*anyopaque) void {
     // A network error's document is "inline content that doesn't have a
     // DOM", whose final sandboxing flag set is empty.
     var params_container = navigationParamsPolicyContainer(integration, record, response);
+    // Fail closed: no document may commit without its security policies.
+    // The record's existing defer releases it before any unload or realm
+    // change can occur, and the old document stays active.
+    if (params_container == null) {
+        integration.ongoing_navigation = .none;
+        return endLoadDelay(integration);
+    }
     var params_container_taken = false;
     defer if (!params_container_taken) {
         if (params_container) |*container| container.deinit();
@@ -2050,7 +2059,7 @@ fn reservedEnvironmentIsSecure(browsing_context: *html_core.BrowsingContext, url
 
 /// HTML "determine navigation params policy container" for the document
 /// `record`'s navigation makes from `response`, owned by the caller; null
-/// when it could not be made (out of memory: the document keeps a new one).
+/// on out of memory - the navigation is abandoned.
 ///
 /// Step 1's history policy container is the traversed entry's document
 /// state's (about: and data: documents keep one); step 3's initiator is the
@@ -2132,6 +2141,13 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
     if (containerDocumentOf(integration)) |parent| {
         if (dom_module.policy_containers.of(parent)) |container| {
             if (container.upgradesInsecureRequests()) result.inherited_upgrade_insecure_requests = true;
+            // UIR 3.3: the new document owns a snapshot of the parent's
+            // inherited and own navigation opt-ins, independent of later
+            // policy changes in that parent.
+            result.inheritUpgradeInsecureNavigations(container) catch {
+                result.deinit();
+                return null;
+            };
         }
     }
     return result;

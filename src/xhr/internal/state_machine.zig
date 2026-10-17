@@ -282,6 +282,8 @@ pub const XMLHttpRequestState = struct {
             // Borrowed, as the jar: the client's Browser's network.
             .network = client.network,
             .policy_container = policy_container,
+            // Mixed Content 4.3: preserve the client's settings answer.
+            .prohibits_mixed_security_contexts = client.prohibits_mixed_security_contexts,
             // Borrowed, as the client's: the global the request's CSP
             // violations go to (CSP 2.4.2).
             .csp_violation_reporter = client.csp_violation_reporter,

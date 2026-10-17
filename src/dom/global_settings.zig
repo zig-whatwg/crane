@@ -62,6 +62,9 @@ pub const Settings = struct {
     /// associated Document's, a WorkerGlobalScope's own. Borrowed; null where
     /// the global has none.
     policy_container: ?*const fn (global: *runtime.Instance) ?*const fetch.internal.PolicyContainer = null,
+    /// Referrer Policy 8.3's client source. BORROWED, valid only for the
+    /// requestClient call. An absent hook uses the realm's documentUrl().
+    referrer_source: ?*const fn (global: *runtime.Instance) ?[]const u8 = null,
     /// The global's native Reporting queues and observer registrations.
     reporting: ?*const fn (global: *runtime.Instance) ?*@import("reporting.zig").State = null,
     /// The settings object's fetch group (Fetch 2.4): its in-flight
@@ -197,9 +200,9 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     }
     // Fetch "determine the network partition key": the top-level site.
     if (settings.top_level_site) |site_of| client.request.top_level_site = try site_of(global);
-    // The referrer source: the realm's document URL - a worker realm's is
-    // its creation URL.
-    client.request.referrer_source = global.ctx.documentUrl();
+    // A srcdoc Window walks to its ancestor document; a worker's realm
+    // document URL is already its creation URL (Referrer Policy 8.3).
+    client.request.referrer_source = if (settings.referrer_source) |source_of| source_of(global) else global.ctx.documentUrl();
     // A Window stands in for its navigable's traversable.
     if (std.mem.eql(u8, global.vtable.name, "Window")) client.request.traversable = @ptrCast(global);
     client.request.cookie_jar = cookieJarOf(global);
