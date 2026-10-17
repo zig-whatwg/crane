@@ -1081,8 +1081,13 @@ pub fn registerNamespacesGeneric(
                 }
             }
 
-            // Make namespace object non-extensible (per WebIDL spec)
-            _ = v8.v8_Object_PreventExtensions(@ptrCast(ns_obj), context);
+            // The namespace object stays an ordinary, extensible object
+            // (WebIDL 3.13.1: OrdinaryObjectCreate, then its attributes,
+            // operations and constants - each configurable). It used to be
+            // sealed here (v8_Object_PreventExtensions seals), which made
+            // every operation and attribute non-configurable; idlharness
+            // asserts Object.isExtensible(namespaceObject) and configurable
+            // members, as Chrome, Firefox and Safari have them.
         }
     }
 }
