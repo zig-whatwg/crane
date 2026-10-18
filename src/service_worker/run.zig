@@ -230,9 +230,13 @@ fn managerOf(ctx: *anyopaque) *Manager {
     return @ptrCast(@alignCast(ctx));
 }
 
-/// Run Service Worker step 9.7, from the worker's thread.
-fn evaluated(manager: *anyopaque, worker_id: u64, ok: bool) void {
-    managerOf(manager).report(.{ .evaluated = .{ .worker = worker_id, .ok = ok } });
+/// Run Service Worker step 9.7, from the worker's thread - with what step
+/// 9.8's set of event types to handle needs of the global's event listeners,
+/// read now, after the script ran (the registry keeps it only the first
+/// time, when the script's has ever been evaluated flag is unset).
+fn evaluated(manager: *anyopaque, worker_id: u64, ok: bool, global: ?*runtime.Instance) void {
+    const handles_fetch = if (global) |g| dom.event_listener_types.hasListenersOfType(g, "fetch") else false;
+    managerOf(manager).report(.{ .evaluated = .{ .worker = worker_id, .ok = ok, .handles_fetch = handles_fetch } });
 }
 
 /// importScripts() in a service worker (6.3.2): the fetch hook's steps for

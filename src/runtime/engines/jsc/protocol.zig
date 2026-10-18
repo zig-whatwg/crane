@@ -154,6 +154,10 @@ pub fn defineBuiltinFunction(_: Context, _: []const u8, _: u32, _: *const engine
     return error.NotSupported;
 }
 
+pub fn globalBuiltinFunction(_: Context, _: []const u8, _: []const u8, _: u32, _: *const engine.BuiltinFunction) Error!engine.Owned {
+    return error.NotSupported;
+}
+
 // 4.3 Running script
 pub fn runClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, _: ?*anyopaque, _: engine.Reporter) Error!void {
     return error.NotSupported;

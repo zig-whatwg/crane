@@ -487,6 +487,7 @@ pub fn installHooks() void {
         .trusted_types = &settingsTrustedTypes,
         .cookie_jar = &settingsCookieJar,
         .policy_container = &settingsPolicyContainer,
+        .referrer_source = &settingsReferrerSource,
         .reporting = &settingsReporting,
         .fetch_group = &settingsFetchGroup,
         .prohibits_mixed_security_contexts = &settingsProhibitsMixedSecurityContexts,
@@ -624,6 +625,28 @@ fn settingsPolicyContainer(instance: *runtime.Instance) ?*const @import("fetch")
     const internal = getInternal(instance) orelse return null;
     const document = internal.document orelse return null;
     return @import("dom").policy_containers.of(document);
+}
+
+/// Referrer Policy 8.3 step 3.1.3: while the document is srcdoc, use its
+/// container's node document. Borrow the first non-srcdoc document URL;
+/// neither a base element nor the opaque-origin rule changes this walk.
+fn settingsReferrerSource(instance: *runtime.Instance) ?[]const u8 {
+    var window = instance;
+    var source = window.ctx.documentUrl() orelse return null;
+    while (std.mem.eql(u8, source, "about:srcdoc") or std.mem.startsWith(u8, source, "about:srcdoc#")) {
+        const internal = getInternal(window) orelse break;
+        if (internal.document == null) break;
+        const navigable = navigableOf(window, internal) orelse break;
+        const parent = navigable.parent orelse break;
+        const active = parent.getActiveWindow() orelse break;
+        const parent_window: *runtime.Instance = @ptrCast(@alignCast(active));
+        const parent_internal = getInternal(parent_window) orelse break;
+        if (parent_internal.document == null) break;
+        const parent_url = parent_window.ctx.documentUrl() orelse break;
+        window = parent_window;
+        source = parent_url;
+    }
+    return source;
 }
 
 fn settingsIsSecureContext(instance: *runtime.Instance) bool {
@@ -3575,36 +3598,55 @@ pub fn call_prompt(instance: *runtime.Instance, message: webidl.Opt(runtime.DOMS
     return null;
 }
 
-/// Operation: getComputedStyle
-/// Per CSSOM spec: Returns the computed style of an element.
-/// https://drafts.csswg.org/cssom/#dom-window-getcomputedstyle
+/// Operation: getComputedStyle (CSSOM 7.2)
+/// https://drafts.csswg.org/cssom-1/#dom-window-getcomputedstyle
 ///
-/// Returns a CSSStyleDeclaration that reflects computed values based on
-/// the element type. This is a minimal implementation for WPT tests.
+/// Steps 1-3 here; steps 4-5 - which declarations, and their resolved
+/// values - are the returned object's, which reads them live on every
+/// access (CSSStyleDeclaration's `computed` kind, through dom.style).
 pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance, pseudoElt: webidl.Opt(?typedefs.CSSOMString)) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    _ = pseudoElt; // Would be used for pseudo-element computed styles
+    // 2. "Let obj be elt."
+    var target: @import("dom").style.ComputedFor = .{ .element = elt };
+    var name_buffer: [64]u8 = undefined;
+    // 3. "If pseudoElt is provided, is not the empty string, and starts with
+    // a colon": parse it as a <pseudo-element-selector>; failure, ::slotted()
+    // or ::part() makes obj null; otherwise obj is that pseudo-element.
+    if (pseudoElt.wasPassed()) if (pseudoElt.getValue()) |given| {
+        const text = given.asSlice();
+        if (text.len > 0 and text[0] == ':') {
+            if (pseudoElementName(internal.allocator, text, &name_buffer)) |name| {
+                target.pseudo = name;
+            } else target.no_object = true;
+        }
+    };
+    // 6. "Return a live CSSStyleProperties object" - computed and readonly,
+    // its owner node obj.
+    return interfaces.CSSStyleProperties.initWith(internal.allocator, instance.ctx, .{ .computed_for = target });
+}
 
-    // Create a CSSStyleDeclaration instance for the computed style
-    // Per CSSOM spec, getComputedStyle returns a live CSSStyleDeclaration
-    // that reflects the computed values of an element.
-    //
-    // We use initForComputedStyle to associate the element with the style
-    // declaration, enabling element-type-based default values for properties
-    // like 'display'.
-    const CSSStyleDeclaration = interfaces.CSSStyleDeclaration;
-    const CSSStyleDeclarationImpl = @import("CSSStyleDeclaration.zig");
-
-    const css_instance = try CSSStyleDeclarationImpl.initForComputedStyle(
-        internal.allocator,
-        CSSStyleDeclaration.State,
-        &CSSStyleDeclaration.vtable,
-        instance.ctx,
-        elt,
-    );
-
-    log.debug("[DEBUG] getComputedStyle returning instance={*}\n", .{css_instance});
-    return css_instance;
+/// The pseudo-element `text` names when it parses as a
+/// <pseudo-element-selector> - lowercase, no colons, into `buffer` - or
+/// null (and for ::slotted() and ::part(), which getComputedStyle does not
+/// take). CSS 2's single-colon forms count (CSSOM 7.2 step 3's note).
+fn pseudoElementName(allocator: std.mem.Allocator, text: []const u8, buffer: []u8) ?[]const u8 {
+    const selector = @import("selector");
+    var list = selector.parse(allocator, text) catch return null;
+    defer list.deinit();
+    if (list.selectors.len != 1) return null;
+    const complex = &list.selectors[0];
+    if (complex.combinators.len != 0) return null;
+    var name: ?[]const u8 = null;
+    for (complex.compound.simple_selectors) |*simple| switch (simple.*) {
+        .PseudoElement => |p| name = p.name,
+        // Only the implicit universal selector may stand beside it.
+        .Universal => {},
+        else => return null,
+    };
+    const found = name orelse return null;
+    if (std.ascii.eqlIgnoreCase(found, "slotted") or std.ascii.eqlIgnoreCase(found, "part")) return null;
+    if (found.len > buffer.len) return null;
+    return std.ascii.lowerString(buffer[0..found.len], found);
 }
 
 /// Operation: cancelAnimationFrame

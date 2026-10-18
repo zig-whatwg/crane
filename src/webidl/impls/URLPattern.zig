@@ -48,6 +48,19 @@ pub const InternalState = struct {
     }
 };
 
+/// dom.url_patterns: a URLPattern object's associated URL pattern, for the
+/// algorithms of other specifications that take a URLPatternCompatible
+/// (Service Workers' Parse URL Pattern).
+pub fn installHooks() void {
+    @import("dom").url_patterns.install(&associatedPattern);
+}
+
+fn associatedPattern(instance: *runtime.Instance) ?*const anyopaque {
+    const state = instance.stateAs(State) orelse return null;
+    const internal = state.own._internal orelse return null;
+    return @ptrCast(&internal.pattern);
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,

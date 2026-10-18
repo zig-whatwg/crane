@@ -1043,6 +1043,20 @@ pub inline fn defineBuiltinFunction(realm: Context, function_name: []const u8, l
     return impl.defineBuiltinFunction(realm, function_name, length, function);
 }
 
+/// ECMAScript CreateBuiltinFunction(steps, length, name, « », realm) for a
+/// function `realm`'s global object is associated with - Streams 7.2.2 and
+/// 7.3.2, a global object's byte length and count queuing strategy size
+/// functions: made on the first call for `key`, then kept by the global
+/// object for the realm's life (an edge from it, never a root), so every
+/// call for `key` answers the same function. Not a constructor; no
+/// "prototype" property; `function_name` and `length` are its "name" and
+/// "length". `function` BORROWED for the realm's life (a static). OWNED: a
+/// hold of the function. An engine that cannot make one answers
+/// error.NotSupported.
+pub inline fn globalBuiltinFunction(realm: Context, key: []const u8, function_name: []const u8, length: u32, function: *const BuiltinFunction) Error!Owned {
+    return impl.globalBuiltinFunction(realm, key, function_name, length, function);
+}
+
 // ============================================================================
 // 4.3 Running script (HTML 8.1.4)
 // ============================================================================

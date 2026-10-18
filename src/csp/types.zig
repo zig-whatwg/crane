@@ -412,6 +412,16 @@ pub const CSPList = struct {
     /// Optimization flag for quick header check
     contains_header_policy: bool = false,
 
+    /// A policy that belongs in the list could not be recorded - its parse
+    /// or its append ran out of memory (a `<meta http-equiv=
+    /// Content-Security-Policy>`, HTMLMetaElement). The list then must not
+    /// be read as allowing what that policy might have blocked, so every
+    /// decision against it is "Blocked": it fails CLOSED. A flag, set
+    /// without allocating, and copied with the list (parsing.copyList), so
+    /// the documents and workers that inherit a clone of it fail closed too.
+    /// Every decision entry point in src/csp checks it (`blocksEverything`).
+    unenforceable: bool = false,
+
     const Self = @This();
 
     pub fn init(allocator: std.mem.Allocator) Self {
@@ -446,9 +456,23 @@ pub const CSPList = struct {
         return false;
     }
 
-    /// Check if CSP list is empty
+    /// Check if CSP list is empty: no policy, and none that could not be
+    /// recorded. An unenforceable list is never empty - a caller's "no
+    /// policies, nothing to check" fast path must not skip it.
     pub fn isEmpty(self: *const Self) bool {
-        return self.policies.items.len == 0;
+        return self.policies.items.len == 0 and !self.unenforceable;
+    }
+
+    /// A policy could not be recorded (out of memory): from now on every
+    /// decision against the list is "Blocked". Allocation-free.
+    pub fn markUnenforceable(self: *Self) void {
+        self.unenforceable = true;
+    }
+
+    /// Whether every decision against the list is "Blocked" without reading
+    /// its policies (`unenforceable`).
+    pub fn blocksEverything(self: *const Self) bool {
+        return self.unenforceable;
     }
 
     pub fn deinit(self: *Self) void {

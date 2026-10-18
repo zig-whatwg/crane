@@ -118,6 +118,11 @@ pub const InternalState = struct {
     /// the flags below do not see that, the generation does.
     named_node_map_generation: u64 = 0,
 
+    /// The element's style state (dom.style.ElementStyle): its style
+    /// attribute's declaration block and its cached computed style. Made on
+    /// first use, freed with this state (lane style1).
+    style: ?*dom.style.ElementStyle = null,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -127,6 +132,8 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
+        if (self.style) |style_state| style_state.destroy();
+        self.style = null;
         if (self.custom_element_definition) |definition| definition.deinit();
         self.slot.deinit(self.allocator);
         if (self.is_value) |*v| {
@@ -214,6 +221,8 @@ pub fn installHooks() void {
     // the tree's own algorithms (the selector matcher, getElementById, the
     // HTML elements' reflection, the CSSOM).
     dom.element_data.install(.{ .of = &dataOf });
+    // The element's style state, which the style engine keeps in it.
+    dom.style.hooks.install(.{ .element_style_slot = &styleSlotOf });
     // The parsers' "create an element" sets names through `dom.node_creation`.
     dom.node_creation.installElement(.{ .set_names = &setNamesHook, .is_value = &isValueHook, .names = &namesHook });
     dom.shadow_hosts.install(.{ .root_for_host = &shadowRootOf });
@@ -1304,77 +1313,27 @@ fn existingAttrNodeAtHook(element: *runtime.Instance, index: usize) ?*runtime.In
 // Insert Adjacent Algorithm (DOM §4.10.7)
 // =============================================================================
 
-/// InsertAdjacent error type
-const InsertAdjacentError = error{
-    SyntaxError,
-    InvalidStateError,
-};
-
-/// Insert adjacent algorithm - shared by insertAdjacentElement and insertAdjacentText
-/// Spec: https://dom.spec.whatwg.org/#insert-adjacent
-///
-/// To insert adjacent, given an element element, string where, and a node node:
-/// 1. If where is "beforebegin": If element's parent is null, return null.
-///    Otherwise, return pre-insert node into element's parent before element.
-/// 2. If where is "afterbegin": Return pre-insert node into element before element's first child.
-/// 3. If where is "beforeend": Return pre-insert node into element before null.
-/// 4. If where is "afterend": If element's parent is null, return null.
-///    Otherwise, return pre-insert node into element's parent before element's next sibling.
-/// 5. Otherwise: Throw a "SyntaxError" DOMException.
-fn insertAdjacent(
-    element: *runtime.Instance,
-    where: []const u8,
-    node: *runtime.Instance,
-) InsertAdjacentError!?*runtime.Instance {
-    // Case-insensitive comparison per spec
+/// DOM insert adjacent, shared by insertAdjacentElement and insertAdjacentText.
+/// https://dom.spec.whatwg.org/#insert-adjacent
+fn insertAdjacent(element: *runtime.Instance, where: []const u8, node: *runtime.Instance) anyerror!?*runtime.Instance {
+    // Each case returns pre-insert's result, including its hierarchy errors.
     if (std.ascii.eqlIgnoreCase(where, "beforebegin")) {
-        // Insert before this element (requires parent)
-        const parent = (interfaces.Node.get_parentNode(element) catch null) orelse return null;
-
-        // Insert node into parent before element
-        _ = interfaces.Node.call_insertBefore(parent, node, element) catch {
-            return error.InvalidStateError;
-        };
-        return node;
+        // Step 1: before element in its parent, or null without a parent.
+        const parent = (try interfaces.Node.get_parentNode(element)) orelse return null;
+        return try interfaces.Node.call_insertBefore(parent, node, element);
     } else if (std.ascii.eqlIgnoreCase(where, "afterbegin")) {
-        // Insert as first child of this element
-        const first_child = interfaces.Node.get_firstChild(element) catch null;
-
-        if (first_child) |fc| {
-            _ = interfaces.Node.call_insertBefore(element, node, fc) catch {
-                return error.InvalidStateError;
-            };
-        } else {
-            _ = interfaces.Node.call_appendChild(element, node) catch {
-                return error.InvalidStateError;
-            };
-        }
-        return node;
+        // Step 2: before element's first child.
+        return try interfaces.Node.call_insertBefore(element, node, try interfaces.Node.get_firstChild(element));
     } else if (std.ascii.eqlIgnoreCase(where, "beforeend")) {
-        // Insert as last child of this element
-        _ = interfaces.Node.call_appendChild(element, node) catch {
-            return error.InvalidStateError;
-        };
-        return node;
+        // Step 3: before null in element.
+        return try interfaces.Node.call_insertBefore(element, node, null);
     } else if (std.ascii.eqlIgnoreCase(where, "afterend")) {
-        // Insert after this element (requires parent)
-        const parent = (interfaces.Node.get_parentNode(element) catch null) orelse return null;
-        const next_sibling = interfaces.Node.get_nextSibling(element) catch null;
-
-        if (next_sibling) |ns| {
-            _ = interfaces.Node.call_insertBefore(parent, node, ns) catch {
-                return error.InvalidStateError;
-            };
-        } else {
-            _ = interfaces.Node.call_appendChild(parent, node) catch {
-                return error.InvalidStateError;
-            };
-        }
-        return node;
-    } else {
-        // Invalid position - throw SyntaxError
-        return error.SyntaxError;
+        // Step 4: before the next sibling, or null without a parent.
+        const parent = (try interfaces.Node.get_parentNode(element)) orelse return null;
+        return try interfaces.Node.call_insertBefore(parent, node, try interfaces.Node.get_nextSibling(element));
     }
+    // Step 5: any other position is invalid.
+    return error.SyntaxError;
 }
 
 // =============================================================================
@@ -2127,15 +2086,8 @@ pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runt
 /// - "beforeend": Inside this element, after last child
 /// - "afterend": After this element (as a sibling)
 pub fn call_insertAdjacentElement(instance: *runtime.Instance, where: runtime.DOMString, element: *runtime.Instance) anyerror!?*runtime.Instance {
-    const result = insertAdjacent(instance, where.asSlice(), element) catch |err| {
-        return switch (err) {
-            error.SyntaxError => error.SyntaxError,
-            error.InvalidStateError => error.InvalidStateError,
-        };
-    };
-
     // insertAdjacent returns null if parent is null for beforebegin/afterend positions
-    return result;
+    return insertAdjacent(instance, where.asSlice(), element);
 }
 
 /// Operation: webkitMatchesSelector
@@ -2263,18 +2215,14 @@ pub fn call_removeAttributeNS(instance: *runtime.Instance, namespace: ?runtime.D
 pub fn call_insertAdjacentText(instance: *runtime.Instance, where: runtime.DOMString, data: runtime.DOMString) anyerror!void {
     _ = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Step 1: Create a new Text node with the given data
-    // Use interface instead of impl (per Golden Rule #13)
-    const text_node = interfaces.Text.call_constructor(instance.ctx, webidl.Opt(runtime.DOMString).passed(data)) catch return error.OutOfMemory;
+    // Step 1: create Text with the given data and this's node document.
+    const text_node = interfaces.Text.initWith(instance.ctx.allocator, instance.ctx, .{ .data = data.asSlice() }) catch return error.OutOfMemory;
     errdefer interfaces.Text.deinit(text_node);
+    const owner = (try interfaces.Node.get_ownerDocument(instance)) orelse return error.InvalidStateError;
+    try dom.node_document.set(text_node, owner);
 
     // Step 2: Run insert adjacent algorithm
-    _ = insertAdjacent(instance, where.asSlice(), text_node) catch |err| {
-        return switch (err) {
-            error.SyntaxError => error.SyntaxError,
-            error.InvalidStateError => error.InvalidStateError,
-        };
-    };
+    _ = try insertAdjacent(instance, where.asSlice(), text_node);
 }
 
 /// Operation: requestFullscreen
@@ -2746,21 +2694,43 @@ fn compileRawEventHandler(target: *runtime.Instance, event_type: []const u8) dom
 /// then do nothing; Crane's CSSOM does not write the attribute back at all,
 /// so they never reach here.
 ///
-/// Not modelled, stated: an allowed value is not parsed into the element's
-/// inline declaration block (CSSOM's attribute change steps for it) - nothing
-/// reflects the style attribute into element.style yet; that step goes after
-/// this check. Blink, Gecko and WebKit skip the check for an attribute
-/// copied by cloning (WPT style-src/inline-style-allowed-while-cloning-
-/// objects reads the clone's style); HTML has no such exception, and with no
-/// declaration block to fill, this checks every write.
+/// An allowed value is parsed into the element's inline declaration block
+/// (CSSOM 6.7's attribute change steps) when the style engine or
+/// element.style next reads it: the block is marked to be parsed again.
+/// A blocked one leaves the block empty and flagged, so its rules do not
+/// apply (dom.style.ElementStyle.inline_state). CSSOM's own writes come with
+/// the block's updating flag set and change nothing here.
+///
+/// Blink, Gecko and WebKit skip the CSP check for an attribute copied by
+/// cloning (WPT style-src/inline-style-allowed-while-cloning-objects reads
+/// the clone's style); HTML has no such exception, so this checks every
+/// write (ruling Q8 decides it with the phase-2 evidence).
 fn styleAttributeChangeSteps(instance: *runtime.Instance, internal: *InternalState, value: ?[]const u8) void {
-    const v = value orelse return;
     const ns = if (internal.data.namespace_uri) |n| n.asSlice() else return;
     if (!std.mem.eql(u8, ns, "http://www.w3.org/1999/xhtml") and
         !std.mem.eql(u8, ns, "http://www.w3.org/2000/svg") and
         !std.mem.eql(u8, ns, "http://www.w3.org/1998/Math/MathML")) return;
-    if (dom.csp_violations.shouldBlockInline(instance, .style_attribute, v, .{})) return;
-    // TODO(cssom): parse `v` into the element's inline declaration block.
+    // CSSOM "update style attribute for" sets the attribute with the
+    // block's updating flag set: the block already holds the value.
+    if (internal.style) |style_state| if (style_state.updating) return;
+    const v = value orelse {
+        if (internal.style) |style_state| style_state.inline_state = .unparsed;
+        return;
+    };
+    if (dom.csp_violations.shouldBlockInline(instance, .style_attribute, v, .{})) {
+        const style_state = dom.style.element_style.of(instance) orelse return;
+        if (style_state.inline_block) |*block| block.clear();
+        style_state.inline_state = .blocked;
+        return;
+    }
+    if (internal.style) |style_state| style_state.inline_state = .unparsed;
+}
+
+/// dom.style's `element_style_slot`: where this element keeps its style
+/// state.
+fn styleSlotOf(instance: *runtime.Instance) ?*?*dom.style.ElementStyle {
+    const internal = getInternal(instance) orelse return null;
+    return &internal.style;
 }
 
 /// HTML "report an exception" for the global of the realm the engine names -
@@ -3120,19 +3090,15 @@ pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!*runtime
     var height: f64 = 0;
 
     // Try to get CSS dimensions from the element's inline style: the
-    // declarations the element keeps (dom.cssom.InlineStyle), not its
+    // declarations of its style attribute (dom.style), not its
     // CSSStyleDeclaration's, so they survive V8 GC of the style wrapper
-    if (dom.cssom.inlineStyleOf(instance)) |inline_style| {
-        if (inline_style.getProperty("width")) |width_value| {
-            if (parseCssLengthToPixels(width_value)) |w| {
-                width = w;
-            }
-        }
-        if (inline_style.getProperty("height")) |height_value| {
-            if (parseCssLengthToPixels(height_value)) |h| {
-                height = h;
-            }
-        }
+    if (dom.style.inlineValue(instance, "width", instance.ctx.allocator) catch null) |width_value| {
+        defer instance.ctx.allocator.free(width_value);
+        if (parseCssLengthToPixels(width_value)) |w| width = w;
+    }
+    if (dom.style.inlineValue(instance, "height", instance.ctx.allocator) catch null) |height_value| {
+        defer instance.ctx.allocator.free(height_value);
+        if (parseCssLengthToPixels(height_value)) |h| height = h;
     }
 
     // Return DOMRect with computed dimensions

@@ -2863,8 +2863,29 @@ pub fn generateDictionary(
 
     var buffer: [4096]u8 = undefined;
     var file_writer = output_file.writer(io, &buffer);
-    const w = &file_writer.interface;
+    try writeDictionary(allocator, &file_writer.interface, dictionary, ir);
+}
 
+/// A dictionary member whose type is the dictionary itself (nullable or not;
+/// not through a sequence, which is a slice and lays out): Zig cannot lay out
+/// a struct that contains itself, so the member is BOXED - an optional
+/// pointer to the dictionary, which whoever makes the dictionary allocates
+/// and frees with it. (WebIDL forbids a dictionary member whose type
+/// includes its own dictionary; Service Workers' RouterCondition has one,
+/// `RouterCondition not`, and its sequence `_or`.)
+pub fn dictionaryMemberIsBoxed(dictionary_name: []const u8, member: types.DictionaryMember) bool {
+    const t = member.idlType;
+    if (t.sequence != null or t.record != null or t.unionTypes != null or t.generic != null) return false;
+    return std.mem.eql(u8, t.type, dictionary_name);
+}
+
+/// The dictionary's Zig file, written to `w` (generateDictionary's output).
+pub fn writeDictionary(
+    allocator: std.mem.Allocator,
+    w: *std.Io.Writer,
+    dictionary: types.Dictionary,
+    ir: *const ir_mod.IR,
+) !void {
     // Write header
     try w.print("//! WebIDL dictionary: {s}\n", .{dictionary.name});
     try w.writeAll("//!\n");
@@ -2959,6 +2980,7 @@ pub fn generateDictionary(
             try w.writeAll("?");
         }
 
+        if (dictionaryMemberIsBoxed(dictionary.name, member)) try w.writeAll("*const ");
         try writeDictionaryMemberType(allocator, w, member.idlType, &ir.type_registry);
 
         // Default value
@@ -2986,10 +3008,30 @@ pub fn generateDictionary(
     // Which members convert to an interface type, and the interface each
     // must implement.
     try writer.writeInterfaceMembers(w, dictionary.members, &ir.type_registry);
+    // Which members are boxed (their type is this dictionary): a converter
+    // allocates the pointee and frees it with the dictionary.
+    try writeBoxedMembers(w, dictionary);
 
     try w.writeAll("};\n");
 
     try w.flush();
+}
+
+/// `pub const boxed_members = .{ ... };` - the members `dictionaryMemberIsBoxed`
+/// made pointers; nothing when there are none.
+fn writeBoxedMembers(w: *std.Io.Writer, dictionary: types.Dictionary) !void {
+    var any = false;
+    for (dictionary.members) |member| {
+        if (!dictionaryMemberIsBoxed(dictionary.name, member)) continue;
+        if (!any) {
+            try w.writeAll("\n    /// Members whose type is this dictionary, boxed: a converter allocates\n");
+            try w.writeAll("    /// the pointee and frees it with the dictionary.\n");
+            try w.writeAll("    pub const boxed_members = .{");
+            any = true;
+        } else try w.writeAll(",");
+        try w.print(" \"{s}\"", .{member.name});
+    }
+    if (any) try w.writeAll(" };\n");
 }
 
 /// Generate an enum Zig file

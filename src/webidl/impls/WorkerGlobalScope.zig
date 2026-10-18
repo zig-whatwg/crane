@@ -130,6 +130,9 @@ pub const InternalState = struct {
     /// Is secure context
     is_secure_context: bool = false,
 
+    /// The creator's mixed-content answer, captured by value at worker start.
+    owner_prohibits_mixed_security_contexts: bool = false,
+
     /// The settings object's top-level site (Fetch "determine the network
     /// partition key"): a dedicated worker's owner's, read on the owner's
     /// thread when it started (worker_host.ScopeSettings). OWNED; null for a
@@ -213,6 +216,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
             // starter_secure_context with the worker's own origin, its own
             // URL's (html.secure_context.ofWorker).
             internal.is_secure_context = try @import("html").secure_context.ofWorker(allocator, internal.url, settings.owner_is_secure_context);
+            internal.owner_prohibits_mixed_security_contexts = settings.owner_prohibits_mixed_security_contexts;
             // HTML "set up a worker environment settings object": a dedicated
             // worker's top-level origin is its owner's.
             if (settings.top_level_site) |site| internal.top_level_site = try allocator.dupe(u8, site);
@@ -234,6 +238,7 @@ pub fn installHooks() void {
         .owns = &isWorkerGlobalScope,
         .origin = &settingsOrigin,
         .origin_record = &settingsOriginRecord,
+        .prohibits_mixed_security_contexts = &settingsProhibitsMixedSecurityContexts,
         .is_secure_context = &settingsIsSecureContext,
         .cross_origin_isolated = &settingsCrossOriginIsolated,
         .performance = &settingsPerformance,
@@ -296,6 +301,26 @@ fn settingsOrigin(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const origin = if (state.own._internal) |internal| internal.origin else "null";
     return instance.ctx.allocator.dupe(u8, if (origin.len == 0) "null" else origin);
+}
+
+/// Mixed Content 4.3 step 1: a worker's own origin determines its
+/// restriction; step 2's ancestor walk applies only to Window. The stored
+/// origin is canonical, so the Secure Contexts predicate needs no parse or
+/// allocation (Blink MixedContentChecker::ShouldBlockFetchOnWorker).
+fn settingsProhibitsMixedSecurityContexts(instance: *runtime.Instance) error{OutOfMemory}!bool {
+    const fetch = @import("fetch");
+    const internal = instance.getState(State).own._internal orelse return false;
+    if (internal.origin.len == 0 or std.mem.eql(u8, internal.origin, "null")) {
+        // DEVIATION: Mixed Content 4.3 leaves opaque origins unrestricted.
+        // No newer spec: browsers carry the starter's HTTPS state (Blink
+        // WorkerGlobalScope constructor and CalculateHttpsState). At WPT
+        // cc74d2669f, shared classic/module data-worker fetch: Chrome 154
+        // and Firefox 157 block all 6 HTTP cases; Safari 27 blocks 4 and
+        // upgrades 2. All allow the 2 HTTPS cases. Follow the block majority.
+        return internal.owner_prohibits_mixed_security_contexts;
+    }
+    const parts = fetch.algorithms.csp_check.urlParts(internal.origin);
+    return fetch.referrer_policy.determine_referrer.isPotentiallyTrustworthyOrigin(parts.scheme, parts.host orelse "");
 }
 
 /// The settings object's origin as an object: the record this global scope

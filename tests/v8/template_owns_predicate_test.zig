@@ -76,6 +76,14 @@ const Page = struct {
             .origin = "https://example.test",
             .create_global_object = WindowHost.createGlobalObject,
         });
+        errdefer protocol.destroyWindowRealm(realm, .global_detached);
+        const record = realm.getRealm() orelse return error.NoWindow;
+        const window: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return error.NoWindow));
+        // Script node constructors use the current Window's associated Document.
+        const document = try interfaces.Document.init(std.heap.c_allocator, realm);
+        try dom.document_internals.setDocumentType(document, .html);
+        dom.window_globals.setDocument(window, document);
+        dom.document_browsing_context.setWindow(document, window);
         return .{ .agent = agent, .realm = realm };
     }
 

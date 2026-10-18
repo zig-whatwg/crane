@@ -16,7 +16,10 @@
 //!   objects' state; extend_lifetime.zig: an ExtendableEvent's extended
 //!   lifetime; fetch_event.zig: Create Fetch Event and Dispatch on the
 //!   worker's thread, respondWith(), and a response body read for the
-//!   fetching thread.
+//!   fetching thread; navigation_preload.zig: the navigation preload's fetch
+//!   (Handle Fetch step 15) on the worker's thread; router.zig: static
+//!   routing's rules and algorithms, engine-free; add_routes.zig:
+//!   InstallEvent.addRoutes() in the worker's realm.
 //!
 //! - cache/: Cache Storage - a Browser's caches in its store, and the
 //!   steps of CacheStorage's and Cache's members.
@@ -31,6 +34,9 @@ pub const run = @import("run.zig");
 pub const realm = @import("realm.zig");
 pub const objects = @import("objects.zig");
 pub const fetch_event = @import("fetch_event.zig");
+pub const navigation_preload = @import("navigation_preload.zig");
+pub const router = @import("router.zig");
+pub const add_routes = @import("add_routes.zig");
 pub const cache = @import("cache/root.zig");
 
 pub const Registry = registry.Registry;

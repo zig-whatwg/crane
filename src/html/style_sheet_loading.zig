@@ -18,9 +18,13 @@
 //! Until it has run, the load delays the element's node document's load
 //! event (`dom.style_sheet_owners`), and keeps the element alive.
 //!
+//! Each sheet a load fetches successfully - a link's own, an @import's - is
+//! handed to the style engine (`dom.style.deliverSheet`), which makes it
+//! the link's CSS style sheet or attaches it to its @import rule (lane
+//! style1); the loads here only fetch, and read @import rules
+//! (`css.import_rules`) to know what to fetch.
+//!
 //! Deviations, stated:
-//! - The sheets are not parsed into CSSOM: `sheet` stays null. Only their
-//!   @import rules are read (`css.import_rules`).
 //! - The status checked is the response's own, not its filtered status: an
 //!   opaque filtered response - every cross-origin no-cors sheet - has
 //!   status 0, which the letter of 4.2.4.3 step 7.2 would turn into an error
@@ -43,7 +47,6 @@ const engine = @import("engine");
 const fetch = @import("fetch");
 const css = @import("css");
 const dom = @import("dom");
-const stylesheet_blocking = @import("html_core").stylesheet_blocking;
 
 const AsyncFetch = fetch.algorithms.AsyncFetch;
 
@@ -148,6 +151,9 @@ const Sheet = struct {
     /// HTML's create-a-CSS-style-sheet origin-clean flag, set from the
     /// fetched response before this sheet's imports start.
     origin_clean: bool = false,
+    /// For an @import's sheet: the rule's index among its sheet's @import
+    /// rules (`css.import_rules` order, which the style engine counts too).
+    import_index: u16 = 0,
     /// While the fetch runs.
     fetch: ?*AsyncFetch = null,
 
@@ -207,12 +213,17 @@ fn connectedToDocument(element: *runtime.Instance, document: *runtime.Instance) 
     return (interfaces.Node.call_getRootNode(element, webidl.Opt(dictionaries.GetRootNodeOptions).notPassed()) catch return false) == document;
 }
 
-/// Uses the existing stylesheet predicate's media portion only. Its stated
-/// limitation remains: exact "print" is excluded; other queries currently
-/// assume a match. Window.matchMedia and MediaQueryList remain unimplemented.
+/// Whether the element's media attribute matches its document's
+/// environment.
 fn mediaMatches(element: *runtime.Instance) bool {
     const media = interfaces.Element.call_getAttributeNS(element, null, runtime.DOMString.initInterned("media")) catch null;
-    return stylesheet_blocking.isBlockingStylesheet("stylesheet", if (media) |value| value.asSlice() else null, false, null);
+    const text = if (media) |value| value.asSlice() else "";
+    // HTML 4.2.7 "contributes a script-blocking style sheet": "el's media
+    // attribute's value matches the environment" - Media Queries 5 against
+    // the node document's environment (dom.style; lane style1).
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return true;
+    const values = dom.style.hooks.mediaValues(document);
+    return css.media_queries.MediaQueryList.matchesQuery(element.ctx.allocator, text, &values) catch true;
 }
 
 /// Wake a document waiting on stylesheets and its immediate child documents,
@@ -694,13 +705,17 @@ fn fireEventSteps(data: ?*anyopaque) void {
 /// Fetch `url` for `load`: the link's own sheet when `parent` is null, an
 /// @import of `parent` otherwise. A request that cannot start is a failure.
 fn startFetch(load: *Load, url: []const u8, parent: ?*Sheet, options: LinkOptions, destination: fetch.internal.Destination) void {
-    startFetchOrFail(load, url, parent, options, destination) catch |err| {
+    startFetchImport(load, url, parent, 0, options, destination);
+}
+
+fn startFetchImport(load: *Load, url: []const u8, parent: ?*Sheet, import_index: u16, options: LinkOptions, destination: fetch.internal.Destination) void {
+    startFetchOrFail(load, url, parent, import_index, options, destination) catch |err| {
         log.debug("style sheet fetch of {s} not started: {}", .{ url, err });
         load.failed = true;
     };
 }
 
-fn startFetchOrFail(load: *Load, url: []const u8, parent: ?*Sheet, options: LinkOptions, destination: fetch.internal.Destination) !void {
+fn startFetchOrFail(load: *Load, url: []const u8, parent: ?*Sheet, import_index: u16, options: LinkOptions, destination: fetch.internal.Destination) !void {
     const allocator = load.allocator;
     const cors = options.cors;
     const sheet = try allocator.create(Sheet);
@@ -710,6 +725,7 @@ fn startFetchOrFail(load: *Load, url: []const u8, parent: ?*Sheet, options: Link
         .url = try allocator.dupe(u8, url),
         .parent = parent,
         .depth = if (parent) |p| p.depth + 1 else 0,
+        .import_index = import_index,
     };
     errdefer allocator.free(sheet.url);
 
@@ -865,7 +881,31 @@ fn processResponse(sheet: *Sheet, outcome: fetch.algorithms.FetchError!fetch.alg
     // CORS-same-origin response, independently of its URL or TAO headers.
     sheet.origin_clean = cors_same_origin;
     const location = response.url() orelse sheet.url;
+    deliver(load, sheet, body.getBytes(), location);
     fetchImports(load, sheet, body.getBytes(), location);
+}
+
+/// Hand a fetched sheet to the style engine: the link's own (the
+/// stylesheet link type's "process the linked resource" step 4, "create a
+/// CSS style sheet") or an @import's (CSS Cascade "fetch an @import" step 3).
+/// A superseded load's sheets are no longer the element's.
+fn deliver(load: *Load, sheet: *Sheet, bytes: []const u8, location: []const u8) void {
+    if (load.kind != .stylesheet and load.kind != .style) return;
+    if (load.superseded or !load.elementIsLive()) return;
+    // The @import path from the element's own sheet, outermost first. A
+    // style element's own sheet is its text, never fetched: every Sheet of
+    // its load is an import.
+    var path: [max_import_depth + 2]u16 = undefined;
+    var n: usize = 0;
+    var current: ?*Sheet = sheet;
+    while (current) |s| : (current = s.parent) {
+        if (s.parent == null and load.kind == .stylesheet) break;
+        if (n == path.len) return;
+        path[n] = s.import_index;
+        n += 1;
+    }
+    std.mem.reverse(u16, path[0..n]);
+    dom.style.deliverSheet(load.element, path[0..n], bytes, location, sheet.origin_clean);
 }
 
 fn fail(load: *Load) void {
@@ -880,7 +920,7 @@ fn fetchImports(load: *Load, sheet: ?*Sheet, text: []const u8, base: ?[]const u8
         return;
     };
     defer css.import_rules.freeUrls(load.allocator, urls);
-    for (urls) |raw| {
+    for (urls, 0..) |raw, index| {
         // CSS Values "fetch a style resource" step 1: "If that failed,
         // return" - an import whose URL does not parse is not fetched.
         const url = resolve(load.element, raw, base) orelse continue;
@@ -891,7 +931,7 @@ fn fetchImports(load: *Load, sheet: ?*Sheet, text: []const u8, base: ?[]const u8
                 continue;
             }
         }
-        startFetch(load, url, sheet, .{ .href = url }, .style);
+        startFetchImport(load, url, sheet, @intCast(@min(index, std.math.maxInt(u16))), .{ .href = url }, .style);
     }
 }
 

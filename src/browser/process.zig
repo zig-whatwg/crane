@@ -90,6 +90,9 @@ pub const Process = struct {
             return error.NetworkStartFailed;
         };
         installHooks();
+        // The UA style sheet's rule sets, which every Browser reads (dom.style;
+        // ruling Q2 of the style design).
+        @import("dom").style.ua_sheet.build();
         process_start.finish(start.snapshot != null);
         return .{ .snapshot = start.snapshot };
     }
@@ -98,6 +101,7 @@ pub const Process = struct {
     /// snapshot, which is freed. V8 keeps its platform until exit.
     pub fn deinit(self: *Process) void {
         @import("fetch").network.globalCleanup();
+        @import("dom").style.ua_sheet.release();
         engine.deinitializeEngine();
         if (self.snapshot) |bytes| allocator.free(bytes);
         self.snapshot = null;

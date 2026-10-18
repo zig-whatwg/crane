@@ -70,6 +70,12 @@ pub const HttpFetchNext = union(enum) {
     /// recursive true, then `httpRedirectFetchFinish` on what it returns -
     /// which HTTP fetch then returns.
     recursive_main_fetch,
+    /// Step 6 "manual" for a navigate request: this redirect response (taken)
+    /// is HTTP fetch's response, as it is, and the fetch controller's next
+    /// manual redirect steps are to run HTTP-redirect fetch given fetchParams
+    /// and it - the caller keeps what they need (FetchJob
+    /// .processNextManualRedirect, which HTML's navigation calls).
+    manual_redirect: *InternalResponse,
 };
 
 /// HTTP fetch, from the point HTTP-network-or-cache fetch has returned
@@ -140,9 +146,15 @@ fn redirectSteps(allocator: Allocator, params: *FetchParams, response: *Internal
                 return .{ .response = try internal_response.networkError(allocator) };
             },
             .manual => {
-                // Return an opaque-redirect filtered response
-                // For manual mode, we return the redirect response as-is
-                // but mark it as opaque-redirect type
+                // 1. A navigate request: the controller's next manual
+                // redirect steps run HTTP-redirect fetch given fetchParams
+                // and response - HTML "create navigation params by fetching"
+                // step 21.6 asks for them, hop by hop, so every hop's main
+                // fetch reaches HTTP fetch step 3 (a service worker) again.
+                // The response is handed over as it is.
+                if (request.mode == .navigate) return .{ .manual_redirect = final_response };
+                // 2. Otherwise an opaque-redirect filtered response: Crane
+                // marks the filter on the response itself.
                 final_response.response_type = .opaqueredirect;
                 return .{ .response = final_response };
             },
@@ -219,8 +231,12 @@ pub fn serviceWorkerResponse(allocator: Allocator, params: *FetchParams, respons
         return .{ .response = try internal_response.networkError(allocator) };
     }
     // An opaque-redirect response is what step 6's "manual" makes: it is
-    // handed on as it is.
-    if (kind == .opaqueredirect) return .{ .response = response };
+    // handed on as it is - but for a navigation, whose step 6 reads its
+    // internal response's redirect status (3.5.5's internalResponse, which a
+    // service worker's opaque-redirect carries: fetch_event.potentialResponse)
+    // and sets the next manual redirect steps (a worker's
+    // respondWith(fetch(event.request)) of a navigation's redirect hop).
+    if (kind == .opaqueredirect and request.mode != .navigate) return .{ .response = response };
     return redirectSteps(allocator, params, response);
 }
 
@@ -492,7 +508,7 @@ fn splitOrigin(serialized: []const u8) ?OriginParts {
     return .{ .scheme = serialized[0..sep], .host_port = authority[host_start..] };
 }
 
-const LocationError = error{ OutOfMemory, InvalidLocation };
+pub const LocationError = error{ OutOfMemory, InvalidLocation };
 
 /// A response's location URL.
 ///
@@ -501,7 +517,7 @@ const LocationError = error{ OutOfMemory, InvalidLocation };
 /// Returns null when there is no `Location` header, an owned serialized URL
 /// otherwise, and `error.InvalidLocation` for the spec's "failure": more than
 /// one `Location` value, or one that does not parse against the response's URL.
-fn locationUrl(allocator: Allocator, response: *InternalResponse, request_url: []const u8) LocationError!?[]u8 {
+pub fn locationUrl(allocator: Allocator, response: *InternalResponse, request_url: []const u8) LocationError!?[]u8 {
     // Step 1: If response's status is not a redirect status, return null.
     if (!internal_response.isRedirectStatus(response.status)) return null;
 
@@ -869,6 +885,11 @@ fn httpRequestHeaders(allocator: Allocator, request: *InternalRequest, added: *s
     //       append (`User-Agent`, the environment default `User-Agent`
     //       value).
     if (!list.contains("User-Agent")) try addHeader(allocator, added, "User-Agent", userAgentOf(request));
+    // Browser-selected HTTP/1.1 header (permitted by Fetch 4.6 step 8.20):
+    // Chrome 154, Firefox 157 and Safari 27 pass all eight referrer-policy
+    // generic/subresource-test header checks at WPT cc74d2669f. Add it only
+    // to the network headers; libcurl filters Connection for HTTP/2 and /3.
+    if (!list.contains("Connection")) try addHeader(allocator, added, "Connection", "keep-alive");
     // 8.16. A conditional request in cache mode "default" is "no-store".
     var cache_mode = request.cache_mode;
     if (cache_mode == .default) {
@@ -1165,24 +1186,51 @@ fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest, added: [
     // URL credentials belong to Fetch's Authorization step, never curl.
     const stripped_url = try withoutUserinfo(allocator, request.currentUrl());
     errdefer if (stripped_url) |url| allocator.free(url);
-    // Get headers from header list using iterator()
     const header_entries = request.header_list.iterator();
 
+    // Fetch header-list "append" keeps the first spelling; "get" joins
+    // values in list order. All three browsers send one combined field,
+    // rather than the lowercase Headers iterator view or separate lines.
+    // https://wpt.fyi/results/fetch/api/basic/request-headers-case.any.html?sha=df642c4142
+    var header_count: usize = 0;
+    var combined_count: usize = 0;
+    for (header_entries, 0..) |header, i| {
+        if (std.ascii.eqlIgnoreCase(header.name, "set-cookie")) {
+            // Set-Cookie is the header-list exception to combining values.
+            header_count += 1;
+            continue;
+        }
+        if (hasHeaderName(header_entries[0..i], header.name)) continue;
+        header_count += 1;
+        if (hasHeaderName(header_entries[i + 1 ..], header.name)) combined_count += 1;
+    }
+
     // Allocate headers array
-    const headers = try allocator.alloc(NetworkRequest.Header, header_entries.len + added.len);
+    const headers = try allocator.alloc(NetworkRequest.Header, header_count + added.len);
     errdefer allocator.free(headers);
-    const owned_values = try allocator.alloc([]const u8, added.len + @intFromBool(stripped_url != null));
+    const original_owned = added.len + @intFromBool(stripped_url != null);
+    const owned_values = try allocator.alloc([]const u8, original_owned + combined_count);
     errdefer allocator.free(owned_values);
     for (added, 0..) |header, i| owned_values[i] = header.value;
     if (stripped_url) |url| owned_values[added.len] = url;
+    var combined_done: usize = 0;
+    errdefer for (owned_values[original_owned..][0..combined_done]) |value| allocator.free(value);
 
+    var next: usize = 0;
     for (header_entries, 0..) |header, i| {
-        headers[i] = .{
-            .name = header.name,
-            .value = header.value,
-        };
+        var value = header.value;
+        if (!std.ascii.eqlIgnoreCase(header.name, "set-cookie")) {
+            if (hasHeaderName(header_entries[0..i], header.name)) continue;
+            if (hasHeaderName(header_entries[i + 1 ..], header.name)) {
+                value = (try request.header_list.get(allocator, header.name)).?;
+                owned_values[original_owned + combined_done] = value;
+                combined_done += 1;
+            }
+        }
+        headers[next] = .{ .name = header.name, .value = value };
+        next += 1;
     }
-    for (added, 0..) |header, i| headers[header_entries.len + i] = header;
+    for (added, 0..) |header, i| headers[next + i] = header;
 
     // Get body bytes if present
     const body: ?[]const u8 = if (request.body) |b| switch (b) {
@@ -1211,6 +1259,13 @@ fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest, added: [
         .verbose = false,
         .owned_values = owned_values,
     };
+}
+
+fn hasHeaderName(headers: []const @import("../internal/header_list.zig").Header, name: []const u8) bool {
+    for (headers) |header| {
+        if (std.ascii.eqlIgnoreCase(header.name, name)) return true;
+    }
+    return false;
 }
 
 /// The input is a serialized URL; '@' in its authority separates userinfo.
@@ -2177,6 +2232,7 @@ test "HTTP-network-or-cache fetch step 8: User-Agent, a null body's Content-Leng
     const want = [_][2][]const u8{
         .{ "Content-Length", "0" },
         .{ "User-Agent", default_user_agent },
+        .{ "Connection", "keep-alive" },
         .{ "Pragma", "no-cache" },
         .{ "Cache-Control", "no-cache" },
         .{ "Accept-Encoding", "identity" },
@@ -2197,9 +2253,11 @@ test "HTTP-network-or-cache fetch step 8: User-Agent, a null body's Content-Leng
     try request.header_list.append("User-Agent", "mine");
     try request.header_list.append("If-None-Match", "x");
     try httpRequestHeaders(allocator, request, &added);
-    try std.testing.expectEqual(2, added.items.len);
-    try std.testing.expectEqualStrings("Pragma", added.items[0].name);
-    try std.testing.expectEqualStrings("Cache-Control", added.items[1].name);
+    try std.testing.expectEqual(3, added.items.len);
+    try std.testing.expectEqualStrings("Connection", added.items[0].name);
+    try std.testing.expectEqualStrings("keep-alive", added.items[0].value);
+    try std.testing.expectEqualStrings("Pragma", added.items[1].name);
+    try std.testing.expectEqualStrings("Cache-Control", added.items[2].name);
 }
 
 test "HTTP fetch step 4.5: the TAO check - basic tainting, `*`, the request's origin - else the timing allow failed flag" {

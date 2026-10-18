@@ -41,6 +41,8 @@ pub fn shouldPluginContentWithoutUrlBeBlocked(
     reporter: ?violation_events.Reporter,
     element: ?*anyopaque,
 ) Result {
+    // A list that could not record a policy blocks everything (fail closed).
+    if (csp_list.blocksEverything()) return .blocked;
     var result: Result = .allowed;
     for (csp_list.policies.items) |*policy| {
         const directive = objectSrcDirective(policy) orelse continue;

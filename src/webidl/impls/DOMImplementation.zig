@@ -140,7 +140,7 @@ pub fn call_createDocumentType(instance: *runtime.Instance, name: runtime.DOMStr
 
     // Step 1: Validate doctype name
     const name_slice = name.asSlice();
-    if (!isValidDoctypeName(name_slice)) {
+    if (!dom.names.isValidDoctypeName(name_slice)) {
         return error.InvalidCharacterError;
     }
 
@@ -330,7 +330,7 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
             _ = try interfaces.Node.call_appendChild(head, title_elem);
 
             // Step 6.2: Create Text node with title data and append to title element (use interface per Golden Rule #13)
-            const text_node = try interfaces.Text.call_constructor(ctx, webidl.Opt(runtime.DOMString).passed(title_val));
+            const text_node = try interfaces.Text.initWith(ctx.allocator, ctx, .{ .data = title_val.asSlice() });
             errdefer interfaces.Text.deinit(text_node);
             try node_document.set(text_node, doc);
             // Use interface instead of impl (per Golden Rule #13)
@@ -369,33 +369,6 @@ pub fn call_hasFeature(instance: *runtime.Instance) anyerror!bool {
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-/// Validates a doctype name per DOM spec
-/// Spec: https://dom.spec.whatwg.org/#dom-domimplementation-createdocumenttype
-///
-/// A string is a valid doctype name if it matches the Name production
-/// per XML spec. Simplified validation:
-/// - Must not be empty
-/// - Must not contain ASCII whitespace, NULL, or '>'
-fn isValidDoctypeName(name: []const u8) bool {
-    if (name.len == 0) return false;
-
-    for (name) |c| {
-        // Check for ASCII whitespace
-        if (c == 0x09 or c == 0x0A or c == 0x0C or c == 0x0D or c == 0x20) {
-            return false;
-        }
-        // Check for NULL
-        if (c == 0x00) {
-            return false;
-        }
-        // Check for >
-        if (c == 0x3E) {
-            return false;
-        }
-    }
-    return true;
-}
 
 /// "The result of creating an element given doc, <localName>, and the HTML
 /// namespace" (createHTMLDocument steps 4-7), through the document's own

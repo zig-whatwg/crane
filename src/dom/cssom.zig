@@ -23,22 +23,15 @@
 //! or CSSOM object yet, and is left out of the sheet's rules - so a sheet
 //! with an @media rule reports a cssRules.length without it.
 //!
-//! An HTML element's inline style declarations are here too (`InlineStyle`):
-//! the element keeps them - HTMLElement's state embeds one by value, so they
-//! outlive the CSSStyleDeclaration object its `style` attribute returns, whose
-//! wrapper the collector may take - and installs `inlineStyleOf`, through
-//! which that object, getBoundingClientRect and getComputedStyle reach them.
-//! WebKit keeps an element's inline style the same way, in its ElementData
-//! (`m_inlineStyle`, Source/WebCore/dom/ElementData.h), with the
-//! CSSStyleDeclaration a wrapper over it.
+//! An element's inline style is the style engine's (dom.style.inline_style),
+//! not this module's.
 //!
-//! lint-impls: hook for CSSStyleSheet, CSSRuleList, CSSRule, CSSStyleRule, HTMLElement
+//! lint-impls: hook for CSSStyleSheet, CSSRuleList, CSSRule, CSSStyleRule
 //!
 //! Spec: https://drafts.csswg.org/cssom-1/#css-style-sheets
 //! Spec: https://drafts.csswg.org/cssom-1/#css-rules
 
 const std = @import("std");
-const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 const css = @import("css");
 const selector = @import("selector");
@@ -337,157 +330,8 @@ pub fn parentSheetOf(model: *const StyleRule) ?*runtime.Instance {
 }
 
 // ============================================================================
-// Inline style
-// ============================================================================
-
-/// An element's inline style declarations, as its `style` CSSStyleDeclaration
-/// sees them: each property's value by name, and the cssText last set.
-///
-/// TODO(cssom): the declarations are not parsed into a CSS declaration block
-/// - cssText is split on ";" and ":" - nor kept in step with the style
-/// content attribute (CSSOM 6.7 "update style attribute for" and its
-/// attribute change steps).
-pub const InlineStyle = struct {
-    allocator: std.mem.Allocator,
-    /// Property name -> value, both owned.
-    properties: std.StringHashMapUnmanaged([]const u8) = .{},
-    /// The cssText last set, owned; null once a property changes.
-    css_text: ?[]const u8 = null,
-
-    pub fn init(alloc: std.mem.Allocator) InlineStyle {
-        return .{ .allocator = alloc };
-    }
-
-    pub fn deinit(self: *InlineStyle) void {
-        self.clearProperties();
-        self.properties.deinit(self.allocator);
-        self.forgetCssText();
-    }
-
-    fn clearProperties(self: *InlineStyle) void {
-        var iter = self.properties.iterator();
-        while (iter.next()) |entry| {
-            self.allocator.free(entry.key_ptr.*);
-            self.allocator.free(entry.value_ptr.*);
-        }
-        self.properties.clearRetainingCapacity();
-    }
-
-    fn forgetCssText(self: *InlineStyle) void {
-        if (self.css_text) |text| self.allocator.free(text);
-        self.css_text = null;
-    }
-
-    /// The value of property `name`, borrowed; null when it is not set.
-    pub fn getProperty(self: *const InlineStyle, name: []const u8) ?[]const u8 {
-        return self.properties.get(name);
-    }
-
-    /// Set property `name` to `value` (both copied).
-    pub fn setProperty(self: *InlineStyle, name: []const u8, value: []const u8) !void {
-        const value_copy = try self.allocator.dupe(u8, value);
-        errdefer self.allocator.free(value_copy);
-        if (self.properties.getPtr(name)) |existing| {
-            self.allocator.free(existing.*);
-            existing.* = value_copy;
-        } else {
-            const name_copy = try self.allocator.dupe(u8, name);
-            errdefer self.allocator.free(name_copy);
-            try self.properties.put(self.allocator, name_copy, value_copy);
-        }
-        self.forgetCssText();
-    }
-
-    /// Remove property `name`, if it is set.
-    pub fn removeProperty(self: *InlineStyle, name: []const u8) void {
-        const entry = self.properties.fetchRemove(name) orelse return;
-        self.allocator.free(entry.key);
-        self.allocator.free(entry.value);
-        self.forgetCssText();
-    }
-
-    /// The cssText last set, borrowed; empty when none is.
-    pub fn cssText(self: *const InlineStyle) []const u8 {
-        return self.css_text orelse "";
-    }
-
-    /// Replace every declaration with those of `text`: "property: value"
-    /// pairs separated by semicolons.
-    pub fn setCssText(self: *InlineStyle, text: []const u8) !void {
-        self.clearProperties();
-        self.forgetCssText();
-        self.css_text = try self.allocator.dupe(u8, text);
-
-        var declarations = std.mem.splitScalar(u8, text, ';');
-        while (declarations.next()) |decl| {
-            const trimmed = std.mem.trim(u8, decl, " \t\n\r");
-            if (trimmed.len == 0) continue;
-            const colon_pos = std.mem.indexOf(u8, trimmed, ":") orelse continue;
-            const prop_name = std.mem.trim(u8, trimmed[0..colon_pos], " \t");
-            const prop_value = std.mem.trim(u8, trimmed[colon_pos + 1 ..], " \t");
-            if (prop_name.len == 0) continue;
-            const name_copy = try self.allocator.dupe(u8, prop_name);
-            errdefer self.allocator.free(name_copy);
-            const value_copy = try self.allocator.dupe(u8, prop_value);
-            errdefer self.allocator.free(value_copy);
-            // A property given twice keeps its last value.
-            const slot = try self.properties.getOrPut(self.allocator, name_copy);
-            if (slot.found_existing) {
-                self.allocator.free(name_copy);
-                self.allocator.free(slot.value_ptr.*);
-            }
-            slot.value_ptr.* = value_copy;
-        }
-    }
-
-    /// How many properties are set.
-    pub fn propertyCount(self: *const InlineStyle) u32 {
-        return @intCast(self.properties.count());
-    }
-};
-
-/// What HTMLElement supplies.
-pub const InlineStyleSteps = struct {
-    /// `element`'s inline style, or null when it has none (no HTMLElement
-    /// part).
-    of: *const fn (element: *runtime.Instance) ?*InlineStyle,
-};
-
-// process-wide: an immutable function pointer HTMLElement installs once at process start (crane.Process); it reads only the element it is given, so one serves every Browser and thread
-var inline_style_steps: ?InlineStyleSteps = null;
-
-/// Called by HTMLElement's installHooks, once, at process start (process_start.zig).
-pub fn installInlineStyle(steps: InlineStyleSteps) void {
-    process_start.assertInstalling();
-    inline_style_steps = steps;
-}
-
-/// `element`'s inline style declarations, kept by the element; null for an
-/// element with none (or before HTMLElement installed the step).
-pub fn inlineStyleOf(element: *runtime.Instance) ?*InlineStyle {
-    const steps = inline_style_steps orelse return null;
-    return steps.of(element);
-}
-
-// ============================================================================
 // Tests
 // ============================================================================
-
-test "InlineStyle keeps each property's last value and forgets cssText on a change" {
-    var style = InlineStyle.init(std.testing.allocator);
-    defer style.deinit();
-    try style.setCssText("color: red; width : 1px; color: blue;;");
-    try std.testing.expectEqual(@as(u32, 2), style.propertyCount());
-    try std.testing.expectEqualStrings("blue", style.getProperty("color").?);
-    try std.testing.expectEqualStrings("1px", style.getProperty("width").?);
-    try std.testing.expectEqualStrings("color: red; width : 1px; color: blue;;", style.cssText());
-    try style.setProperty("width", "2px");
-    try std.testing.expectEqualStrings("2px", style.getProperty("width").?);
-    try std.testing.expectEqualStrings("", style.cssText());
-    style.removeProperty("color");
-    style.removeProperty("absent");
-    try std.testing.expectEqual(@as(u32, 1), style.propertyCount());
-}
 
 test "StyleRule serializes its declaration block and its rule" {
     const declarations = [_]css.rules.Declaration{

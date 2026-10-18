@@ -693,16 +693,16 @@ pub fn fromV8Sequence(
 
 /// Release the handle `element` was converted from, when nothing refers to it
 /// any more: always for a conversion that copies (`argHandleIsCopied`), and
-/// for a type whose value says (`argumentHandleIsKeptInValue`: an `any`, an
-/// `object` arm, a buffer source) unless the value still refers to it
-/// (`keptArgumentHandle`). An element that refers to it keeps it until the
-/// sequence is freed (`interface.freeSequenceElement`). Any other type keeps
-/// it - the conservative answer, as for an argument.
+/// for any other type when the value proves it (`conversionLeavesHandle`: an
+/// `any`, an `object` arm or a buffer source that does not refer to it, a
+/// null optional). An element that refers to it keeps it until the sequence
+/// is freed (`interface.freeSequenceElement`). Any other value keeps it - the
+/// conservative answer, as for an argument.
 fn releaseElementHandle(comptime T: type, element: T, handle: *v8.Value) void {
     if (comptime interface_mod.argHandleIsCopied(T)) {
         v8.v8_Value_Dispose(handle);
-    } else if (comptime interface_mod.argumentHandleIsKeptInValue(T)) {
-        if (interface_mod.keptArgumentHandle(T, element) == null) v8.v8_Value_Dispose(handle);
+    } else if (interface_mod.conversionLeavesHandle(T, element)) {
+        v8.v8_Value_Dispose(handle);
     }
 }
 
@@ -2460,7 +2460,7 @@ pub fn fromV8ValueAs(
                 } else {
                     // Convert field value - an interface-typed member to the
                     // interface `interface_members` names.
-                    @field(result, field.name) = try fromV8ValueAs(
+                    const member = try fromV8ValueAs(
                         field.type,
                         comptime structMemberInterface(T, Interface, field.name),
                         allocator,
@@ -2468,6 +2468,13 @@ pub fn fromV8ValueAs(
                         context,
                         field_v8,
                     );
+                    // A member that converted to nothing - absent or null,
+                    // a callback member's included - leaves Get's handle
+                    // referred to by nothing (`conversionLeavesHandle`):
+                    // QueuingStrategy's absent `size` kept one per strategy.
+                    // A handle the copied rule releases is never released here.
+                    if (!member_handle_released and interface_mod.conversionLeavesHandle(field.type, member)) v8.v8_Value_Dispose(field_v8);
+                    @field(result, field.name) = member;
                 }
                 converted += 1;
                 // A restricted `double` or `float` member: NaN and the

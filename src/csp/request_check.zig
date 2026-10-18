@@ -94,6 +94,8 @@ pub const Result = enum { allowed, blocked };
 
 /// §4.1.2 Should request be blocked by Content Security Policy?
 pub fn shouldRequestBeBlocked(csp_list: *const types.CSPList, request: Request, reporter: ?Reporter) Result {
+    // A list that could not record a policy blocks everything (fail closed).
+    if (csp_list.blocksEverything()) return .blocked;
     // 1-2. Let CSP list be request's policy container's CSP list; result is
     // "Allowed".
     var result: Result = .allowed;

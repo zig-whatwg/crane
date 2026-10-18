@@ -57,9 +57,75 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     dom_module.attribute_change_steps.install("details", &attributeChangeSteps);
+    dom_module.activation.install(.{ .has = &hasSummaryActivation, .run = &runSummaryActivation });
     dom_module.mutation.registerInsertionStepsCallback(&insertionStepsCallback) catch |err| {
         log.warn("details insertion steps not registered: {}", .{err});
     };
+}
+
+/// HTML 4.11.2: every HTML summary has activation behavior. The behavior
+/// itself decides whether it is the summary for its parent details.
+fn hasSummaryActivation(target: *runtime.Instance) bool {
+    const names = dom_module.node_creation.elementNames(target) orelse return false;
+    return std.mem.eql(u8, names.local_name, "summary") and
+        std.mem.eql(u8, names.namespace orelse "", "http://www.w3.org/1999/xhtml");
+}
+
+fn runSummaryActivation(summary: *runtime.Instance, event: *runtime.Instance) void {
+    // Step 1: summary-for-its-parent-details steps 1-4. Only the first
+    // summary child of a details element can toggle it; other children
+    // before that summary do not matter. Chrome/Firefox agree (Safari
+    // still misses two nested activation cases).
+    const parent = (interfaces.Node.get_parentNode(summary) catch null) orelse return;
+    if (getInternal(parent) == null) return;
+    var child = interfaces.Node.get_firstChild(parent) catch null;
+    while (child) |node| : (child = interfaces.Node.get_nextSibling(node) catch null) {
+        if (hasSummaryActivation(node)) {
+            if (node != summary) return;
+            break;
+        }
+    }
+    if (child == null) return;
+
+    // Browsers-over-spec deviation: HTML's summary activation steps omit
+    // this exclusion. interactive-content.html at WPT cc74d2669f passes
+    // 31/34 in Chrome 154 and 32/34 in Firefox 157 (Safari 27 crashes).
+    // Their component agreement follows Gecko's HTMLSummaryElement::
+    // PostHandleEvent / nsContentUtils::IsInInteractiveHTMLContent: do not
+    // toggle for HTML interactive content below the summary. Keep the
+    // names and attributes borrowed; this walk invokes no script.
+    var target = interfaces.Event.get_target(event) catch null;
+    while (target) |node| : (target = interfaces.Node.get_parentNode(node) catch null) {
+        if (node == summary) break;
+        const names = dom_module.node_creation.elementNames(node) orelse continue;
+        if (!std.mem.eql(u8, names.namespace orelse "", "http://www.w3.org/1999/xhtml")) continue;
+        const name = names.local_name;
+        for ([_][]const u8{ "button", "details", "embed", "iframe", "label", "select", "textarea" }) |interactive_name| {
+            if (std.mem.eql(u8, name, interactive_name)) return;
+        }
+        if (std.mem.eql(u8, name, "input")) {
+            const input_type = interfaces.Element.call_getAttributeNS(node, null, runtime.DOMString.initInterned("type")) catch null;
+            if (input_type == null or !std.ascii.eqlIgnoreCase(input_type.?.asSlice(), "hidden")) return;
+            continue;
+        }
+        const attribute: []const u8 = if (std.mem.eql(u8, name, "a"))
+            "href"
+        else if (std.mem.eql(u8, name, "audio") or std.mem.eql(u8, name, "video"))
+            "controls"
+        else if (std.mem.eql(u8, name, "img"))
+            "usemap"
+        else
+            continue;
+        if (interfaces.Element.call_hasAttributeNS(node, null, runtime.DOMString.initInterned(attribute)) catch false) return;
+    }
+
+    // Steps 2-3: set/remove the parent's open attribute through the DOM
+    // algorithms, which run its existing details notification steps.
+    if (hasOpen(parent)) {
+        removeOpen(parent);
+    } else {
+        dom_module.element_attributes.set(parent, "open", "", .{}) catch {};
+    }
 }
 
 /// HTMLDetailsElement's own construction steps: the generated chain runs HTMLElement's first.

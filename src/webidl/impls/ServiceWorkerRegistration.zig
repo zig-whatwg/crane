@@ -108,9 +108,10 @@ pub fn get_active(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 
 /// Getter for navigationPreload (3.2.5): the registration's
 /// NavigationPreloadManager - one per object here ([SameObject], kept by the
-/// generated getter); navigation preload itself waits for Handle Fetch.
+/// generated getter), associated with its service worker registration.
 pub fn get_navigationPreload(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    return interfaces.NavigationPreloadManager.init(instance.ctx.allocator, instance.ctx);
+    const registration = try registrationOf(instance);
+    return interfaces.NavigationPreloadManager.initWith(instance.ctx.allocator, instance.ctx, .{ .registration_id = registration.registration_id });
 }
 
 /// Getter for scope (3.2.6): the registration's serialized scope url.

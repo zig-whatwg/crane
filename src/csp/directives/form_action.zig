@@ -78,6 +78,8 @@ pub fn isFormActionAllowedByList(
     action_port: ?u16,
     action_path: []const u8,
 ) bool {
+    // A list that could not record a policy blocks everything (fail closed).
+    if (csp_list.blocksEverything()) return false;
     for (csp_list.policies.items) |*policy| {
         if (!isFormActionAllowed(policy, action_scheme, action_host, action_port, action_path)) {
             return false;

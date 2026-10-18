@@ -59,6 +59,9 @@ pub const EventSteps = struct {
     inner_event_creation_steps: *const fn (event: *runtime.Instance, event_type: runtime.DOMString, init: EventInit) anyerror!void,
     /// Whether `event`'s dispatch flag is set.
     dispatch_flag: *const fn (event: *runtime.Instance) bool,
+    /// Set the canceled flag directly (HTML "abort the ongoing navigation"
+    /// step 6), independently of cancelable and the passive-listener flag.
+    force_canceled_flag: *const fn (event: *runtime.Instance) void,
 };
 
 /// What the UIEvent impl supplies.
@@ -116,6 +119,12 @@ pub fn innerEventCreationSteps(event: *runtime.Instance, event_type: runtime.DOM
 pub fn dispatchFlag(event: *runtime.Instance) bool {
     const steps = event_steps orelse return false;
     return steps.dispatch_flag(event);
+}
+
+/// HTML's direct canceled-flag assignment; not DOM's guarded cancel steps.
+pub fn forceCanceledFlag(event: *runtime.Instance) void {
+    const steps = event_steps orelse return;
+    steps.force_canceled_flag(event);
 }
 
 /// Initialize `event`'s UIEventInit members.

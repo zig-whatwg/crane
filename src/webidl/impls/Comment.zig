@@ -70,7 +70,14 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 pub fn call_constructor(ctx: runtime.Context, data: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
     // The data is CharacterData's construction argument.
     const data_slice = if (data.was_passed) data.value.asSlice() else "";
-    return Comment.initWith(ctx.allocator, ctx, .{ .data = data_slice });
+    const realm = ctx.realm orelse return error.InvalidStateError;
+    const global: *runtime.Instance = @ptrCast(@alignCast(realm.global_object orelse return error.InvalidStateError));
+    const document = try interfaces.Window.get_document(global);
+    const instance = try Comment.initWith(ctx.allocator, ctx, .{ .data = data_slice });
+    errdefer Comment.deinit(instance);
+    // Constructor steps: node document is the current global's document.
+    try @import("dom").node_document.set(instance, document);
+    return instance;
 }
 
 /// The hooks this type owns (src/dom), installed once, at process start,

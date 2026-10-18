@@ -92,6 +92,8 @@ pub fn checkNavigationResponse(
     // § 6.4.2.1 step 1: a local response is "Allowed"; step 4: so is a
     // target that is not a child navigable.
     if (response_url_is_local or ancestors.len == 0) return false;
+    // A list that could not record a policy blocks everything (fail closed).
+    if (response_csp_list.blocksEverything()) return true;
     var blocked = false;
     for (response_csp_list.policies.items) |*policy| {
         const directive = policy.getDirective("frame-ancestors") orelse continue;

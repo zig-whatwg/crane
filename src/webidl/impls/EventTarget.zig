@@ -231,6 +231,7 @@ pub fn installHooks() void {
         .erase = eraseAllEventListenersAndHandlers,
         .has_listeners = hasListeners,
     });
+    dom_module.event_listener_types.install(hasListenersOfType);
 }
 
 /// EventTarget's own construction steps, the first of every EventTarget's
@@ -492,19 +493,18 @@ fn removeFromRegistry(instance: *runtime.Instance) void {
 /// DOM §2.7 - default passive value
 /// The default passive value, given an event type type and an EventTarget eventTarget
 fn defaultPassiveValue(@"type": []const u8, event_target: *runtime.Instance) bool {
-    _ = event_target;
-    // Step 1: Return true if type is touchstart, touchmove, wheel, or mousewheel
-    // AND eventTarget is Window or specific node conditions
-    // For now, simplified: return true for touch/wheel events
-    if (std.mem.eql(u8, @"type", "touchstart") or
-        std.mem.eql(u8, @"type", "touchmove") or
-        std.mem.eql(u8, @"type", "wheel") or
-        std.mem.eql(u8, @"type", "mousewheel"))
-    {
-        // TODO: Check eventTarget conditions per spec
-        return true;
-    }
-    // Step 2: Return false
+    // DOM default passive value step 1: the four types AND the specified
+    // targets. Chrome/Safari ship this; Firefox's older target defaults lag.
+    // Check the common non-passive type first, without walking any tree.
+    if (!std.mem.eql(u8, @"type", "touchstart") and !std.mem.eql(u8, @"type", "touchmove") and
+        !std.mem.eql(u8, @"type", "wheel") and !std.mem.eql(u8, @"type", "mousewheel")) return false;
+    if (event_target.stateAs(interfaces.Window.State) != null) return true;
+    const node_type = interfaces.Node.get_nodeType(event_target) catch return false;
+    if (node_type == interfaces.Node.get_DOCUMENT_NODE()) return true;
+    const document = (interfaces.Node.get_ownerDocument(event_target) catch null) orelse return false;
+    if ((interfaces.Document.get_documentElement(document) catch null) == event_target) return true;
+    if ((interfaces.Document.get_body(document) catch null) == event_target) return true;
+    // Step 2: all other targets, including plain EventTargets, are false.
     return false;
 }
 
@@ -1841,6 +1841,18 @@ fn hasListeners(instance: *runtime.Instance) bool {
     const list = internal.event_listener_list orelse return false;
     for (list.toSlice()) |listener| {
         if (!listener.removed) return true;
+    }
+    return false;
+}
+
+/// dom.event_listener_types: whether `instance`'s event listener list holds
+/// a listener of `event_type` whose removed is false - an activated event
+/// handler's included.
+fn hasListenersOfType(instance: *runtime.Instance, event_type: []const u8) bool {
+    const internal = getInternalFromRegistry(instance) orelse return false;
+    const list = internal.event_listener_list orelse return false;
+    for (list.toSlice()) |listener| {
+        if (!listener.removed and std.mem.eql(u8, listener.type.asSlice(), event_type)) return true;
     }
     return false;
 }

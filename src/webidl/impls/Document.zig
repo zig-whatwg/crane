@@ -36,7 +36,6 @@ const Registry = runtime.InstanceRegistry(.document, InternalState);
 
 // Import impls ONLY for internal initialization methods not exposed via interfaces
 const NodeImpl = @import("Node.zig");
-const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
 const RangeImpl = @import("Range.zig");
 const same_object = @import("same_object.zig");
 
@@ -274,6 +273,11 @@ pub const InternalState = struct {
     scripts: dom_document_scripts.Scripts,
     /// HTML 3.1.6: ordered set of elements blocking rendering.
     render_blocking_elements: @import("dom").document_rendering.ElementSet,
+    /// The document's style engine (dom.style): its sheets and its
+    /// elements' computed styles. By value - the engine's type is
+    /// dom.style's, the state this document's - and reached through the
+    /// `engine_of` hook below (lane style1).
+    style_engine: @import("dom").style.StyleEngine,
 
     /// Throw-on-dynamic-markup-insertion counter
     /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#throw-on-dynamic-markup-insertion-counter
@@ -474,6 +478,7 @@ pub const InternalState = struct {
             // Script execution state
             .scripts = dom_document_scripts.Scripts.init(allocator),
             .render_blocking_elements = @import("dom").document_rendering.ElementSet.init(allocator),
+            .style_engine = @import("dom").style.StyleEngine.init(allocator),
             .throw_on_dynamic_markup_insertion_counter = 0,
             .unload_counter = 0,
             .insertion_point = null,
@@ -573,6 +578,7 @@ pub const InternalState = struct {
         // Script execution lists (don't own the script elements, just the list storage)
         self.scripts.deinit();
         self.render_blocking_elements.deinit();
+        self.style_engine.deinit();
 
         // Module map - dispose module handles and free keys
         {
@@ -652,6 +658,49 @@ pub const InternalState = struct {
     }
 };
 
+/// dom.style's `engine_of`: this document's style engine.
+fn styleEngineOf(instance: *runtime.Instance) ?*@import("dom").style.StyleEngine {
+    const internal = getInternal(instance) orelse return null;
+    return &internal.style_engine;
+}
+
+/// dom.style's `media_values`: the environment Media Queries 5 evaluates
+/// against for this document. The viewport is what the document's window
+/// reports as innerWidth/innerHeight (ruling Q5: the headless default,
+/// consistent with them); the screen and the user preferences are the
+/// platform's (protocol 6.10.4); scripting follows the document's
+/// browsing context and sandbox. A document with no window has no
+/// viewport of its own and evaluates against the defaults, scripting none.
+fn styleMediaValues(instance: *runtime.Instance) @import("css").media_queries.MediaValues {
+    const platform = @import("platform");
+    var values: @import("css").media_queries.MediaValues = .{};
+    const window = (get_defaultView(instance) catch null) orelse {
+        values.scripting = .none;
+        return values;
+    };
+    values.width = @floatFromInt(interfaces.Window.get_innerWidth(window) catch 1024);
+    values.height = @floatFromInt(interfaces.Window.get_innerHeight(window) catch 768);
+    values.scripting = if (@import("dom").document_scripts.scriptingEnabled(instance)) .enabled else .none;
+    if (@import("html").platform_state.of(instance.ctx)) |browser| {
+        const screen = platform.screenInfo(browser);
+        values.device_width = @floatFromInt(screen.width);
+        values.device_height = @floatFromInt(screen.height);
+        values.resolution = screen.device_pixel_ratio;
+        values.color_bits = screen.color_depth / 3;
+        const preferences = platform.userPreferences(browser);
+        values.prefers_color_scheme = if (preferences.color_scheme == .dark) .dark else .light;
+        values.prefers_reduced_motion = if (preferences.reduced_motion == .reduce) .reduce else .no_preference;
+        values.prefers_contrast = switch (preferences.contrast) {
+            .no_preference => .no_preference,
+            .more => .more,
+            .less => .less,
+            .custom => .custom,
+        };
+        values.forced_colors = preferences.forced_colors;
+    }
+    return values;
+}
+
 /// An object the document makes once, keeps in its own state and hands out as
 /// the same object for its whole life - getSelection()'s Selection,
 /// document.all, document.fonts, document.styleSheets - kept alive from the
@@ -684,6 +733,9 @@ fn policyContainerOf(document: *runtime.Instance) ?*fetch.internal.PolicyContain
 pub fn installHooks() void {
     // Its states left at its Browser's end (Browser.deinit).
     @import("dom").teardown_sweeps.install(.documents, &sweepRemaining);
+    // The style engine this document keeps, and the media environment its
+    // elements are styled in (lane style1).
+    @import("dom").style.hooks.install(.{ .engine_of = &styleEngineOf, .media_values = &styleMediaValues });
     @import("dom").template_contents.install(.{ .owner_document = &templateOwnerDocument });
     @import("dom").refcount.install(.{ .document_counts = &countsOf });
     @import("dom").custom_elements.installDocument(.{
@@ -3310,19 +3362,16 @@ pub fn call_elementsFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyer
 pub fn call_createProcessingInstruction(instance: *runtime.Instance, target: runtime.DOMString, data: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // DOM 4.5: return a new ProcessingInstruction with target `target`, data
-    // `data` and node document this. The target is readonly on the interface,
-    // so it can only be set at creation.
-    const pi = try ProcessingInstructionImpl.createProcessingInstruction(
-        internal.allocator,
-        instance.ctx,
-        target.asSlice(),
-        data.asSlice(),
-    );
+    // Create/initialize a processing instruction, steps 1-2: validate XML
+    // Name and forbid ?> in data (the constructor shares these conditions).
+    if (!@import("dom").pi_attributes.isXmlName(target.asSlice()) or std.mem.indexOf(u8, data.asSlice(), "?>") != null)
+        return error.InvalidCharacterError;
+    const pi = try interfaces.ProcessingInstruction.initWith(internal.allocator, instance.ctx, .{
+        .target = target.asSlice(),
+        .data = data.asSlice(),
+    });
     errdefer interfaces.ProcessingInstruction.deinit(pi);
-
-    // Set owner document
-    try NodeImpl.setOwnerDocument(pi, instance);
+    try @import("dom").node_document.set(pi, instance);
 
     return pi;
 }
@@ -3722,12 +3771,13 @@ pub fn call_adoptNode(instance: *runtime.Instance, node: *runtime.Instance) anye
 pub fn call_createTextNode(instance: *runtime.Instance, data: runtime.DOMString) anyerror!*runtime.Instance {
     _ = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Use interface instead of impl (per Golden Rule #13)
-    const text = try interfaces.Text.call_constructor(instance.ctx, webidl.Opt(runtime.DOMString).passed(data));
+    // Create-text-node steps: copy data without the script constructor's
+    // current-global requirement, then assign this node document.
+    const text = try interfaces.Text.initWith(instance.ctx.allocator, instance.ctx, .{ .data = data.asSlice() });
     errdefer interfaces.Text.deinit(text);
 
     // Set owner document
-    try NodeImpl.setOwnerDocument(text, instance);
+    try @import("dom").node_document.set(text, instance);
 
     return text;
 }
@@ -3838,12 +3888,12 @@ pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: we
 pub fn call_createComment(instance: *runtime.Instance, data: runtime.DOMString) anyerror!*runtime.Instance {
     _ = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Use interface instead of impl (per Golden Rule #13)
-    const comment = try interfaces.Comment.call_constructor(instance.ctx, webidl.Opt(runtime.DOMString).passed(data));
+    // Create-comment-node steps: data and node document come from this call.
+    const comment = try interfaces.Comment.initWith(instance.ctx.allocator, instance.ctx, .{ .data = data.asSlice() });
     errdefer interfaces.Comment.deinit(comment);
 
     // Set owner document
-    try NodeImpl.setOwnerDocument(comment, instance);
+    try @import("dom").node_document.set(comment, instance);
 
     return comment;
 }
@@ -5092,6 +5142,12 @@ pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime
 /// 7. Return iterator
 pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // Removal runs pre-removing steps for iterators whose root's node
+    // document is the removed node's document, even across factory documents.
+    const root_document = if (try interfaces.Node.get_nodeType(root) == interfaces.Node.get_DOCUMENT_NODE())
+        root
+    else
+        (try interfaces.Node.get_ownerDocument(root)) orelse return error.InvalidStateError;
     // The filter argument, borrowed for the call: the iterator takes its own.
     const filter_wrapper: ?*runtime.CallbackWrapper = if (filter.was_passed) (filter.value orelse null) else null;
 
@@ -5102,10 +5158,10 @@ pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Insta
 
     // Steps 2-6: the iterator's own state, set through dom.traversal.
     const what_to_show: u32 = if (whatToShow.was_passed) whatToShow.value else 0xFFFFFFFF;
-    try traversal.setUpNodeIterator(iterator, root, what_to_show, filter_wrapper, instance);
+    try traversal.setUpNodeIterator(iterator, root, what_to_show, filter_wrapper, root_document);
 
-    // Register this iterator with the document
-    try registerNodeIterator(instance, iterator);
+    // Register in the same document recorded for generation-safe teardown.
+    try registerNodeIterator(root_document, iterator);
 
     // Step 7: Return iterator
     return iterator;
@@ -5614,7 +5670,7 @@ pub fn isInlineScriptAllowedByCSP(
     parser_inserted: bool,
 ) bool {
     const internal = getInternal(instance) orelse return true; // No document = allow
-    if (internal.policy_container.csp_list.policies.items.len == 0) return true;
+    if (internal.policy_container.csp_list.isEmpty()) return true;
     // CSP §4.2.3 uses the same nonce eligibility and violation-reporting
     // algorithm for inline scripts as for the other inline behaviors.
     return !@import("dom").csp_violations.shouldBlockInline(element, .script, source, .{

@@ -32,14 +32,19 @@ pub const TreeWalkerSetUp = *const fn (
     filter: ?*runtime.CallbackWrapper,
 ) anyerror!void;
 
-/// Process-wide, written once at start-up (process_start.zig).
-var node_iterator: ?NodeIteratorSetUp = null;
+pub const NodeIteratorSteps = struct {
+    set_up: NodeIteratorSetUp,
+    pre_remove: *const fn (*runtime.Instance, *runtime.Instance) void,
+};
+
+// process-wide: immutable NodeIterator algorithms installed by installNodeIterator at process start, with no instance state
+var node_iterator: ?NodeIteratorSteps = null;
 var tree_walker: ?TreeWalkerSetUp = null;
 
 /// Called by NodeIterator's installHooks, once, at process start (process_start.zig).
-pub fn installNodeIterator(set_up: NodeIteratorSetUp) void {
+pub fn installNodeIterator(steps: NodeIteratorSteps) void {
     process_start.assertInstalling();
-    node_iterator = set_up;
+    node_iterator = steps;
 }
 
 /// Called by TreeWalker's installHooks, once, at process start (process_start.zig).
@@ -57,8 +62,14 @@ pub fn setUpNodeIterator(
     filter: ?*runtime.CallbackWrapper,
     document: *runtime.Instance,
 ) !void {
-    const set_up = node_iterator orelse return error.NotSupported;
-    return set_up(iterator, root, what_to_show, filter, document);
+    const steps = node_iterator orelse return error.NotSupported;
+    return steps.set_up(iterator, root, what_to_show, filter, document);
+}
+
+/// DOM removal invokes the iterator owner's pre-removing steps.
+pub fn preRemoveNodeIterator(iterator: *runtime.Instance, removed: *runtime.Instance) void {
+    const steps = node_iterator orelse return;
+    steps.pre_remove(iterator, removed);
 }
 
 /// Set up a TreeWalker the caller has just created. The walker owns `filter`

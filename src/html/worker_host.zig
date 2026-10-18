@@ -225,6 +225,112 @@ fn cancelWorkerTimers(owner: *WorkerHost) void {
     for (ids.items) |id| owner.clearTimer(id);
 }
 
+// ============================================================================
+// Animation frames (HTML 8.12) - a dedicated worker's
+// ============================================================================
+//
+// A DedicatedWorkerGlobalScope is its own AnimationFrameProvider's target
+// object, and is "supported" when its owner set contains a Document, or a
+// DedicatedWorkerGlobalScope that is supported (`ownerSupportsAnimationFrames`,
+// read on the owner's thread when it starts the worker). The worker event
+// loop's processing model, step 6.1: when the user agent believes the worker
+// would benefit from having its rendering updated, it runs the animation
+// frame callbacks for the global scope, passing in now. Crane renders
+// nothing; a frame is due every `animation_frame_interval_ms` while callbacks
+// wait, from one timer armed only then - an idle worker pays nothing - as
+// Window's frames are (src/browser/Context.zig). Each callback is the map's
+// until it runs, is cancelled, or the worker's tasks are discarded (close(),
+// the realm's end: `discardAnimationFrames`), which releases it: a callback
+// still queued when the worker ends left its Global for the agent's life
+// (lane leaks2: 2 roots under leaks --atExit over workers/).
+
+/// ~60Hz, as a Window's: the spec leaves the rate to the user agent.
+const animation_frame_interval_ms: u64 = 16;
+
+/// An entry of a global scope's map of animation frame callbacks.
+const AnimationFrameCallback = struct {
+    handle: u32,
+    /// OWNED.
+    callback: engine.CallbackFunction,
+};
+
+/// requestAnimationFrame(callback) for the dedicated worker global scope
+/// whose realm is `ctx` (HTML 8.12). Takes `callback`: the map keeps it, or
+/// it is released here.
+pub fn requestAnimationFrame(ctx: runtime.Context, callback: engine.CallbackFunction) error{ NotSupportedError, OutOfMemory }!u32 {
+    const wctx = forScope(ctx) orelse {
+        // A global scope no worker this host runs has: nothing could ever
+        // run its callbacks.
+        callback.release();
+        return error.NotSupportedError;
+    };
+    return wctx.requestAnimationFrame(callback);
+}
+
+/// cancelAnimationFrame(handle) for the dedicated worker global scope whose
+/// realm is `ctx` (HTML 8.12).
+pub fn cancelAnimationFrame(ctx: runtime.Context, handle: u32) error{NotSupportedError}!void {
+    const wctx = forScope(ctx) orelse return error.NotSupportedError;
+    return wctx.cancelAnimationFrame(handle);
+}
+
+/// HTML 8.12 "supported", for the dedicated worker the realm `owner_realm`
+/// starts: its owner set - that realm's global object, a Window's being its
+/// associated Document - contains a Document, or a DedicatedWorkerGlobalScope
+/// that is supported. Read on the owner's thread.
+fn ownerSupportsAnimationFrames(owner_realm: runtime.Context) bool {
+    if (owner_realm.isWindow()) return true;
+    const owner = forScope(owner_realm) orelse return false;
+    return owner.supportsAnimationFrames();
+}
+
+/// The frame's timer: the worker's rendering opportunity.
+fn animationFrameTrampoline(data: ?*anyopaque) void {
+    const self: *WorkerHost = @ptrCast(@alignCast(data orelse return));
+    self.animation_frame_timer = null;
+    // A closing worker runs no further task; its end releases the callbacks.
+    if (!self.runsTasks() or self.realm == null) return;
+    if (self.animation_frame_callbacks.items.len == 0) return;
+    self.runTask(AnimationFrames.steps, self);
+    // What the callbacks requested waits for the next frame.
+    if (self.animation_frame_callbacks.items.len > 0) self.armAnimationFrame();
+}
+
+const AnimationFrames = struct {
+    /// The worker event loop's step 6.1, as a task of the worker's realm:
+    /// 6.1.1. Let now be the current high resolution time given the
+    /// DedicatedWorkerGlobalScope. 6.1.2. Run the animation frame callbacks
+    /// for it, passing in now.
+    fn steps(data: ?*anyopaque) void {
+        const self: *WorkerHost = @ptrCast(@alignCast(data orelse return));
+        const realm = self.realm orelse return;
+        const now = self.currentHighResolutionTime();
+        // "Run the animation frame callbacks": 1. Let callbacks be target's
+        // map of animation frame callbacks. 2. Let callbackHandles be the
+        // result of getting the keys of callbacks. Without memory for them
+        // the frame is skipped: the callbacks wait for the next one.
+        const handles = self.allocator.alloc(u32, self.animation_frame_callbacks.items.len) catch return;
+        defer self.allocator.free(handles);
+        for (handles, self.animation_frame_callbacks.items) |*handle, entry| handle.* = entry.handle;
+        // 3. For each handle in callbackHandles, if handle exists in
+        // callbacks - a callback before it may have cancelled it:
+        for (handles) |handle| {
+            if (!self.runsTasks()) break;
+            const index = self.animationFrameIndex(handle) orelse continue;
+            // 3.1-3.2. Let callback be callbacks[handle]; remove it.
+            const entry = self.animation_frame_callbacks.orderedRemove(index);
+            defer entry.callback.release();
+            // 3.3. Invoke callback with « now » and "report".
+            const completion = engine.invokeCallbackFunction(realm, &entry.callback, .undefined, &.{.{ .number = now }}, .{
+                .report = self.reporter(),
+            }) catch continue;
+            switch (completion) {
+                inline else => |value| value.release(),
+            }
+        }
+    }
+};
+
 /// Every worker on this thread whose realm is still there, for
 /// `scopeSettings` and the realm hooks: a worker's thread has its one. Freed
 /// when it empties, so a worker thread that ends leaves nothing of it.
@@ -263,6 +369,9 @@ pub const ScopeSettings = struct {
     /// the global that created it - is a secure context (HTML 8.1.3.5 step
     /// 1.2.1), read on the owner's thread when the worker started.
     owner_is_secure_context: bool = false,
+    /// The owner's mixed-content restriction, read on its thread. Opaque
+    /// data workers inherit it independently of secure-context status.
+    owner_prohibits_mixed_security_contexts: bool = false,
     /// The owner's top-level site (dom.global_settings.topLevelSiteOf), read
     /// on the owner's thread when a DEDICATED worker started. BORROWED from
     /// the host; null for a shared or service worker or an owner with none.
@@ -281,6 +390,7 @@ pub fn scopeSettings(ctx: runtime.Context) ?ScopeSettings {
         .policy_container = &wctx.policy_container,
         .time_origin_ns = wctx.time_origin_ns,
         .owner_is_secure_context = wctx.owner_is_secure_context,
+        .owner_prohibits_mixed_security_contexts = wctx.owner_prohibits_mixed_security_contexts,
         .top_level_site = wctx.top_level_site,
     };
 }
@@ -671,6 +781,9 @@ pub const WorkerHost = struct {
     /// worker (`ScopeSettings.owner_is_secure_context`).
     owner_is_secure_context: bool = false,
 
+    /// The creator's captured mixed-content restriction, by value.
+    owner_prohibits_mixed_security_contexts: bool = false,
+
     /// The owner's top-level site, for a dedicated worker
     /// (`ScopeSettings.top_level_site`). OWNED.
     top_level_site: ?[]u8 = null,
@@ -727,6 +840,20 @@ pub const WorkerHost = struct {
     /// not the timer manager's: an interval's manager id changes on every
     /// repeat, and the id script holds must not.
     next_timer_id: runtime.TimerId = 1,
+
+    /// HTML 8.12: the global scope's map of animation frame callbacks - a
+    /// DedicatedWorkerGlobalScope is its own target object - in the order
+    /// they were requested. Each callback OWNED until it runs, is cancelled
+    /// or the worker's tasks are discarded (`discardAnimationFrames`).
+    animation_frame_callbacks: std.ArrayListUnmanaged(AnimationFrameCallback) = .empty,
+    /// Its animation frame callback identifier: the last handle handed out.
+    animation_frame_identifier: u32 = 0,
+    /// The timer manager's id of the next frame's task, armed only while
+    /// callbacks wait.
+    animation_frame_timer: ?runtime.TimerId = null,
+    /// Whether the global scope is a "supported" AnimationFrameProvider
+    /// (`ownerSupportsAnimationFrames`, for a dedicated worker).
+    animation_frames_owner_supported: bool = false,
 
     /// The worker's module map (HTML "module map" of its settings object):
     /// keys owned, values a `*module_script.ModuleScript` or
@@ -792,6 +919,8 @@ pub const WorkerHost = struct {
             .cookie_jar = start.cookie_jar,
             .time_origin_ns = start.time_origin_ns,
             .owner_is_secure_context = start.owner_is_secure_context,
+            .owner_prohibits_mixed_security_contexts = start.owner_prohibits_mixed_security_contexts,
+            .animation_frames_owner_supported = start.owner_supports_animation_frames,
         };
         // Taken, not copied: the start's allocator is this one, and a move
         // has no failure to unwind.
@@ -920,6 +1049,92 @@ pub const WorkerHost = struct {
     }
 
     // ------------------------------------------------------------------
+    // Animation frames (HTML 8.12)
+    // ------------------------------------------------------------------
+
+    /// Whether this global scope is a supported AnimationFrameProvider: a
+    /// dedicated worker's whose owner set has a Document, or a supported
+    /// dedicated worker global scope.
+    fn supportsAnimationFrames(self: *const Self) bool {
+        return self.animation_frames_owner_supported and self.shared == null and self.service == null;
+    }
+
+    /// requestAnimationFrame(callback), taking `callback`.
+    fn requestAnimationFrame(self: *Self, callback: engine.CallbackFunction) error{ NotSupportedError, OutOfMemory }!u32 {
+        // 1. "If this is not supported, then throw a "NotSupportedError"
+        // DOMException."
+        if (!self.supportsAnimationFrames()) {
+            callback.release();
+            return error.NotSupportedError;
+        }
+        // 2-3. Increment target's animation frame callback identifier by
+        // one, and let handle be the result (an unsigned long).
+        self.animation_frame_identifier +%= 1;
+        const handle = self.animation_frame_identifier;
+        // A closing worker runs no further task (its tasks are discarded):
+        // the callback could never run.
+        if (!self.runsTasks()) {
+            callback.release();
+            return handle;
+        }
+        // 4-5. Set callbacks[handle] to callback.
+        self.animation_frame_callbacks.append(self.allocator, .{ .handle = handle, .callback = callback }) catch {
+            callback.release();
+            return error.OutOfMemory;
+        };
+        self.armAnimationFrame();
+        // 6. Return handle.
+        return handle;
+    }
+
+    /// cancelAnimationFrame(handle).
+    fn cancelAnimationFrame(self: *Self, handle: u32) error{NotSupportedError}!void {
+        // 1. "If this is not supported, then throw a "NotSupportedError"
+        // DOMException."
+        if (!self.supportsAnimationFrames()) return error.NotSupportedError;
+        // 2-3. Remove callbacks[handle].
+        const index = self.animationFrameIndex(handle) orelse return;
+        const entry = self.animation_frame_callbacks.orderedRemove(index);
+        entry.callback.release();
+    }
+
+    fn animationFrameIndex(self: *const Self, handle: u32) ?usize {
+        for (self.animation_frame_callbacks.items, 0..) |entry, i| {
+            if (entry.handle == handle) return i;
+        }
+        return null;
+    }
+
+    /// The next frame's timer, unless one is armed.
+    fn armAnimationFrame(self: *Self) void {
+        if (self.animation_frame_timer != null) return;
+        const timer = self.timer orelse return;
+        const id = timer.setTimeout(animation_frame_interval_ms, animationFrameTrampoline, self);
+        if (id != 0) self.animation_frame_timer = id;
+    }
+
+    /// The worker's tasks are discarded (close() step 1, "terminate a
+    /// worker", the realm's end): the frame's timer is cancelled, and every
+    /// callback still in the map is released, never run.
+    fn discardAnimationFrames(self: *Self) void {
+        if (self.animation_frame_timer) |id| {
+            if (self.timer) |timer| _ = timer.clearTimeout(id);
+            self.animation_frame_timer = null;
+        }
+        for (self.animation_frame_callbacks.items) |entry| entry.callback.release();
+        self.animation_frame_callbacks.clearAndFree(self.allocator);
+    }
+
+    /// HR-Time's current high resolution time given the global scope - what
+    /// its performance.now() answers: the coarsened time since its time
+    /// origin, in milliseconds. 0 when the global scope has none.
+    fn currentHighResolutionTime(self: *const Self) f64 {
+        const global_scope = self.global_scope orelse return 0;
+        const performance = interfaces.WorkerGlobalScope.get_performance(global_scope) catch return 0;
+        return interfaces.Performance.call_now(performance) catch 0;
+    }
+
+    // ------------------------------------------------------------------
     // A shared worker's connections
     // ------------------------------------------------------------------
 
@@ -984,6 +1199,7 @@ pub const WorkerHost = struct {
         if (self.phase != .running) return;
         self.phase = .closing;
         cancelWorkerTimers(self);
+        self.discardAnimationFrames();
         // The loop runs no further task; its end discards them.
         _ = self.link.requestClose();
     }
@@ -997,6 +1213,7 @@ pub const WorkerHost = struct {
         self.phase = .realm_gone;
         removeLive(self);
         cancelWorkerTimers(self);
+        self.discardAnimationFrames();
         // "Run a worker" step 17: disentangle the worker's ports - its
         // implicit port first. Its Worker object's outside port is no longer
         // entangled; what the worker was sent and never ran goes with it.
@@ -1047,6 +1264,8 @@ pub const WorkerHost = struct {
         removeHost(self);
         std.debug.assert(self.timers.count() == 0);
         self.timers.deinit(self.allocator);
+        std.debug.assert(self.animation_frame_callbacks.items.len == 0);
+        self.animation_frame_callbacks.deinit(self.allocator);
         if (self.shared) |*shared| shared.deinit(self.allocator);
         std.debug.assert(self.pending_imports.items.len == 0);
         self.pending_imports.deinit(self.allocator);
@@ -2125,15 +2344,18 @@ const SharedConnect = struct {
         }) catch return self.fireError();
         defer fetched.deinit();
 
+        // The global scope's policy container, from the response - or the
+        // creator's, for a data: or blob: script. Fails closed: a clone that
+        // cannot be made is the start's failure, never a worker without its
+        // creator's policies.
+        const policy_container = workerPolicyContainer(allocator, &fetched, self.owner_realm) catch return self.fireError();
         var start: WorkerStart = .{
             .source = fetched.source,
             .script_url = fetched.final_url,
             .worker_type = self.worker_type,
             // 8. The global scope's name (its SharedScope has it too).
             .name = self.name,
-            // The global scope's policy container, from the response - or
-            // the creator's, for a data: or blob: script.
-            .policy_container = workerPolicyContainer(allocator, &fetched, self.owner_realm),
+            .policy_container = policy_container,
             .cookie_jar = creatorCookieJar(self.owner_realm),
             .owner_realm = self.owner_realm,
             .owner_worker = self.ownerWorker(),
@@ -2280,8 +2502,16 @@ const Connect = struct {
 /// script - for blob:, "create a policy container from a fetch response"
 /// step 1 takes its blob URL entry's environment's, which is the creator's
 /// here: the blob store answers only the creator's origin), else the
-/// response's. A new container when neither can be had.
-pub fn workerPolicyContainer(allocator: Allocator, fetched: *workers.FetchedScript, owner_realm: runtime.Context) fetch_mod.internal.PolicyContainer {
+/// response's. A new container when neither can be had: an owner whose
+/// global has no policy container to give.
+///
+/// Fails closed: a clone that cannot be allocated is OutOfMemory, and the
+/// caller fails the worker's start (an `error` event at the Worker or
+/// SharedWorker). It used to fall back to a NEW container - no CSP list, the
+/// default referrer policy - so a data: or blob: worker whose creator's
+/// container could not be cloned ran without its creator's policies (lane
+/// leaks2; tests/html/worker_policy_container_oom_test.zig).
+pub fn workerPolicyContainer(allocator: Allocator, fetched: *workers.FetchedScript, owner_realm: runtime.Context) error{OutOfMemory}!fetch_mod.internal.PolicyContainer {
     const PolicyContainer = fetch_mod.internal.PolicyContainer;
     // Step 2: the response's, when a network fetch made one. Upgrade
     // Insecure Requests 3.3: a worker inherits its creator's insecure
@@ -2290,13 +2520,17 @@ pub fn workerPolicyContainer(allocator: Allocator, fetched: *workers.FetchedScri
         var result = container;
         if (creatorPolicyContainer(owner_realm)) |owner| {
             if (owner.upgradesInsecureRequests()) result.inherited_upgrade_insecure_requests = true;
+            // UIR 3.3 also inherits navigation tuples. Omitting that copy
+            // here is unobservable: their sole reader (4.1 step 2.4) handles
+            // navigation requests, which a dedicated/shared worker cannot
+            // issue. Local workers below still clone the whole container.
         }
         return result;
     }
     // Step 1: "If workerGlobalScope's url is local but its scheme is not
     // "blob"": a clone of its owner's - the one owner a dedicated worker,
     // or a shared worker's creator, has.
-    if (creatorPolicyContainer(owner_realm)) |owner| return owner.clone(allocator) catch PolicyContainer.init(allocator);
+    if (creatorPolicyContainer(owner_realm)) |owner| return owner.clone(allocator);
     return PolicyContainer.init(allocator);
 }
 
@@ -2318,6 +2552,16 @@ fn ownerIsSecureContext(realm: runtime.Context) bool {
     const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return false));
     const settings = @import("dom").global_settings.of(global) orelse return false;
     return settings.is_secure_context(global);
+}
+
+/// A worker creator's mixed-content answer, read only on its own thread.
+/// A nested data worker captures its owner's already-inherited restriction.
+fn ownerProhibitsMixedSecurityContexts(realm: runtime.Context) error{OutOfMemory}!bool {
+    const record = realm.getRealm() orelse return false;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return false));
+    const settings = @import("dom").global_settings.of(global) orelse return false;
+    const prohibits = settings.prohibits_mixed_security_contexts orelse return false;
+    return try prohibits(global);
 }
 
 /// The owner's top-level site (Fetch "determine the network partition key"),
@@ -2878,6 +3122,12 @@ const ThreadHost = struct {
         time_origin_ns: ?i64,
         /// Whether the owner is a secure context, read on its thread.
         owner_is_secure_context: bool,
+        /// The owner's mixed-content answer, read on that same thread.
+        owner_prohibits_mixed_security_contexts: bool,
+        /// Whether a dedicated worker's global scope will be a supported
+        /// AnimationFrameProvider, read on the owner's thread
+        /// (`ownerSupportsAnimationFrames`).
+        owner_supports_animation_frames: bool = false,
         shared: ?SharedScope,
         /// The agent cluster of a DEDICATED worker's agent: its owner's
         /// ("obtain a worker/worklet agent" step 3 - isTopLevel is false, so
@@ -2905,6 +3155,7 @@ const ThreadHost = struct {
         // On the owner's thread, in its realm: its top-level site.
         const top_level_site = if (start.shared == null) try ownerTopLevelSite(allocator, start.owner_realm) else null;
         errdefer if (top_level_site) |site| allocator.free(site);
+        const owner_prohibits_mixed_security_contexts = try ownerProhibitsMixedSecurityContexts(start.owner_realm);
         const self = try allocator.create(ThreadHost);
         self.* = .{
             .allocator = allocator,
@@ -2922,6 +3173,10 @@ const ThreadHost = struct {
                 // On the owner's thread, in its realm: HTML 8.1.3.5 step
                 // 1.2.1 asks owner set[0]'s relevant settings object.
                 .owner_is_secure_context = ownerIsSecureContext(start.owner_realm),
+                .owner_prohibits_mixed_security_contexts = owner_prohibits_mixed_security_contexts,
+                // On the owner's thread: HTML 8.12's "supported" asks the
+                // owner set.
+                .owner_supports_animation_frames = start.shared == null and ownerSupportsAnimationFrames(start.owner_realm),
                 .shared = start.shared,
                 // On the owner's thread, in its realm: the owner's agent
                 // cluster, for a dedicated worker.
@@ -3111,8 +3366,11 @@ pub const ServiceScope = struct {
 pub const ServiceHooks = struct {
     /// Run Service Worker step 9: the script has been evaluated - `ok` false
     /// when it was not, or threw (its start status an abrupt completion), or
-    /// its global scope could not be set up.
-    evaluated: *const fn (manager: *anyopaque, worker_id: u64, ok: bool) void,
+    /// its global scope could not be set up. `global` is the worker's
+    /// ServiceWorkerGlobalScope (null when none was made), on this thread for
+    /// the call: whose event listeners make the service worker's set of
+    /// event types to handle.
+    evaluated: *const fn (manager: *anyopaque, worker_id: u64, ok: bool, global: ?*runtime.Instance) void,
     /// importScripts() in the service worker (Service Workers 6.3.2): the
     /// fetch hook's steps - answered from its script resource map, or
     /// fetched and recorded there. NetworkError for a network error.
@@ -3335,7 +3593,8 @@ const ServiceThreadHost = struct {
         };
         // Step 9.7: its start status, for its owner. A worker whose script
         // was not evaluated, or threw, does not stay: its owner terminates it.
-        service.hooks.evaluated(service.manager, service.worker_id, ok);
+        const global: ?*runtime.Instance = if (self.host) |h| h.global_scope else null;
+        service.hooks.evaluated(service.manager, service.worker_id, ok, global);
         return ok;
     }
 

@@ -17,7 +17,7 @@ const callbacks = @import("callbacks");
 const ProgressEvent = interfaces.ProgressEvent;
 const Event = interfaces.Event;
 const webidl = @import("webidl");
-const clock = @import("clock");
+const performance_timeline = @import("dom").performance_timeline;
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = ProgressEvent.State;
@@ -129,7 +129,8 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.base.own.cancelBubble = false;
     state.base.own.returnValue = true; // !canceled_flag
     state.base.own.defaultPrevented = false;
-    state.base.own.timeStamp = @as(f64, @floatFromInt(clock.monotonicMillis()));
+    // DOM inner event creation step 3: relative to the relevant global.
+    state.base.own.timeStamp = performance_timeline.now(instance.ctx) orelse 0;
 
     // Create the INHERITED Event internal state and set the initialized flag.
     // Without it dispatchEvent throws InvalidStateError, so the event can be

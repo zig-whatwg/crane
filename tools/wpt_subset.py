@@ -213,6 +213,17 @@ EXCLUDE = [
      'expects document.open() to add a history entry and fire pageshow, removed by whatwg/html#3946 - wpt#63099'),
     ('html/browsers/history/the-location-interface/location_replace_session_history.html',
      'only completes if an iframe document is restored from session history without reloading (optional bfcache; times out in Servo too) - wpt#63100'),
+    # Its abort-reason case waits for the service worker to see the page's
+    # abort while its respondWith() promise is pending, and that promise
+    # resolves only in the abort listener. ServiceWorker "Handle Fetch" waits
+    # for respondWith (step 16) before it signals abort (step 20), so the case
+    # deadlocks by the spec itself: Chrome, Firefox and Safari all time out
+    # (wpt.fyi df642c4142; Firefox's meta marks it expected TIMEOUT). The
+    # ordering is open upstream as w3c/ServiceWorker#1544 (since 2020). The
+    # user's call for 0.1 (2026-10-17): exclude; re-include when #1544 is
+    # resolved and the test follows it.
+    ('fetch/api/abort/serviceworker-intercepted.https.html',
+     'abort reason during a pending respondWith: deadlocks by the spec step order in every browser - w3c/ServiceWorker#1544'),
 
     # Inside the tier 1 and tier 2 suites: what needs layout, a feature excluded
     # elsewhere, or a human.
@@ -394,6 +405,13 @@ EXCLUDE = [
     ('html/semantics/embedded-content/the-iframe-element/iframe-loading-lazy-multiple-times.html',
      'lazy loading by viewport, needs layout'),
 
+    # Found after the geometry pass (Codex row 62, 2026-10-17): every one of its
+    # 330 subtests (six variants x 55) fails with "unsupported operation:
+    # Crane has no layout: a pointer moves onto an element origin only" - the
+    # test drives clicks by viewport point (test_driver Actions), which needs
+    # boxes. Chrome, Firefox and Safari pass each variant 55/55.
+    ('html/semantics/the-button-element/command-and-commandfor/invalid-element-types.html',
+     'hit-tests a point (pointer actions at viewport coordinates), needs layout'),
     # Harness infrastructure, not tests.
     ('/support/',                      'support files'),
     ('/resources/',                    'harness resources'),

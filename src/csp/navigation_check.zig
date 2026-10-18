@@ -73,6 +73,8 @@ pub fn preNavigationChecks(
     navigation_type: NavigationType,
     reporter: ?violation_events.Reporter,
 ) Result {
+    // A list that could not record a policy blocks everything (fail closed).
+    if (csp_list.blocksEverything()) return .blocked;
     // 1. Let result be "Allowed".
     var result: Result = .allowed;
     // 2-3. For each policy, each directive's pre-navigation check.
@@ -114,6 +116,8 @@ pub fn javascriptUrlInlineChecks(
     reporter: ?violation_events.Reporter,
 ) Result {
     if (!std.ascii.eqlIgnoreCase(request.url.scheme, "javascript")) return .allowed;
+    // A list that could not record a policy blocks everything (fail closed).
+    if (csp_list.blocksEverything()) return .blocked;
     var result: Result = .allowed;
     for (csp_list.policies.items) |*policy| {
         // 4.1.1.1-4.1.1.2. The inline check upon null, "navigation",

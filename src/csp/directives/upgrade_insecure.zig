@@ -16,6 +16,8 @@ const types = @import("../types.zig");
 /// Check if upgrade-insecure-requests is active in any policy.
 /// Spec: Upgrade Insecure Requests § 3.1
 pub fn shouldUpgradeInsecureRequests(csp_list: *const types.CSPList) bool {
+    // A list that could not record a policy fails closed: upgraded.
+    if (csp_list.blocksEverything()) return true;
     for (csp_list.policies.items) |policy| {
         if (policy.containsDirective("upgrade-insecure-requests")) {
             return true;

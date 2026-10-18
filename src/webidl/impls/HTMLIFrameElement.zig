@@ -879,6 +879,9 @@ const Navigation = struct {
     /// (dom.service_worker_clients' handle), until the new document's realm
     /// takes it; one no document took is discarded.
     reserved_client: ?*anyopaque = null,
+    /// That reserved client's creation URL (owned): the hop it was reserved
+    /// for, whose origin a redirect's next hop is compared with (step 21.1).
+    reserved_url: ?[]u8 = null,
     /// Navigate step 8's target snapshot params' sandboxing flags: "determine
     /// the creation sandboxing flags" for the navigable's active browsing
     /// context given its container, as the navigation starts - the iframe's
@@ -902,6 +905,7 @@ const Navigation = struct {
         // Terminating a fetch runs neither `done` nor `gone`.
         if (self.fetch) |f| f.terminate();
         dom_module.service_worker_clients.release(self.reserved_client);
+        if (self.reserved_url) |u| self.allocator.free(u);
         if (self.response) |*r| r.deinit();
         if (self.srcdoc) |s| self.allocator.free(s);
         if (self.javascript_result) |r| self.allocator.free(r);
@@ -1268,7 +1272,14 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // clone of sourceDocument's policy container.
     if (options.source_document) |source| {
         if (dom_module.policy_containers.of(source)) |container| {
-            record.initiator_policy_container = container.clone(allocator) catch null;
+            // Fails closed: a navigation whose source policies could not be
+            // snapshotted does not start. Null here gave a local (about:,
+            // blob:, data:) document a new, empty container - no CSP - at
+            // "determine navigation params policy container" step 4.
+            record.initiator_policy_container = container.clone(allocator) catch {
+                record.destroy();
+                return;
+            };
         }
         // The source snapshot params' fetch client is sourceDocument's
         // relevant settings object: the request's client, whose global a
@@ -1293,7 +1304,11 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     if (options.traversal_entry != 0 and options.source_document == null) {
         if (active) |doc| {
             if (dom_module.policy_containers.of(doc)) |container| {
-                record.traversal_policy_container = container.clone(allocator) catch null;
+                // Fails closed, as the source snapshot above does.
+                record.traversal_policy_container = container.clone(allocator) catch {
+                    record.destroy();
+                    return;
+                };
             }
         }
     }
@@ -1553,7 +1568,10 @@ fn startFetch(record: *Navigation) void {
                 .embed => .embed,
             } else .document,
             .mode = .navigate,
-            .redirect = .follow,
+            // Step 3: redirect mode "manual" - the navigation follows each
+            // redirect itself (step 21, `followManualRedirect`), so every
+            // hop's request goes through main fetch and Handle Fetch.
+            .redirect = .manual,
             // "Create navigation params by fetching" step 3: a POST
             // resource's request is a POST.
             .method = if (record.post_body != null) "POST" else "GET",
@@ -1583,6 +1601,8 @@ fn startFetch(record: *Navigation) void {
         // destroy terminates it.
         if (record.csp_reporter) |*reporter| request.csp_violation_reporter = reporter.reporter();
         request.prohibits_mixed_security_contexts = record.prohibits_mixed_security_contexts;
+        // UIR 4.1 step 2.1: GET and POST form navigations both qualify.
+        request.form_submission = record.csp_navigation_type == .form_submission;
         // "Create navigation params by fetching" step 3: "If
         // sourceSnapshotParams's fetch client is navigable's container
         // document's relevant settings object, then set request's initiator
@@ -1623,7 +1643,10 @@ fn startFetch(record: *Navigation) void {
         // "Create navigation params by fetching": the request's reserved
         // client, a new environment - which Handle Fetch may make controlled
         // (Service Workers 2.5.1) and the new document's realm adopts.
-        if (navigationRealmOf(record.integration)) |creator| record.reserved_client = dom_module.service_worker_clients.reserve(creator, .window, url);
+        if (navigationRealmOf(record.integration)) |creator| {
+            record.reserved_client = dom_module.service_worker_clients.reserve(creator, .window, url);
+            if (record.reserved_client != null) record.reserved_url = allocator.dupe(u8, url) catch null;
+        }
         request.reserved_client = record.reserved_client;
         request.service_worker = dom_module.service_worker_clients.routeOfReserved(record.reserved_client);
         const client: fetch_mod.algorithms.AsyncFetch.Client = .{
@@ -1634,7 +1657,8 @@ fn startFetch(record: *Navigation) void {
         };
         // The request's final referrer comes back with the result, for the
         // new document's referrer (fetchDone frees it with the result).
-        record.fetch = fetch_mod.algorithms.AsyncFetch.start(allocator, request, .{ .report_referrer = true }, agentFetchesOf(record.integration), client) catch {
+        // The navigation follows its redirects itself (`followManualRedirect`).
+        record.fetch = fetch_mod.algorithms.AsyncFetch.start(allocator, request, .{ .report_referrer = true, .follows_manual_redirects = true }, agentFetchesOf(record.integration), client) catch {
             // The fetch owned the request, and freed it.
             record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
@@ -1763,11 +1787,28 @@ fn fetchDone(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch
     var result = outcome catch null;
     defer if (result) |*r| r.deinit();
     const record = navigationById(id) orelse return;
+    // "Create navigation params by fetching" step 21: a redirect the
+    // navigation follows by hand goes on to its next hop.
+    if (record.fetch) |f| if (result != null and f.hasNextManualRedirect()) return followManualRedirect(record, f);
+    // "Create and initialize a Document object" step 3: creationURL is the
+    // request's current URL - the last hop's - not the response's URL: a
+    // service worker's response fetched from another URL still makes the
+    // document of the URL navigated to (navigation-redirect.https.html,
+    // "SW-fetched response from different URL"). Every other response's URL
+    // is that URL already.
+    const current_url: ?[]u8 = if (record.fetch) |f| record.allocator.dupe(u8, f.requestCurrentUrl()) catch null else null;
+    defer if (current_url) |u| record.allocator.free(u);
     record.fetch = null;
     record.response = if (result) |r|
         navigation_fetch.resultFromResponse(record.allocator, record.url, r.response, .{}) catch null
     else
         null;
+    if (record.response) |*response| if (current_url) |url| if (!response.is_network_error and !std.mem.eql(u8, response.final_url, url)) {
+        if (record.allocator.dupe(u8, url)) |owned| {
+            if (response.final_url.len > 0) record.allocator.free(response.final_url);
+            response.final_url = owned;
+        } else |_| {}
+    };
     // The request's referrer as main fetch left it, for the new document.
     if (record.response) |*response| {
         if (result) |r| {
@@ -1793,6 +1834,43 @@ fn fetchDone(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch
         record.response = navigation_fetch.networkErrorResult(record.allocator, record.url) catch return endNavigation(id);
     }
     queueNavigationTask(record.integration, id, &runCommit);
+}
+
+/// HTML "create navigation params by fetching" steps 21.14-21.21 for a
+/// redirect response the fetch handed over (redirect mode "manual"), then -
+/// for the next turn of the loop - steps 21.1-21.2 and 21.6: a hop to
+/// another origin than the reserved client's creation URL's discards that
+/// client and reserves a new one for the new URL, and the fetch processes
+/// the next manual redirect, through main fetch (its CSP, mixed content and
+/// integrity checks, as a redirect fetch follows itself) and Handle Fetch.
+/// A location that is failure, or not HTTP(S), ends the fetch with a network
+/// error there (step 23: "redirects to fetch scheme URLs that aren't HTTP(S)
+/// are treated like network errors"; a non-fetch scheme's navigation params
+/// are not made - stated, as before).
+fn followManualRedirect(record: *Navigation, f: *fetch_mod.algorithms.AsyncFetch) void {
+    // 21.14. locationURL.
+    if (f.nextManualRedirectUrl()) |location| {
+        const scheme = navigate_steps.schemeOf(location);
+        const http = std.mem.eql(u8, scheme, "http") or std.mem.eql(u8, scheme, "https");
+        // 21.1. Another origin than the reserved client's creation URL's.
+        if (http) if (record.reserved_url) |reserved_url| {
+            const same = fetch_mod.internal.origins.sameOrigin(record.allocator, reserved_url, location) catch false;
+            if (!same) {
+                // 21.1.1-21.1.2. The environment discarding steps.
+                dom_module.service_worker_clients.release(record.reserved_client);
+                record.reserved_client = null;
+                record.allocator.free(reserved_url);
+                record.reserved_url = null;
+                // 21.2. A new reserved client, for the new URL.
+                if (navigationRealmOf(record.integration)) |creator| {
+                    record.reserved_client = dom_module.service_worker_clients.reserve(creator, .window, location);
+                    if (record.reserved_client != null) record.reserved_url = record.allocator.dupe(u8, location) catch null;
+                }
+            }
+        };
+    }
+    // 21.6. Process the next manual redirect.
+    f.processNextManualRedirect(record.reserved_client, dom_module.service_worker_clients.routeOfReserved(record.reserved_client));
 }
 
 /// The task that ends a navigation with a response: HTML "finalize a
@@ -1841,11 +1919,39 @@ fn runCommit(context: ?*anyopaque) void {
     // the pageswap event names and the new document's Window is chosen by.
     // A network error's document is "inline content that doesn't have a
     // DOM", whose final sandboxing flag set is empty.
-    var params_container = navigationParamsPolicyContainer(integration, record, response);
+    //
+    // Both fail closed: a document whose policy container could not be made
+    // is not made, and the navigable keeps its active document, as for a
+    // response that makes none (above). The container used to be null on
+    // out of memory, and the new document kept the empty one it was created
+    // with - no CSP, no CSP-derived sandboxing flags.
+    var params_container: ?fetch_mod.internal.PolicyContainer = navigationParamsPolicyContainer(integration, record, response) catch |err| {
+        log.warn("[navigation] no policy container for {s}: {s}", .{ record.url, @errorName(err) });
+        integration.ongoing_navigation = .none;
+        endLoadDelay(integration);
+        return;
+    };
     var params_container_taken = false;
     defer if (!params_container_taken) {
         if (params_container) |*container| container.deinit();
     };
+    // "Populate a session history entry" step 7.2.3: a document whose URL
+    // requires storing the policy container in history has its document
+    // state keep a clone (commitInRealm records it) - made here, before
+    // anything unloads, so that a clone that cannot be made stops the
+    // navigation as above. A missing one let a later traversal to the entry
+    // compute its container afresh: a new, empty one for about: and blob:.
+    if (params_container) |*container| {
+        const response_url = if (response.final_url.len > 0) response.final_url else record.url;
+        if (navigate_steps.requiresStoringPolicyContainerInHistory(response_url)) {
+            record.history_policy_container = container.clone(integration.allocator) catch |err| {
+                log.warn("[navigation] no history policy container for {s}: {s}", .{ record.url, @errorName(err) });
+                integration.ongoing_navigation = .none;
+                endLoadDelay(integration);
+                return;
+            };
+        }
+    }
     record.final_sandboxing_flags = if (response.is_network_error) .empty else record.target_sandboxing_flags.unionWith(
         if (params_container) |*container| sandboxing.cspDerivedSandboxingFlags(&container.csp_list) else .empty,
     );
@@ -1921,16 +2027,8 @@ fn runCommit(context: ?*anyopaque) void {
     integration.setNextAboutBaseUrl(record.initiator_base_url);
     defer integration.setNextAboutBaseUrl(null);
     // "Create and initialize a Document object" step 9: the document's policy
-    // container, waiting for whatever makes the document (decided above).
-    // "Populate a session history entry" step 7.2.3: a document whose URL
-    // requires storing the policy container in history has its document
-    // state keep it (commitInRealm records it).
-    if (params_container) |*container| {
-        const response_url = if (response.final_url.len > 0) response.final_url else record.url;
-        if (navigate_steps.requiresStoringPolicyContainerInHistory(response_url)) {
-            record.history_policy_container = container.clone(integration.allocator) catch null;
-        }
-    }
+    // container, waiting for whatever makes the document (decided above,
+    // with the clone its history entry keeps).
     integration.setNextPolicyContainer(params_container);
     params_container_taken = true;
     defer integration.setNextPolicyContainer(null);
@@ -2049,14 +2147,15 @@ fn reservedEnvironmentIsSecure(browsing_context: *html_core.BrowsingContext, url
 }
 
 /// HTML "determine navigation params policy container" for the document
-/// `record`'s navigation makes from `response`, owned by the caller; null
-/// when it could not be made (out of memory: the document keeps a new one).
+/// `record`'s navigation makes from `response`, owned by the caller. Out of
+/// memory is an error the caller stops the navigation on - never a new,
+/// empty container in its place.
 ///
 /// Step 1's history policy container is the traversed entry's document
 /// state's (about: and data: documents keep one); step 3's initiator is the
 /// source document's, or - for a traversal no document started - the
 /// navigable's active document's.
-fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult) ?fetch_mod.internal.PolicyContainer {
+fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult) !fetch_mod.internal.PolicyContainer {
     const allocator = integration.allocator;
     const PolicyContainer = fetch_mod.internal.PolicyContainer;
     const response_url = if (response.final_url.len > 0) response.final_url else record.url;
@@ -2065,23 +2164,20 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
     // of it.
     if (record.traversal_entry != 0 and navigate_steps.requiresStoringPolicyContainerInHistory(response_url)) {
         if (integration.browsing_context) |bc| {
-            if (bc.jointHistory() catch null) |history| {
-                if (history.historyPolicyContainer(record.traversal_entry)) |container| {
-                    var restored = container.clone(allocator) catch return null;
-                    // CSPEE leaves local history unspecified; HTML cloning
-                    // intentionally leaves required_csp null. Chrome 154's
-                    // RenderFrameHostImpl::TakeNewDocumentPropertiesFromNavigation
-                    // (render_frame_host_impl.cc:17120) records the current
-                    // requirement separately; ComputeFinalPolicies keeps the
-                    // old enforced policies (navigation_policy_container_builder.cc:295-302).
-                    if (!response.is_network_error) if (record.required_csp) |required| {
-                        restored.required_csp = allocator.dupe(u8, required) catch {
-                            restored.deinit();
-                            return null;
-                        };
-                    };
-                    return restored;
-                }
+            const history = try bc.jointHistory();
+            if (history.historyPolicyContainer(record.traversal_entry)) |container| {
+                var restored = try container.clone(allocator);
+                errdefer restored.deinit();
+                // CSPEE leaves local history unspecified; HTML cloning
+                // intentionally leaves required_csp null. Chrome 154's
+                // RenderFrameHostImpl::TakeNewDocumentPropertiesFromNavigation
+                // (render_frame_host_impl.cc:17120) records the current
+                // requirement separately; ComputeFinalPolicies keeps the
+                // old enforced policies (navigation_policy_container_builder.cc:295-302).
+                if (!response.is_network_error) if (record.required_csp) |required| {
+                    restored.required_csp = try allocator.dupe(u8, required);
+                };
+                return restored;
             }
         }
     }
@@ -2091,18 +2187,18 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
         // 2. A srcdoc document inherits its container document's policies.
         if (record.srcdoc != null or navigate_steps.matchesAboutSrcdoc(response_url)) {
             if (containerDocumentOf(integration)) |parent| {
-                if (dom_module.policy_containers.of(parent)) |container| break :blk container.clone(allocator) catch return null;
+                if (dom_module.policy_containers.of(parent)) |container| break :blk try container.clone(allocator);
             }
         }
         // 3. A local response inherits its initiator's policy container.
         if (is_local) {
-            if (record.initiator_policy_container) |*container| break :blk container.clone(allocator) catch return null;
-            if (record.traversal_policy_container) |*container| break :blk container.clone(allocator) catch return null;
+            if (record.initiator_policy_container) |*container| break :blk try container.clone(allocator);
+            if (record.traversal_policy_container) |*container| break :blk try container.clone(allocator);
         }
         // 4-5. Otherwise use the response's container, or a new one.
         if (!std.mem.eql(u8, scheme, "http") and !std.mem.eql(u8, scheme, "https") and !std.mem.eql(u8, scheme, "data")) break :blk PolicyContainer.init(allocator);
         const headers = response.headers;
-        break :blk PolicyContainer.fromResponseHeaders(allocator, .{
+        break :blk try PolicyContainer.fromResponseHeaders(allocator, .{
             .url = response_url,
             .csp = if (headers) |h| h.get("content-security-policy") else null,
             .csp_report_only = if (headers) |h| h.get("content-security-policy-report-only") else null,
@@ -2110,8 +2206,9 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
             .reporting_endpoints = if (headers) |h| h.get("reporting-endpoints") else null,
             .integrity_policy = if (headers) |h| h.get("integrity-policy") else null,
             .integrity_policy_report_only = if (headers) |h| h.get("integrity-policy-report-only") else null,
-        }) catch return null;
+        });
     };
+    errdefer result.deinit();
     // CSPEE §2.4 items 9-11: after inheritance, apply the target snapshot's
     // requirement. History's stored local policy returned above is unchanged.
     if (record.required_csp != null and !response.is_network_error) {
@@ -2121,10 +2218,7 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
             break :blk documentOriginOf(parent, allocator);
         } else null;
         defer if (local_origin) |origin| allocator.free(origin);
-        result.applyRequiredCSP(record.required_csp, if (uses_parent_origin) local_origin orelse "null" else response_url, blanketCSPAcceptance(integration, record, response)) catch {
-            result.deinit();
-            return null;
-        };
+        try result.applyRequiredCSP(record.required_csp, if (uses_parent_origin) local_origin orelse "null" else response_url, blanketCSPAcceptance(integration, record, response));
     }
     // Upgrade Insecure Requests 3.3: a nested browsing context whose
     // embedding document's insecure requests policy is Upgrade has Upgrade,
@@ -2132,6 +2226,13 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
     if (containerDocumentOf(integration)) |parent| {
         if (dom_module.policy_containers.of(parent)) |container| {
             if (container.upgradesInsecureRequests()) result.inherited_upgrade_insecure_requests = true;
+            // UIR 3.3: the new document owns a snapshot of the parent's
+            // inherited and own navigation opt-ins, independent of later
+            // policy changes in that parent.
+            result.inheritUpgradeInsecureNavigations(container) catch |err| {
+                result.deinit();
+                return err;
+            };
         }
     }
     return result;
@@ -3147,7 +3248,9 @@ fn javascriptNavigationInRealm(integration: *IFrameIntegration, record: *Navigat
     // Taken before that document unloads.
     if (active) |old| {
         if (dom_module.policy_containers.of(old)) |container| {
-            record.javascript_policy_container = container.clone(integration.allocator) catch null;
+            // Fails closed: no String document without the policies it
+            // keeps (null gave it a new, empty container).
+            record.javascript_policy_container = container.clone(integration.allocator) catch return endLoadDelay(integration);
         }
     }
     // Step 13: "Let finalSandboxFlags be policyContainer's CSP list's
@@ -4946,11 +5049,13 @@ fn iframePostConnectionSteps(node: *NodeBase) void {
     }
 
     // Step 2 comes first here: the sandboxing flags decide the new context's
-    // security token as it is created.
+    // security token as it is created. Fails closed: an attribute that
+    // cannot be read sandboxes the frame fully, as `sandbox=""` does - an
+    // error read as no attribute made the frame unsandboxed.
     const ElementImpl = @import("Element.zig");
-    if (ElementImpl.call_getAttribute(instance, runtime.DOMString.initInterned("sandbox")) catch null) |sandbox| {
-        internal.integration.setSandbox(sandbox.asSlice());
-    }
+    if (interfaces.Element.call_getAttribute(instance, runtime.DOMString.initInterned("sandbox"))) |attribute| {
+        if (attribute) |sandbox| internal.integration.setSandbox(sandbox.asSlice());
+    } else |_| internal.integration.setSandbox("");
 
     // Step 1: create a new child navigable.
     if (!internal.integration.hasRealmContext()) {

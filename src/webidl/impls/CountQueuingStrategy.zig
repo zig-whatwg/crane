@@ -11,7 +11,7 @@ const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
+const engine = @import("engine");
 const CountQueuingStrategy = interfaces.CountQueuingStrategy;
 
 pub const State = CountQueuingStrategy.State;
@@ -98,33 +98,36 @@ pub fn get_highWaterMark(instance: *runtime.Instance) anyerror!f64 {
     return internal.high_water_mark;
 }
 
-/// Count size function
-///
-/// This is the function returned by the size getter.
-/// Per spec, it always returns 1 (count-based strategy).
-///
-/// Spec: https://streams.spec.whatwg.org/#count-queuing-strategy-size-function
-/// Steps (given chunk):
-/// 1. Return 1.
-fn countSizeFunction(arguments: []const runtime.JSValue) runtime.JSValue {
+/// The count queuing strategy size function's steps (Streams 7.3.2, step
+/// 1): "Return 1." Not a method: it does not look at `this`, or at its
+/// argument.
+fn countSizeSteps(data: ?*anyopaque, arguments: []const runtime.JSValue) runtime.EngineError!runtime.JSValue {
+    _ = data;
     _ = arguments;
-    // Count strategy always returns 1 per chunk
-    return runtime.JSValue.fromNumber(1.0);
+    return runtime.JSValue.fromNumber(1);
 }
+
+/// The steps of every realm's count queuing strategy size function. A
+/// static: the functions read it on every call, for their realm's life.
+const count_size_function: runtime.BuiltinFunction = .{ .steps = countSizeSteps, .data = null };
+
+/// The global object's slot that keeps it (engine.globalBuiltinFunction).
+const count_size_key = "crane:count queuing strategy size function";
 
 /// Getter for size
 ///
 /// Spec: https://streams.spec.whatwg.org/#cqs-size
 /// readonly attribute Function size
 ///
-/// The size getter steps are:
-/// 1. Return this's relevant global object's count queuing strategy size function.
+/// 1. Return this's relevant global object's count queuing strategy size
+///    function.
 ///
-/// Note: This returns a Function object that always returns 1.
-pub fn get_size(instance: *runtime.Instance) anyerror!callbacks.Function {
-    _ = instance;
-
-    // Return the count size function
-    // In a full implementation, this would be a global function cached per realm
-    return &countSizeFunction;
+/// Every global object has one (7.3.2): 2. Let F be
+/// ! CreateBuiltinFunction(steps, 0, "size", « », globalObject's relevant
+/// Realm) - made on the first read in the realm, the same function after
+/// (Blink's GetCachedSizeFunction). The result is a hold of it, which the
+/// binding releases, as it does every JSValue a getter returns.
+pub fn get_size(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    const function = try engine.globalBuiltinFunction(instance.ctx, count_size_key, "size", 0, &count_size_function);
+    return function.take();
 }

@@ -302,7 +302,9 @@ pub fn isUnusable(o: Owner) bool {
 pub fn cloneStream(o: Owner, clone: Owner) !void {
     const stream = o.stream.* orelse return;
     const realm = try js.Realm.of(o.instance);
-    const branches = try srd.tee(realm, stream);
+    // Fetch "clone a body" calls Streams' external-spec tee wrapper,
+    // which passes cloneForBranch2 = true (unlike ReadableStream.tee()).
+    const branches = try srd.tee(realm, stream, true);
     o.stream.* = branches[0];
     o.pin.hold(o.instance, branches[0]);
     clone.stream.* = branches[1];
@@ -329,7 +331,7 @@ pub fn proxyInto(input: Owner, target: Owner) !void {
         if (srd.streamOf(stream)) |slots| slots.disturbed = true;
         return;
     }
-    const branches = try srd.tee(realm, stream);
+    const branches = try srd.tee(realm, stream, false);
     if (srd.streamOf(stream)) |slots| slots.disturbed = true;
     target.stream.* = branches[0];
     target.pin.hold(target.instance, branches[0]);

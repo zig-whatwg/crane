@@ -51,6 +51,7 @@ const Navigation = interfaces.Navigation;
 const same_object = @import("same_object.zig");
 const navigation_entries = @import("navigation_entries.zig");
 const html_core = @import("html_core");
+const html = @import("html");
 const joint_history = html_core.navigation.joint_history;
 const navigate_steps = html_core.navigation.navigate_steps;
 const dom = @import("dom");
@@ -273,6 +274,7 @@ threadlocal var live: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
 pub fn installHooks() void {
     dom.navigation_api.install(.{
         .same_document_navigation = &sameDocumentNavigation,
+        .set_focus_changed = &setFocusChangedHook,
         .page_swap_activation = &pageSwapActivationHook,
         .entries_removed = &entriesRemovedHook,
         .fire_push_replace_reload = &firePushReplaceReloadHook,
@@ -459,9 +461,21 @@ pub fn call_updateCurrentEntry(instance: *runtime.Instance, options: dictionarie
     if (options.state == .undefined) return error.TypeError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const current = (try currentEntryObject(instance, internal)) orelse return error.InvalidStateError;
-    const scope = scopeOf(instance, internal) orelse return error.InvalidStateError;
-    const serialized = try navigation_entries.serialize(engine.currentRealm() orelse instance.ctx, internal.allocator, options.state);
-    try scope.history.setCurrentApiState(scope.navigable.id, serialized);
+    // Steps 1-3: serialization can replace the entry and collect its wrapper.
+    // Keep the captured object through step 5's currententrychange dispatch.
+    const owned = try engine.retainValue(current.ctx, .{ .instance = current });
+    defer owned.release();
+    const entry_id = dom.navigation_history_entries.entryId(current);
+    const allocator = internal.allocator;
+    var serialized = try navigation_entries.serialize(engine.currentRealm() orelse instance.ctx, allocator, options.state);
+    // Step 4: ask for the history again after script; detaching the frame
+    // can destroy it. As for a removed entry, disposed entry state is not
+    // retained yet, but step 5 still fires with the captured `current`.
+    if (scopeOf(instance, internal)) |scope| {
+        scope.history.setEntryApiState(entry_id, serialized);
+    } else {
+        serialized.deinit(allocator);
+    }
     fireCurrentEntryChange(instance, null, current);
 }
 
@@ -598,7 +612,7 @@ pub fn call_reload(instance: *runtime.Instance, options: webidl.Opt(dictionaries
     // to serializedState and apiMethodTracker set to apiMethodTracker."
     internal.handoff = tracker;
     ensureHistoryTraversal(scope.window);
-    dom.history_traversal.reload(scope.window);
+    dom.history_traversal.reloadWithNavigationApiState(scope.window, tracker.serialized_state.?);
     if (internal.handoff == tracker) internal.handoff = null;
     // Step 10.
     return derivedResult(instance, internal, tracker);
@@ -1249,6 +1263,13 @@ fn targetOf(window: *runtime.Instance) ?Target {
     return null;
 }
 
+/// HTML focus update/removing steps change the existing Navigation flag.
+/// Never ask Window.navigation here: an unused API needs no new object.
+fn setFocusChangedHook(window: *runtime.Instance, changed: bool) void {
+    const target = targetOf(window) orelse return;
+    target.internal.focus_changed = changed;
+}
+
 /// dom.navigation_api: HTML "fire a push/replace/reload navigate event".
 fn firePushReplaceReloadHook(window: *runtime.Instance, args: *const dom.navigation_api.PushReplaceReload) bool {
     const target = targetOf(window) orelse return true;
@@ -1487,6 +1508,15 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
     // The tracker's info, read back from the navigation's wrapper.
     const info = trackerInfo(internal, api_tracker);
     defer if (info) |i| i.release();
+    // Browsers over step 16's unfiltered sourceElement: Chrome and Safari
+    // hide a cross-origin source node. Blink NavigationApi::DispatchNavigateEvent
+    // uses BindingSecurity::ShouldAllowAccessTo(window, node), which checks
+    // the node's DOCUMENT's Window (including document.domain), not its realm.
+    const source_element: ?*runtime.Instance = if (firing.source_element) |source| visible_source: {
+        const document = (interfaces.Node.get_ownerDocument(source) catch null) orelse break :visible_source null;
+        const window = (interfaces.Document.get_defaultView(document) catch null) orelse break :visible_source null;
+        break :visible_source if (dom.global_settings.sameOriginDomain(scope.window, window)) source else null;
+    } else null;
     // Steps 1, 12-24: the event.
     const event = interfaces.NavigateEvent.call_constructor(realm, runtime.DOMString.initInterned("navigate"), .{
         .base = .{ .cancelable = cancelable },
@@ -1500,7 +1530,7 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
         .downloadRequest = if (firing.download_request) |filename| runtime.DOMString.initInterned(filename) else null,
         .info = if (info) |i| i.borrow() else null,
         .hasUAVisualTransition = false,
-        .sourceElement = firing.source_element,
+        .sourceElement = source_element,
     }) catch |err| {
         log.debug("[navigation] no navigate event: {s}", .{@errorName(err)});
         controller.releaseIfUnwrapped(controller_generation);
@@ -1975,8 +2005,13 @@ const Wait = struct {
         const record = for (internal.records.items) |r| {
             if (r.id == self.record_id) break r;
         } else return;
-        record.waits -= 1;
-        defer collect(internal);
+        // Delivery can run script (notably focus-reset blur handlers) that
+        // starts another navigation and collects finished records. Keep
+        // this wait's existing hold until every delivery step has returned.
+        defer {
+            record.waits -= 1;
+            collect(internal);
+        }
         const outcome = self.outcome orelse return;
         switch (outcome) {
             .fulfilled => switch (self.phase) {
@@ -2062,10 +2097,8 @@ fn finish(instance: *runtime.Instance, internal: *InternalState, record: *EventR
     record.interception_state = .finished;
 }
 
-/// HTML "potentially reset the focus" given the event's record: the body
-/// (or the document element) is focused unless focus changed during the
-/// navigation or the event asked for "manual". The autofocus delegate is
-/// not modelled, stated.
+/// HTML "potentially reset the focus": use the autofocus delegate, body
+/// or document element, with the document viewport as the fallback.
 fn potentiallyResetFocus(instance: *runtime.Instance, internal: *InternalState, record: *EventRecord) void {
     // 3-5.
     const focus_changed = internal.focus_changed;
@@ -2073,14 +2106,15 @@ fn potentiallyResetFocus(instance: *runtime.Instance, internal: *InternalState, 
     if (focus_changed) return;
     // 6.
     if (record.focus_reset == .manual) return;
-    // 7-10: the focus target.
+    // 7-10: autofocus delegate, then body, then document element.
     const scope = scopeOf(instance, internal) orelse return;
-    const target = (interfaces.Document.get_body(scope.document) catch null) orelse
-        (interfaces.Document.get_documentElement(scope.document) catch null) orelse return;
-    // 11: "Run the focusing steps for focusTarget."
-    if (target.stateAs(interfaces.HTMLElement.State) != null) {
-        interfaces.HTMLElement.call_focus(target, webidl.Opt(dictionaries.FocusOptions).notPassed()) catch {};
-    }
+    const target = html.focus.autofocusDelegate(scope.document, .other) orelse
+        (interfaces.Document.get_body(scope.document) catch null) orelse
+        (interfaces.Document.get_documentElement(scope.document) catch null) orelse scope.document;
+    // 11: the viewport is the fallback even when the body is not focusable.
+    html.focus.focusingSteps(target, scope.document, .other);
+    // 12: the sequential focus navigation starting point is not modelled;
+    // adding its Document-owned node requires the separate holder work.
 }
 
 /// HTML "potentially process scroll behavior": with no layout, processing
@@ -2138,9 +2172,9 @@ fn abortOngoingNavigation(instance: *runtime.Instance, internal: *InternalState,
         break :blk made.?.value;
     };
     // 6. "If event's dispatch flag is set, then set event's canceled flag to
-    // true." Deviation, stated: through preventDefault(), which leaves a
-    // non-cancelable event (a traversal of a frame) uncanceled.
-    if (record.dispatching) interfaces.Event.call_preventDefault(record.event) catch {};
+    // true." This directly sets the flag even for a noncancelable traversal
+    // event; preventDefault() runs a different, guarded DOM algorithm.
+    if (dom.event_construction.dispatchFlag(record.event)) dom.event_construction.forceCanceledFlag(record.event);
     // 7. "Abort event given error."
     abortEvent(instance, internal, record, reason);
 }
