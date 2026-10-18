@@ -310,6 +310,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Publish owned unions only after initialization](architecture-publish-owned-unions-only-after-initialization.md) - An errdefer destructor is safe only when every field it can observe is fully initialized. Stage fallible union payloads before publishing them.
 - [A promise delivery hold lasts through its callback](architecture-a-promise-delivery-hold-lasts-through-its-callback.md) - The reaction is still using its record while it calls script; release its hold when delivery returns, not when delivery begins.
 - [Serialization can replace the entry being updated](architecture-serialization-can-replace-the-entry-being-updated.md) - A serializer is a script boundary: keep the captured object, then look up its surviving container again.
+- [An object made on first read shows the state of that moment](architecture-an-object-made-on-first-read-shows-the-state-of-that-moment.md) - A getter that builds an object from live state races every task already queued to update it: create the object where the state it should show is still the one the queue starts from.
 
 ### Spec Compliance
 - [A wait that the page's own load waits on deadlocks](spec-compliance-a-wait-the-page-s-own-load-waits-on-deadlocks.md) - Before implementing a spec wait, check whether what it waits for waits on the caller; if it does, follow the browser majority's break of the cycle and state it, rather than adding a special case per caller.
@@ -473,6 +474,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Fetch body tee clones only the second branch](spec-compliance-fetch-body-tee-clones-only-the-second-branch.md) - Read the caller's abstract-operation wrapper as well as the public method: an internal flag can change identity, exceptions and cancellation.
 - [XML serialization needs active namespace bindings](spec-compliance-xml-serialization-needs-active-namespace-bindings.md) - A higher WPT pass count is not proof of namespace correctness when the test expects an obsolete draft's output; record browser-majority changes and their intentional WPT losses explicitly.
 - [Unicode casing context is not a category check](spec-compliance-unicode-casing-context-is-not-a-category-check.md) - Use the full mapping data and exact context properties; do not substitute ASCII, general categories, or already-mapped output.
+- [A field left at its default can make wrong code pass](spec-compliance-a-field-left-at-its-default-can-make-wrong-code-pass.md) - Before setting a long-defaulted field, list every reader of it: run their areas in the A/B, and expect both hidden gaps and accidental passes.
 
 ### Codegen
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
