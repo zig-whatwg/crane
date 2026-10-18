@@ -4,7 +4,7 @@
 //! start, from its installHooks (docs/instances.md); none of them is named
 //! here (AGENTS.md "The impls boundary").
 //!
-//! lint-impls: hook for Document, Element, HTMLStyleElement, HTMLLinkElement, MediaQueryList, StyleSheet, CSSRule
+//! lint-impls: hook for Document, ShadowRoot, Element, HTMLStyleElement, HTMLLinkElement, MediaQueryList, StyleSheet, CSSRule
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -13,6 +13,7 @@ const process_start = @import("../process_start.zig");
 const engine_mod = @import("engine.zig");
 const element_style = @import("element_style.zig");
 const sheet = @import("sheet.zig");
+const adopted = @import("adopted.zig");
 
 pub const Hooks = struct {
     /// Document: its engine (its state embeds it).
@@ -37,6 +38,9 @@ pub const Hooks = struct {
     sheet_record_of: ?*const fn (object: *runtime.Instance) ?*sheet.SheetRecord = null,
     /// CSSRule: the CSS rule a CSSRule object is over.
     css_rule_of: ?*const fn (object: *runtime.Instance) ?*sheet.Rule = null,
+    /// Document, ShadowRoot: the view of its adoptedStyleSheets each keeps.
+    document_adopted_sheets: ?*const fn (scope: *runtime.Instance) ?*adopted.AdoptedSheets = null,
+    shadow_root_adopted_sheets: ?*const fn (scope: *runtime.Instance) ?*adopted.AdoptedSheets = null,
 };
 
 // process-wide: immutable function pointers that Document, Element, HTMLStyleElement and HTMLLinkElement install once at process start (crane.Process); each reads only the object it is given, so one serves every Browser and thread
@@ -90,6 +94,13 @@ pub fn sheetRecordOf(object: *runtime.Instance) ?*sheet.SheetRecord {
 pub fn cssRuleOf(object: *runtime.Instance) ?*sheet.Rule {
     const f = hooks.css_rule_of orelse return null;
     return f(object);
+}
+
+/// The adopted style sheets of `scope`, a Document or a ShadowRoot.
+pub fn adoptedSheetsOf(scope: *runtime.Instance) ?*adopted.AdoptedSheets {
+    if (hooks.document_adopted_sheets) |f| if (f(scope)) |a| return a;
+    if (hooks.shadow_root_adopted_sheets) |f| if (f(scope)) |a| return a;
+    return null;
 }
 
 pub fn reportMediaQueryList(list: *runtime.Instance) void {

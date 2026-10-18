@@ -394,10 +394,11 @@ pub const InternalState = struct {
 
     // === Adopted Style Sheets (CSSOM) ===
 
-    /// Adopted style sheets (ObservableArray exotic object)
-    /// Spec: https://drafts.csswg.org/cssom/#dom-documentorshadowroot-adoptedstylesheets
-    /// Stored as V8 handle pointer (Proxy object), not a runtime.Instance
-    adopted_style_sheets: ?*anyopaque,
+    /// Adopted style sheets (CSSOM 6.2.3): the view of the
+    /// ObservableArray<CSSStyleSheet>'s backing list the style engine reads
+    /// (dom.style.adopted); the array itself the document keeps as a traced
+    /// value of its wrapper.
+    adopted_style_sheets: @import("dom").style.adopted.AdoptedSheets,
 
     /// Cached FontFaceSet instance ([SameObject])
     /// Spec: https://drafts.csswg.org/css-font-loading/#dom-fontfacesource-fonts
@@ -505,7 +506,7 @@ pub const InternalState = struct {
             // Selection
             .selection = null,
             // Adopted style sheets (ObservableArray exotic object)
-            .adopted_style_sheets = null,
+            .adopted_style_sheets = @import("dom").style.adopted.AdoptedSheets.init(allocator),
             // FontFaceSet (CSS Font Loading)
             .fonts = null,
             // HTMLAllCollection (undetectable legacy object)
@@ -579,6 +580,7 @@ pub const InternalState = struct {
         self.scripts.deinit();
         self.render_blocking_elements.deinit();
         self.style_engine.deinit();
+        self.adopted_style_sheets.deinit();
 
         // Module map - dispose module handles and free keys
         {
@@ -735,7 +737,7 @@ pub fn installHooks() void {
     @import("dom").teardown_sweeps.install(.documents, &sweepRemaining);
     // The style engine this document keeps, and the media environment its
     // elements are styled in (lane style1).
-    @import("dom").style.hooks.install(.{ .engine_of = &styleEngineOf, .media_values = &styleMediaValues });
+    @import("dom").style.hooks.install(.{ .engine_of = &styleEngineOf, .media_values = &styleMediaValues, .document_adopted_sheets = &adoptedSheetsOf });
     @import("dom").template_contents.install(.{ .owner_document = &templateOwnerDocument });
     @import("dom").refcount.install(.{ .document_counts = &countsOf });
     @import("dom").custom_elements.installDocument(.{
@@ -2214,36 +2216,19 @@ pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return sheets;
 }
 
-/// Getter for adoptedStyleSheets
-/// Returns the adopted stylesheets for this document.
+/// Getter for adoptedStyleSheets ([SameObject] in effect): the document's
+/// ObservableArray<CSSStyleSheet>, made on first read (dom.style.adopted).
 /// Spec: https://drafts.csswg.org/cssom/#dom-documentorshadowroot-adoptedstylesheets
-///
-/// Returns an ObservableArray exotic object (Proxy-based) per WebIDL spec.
-/// Uses [SameObject] semantics - returns the same array on each access.
 pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    return @import("dom").style.adopted.get(instance);
+}
 
-    // The document keeps its array ([SameObject]); the binding gets a hold
-    // of its own.
-    if (internal.adopted_style_sheets) |sheets| {
-        return (try engine.retainValue(instance.ctx, runtime.JSValue.fromHandle(sheets))).take();
-    }
-
-    // Create new ObservableArray exotic object
-    const observable_array = engine.createObservableArray(instance.ctx) catch {
-        // If we can't create the ObservableArray (e.g., no V8 context), return undefined
-        // This gracefully degrades for testing scenarios without full V8 setup
-        return runtime.JSValue.jsUndefined;
-    };
-
-    // The document keeps the array's handle (engine.createObservableArray
-    // handed it over) for every later read; the binding gets a hold of its
-    // own.
-    internal.adopted_style_sheets = switch (observable_array) {
-        .handle => |h| h.ptr,
-        else => return observable_array,
-    };
-    return (try engine.retainValue(instance.ctx, observable_array)).take();
+/// dom.style's `document_adopted_sheets`.
+fn adoptedSheetsOf(instance: *runtime.Instance) ?*@import("dom").style.adopted.AdoptedSheets {
+    // The registry answers only for a Document (its subclasses included).
+    const internal = getInternal(instance) orelse return null;
+    return &internal.adopted_style_sheets;
 }
 
 /// Getter for activeElement (DocumentOrShadowRoot): HTML's activeElement
@@ -2545,13 +2530,13 @@ pub fn set_bgColor(instance: *runtime.Instance, value: runtime.DOMString) anyerr
     try dom.reflection.set(runtime.DOMString, body, .{ .name = "bgcolor" }, value);
 }
 
-/// Setter for adoptedStyleSheets
-/// Sets the adopted stylesheets for this document.
-/// Currently a no-op as CSSOM is not fully implemented.
+/// Setter for adoptedStyleSheets: WebIDL's for an observable array
+/// attribute - the value converted to sequence<CSSStyleSheet>, then the
+/// backing list replaced, each value through CSSOM's set-an-indexed-value
+/// check (dom.style.adopted).
 pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    // No-op - CSSOM not fully implemented
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    try @import("dom").style.adopted.set(instance, value);
 }
 
 /// Operation: exitPointerLock

@@ -449,7 +449,13 @@ pub fn createSequenceOfPlatformObjects(_: Context, _: []const *Instance) Error!O
 pub fn createDictionaryObject(_: Context, _: []const engine.DictionaryMember) Error!Owned {
     return error.NotSupported;
 }
-pub fn createObservableArray(_: Context) Error!JSValue {
+pub fn createObservableArray(_: Context, _: engine.ObservableArrayOptions) Error!JSValue {
+    return error.NotSupported;
+}
+pub fn observableArrayItems(_: JSValue, _: std.mem.Allocator, _: *std.ArrayList(*Instance)) Error!void {
+    return error.NotSupported;
+}
+pub fn replaceObservableArrayItems(_: JSValue, _: []const JSValue) Error!void {
     return error.NotSupported;
 }
 pub fn createFrozenArray(_: Context, _: []const JSValue) Error!Owned {

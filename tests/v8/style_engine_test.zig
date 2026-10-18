@@ -278,3 +278,75 @@ test "a removed rule keeps its data and loses its parents; deleteRule and insert
     try page.expect("(() => { try { sheet.insertRule('{{', 0); return 'no'; } catch (e) { return e.name; } })()", "SyntaxError");
     try page.expect("(() => { try { sheet.deleteRule(9); return 'no'; } catch (e) { return e.name; } })()", "IndexSizeError");
 }
+
+/// What an ObservableArray<HTMLDivElement>'s owner steps saw.
+const ArraySteps = struct {
+    var sets: usize = 0;
+    var deletes: usize = 0;
+    var last_changed: usize = 0;
+
+    fn isDiv(instance: *runtime.Instance) bool {
+        return instance.vtable == &interfaces.HTMLDivElement.vtable;
+    }
+    fn set(owner: *runtime.Instance, index: usize, value: *runtime.Instance) anyerror!void {
+        _ = owner;
+        _ = value;
+        sets += 1;
+        if (index >= 2) return error.NotAllowedError;
+    }
+    fn delete(owner: *runtime.Instance, index: usize, value: *runtime.Instance) void {
+        _ = owner;
+        _ = index;
+        _ = value;
+        deletes += 1;
+    }
+    fn changed(owner: *runtime.Instance, values: []const *runtime.Instance) void {
+        _ = owner;
+        last_changed = values.len;
+    }
+    const hooks: protocol.ObservableArrayHooks = .{ .set_indexed_value = &set, .delete_indexed_value = &delete, .changed = &changed };
+};
+
+test "an observable array of platform objects: values converted, the owner's steps run, its backing list read and replaced" {
+    dom.style.ua_sheet.build();
+    const page = try Page.open();
+    defer page.close();
+    try page.eval(html_page);
+    const owner = try page.instance("d");
+    const array = try protocol.createObservableArray(page.realm, .{ .element = .{ .platform_object = &ArraySteps.isDiv }, .hooks = &ArraySteps.hooks, .owner = owner });
+    var reports: Reports = .{};
+    const global = try protocol.evaluateClassicScript(page.realm, .{ .utf8 = "globalThis" }, "", null, reports.reporter());
+    defer global.release();
+    try protocol.setProperty(page.realm, global.value, "arr", array);
+    try page.eval("globalThis.x = d.createElement('div'); globalThis.y = d.createElement('div'); arr[0] = x; arr[1] = y;");
+    try testing.expectEqual(@as(usize, 2), ArraySteps.sets);
+    try testing.expectEqual(@as(usize, 2), ArraySteps.last_changed);
+    // The element type's conversion: a TypeError, the owner's steps not run.
+    try page.expect("(() => { try { arr[2] = d.createElement('span'); return 'no'; } catch (e) { return e.name; } })()", "TypeError");
+    try page.expect("(() => { try { arr[2] = 1; return 'no'; } catch (e) { return e.name; } })()", "TypeError");
+    try testing.expectEqual(@as(usize, 2), ArraySteps.sets);
+    // A set step's error throws its DOMException and stores nothing.
+    try page.expect("(() => { try { arr[2] = d.createElement('div'); return 'no'; } catch (e) { return e.name; } })() + '|' + arr.length", "NotAllowedError|2");
+    // Replacing an index deletes the old value first.
+    try page.eval("arr[0] = y;");
+    try testing.expectEqual(@as(usize, 1), ArraySteps.deletes);
+
+    var items: std.ArrayList(*runtime.Instance) = .empty;
+    defer items.deinit(testing.allocator);
+    try protocol.observableArrayItems(array, testing.allocator, &items);
+    try testing.expectEqual(@as(usize, 2), items.items.len);
+    try testing.expect(items.items[0] == try page.instance("y"));
+
+    // Deleting: at the end only.
+    try page.expect("String(Reflect.deleteProperty(arr, 0)) + '|' + String(delete arr[1]) + '|' + arr.length", "false|true|1");
+    try testing.expectEqual(@as(usize, 1), ArraySteps.last_changed);
+    // The attribute setter's replacement, with values the binding made.
+    const x_value = try protocol.evaluateClassicScript(page.realm, .{ .utf8 = "x" }, "", null, reports.reporter());
+    defer x_value.release();
+    try protocol.replaceObservableArrayItems(array, &.{ x_value.value, x_value.value });
+    try page.expect("arr.length + '|' + String(arr[1] === x)", "2|true");
+    try testing.expectEqual(@as(usize, 2), ArraySteps.last_changed);
+    try page.eval("arr.length = 0;");
+    try testing.expectEqual(@as(usize, 0), ArraySteps.last_changed);
+    try testing.expectEqual(@as(usize, 0), reports.count);
+}

@@ -11,6 +11,7 @@ pub const sheet = @import("sheet.zig");
 pub const rules = @import("rules.zig");
 pub const objects = @import("objects.zig");
 pub const cssom = @import("cssom.zig");
+pub const adopted = @import("adopted.zig");
 pub const element_style = @import("element_style.zig");
 pub const ua_sheet = @import("ua_sheet.zig");
 pub const engine = @import("engine.zig");

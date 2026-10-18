@@ -529,8 +529,18 @@ pub fn createDictionaryObject(realm: Context, members: []const engine.Dictionary
     return owned(value_construction.createDictionaryObject(realm, relevant_members) catch |err| return protocolError(err));
 }
 
-pub fn createObservableArray(realm: Context) Error!JSValue {
-    return observable_array.createObservableArray(realm) catch |err| protocolError(err);
+pub fn createObservableArray(realm: Context, options: engine.ObservableArrayOptions) Error!JSValue {
+    return observable_array.createObservableArray(realm, options) catch |err| protocolError(err);
+}
+
+pub fn observableArrayItems(array: JSValue, allocator: Allocator, out: *std.ArrayList(*Instance)) Error!void {
+    return observable_array.observableArrayItems(array, allocator, out) catch |err| protocolError(err);
+}
+
+/// Entered in the array's realm by its caller's binding (a setter runs in
+/// script).
+pub fn replaceObservableArrayItems(array: JSValue, values: []const JSValue) Error!void {
+    return observable_array.replaceObservableArrayItems(array, values) catch |err| protocolError(err);
 }
 
 pub const createFrozenArray = protocol_conversions.createFrozenArray;

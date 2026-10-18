@@ -282,6 +282,14 @@ pub const StyleEngine = struct {
             if (!record.mediaMatches(&active.media)) continue;
             try self.addSheet(document, record, null, &active.media, &layers, &pending, 0);
         }
+        // CSSOM 6.2 "final CSS style sheets" 2: "The contents of
+        // DocumentOrShadowRoot's adoptedStyleSheets' backing list, in array
+        // order" - each enabled one whose media matches.
+        if (hooks.adoptedSheetsOf(document)) |adopted| for (adopted.records.items) |record| {
+            try active.watch(self.allocator, record);
+            if (record.disabled or !record.mediaMatches(&active.media)) continue;
+            try self.addSheet(document, record, null, &active.media, &layers, &pending, 0);
+        };
         // Order the layers, then make each sheet's map.
         try layers.order();
         for (pending.items, 0..) |p, index| {

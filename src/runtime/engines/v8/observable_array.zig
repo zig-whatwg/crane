@@ -19,7 +19,9 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const v8 = @import("ffi.zig");
+const conversions = @import("conversions.zig");
 const Context = runtime.Context;
 const JSValue = runtime.JSValue;
 const EngineError = runtime.EngineError;
@@ -28,6 +30,11 @@ const protocol_agents = @import("protocol_agents.zig");
 
 /// Internal state for an ObservableArray exotic object
 /// This is stored in a registry keyed by the Proxy object
+const ConvertedValue = union(enum) {
+    any,
+    instance: *runtime.Instance,
+};
+
 pub const ObservableArrayState = struct {
     /// Allocator for memory management
     allocator: std.mem.Allocator,
@@ -54,6 +61,14 @@ pub const ObservableArrayState = struct {
     /// Callback for when an indexed value is deleted
     on_delete_indexed_value: ?*const fn (index: usize, old_value: JSValue) void = null,
 
+    /// The array's T, and its owner's algorithms (engine.createObservableArray).
+    element: engine.ObservableArrayElement = .any,
+    hooks: ?*const engine.ObservableArrayHooks = null,
+    /// A link to the owner, with its slab generation: no hook runs for an
+    /// owner that has been freed.
+    owner: ?*runtime.Instance = null,
+    owner_generation: u64 = 0,
+
     pub fn init(allocator: std.mem.Allocator, target: *v8.Array) ObservableArrayState {
         return .{
             .allocator = allocator,
@@ -62,8 +77,108 @@ pub const ObservableArrayState = struct {
         };
     }
 
+    /// The backing list's values are the list's own handles: released with
+    /// it.
     pub fn deinit(self: *ObservableArrayState) void {
+        for (self.backing_list.items) |value| switch (value) {
+            .handle => |h| v8.v8_Value_Dispose(@ptrCast(h.ptr)),
+            else => {},
+        };
         self.backing_list.deinit(self.allocator); // Zig 0.15: pass allocator
+    }
+
+    fn liveOwner(self: *const ObservableArrayState) ?*runtime.Instance {
+        const owner = self.owner orelse return null;
+        if (runtime.SlabAllocator.generationOf(owner) != self.owner_generation) return null;
+        return owner;
+    }
+
+    /// WebIDL "set the indexed value" step 1 for `value`: converted to T -
+    /// for an ObservableArray<I>, the platform object; null (a TypeError
+    /// pending) when it is not one.
+    fn convert(self: *const ObservableArrayState, isolate: *v8.Isolate, value: *v8.Value) ?ConvertedValue {
+        switch (self.element) {
+            .any => return .any,
+            .platform_object => |brand| {
+                const instance = conversions.platformObjectOf(value) orelse {
+                    conversions.throwTypeError(isolate, "The value is not of the observable array's type");
+                    return null;
+                };
+                if (!brand(instance)) {
+                    conversions.throwTypeError(isolate, "The value is not of the observable array's type");
+                    return null;
+                }
+                return .{ .instance = instance };
+            },
+        }
+    }
+
+    /// WebIDL "set the indexed value" steps 2-4 for the converted `value`,
+    /// a handle the list owns once stored: the replaced value's delete
+    /// steps, the owner's set steps, then the value stored. False, with an
+    /// exception pending and nothing stored, when a set step threw.
+    fn storeIndexedValue(self: *ObservableArrayState, isolate: *v8.Isolate, index: usize, converted: ConvertedValue, value: *v8.Value) bool {
+        if (index < self.backing_list.items.len) self.deleteIndexedValue(index);
+        switch (converted) {
+            .any => {},
+            .instance => |instance| if (self.hooks) |hooks| if (hooks.set_indexed_value) |set| if (self.liveOwner()) |owner| {
+                set(owner, index, instance) catch |err| {
+                    conversions.throwDOMException(isolate, @errorName(err), "The value cannot be set");
+                    return false;
+                };
+            },
+        }
+        const stored = JSValue{ .handle = .{ .ptr = @ptrCast(value) } };
+        if (index < self.backing_list.items.len) {
+            switch (self.backing_list.items[index]) {
+                .handle => |h| v8.v8_Value_Dispose(@ptrCast(h.ptr)),
+                else => {},
+            }
+            self.backing_list.items[index] = stored;
+        } else {
+            self.backing_list.append(self.allocator, stored) catch return false;
+        }
+        return true;
+    }
+
+    /// The owner's `changed` hook, with the list's values now.
+    fn notifyChanged(self: *ObservableArrayState) void {
+        const hooks = self.hooks orelse return;
+        const changed = hooks.changed orelse return;
+        const owner = self.liveOwner() orelse return;
+        var values: std.ArrayList(*runtime.Instance) = .empty;
+        defer values.deinit(self.allocator);
+        for (self.backing_list.items) |value| switch (value) {
+            .handle => |h| if (conversions.platformObjectOf(@ptrCast(h.ptr))) |instance| values.append(self.allocator, instance) catch return,
+            else => {},
+        };
+        changed(owner, values.items);
+    }
+
+    /// WebIDL "delete an indexed value": the owner's delete steps for the
+    /// value at `index`.
+    fn deleteIndexedValue(self: *ObservableArrayState, index: usize) void {
+        const hooks = self.hooks orelse return;
+        const delete = hooks.delete_indexed_value orelse return;
+        const owner = self.liveOwner() orelse return;
+        const value = self.backing_list.items[index];
+        const handle = switch (value) {
+            .handle => |h| h.ptr,
+            else => return,
+        };
+        const instance = conversions.platformObjectOf(@ptrCast(handle)) orelse return;
+        delete(owner, index, instance);
+    }
+
+    /// Remove the last value: its delete steps, then its handle.
+    fn removeLast(self: *ObservableArrayState) void {
+        const last = self.backing_list.items.len - 1;
+        self.deleteIndexedValue(last);
+        const value = self.backing_list.pop().?;
+        switch (value) {
+            .handle => |h| v8.v8_Value_Dispose(@ptrCast(h.ptr)),
+            else => {},
+        }
     }
 };
 
@@ -134,7 +249,7 @@ fn weakCallback(data: ?*anyopaque, _: usize) callconv(.c) void {
 ///
 /// @param ctx - The runtime context
 /// @return JSValue wrapping the Proxy, or error
-pub fn create(ctx: Context) !JSValue {
+pub fn create(ctx: Context, options: engine.ObservableArrayOptions) !JSValue {
     const allocator = ctx.allocator;
 
     // Get V8 context - the engine_ctx is the V8 context pointer
@@ -151,6 +266,12 @@ pub fn create(ctx: Context) !JSValue {
     const state = try allocator.create(ObservableArrayState);
     errdefer allocator.destroy(state);
     state.* = ObservableArrayState.init(allocator, target);
+    state.element = options.element;
+    state.hooks = options.hooks;
+    if (options.owner) |owner| {
+        state.owner = owner;
+        state.owner_generation = runtime.SlabAllocator.generationOf(owner);
+    }
 
     // Create handler object with our trap functions
     const handler = try createHandler(ctx, state);
@@ -184,8 +305,8 @@ pub fn create(ctx: Context) !JSValue {
 /// array exotic object" in `realm`). The object is the engine's: the weak
 /// callback frees its state when script can no longer reach it, and the
 /// agent's end frees what is left (`Registry.destroy`).
-pub fn createObservableArray(realm: Context) EngineError!JSValue {
-    return create(realm) catch |err| switch (err) {
+pub fn createObservableArray(realm: Context, options: engine.ObservableArrayOptions) EngineError!JSValue {
+    return create(realm, options) catch |err| switch (err) {
         error.OutOfMemory => EngineError.OutOfMemory,
         else => EngineError.OperationFailed,
     };
@@ -386,12 +507,21 @@ fn setTrap(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     defer if (!value_stored) v8.v8_Value_Dispose(value);
     // The receiver (args[3]) is not used by the simple Object_Set below.
 
-    const js_value = JSValue{ .handle = .{ .ptr = @ptrCast(value) } };
-
     if (v8.v8_Value_IsString(prop)) {
         // Step 2: If P is "length", set the length
         if (isLengthKey(prop)) {
-            // TODO: Implement set length algorithm
+            // Step 2: "set the length": a new length past the end is
+            // refused; otherwise each value from the end down to it is
+            // deleted.
+            if (!v8.v8_Value_IsNumber(value)) return returnBoolean(info, isolate, false);
+            const number = v8.v8_Value_NumberValue(value, context);
+            if (!(number >= 0) or number != @floor(number)) return returnBoolean(info, isolate, false);
+            const new_len: usize = @intFromFloat(@min(number, 4294967295.0));
+            if (new_len > state.backing_list.items.len) return returnBoolean(info, isolate, false);
+            if (state.backing_list.items.len > new_len) {
+                while (state.backing_list.items.len > new_len) state.removeLast();
+                state.notifyChanged();
+            }
             return returnBoolean(info, isolate, true);
         }
 
@@ -402,16 +532,12 @@ fn setTrap(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             // Per spec: index > oldLen returns false (can only append at end)
             if (index > old_len) return returnBoolean(info, isolate, false);
 
-            // If replacing existing value
-            if (index < old_len) {
-                // TODO: Call delete algorithm for old value
-                state.backing_list.items[index] = js_value;
-            } else {
-                // Appending at end (index == old_len)
-                state.backing_list.append(state.allocator, js_value) catch return returnBoolean(info, isolate, false);
-            }
+            // "Set the indexed value": convert, then store - a throw leaves
+            // the list as it was.
+            const converted = state.convert(isolate, value) orelse return;
+            if (!state.storeIndexedValue(isolate, index, converted, value)) return;
             value_stored = true;
-            // TODO: Call set algorithm
+            state.notifyChanged();
             return returnBoolean(info, isolate, true);
         }
         // Not a numeric index - fall through to target set
@@ -570,16 +696,107 @@ fn getOwnPropertyDescriptorTrap(info: *const v8.FunctionCallbackInfo) callconv(.
     // Set writable: true
     if (!setDescriptorField(isolate, context, desc, "writable", true_val)) return;
 
-    // Set value to undefined (default)
+    // The value: an index's from the backing list, "length"'s the list's
+    // size; anything else reads undefined, as before.
+    if (info.length() >= 2) if (getStateFromInfo(info)) |state| {
+        const prop = info.get(1);
+        defer v8.v8_Value_Dispose(prop);
+        if (v8.v8_Value_IsString(prop)) {
+            if (arrayIndexKey(prop)) |index| if (index < state.backing_list.items.len) {
+                switch (state.backing_list.items[index]) {
+                    .handle => |h| _ = setDescriptorField(isolate, context, desc, "value", @ptrCast(h.ptr)),
+                    else => {},
+                }
+                return;
+            };
+            if (isLengthKey(prop)) {
+                const length = v8.v8_Number_New(isolate, @floatFromInt(state.backing_list.items.len));
+                defer v8.v8_Value_Dispose(@ptrCast(length));
+                _ = setDescriptorField(isolate, context, desc, "value", @ptrCast(length));
+                return;
+            }
+        }
+    };
     const undefined_val = v8.v8_Undefined(isolate) orelse return;
     defer v8.v8_Value_Dispose(undefined_val);
     _ = setDescriptorField(isolate, context, desc, "value", undefined_val);
 }
 
-/// Trap for delete operator: handler.deleteProperty(target, property)
+/// The state of the observable array whose Proxy `array` is.
+fn stateOf(array: JSValue) ?*ObservableArrayState {
+    const handle = switch (array) {
+        .handle => |h| h.ptr,
+        else => return null,
+    };
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return null;
+    const registry = protocol_agents.observableArraysOf(isolate) orelse return null;
+    // A holder's handle is a Global of its own for the same Proxy: compared
+    // by identity, not by address.
+    var it = registry.states.keyIterator();
+    while (it.next()) |state| {
+        const proxy = state.*.proxy orelse continue;
+        if (@intFromPtr(proxy) == @intFromPtr(handle) or v8.v8_Value_StrictEquals(@ptrCast(proxy), @ptrCast(handle))) return state.*;
+    }
+    return null;
+}
+
+/// engine.observableArrayItems: the backing list's platform objects.
+pub fn observableArrayItems(array: JSValue, allocator: std.mem.Allocator, out: *std.ArrayList(*runtime.Instance)) EngineError!void {
+    const state = stateOf(array) orelse return EngineError.OperationFailed;
+    for (state.backing_list.items) |value| switch (value) {
+        .handle => |h| if (conversions.platformObjectOf(@ptrCast(h.ptr))) |instance| {
+            out.append(allocator, instance) catch return EngineError.OutOfMemory;
+        },
+        else => {},
+    };
+}
+
+/// engine.replaceObservableArrayItems: the attribute setter's steps after
+/// its sequence conversion.
+pub fn replaceObservableArrayItems(array: JSValue, values: []const JSValue) EngineError!void {
+    const state = stateOf(array) orelse return EngineError.OperationFailed;
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return EngineError.NoEngine;
+    defer state.notifyChanged();
+    while (state.backing_list.items.len > 0) state.removeLast();
+    for (values, 0..) |value, index| {
+        const handle = switch (value) {
+            .handle => |h| h.ptr,
+            else => return EngineError.TypeError,
+        };
+        const converted = state.convert(isolate, @ptrCast(handle)) orelse return EngineError.ExceptionPending;
+        // The list keeps a handle of its own.
+        const own = v8.v8_Global_Clone(@ptrCast(handle)) orelse return EngineError.OutOfMemory;
+        if (!state.storeIndexedValue(isolate, index, converted, own)) {
+            v8.v8_Value_Dispose(own);
+            return EngineError.ExceptionPending;
+        }
+    }
+}
+
+/// WebIDL 3.10.5: an array index may be deleted only at the end (the
+/// backing list has no holes) - its delete steps run, and the value goes;
+/// "length" cannot be deleted; anything else is the target's.
 fn deletePropertyTrap(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    // Return true to indicate successful deletion
-    returnBoolean(info, info.getIsolate(), true);
+    const isolate = info.getIsolate();
+    if (info.length() < 2) return returnBoolean(info, isolate, false);
+    const state = getStateFromInfo(info) orelse return returnBoolean(info, isolate, false);
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer v8.v8_Context_Dispose(context);
+    const target = info.get(0);
+    defer v8.v8_Value_Dispose(target);
+    const prop = info.get(1);
+    defer v8.v8_Value_Dispose(prop);
+    if (v8.v8_Value_IsString(prop)) {
+        if (isLengthKey(prop)) return returnBoolean(info, isolate, false);
+        if (arrayIndexKey(prop)) |index| {
+            const len = state.backing_list.items.len;
+            if (len == 0 or index != len - 1) return returnBoolean(info, isolate, false);
+            state.removeLast();
+            state.notifyChanged();
+            return returnBoolean(info, isolate, true);
+        }
+    }
+    returnBoolean(info, isolate, v8.v8_Object_Delete(@ptrCast(target), context, prop));
 }
 
 /// Trap for Object.getPrototypeOf: handler.getPrototypeOf(target)

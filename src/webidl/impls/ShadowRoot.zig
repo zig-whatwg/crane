@@ -79,13 +79,11 @@ pub const InternalState = struct {
     style_sheets: ?*runtime.Instance,
     style_sheets_kept: @import("same_object.zig").KeptChild = .{},
 
-    /// Adopted style sheets (from DocumentOrShadowRoot mixin): the value it
-    /// was last set to, HELD by the shadow root (engine.retainValue) and
-    /// released when it is set again and at deinit. The setter's argument is
-    /// the binding's - its handle, or its string bytes, freed when the setter
-    /// returns - so it is never stored as it came.
-    /// TODO: Proper ObservableArray<CSSStyleSheet> support
-    adopted_style_sheets: ?engine.Owned = null,
+    /// Adopted style sheets (CSSOM 6.2.3): the view of the
+    /// ObservableArray<CSSStyleSheet>'s backing list the style engine reads
+    /// (dom.style.adopted); the array itself the shadow root keeps as a
+    /// traced value of its wrapper.
+    adopted_style_sheets: @import("dom").style.adopted.AdoptedSheets,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -104,18 +102,16 @@ pub const InternalState = struct {
             .picture_in_picture_element = null,
             .pointer_lock_element = null,
             .style_sheets = null,
-            .adopted_style_sheets = null,
+            .adopted_style_sheets = @import("dom").style.adopted.AdoptedSheets.init(allocator),
         };
     }
 
     /// What the state owns, without its shadow root (dom.orphan_states):
-    /// its hold of the adopted style sheets' value - released while the
-    /// agent lives, at a sweep too (EventTarget's sweep releases listeners
-    /// the same way). The registry association is the root's to end
+    /// its holds of its adopted style sheets' records - plain memory, let go
+    /// at a sweep too. The registry association is the root's to end
     /// (`deinitOwn`).
     pub fn deinit(self: *InternalState) void {
-        if (self.adopted_style_sheets) |sheets| sheets.release();
-        self.adopted_style_sheets = null;
+        self.adopted_style_sheets.deinit();
     }
 };
 
@@ -158,6 +154,8 @@ pub fn installHooks() void {
     // orphan nothing deinits, and so is its shadow root: the states no
     // deinit reached, at their Browser's end (dom.orphan_states).
     @import("dom").orphan_states.installRegistrySweep(Registry);
+    // The style engine reads the shadow root's adopted style sheets.
+    @import("dom").style.hooks.install(.{ .shadow_root_adopted_sheets = &adoptedSheetsOf });
     // The HTML parser's declarative shadow roots, and DOM attach-a-shadow-root
     // step 4's reuse of one, read and set flags no IDL member reaches.
     @import("dom").declarative_shadow.install(.{
@@ -407,28 +405,25 @@ pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return sheets;
 }
 
-/// DocumentOrShadowRoot.adoptedStyleSheets getter
+/// DocumentOrShadowRoot.adoptedStyleSheets getter: the shadow root's
+/// ObservableArray<CSSStyleSheet>, made on first read (dom.style.adopted).
 pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.adopted_style_sheets) |sheets| {
-        // The shadow root keeps its hold; the result is a hold of the
-        // binding's own.
-        return (try engine.retainValue(instance.ctx, sheets.value)).take();
-    }
-    // Return undefined if not set
-    // TODO: Return empty V8 Array - need V8 array creation utility
-    return runtime.JSValue.jsUndefined;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    return @import("dom").style.adopted.get(instance);
 }
 
-/// DocumentOrShadowRoot.adoptedStyleSheets setter
+/// DocumentOrShadowRoot.adoptedStyleSheets setter: the value converted to
+/// sequence<CSSStyleSheet>, then the backing list replaced
+/// (dom.style.adopted).
 pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    try @import("dom").style.adopted.set(instance, value);
+}
 
-    // The argument is the binding's, borrowed for this call: the shadow root
-    // keeps a hold of its own, and lets go of the value it held before.
-    const held = try engine.retainValue(instance.ctx, value);
-    if (internal.adopted_style_sheets) |old| old.release();
-    internal.adopted_style_sheets = held;
+/// dom.style's `shadow_root_adopted_sheets`.
+fn adoptedSheetsOf(instance: *runtime.Instance) ?*@import("dom").style.adopted.AdoptedSheets {
+    const internal = getInternal(instance) orelse return null;
+    return &internal.adopted_style_sheets;
 }
 
 /// DocumentOrShadowRoot.activeElement getter
