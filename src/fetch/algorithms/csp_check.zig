@@ -81,10 +81,23 @@ pub const ReportingOptions = struct {
     report_url: ?[]const u8 = null,
 };
 
+fn reportingUrl(request: *const InternalRequest, options: ReportingOptions) []const u8 {
+    if (options.report_url) |url| return url;
+    // Browser navigation reporting differs from CSP 2.4.2's original URL:
+    // frame-src/frame-src-redirect.html is Chrome/Safari 1/1, Firefox
+    // TIMEOUT at wpt.fyi 23b0b89b1a. WebKit allowChildFrameFromSource uses
+    // the blocked target. Keep the original URL for every other request,
+    // and preserve callers' explicit protocol URLs (such as WebSocket).
+    return switch (request.destination) {
+        .frame, .iframe => request.currentUrl(),
+        else => request.getUrl(),
+    };
+}
+
 /// Main fetch step 7, with an optional violation-resource URL.
 pub fn shouldRequestBeBlockedWithOptions(request: *const InternalRequest, options: ReportingOptions) bool {
     const container = checkedContainer(request) orelse return false;
-    var reporting: RequestReporting = .{ .url = options.report_url orelse request.getUrl(), .client = request.csp_violation_reporter };
+    var reporting: RequestReporting = .{ .url = reportingUrl(request, options), .client = request.csp_violation_reporter };
     return csp.request_check.shouldRequestBeBlocked(&container.csp_list, requestOf(request), reporting.reporter()) == .blocked;
 }
 
@@ -99,7 +112,7 @@ pub fn reportViolationsForRequest(request: *const InternalRequest) void {
 pub fn reportViolationsForRequestWithOptions(request: *const InternalRequest, options: ReportingOptions) void {
     const container = checkedContainer(request) orelse return;
     if (request.csp_violation_reporter == null) return;
-    var reporting: RequestReporting = .{ .url = options.report_url orelse request.getUrl(), .client = request.csp_violation_reporter };
+    var reporting: RequestReporting = .{ .url = reportingUrl(request, options), .client = request.csp_violation_reporter };
     csp.request_check.reportViolationsForRequest(&container.csp_list, requestOf(request), reporting.reporter().?);
 }
 
