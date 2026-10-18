@@ -130,10 +130,10 @@ fn setFrozenBaseURL(document: *runtime.Instance) !void {
     respondToBaseUrlChanges(document);
 }
 
-/// Named integration point: row 67 owns CSP "Is base allowed for Document?".
-/// Its patch replaces this stub at integration; selection/lifecycle stay here.
-fn isBaseAllowedForDocument(_: *runtime.Instance, _: []const u8) bool {
-    return true;
+/// HTML set-frozen step 3 invokes CSP 6.3.1.1; selection/lifecycle stay here.
+/// The document adapter queues each violated policy's report during freezing.
+fn isBaseAllowedForDocument(document: *runtime.Instance, serialized_url: []const u8) bool {
+    return dom.csp_violations.isBaseAllowedForDocument(document, serialized_url);
 }
 
 fn respondToBaseUrlChanges(_: *runtime.Instance) void {
