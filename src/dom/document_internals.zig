@@ -104,8 +104,9 @@ pub fn getEncoding(instance: *runtime.Instance) ?[]const u8 {
 /// Used during document creation and initialization.
 pub fn setContentType(instance: *runtime.Instance, content_type: []const u8) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const replacement = try runtime.DOMString.initDupe(internal.allocator, content_type);
     internal.content_type.deinit(internal.allocator);
-    internal.content_type = try runtime.DOMString.initDupe(internal.allocator, content_type);
+    internal.content_type = replacement;
 }
 
 /// Get the content type.

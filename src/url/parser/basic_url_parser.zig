@@ -269,6 +269,19 @@ pub fn parseWithStateOverride(
     return parseFull(allocator, input, base, state_override, url_mut, &encoding_mod.encoding.UTF_8);
 }
 
+/// Basic URL parsing with both HTML's character encoding and an API's state
+/// override. Location.search supplies its relevant Document's encoding and
+/// query state (HTML search setter step 5.3); the record is updated in place.
+pub fn parseWithEncodingAndStateOverride(
+    allocator: std.mem.Allocator,
+    input: []const u8,
+    url_mut: *URLRecord,
+    state_override: ParserState,
+    encoding: *const encoding_mod.Encoding,
+) ParseError!URLRecord {
+    return parseFull(allocator, input, null, state_override, url_mut, encoding);
+}
+
 fn parseFull(
     allocator: std.mem.Allocator,
     input: []const u8,
@@ -388,79 +401,15 @@ fn initContextFromURL(ctx: *ParserContext, url: *const URLRecord) !void {
 
 /// Apply parser context changes to existing URL (for state override mode)
 fn applyContextToURL(ctx: *ParserContext, url: *URLRecord) !void {
-    // Free old buffer
+    // A state override commits only after every owned replacement field is
+    // ready. Allocation failure must leave the caller's URL valid and intact.
+    var replacement = try buildURLRecord(url.allocator, ctx);
+    replacement.blob_url_entry = url.blob_url_entry;
+
     url.allocator.free(url.buffer);
-
-    // Build new buffer
-    var buffer = infra.List(u8).init(url.allocator);
-    errdefer buffer.deinit();
-
-    const scheme_start: u32 = @intCast(buffer.len);
-    try buffer.appendSlice(ctx.scheme.items());
-    const scheme_len: u32 = @intCast(ctx.scheme.items().len);
-
-    const username_start: u32 = @intCast(buffer.len);
-    try buffer.appendSlice(ctx.username.items());
-    const username_len: u32 = @intCast(ctx.username.items().len);
-
-    const password_start: u32 = @intCast(buffer.len);
-    try buffer.appendSlice(ctx.password.items());
-    const password_len: u32 = @intCast(ctx.password.items().len);
-
-    const query_start: u32 = @intCast(buffer.len);
-    const query_len: u32 = if (ctx.has_query) blk: {
-        try buffer.appendSlice(ctx.query.items());
-        break :blk @intCast(ctx.query.items().len);
-    } else 0;
-
-    const fragment_start: u32 = @intCast(buffer.len);
-    const fragment_len: u32 = if (ctx.has_fragment) blk: {
-        try buffer.appendSlice(ctx.fragment.items());
-        break :blk @intCast(ctx.fragment.items().len);
-    } else 0;
-
-    // Update URLRecord fields
-    url.buffer = try buffer.toOwnedSlice();
-    url.scheme_start = scheme_start;
-    url.scheme_len = scheme_len;
-    url.username_start = username_start;
-    url.username_len = username_len;
-    url.password_start = password_start;
-    url.password_len = password_len;
-
-    // Free old host and update
-    if (url.host) |*h| {
-        h.deinit(url.allocator);
-    }
-    // Clone host from arena to URL's allocator to ensure it survives after arena.deinit()
-    url.host = if (ctx.host) |h| try h.clone(url.allocator) else null;
-
-    url.port = ctx.port;
-
-    // Free old path and update
+    if (url.host) |*host| host.deinit(url.allocator);
     path_helpers.deinitPath(&url.path, url.allocator);
-    if (ctx.opaque_path) |op| {
-        url.path = Path{ .opaque_path = try url.allocator.dupe(u8, op) };
-    } else {
-        // Deep clone path segments from arena to URL's allocator
-        // Each segment string needs to be cloned to survive after arena.deinit()
-        var segments = infra.List([]const u8).init(url.allocator);
-        errdefer {
-            for (0..segments.len) |i| url.allocator.free(segments.get(i).?);
-            segments.deinit();
-        }
-        for (ctx.path_segments.items()) |seg| {
-            try segments.append(try url.allocator.dupe(u8, seg));
-        }
-        url.path = Path{ .segments = segments };
-    }
-
-    url.query_start = query_start;
-    url.query_len = query_len;
-    url.has_query = ctx.has_query;
-    url.fragment_start = fragment_start;
-    url.fragment_len = fragment_len;
-    url.has_fragment = ctx.has_fragment;
+    url.* = replacement;
 }
 
 /// Build URLRecord from parser context

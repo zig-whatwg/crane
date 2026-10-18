@@ -151,12 +151,22 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// HTML §7.10.1: "A Location object's url is its relevant Document's URL,
 /// if this Location object's relevant Document is non-null, and about:blank
 /// otherwise." The record parsed at construction (about:blank) is the
-/// fallback for a Location with no window yet; with a window, the document's
-/// URL wins - it is what navigation set, and `history.pushState` changes it.
+/// fallback when the Window has no live browsing context; otherwise the
+/// active document's URL wins, including changes made by history.pushState.
 fn getURL(instance: *runtime.Instance) ?*url_record.URLRecord {
     const internal = getInternal(instance) orelse return null;
     refreshFromDocument(internal);
     return internal.url;
+}
+
+/// HTML's relevant Document: the relevant Window's browsing context's
+/// active document, or null after that context is discarded. Reading the
+/// native record also works for href/replace's cross-origin callers.
+fn relevantDocument(internal: *InternalState) ?*runtime.Instance {
+    const window = internal.window orelse return null;
+    const context = dom.browser_state.browsingContextOf(window) orelse return null;
+    if (context.is_closed) return null;
+    return @ptrCast(@alignCast(context.active_document orelse return null));
 }
 
 /// HTML §7.2.4, the step the Location members begin with: "If this's
@@ -165,6 +175,7 @@ fn getURL(instance: *runtime.Instance) ?*url_record.URLRecord {
 /// DOMException." A Location has a relevant Document while it has a window
 /// (whose browsing context's active document it is).
 fn checkSameOriginDomain(internal: *InternalState) !void {
+    if (relevantDocument(internal) == null) return;
     const window = internal.window orelse return;
     if (!origin_domain.entryIsSameOriginDomainWith(window)) return error.SecurityError;
 }
@@ -179,12 +190,11 @@ fn checkGetter(instance: *runtime.Instance) !void {
 /// from the one it was parsed from. Every failure leaves the previous record
 /// in place: an unreadable document URL is not a reason to report a wrong one.
 fn refreshFromDocument(internal: *InternalState) void {
-    const window = internal.window orelse return;
-    const document = interfaces.Window.get_document(window) catch return;
+    const document = relevantDocument(internal);
     // The interface getter clones into the DOCUMENT's context allocator, so
     // that is what frees it (AGENTS.md, "Interface getters clone").
-    const doc_url = interfaces.Document.get_URL(document) catch return;
-    defer document.ctx.allocator.free(doc_url);
+    const doc_url = if (document) |doc| interfaces.Document.get_URL(doc) catch return else "about:blank";
+    defer if (document) |doc| doc.ctx.allocator.free(doc_url);
     if (doc_url.len == 0) return;
     if (internal.url_source) |src| {
         if (std.mem.eql(u8, src, doc_url)) return;
@@ -550,6 +560,8 @@ pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
     const query = url.query() orelse {
         return "";
     };
+    // HTML search getter step 2: null AND the empty query return "".
+    if (query.len == 0) return "";
 
     // Return "?" + query
     const result = try allocator.alloc(u8, query.len + 1);
@@ -573,6 +585,8 @@ pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
     const fragment = url.fragment() orelse {
         return "";
     };
+    // HTML hash getter step 2: null AND the empty fragment return "".
+    if (fragment.len == 0) return "";
 
     // Return "#" + fragment
     const result = try allocator.alloc(u8, fragment.len + 1);
@@ -727,7 +741,7 @@ fn internalAncestorOrigins(allocator: Allocator, context: *html_core.BrowsingCon
 /// Intentionally no security check.
 pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.window == null) return;
+    if (relevantDocument(internal) == null) return;
     const url = try parseRelativeToEntry(instance, internal, value);
     defer internal.allocator.free(url);
     return locationObjectNavigate(internal, url, .auto);
@@ -770,7 +784,7 @@ fn navigateToCopy(internal: *InternalState, copy: *url_record.URLRecord) !void {
 /// Location-object navigate this to copyURL."
 pub fn set_protocol(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.window == null) return;
+    if (relevantDocument(internal) == null) return;
     try checkSameOriginDomain(internal);
     const allocator = internal.allocator;
     var copy = (try copyOfURL(instance, allocator)) orelse return;
@@ -800,7 +814,7 @@ pub fn set_hostname(instance: *runtime.Instance, value: runtime.USVString) anyer
 /// The host and hostname setters' steps.
 fn setComponent(instance: *runtime.Instance, value: []const u8, state: ParserState) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.window == null) return;
+    if (relevantDocument(internal) == null) return;
     try checkSameOriginDomain(internal);
     const allocator = internal.allocator;
     var copy = (try copyOfURL(instance, allocator)) orelse return;
@@ -818,7 +832,7 @@ fn setComponent(instance: *runtime.Instance, value: []const u8, state: ParserSta
 /// override. 7. Location-object navigate this to copyURL."
 pub fn set_port(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.window == null) return;
+    if (relevantDocument(internal) == null) return;
     try checkSameOriginDomain(internal);
     const allocator = internal.allocator;
     var copy = (try copyOfURL(instance, allocator)) orelse return;
@@ -839,7 +853,7 @@ pub fn set_port(instance: *runtime.Instance, value: runtime.USVString) anyerror!
 /// as state override. 7. Location-object navigate this to copyURL."
 pub fn set_pathname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.window == null) return;
+    if (relevantDocument(internal) == null) return;
     try checkSameOriginDomain(internal);
     const allocator = internal.allocator;
     var copy = (try copyOfURL(instance, allocator)) orelse return;
@@ -859,33 +873,29 @@ pub fn set_pathname(instance: *runtime.Instance, value: runtime.USVString) anyer
 /// Setter for search
 /// HTML §7.2.4: copy this's url; set its query to null for the empty string,
 /// otherwise basic-URL-parse the value without a leading "?" with the query
-/// state as state override; Location-object navigate to it. The fragment is
-/// kept. Deviation, stated (encoding-parse-utf8): the query is
-/// percent-encoded as UTF-8, not in the relevant document's encoding -
-/// queued.
+/// state as state override and the relevant Document's encoding;
+/// Location-object navigate to it. The fragment is kept.
 pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.window == null) return;
+    const document = relevantDocument(internal) orelse return;
     try checkSameOriginDomain(internal);
-    const url = getURL(instance) orelse return;
     const allocator = internal.allocator;
-    const current = try url_serializer.serialize(allocator, url, false);
-    defer allocator.free(current);
-    const without_fragment = navigate_steps.withoutFragment(current);
-    const query_start = std.mem.indexOfScalar(u8, without_fragment, '?') orelse without_fragment.len;
-    const input = if (value.len > 0 and value[0] == '?') value[1..] else value;
-    const fragment = navigate_steps.fragmentOf(current);
-    const candidate = try std.fmt.allocPrint(allocator, "{s}{s}{s}{s}{s}", .{
-        without_fragment[0..query_start],
-        if (value.len == 0) "" else "?",
-        if (value.len == 0) "" else input,
-        if (fragment != null) "#" else "",
-        fragment orelse "",
-    });
-    defer allocator.free(candidate);
-    const copy_url = try reparse(allocator, candidate);
-    defer allocator.free(copy_url);
-    return locationObjectNavigate(internal, copy_url, .auto);
+    // Steps 3-4: copy this's URL; the empty value makes its query null.
+    var copy = (try copyOfURL(instance, allocator)) orelse return;
+    defer copy.deinit();
+    if (value.len == 0) {
+        try copy.setQuery(null);
+    } else {
+        // Steps 5.1-5.3: remove one '?'; the query-state override initializes
+        // the query to empty, then encodes with the relevant Document's
+        // encoding. The entry Document can have a different encoding.
+        const input = if (value[0] == '?') value[1..] else value;
+        const sniffing = html_core.parser.encoding_sniffing;
+        const name = dom.document_internals.getEncoding(document) orelse "UTF-8";
+        const encoding = sniffing.lookup(name) orelse sniffing.utf_8;
+        _ = try basic_parser.parseWithEncodingAndStateOverride(allocator, input, &copy, .query, encoding);
+    }
+    return navigateToCopy(internal, &copy); // Step 6.
 }
 
 /// Setter for hash
@@ -893,31 +903,26 @@ pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerro
 pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     // Step 1: "If this's relevant Document is null, then return."
-    if (internal.window == null) return;
+    if (relevantDocument(internal) == null) return;
     // Step 2: the same-origin-domain check.
     try checkSameOriginDomain(internal);
     // Step 3: "Let copyURL be a copy of this's url."
     const url = getURL(instance) orelse return;
     const allocator = internal.allocator;
-    const current = try url_serializer.serialize(allocator, url, false);
-    defer allocator.free(current);
-    // Step 4: "Let thisURLFragment be copyURL's fragment if it is non-null;
-    // otherwise the empty string."
-    const this_fragment = navigate_steps.fragmentOf(current) orelse "";
+    var copy = (try copyOfURL(instance, allocator)) orelse return;
+    defer copy.deinit();
+    // Step 4: the original URL remains unchanged while the copy is parsed.
+    const this_fragment = url.fragment() orelse "";
     // Step 5: "Let input be the given value with a single leading "#"
     // removed, if any."
     const input = if (value.len > 0 and value[0] == '#') value[1..] else value;
-    // Steps 6-7: set copyURL's fragment to the empty string and basic URL
-    // parse input with the fragment state as state override - the same as
-    // parsing copyURL with "#" and input appended.
-    const candidate = try std.fmt.allocPrint(allocator, "{s}#{s}", .{ navigate_steps.withoutFragment(current), input });
-    defer allocator.free(candidate);
-    const copy_url = try reparse(allocator, candidate);
-    defer allocator.free(copy_url);
+    // Steps 6-7: state override starts with an empty fragment and preserves
+    // spaces at either end. Full-URL parsing would strip those spaces.
+    try parseInto(allocator, &copy, input, .fragment);
     // Step 8: "If copyURL's fragment is thisURLFragment, then return."
-    if (std.mem.eql(u8, navigate_steps.fragmentOf(copy_url) orelse "", this_fragment)) return;
+    if (std.mem.eql(u8, copy.fragment() orelse "", this_fragment)) return;
     // Step 9: "Location-object navigate this to copyURL."
-    return locationObjectNavigate(internal, copy_url, .auto);
+    return navigateToCopy(internal, &copy);
 }
 
 /// HTML "navigate" for the top-level page, whose Location has no navigable
@@ -1389,32 +1394,19 @@ fn fireHashChange(data: ?*anyopaque) void {
     event.releaseIfUnwrapped(generation);
 }
 
-/// `url` through the basic URL parser and serializer; owned.
-fn reparse(allocator: Allocator, url: []const u8) ![]u8 {
-    var parsed = basic_parser.parse(allocator, url, null) catch return error.SyntaxError;
-    defer parsed.deinit();
-    return @constCast(try url_serializer.serialize(allocator, &parsed, false));
-}
-
 /// `url` encoding-parsed relative to the entry settings object - the
 /// document of the script that is running - and serialized; owned. Failure
 /// is a "SyntaxError". With no script running, the Location's own URL is the
 /// base.
-/// Deviation, stated (encoding-parse-utf8): the query is encoded as UTF-8, not with the document's encoding - queued.
 fn parseRelativeToEntry(instance: *runtime.Instance, internal: *InternalState, url: []const u8) ![]u8 {
     const allocator = internal.allocator;
     if (entryDocument()) |document| {
-        const base = interfaces.Node.get_baseURI(document) catch "";
-        defer if (base.len > 0) document.ctx.allocator.free(base);
-        if (base.len > 0) {
-            var base_record = basic_parser.parse(allocator, base, null) catch null;
-            defer if (base_record) |*b| b.deinit();
-            if (base_record) |*b| {
-                var parsed = basic_parser.parse(allocator, url, b) catch return error.SyntaxError;
-                defer parsed.deinit();
-                return @constCast(try url_serializer.serialize(allocator, &parsed, false));
-            }
-        }
+        // HTML encoding-parse a URL: entry document base and encoding.
+        // The helper's result belongs to that document's allocator, whereas
+        // our callers free with the Location's. Copy across that boundary.
+        const serialized = (try dom.encoding_parse.encodingParseAndSerialize(document, url)) orelse return error.SyntaxError;
+        defer document.ctx.allocator.free(serialized);
+        return allocator.dupe(u8, serialized);
     }
     var parsed = basic_parser.parse(allocator, url, getURL(instance)) catch return error.SyntaxError;
     defer parsed.deinit();
@@ -1485,7 +1477,7 @@ fn locationObjectNavigate(internal: *InternalState, url: []const u8, behavior: n
 /// urlRecord."
 pub fn call_assign(instance: *runtime.Instance, url: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.window == null) return;
+    if (relevantDocument(internal) == null) return;
     try checkSameOriginDomain(internal);
     const resolved = try parseRelativeToEntry(instance, internal, url);
     defer internal.allocator.free(resolved);
@@ -1497,7 +1489,7 @@ pub fn call_assign(instance: *runtime.Instance, url: runtime.USVString) anyerror
 /// navigate given "replace".
 pub fn call_replace(instance: *runtime.Instance, url: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.window == null) return;
+    if (relevantDocument(internal) == null) return;
     const resolved = try parseRelativeToEntry(instance, internal, url);
     defer internal.allocator.free(resolved);
     return locationObjectNavigate(internal, resolved, .replace);
@@ -1511,6 +1503,7 @@ pub fn call_replace(instance: *runtime.Instance, url: runtime.USVString) anyerro
 pub fn call_reload(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     // Steps 1-2.
+    if (relevantDocument(internal) == null) return;
     const window = internal.window orelse return;
     // Step 3.
     try checkSameOriginDomain(internal);

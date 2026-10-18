@@ -40,14 +40,17 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for visible
-/// HTML §7.2.2.2: "1. Let browsingContext be this's relevant global object's
-/// browsing context. 2. If browsingContext is null, then return true. 3.
-/// Return the negation of browsingContext's top-level browsing context's is
-/// popup."
+/// HTML BarProp.visible steps 1-3, with the browser-majority result for
+/// step 2: false without a live browsing context. The spec still says true;
+/// whatwg/html#2579 proposed false in 2017 and closed without changing it.
+/// wpt.fyi BarProp.window, stable 23b0b89b1a: Chrome/Safari 2/2, Firefox 0/2.
+/// WebKit's BarProp::visible likewise returns false without a frame/page:
+/// https://github.com/WebKit/WebKit/blob/main/Source/WebCore/page/BarProp.cpp
 pub fn get_visible(instance: *runtime.Instance) anyerror!bool {
-    const record = instance.ctx.getRealm() orelse return true;
-    const global = record.global_object orelse return true;
-    const navigables = @import("dom").browser_state.navigablesOf(instance.ctx) orelse return true;
-    const browsing_context = navigables.ofWindow(global) orelse return true;
+    const record = instance.ctx.getRealm() orelse return false;
+    const global = record.global_object orelse return false;
+    const navigables = @import("dom").browser_state.navigablesOf(instance.ctx) orelse return false;
+    const browsing_context = navigables.ofWindow(global) orelse return false;
+    if (browsing_context.is_closed) return false;
     return !browsing_context.getTop().is_popup;
 }

@@ -1162,7 +1162,7 @@ fn sameOriginDomain(a: *runtime.Instance, b: *runtime.Instance) bool {
 }
 
 /// Getter for name - The window's target name
-/// Per spec: Returns the browsing context name.
+/// Per spec: Returns the navigable's target name, or "" without a navigable.
 /// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;

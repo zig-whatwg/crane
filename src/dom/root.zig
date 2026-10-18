@@ -77,6 +77,7 @@ pub const keepalive_fetch = @import("keepalive_fetch.zig");
 /// HTML's origin as the object documents share, reference counted.
 pub const origin_record = @import("origin_record.zig");
 pub const document_origin = @import("document_origin.zig");
+pub const document_language = @import("document_language.zig");
 pub const window_documents = @import("window_documents.zig");
 pub const child_navigables = @import("child_navigables.zig");
 pub const cross_origin = @import("cross_origin.zig");

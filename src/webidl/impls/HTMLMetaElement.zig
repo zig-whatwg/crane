@@ -67,8 +67,8 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 /// attribute is present and represents one of the above states, then the
 /// user agent must run the algorithm appropriate for that state."
 ///
-/// The Refresh and Content Security Policy states are modelled; the other
-/// states (content language, encoding declaration, default style,
+/// Content Language, Refresh and Content Security Policy are modelled; the
+/// other states (encoding declaration, default style,
 /// set-cookie, X-UA-Compatible) do nothing here.
 fn insertionSteps(node: *NodeBase) void {
     if (node.node_type != 1) return;
@@ -96,6 +96,25 @@ fn insertionSteps(node: *NodeBase) void {
     // case-insensitively.
     if (std.ascii.eqlIgnoreCase(http_equiv.asSlice(), "refresh")) refreshState(instance);
     if (std.ascii.eqlIgnoreCase(http_equiv.asSlice(), "content-security-policy")) contentSecurityPolicyState(instance, node);
+    if (std.ascii.eqlIgnoreCase(http_equiv.asSlice(), "content-language")) contentLanguageState(instance);
+}
+
+/// HTML 4.2.5.3, content language state: step 1 requires a content attribute;
+/// step 9 stores a Document default that survives removal of the meta.
+/// Browser-majority deviation in steps 2-8: Blink HttpEquiv::Process and
+/// WebKit Document::processMetaHttpEquiv store the raw content. HTML's token
+/// extraction predates whatwg/html@53bc3803433e (2021-07-30), so this is not
+/// newer-spec lag. wpt.fyi, aligned stable 23b0b89b1a, confirms Chrome and
+/// Safari reject the whitespace-start/-end expectations; Firefox trims.
+/// https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/loader/http_equiv.cc
+/// https://github.com/WebKit/WebKit/blob/main/Source/WebCore/dom/Document.cpp
+fn contentLanguageState(meta: *runtime.Instance) void {
+    var content = (interfaces.Element.call_getAttribute(meta, runtime.DOMString.initInterned("content")) catch return) orelse return;
+    defer content.deinit(meta.ctx.allocator);
+    const document = (interfaces.Node.get_ownerDocument(meta) catch null) orelse return;
+    dom_module.document_language.set(document, content.asSlice()) catch |err| {
+        log.warn("content-language pragma could not be recorded ({s})", .{@errorName(err)});
+    };
 }
 
 /// The insertion steps could not read `meta`'s http-equiv attribute (`err`):
@@ -178,6 +197,19 @@ fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, old_
     _ = value;
     if (namespace != null) return;
     if (std.mem.eql(u8, local_name, "name") or std.mem.eql(u8, local_name, "content")) referrerMetadataName(element);
+    if (!std.mem.eql(u8, local_name, "content") and !std.mem.eql(u8, local_name, "http-equiv")) return;
+    if (element.stateAs(State) == null) return;
+    const node = instance_bridge.getNodeBase(element) orelse return;
+    if (!inDocumentTree(node)) return;
+    // HTML's long-standing pragma trigger names only insertion. Blink's
+    // HTMLMetaElement::ParseAttribute and WebKit's attributeChanged also
+    // process connected content/http-equiv changes; Gecko's AfterSetAttr
+    // does not. Follow that majority, without rerunning Refresh or CSP.
+    // https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/html/html_meta_element.cc
+    // https://github.com/WebKit/WebKit/blob/main/Source/WebCore/html/HTMLMetaElement.cpp
+    var http_equiv = (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("http-equiv")) catch return) orelse return;
+    defer http_equiv.deinit(element.ctx.allocator);
+    if (std.ascii.eqlIgnoreCase(http_equiv.asSlice(), "content-language")) contentLanguageState(element);
 }
 
 /// HTML 4.2.5.1, the "referrer" metadata name: "If any meta element element

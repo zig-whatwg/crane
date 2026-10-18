@@ -146,12 +146,16 @@ pub fn deinit(instance: *runtime.Instance) void {
 // The navigable, its document and its traversable's history
 // =============================================================================
 
-/// The History's navigable, when its document is fully active: the window is
-/// still the navigable's active window.
+/// The History's navigable, when its relevant global's document is fully
+/// active (HTML History member step 1, delta traverse/shared state step 2).
 fn activeNavigable(internal: *InternalState) ?*BrowsingContext {
     const bc = internal.browsing_context orelse return null;
     const window = internal.window orelse return null;
     if (bc.getActiveWindow() != @as(?*anyopaque, @ptrCast(window))) return null;
+    // A discarded context may retain its active Window for script. Ask the
+    // document's activity hook too, as isDocumentFullyActive in WebKit's
+    // History.cpp does; active-window identity alone does not make it active.
+    if (!@import("dom").document_activity.fullyActive(window, runtime.SlabAllocator.generationOf(window))) return null;
     return bc;
 }
 
