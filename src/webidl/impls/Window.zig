@@ -2379,11 +2379,16 @@ pub fn call_showDirectoryPicker(instance: *runtime.Instance, options: webidl.Opt
     return error.NotImplemented;
 }
 
-/// Operation: matchMedia
+/// Operation: matchMedia(query) - CSSOM View 4: "1. Let parsed media query
+/// list be the result of parsing query. 2. Return a new MediaQueryList
+/// object, with this's associated Document as the document, with parsed
+/// media query list as its associated media query list." (The list parses
+/// the query as it is made.)
+///
+/// Spec: https://drafts.csswg.org/cssom-view/#dom-window-matchmedia
 pub fn call_matchMedia(instance: *runtime.Instance, query: typedefs.CSSOMString) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = query;
-    return error.NotImplemented;
+    const document = try interfaces.Window.get_document(instance);
+    return interfaces.MediaQueryList.initWith(instance.ctx.allocator, instance.ctx, .{ .media_document = document, .media_query = query.asSlice() });
 }
 
 /// Operation: scroll(options)

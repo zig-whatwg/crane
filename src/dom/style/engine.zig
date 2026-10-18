@@ -113,6 +113,11 @@ const Active = struct {
 pub const StyleEngine = struct {
     allocator: Allocator,
     owners: std.ArrayList(Owner) = .empty,
+    /// CSSOM View 4.2: the MediaQueryList objects whose document this is,
+    /// in the order they were created - raw back links each list removes in
+    /// its own teardown, the generation a teardown net. The engine never
+    /// keeps a list alive.
+    media_query_lists: std.ArrayList(Owner) = .empty,
     /// Moves on every change to the set of sheets or one of their flags
     /// (owners connecting and disconnecting, media, disabled, title).
     sheets_version: u64 = 1,
@@ -129,6 +134,25 @@ pub const StyleEngine = struct {
         if (self.active) |*a| a.deinit(self.allocator);
         self.active = null;
         self.owners.deinit(self.allocator);
+        self.media_query_lists.deinit(self.allocator);
+    }
+
+    /// A MediaQueryList whose document this is was made (matchMedia).
+    pub fn addMediaQueryList(self: *StyleEngine, list: *runtime.Instance) Error!void {
+        try self.media_query_lists.append(self.allocator, .{ .element = list, .generation = runtime.SlabAllocator.generationOf(list) });
+    }
+
+    /// The MediaQueryList `list` is going.
+    pub fn removeMediaQueryList(self: *StyleEngine, list: *runtime.Instance) void {
+        var i: usize = 0;
+        while (i < self.media_query_lists.items.len) {
+            const entry = self.media_query_lists.items[i];
+            if (entry.element == list or !entry.live()) {
+                _ = self.media_query_lists.orderedRemove(i);
+                continue;
+            }
+            i += 1;
+        }
     }
 
     /// `element` (a style or link element of this document) may own a
@@ -748,6 +772,25 @@ pub fn hasComputedStyle(element: *runtime.Instance) Error!bool {
 /// The engine of `document`, for the owners' registration.
 pub fn engineOf(document: *runtime.Instance) ?*StyleEngine {
     return hooks.engineOf(document);
+}
+
+/// CSSOM View 4.2 "evaluate media queries and report changes" for
+/// `document` (HTML update the rendering, step "for each doc of docs,
+/// evaluate media queries and report changes for doc"): "For each
+/// MediaQueryList object target that has doc as its document, in the order
+/// they were created, oldest first", the list reports its own change
+/// (`hooks.reportMediaQueryList`: it fires `change` if its matches state
+/// changed since the last time). A listener can make or drop lists, so the
+/// lists are taken first, and each is checked to be live before it runs.
+pub fn reportMediaQueryChanges(document: *runtime.Instance) void {
+    const engine = hooks.engineOf(document) orelse return;
+    if (engine.media_query_lists.items.len == 0) return;
+    const lists = engine.allocator.dupe(Owner, engine.media_query_lists.items) catch return;
+    defer engine.allocator.free(lists);
+    for (lists) |entry| {
+        if (!entry.live()) continue;
+        hooks.reportMediaQueryList(entry.element);
+    }
 }
 
 test "layer order: first declaration, nested within the parent, children before the parent's own" {

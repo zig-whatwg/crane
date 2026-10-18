@@ -2518,6 +2518,14 @@ fn animationFrameHandler(_: ?*anyopaque) void {
         scheduleAnimationFrame();
     };
 
+    // HTML update the rendering: "For each doc of docs, evaluate media queries
+    // and report changes for doc" (CSSOM View 4.2), before the animation
+    // frame callbacks (lane style2).
+    for (documents.items) |document| {
+        if (animationFrameDispatchState(&token) == null) break;
+        if (document.current()) dom_mod.style.reportMediaQueryChanges(document.document);
+    }
+
     // Preserve the existing shared frame clock. Each document's relative time
     // origin remains a separate timing concern from callback ordering.
     const elapsed = clock.monotonicMillis() - animation_frame_origin_ms;

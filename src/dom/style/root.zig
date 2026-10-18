@@ -19,6 +19,7 @@ pub const ElementStyle = element_style.ElementStyle;
 pub const computedStyle = engine.computedStyle;
 pub const hasComputedStyle = engine.hasComputedStyle;
 pub const isBeingRendered = engine.isBeingRendered;
+pub const reportMediaQueryChanges = engine.reportMediaQueryChanges;
 pub const inlineValue = inline_style.inlineValue;
 
 /// What a computed CSSStyleDeclaration is of (getComputedStyle's construction

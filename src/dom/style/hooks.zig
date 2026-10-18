@@ -4,7 +4,7 @@
 //! start, from its installHooks (docs/instances.md); none of them is named
 //! here (AGENTS.md "The impls boundary").
 //!
-//! lint-impls: hook for Document, Element, HTMLStyleElement, HTMLLinkElement
+//! lint-impls: hook for Document, Element, HTMLStyleElement, HTMLLinkElement, MediaQueryList
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -30,6 +30,9 @@ pub const Hooks = struct {
     /// the linked resource" for the stylesheet link type), `text` decoded,
     /// at `url`: it creates its CSS style sheet.
     link_sheet_arrived: ?*const fn (element: *runtime.Instance, text: []const u8, url: []const u8, origin_clean: bool) void = null,
+    /// MediaQueryList: CSSOM View 4.2's substep for one list - fire
+    /// `change` at it if its matches state changed since the last report.
+    report_media_query_list: ?*const fn (list: *runtime.Instance) void = null,
 };
 
 // process-wide: immutable function pointers that Document, Element, HTMLStyleElement and HTMLLinkElement install once at process start (crane.Process); each reads only the object it is given, so one serves every Browser and thread
@@ -70,4 +73,9 @@ pub fn sheetOf(owner: *runtime.Instance) ?*sheet.SheetRecord {
 pub fn linkSheetArrived(element: *runtime.Instance, text: []const u8, url: []const u8, origin_clean: bool) void {
     const f = hooks.link_sheet_arrived orelse return;
     f(element, text, url, origin_clean);
+}
+
+pub fn reportMediaQueryList(list: *runtime.Instance) void {
+    const f = hooks.report_media_query_list orelse return;
+    f(list);
 }
