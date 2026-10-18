@@ -70,6 +70,14 @@ pub const NetworkContext = struct {
     /// Browser-owned Fetch permission entries, independently locked.
     preflight_cache: @import("../cors/preflight_cache.zig").PreflightCache,
     auth_entries: @import("auth_entries.zig").AuthEntries,
+    /// What clears the Browser's site data for a response's
+    /// `Clear-Site-Data` header (Clear Site Data 4.2; Chromium's
+    /// NetworkContextClient::OnClearSiteData): set by the Browser before any
+    /// realm exists, fixed after - so read on any thread without a lock.
+    /// Null: nothing is cleared (a context a test makes).
+    site_data: ?SiteDataClearer = null,
+
+    pub const SiteDataClearer = @import("../algorithms/clear_site_data.zig").Clearer;
 
     /// The options a Browser gives its network (BrowserConfig).
     pub const Options = struct {

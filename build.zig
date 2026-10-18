@@ -5822,6 +5822,9 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // A navigation's URL string is parsed and serialized before it is fetched.
     browser_mod.addImport("basic_parser", url_basic_parser_mod);
     browser_mod.addImport("url_serializer", url_serializer_mod);
+    // The Browser's Clear-Site-Data handler clears its service worker
+    // registrations (src/browser/clear_site_data.zig).
+    browser_mod.addImport("service_worker", service_worker_mod);
 
     // WebDriver module - W3C WebDriver protocol implementation for wptrunner
     const webdriver_mod = graphModule(b, public, "webdriver", .{

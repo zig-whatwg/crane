@@ -34,6 +34,7 @@ const clock = @import("clock");
 const BodyPipe = @import("../internal/body_pipe.zig").BodyPipe;
 const service_worker_fetch = @import("../internal/service_worker_fetch.zig");
 const cookies = @import("cookies.zig");
+const clear_site_data = @import("clear_site_data.zig");
 const fetch_metadata = @import("fetch_metadata.zig");
 
 // URL Standard, for a redirect's location URL. The same three modules `xhr`
@@ -1146,6 +1147,19 @@ pub fn httpNetworkFetchFinish(
     if (httpNetworkFetchUsesCookies(request)) {
         cookies.storeResponseCookies(allocator, request, &response.header_list) catch {
             return HttpFetchError.OutOfMemory;
+        };
+    }
+
+    // Clear Site Data 3.2's step 15, after the cookies are stored: "If
+    // credentials flag is set, and response's header list contains a header
+    // named `Clear-Site-Data`, then execute clear site data for response" -
+    // the credentials flag being includeCredentials. Before the response is
+    // handed on, by the request's Browser (clear_site_data.zig).
+    if (httpNetworkFetchUsesCookies(request) and response.header_list.contains(clear_site_data.header_name)) {
+        if (request.network) |context| if (context.site_data) |clearer| {
+            clear_site_data.clearSiteDataForResponse(allocator, clearer, request.currentUrl(), &response.header_list) catch {
+                return HttpFetchError.OutOfMemory;
+            };
         };
     }
 
