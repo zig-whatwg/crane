@@ -17,7 +17,8 @@ const enums = @import("enums");
 const typedefs = @import("typedefs");
 const callbacks = @import("callbacks");
 const namespaces = @import("namespaces");
-const impls = @import("impls");
+// The impls compile with the interfaces that delegate to them: nothing else
+// names an impl (AGENTS.md "The impls boundary").
 
 pub fn main() !void {
     // std.heap.GeneralPurposeAllocator was renamed to std.heap.DebugAllocator in 0.16.

@@ -325,21 +325,7 @@ fn encodingParseScriptURL(instance: *runtime.Instance, allocator: std.mem.Alloca
             return allocator.dupe(u8, serialized);
         }
     }
-    return resolveScriptURL(allocator, script_url, api_base_url);
-}
-
-/// `script_url` parsed relative to `api_base_url` and serialized, its query
-/// encoded as UTF-8: encoding-parsing relative to a worker's settings, whose
-/// API URL character encoding is UTF-8. OWNED (`allocator`). SyntaxError
-/// when it does not parse.
-fn resolveScriptURL(allocator: std.mem.Allocator, script_url: []const u8, api_base_url: ?[]const u8) error{ SyntaxError, OutOfMemory }![]const u8 {
-    var base_record: ?@import("url_record").URLRecord = null;
-    defer if (base_record) |*b| b.deinit();
-    if (api_base_url) |base| base_record = api_parser.parseURL(allocator, base, null) catch null;
-    var record = api_parser.parseURL(allocator, script_url, if (base_record) |*b| b else null) catch
-        return error.SyntaxError;
-    defer record.deinit();
-    return url_serializer.serialize(allocator, &record, false) catch error.OutOfMemory;
+    return @import("dom").encoding_parse.encodingParseAndSerializeUtf8(allocator, script_url, api_base_url);
 }
 
 /// The outside settings' origin, serialized - "this's relevant settings

@@ -94,10 +94,13 @@ pub const Task = struct {
     /// HTML 8.1.7.1: the task's document, or null. A Document - this module
     /// cannot name runtime.Instance - BORROWED: the task does not keep it.
     /// "A task is runnable if its document is either null or fully active":
-    /// a window event loop drops a task whose document is not, running its
-    /// `drop` instead (src/browser/event_loop.zig), so a task that sets one
-    /// MUST have a `drop` that frees its context. A worker's tasks have no
-    /// document and are always runnable.
+    /// a window event loop keeps a task whose document is not fully active
+    /// but may be again, in its place, and drops one whose document never
+    /// can be again - destroyed, freed, its realm or navigable gone -
+    /// running its `drop` instead (src/browser/event_loop.zig drainTasks,
+    /// dom.document_activity), so a task that sets one MUST have a `drop`
+    /// that frees its context. A worker's tasks have no document and are
+    /// always runnable.
     ///
     /// A global task on a Window may name the Window instead: its associated
     /// Document when the task runs is then the task's document. Stated

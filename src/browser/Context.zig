@@ -290,6 +290,62 @@ fn shadowIncludingContainerOrder(root: *runtime.Instance, a: *runtime.Instance, 
     }
 }
 
+test "a held timer stays in its window's map until cleared, and clearing it frees it" {
+    const allocator = std.testing.allocator;
+    var realm = try runtime.ContextData.init(allocator, .{});
+    defer realm.deinit();
+    var other = try runtime.ContextData.init(allocator, .{});
+    defer other.deinit();
+    const saved_interface = current_timer_interface;
+    const saved_allocator = current_allocator;
+    const saved_contexts = timer_contexts;
+    defer {
+        current_timer_interface = saved_interface;
+        current_allocator = saved_allocator;
+        timer_contexts = saved_contexts;
+    }
+    const manager = try runtime.native_timer.NativeTimerManager.init(allocator);
+    defer manager.deinit();
+    current_timer_interface = manager.timerInterface();
+    current_allocator = allocator;
+    timer_contexts = std.AutoHashMap(TimerId, *WindowTimerCallback).init(allocator);
+    defer timer_contexts.?.deinit();
+
+    const id: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 10, &.{}, false));
+    const interval: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 10, &.{}, true));
+    const elsewhere: TimerId = @intCast(initializeTimer(&other, .{ .function = .{ .number = 3 } }, 10, &.{}, false));
+    try std.testing.expect(id != 0 and interval != 0 and elsewhere != 0);
+
+    // Both of `realm`'s come due while its window's document is inactive:
+    // their native timers have fired, and they are held.
+    for ([_]TimerId{ id, interval }) |key| {
+        const data = timer_contexts.?.get(key).?.getData();
+        try std.testing.expect(manager.clearTimeout(data.current_timer_id));
+        holdTimer(data);
+        try std.testing.expect(data.held);
+    }
+
+    // Still in the map of active timers: unload step 16 sees them, and only
+    // them for this window.
+    const handles = try activeTimerHandles(&realm, allocator);
+    defer allocator.free(handles);
+    std.mem.sort(TimerId, handles, {}, std.sort.asc(TimerId));
+    try std.testing.expectEqualSlices(TimerId, &.{ id, interval }, handles);
+
+    // clearTimeout frees a held timer at once - no native timer is armed to
+    // free it later (std.testing.allocator reports a leak otherwise).
+    clearTimer(&realm, @intCast(id));
+    try std.testing.expect(timer_contexts.?.get(id) == null);
+    // A held interval: the same (clearInterval, or its window's end, which
+    // clears the map through the same unregistering).
+    clearTimer(&realm, @intCast(interval));
+    try std.testing.expect(timer_contexts.?.get(interval) == null);
+    // Another window's timer is untouched, and still armed.
+    try std.testing.expect(timer_contexts.?.get(elsewhere) != null);
+    clearTimer(&other, @intCast(elsewhere));
+    try std.testing.expectEqual(@as(usize, 0), timer_contexts.?.count());
+}
+
 test "per-document frame batches include parent additions but defer their own additions" {
     const allocator = std.testing.allocator;
     var parent = try runtime.ContextData.init(allocator, .{});
@@ -740,7 +796,7 @@ const window_operations = runtime.WindowOperations{
 /// takes its window's timers and animation frames with it, while its realm
 /// lives on (HTMLIFrameElement asks, through dom.window_documents).
 pub fn installHooks() void {
-    @import("dom").window_documents.install(.{ .destroyed = clearWindowState });
+    @import("dom").window_documents.install(.{ .destroyed = clearWindowState, .active_timer_handles = activeTimerHandles });
     @import("dom").idle_periods.installLoop(@import("event_loop.zig").EventLoop.idle_period_hooks);
 }
 
@@ -782,6 +838,21 @@ fn clearWindowState(realm: runtime.Context) void {
             } else i += 1;
         }
     }
+}
+
+/// dom.window_documents: the keys of `realm`'s window's map of active timers
+/// (HTML "unload a document" step 16), OWNED by the caller - the ids its
+/// setTimeout and setInterval returned, held ones included, in no order.
+fn activeTimerHandles(realm: runtime.Context, allocator: std.mem.Allocator) error{OutOfMemory}![]TimerId {
+    const map = if (timer_contexts) |*m| m else return &.{};
+    var handles: std.ArrayListUnmanaged(TimerId) = .empty;
+    errdefer handles.deinit(allocator);
+    var iter = map.iterator();
+    while (iter.next()) |entry| {
+        if (entry.value_ptr.*.getData().realm != realm) continue;
+        try handles.append(allocator, entry.key_ptr.*);
+    }
+    return handles.toOwnedSlice(allocator);
 }
 
 /// Clear ALL pending timer contexts but keep the timer interface
@@ -860,7 +931,11 @@ fn unregisterTimerContext(timer_id: TimerId) void {
             // So the wrapper is only freed when cancellation is CONFIRMED. Otherwise
             // ownership passes to the callback, which sees `cancelled` and destroys
             // it when it fires.
-            const cancelled = if (current_timer_interface) |timer|
+            const cancelled = if (wrapper.getData().held)
+                // Held (holdIfInactive): no native timer is armed for it, and
+                // no callback will come to free it.
+                true
+            else if (current_timer_interface) |timer|
                 timer.clearTimeout(wrapper.getData().current_timer_id)
             else
                 false;
@@ -921,6 +996,13 @@ const WindowTimerData = struct {
     /// While this is set, the running handler owns the wrapper and is the only
     /// thing allowed to free it.
     executing: bool = false,
+    /// The timer came due while its window's document was not fully active,
+    /// and may be again (`holdIfInactive`): it did not run, it stays in the
+    /// map of active timers, and no native timer is armed for it - so
+    /// clearing it frees it at once, and its window's end frees it with the
+    /// rest. Re-armed when the document is reactivated (the back/forward
+    /// cache's phase B; HTML "reactivate" step 2).
+    held: bool = false,
 
     /// Return every handle this timer owns. Only `destroyTimer` calls it.
     fn release(self: *WindowTimerData, allocator: std.mem.Allocator) void {
@@ -1036,8 +1118,39 @@ fn apiBaseUrl(realm: runtime.Context, window: *runtime.Instance) ApiBaseUrl {
     return .{ .url = base, .allocator = document.ctx.allocator };
 }
 
+/// HTML "run steps after a timeout" step 4.1: a Window's timer waits "until
+/// global's associated Document has been fully active for a further
+/// milliseconds milliseconds (not necessarily consecutively)", and the task
+/// its completion step queues is a global task, not runnable while that
+/// document is not fully active. So a timer that comes due while its
+/// window's document is inactive - not fully active, and it may be again
+/// (dom.document_activity) - is HELD: its handler does not run, and it keeps
+/// its place in the map of active timers, with no native timer behind it,
+/// until reactivation re-arms it (phase B) or its window's map is cleared.
+/// Whether it was held. WebKit suspends a document's timers the same way,
+/// keeping each one's remaining interval (EventLoopTaskGroup::suspend,
+/// EventLoopTimer::suspend). A gone document's timers are as before: its
+/// destroy clears its window's map (clearWindowState).
+fn holdIfInactive(data: *WindowTimerData) bool {
+    const window = realmWindow(data.realm) orelse return false;
+    if (dom_mod.document_activity.activity(window, runtime.SlabAllocator.generationOf(window)) != .inactive) return false;
+    holdTimer(data);
+    return true;
+}
+
+/// Hold a timer whose native timer has just fired (`holdIfInactive`).
+fn holdTimer(data: *WindowTimerData) void {
+    data.held = true;
+    // The native timer that called here has fired: none is armed.
+    data.current_timer_id = 0;
+}
+
 /// Handler function for one-shot timer callbacks (invoked via SelfContainedCallback trampoline)
 fn timerHandler(data: *WindowTimerData) void {
+    // Held while its window's document is inactive: still in the map, and
+    // not run (holdIfInactive).
+    if (holdIfInactive(data)) return;
+
     // Step 8.9: remove global's map[id]. Before the run rather than after, so a
     // clearTimeout(id) from inside the callback finds nothing to free under us.
     if (timer_contexts) |*map| {
@@ -1066,6 +1179,10 @@ fn intervalHandler(data: *WindowTimerData) void {
         // last time the timer system will reference it.
         return destroyTimer(wrapper);
     }
+
+    // Held while its window's document is inactive: not run, and not
+    // rescheduled (holdIfInactive).
+    if (holdIfInactive(data)) return;
 
     runTimerTask(data);
 

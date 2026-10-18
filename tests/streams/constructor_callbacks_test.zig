@@ -30,7 +30,6 @@ const std = @import("std");
 const testing = std.testing;
 
 const interfaces = @import("interfaces");
-const impls = @import("impls");
 const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
 // Note: We get JSValue type info indirectly since v8 module isn't available in test context
@@ -42,7 +41,10 @@ const webidl = @import("webidl");
 test "ReadableStream: constructor accepts underlyingSource parameter" {
     // Verify the constructor signature exists and accepts the correct parameter type
     // call_constructor(allocator, ctx, underlyingSource, strategy)
-    const ConstructorFn = @TypeOf(impls.ReadableStream.call_constructor);
+    // The interface's constructor forwards its parameters to the impl's
+    // unchanged (tests/v8/streams_interface_members_test.zig checks that the
+    // impl takes them).
+    const ConstructorFn = @TypeOf(interfaces.ReadableStream.call_constructor);
     const type_info = @typeInfo(ConstructorFn);
 
     // In Zig 0.15+, function types are in .@"fn" field
@@ -62,7 +64,10 @@ test "ReadableStream: constructor accepts underlyingSource parameter" {
 test "WritableStream: constructor accepts underlyingSink parameter" {
     // Verify the constructor signature exists and accepts the correct parameter type
     // call_constructor(ctx, underlyingSink, strategy)
-    const ConstructorFn = @TypeOf(impls.WritableStream.call_constructor);
+    // The interface's constructor forwards its parameters to the impl's
+    // unchanged (tests/v8/streams_interface_members_test.zig checks that the
+    // impl takes them).
+    const ConstructorFn = @TypeOf(interfaces.WritableStream.call_constructor);
     const type_info = @typeInfo(ConstructorFn);
     const params = type_info.@"fn".params;
 
@@ -80,7 +85,10 @@ test "WritableStream: constructor accepts underlyingSink parameter" {
 test "TransformStream: constructor accepts transformer parameter" {
     // Verify the constructor signature exists and accepts the correct parameter type
     // call_constructor(ctx, transformer, writableStrategy, readableStrategy)
-    const ConstructorFn = @TypeOf(impls.TransformStream.call_constructor);
+    // The interface's constructor forwards its parameters to the impl's
+    // unchanged (tests/v8/streams_interface_members_test.zig checks that the
+    // impl takes them).
+    const ConstructorFn = @TypeOf(interfaces.TransformStream.call_constructor);
     const type_info = @typeInfo(ConstructorFn);
     const params = type_info.@"fn".params;
 
@@ -173,7 +181,7 @@ test "Transformer dictionary supports callbacks" {
 
 test "ReadableStream: call_constructor function is accessible" {
     // Verify the fixed call_constructor is present and callable at compile time
-    const f = impls.ReadableStream.call_constructor;
+    const f = interfaces.ReadableStream.call_constructor;
     const type_info = @typeInfo(@TypeOf(f));
     const return_type = type_info.@"fn".return_type.?;
     const ErrorUnion = @typeInfo(return_type).error_union;
@@ -182,7 +190,7 @@ test "ReadableStream: call_constructor function is accessible" {
 }
 
 test "WritableStream: call_constructor function is accessible" {
-    const f = impls.WritableStream.call_constructor;
+    const f = interfaces.WritableStream.call_constructor;
     const type_info = @typeInfo(@TypeOf(f));
     const return_type = type_info.@"fn".return_type.?;
     const ErrorUnion = @typeInfo(return_type).error_union;
@@ -191,7 +199,7 @@ test "WritableStream: call_constructor function is accessible" {
 }
 
 test "TransformStream: call_constructor function is accessible" {
-    const f = impls.TransformStream.call_constructor;
+    const f = interfaces.TransformStream.call_constructor;
     const type_info = @typeInfo(@TypeOf(f));
     const return_type = type_info.@"fn".return_type.?;
     const ErrorUnion = @typeInfo(return_type).error_union;

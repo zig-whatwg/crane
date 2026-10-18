@@ -6,7 +6,9 @@
 //! Spec: https://html.spec.whatwg.org/multipage/urls-and-fetching.html#encoding-parsing-a-url
 //!
 //! The one place impls and the rest of html encoding-parse a document's
-//! URLs: reflected URL attributes, a and area's url, the meta refresh URL.
+//! URLs: reflected URL attributes, a and area's url, the meta refresh URL;
+//! and a worker's, relative to its API base URL in UTF-8, for the Worker and
+//! SharedWorker constructors.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -27,6 +29,17 @@ pub fn encodingParseAndSerialize(node: *runtime.Instance, input: []const u8) err
     defer if (base.len > 0) allocator.free(base);
     // Steps 1-2 and 5.
     return api_parser.encodingParseAndSerialize(allocator, input, base, documentEncoding(node));
+}
+
+/// "Encoding-parse-and-serialize a URL" given `input`, relative to a worker's
+/// settings object: against its API base URL `api_base_url` (none when null,
+/// or when it does not parse), the query encoded with its API URL character
+/// encoding, which is UTF-8. The Worker and SharedWorker constructors' script
+/// URL, when the outside settings are a worker's ("Let workerURL be the
+/// result of encoding-parsing a URL given compliantScriptURL, relative to
+/// outsideSettings"). OWNED by `allocator`; SyntaxError for failure.
+pub fn encodingParseAndSerializeUtf8(allocator: std.mem.Allocator, input: []const u8, api_base_url: ?[]const u8) error{ SyntaxError, OutOfMemory }![]const u8 {
+    return (try api_parser.encodingParseAndSerialize(allocator, input, api_base_url, sniffing.utf_8)) orelse error.SyntaxError;
 }
 
 /// Steps 1-2: the character encoding of `node`'s node document, UTF-8 when
