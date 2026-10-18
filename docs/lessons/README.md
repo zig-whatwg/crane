@@ -320,6 +320,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A lookup that cannot find security state must not answer "none"](architecture-a-lookup-that-cannot-find-security-state-must-not-answer-none.md) - Never let "I cannot find the policy" share a return value with "there is no policy": answer a static fail-closed value at the lookup, and every host that reads it is closed without knowing.
 - [One module loader serves every settings object](architecture-one-module-loader-serves-every-settings-object.md) - When a mechanism exists for one kind of owner, look for the one field that ties it there before writing a second copy - and when you move it, write down the teardown order the new owner needs.
 - [A per-name query can still scan every node](architecture-a-per-name-query-can-still-scan-every-node.md) - Allocation-free named queries must also avoid walking the document before ordinary property reads.
+- [Build URL replacements before releasing old fields](architecture-build-url-replacements-before-releasing-old-fields.md) - Reuse a failure-safe constructor, then swap; do not partially destroy an object while constructing its replacement.
 
 ### Spec Compliance
 - [A [LegacyOverrideBuiltIns] getter shadows the unforgeables Crane puts on the prototype](spec-compliance-a-legacyoverridebuiltins-getter-shadows-unforgeables-on-the-prototype.md) - When a [LegacyOverrideBuiltIns] interface gains a named getter, list its [LegacyUnforgeable] members and test that a named element of each name does not shadow it: Crane's binding cannot see them as own properties yet.
@@ -496,6 +497,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Textarea API and submission values differ](spec-compliance-textarea-api-and-submission-values-differ.md) - Apply the value representation required by the consumer; form-entry wrapping does not change the IDL value.
 - [User Timing converts legacy epoch values](spec-compliance-user-timing-converts-legacy-epoch-values.md) - Preserve representation and sentinel rules at API conversion boundaries.
 - [Document replacement keeps navigation event times](spec-compliance-document-open-keeps-navigation-event-times.md) - Separate repeated event delivery from the first navigation milestones.
+- [Check metadata triggers as well as value parsing](spec-compliance-check-metadata-triggers-as-well-as-value-parsing.md) - Check both a metadata algorithm and its update triggers against specification history and engine mechanisms.
+- [Location components need parser state and document encoding](spec-compliance-location-components-need-parser-state-and-document-encoding.md) - Encoding, base URL and parser state are independent inputs; preserve all three specified by the API.
 
 ### Codegen
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
@@ -665,6 +668,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [WPT sweep chunks may use different stream layouts](testing-wpt-sweep-chunks-may-use-different-stream-layouts.md) - Complete source counts do not prove complete subtest evidence; account for every chunk's actual stream layout.
 - [An out-of-memory sweep needs a control that proves the path ran](testing-an-oom-sweep-needs-a-control-round-that-proves-the-path-ran.md) - Prove the swept operation does something - run it with memory to spare and assert its effect - and check once whether the rounds leave it able to run again: a sweep whose operation never ran passes every invariant.
 - [A loopback server behind the Browser's proxy counts module fetches](testing-a-loopback-server-behind-the-proxy-counts-module-fetches.md) - When the behaviour under test is "how many times was this fetched", give the test a server that counts - a request count is the only observable that tells a cache hit from a refetch.
+- [Count completed paths in rate-limited benchmarks](testing-count-completed-paths-in-rate-limited-benchmarks.md) - A workload counter should validate what completed, not merely what was attempted.
 
 ### Debugging
 - [A call that can free its argument ends every read of it](debugging-a-call-that-can-free-its-argument-ends-every-read-of-it.md) - A call that can free its argument ends the caller's use of it - including the `defer`s written above the call; read the trace's top frame before believing a deep one.
