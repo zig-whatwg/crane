@@ -230,6 +230,28 @@ pub const DeclarativeShadow = struct {
     }
 };
 
+/// HTML "get the sanitizer action for an element name"'s answer.
+pub const SanitizerAction = enum { keep, remove, replace_with_children };
+
+/// The parser's sanitizer configuration (HTML "parser sanitizer
+/// configuration"), as the sanitizer answers for it. Crane's parser applies
+/// it, as far as it goes yet, where the result could not be undone after
+/// parsing: an element's attributes are sanitized when it is created from
+/// its token ("create an element for a token"), a comment or processing
+/// instruction it does not allow is not inserted ("insert a comment" step 1,
+/// "insert a processing instruction" step 2), and a template the sanitizer
+/// removes or replaces is never inserted and never patches (the template
+/// start tag's steps 11-13). Everything else the configuration
+/// decides is still filtered once parsing ends (sanitizer.zig).
+pub const ParserSanitizer = struct {
+    context: *const anyopaque,
+    element_action: *const fn (*const anyopaque, []const u8, Namespace) SanitizerAction,
+    allows_attribute: *const fn (*const anyopaque, []const u8, Namespace, *const TreeNode.Attribute) bool,
+    /// "Allow comments", and "allow processing instruction target".
+    allows_comments: *const fn (*const anyopaque) bool,
+    allows_processing_instruction: *const fn (*const anyopaque, []const u8) bool,
+};
+
 /// A `<template for>`'s content patch (HTML "prepare content patching"): the
 /// template's insertion target, insertion start marker and insertion end
 /// marker. Owned by its template, which is on the stack of open elements and
@@ -825,6 +847,9 @@ pub const TreeBuilder = struct {
     /// tree-then-convert path - runs both over the parser's own tree.
     dom_adapter_prepare_content_patching: ?*const fn (*ContentPatch, InsertionLocation, []const u8, ?*anyopaque) bool = null,
     dom_adapter_finish_content_patching: ?*const fn (*ContentPatch, ?*anyopaque) void = null,
+
+    /// HTML parser "parser sanitizer configuration" (initially null).
+    parser_sanitizer: ?ParserSanitizer = null,
 
     /// HTML parser "allow declarative shadow roots" (initially false).
     allow_declarative_shadow_roots: bool = false,
@@ -2107,6 +2132,19 @@ pub const TreeBuilder = struct {
 
     /// "In head", a start tag whose tag name is "template".
     fn handleTemplateStartTag(self: *TreeBuilder, tag: TagToken) !void {
+        // Steps 11-13: a template the parser's sanitizer configuration
+        // removes or replaces with its children is created and pushed, and
+        // never inserted - it has no children, its contents being its
+        // template contents - so it neither attaches a shadow root nor patches.
+        if (self.parser_sanitizer) |sanitizer| if (sanitizer.element_action(sanitizer.context, "template", .html) != .keep) {
+            try self.active_formatting_elements.append(.marker);
+            self.frameset_ok = false;
+            self.insertion_mode = .in_template;
+            try self.template_insertion_modes.append(.in_template);
+            const template = try self.createElementForToken(tag, .html, self.appropriateLocation(null));
+            try self.open_elements.append(template);
+            return;
+        };
         // Step 7's condition first: a template with no shadowrootmode (in
         // the None state) is step 9's ordinary template - inserted before the
         // marker and modes are pushed, which nothing observes in between.
@@ -4371,6 +4409,9 @@ pub const TreeBuilder = struct {
         for (attrs) |attr| {
             try element.addAttribute(attr.getName(), attr.getValue(), null);
         }
+        // "Create an element for a token": with a parser sanitizer
+        // configuration, the attributes it does not allow are not appended.
+        if (self.parser_sanitizer) |sanitizer| self.sanitizeAttributes(element, sanitizer);
         // Step 15's parser conditions; the adapter associates.
         if (self.form_element) |form| {
             if (namespace == .html and self.fragment_context == null and !self.parsingTemplateContents() and
@@ -4386,6 +4427,23 @@ pub const TreeBuilder = struct {
         }
 
         return element;
+    }
+
+    /// The attributes of `element`, just created from its token, that the
+    /// parser's sanitizer configuration does not allow, removed.
+    fn sanitizeAttributes(self: *TreeBuilder, element: *TreeNode, sanitizer: ParserSanitizer) void {
+        const local_name = element.local_name orelse return;
+        var index: usize = 0;
+        while (index < element.attributes.len) {
+            const attribute = element.attributes.get(index).?;
+            if (sanitizer.allows_attribute(sanitizer.context, local_name, element.namespace, &attribute)) {
+                index += 1;
+                continue;
+            }
+            const removed = element.attributes.remove(index) catch break;
+            self.allocator.free(removed.name);
+            self.allocator.free(removed.value);
+        }
     }
 
     /// Insert HTML element for token.
@@ -4623,6 +4681,9 @@ pub const TreeBuilder = struct {
     /// html element, or the current node - telling the DOM adapter, which
     /// otherwise never hears of a comment outside the html element.
     fn insertCommentIn(self: *TreeBuilder, parent: *TreeNode, comment: CommentToken) !void {
+        // Step 1: a parser sanitizer configuration that does not allow
+        // comments drops it - the text on either side then coalesces.
+        if (self.parser_sanitizer) |sanitizer| if (!sanitizer.allows_comments(sanitizer.context)) return;
         const node = try TreeNode.initComment(self.allocator);
         try node.appendText(comment.getData());
         // A patching template's comment goes to its insertion target.
@@ -4656,6 +4717,8 @@ pub const TreeBuilder = struct {
     /// the DOM adapter's, which it does through Document's
     /// createProcessingInstruction; step 5 is the append.
     fn insertProcessingInstructionIn(self: *TreeBuilder, parent: *TreeNode, pi: ProcessingInstructionToken) !void {
+        // Step 2: a target the parser sanitizer configuration does not allow.
+        if (self.parser_sanitizer) |sanitizer| if (!sanitizer.allows_processing_instruction(sanitizer.context, pi.getTarget())) return;
         const node = try TreeNode.initProcessingInstruction(self.allocator, pi.getTarget(), pi.getData());
         // A patching template's processing instruction goes to its
         // insertion target.

@@ -106,6 +106,10 @@ pub const FragmentOptions = struct {
     /// Its allowDeclarativeShadowRoots argument (default false): true for
     /// setHTMLUnsafe ("set and filter HTML" step 7).
     allow_declarative_shadow_roots: bool = false,
+    /// Its configuration argument (default null): the parser's sanitizer
+    /// configuration (fragment step 9), for setHTML and for setHTMLUnsafe
+    /// given a sanitizer. BORROWED for the parse.
+    parser_sanitizer: ?html_core.parser.ParserSanitizer = null,
     /// Its scriptingMode argument (default Inert).
     scripting_mode: ScriptingMode = .inert,
     /// Build the fragment in an inert document - the context document's
@@ -583,6 +587,9 @@ pub fn parseFragmentWith(
             break;
         }
     }
+
+    // Step 9: the parser's sanitizer configuration.
+    tree_builder.parser_sanitizer = options.parser_sanitizer;
 
     // Steps 22–23: Parse the fragment using the full algorithm.
     tree_builder.parse() catch return error.TreeBuilderError;
