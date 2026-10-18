@@ -95,25 +95,23 @@ pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
 
 /// Operation: requestAnimationFrame
 ///
-/// Spec: HTML Standard § 8.10 AnimationFrameProvider, step 1: "If this is
-/// not supported, then throw a NotSupportedError DOMException." A dedicated
-/// worker's scope is supported only with frame timing its owner provides,
-/// which Crane does not have. Accepting the callback and never running it
-/// turned a feature check into a hang.
+/// Spec: HTML Standard § 8.12 AnimationFrameProvider. A dedicated worker's
+/// global scope is its own target object, and is supported when its owner
+/// set contains a Document (or a supported dedicated worker's global
+/// scope); its callbacks run in the worker event loop's step 6.1. The host
+/// keeps the map and the frames (worker_host.requestAnimationFrame). The
+/// callback is taken at once: the map keeps it, or it is released - throwing
+/// NotSupportedError used to drop it, one Global for the agent's life (lane
+/// leaks2).
 pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: callbacks.FrameRequestCallback) anyerror!u32 {
-    _ = instance;
-    _ = callback;
-    return error.NotSupportedError;
+    return worker_host.requestAnimationFrame(instance.ctx, engine.takeCallbackFunction(@ptrCast(callback)));
 }
 
 /// Operation: cancelAnimationFrame
 ///
-/// Spec: HTML Standard § 8.10 AnimationFrameProvider, step 1: not supported,
-/// as for requestAnimationFrame.
+/// Spec: HTML Standard § 8.12 AnimationFrameProvider (worker_host).
 pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
-    _ = instance;
-    _ = handle;
-    return error.NotSupportedError;
+    return worker_host.cancelAnimationFrame(instance.ctx, handle);
 }
 
 /// Operation: close

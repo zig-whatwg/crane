@@ -379,6 +379,27 @@ const event_handler_types = [_][]const u8{ "EventHandler", "OnErrorEventHandler"
 /// interface supplies them (`dom.event_handlers.value` / `setValue`) wherever
 /// the impl does not: WebKit's generator does the same (CodeGeneratorJS.pm,
 /// the IsEventHandlerType branch).
+/// An attribute whose value is a callback function - non-nullable, of a
+/// `callback` type (Streams' `readonly attribute Function size`) - returns
+/// that function's object to script as a `runtime.JSValue`: WebIDL 3.2.20
+/// converts an IDL callback function value to "the ECMAScript object it
+/// represents". The callback type itself (`callbacks.X`) is a Zig function
+/// pointer, a form only an ARGUMENT has (the binding hands its handle
+/// over); as a getter result the V8 binding had no conversion for it and
+/// gave script a fresh `undefined` it never released - one handle per read
+/// of a queuing strategy's `size` (lane leaks2). A JSValue result is the
+/// binding's to release (docs/lessons/architecture-a-getter-s-result-is-the-
+/// binding-s-like-an-operation-s.md), so the impl returns a hold of the
+/// function (`engine.Owned.take()`). A nullable one (AutofillEvent's
+/// `RefillCallback? refill`) and the event handlers (dom.event_handlers)
+/// keep their own forms.
+pub fn isCallbackFunctionValueAttribute(attr: types.Attribute, kind: ?ir.TypeKind) bool {
+    const t = attr.idlType;
+    if (t.nullable or t.generic != null or t.unionTypes != null or t.sequence != null or t.record != null) return false;
+    if (isEventHandlerAttribute(attr)) return false;
+    return kind != null and kind.? == .callback;
+}
+
 pub fn isEventHandlerAttribute(attr: types.Attribute) bool {
     if (attr.static or attr.readonly) return false;
     const t = attr.idlType;
@@ -4589,8 +4610,9 @@ pub fn writeDelegateFunctions(
         const attr_type_kind = if (type_registry) |reg| reg.lookup(attr.idlType.type) else null;
         const is_interface_type = attr_type_kind != null and attr_type_kind.? == .interface;
         const is_callback_interface_type = attr_type_kind != null and attr_type_kind.? == .callback_interface;
+        const is_callback_function_value = isCallbackFunctionValueAttribute(attr, attr_type_kind);
 
-        var return_type = if (is_callback_interface_type)
+        var return_type = if (is_callback_interface_type or is_callback_function_value)
             "runtime.JSValue"
         else if (is_interface_type)
             "*runtime.Instance"
@@ -5797,6 +5819,42 @@ test "writeDelegateFunctions generates attribute getters" {
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub fn get_nodeType(") != null);
     try testing.expect(std.mem.indexOf(u8, output, "u16") != null);
+}
+
+test "a callback-function-typed attribute's getter returns a runtime.JSValue, the binding's to release" {
+    var reg = ir.TypeRegistry.init(testing.allocator);
+    defer reg.deinit();
+    try reg.register("Function", .callback);
+    try reg.register("RefillCallback", .callback);
+
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
+    const attrs = [_]types.Attribute{
+        // Streams 7.2.1/7.3.1: `readonly attribute Function size`.
+        .{ .name = "size", .idlType = .{ .type = "Function" }, .readonly = true },
+        // A nullable one keeps the callback type (AutofillEvent.refill).
+        .{ .name = "refill", .idlType = .{ .type = "RefillCallback", .nullable = true }, .readonly = true },
+    };
+    try writeDelegateFunctions(&buffer.writer, "CountQueuingStrategyImpl", &reg, &attrs, &.{}, &.{}, .{});
+    const output = buffer.written();
+    try testing.expect(std.mem.indexOf(u8, output, "pub fn get_size(instance: *runtime.Instance) anyerror!runtime.JSValue {") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "anyerror!Function") == null);
+    try testing.expect(std.mem.indexOf(u8, output, "pub fn get_refill(instance: *runtime.Instance) anyerror!?RefillCallback {") != null);
+}
+
+test "isCallbackFunctionValueAttribute - a non-nullable callback type only" {
+    const function_attr: types.Attribute = .{ .name = "size", .idlType = .{ .type = "Function" }, .readonly = true };
+    try testing.expect(isCallbackFunctionValueAttribute(function_attr, .callback));
+    // The default: anything not known to be a callback keeps its mapping.
+    try testing.expect(!isCallbackFunctionValueAttribute(function_attr, null));
+    try testing.expect(!isCallbackFunctionValueAttribute(function_attr, .callback_interface));
+    try testing.expect(!isCallbackFunctionValueAttribute(function_attr, .typedef));
+    const nullable: types.Attribute = .{ .name = "refill", .idlType = .{ .type = "RefillCallback", .nullable = true }, .readonly = true };
+    try testing.expect(!isCallbackFunctionValueAttribute(nullable, .callback));
+    // An event handler IDL attribute is dom.event_handlers', whatever its
+    // type resolves to.
+    const handler: types.Attribute = .{ .name = "onclick", .idlType = .{ .type = "EventHandler" } };
+    try testing.expect(!isCallbackFunctionValueAttribute(handler, .callback));
 }
 
 test "writeDelegateFunctions generates setters for non-readonly attributes" {

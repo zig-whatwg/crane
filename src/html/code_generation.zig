@@ -85,7 +85,7 @@ pub fn ensureCSPDoesNotBlockStringCompilation(global: *runtime.Instance, code_st
     // A global with no CSP list compiles everything: the fast path every
     // eval takes on a page without policies.
     const list = trusted_types.cspListOf(global) orelse return .allowed;
-    if (list.policies.items.len == 0) return .allowed;
+    if (list.isEmpty()) return .allowed;
     // 1. "Let sourceString be codeString."
     // 2. "If compilationType is not "TIMER"":
     if (compilation_type != .timer and !is_trusted) {

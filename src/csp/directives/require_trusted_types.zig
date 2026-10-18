@@ -41,6 +41,8 @@ fn requiringDirective(policy: *const types.Policy, sink_group: []const u8) ?*con
 /// 4.2.3 "Does sink type require trusted types?", given the global's CSP
 /// list.
 pub fn doesSinkTypeRequireTrustedTypes(csp_list: *const types.CSPList, sink_group: []const u8, include_report_only_policies: bool) bool {
+    // A list that could not record a policy fails closed: required.
+    if (csp_list.blocksEverything()) return true;
     // 1. For each policy in global's CSP list:
     for (csp_list.policies.items) |*policy| {
         // 1.1-1.3. Skip a policy without the directive, or whose value has
@@ -67,6 +69,8 @@ pub fn shouldSinkTypeMismatchViolationBeBlocked(
     source: []const u8,
     reporter: ?violation_events.Reporter,
 ) error{OutOfMemory}!Result {
+    // A list that could not record a policy blocks everything (fail closed).
+    if (csp_list.blocksEverything()) return .blocked;
     // 1. Let result be "Allowed".
     var result: Result = .allowed;
     // 2. Let sample be source.

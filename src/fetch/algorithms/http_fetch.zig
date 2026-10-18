@@ -1191,24 +1191,51 @@ fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest, added: [
     // URL credentials belong to Fetch's Authorization step, never curl.
     const stripped_url = try withoutUserinfo(allocator, request.currentUrl());
     errdefer if (stripped_url) |url| allocator.free(url);
-    // Get headers from header list using iterator()
     const header_entries = request.header_list.iterator();
 
+    // Fetch header-list "append" keeps the first spelling; "get" joins
+    // values in list order. All three browsers send one combined field,
+    // rather than the lowercase Headers iterator view or separate lines.
+    // https://wpt.fyi/results/fetch/api/basic/request-headers-case.any.html?sha=df642c4142
+    var header_count: usize = 0;
+    var combined_count: usize = 0;
+    for (header_entries, 0..) |header, i| {
+        if (std.ascii.eqlIgnoreCase(header.name, "set-cookie")) {
+            // Set-Cookie is the header-list exception to combining values.
+            header_count += 1;
+            continue;
+        }
+        if (hasHeaderName(header_entries[0..i], header.name)) continue;
+        header_count += 1;
+        if (hasHeaderName(header_entries[i + 1 ..], header.name)) combined_count += 1;
+    }
+
     // Allocate headers array
-    const headers = try allocator.alloc(NetworkRequest.Header, header_entries.len + added.len);
+    const headers = try allocator.alloc(NetworkRequest.Header, header_count + added.len);
     errdefer allocator.free(headers);
-    const owned_values = try allocator.alloc([]const u8, added.len + @intFromBool(stripped_url != null));
+    const original_owned = added.len + @intFromBool(stripped_url != null);
+    const owned_values = try allocator.alloc([]const u8, original_owned + combined_count);
     errdefer allocator.free(owned_values);
     for (added, 0..) |header, i| owned_values[i] = header.value;
     if (stripped_url) |url| owned_values[added.len] = url;
+    var combined_done: usize = 0;
+    errdefer for (owned_values[original_owned..][0..combined_done]) |value| allocator.free(value);
 
+    var next: usize = 0;
     for (header_entries, 0..) |header, i| {
-        headers[i] = .{
-            .name = header.name,
-            .value = header.value,
-        };
+        var value = header.value;
+        if (!std.ascii.eqlIgnoreCase(header.name, "set-cookie")) {
+            if (hasHeaderName(header_entries[0..i], header.name)) continue;
+            if (hasHeaderName(header_entries[i + 1 ..], header.name)) {
+                value = (try request.header_list.get(allocator, header.name)).?;
+                owned_values[original_owned + combined_done] = value;
+                combined_done += 1;
+            }
+        }
+        headers[next] = .{ .name = header.name, .value = value };
+        next += 1;
     }
-    for (added, 0..) |header, i| headers[header_entries.len + i] = header;
+    for (added, 0..) |header, i| headers[next + i] = header;
 
     // Get body bytes if present
     const body: ?[]const u8 = if (request.body) |b| switch (b) {
@@ -1237,6 +1264,13 @@ fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest, added: [
         .verbose = false,
         .owned_values = owned_values,
     };
+}
+
+fn hasHeaderName(headers: []const @import("../internal/header_list.zig").Header, name: []const u8) bool {
+    for (headers) |header| {
+        if (std.ascii.eqlIgnoreCase(header.name, name)) return true;
+    }
+    return false;
 }
 
 /// The input is a serialized URL; '@' in its authority separates userinfo.

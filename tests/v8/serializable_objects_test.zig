@@ -14,6 +14,9 @@ const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 const protocol = @import("engine");
+
+/// The hooks of the file's agent: none.
+const window_agent_hooks: protocol.HostHooks = .{};
 const interfaces = @import("interfaces");
 const webidl = @import("webidl");
 
@@ -27,7 +30,9 @@ var window_once: ?runtime.Context = null;
 fn agent() !*ffi.Isolate {
     if (isolate_once) |i| return i;
     interfaces.process_hooks.startHooksForTest();
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+    // An agent createAgent made: it keeps its Window realms on its record
+    // (protocol_realms.WindowRealms), which a bare isolate has none of.
+    const i: *ffi.Isolate = @ptrCast(@alignCast(try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &window_agent_hooks, .host = null })));
     ffi.v8_Isolate_Enter(i);
     _ = ffi.v8_HandleScope_New(i);
     const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;

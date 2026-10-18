@@ -108,6 +108,57 @@ pub fn parseMetaCSP(
     return policy;
 }
 
+/// HTML 4.2.5.3, the Content Security Policy state of a `<meta http-equiv>`,
+/// steps 3-5, given its non-empty `content`: parse it as a "meta" policy
+/// with the disposition "enforce", remove its report-uri, frame-ancestors
+/// and sandbox directives, and enforce it - append it to `list`, the
+/// document's CSP list, with `list.allocator`. Its self-origin is the
+/// list's (CSP 2.2), else `document_self_origin` (OWNED, taken; null when
+/// there is none or no memory for it - 'self' then matches nothing:
+/// stricter, not open). `delivery_url` (BORROWED) is the document's URL,
+/// which reports name.
+///
+/// Fails CLOSED: on any allocation failure the policy is not dropped -
+/// `list` becomes unenforceable (CSPList.unenforceable), and every decision
+/// against it is "Blocked". The document then runs no script, loads
+/// nothing and navigates nowhere, rather than run as if its `<meta>` CSP
+/// were not there. Browsers abort on out of memory; Crane fails the one
+/// document closed.
+pub fn enforceMetaPolicy(list: *types.CSPList, content: []const u8, document_self_origin: ?types.Origin, delivery_url: ?[]const u8) void {
+    var self_origin = document_self_origin;
+    defer if (self_origin) |*origin| origin.deinit();
+    enforceMetaPolicySteps(list, content, &self_origin, delivery_url) catch list.markUnenforceable();
+}
+
+fn enforceMetaPolicySteps(list: *types.CSPList, content: []const u8, document_self_origin: *?types.Origin, delivery_url: ?[]const u8) error{OutOfMemory}!void {
+    const allocator = list.allocator;
+    // 3. "Let policy be the result of executing the parse a serialized CSP
+    // algorithm on the meta element's content attribute's value, with a
+    // source of "meta", and a disposition of "enforce"."
+    var policy = try parsing.parseSerializedCSP(allocator, content, .meta, .enforce);
+    errdefer policy.deinit();
+    // 4. "Remove all occurrences of the report-uri, frame-ancestors, and
+    // sandbox directives from policy."
+    for ([_][]const u8{ "report-uri", "frame-ancestors", "sandbox" }) |name| {
+        if (policy.directive_set.items.fetchOrderedRemove(name)) |removed| {
+            var directive = removed.value;
+            directive.deinit();
+        }
+    }
+    // The policy's self-origin: its CSP list's - the URL origin of the
+    // response the document was created from, which a sandboxed document's
+    // opaque origin does not change - else the document's.
+    if (list.self_origin) |*origin| {
+        policy.self_origin = try types.Origin.create(allocator, origin.scheme, origin.host, origin.port);
+    } else {
+        policy.self_origin = document_self_origin.*;
+        document_self_origin.* = null;
+    }
+    if (delivery_url) |url| policy.delivery_url = try allocator.dupe(u8, url);
+    // 5. "Enforce the policy policy."
+    try list.append(policy);
+}
+
 // ============================================================================
 // Resource Fetch Integration
 // ============================================================================
@@ -193,6 +244,8 @@ pub fn shouldBlockFetch(
     destination: FetchDestination,
     redirect_count: u32,
 ) CSPCheckResult {
+    // A list that could not record a policy blocks everything (fail closed).
+    if (csp_list.blocksEverything()) return .{ .blocked = true };
     if (csp_list.isEmpty()) {
         return .{ .blocked = false };
     }
@@ -253,6 +306,8 @@ pub fn shouldBlockInlineScript(
     csp_list: *const types.CSPList,
     context: InlineContext,
 ) CSPCheckResult {
+    // A list that could not record a policy blocks everything (fail closed).
+    if (csp_list.blocksEverything()) return .{ .blocked = true };
     if (csp_list.isEmpty()) {
         return .{ .blocked = false };
     }
@@ -311,6 +366,8 @@ pub fn shouldBlockInlineStyle(
     csp_list: *const types.CSPList,
     context: InlineContext,
 ) CSPCheckResult {
+    // A list that could not record a policy blocks everything (fail closed).
+    if (csp_list.blocksEverything()) return .{ .blocked = true };
     if (csp_list.isEmpty()) {
         return .{ .blocked = false };
     }

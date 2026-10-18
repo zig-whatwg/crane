@@ -230,7 +230,6 @@ src/runtime/engines/v8/protocol_agents.zig agents_lock 1 G P-res decl:ee06178688
 src/runtime/engines/v8/protocol_agents.zig engine_snapshot 1 G P-res decl:3f5aa6740061fdcb
 src/runtime/engines/v8/protocol_modules.zig records 1 TL I/engine decl:82a83aad0cca3275
 src/runtime/engines/v8/protocol_realms.zig ending_realms 1 TL C decl:c88d9a0f7cc07e27
-src/runtime/engines/v8/protocol_realms.zig window_realms 1 TL I/engine decl:65babc3a95e3ece8
 src/runtime/engines/v8/protocol_scripts.zig prepared_depth 1 TL A decl:cf9dca8c2da04496
 src/runtime/engines/v8/snapshot_loader.zig tracked_snapshot_allocator 1 G P-res decl:72369f58d4c42d35
 src/runtime/engines/v8/snapshot_loader.zig tracked_snapshot_data 1 G P-res decl:25bf0c215167358c
@@ -242,7 +241,7 @@ src/runtime/engines/v8/v8_wrapper.cpp g_first_pass_depth 1 C++TL P-res decl:746e
 src/runtime/engines/v8/v8_wrapper.cpp g_in_context_new 1 C++TL C decl:17788f3524420f43
 src/runtime/engines/v8/v8_wrapper.cpp g_live_context_globals 1 C++G D decl:dad6fa01c70ae637
 src/runtime/engines/v8/v8_wrapper.cpp g_live_globals 1 C++G D decl:bf0bdb5ea0460e73
-src/runtime/engines/v8/v8_wrapper.cpp g_live_object_globals 1 C++G D decl:34843aa9f062abbd
+src/runtime/engines/v8/v8_wrapper.cpp g_live_object_globals 1 C++G D decl:21e2ac010270a703
 src/runtime/engines/v8/v8_wrapper.cpp g_live_string_globals 1 C++G D decl:6bbee0ae99b748c9
 src/runtime/engines/v8/v8_wrapper.cpp g_live_weak_callback_data 1 C++G D decl:c98787b630a24b36
 src/runtime/engines/v8/v8_wrapper.cpp g_next_context_id 1 C++G P-const decl:0803d1d05cc3a079

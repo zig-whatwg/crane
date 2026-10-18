@@ -327,15 +327,9 @@ pub fn get_autocorrect(instance: *runtime.Instance) anyerror!bool {
 
 /// Getter for innerText
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#the-innertext-idl-attribute
-/// Returns the rendered text content (layout-dependent)
+/// Returns rendered text through computed style and HTML text collection.
 pub fn get_innerText(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    // Get text content - in a full implementation this would use the layout backend
-    // For now, fall back to textContent-like behavior
-    // Use Node's textContent as fallback
-    if (try interfaces.Node.get_textContent(instance)) |text| {
-        return text;
-    }
-    return runtime.DOMString.initEmpty();
+    return @import("html").inner_text.getText(instance);
 }
 
 /// Getter for outerText
@@ -702,18 +696,13 @@ pub fn set_autocorrect(instance: *runtime.Instance, value: bool) anyerror!void {
 /// Setter for innerText
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#the-innertext-idl-attribute
 pub fn set_innerText(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    // Setting innerText replaces all children with text nodes
-    // This is a simplified implementation - use Node's textContent setter
-    const NodeImpl = @import("Node.zig");
-    try NodeImpl.set_textContent(instance, value);
+    try @import("html").inner_text.setInnerText(instance, value);
 }
 
 /// Setter for outerText
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#the-outertext-idl-attribute
 pub fn set_outerText(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    // Setting outerText replaces the element with text nodes
-    // Simplified: just set inner text (full impl would replace element)
-    try set_innerText(instance, value);
+    try @import("html").inner_text.setOuterText(instance, value);
 }
 
 /// Setter for popover

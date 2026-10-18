@@ -2329,6 +2329,7 @@ const DefaultTee = struct {
     allocator: std.mem.Allocator,
     stream: *runtime.Instance,
     reader: *runtime.Instance,
+    clone_for_branch2: bool,
     reading: bool = false,
     read_again: bool = false,
     canceled1: bool = false,
@@ -2403,16 +2404,16 @@ const TeeBranch = struct {
     const vtable = Source.VTable{ .start = start, .pull = pull, .cancel = cancelBranch, .deinit = deinitBranch };
 };
 
-/// ReadableStreamTee(stream, cloneForBranch2) with cloneForBranch2 false.
+/// ReadableStreamTee(stream, cloneForBranch2).
 /// Returns the two branches.
-pub fn tee(realm: Realm, stream_instance: *runtime.Instance) ![2]*runtime.Instance {
+pub fn tee(realm: Realm, stream_instance: *runtime.Instance, clone_for_branch2: bool) ![2]*runtime.Instance {
     const stream = streamSlots(stream_instance);
     // Step 3: a byte stream tees as bytes.
     if (byteControllerOf(stream.controller.?) != null) return byteTee(realm, stream_instance);
-    return defaultTee(realm, stream_instance);
+    return defaultTee(realm, stream_instance, clone_for_branch2);
 }
 
-fn defaultTee(realm: Realm, stream_instance: *runtime.Instance) ![2]*runtime.Instance {
+fn defaultTee(realm: Realm, stream_instance: *runtime.Instance, clone_for_branch2: bool) ![2]*runtime.Instance {
     const allocator = streamSlots(stream_instance).allocator;
     // Step 3: Let reader be ? AcquireReadableStreamDefaultReader(stream).
     const reader = try acquireDefaultReader(realm, stream_instance);
@@ -2423,7 +2424,7 @@ fn defaultTee(realm: Realm, stream_instance: *runtime.Instance) ![2]*runtime.Ins
         cancel_promise.deinit();
         return err;
     };
-    state.* = .{ .allocator = allocator, .stream = stream_instance, .reader = reader, .cancel_promise = cancel_promise };
+    state.* = .{ .allocator = allocator, .stream = stream_instance, .reader = reader, .clone_for_branch2 = clone_for_branch2, .cancel_promise = cancel_promise };
     // Building the branches holds the state; each branch and the reaction
     // below hold their own from here.
     defer state.release();
@@ -2521,17 +2522,58 @@ fn defaultTeeChunkMicrotask(task: *TeeChunk) void {
     const realm = Realm.of(state.stream) catch return;
     // 1.1 Set readAgain to false.
     state.read_again = false;
+    // 1.2-1.3 Clone before either enqueue, so an abrupt completion errors
+    // both branches before either receives the chunk. Chrome and Safari
+    // implement this for Fetch bodies; Firefox still shares the chunk.
+    // https://wpt.fyi/results/fetch/api/response/response-clone.any.html?sha=df642c4142
+    // Blink's TeeEngine::ChunkStepsBody uses this same completion boundary.
+    var clone = TeeClone{ .realm = realm.ctx, .chunk = task.chunk.value };
+    defer if (clone.value) |value| value.release();
+    if (!state.canceled2 and state.clone_for_branch2) {
+        const failure = engine.completionOf(realm.ctx, TeeClone.steps, &clone) catch return;
+        if (failure) |exception| {
+            defer exception.release();
+            const reason = Value{ .value = exception.value, .realm = realm.ctx };
+            defaultControllerError(realm, streamSlots(state.branch1.?).controller.?, reason);
+            defaultControllerError(realm, streamSlots(state.branch2.?).controller.?, reason);
+            const canceled = cancel(realm, state.stream, reason) catch return;
+            defer js.dispose(canceled);
+            state.cancel_promise.resolve(realm, canceled);
+            return;
+        }
+    }
     // 1.4-1.5 Enqueue the chunk to each branch not canceled.
     if (!state.canceled1) {
         if (defaultControllerEnqueueCompletion(realm, streamSlots(state.branch1.?).controller.?, task.chunk) catch null) |e| js.dispose(e);
     }
     if (!state.canceled2) {
-        if (defaultControllerEnqueueCompletion(realm, streamSlots(state.branch2.?).controller.?, task.chunk) catch null) |e| js.dispose(e);
+        const chunk2 = if (clone.value) |value| Value{ .value = value.value, .realm = realm.ctx } else task.chunk;
+        if (defaultControllerEnqueueCompletion(realm, streamSlots(state.branch2.?).controller.?, chunk2) catch null) |e| js.dispose(e);
     }
     // 1.6-1.7
     state.reading = false;
     if (state.read_again) defaultTeePull(realm, state);
 }
+
+/// Streams StructuredClone: non-storage serialization and deserialization
+/// in the current realm. An empty transfer list neither detaches buffers
+/// nor transfers platform objects. The result belongs to the chunk step.
+const TeeClone = struct {
+    realm: runtime.Context,
+    chunk: runtime.JSValue,
+    value: ?engine.Owned = null,
+
+    fn steps(data: ?*anyopaque) engine.Error!void {
+        const self: *TeeClone = @ptrCast(@alignCast(data.?));
+        var serialized = try engine.structuredSerializeWithTransfer(self.realm, self.chunk, &.{}, noTransfer, null, self.realm.allocator);
+        defer serialized.deinit(self.realm.allocator);
+        self.value = try engine.structuredDeserializeWithTransfer(self.realm, serialized.serialized, serialized.array_buffers, &.{});
+    }
+
+    fn noTransfer(_: ?*anyopaque, _: *runtime.Instance) runtime.TransferableState {
+        return .not_transferable;
+    }
+};
 
 fn defaultTeeClose(ctx: *anyopaque, realm: Realm) void {
     const state: *DefaultTee = @ptrCast(@alignCast(ctx));

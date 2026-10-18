@@ -11,7 +11,7 @@ const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
+const engine = @import("engine");
 const ByteLengthQueuingStrategy = interfaces.ByteLengthQueuingStrategy;
 
 pub const State = ByteLengthQueuingStrategy.State;
@@ -98,36 +98,61 @@ pub fn get_highWaterMark(instance: *runtime.Instance) anyerror!f64 {
     return internal.high_water_mark;
 }
 
-/// Byte length size function
+/// The byte length queuing strategy size function's steps (Streams 7.2.2,
+/// step 1), given `chunk`: "Return ? GetV(chunk, "byteLength")." Not a
+/// method: it does not look at `this`.
 ///
-/// This is the function returned by the size getter.
-/// Per spec, it extracts the "byteLength" property from the chunk.
-///
-/// Spec: https://streams.spec.whatwg.org/#byte-length-queuing-strategy-size-function
-/// Steps (given chunk):
-/// 1. Return ? GetV(chunk, "byteLength").
-fn byteLengthSizeFunction(arguments: []const runtime.JSValue) runtime.JSValue {
-    _ = arguments;
-    // TODO: Extract byteLength property from chunk
-    // This requires JS runtime integration
-    // For now, return undefined
-    return runtime.JSValue.jsUndefined;
+/// GetV(V, P): 1. Let O be ? ToObject(V) - undefined and null throw a
+/// TypeError. 2. Return ? O.[[Get]](P, V). An object is read with Get. A
+/// primitive's ToObject wrapper has no own "byteLength", so its [[Get]] reads
+/// its prototype chain; the protocol's Get takes an object, so a primitive
+/// answers undefined. Deviation, stated: they differ only when script gives
+/// a primitive's prototype (String.prototype, Number.prototype, ...) a
+/// "byteLength" - the WPT reads `size('potato')` as undefined, which both do.
+fn byteLengthSizeSteps(data: ?*anyopaque, arguments: []const runtime.JSValue) runtime.EngineError!runtime.JSValue {
+    _ = data;
+    const chunk: runtime.JSValue = if (arguments.len > 0) arguments[0] else .undefined;
+    const realm = engine.currentRealm() orelse return error.OperationFailed;
+    switch (engine.typeOf(realm, chunk)) {
+        // ToObject(undefined or null) throws a TypeError.
+        .undefined, .null => return error.TypeError,
+        .object => {
+            const value = engine.getProperty(realm, chunk, "byteLength") catch |err| return switch (err) {
+                error.OutOfMemory => error.OutOfMemory,
+                error.TypeError => error.TypeError,
+                error.ExceptionPending => error.ExceptionPending,
+                error.NotSupported => error.NotSupported,
+                error.DataCloneError => error.DataCloneError,
+                error.OperationFailed, error.ExceptionReported, error.MutedScriptError => error.OperationFailed,
+            };
+            // The result is the engine's to release (engine.BuiltinSteps).
+            return value.take();
+        },
+        .boolean, .string, .symbol, .number, .bigint => return .undefined,
+    }
 }
+
+/// The steps of every realm's byte length queuing strategy size function. A
+/// static: the functions read it on every call, for their realm's life.
+const byte_length_size_function: runtime.BuiltinFunction = .{ .steps = byteLengthSizeSteps, .data = null };
+
+/// The global object's slot that keeps it (engine.globalBuiltinFunction).
+const byte_length_size_key = "crane:byte length queuing strategy size function";
 
 /// Getter for size
 ///
 /// Spec: https://streams.spec.whatwg.org/#blqs-size
 /// readonly attribute Function size
 ///
-/// The size getter steps are:
-/// 1. Return this's relevant global object's byte length queuing strategy size function.
+/// 1. Return this's relevant global object's byte length queuing strategy
+///    size function.
 ///
-/// Note: This returns a Function object. The actual size calculation happens
-/// when the function is called with a chunk.
-pub fn get_size(instance: *runtime.Instance) anyerror!callbacks.Function {
-    _ = instance;
-
-    // Return the byte length size function
-    // In a full implementation, this would be a global function cached per realm
-    return &byteLengthSizeFunction;
+/// Every global object has one (7.2.2): 2. Let F be
+/// ! CreateBuiltinFunction(steps, 1, "size", « », globalObject's relevant
+/// Realm) - made on the first read in the realm, the same function after
+/// (Blink's GetCachedSizeFunction). The result is a hold of it, which the
+/// binding releases, as it does every JSValue a getter returns.
+pub fn get_size(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    const function = try engine.globalBuiltinFunction(instance.ctx, byte_length_size_key, "size", 1, &byte_length_size_function);
+    return function.take();
 }

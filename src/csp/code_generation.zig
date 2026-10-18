@@ -37,6 +37,8 @@ pub fn ensureDoesNotBlockStringCompilation(
     source_string: []const u8,
     reporter: ?violation_events.Reporter,
 ) Result {
+    // A list that could not record a policy blocks everything (fail closed).
+    if (csp_list.blocksEverything()) return .blocked;
     // 5.3.1. "Let trustedTypesRequired be the result of executing does sink
     // type require trusted types?, with realm, 'script', and false." It
     // reads the same list for every policy: once.
@@ -73,6 +75,8 @@ pub fn ensureDoesNotBlockStringCompilation(
 /// 4.5.1 for `csp_list`, the realm's global's. Every violation goes to
 /// `reporter`.
 pub fn ensureDoesNotBlockWasmByteCompilation(csp_list: *const types.CSPList, reporter: ?violation_events.Reporter) Result {
+    // A list that could not record a policy blocks everything (fail closed).
+    if (csp_list.blocksEverything()) return .blocked;
     // 2. Let result be "Allowed".
     var result: Result = .allowed;
     // 3. For each policy of global's CSP list's policies:
