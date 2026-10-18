@@ -288,10 +288,9 @@ pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constru
                 return error.NotSupportedError;
             }
 
-            // Step 7.3: Check if extends is a valid HTML element
-            // For now, we accept common HTML element names
-            // TODO: Full validation against HTML element list
-            if (!isKnownHTMLElement(extends_str)) {
+            // Step 7.3: reject HTMLUnknownElement, using the same element
+            // interface lookup as creation (including recognized obsolete tags).
+            if (@import("html_core").element_interface.forLocalName(extends_str) == .HTMLUnknownElement) {
                 return error.NotSupportedError;
             }
 
@@ -475,33 +474,6 @@ fn stringSequenceProperty(realm: runtime.Context, allocator: Allocator, construc
     // TypeError.
     const strings = (try engine.convertToSequenceOfDOMStrings(realm, iterable.value, allocator)) orelse return error.TypeError;
     return strings;
-}
-
-/// Check if a name is a known HTML element
-fn isKnownHTMLElement(name: []const u8) bool {
-    const known_elements = [_][]const u8{
-        "a",        "abbr",     "address", "area",     "article",    "aside",    "audio",
-        "b",        "base",     "bdi",     "bdo",      "blockquote", "body",     "br",
-        "button",   "canvas",   "caption", "cite",     "code",       "col",      "colgroup",
-        "data",     "datalist", "dd",      "del",      "details",    "dfn",      "dialog",
-        "div",      "dl",       "dt",      "em",       "embed",      "fieldset", "figcaption",
-        "figure",   "footer",   "form",    "h1",       "h2",         "h3",       "h4",
-        "h5",       "h6",       "head",    "header",   "hgroup",     "hr",       "html",
-        "i",        "iframe",   "img",     "input",    "ins",        "kbd",      "label",
-        "legend",   "li",       "link",    "main",     "map",        "mark",     "menu",
-        "meta",     "meter",    "nav",     "noscript", "object",     "ol",       "optgroup",
-        "option",   "output",   "p",       "picture",  "pre",        "progress", "q",
-        "rp",       "rt",       "ruby",    "s",        "samp",       "script",   "search",
-        "section",  "select",   "slot",    "small",    "source",     "span",     "strong",
-        "style",    "sub",      "summary", "sup",      "table",      "tbody",    "td",
-        "template", "textarea", "tfoot",   "th",       "thead",      "time",     "title",
-        "tr",       "track",    "u",       "ul",       "var",        "video",    "wbr",
-    };
-
-    for (known_elements) |elem| {
-        if (std.mem.eql(u8, name, elem)) return true;
-    }
-    return false;
 }
 
 /// Operation: get(name)
@@ -693,17 +665,4 @@ pub fn lookUpCustomElementDefinition(
 
     // Step 5: Return null
     return null;
-}
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "isKnownHTMLElement" {
-    try std.testing.expect(isKnownHTMLElement("div"));
-    try std.testing.expect(isKnownHTMLElement("button"));
-    try std.testing.expect(isKnownHTMLElement("span"));
-    try std.testing.expect(isKnownHTMLElement("input"));
-    try std.testing.expect(!isKnownHTMLElement("my-element"));
-    try std.testing.expect(!isKnownHTMLElement("unknown"));
 }
