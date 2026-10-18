@@ -94,6 +94,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal| {
         // An event its wrapper's collection frees has no edge left to end.
         internal.forgetTarget(instance);
+        internal.forgetRelatedTarget(instance);
         internal.deinit();
         // Note: Internal state memory is managed by arena allocator
         // Return the block itself, not just what it points to. `internal.deinit()`

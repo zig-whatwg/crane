@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Count tree scopes from the walk's moves, and prove the count against the literal steps](architecture-count-tree-scopes-from-the-walks-moves.md) - When the engine lacks a per-node pointer the algorithm keeps asking about, derive the answer from the walk's own moves - and make a randomized differential test against the literal steps the proof, not the argument.
 - [A task that may wait needs a third answer, and every "is there work" check must ask it](architecture-a-task-that-may-wait-needs-a-third-answer.md) - When a queue gains items that may not run yet, grep every "queue is non-empty" check: each one is a busy-wait or a hang unless it counts only what may run.
 - [An ID index is kept at the link, not in the removing steps](architecture-an-id-index-is-kept-at-the-link-not-in-the-removing-steps.md) - An index of the tree is part of the tree's state: update it where the tree changes, not in the steps that run after, because some of those steps read it.
 - [A shared append hook needs the reason carried with the attribute](architecture-a-shared-append-hook-needs-the-reason-carried-with-the-attribute.md) - If two callers share a hook and only one may skip a check, the reason must travel with the call (Blink's AttributeModificationReason); state the element "notices" cannot tell them apart.
@@ -326,6 +327,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Focus selectors must not run style-dependent focus fixup](architecture-focus-selectors-must-not-run-style-dependent-focus-fixup.md) - Separate the stored designation from style-dependent validation.
 
 ### Spec Compliance
+- [A subclass's copy of an event concept hides what dispatch does to it](spec-compliance-a-subclass-copy-of-an-event-concept-hides-dispatch.md) - A concept the base algorithm reads and writes has one home, the base's state; a subclass attribute that names it reads it there, never a copy of its own.
 - [A [LegacyOverrideBuiltIns] getter shadows the unforgeables Crane puts on the prototype](spec-compliance-a-legacyoverridebuiltins-getter-shadows-unforgeables-on-the-prototype.md) - When a [LegacyOverrideBuiltIns] interface gains a named getter, list its [LegacyUnforgeable] members and test that a named element of each name does not shadow it: Crane's binding cannot see them as own properties yet.
 - [A wait that the page's own load waits on deadlocks](spec-compliance-a-wait-the-page-s-own-load-waits-on-deadlocks.md) - Before implementing a spec wait, check whether what it waits for waits on the caller; if it does, follow the browser majority's break of the cycle and state it, rather than adding a special case per caller.
 - [Parse selectors over CSS tokens, not characters](spec-compliance-parse-selectors-over-css-tokens.md) - A selector is a CSS grammar over CSS tokens: tokenize per CSS Syntax 3 first, and validity questions answer themselves.
@@ -554,6 +556,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A generated import can rest on a typedef an upstream IDL file happens to declare](codegen-a-generated-import-can-rest-on-a-typedef-an-upstream-idl-file-happens-to-declare.md) - When a generated file relies on something being generated, codegen must generate it itself; find out by deleting an upstream file in a test fixture, not by waiting for upstream to delete it.
 
 ### Testing
+- [A unit test's Window has no associated Document](testing-a-unit-tests-window-has-no-associated-document.md) - Before a spec check reads "the Window's associated Document", decide what it does with a Window that has none - every unit test's - or it turns into a silent no-op.
 - [A hook in a function nothing calls has never compiled](testing-a-hook-in-a-function-nothing-calls-has-never-compiled.md) - A green build says nothing about a function nobody calls: find a caller, or a test that calls it, before you count a change in it as done.
 - [Measure that the blocked thing runs before building what blocks it](testing-measure-that-the-blocked-thing-runs-before-building-the-block.md) - Measure that the thing a mechanism blocks actually runs before you build the block - otherwise the work moves nothing, and a partial version can turn passing files into timeouts.
 - [A handle ledger is kept by handle, not by entry point](testing-a-handle-ledger-is-kept-by-handle-not-by-entry-point.md) - Count a handle by a mark on the handle, read at every delete site - never by the entry point that made it or the type it is released as; a weak handle V8 resets is uncounted when its callback resets it.

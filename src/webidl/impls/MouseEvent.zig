@@ -11,9 +11,9 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const engine = @import("engine");
-const KeptInstance = @import("dom").custom_elements.KeptInstance;
 const MouseEvent = interfaces.MouseEvent;
 const event_construction = @import("dom").event_construction;
+const event_dispatch = @import("dom").event_dispatch;
 
 pub const State = MouseEvent.State;
 
@@ -21,25 +21,18 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// The event keeps its related target alive: an edge from the event's
-/// wrapper (engine.traceChild, `related_target_slot`), drawn when the target
-/// is set - by the constructor or initMouseEvent - and ended in deinit, as
-/// FocusEvent keeps its own. Blink: MouseEvent::Trace visits
-/// related_target_; WebKit: MouseRelatedEvent's RefPtr<EventTarget>. It was a
-/// bare pointer in the generated state, and a held `new MouseEvent(t,
-/// {relatedTarget})` read a freed or reissued node once the target's tree was
-/// collected (lane ownerdoc, crane/od-event-keeps-its-targets.html).
-///
-/// `related_target` is the native pointer beside the edge, with its slab
-/// generation and realm (KeptInstance): only the teardown net. Made when a
-/// related target is first set, so an event with none - most of the ones the
-/// engine fires - allocates nothing.
-pub const InternalState = struct {
-    allocator: std.mem.Allocator,
-    related_target: ?KeptInstance = null,
-};
-
-const related_target_slot: engine.TracedSlot = .{ .name = "relatedTarget" };
+/// MouseEvent keeps no state of its own beyond the generated attributes: its
+/// relatedTarget is the event's (DOM 2.2 "relatedTarget"), which dispatch
+/// retargets path item by path item, so the attribute reads the event's
+/// dispatch state (dom.event_dispatch) and the event keeps what it holds.
+/// The event keeps it alive with an edge from its wrapper - Blink:
+/// MouseEvent::Trace visits related_target_; WebKit: MouseRelatedEvent's
+/// RefPtr<EventTarget>. It was a bare pointer in the generated state once,
+/// and a held `new MouseEvent(t, {relatedTarget})` read a freed or reissued
+/// node once the target's tree was collected (lane ownerdoc,
+/// crane/od-event-keeps-its-targets.html); then a copy of its own, with its
+/// own edge, which dispatch never retargeted (lane events1).
+pub const InternalState = struct {};
 
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md):
@@ -48,27 +41,11 @@ pub fn installHooks() void {
     event_construction.installMouseEvent(.{ .set_related_target = &setRelatedTarget });
 }
 
-/// Set the related target the event reports, and keep it: the edge from the
-/// event to it replaces the one to the target it had.
+/// Initialize the event's relatedTarget to `target`, and keep it: the edge
+/// from the event to it replaces the one to the target it had.
 fn setRelatedTarget(instance: *runtime.Instance, target: ?*runtime.Instance) error{OutOfMemory}!void {
-    const state = instance.getState(State);
-    state.own.relatedTarget = target;
-    if (target) |t| {
-        const internal = state.own._internal orelse made: {
-            const allocator = instance.ctx.allocator;
-            const internal = try allocator.create(InternalState);
-            internal.* = .{ .allocator = allocator };
-            state.own._internal = internal;
-            break :made internal;
-        };
-        internal.related_target = KeptInstance.of(t);
-        engine.traceChild(instance, t, related_target_slot);
-    } else if (state.own._internal) |internal| {
-        if (internal.related_target != null) {
-            internal.related_target = null;
-            engine.forgetTracedChild(instance, related_target_slot);
-        }
-    }
+    const state = event_dispatch.of(instance) orelse return;
+    state.setRelatedTarget(instance, target);
 }
 
 /// Initialize instance (creates the instance)
@@ -83,16 +60,9 @@ pub fn init(
     return interfaces.UIEvent.initWithState(allocator, StateType, vtable, ctx);
 }
 
-/// Deinitialize instance
+/// Deinitialize instance: the relatedTarget's edge ends with the event's
+/// state, in Event's teardown.
 pub fn deinit(instance: *runtime.Instance) void {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        // An event freed without ever being wrapped lets the hold waiting for
-        // its wrapper go; a collected one's edge went with the wrapper.
-        if (internal.related_target != null) engine.forgetTracedChild(instance, related_target_slot);
-        internal.allocator.destroy(internal);
-        state.own._internal = null;
-    }
     // Clean up inherited Event state (frees the type DOMString)
     interfaces.Event.deinit(instance);
 }
@@ -244,13 +214,12 @@ pub fn get_buttons(instance: *runtime.Instance) anyerror!u16 {
     return state.own.buttons;
 }
 
-/// Getter for relatedTarget: the value it was initialized to. The event's
-/// edge keeps it; null only past its realm's teardown (the net above).
+/// Getter for relatedTarget: "return this's relatedTarget" - the event's
+/// (UI Events; DOM 2.2: "Other specifications use relatedTarget to define a
+/// relatedTarget attribute"), retargeted while it is dispatched.
 pub fn get_relatedTarget(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return state.own.relatedTarget;
-    const kept = internal.related_target orelse return state.own.relatedTarget;
-    return kept.get();
+    const state = event_dispatch.of(instance) orelse return null;
+    return state.relatedTarget();
 }
 
 /// Getter for movementX

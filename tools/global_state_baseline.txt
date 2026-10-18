@@ -281,7 +281,6 @@ src/streams/internal/read_into_request.zig sentinel_storage 1 G P-const decl:f33
 src/streams/internal/read_request.zig sentinel_storage 1 G P-const decl:f33e1c60fc8c8315
 src/webdriver/main.zig main.handler.server_ptr 1 G P-res decl:f033b82c181714a1
 src/webidl/impls/Element.zig undefined_sentinel 1 G P-const decl:f33e1c60fc8c8315
-src/webidl/impls/EventTarget.zig current_events 1 G R decl:776d6beda41b573f
 src/webidl/impls/EventTarget.zig next_handler_serial 1 G I/engine decl:d7230747e11f8385
 src/webidl/impls/EventTarget.zig next_listener_id 1 TL I/engine decl:e78eed1e4659a6b5
 src/webidl/impls/HTMLFormElement.zig next_navigation_token 1 TL I/engine decl:e78eed1e4659a6b5
