@@ -126,6 +126,14 @@ fn sameSiteMode(allocator: Allocator, request: *const InternalRequest) !cookiest
                 break;
             }
         }
+        // The hops a copy no longer lists - a service worker's request,
+        // whose URL list is its current hop (InternalRequest.dropped_urls_site,
+        // as Fetch Metadata reads it; whatwg/fetch#1335): a cross-site one
+        // makes it cross-site too, as the request itself is. Its
+        // fetch(event.request) after a cross-site redirect sends no Strict
+        // cookies (same-site-cookies.https.html's "... with passthrough /
+        // navpreload and cross-site redirect").
+        if (request.dropped_urls_site == .cross_site) same_site = false;
     }
     // TODO (Q3): a client's cross-site ancestor makes its site for cookies
     // opaque, even for a fetch to its own origin. That captured client fact
