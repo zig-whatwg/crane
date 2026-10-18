@@ -52,7 +52,6 @@ pub const interface_skip_list = .{
     "AuthenticatorAssertionResponse", // ArrayBuffer type issues
     "AuthenticatorAttestationResponse", // ArrayBuffer type issues
     "AuthenticatorResponse", // ArrayBuffer type issues
-    "CSSMediaRule", // Missing cached field
     "CSSViewTransitionRule", // DOMString array issues
     "ChapterInformation", // MediaImage array issues
     "DeviceChangeEvent", // MediaDeviceInfo array issues
