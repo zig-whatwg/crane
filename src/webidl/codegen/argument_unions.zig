@@ -192,8 +192,9 @@ fn writtenAsAnotherType(members: []const types.IDLType) bool {
     return members.len == 2 and node and string;
 }
 
-/// The typedef named for `members`, recorded in the IR the first time.
-fn unionTypedef(ir: *ir_mod.IR, members: []types.IDLType) ![]const u8 {
+/// The typedef named for `members`, recorded in the IR the first time (and
+/// shared with member_unions.zig's dictionary members).
+pub fn unionTypedef(ir: *ir_mod.IR, members: []types.IDLType) ![]const u8 {
     const arena = ir.merged.allocator();
     const name = try unionName(arena, members);
     if (ir.source_map.get(name)) |sources| {

@@ -1817,6 +1817,15 @@ pub fn fromV8ValueAs(
         // so we need to check for byte slices specifically
 
         // String types: DOMString (union), or []const u8 (ByteString/USVString)
+        // - or an enumeration: WebIDL 2.13 counts "all enumeration types"
+        // among the string types, so 3.2.25 step 15 ("If types includes a
+        // string type, then return the result of converting V to that type")
+        // takes an enumeration arm - ToString, then a TypeError unless it is
+        // one of the values. A valid union has at most one string type (they
+        // are not distinguishable); a string arm is still preferred to an
+        // enumeration one, as before. Without it, an enumeration arm took
+        // nothing: (TaskPriority or TaskSignal), (Sanitizer or
+        // SanitizerConfig or SanitizerPresets).
         const string_idx: ?usize = comptime blk: {
             for (fields, 0..) |field, i| {
                 if (field.type == runtime.DOMString) {
@@ -1829,6 +1838,9 @@ pub fn fromV8ValueAs(
                 {
                     break :blk i;
                 }
+            }
+            for (fields, 0..) |field, i| {
+                if (@typeInfo(field.type) == .@"enum") break :blk i;
             }
             break :blk null;
         };
@@ -2084,9 +2096,13 @@ pub fn fromV8ValueAs(
                     // exception propagates (ExceptionPending).
                     const str_idx = string_idx.?;
                     return @unionInit(T, fields[str_idx].name, try fromV8Value(fields[str_idx].type, allocator, isolate, context, value));
-                } else {
-                    // A union with one of step 11's arms as well: as before
-                    // (a toString attempt, then the dictionary arm below).
+                } else if (comptime dict_idx == null) {
+                    // A union with one of step 11's arms as well, but no
+                    // dictionary: as before (a toString attempt, then the
+                    // arms below). With a dictionary arm, step 11.4 takes the
+                    // object before step 15 could stringify it - no
+                    // toString() runs, and an enumeration arm (a string type)
+                    // never takes an object whose toString() names a value.
                     if (string_idx) |str_idx| {
                         // Call toString() on the object to get a string representation
                         if (v8.v8_Value_ToString(value, context)) |str_value| {
