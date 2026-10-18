@@ -55,6 +55,11 @@ pub const ComputedStyle = struct {
         return self.get(.display).display;
     }
 
+    pub fn textTransform(self: *const ComputedStyle) values.TextTransform {
+        const v = self.get(.text_transform);
+        return if (v == .text_transform) v.text_transform else .{};
+    }
+
     /// The used color of a color property: currentcolor is the element's
     /// `color` (CSS Color 4 6.4).
     pub fn usedColor(self: *const ComputedStyle, l: Longhand) values.RgbaColor {

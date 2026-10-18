@@ -22,6 +22,13 @@
 //! is the sheet's CSSStyleSheet object
 //! (dom.style.objects), which the element keeps until the sheet is removed. Parser-created enabled stylesheets enter
 //! their document's script-blocking set until their load event finishes.
+//!
+//! The expect link type (4.6.8.6) is an internal resource link: "process
+//! internal resource link" blocks rendering on the element until the element
+//! its href indicates is connected and parsed. The element installs that
+//! algorithm into dom.document_rendering, whose "process internal resource
+//! links" the parser's pops, the HTML insertion steps, id and name changes
+//! and the end of parsing run.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -94,7 +101,21 @@ pub fn installHooks() void {
     dom_module.mutation.registerRemovingStepsCallback(&removingSteps) catch |err| {
         log.warn("link removing steps not registered: {}", .{err});
     };
+    // The expect link type (4.6.8.6): its processing, reached from the
+    // document's render-blocking set; the HTML insertion steps' step 3; and
+    // the attribute change steps that keep expect links current with id and
+    // name changes - on every element an expect link can indicate.
+    dom_module.document_rendering.installInternalResourceLinks(.{ .process = &processFromSet });
+    dom_module.mutation.registerInsertionStepsCallback(&htmlInsertionSteps) catch |err| {
+        log.warn("expect link insertion steps not registered: {}", .{err});
+    };
+    dom_module.attribute_change_steps.installForAttribute(html_namespace, "id", .{ .change = &indicatorAttributeChanged });
+    dom_module.attribute_change_steps.installForAttribute(svg_namespace, "id", .{ .change = &indicatorAttributeChanged });
+    dom_module.attribute_change_steps.installForAttribute(html_namespace, "name", .{ .change = &indicatorAttributeChanged });
 }
+
+const html_namespace = "http://www.w3.org/1999/xhtml";
+const svg_namespace = "http://www.w3.org/2000/svg";
 
 /// Initialize instance: the chain to HTMLElement.
 pub fn init(
@@ -119,6 +140,9 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal| {
         style_sheet_loading.elementGone(instance);
         removeSheet(instance, internal);
+        // Erase borrowed render-blocking membership before this element's
+        // identity can end.
+        dom_module.document_rendering.unblock(instance);
         runtime.arenaOf(instance).destroy(InternalState, internal);
         state.own._internal = null;
     }
@@ -397,6 +421,12 @@ fn attributeChangeSteps(
     // An SVG or other element named "link" is not this element.
     const internal = getInternal(element) orelse return;
     if (eqlOptional(old_value, value)) return;
+    // The expect link type: a change to href, media, rel or blocking
+    // processes the link once the change is made (`expectAttributeChanged`).
+    // A rel that drops "expect" unblocks first, before a stylesheet link it
+    // now creates starts its own blocking load.
+    defer expectAttributeChanged(element, local_name);
+    if (std.mem.eql(u8, local_name, "rel") and !hasToken(value orelse "", "expect")) unblockExpect(element);
     if (std.mem.eql(u8, local_name, "disabled") and old_value != null and value == null) internal.explicitly_enabled = true;
     const refetch = if (std.mem.eql(u8, local_name, "href") or
         std.mem.eql(u8, local_name, "crossorigin") or
@@ -414,7 +444,10 @@ fn attributeChangeSteps(
         // HTML 3.1.6: "Whenever a render-blocking element el ... el's
         // blocking attribute's value is changed so that el is no longer
         // potentially render-blocking, then unblock rendering on el."
-        if (std.mem.eql(u8, local_name, "blocking") and !style_sheet_loading.potentiallyRenderBlocking(element, parserCreated(internal, element))) {
+        // Only a stylesheet link is implicitly potentially render-blocking
+        // (4.6.7.23); a parser-made expect link is not (tests
+        // element-render-blocking-005 and -016).
+        if (std.mem.eql(u8, local_name, "blocking") and !style_sheet_loading.potentiallyRenderBlocking(element, parserCreated(internal, element) and linkType(element) == .stylesheet)) {
             dom_module.document_rendering.unblock(element);
         }
         if (std.mem.eql(u8, local_name, "media")) {
@@ -457,6 +490,9 @@ fn insertionSteps(node: *NodeBase) void {
     if (node.node_type != 1 or !node.is_connected) return;
     const instance = linkOf(node) orelse return;
     fetchAndProcess(instance);
+    // 4.6.8.6: "an expect internal resource link has been created on el and
+    // el becomes browsing-context connected".
+    processExpect(instance);
 }
 
 /// The element is no longer connected: it no longer creates a link that
@@ -467,6 +503,10 @@ fn removingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
     if (node.node_type != 1) return;
     const instance = linkOf(node) orelse return;
     const internal = getInternal(instance) orelse return;
+    // HTML 3.1.6: a render-blocking element that becomes browsing-context
+    // disconnected is unblocked - as an expect link here; a stylesheet
+    // link's load, cancelled below, unblocks its own.
+    unblockExpect(instance);
     // No longer connected: the link no longer contributes to styling, and
     // its sheet goes.
     removeSheet(instance, internal);
@@ -547,6 +587,199 @@ fn removeSheet(element: *runtime.Instance, internal: *InternalState) void {
 fn sheetOf(element: *runtime.Instance) ?*dom_module.style.SheetRecord {
     const internal = getInternal(element) orelse return null;
     return internal.sheet;
+}
+
+// ============================================================================
+// The expect link type (HTML 4.6.8.6)
+// ============================================================================
+
+/// The expect link type's conditions for processing, after an attribute
+/// change: "an expect internal resource link is created on el that is
+/// already browsing-context connected" (rel gains "expect"), and an expect
+/// link's href or media "is set, changed, or removed". Two more the spec
+/// does not list, as Chrome and Safari do (golden rule 2; Firefox ships no
+/// expect link type): the blocking attribute changing re-processes - gaining
+/// `render` blocks (Blink HTMLLinkElement::HandleExpectBlockingChanges,
+/// WebKit's blockingAttr case; element-render-blocking-006) - and rel losing
+/// "expect" unblocks (Blink RemoveExpectRenderBlockingLink on a rel change;
+/// -010, -020).
+fn expectAttributeChanged(element: *runtime.Instance, local_name: []const u8) void {
+    const relevant = [_][]const u8{ "href", "media", "rel", "blocking" };
+    for (relevant) |name| {
+        if (std.mem.eql(u8, local_name, name)) return processExpect(element);
+    }
+}
+
+/// Process the element's expect link if it has one or had one: rel
+/// contains "expect", or the element is one of its document's expect links.
+fn processExpect(element: *runtime.Instance) void {
+    if (hasToken(attribute(element, "rel") orelse "", "expect")) return processInternalResourceLink(element, null);
+    unblockExpect(element);
+}
+
+/// dom.document_rendering's "process internal resource links": process
+/// `link`, an expect link of the set, for `candidate`'s change.
+fn processFromSet(link: *runtime.Instance, candidate: ?*runtime.Instance) void {
+    if (getInternal(link) == null) return;
+    processInternalResourceLink(link, candidate);
+}
+
+/// "Unblock rendering" on the element as an expect link: a membership its
+/// stylesheet load holds is that load's to end.
+fn unblockExpect(element: *runtime.Instance) void {
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
+    if (dom_module.document_rendering.isExpectLink(document, element)) dom_module.document_rendering.remove(document, element);
+}
+
+/// HTML "process internal resource link" given the link element `element`.
+/// With a `candidate` - the element whose pop, insertion, id or name change
+/// caused this - a link whose fragment `candidate` cannot indicate keeps its
+/// result, as in WebKit (HTMLLinkElement::processInternalResourceLink's
+/// element path) and Blink (pending links keyed by ID).
+///
+/// Golden rule 2 (Chrome and Safari; Firefox ships no expect link type): a
+/// URL whose fragment is null or empty unblocks, where step 4 would select
+/// nothing or the top of the document and step 5 would block - Blink's
+/// ParseSameDocumentIdFromHref yields no ID and adds no pending link, WebKit
+/// unblocks an empty href (element-render-blocking-013 and -023).
+fn processInternalResourceLink(element: *runtime.Instance, candidate: ?*runtime.Instance) void {
+    const allocator = element.ctx.allocator;
+    // Step 1: "Let doc be el's node document."
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
+    // Step 2: "Let url be the result of encoding-parsing a URL given el's
+    // href attribute's value, relative to doc."
+    const href = attribute(element, "href") orelse "";
+    // Before parsing - which reads the document base URL, a walk of the
+    // document for its base element - a candidate whose ID or name is not
+    // the href's fragment as written changes nothing (measured: an expect
+    // link pending through a 3,000-row parse cost 45x without this).
+    if (candidate) |changed| if (!mayIndicateRaw(changed, href)) return;
+    const url = (dom_module.encoding_parse.encodingParseAndSerialize(element, href) catch return) orelse return unblockExpect(element);
+    defer allocator.free(url);
+    // Step 3: "If this fails, or if url does not equal doc's URL with
+    // exclude fragments set to true, then unblock rendering on el and
+    // return."
+    const document_url = interfaces.Document.get_URL(document) catch return;
+    defer document.ctx.allocator.free(document_url);
+    if (!std.mem.eql(u8, withoutFragment(url), withoutFragment(document_url))) return unblockExpect(element);
+    const fragment = fragmentOf(url) orelse return unblockExpect(element);
+    if (fragment.len == 0) return unblockExpect(element);
+    if (candidate) |changed| if (!mayIndicate(changed, fragment)) return;
+    // Step 4: "Let indicatedElement be the result of selecting the indicated
+    // part given doc and url" (its step 1 is step 3 above).
+    const indicated = dom_module.fragment_scroll.selectTheIndicatedPart(document, fragment);
+    // Steps 5-6.
+    if (blocksRendering(element, document, indicated)) {
+        dom_module.document_rendering.blockExpectLink(element) catch {};
+    } else {
+        unblockExpect(element);
+    }
+}
+
+/// Step 5's conditions, all of which make the element block rendering.
+fn blocksRendering(element: *runtime.Instance, document: *runtime.Instance, indicated: dom_module.fragment_scroll.IndicatedPart) bool {
+    // "doc's current document readiness is "loading"".
+    if ((interfaces.Document.get_readyState(document) catch return false) != ._loading_) return false;
+    // "el creates an internal resource link" and "el's rel attribute
+    // contains expect": the expect link type is the internal resource link.
+    if (!hasToken(attribute(element, "rel") orelse "", "expect")) return false;
+    // "el is browsing-context connected".
+    if (!(interfaces.Node.get_isConnected(element) catch false)) return false;
+    if ((interfaces.Document.get_defaultView(document) catch null) == null) return false;
+    // "el is potentially render-blocking": its blocking attribute has
+    // `render` (an expect link is never implicitly so).
+    if (!dom_module.document_rendering.hasRenderToken(attribute(element, "blocking") orelse "")) return false;
+    // "el's media attribute matches the environment".
+    if (!mediaMatches(element, document)) return false;
+    // "indicatedElement is not an element, or is on a stack of open
+    // elements of an HTML parser whose associated Document is doc".
+    return switch (indicated) {
+        .element => |target| dom_module.document_rendering.onParserStack(document, target),
+        .none, .top_of_the_document => true,
+    };
+}
+
+/// Whether the media attribute's value matches `document`'s environment
+/// (Media Queries 5; absent or empty matches).
+fn mediaMatches(element: *runtime.Instance, document: *runtime.Instance) bool {
+    const text = attribute(element, "media") orelse return true;
+    const values = dom_module.style.hooks.mediaValues(document);
+    return @import("css").media_queries.MediaQueryList.matchesQuery(element.ctx.allocator, text, &values) catch true;
+}
+
+/// Whether `candidate` may be what `fragment` indicates: its ID, or an HTML
+/// `a` element's name, is the fragment. A fragment with a percent sign may
+/// match in its decoded form ("select the indicated part" steps 6-9), which
+/// the full processing checks.
+fn mayIndicate(candidate: *runtime.Instance, fragment: []const u8) bool {
+    if (std.mem.indexOfScalar(u8, fragment, '%') != null) return true;
+    const data = dom_module.element_data.of(candidate) orelse return false;
+    if (std.mem.eql(u8, data.id.asSlice(), fragment)) return true;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "a")) return false;
+    if (!std.mem.eql(u8, data.namespaceSlice() orelse return false, html_namespace)) return false;
+    const name = data.findAttribute(null, "name") orelse return false;
+    return std.mem.eql(u8, name.value, fragment);
+}
+
+/// `mayIndicate` on the fragment of `href` as written, before it is
+/// parsed. When the fragment holds what the URL parser would change - a
+/// percent sign, white space or a control, a character the fragment
+/// percent-encode set encodes, non-ASCII - only the parsed URL can tell,
+/// so the candidate may match.
+fn mayIndicateRaw(candidate: *runtime.Instance, href: []const u8) bool {
+    const hash = std.mem.indexOfScalar(u8, href, '#') orelse return false;
+    const raw = href[hash + 1 ..];
+    for (raw) |byte| switch (byte) {
+        0...0x20, '"', '<', '>', '`', 0x7F...0xFF, '%' => return true,
+        else => {},
+    };
+    return mayIndicate(candidate, raw);
+}
+
+/// A serialized URL without its fragment.
+fn withoutFragment(url: []const u8) []const u8 {
+    return url[0 .. std.mem.indexOfScalar(u8, url, '#') orelse url.len];
+}
+
+/// A serialized URL's fragment, or null when it has none.
+fn fragmentOf(url: []const u8) ?[]const u8 {
+    const hash = std.mem.indexOfScalar(u8, url, '#') orelse return null;
+    return url[hash + 1 ..];
+}
+
+/// The HTML insertion steps, step 3: "If insertedNode is an Element that is
+/// not on the stack of open elements of an HTML parser, then process
+/// internal resource links given insertedNode's node document." An element
+/// the parser inserts counts as on its stack (DocumentParser
+/// .isOnStackOfOpenElements): it unblocks when the parser pops it.
+fn htmlInsertionSteps(node: *NodeBase) void {
+    if (node.node_type != 1 or !node.is_connected) return;
+    const ptr = instance_bridge.getInstance(node) orelse return;
+    const element: *runtime.Instance = @ptrCast(@alignCast(ptr));
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
+    if (!dom_module.document_rendering.hasExpectLinks(document)) return;
+    if (!dom_module.document_rendering.canBeIndicated(element)) return;
+    if (dom_module.document_rendering.onParserStack(document, element)) return;
+    dom_module.document_rendering.processInternalResourceLinks(document, element);
+}
+
+/// The attribute change steps 4.6.8.6 gives every element, so that expect
+/// links respond to dynamic id and name changes.
+fn indicatorAttributeChanged(element: *runtime.Instance, local_name: []const u8, old_value: ?[]const u8, value: ?[]const u8, namespace: ?[]const u8) void {
+    _ = old_value;
+    _ = value;
+    // Step 1: "If namespace is not null, then return."
+    if (namespace != null) return;
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
+    if (!dom_module.document_rendering.hasExpectLinks(document)) return;
+    if (!dom_module.document_rendering.canBeIndicated(element)) return;
+    // Step 2: "If element is in a stack of open elements of an HTML parser,
+    // then return."
+    if (dom_module.document_rendering.onParserStack(document, element)) return;
+    // Step 3: localName is id, or name on an a element (the hook installs
+    // name for HTML elements; the candidate check reads the a element's).
+    _ = local_name;
+    dom_module.document_rendering.processInternalResourceLinks(document, element);
 }
 
 /// The link element `node` is, if it is one: a brand check on its instance,

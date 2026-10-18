@@ -110,6 +110,9 @@ pub const Keyword = enum(u8) {
     capitalize,
     uppercase,
     lowercase,
+    full_width,
+    full_size_kana,
+    math_auto,
     // overflow
     clip,
     scroll,
@@ -200,6 +203,48 @@ pub const CssWide = enum {
 // ============================================================================
 // Display (CSS Display 4 section 2)
 // ============================================================================
+
+/// CSS Text 4 text-transform: `none | [capitalize | uppercase |
+/// lowercase] || full-width || full-size-kana | math-auto`. Its computed
+/// value is the specified keywords.
+pub const TextTransform = struct {
+    case: Case = .none,
+    full_width: bool = false,
+    full_size_kana: bool = false,
+    math_auto: bool = false,
+
+    pub const Case = enum(u8) { none, capitalize, uppercase, lowercase };
+
+    pub fn isNone(self: TextTransform) bool {
+        return self.case == .none and !self.full_width and !self.full_size_kana and !self.math_auto;
+    }
+
+    pub fn eql(a: TextTransform, b: TextTransform) bool {
+        return a.case == b.case and a.full_width == b.full_width and a.full_size_kana == b.full_size_kana and a.math_auto == b.math_auto;
+    }
+
+    /// The keywords in the grammar's order (Chrome, Firefox and Safari
+    /// serialize `full-width lowercase` as `lowercase full-width`:
+    /// css/css-text/parsing/text-transform-valid.html).
+    pub fn serialize(self: TextTransform, out: *std.ArrayList(u8), allocator: std.mem.Allocator) std.mem.Allocator.Error!void {
+        if (self.math_auto) return out.appendSlice(allocator, "math-auto");
+        if (self.isNone()) return out.appendSlice(allocator, "none");
+        var first = true;
+        if (self.case != .none) {
+            try out.appendSlice(allocator, @tagName(self.case));
+            first = false;
+        }
+        if (self.full_width) {
+            if (!first) try out.append(allocator, ' ');
+            try out.appendSlice(allocator, "full-width");
+            first = false;
+        }
+        if (self.full_size_kana) {
+            if (!first) try out.append(allocator, ' ');
+            try out.appendSlice(allocator, "full-size-kana");
+        }
+    }
+};
 
 pub const Display = struct {
     box: Box = .normal,
@@ -454,6 +499,7 @@ pub const Value = union(enum) {
     integer: i32,
     color: Color,
     display: Display,
+    text_transform: TextTransform,
     /// Kept as its serialization (a font-family list, an <image>).
     text: *SharedText,
 
@@ -485,6 +531,7 @@ pub const Value = union(enum) {
             .integer => |n| n == b.integer,
             .color => |c| c.eql(b.color),
             .display => |d| d.eql(b.display),
+            .text_transform => |t| t.eql(b.text_transform),
             .text => |t| t == b.text or std.mem.eql(u8, t.bytes, b.text.bytes),
         };
     }

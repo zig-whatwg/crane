@@ -154,3 +154,53 @@ test "forgiving lists drop what is invalid; legacy pseudo-elements are pseudo-el
     try testing.expectEqualStrings("after", simples[1].PseudoElement.name);
     try testing.expect(legacy.selectors[0].compound.hasPseudoElement());
 }
+
+test "::slotted() keeps its compound argument and adds its specificity" {
+    var list = try parse("slot::slotted(span.a)");
+    defer list.deinit();
+    const compound = list.selectors[0].compound;
+    try testing.expectEqual(@as(usize, 2), compound.simple_selectors.len);
+    const pseudo = compound.simple_selectors[1].PseudoElement;
+    try testing.expectEqualStrings("slotted", pseudo.name);
+    const argument = pseudo.argument orelse return error.TestExpectedArgument;
+    try testing.expectEqual(@as(usize, 1), argument.selectors.len);
+    const inner = argument.selectors[0].compound.simple_selectors;
+    try testing.expectEqualStrings("span", inner[0].Type.lower_name);
+    try testing.expectEqualStrings("a", inner[1].Class.class_name);
+    // CSS Scoping 3.2.2: a pseudo-element's (0,0,1) plus the argument's
+    // (0,1,1), with the slot's type selector: (0,1,3).
+    const spec = list.selectors[0].calculateSpecificity();
+    try testing.expectEqual(@as(u32, 0), spec.id);
+    try testing.expectEqual(@as(u32, 1), spec.class);
+    try testing.expectEqual(@as(u32, 3), spec.element);
+}
+
+test "::part() keeps its names, decoded, and pseudo-classes after it" {
+    var list = try parse("x-host::part(label \\69 con):hover");
+    defer list.deinit();
+    const simples = list.selectors[0].compound.simple_selectors;
+    const pseudo = simples[1].PseudoElement;
+    try testing.expectEqualStrings("part", pseudo.name);
+    try testing.expectEqual(@as(usize, 2), pseudo.part_names.len);
+    try testing.expectEqualStrings("label", pseudo.part_names[0]);
+    try testing.expectEqualStrings("icon", pseudo.part_names[1]);
+    try testing.expect(pseudo.argument == null);
+    try testing.expect(simples[2] == .PseudoClass);
+    // ::part() is a pseudo-element's (0,0,1) with no argument's added.
+    const spec = list.selectors[0].calculateSpecificity();
+    try testing.expectEqual(@as(u32, 1), spec.class);
+    try testing.expectEqual(@as(u32, 2), spec.element);
+}
+
+test "a failed parse after ::slotted() or ::part() frees what it kept" {
+    // testing.allocator fails the test on a leaked argument or name array.
+    const invalid = [_][]const u8{ "::slotted(span)::slotted(b)", "::slotted(span) div", "::part(a)::part(b)", "::part()", "::part(a, b)", "::slotted(a b)" };
+    for (invalid) |input| {
+        if (parse(input)) |parsed| {
+            var list = parsed;
+            list.deinit();
+            std.debug.print("parsed as valid: {s}\n", .{input});
+            return error.TestExpectedInvalid;
+        } else |_| {}
+    }
+}

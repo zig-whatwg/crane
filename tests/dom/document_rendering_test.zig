@@ -30,6 +30,45 @@ test "render blockers form an ordered set and timeout leaves membership intact" 
     try std.testing.expectEqual(@as(usize, 0), set.elements.items.len);
 }
 
+test "expect links are a subset of the set that every removal keeps in step" {
+    var set = rendering.ElementSet.init(std.testing.allocator);
+    defer set.deinit();
+    // Identities only: the set never dereferences its elements.
+    var style: runtime.Instance = undefined;
+    var link: runtime.Instance = undefined;
+    var other: runtime.Instance = undefined;
+    try set.add(&style);
+    try std.testing.expect(!set.hasExpectLinks());
+    try set.addExpect(&link);
+    try set.addExpect(&link);
+    try set.addExpect(&other);
+    try std.testing.expectEqualSlices(*runtime.Instance, &.{ &style, &link, &other }, set.elements.items);
+    try std.testing.expectEqualSlices(*runtime.Instance, &.{ &link, &other }, set.expect_links.items);
+    // A member that joined for another reason is not an expect link.
+    set.remove(&style);
+    try std.testing.expectEqualSlices(*runtime.Instance, &.{ &link, &other }, set.expect_links.items);
+    set.remove(&link);
+    try std.testing.expect(!set.contains(&link));
+    try std.testing.expectEqualSlices(*runtime.Instance, &.{&other}, set.expect_links.items);
+    // An element already in the set joins the expect links too.
+    try set.add(&style);
+    try set.addExpect(&style);
+    try std.testing.expectEqualSlices(*runtime.Instance, &.{ &other, &style }, set.expect_links.items);
+    set.clear();
+    try std.testing.expect(!set.hasExpectLinks());
+    try std.testing.expectEqual(@as(usize, 0), set.elements.items.len);
+}
+
+test "a failed expect-link insertion changes no membership" {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 1 });
+    var set = rendering.ElementSet.init(failing.allocator());
+    defer set.deinit();
+    var element: runtime.Instance = undefined;
+    try std.testing.expectError(error.OutOfMemory, set.addExpect(&element));
+    try std.testing.expect(!set.contains(&element));
+    try std.testing.expect(!set.hasExpectLinks());
+}
+
 test "a failed render-set insertion changes no membership" {
     var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
     var set = rendering.ElementSet.init(failing.allocator());

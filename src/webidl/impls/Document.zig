@@ -749,6 +749,7 @@ pub fn installHooks() void {
             .of = &renderBlockingElements,
             .allows_adding = &allowsAddingRenderBlockers,
             .current_time_ms = &renderBlockingTime,
+            .on_parser_stack = &renderingOnParserStack,
         },
         .associate_parser = &lifecycleAssociateParser,
         .discard_parser = &lifecycleDiscardParser,
@@ -839,6 +840,14 @@ fn templateOwnerDocument(document: *runtime.Instance) !*runtime.Instance {
 fn renderBlockingElements(document: *runtime.Instance) ?*@import("dom").document_rendering.ElementSet {
     const internal = getInternal(document) orelse return null;
     return &internal.render_blocking_elements;
+}
+
+/// HTML 4.6.8.6 step 5: "on a stack of open elements of an HTML parser
+/// whose associated Document is doc" - this document's active parser.
+fn renderingOnParserStack(document: *runtime.Instance, element: *runtime.Instance) bool {
+    const internal = getInternal(document) orelse return false;
+    const parser = internal.active_parser orelse return false;
+    return parser.isOnStackOfOpenElements(element);
 }
 
 /// HTML 3.1.6: content type text/html, with no body or frameset child of
@@ -4086,7 +4095,19 @@ fn lifecycleFinishWithoutParser(document: *runtime.Instance) void {
 }
 
 fn becomeInteractive(data: ?*anyopaque) void {
-    updateReadiness(@ptrCast(@alignCast(data.?)), ._interactive_);
+    const document: *runtime.Instance = @ptrCast(@alignCast(data.?));
+    const generation = runtime.SlabAllocator.generationOf(document);
+    updateReadiness(document, ._interactive_);
+    // "The end" step 4 and "abort a parser" step 4 pop every node off the
+    // stack of open elements after step 3's readiness change, and each pop
+    // processes the expect links (HTML 13.2.4.3), which a readiness other
+    // than "loading" unblocks. Deviation, stated: Crane's tree builder pops
+    // them all as it stops at the end of the input, BEFORE this readiness
+    // change (TreeBuilder.popAllOpenElements), so the links are processed
+    // once more here - the listeners of readystatechange may have destroyed
+    // the document.
+    if (runtime.SlabAllocator.generationOf(document) != generation) return;
+    @import("dom").document_rendering.processInternalResourceLinks(document, null);
 }
 
 fn becomeComplete(data: ?*anyopaque) void {
