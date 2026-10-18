@@ -342,6 +342,14 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
     // Step 12's "initiator type": "fetch" - what Resource Timing reports for
     // the request when fetch() fetches it.
     base_request.initiator_type = .fetch;
+    // Step 12's new request takes no destination - its field list has none -
+    // so it is the empty string, whatever `input`'s was: a service worker's
+    // fetch(event.request) of a navigation sends `Sec-Fetch-Dest: empty`,
+    // as Chrome and Safari do (navigation-headers.https.html's "... with
+    // passthrough service worker sets correct sec-fetch headers", wpt.fyi
+    // 23b0b89b1a). event.request itself keeps its destination: the fetch
+    // event's request object is made from the worker's copy, not here.
+    base_request.destination = .empty;
 
     // Step 13: If init is not empty
     // Step 10: If init["window"] exists and is non-null, then throw a
