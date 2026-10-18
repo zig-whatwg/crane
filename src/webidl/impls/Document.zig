@@ -434,6 +434,12 @@ pub const InternalState = struct {
     custom_element_registry: @import("dom").custom_elements.RegistryAssociation = .{},
     owns_native_global_registry: bool = false,
 
+    /// domindex1: this tree scope's maps from IDs, and from its named
+    /// properties' names, to its elements (dom.tree_ordered_map): what
+    /// getElementById, the named getter and the Window's named properties
+    /// answer from. Kept by the mutation and attribute change hooks.
+    tree_index: @import("dom").tree_ordered_map.Maps,
+
     /// V8 wrapper for this Document, created in the Document's owning context.
     /// Used for cross-context access (e.g., iframe.contentDocument from parent).
     /// When a Document is accessed from a different context than where it was created,
@@ -511,10 +517,14 @@ pub const InternalState = struct {
             .fonts = null,
             // HTMLAllCollection (undetectable legacy object)
             .all_collection = null,
+            .tree_index = @import("dom").tree_ordered_map.Maps.init(allocator, .document),
         };
     }
 
     pub fn deinit(self: *InternalState) void {
+        // domindex1: the maps go first, and keep nothing after: a node the
+        // rest of this teardown releases is in no reader's answer.
+        self.tree_index.deinit();
         self.script_delivery_continuation_suppressed = true;
         // Borrowed membership ends before parsers/module owners release nodes.
         self.render_blocking_elements.clear();
@@ -724,6 +734,13 @@ fn countsOf(document: *runtime.Instance) ?*@import("dom").refcount.DocumentCount
     return &internal.refcounts;
 }
 
+/// dom.tree_ordered_map (domindex1): `document`'s maps, or null for an
+/// instance that is no live Document.
+fn treeIndexOf(document: *runtime.Instance) ?*@import("dom").tree_ordered_map.Maps {
+    const internal = getInternal(document) orelse return null;
+    return &internal.tree_index;
+}
+
 /// dom.policy_containers: `document`'s policy container.
 fn policyContainerOf(document: *runtime.Instance) ?*fetch.internal.PolicyContainer {
     const internal = getInternal(document) orelse return null;
@@ -740,6 +757,8 @@ pub fn installHooks() void {
     @import("dom").style.hooks.install(.{ .engine_of = &styleEngineOf, .media_values = &styleMediaValues, .document_adopted_sheets = &adoptedSheetsOf });
     @import("dom").template_contents.install(.{ .owner_document = &templateOwnerDocument });
     @import("dom").refcount.install(.{ .document_counts = &countsOf });
+    // domindex1: its tree scope's ID and named-property maps.
+    @import("dom").tree_ordered_map.installDocument(&treeIndexOf);
     @import("dom").custom_elements.installDocument(.{
         .set_registry = &setCustomElementRegistry,
         .ensure_global_registry = &ensureGlobalRegistry,

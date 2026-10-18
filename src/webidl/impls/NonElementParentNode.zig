@@ -17,6 +17,9 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 // An element's ID, read in place (dom.element_data, which Element installs).
 const element_data = @import("dom").element_data;
+// A Document's and a ShadowRoot's ID map (dom.tree_ordered_map, which they
+// install).
+const tree_ordered_map = @import("dom").tree_ordered_map;
 
 pub const State = interfaces.NonElementParentNode.State;
 
@@ -61,6 +64,17 @@ pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMSt
     // Empty ID never matches
     if (id_slice.len == 0) {
         return null;
+    }
+
+    // domindex1: a Document's or a ShadowRoot's tree scope keeps a map from
+    // IDs to its elements in tree order (Blink TreeScope::getElementById,
+    // WebKit TreeScope::getElementById), exact through every mutation, so
+    // the answer is the walk's without the walk. A plain DocumentFragment
+    // keeps none, and maps that could not be rebuilt after a failed
+    // allocation answer nothing: walk.
+    switch (tree_ordered_map.elementById(instance, id_slice)) {
+        .found => |element| return element,
+        .unindexed => {},
     }
 
     // Traverse tree in tree order (preorder depth-first)

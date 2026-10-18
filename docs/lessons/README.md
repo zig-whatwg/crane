@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [An ID index is kept at the link, not in the removing steps](architecture-an-id-index-is-kept-at-the-link-not-in-the-removing-steps.md) - An index of the tree is part of the tree's state: update it where the tree changes, not in the steps that run after, because some of those steps read it.
 - [A shared append hook needs the reason carried with the attribute](architecture-a-shared-append-hook-needs-the-reason-carried-with-the-attribute.md) - If two callers share a hook and only one may skip a check, the reason must travel with the call (Blink's AttributeModificationReason); state the element "notices" cannot tell them apart.
 - [Failing closed needs an allocation-free state that every fast path reads](architecture-fail-closed-needs-an-allocation-free-state-every-fast-path-reads.md) - Fail-closed state must cost no allocation and must live where every reader already looks; route "is there anything to check?" through the type's own method, never through a length a flag cannot change.
 - [A live set iterator needs only the sequence of the entry it last yielded](architecture-a-live-set-iterator-needs-only-the-sequence-it-last-yielded.md) - When an iterator must survive changes to what it iterates, make its position a value the collection can always answer for (a sequence number), not a place inside the collection (an index) - then the collection never needs to know its iterators exist.

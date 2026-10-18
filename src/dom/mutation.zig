@@ -43,6 +43,7 @@ const node_document = @import("node_document.zig");
 const element_attributes = @import("element_attributes.zig");
 const range_boundaries = @import("range_boundaries.zig");
 const custom_elements = @import("custom_elements.zig");
+const tree_ordered_map = @import("tree_ordered_map.zig");
 
 // Interface types needed for mutation observer integration
 const interfaces = @import("interfaces");
@@ -917,6 +918,11 @@ pub fn insert(
         // wrapped root joins its new tree's opaque root (step 4).
         refcount.linkChild(n, @ptrCast(parent));
         joinedTree(n, @ptrCast(parent));
+        // domindex1: the light subtree joins its new tree scope's ID and
+        // named-property maps at the link, before any insertion step, slot
+        // step or form owner reset can read them (Blink and WebKit update
+        // theirs in InsertedInto).
+        tree_ordered_map.inserted(n, @ptrCast(parent));
 
         // Update is_connected for the inserted node and all its descendants
         // A node is connected if its shadow-including root is a Document.
@@ -1109,6 +1115,8 @@ pub fn appendChildren(
     if (children.len > 0) {
         parent.last_child = children[children.len - 1];
     }
+    // domindex1: the tree scope's maps, once the batch is linked.
+    for (children) |child| tree_ordered_map.inserted(child, @ptrCast(parent));
 
     // Step 6: Update live ranges if document is available
     if (nodeDocument(parent)) |doc| {
@@ -1271,6 +1279,8 @@ pub fn insertChildrenBefore(
             prev_child = child;
         }
     }
+    // domindex1: the tree scope's maps, once the batch is linked.
+    for (children) |child| tree_ordered_map.inserted(child, @ptrCast(parent));
 
     // Update live ranges
     if (nodeDocument(parent)) |doc| {
@@ -1629,6 +1639,11 @@ pub fn remove(
     // Update is_connected for the removed node and all its descendants
     // A removed node is no longer connected to the document tree
     setConnectedRecursive(node, false);
+    // domindex1: the light subtree leaves its old tree scope's maps at the
+    // unlink - before the form owner reset below, whose form-ID lookups
+    // read them, and before any removing step (Blink and WebKit update
+    // theirs in RemovedFrom).
+    tree_ordered_map.removed(@ptrCast(node), @ptrCast(parent));
     // HTML element removing steps: reset the form owner of the removed
     // subtree, and of the elements whose form attribute named an ID that
     // left the tree (CE2-S1).
@@ -1835,6 +1850,11 @@ pub fn move(
     // Step 19: If child is null, then append node to newParent's children
     // Step 20: Otherwise, insert node into newParent's children before child's index
     insertIntoChildrenList(node, new_parent, child);
+
+    // domindex1: the light subtree leaves its old tree scope's maps and
+    // joins its new one's - often the same scope, and the move still changes
+    // the order its keys' elements are in - before the form owner reset.
+    tree_ordered_map.moved(@ptrCast(node), @ptrCast(old_parent), @ptrCast(new_parent));
 
     // HTML element moving steps: reset the form owner once, in the new
     // position (CE2-S1).
