@@ -1480,9 +1480,19 @@ fn callListener(callback: engine.CallbackInterface, event: *runtime.Instance, cu
     // the one it has - and step 2.15 restores whatever it was before.
     const listener_window = windowOfRealm(associatedRealm(held.object.value) orelse held.context orelse realm);
 
-    // Steps 2.6-2.8: "If targetGlobal or listenerGlobal is a Window object
-    // whose associated Document is not fully active, then continue."
-    if (!globalsFullyActive(current_target, listener_window)) return;
+    // Steps 2.6-2.8 (no listener of a Window whose associated Document is not
+    // fully active) are NOT run yet. Run literally, they skipped listeners
+    // that browsers run, through two defects elsewhere: an IndexedDB request
+    // is made in the current realm, so a method taken from a removed frame
+    // makes a request whose global is that frame's
+    // (IndexedDB/idb{index,objectstore}-cross-realm-methods.html, which all
+    // three browsers pass, TIMEOUT); and a frame's navigation API events fire
+    // after Crane counts its document as no longer fully active, where the
+    // browsers fire them during the detach
+    // (navigation-api/navigate-event/signal-abort-detach-in-onnavigate.html,
+    // navigation-methods/traverseTo-detach-between-navigate-and-
+    // navigatesuccess.html). Lane events1 measured it: 17 subtests gained in
+    // dom/events/event-listener-not-fully-active-*, 20 lost there.
 
     const current_event_window = if (in_shadow_tree) null else listener_window;
     const previous_event = if (current_event_window) |w| swapCurrentEvent(w, event) else null;
@@ -1553,15 +1563,15 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance, 
     } else &event_argument;
     defer if (special_error_event_handling) error_arguments.deinit(event.ctx.allocator);
 
-    // DOM inner invoke steps 2.6-2.10 and 2.15 for the event handler's
+    // DOM inner invoke steps 2.9-2.10 and 2.15 for the event handler's
     // listener. Its listenerGlobal is the handler function's realm's global,
     // not the target's: golden rule 2 - Chrome and Safari pass
     // dom/events/event-global-is-still-set-when-reporting-exception-onerror.html
     // (window.onerror set to another frame's function sets THAT frame's
     // window.event), Firefox fails it as Crane did. No current event is set
     // for an invocation target in a shadow tree (step 2.10.2).
+    // Steps 2.6-2.8 are not run yet (callListener says why).
     const listener_window = windowOfRealm(associatedRealm(callback.function.value) orelse callback.context orelse realm);
-    if (!globalsFullyActive(instance, listener_window)) return;
     const handler_window = if (in_shadow_tree) null else listener_window;
     const previous_event = if (handler_window) |w| swapCurrentEvent(w, event) else null;
     defer if (handler_window) |w| {
@@ -1681,52 +1691,6 @@ fn windowOfRealm(realm: runtime.Context) ?*runtime.Instance {
     const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
     if (global.stateAs(interfaces.Window.State) == null) return null;
     return global;
-}
-
-/// DOM inner invoke steps 2.6-2.8: false when targetGlobal - the relevant
-/// global of `current_target`'s node document, or of `current_target` when
-/// it is not a node - or `listener_window` is a Window whose associated
-/// Document is not fully active. Asked before every listener call: a
-/// listener can adopt the target into another document or remove the frame
-/// it lives in.
-fn globalsFullyActive(current_target: *runtime.Instance, listener_window: ?*runtime.Instance) bool {
-    // Step 2.6: targetGlobal's realm. One that has ended - a removed
-    // frame's - has no global left to ask, and its Window's associated
-    // Document was destroyed with it: not fully active. A retired realm
-    // keeps its agent; a context that never had an engine (native parsing)
-    // has none and no realm to end (KeptInstance.get draws the same line).
-    const target_realm = targetGlobalRealm(current_target);
-    if (!target_realm.hasEngine() and target_realm.agent != null) return false;
-    const target_window = windowOfRealm(target_realm);
-    if (target_window) |w| {
-        if (!windowFullyActive(w)) return false;
-    }
-    // Steps 2.7-2.8: listenerGlobal.
-    if (listener_window) |w| {
-        if (w != target_window and !windowFullyActive(w)) return false;
-    }
-    return true;
-}
-
-/// Step 2.6: the realm of targetGlobal - "event's currentTarget's node
-/// document's relevant global object if event's currentTarget is a node;
-/// otherwise event's currentTarget's relevant global object".
-fn targetGlobalRealm(current_target: *runtime.Instance) runtime.Context {
-    if (current_target.stateAs(interfaces.Node.State) == null) return current_target.ctx;
-    // A document is its own node document (ownerDocument reads null).
-    const document = (interfaces.Node.get_ownerDocument(current_target) catch null) orelse current_target;
-    return document.ctx;
-}
-
-/// Whether `window`'s associated Document is fully active.
-///
-/// Every Window a navigable makes has an associated Document. A Window made
-/// with no navigable - a bare realm's, as unit tests make them - has none,
-/// so there is no Document to be inactive and its listeners run.
-fn windowFullyActive(window: *runtime.Instance) bool {
-    if (dom_module.document_activity.fullyActive(window, runtime.SlabAllocator.generationOf(window))) return true;
-    _ = interfaces.Window.get_document(window) catch return true;
-    return false;
 }
 
 /// The report behavior turns an abrupt completion into normal undefined.
