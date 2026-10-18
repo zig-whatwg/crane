@@ -129,7 +129,8 @@ pub const ActiveDocument = struct {
     is_initial_about_blank: bool,
 };
 
-/// "Navigate" steps 12-13: resolve `behavior` to "push" or "replace".
+/// "Navigate" steps 12-13: resolve `behavior` to "push" or "replace", for a
+/// navigation with no POST resource (a Location navigation never has one).
 ///
 /// Step 12: "auto" becomes "replace" when `url` equals the active document's
 /// URL and the initiator is same origin with it, and "push" otherwise.
@@ -141,10 +142,33 @@ pub fn resolveHistoryHandling(
     active: ActiveDocument,
     initiator_same_origin: bool,
 ) HistoryHandling {
+    return resolveHistoryHandlingWithResource(behavior, url, active, initiator_same_origin, false);
+}
+
+/// `resolveHistoryHandling` for a navigation that may have a POST resource
+/// (`has_post_resource`: navigate's documentResource is one - a form
+/// submitted "as entity body").
+///
+/// Deviation from step 13.1, stated (golden rule 2; no newer spec is
+/// involved): the spec makes "auto" a replace for the active document's own
+/// URL whatever the navigation carries. All three browsers keep a POST
+/// navigation a push - a form posted to the page it is on adds an entry:
+/// navigation-api/navigate-event/navigate-form-userInitiated.html
+/// (`<form method=post action="">`, navigationType "push") passes in
+/// Chrome 155, Firefox 158 and Safari 27 (wpt.fyi, 2026-10-18 stable runs).
+/// Blink's FrameLoader::DetermineFrameLoadType converts a same-URL
+/// navigation to a replace only for a method other than POST.
+pub fn resolveHistoryHandlingWithResource(
+    behavior: HistoryBehavior,
+    url: []const u8,
+    active: ActiveDocument,
+    initiator_same_origin: bool,
+    has_post_resource: bool,
+) HistoryHandling {
     var handling: HistoryHandling = switch (behavior) {
         .push => .push,
         .replace => .replace,
-        .auto => if (std.mem.eql(u8, url, active.url) and initiator_same_origin) .replace else .push,
+        .auto => if (!has_post_resource and std.mem.eql(u8, url, active.url) and initiator_same_origin) .replace else .push,
     };
     if (isJavascript(url) or active.is_initial_about_blank) handling = .replace;
     return handling;

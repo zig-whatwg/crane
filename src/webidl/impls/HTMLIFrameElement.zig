@@ -1207,13 +1207,15 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // changes ("initialize the navigable").
     _ = browsing_context.ensureHistoryEntries(&history_documents.infoOf) catch {};
 
-    // Steps 12-13: history handling.
+    // Steps 12-13: history handling - a navigation with a POST resource to
+    // the active document's own URL stays a push, as the browsers do
+    // (navigate_steps.resolveHistoryHandlingWithResource).
     const active_url = documentUrlOf(active, allocator) catch return;
     defer allocator.free(active_url);
-    const history_handling = navigate_steps.resolveHistoryHandling(options.history_behavior, url, .{
+    const history_handling = navigate_steps.resolveHistoryHandlingWithResource(options.history_behavior, url, .{
         .url = active_url,
         .is_initial_about_blank = if (active) |doc| document_lifecycle.isInitialAboutBlank(doc) else false,
-    }, initiatorSameOrigin(options.source_document, active_url, allocator));
+    }, initiatorSameOrigin(options.source_document, active_url, allocator), options.post_resource != null);
 
     // Step 14: a fragment navigation commits now, in the same document. (A
     // traversal's navigation repopulates a document, and is never one.)

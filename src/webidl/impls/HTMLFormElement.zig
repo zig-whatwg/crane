@@ -1511,7 +1511,7 @@ fn submit(form: *runtime.Instance, submitter: *runtime.Instance, options: Submit
         errdefer post.deinit(allocator);
         errdefer form_data.releaseIfUnwrapped(form_data_generation);
         const url = try url_serializer.serialize(allocator, &parsed_action, false);
-        planNavigationWith(form, url, target, post, form_data, policy, options.user_involvement);
+        planNavigationWith(form, submitter, url, target, post, form_data, policy, options.user_involvement);
         return;
     }
     if (eql(scheme, "mailto")) {
@@ -1528,7 +1528,7 @@ fn submit(form: *runtime.Instance, submitter: *runtime.Instance, options: Submit
     // Otherwise "get action URL": parsed action as it is.
 
     const url = try url_serializer.serialize(allocator, &parsed_action, false);
-    planNavigation(form, url, target, policy, options.user_involvement);
+    planNavigation(form, submitter, url, target, policy, options.user_involvement);
 }
 
 /// HTML "get an element's target" given the form and a target override
@@ -1639,6 +1639,11 @@ fn textPlainBody(allocator: std.mem.Allocator, entries: []const Entry, encoding:
 const PlannedNavigation = struct {
     form: *runtime.Instance,
     form_generation: u64,
+    /// The submit algorithm's submitter - the form itself for submit() - and
+    /// its slab generation: "plan to navigate" step 4.2 navigates with
+    /// sourceElement set to it (the navigate event's sourceElement).
+    submitter: *runtime.Instance,
+    submitter_generation: u64,
     token: u64,
     url: []const u8,
     target: []const u8,
@@ -1676,14 +1681,14 @@ const PlannedNavigation = struct {
 threadlocal var next_navigation_token: u64 = 1;
 
 /// "Plan to navigate" to `url`. Takes ownership of `url` and `target`.
-fn planNavigation(form: *runtime.Instance, url: []const u8, target: []const u8, policy: forms.TargetPolicy, user_involvement: @import("dom").form_submission.UserInvolvement) void {
-    planNavigationWith(form, url, target, null, null, policy, user_involvement);
+fn planNavigation(form: *runtime.Instance, submitter: *runtime.Instance, url: []const u8, target: []const u8, policy: forms.TargetPolicy, user_involvement: @import("dom").form_submission.UserInvolvement) void {
+    planNavigationWith(form, submitter, url, target, null, null, policy, user_involvement);
 }
 
 /// "Plan to navigate" to `url`, given a POST resource and the entry list's
 /// FormData, or neither. Takes ownership of `url`, `target` and `post`; a
 /// `form_data` nothing else holds goes with the task.
-fn planNavigationWith(form: *runtime.Instance, url: []const u8, target: []const u8, post: ?PostResource, form_data: ?*runtime.Instance, policy: forms.TargetPolicy, user_involvement: @import("dom").form_submission.UserInvolvement) void {
+fn planNavigationWith(form: *runtime.Instance, submitter: *runtime.Instance, url: []const u8, target: []const u8, post: ?PostResource, form_data: ?*runtime.Instance, policy: forms.TargetPolicy, user_involvement: @import("dom").form_submission.UserInvolvement) void {
     const allocator = form.ctx.allocator;
     const task = allocator.create(PlannedNavigation) catch {
         allocator.free(url);
@@ -1703,6 +1708,8 @@ fn planNavigationWith(form: *runtime.Instance, url: []const u8, target: []const 
     task.* = .{
         .form = form,
         .form_generation = runtime.SlabAllocator.generationOf(form),
+        .submitter = submitter,
+        .submitter_generation = runtime.SlabAllocator.generationOf(submitter),
         .token = next_navigation_token,
         .url = url,
         .target = target,
@@ -1861,7 +1868,11 @@ fn navigateSteps(data: ?*anyopaque) void {
         .current_document = if (form_document != document) form_document else null,
         .url = task.url,
         .source_not_completely_loaded = task.source_not_completely_loaded,
-        .source_element = task.form,
+        // "Plan to navigate" step 4.2: "with ... sourceElement set to
+        // submitter" - the submit button that was clicked or passed to
+        // requestSubmit(), or the form itself. One collected since (its slot
+        // reissued) is no element at all.
+        .source_element = if (runtime.SlabAllocator.generationOf(task.submitter) == task.submitter_generation) task.submitter else null,
         .user_involvement = task.user_involvement,
         .post_resource = if (task.post) |post| .{ .body = post.body, .content_type = post.content_type } else null,
         .form_data = task.form_data,
