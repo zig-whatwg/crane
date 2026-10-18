@@ -493,15 +493,30 @@ pub const Property = union(enum) {
     shorthand: Shorthand,
 };
 
+/// CSS Cascade 5 1.1 "legacy name aliases" of supported properties: a
+/// property known by another name, which parses, reads and sets the same
+/// property (and is not enumerated). CSS UI 4: "-webkit-appearance" is a
+/// legacy name alias of appearance.
+const legacy_aliases = .{
+    .{ "-webkit-appearance", Property{ .longhand = .appearance } },
+};
+
 const by_name = blk: {
     @setEvalBranchQuota(100_000);
     const l_fields = @typeInfo(Longhand).@"enum".fields;
     const s_fields = @typeInfo(Shorthand).@"enum".fields;
-    var entries: [l_fields.len + s_fields.len]struct { []const u8, Property } = undefined;
+    var entries: [l_fields.len + s_fields.len + legacy_aliases.len]struct { []const u8, Property } = undefined;
     for (l_fields, 0..) |f, i| entries[i] = .{ dashedName(f.name), .{ .longhand = @enumFromInt(f.value) } };
     for (s_fields, 0..) |f, i| entries[l_fields.len + i] = .{ dashedName(f.name), .{ .shorthand = @enumFromInt(f.value) } };
+    for (legacy_aliases, 0..) |alias, i| entries[l_fields.len + s_fields.len + i] = .{ alias[0], alias[1] };
     break :blk std.StaticStringMap(Property).initComptime(entries);
 };
+
+test "a legacy name alias is the property it names" {
+    try std.testing.expectEqual(Property{ .longhand = .appearance }, lookup("-webkit-appearance").?);
+    try std.testing.expectEqual(Property{ .longhand = .appearance }, lookup("-WEBKIT-APPEARANCE").?);
+    try std.testing.expectEqual(@as(?Property, null), lookup("-webkit-filter"));
+}
 
 /// The supported property named `property_name`, ASCII case-insensitively;
 /// null for an unsupported one (and for a custom property).

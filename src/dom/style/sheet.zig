@@ -721,8 +721,8 @@ test "an @import whose URL holds a parenthesis keeps its media" {
     const contents = try Contents.parse(testing.allocator, "@import url('a.css?pipe=trickle(d1)'); @import url(b.css) print; p { color: red }", .{});
     defer contents.destroy();
     try testing.expectEqual(@as(usize, 2), contents.imports.items.len);
-    try testing.expect(contents.imports.items[0].media == null);
-    try testing.expect(contents.imports.items[1].media != null);
+    try testing.expectEqual(@as(usize, 0), contents.imports.items[0].media.queries.len);
+    try testing.expectEqual(@as(usize, 1), contents.imports.items[1].media.queries.len);
 }
 
 test "the HTML default namespace marks the sheet HTML-only" {
