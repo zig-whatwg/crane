@@ -505,6 +505,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Named setters need the generated reaction boundary](spec-compliance-named-setters-need-the-generated-reaction-boundary.md) - Assert callback order at the setter's call boundary.
 - [Validate customized built-ins with the interface map](spec-compliance-validate-customized-builtins-with-the-interface-map.md) - Reuse the owning subsystem's classification.
 - [Cloned shadow roots preserve internals access](spec-compliance-cloned-shadow-roots-preserve-internals-access.md) - Preserve state instead of deriving it from a clone's intermediate host.
+- [Repeated Console Resets Follow the Browser Majority](spec-compliance-console-reset-counts-follow-browser-majority.md) - Interleaving counts hides the difference between deletion and retained-zero reset.
+- [IndexedDB Shared Buffer Keys Are Not Stored Values](spec-compliance-indexeddb-shared-buffer-keys-are-not-stored-values.md) - Key conversion copies shared bytes; storage serialization rejects them.
 
 ### Codegen
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
@@ -742,6 +744,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [An errdefer beside an explicit cleanup in a catch frees twice](debugging-an-errdefer-beside-an-explicit-cleanup-in-a-catch-frees-twice.md) - Adding an errdefer changes every catch block below it: remove their explicit cleanups of the same value, or each error frees it twice. And give a sweep's fixture the inputs that make each copy allocate.
 - [Main fetch's isNetworkError reads an opaque filtered response as one](debugging-main-fetch-is-network-error-reads-an-opaque-response-as-one.md) - A response check in main fetch reads the internal response: an opaque filtered one (a service worker's) has status 0 on the outside, which `isNetworkError` takes for a network error.
 - [Check the delivered policy before CSP enforcement](debugging-check-the-delivered-policy-before-csp-enforcement.md) - Verify actual response headers before changing policy enforcement.
+- [Console Label Insertion Must Roll Back on OOM](debugging-console-label-insertion-must-roll-back-on-oom.md) - Failed owned-key allocation must leave the map without the new borrowed entry.
 
 ### Workflow
 - [leaks --atExit sees only the process it launched - run the WPT runner without --parallel](workflow-leaks-at-exit-sees-only-the-process-it-launched.md) - A leak count of zero means nothing until the same method has found a leak: run a positive control, and make sure the inspected process is the one that ran the code.
@@ -780,3 +783,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [Read Gecko from mozilla-firefox/firefox, not the archived gecko-dev](workflow-read-gecko-from-mozilla-firefox-not-the-archived-gecko-dev.md) - Cite Gecko from searchfox or mozilla-firefox/firefox, and name whether the evidence is the shipped release or the engine head.
 - [A parked lane resumes by asking main what it already has](workflow-a-parked-lane-resumes-by-asking-main-what-it-already-has.md) - A stale branch's diff says what it changed, not what main still lacks: ask main item by item (log, grep, latest sweep) before merging.
 - [A queued remote job builds the mirror as its slot finds it](workflow-a-queued-remote-job-builds-the-mirror-as-its-slot-finds-it.md) - Before its slot comes, a queued job's mirror is still yours to update - sync it instead of resubmitting; after, never touch it.
+- [A Waiting Sweep Launcher Keeps Its Build Slot](workflow-a-waiting-sweep-launcher-keeps-its-build-slot.md) - Runtime runner tokens do not release the build slot of a waiting launcher.
