@@ -28,8 +28,10 @@
 //! normal declarations the outer context wins, for important ones the
 //! inner); the document's sheets do not apply in a shadow tree. Slot
 //! assignment, which can change with no mutation, moves `slot_version`,
-//! part of every cached style's key. Stated: ::slotted() and ::part() rules
-//! wait on their selectors' arguments (src/selector keeps none yet).
+//! part of every cached style's key. ::slotted() rules of a slot's tree
+//! apply to the elements assigned to the slot, after flattening, and
+//! ::part() rules of a host's tree to the elements of its shadow tree with
+//! those part names (stated: exportparts forwards nothing yet).
 //!
 //! Spec: https://drafts.csswg.org/cssom-1/#css-style-sheet-collections
 //! Spec: https://drafts.csswg.org/css-cascade-5/#value-stages
@@ -836,6 +838,46 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
         };
     };
 
+    // ::slotted() (CSS Scoping 3.2.2): the rules of the tree of each slot
+    // the element is assigned to, after flattening - a slot assigned to a
+    // slot of an outer shadow tree passes its slottables on - each in that
+    // slot's tree's (inner) context.
+    var assigned = node;
+    var hops: usize = 0;
+    while (slot_helpers.slottable(assigned)) |slottable| : (hops += 1) {
+        if (hops == 64) break;
+        const slot = slottable.state.assignedSlot() orelse break;
+        const slot_instance = instanceOf(slot) orelse break;
+        var slot_root = slot;
+        while (slot_root.parent_node) |p| slot_root = p;
+        if (res.active.scopeOf(slot_root)) |scope| if (selector_matching.StyleMatcher.init(slot_instance, reads)) |slot_matcher| {
+            var m = slot_matcher;
+            for (scope.sheets.items) |*s| {
+                try matchAroundRules(res, &m, .slotted, element, slot_instance, s.contents, pseudo, .{ .origin = .author, .order = s.order_base, .tree_depth = scope.depth }, s);
+            }
+        };
+        assigned = slot;
+    }
+    // ::part() (CSS Shadow Parts 4.1): an element of a shadow tree with part
+    // names takes the ::part() rules of its host's tree, in that (outer)
+    // context. Stated: names forwarded by exportparts are not exposed further.
+    if (data.findAttribute(null, "part") != null and isShadowRoot(root)) part: {
+        const host = interfaces.ShadowRoot.get_host(instanceOf(root) orelse break :part) catch break :part;
+        const host_node = instance_bridge.getNodeBase(host) orelse break :part;
+        var host_root = host_node;
+        while (host_root.parent_node) |p| host_root = p;
+        var part_matcher = selector_matching.StyleMatcher.init(host, reads) orelse break :part;
+        if (host_root.node_type == NodeBase.DOCUMENT_NODE) {
+            for (res.active.sheets.items) |*s| {
+                try matchAroundRules(res, &part_matcher, .part, element, host, s.contents, pseudo, .{ .origin = .author, .order = s.order_base }, s);
+            }
+        } else if (res.active.scopeOf(host_root)) |scope| {
+            for (scope.sheets.items) |*s| {
+                try matchAroundRules(res, &part_matcher, .part, element, host, s.contents, pseudo, .{ .origin = .author, .order = s.order_base, .tree_depth = scope.depth }, s);
+            }
+        }
+    }
+
     // Element-attached declarations: the style attribute (CSS Style
     // Attributes, Cascade 5 6.1 "Element-Attached Styles").
     if (pseudo == null and ns != null) {
@@ -859,6 +901,31 @@ fn matchHostRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, ho
         const rule = &contents.rules.items[index];
         if (!contents.conditionHolds(rule.condition, &res.active.media)) continue;
         if (!matcher.matchesHost(host, rule.complex, pseudo)) continue;
+        var source = base;
+        source.order = base.order + rule.position;
+        source.specificity = rule.specificity;
+        if (rule.layer) |l| source.layer = active_sheet.layer_order[l] else if (active_sheet.import_layer) |l| source.layer = l;
+        try res.matched.append(res.allocator, .{ .block = rule.block, .source = source });
+    }
+}
+
+const AroundKind = enum { slotted, part };
+
+/// A sheet's ::slotted() or ::part() rules that match `element` through
+/// `outer` - the slot it is assigned to, the host whose part it is.
+fn matchAroundRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, kind: AroundKind, element: *runtime.Instance, outer: *runtime.Instance, contents: *const Contents, pseudo: ?[]const u8, base: css.cascade.Source, active_sheet: *const ActiveSheet) Error!void {
+    const candidates = switch (kind) {
+        .slotted => contents.buckets.slotted.items,
+        .part => contents.buckets.part.items,
+    };
+    for (candidates) |index| {
+        const rule = &contents.rules.items[index];
+        if (!contents.conditionHolds(rule.condition, &res.active.media)) continue;
+        const matched = switch (kind) {
+            .slotted => matcher.matchesSlotted(element, outer, rule.complex, pseudo),
+            .part => matcher.matchesPart(element, outer, rule.complex, pseudo),
+        };
+        if (!matched) continue;
         var source = base;
         source.order = base.order + rule.position;
         source.specificity = rule.specificity;
