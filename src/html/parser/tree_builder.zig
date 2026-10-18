@@ -20,6 +20,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
+// The pseudo-attributes of a processing instruction ("find markers").
+const dom = @import("dom");
 
 const Token = @import("tokens.zig").Token;
 const TagToken = @import("tokens.zig").TagToken;
@@ -228,6 +230,31 @@ pub const DeclarativeShadow = struct {
     }
 };
 
+/// A `<template for>`'s content patch (HTML "prepare content patching"): the
+/// template's insertion target, insertion start marker and insertion end
+/// marker. Owned by its template, which is on the stack of open elements and
+/// never inserted while it patches. Design: Blink keeps a Patch on the
+/// template element (HTMLConstructionSite::InsertHTMLTemplateElement ->
+/// Patch::Prepare, Insert -> Patch::Apply).
+pub const ContentPatch = struct {
+    template: *TreeNode,
+    /// The tree-then-convert path (no script runs): the nodes in the
+    /// parser's own tree.
+    target_node: ?*TreeNode = null,
+    start_node: ?*TreeNode = null,
+    end_node: ?*TreeNode = null,
+    /// The live DOM adapter: the DOM nodes - typed opaquely, as html_core
+    /// does not import runtime - with their slab generations. The parser
+    /// holds them while the template is on its stack (scripted_parser's
+    /// holdsNodeUnder), so a tree script detaches them in is rescued.
+    target: ?*anyopaque = null,
+    target_generation: u64 = 0,
+    start: ?*anyopaque = null,
+    start_generation: u64 = 0,
+    end: ?*anyopaque = null,
+    end_generation: u64 = 0,
+};
+
 /// What the live DOM has immediately before an adjusted insertion location:
 /// HTML "insert a character" step 4's previousSibling, as the live DOM
 /// adapter sees it (`TreeBuilder.dom_adapter_text_before`).
@@ -296,6 +323,8 @@ pub const TreeNode = struct {
     /// 7): on its template, which owns it, and - in the tree-then-convert
     /// path - on its host. Null for every other node.
     declarative_shadow: ?*DeclarativeShadow = null,
+    /// A `<template for>` that patches: its content patch, which it owns.
+    content_patch: ?*ContentPatch = null,
     /// The form element pointer's form when this element was created, if
     /// "create an element for a token" step 15's parser conditions held: a
     /// form-associated element's name, the pointer set, not parsing template
@@ -510,6 +539,7 @@ pub const TreeNode = struct {
         self.text_content.deinit();
         // A declarative shadow root's request belongs to its template.
         if (self.owns_declarative_shadow) if (self.declarative_shadow) |request| self.allocator.destroy(request);
+        if (self.content_patch) |patch| self.allocator.destroy(patch);
         if (self.pi_target) |target| self.allocator.free(target);
         // Free DOCTYPE fields
         if (self.doctype_name) |n| self.allocator.free(n);
@@ -785,6 +815,17 @@ pub const TreeBuilder = struct {
     /// script runs) lets the parser's tree answer.
     dom_adapter_text_before: ?*const fn (InsertionLocation, ?*anyopaque) LiveTextBefore = null,
 
+    /// The live DOM adapter's "prepare content patching" for a `<template
+    /// for>` whose marker name is the string: find the markers among the
+    /// LIVE descendants of the target parent of the adjusted insertion
+    /// location (the body element's parent for the body), record them and
+    /// the insertion target on the patch, remove the nodes between them, and
+    /// answer whether it found a start marker. Its "finish" is the template
+    /// end tag's step 4: remove the start and end markers. Null - the
+    /// tree-then-convert path - runs both over the parser's own tree.
+    dom_adapter_prepare_content_patching: ?*const fn (*ContentPatch, InsertionLocation, []const u8, ?*anyopaque) bool = null,
+    dom_adapter_finish_content_patching: ?*const fn (*ContentPatch, ?*anyopaque) void = null,
+
     /// HTML parser "allow declarative shadow roots" (initially false).
     allow_declarative_shadow_roots: bool = false,
 
@@ -942,6 +983,18 @@ pub const TreeBuilder = struct {
     /// `dom_adapter_text_before`); it shares `dom_adapter_context`.
     pub fn setDomAdapterTextBeforeCallback(self: *TreeBuilder, text_before: ?*const fn (InsertionLocation, ?*anyopaque) LiveTextBefore) void {
         self.dom_adapter_text_before = text_before;
+    }
+
+    /// Set the adapter's content patching steps (see
+    /// `dom_adapter_prepare_content_patching`); they share
+    /// `dom_adapter_context`.
+    pub fn setDomAdapterContentPatchingCallbacks(
+        self: *TreeBuilder,
+        prepare: *const fn (*ContentPatch, InsertionLocation, []const u8, ?*anyopaque) bool,
+        finish: *const fn (*ContentPatch, ?*anyopaque) void,
+    ) void {
+        self.dom_adapter_prepare_content_patching = prepare;
+        self.dom_adapter_finish_content_patching = finish;
     }
 
     /// Set the adapter's attribute-added callback (see
@@ -2057,7 +2110,14 @@ pub const TreeBuilder = struct {
         // Step 7's condition first: a template with no shadowrootmode (in
         // the None state) is step 9's ordinary template - inserted before the
         // marker and modes are pushed, which nothing observes in between.
-        var request = DeclarativeShadow.fromToken(tag) orelse return self.insertTemplate(tag);
+        var request = DeclarativeShadow.fromToken(tag) orelse {
+            // "Keep" step 2: "Otherwise, if template has a for attribute" -
+            // only when its shadowrootmode is in the None state; a declarative
+            // shadow root's template ignores `for` (template-for-superseded-
+            // by-shadowrootmode).
+            if (tagHasAttribute(tag, "for")) return self.insertPatchingTemplate(tag);
+            return self.insertTemplate(tag);
+        };
         // Steps 2-5: a marker, frameset-ok "not ok", "in template", pushed
         // onto the stack of template insertion modes.
         try self.active_formatting_elements.append(.marker);
@@ -2111,6 +2171,202 @@ pub const TreeBuilder = struct {
         self.insertNodeAt(location, template);
     }
 
+    /// "In head", a start tag whose tag name is "template", for a template
+    /// with a `for` attribute (declarative partial updates). Steps 2-5, then
+    /// steps 8-10 (create the template, compute insertionLocation, push it),
+    /// then "Keep" step 2: prepare content patching given the target parent
+    /// of the adjusted insertion location; when that finds no markers, insert
+    /// the template there as an ordinary one. A patching template is never
+    /// inserted: what is parsed inside it goes to its insertion target
+    /// (`patchedLocation`, or parser_dom_mutation.resolve for the live DOM).
+    ///
+    /// Rule 2: the newer spec, one browser shipping. whatwg/html now
+    /// specifies it ("prepare content patching"); Chrome 155 passes 402/511
+    /// of html/semantics/scripting-1/the-template-element/template-for/,
+    /// Firefox and Safari 17/519.
+    fn insertPatchingTemplate(self: *TreeBuilder, tag: TagToken) !void {
+        // Steps 2-5.
+        try self.active_formatting_elements.append(.marker);
+        self.frameset_ok = false;
+        self.insertion_mode = .in_template;
+        try self.template_insertion_modes.append(.in_template);
+        // Steps 8-10.
+        const location = self.appropriateLocation(null);
+        const template = try self.createElementForToken(tag, .html, location);
+        try self.open_elements.append(template);
+        // "Keep" steps 2.1-2.3, with the template's own `for` value: the
+        // token's attribute storage does not outlive the element's creation.
+        if (try self.prepareContentPatching(template, location, template.getAttribute("for") orelse "")) return;
+        // Step 2.4: "insert an element at the adjusted insertion location
+        // with template, insertionLocation, and true."
+        self.insertNodeAt(location, template);
+    }
+
+    /// "Keep" steps 2.1-2.3 and HTML "prepare content patching" given
+    /// `template`, whose `for` attribute's value is `marker_name`.
+    fn prepareContentPatching(self: *TreeBuilder, template: *TreeNode, location: InsertionLocation, marker_name: []const u8) !bool {
+        // Prepare content patching, step 3.
+        if (marker_name.len == 0) return false;
+        const patch = try self.allocator.create(ContentPatch);
+        patch.* = .{ .template = template };
+        // The removal below must see the text parsed so far.
+        self.flushPendingText();
+        const prepared = if (self.dom_adapter_prepare_content_patching) |prepare|
+            prepare(patch, location, marker_name, self.dom_adapter_context)
+        else
+            self.prepareContentPatchingInTree(patch, location, marker_name) catch |err| {
+                self.allocator.destroy(patch);
+                return err;
+            };
+        if (!prepared) {
+            self.allocator.destroy(patch);
+            return false;
+        }
+        template.content_patch = patch;
+        return true;
+    }
+
+    /// The tree-then-convert path's "Keep" steps 2.1-2.2 and "prepare
+    /// content patching" steps 4-14, over this tree: nothing runs script.
+    fn prepareContentPatchingInTree(self: *TreeBuilder, patch: *ContentPatch, location: InsertionLocation, marker_name: []const u8) !bool {
+        // Step 2.1: "Let scope be the target parent of the adjusted insertion
+        // location given insertionLocation" - in the fragment case the
+        // fragment's root, whose children are the DocumentFragment's.
+        var scope = location.parent;
+        // Step 2.2: the body element of its node document -> its parent.
+        if (self.isTheBodyElement(scope)) scope = scope.parent.?;
+        // Steps 4-5.
+        const markers = try self.findMarkersInTree(scope, marker_name);
+        const start = markers.start orelse return false;
+        // Steps 6-8.
+        patch.target_node = start.parent;
+        patch.start_node = start;
+        patch.end_node = markers.end;
+        // Step 9.
+        if (markers.end == start) return true;
+        // Steps 10-13: every following sibling up to the end marker (all of
+        // them without one).
+        var current = start.next_sibling;
+        while (current) |node| {
+            if (node == markers.end) break;
+            current = node.next_sibling;
+            node.remove();
+            self.keepDetached(node);
+        }
+        return true;
+    }
+
+    /// Whether `node` is "the body element" of its document: the first
+    /// child of the html document element that is body or frameset - here a
+    /// body.
+    fn isTheBodyElement(self: *TreeBuilder, node: *TreeNode) bool {
+        if (node.node_type != .element or node.namespace != .html or !node.hasTagName("body")) return false;
+        const html = node.parent orelse return false;
+        if (html.parent != self.document or !html.hasTagName("html")) return false;
+        var child = html.first_child;
+        while (child) |c| : (child = c.next_sibling) {
+            if (c.node_type == .element and c.namespace == .html and (c.hasTagName("body") or c.hasTagName("frameset"))) return c == node;
+        }
+        return false;
+    }
+
+    const Markers = struct { start: ?*TreeNode = null, end: ?*TreeNode = null };
+
+    /// HTML "find markers" given `scope` and `name`, over this tree: its
+    /// descendants in tree order - not into template contents, which this
+    /// tree models as a template's children and which are no descendants.
+    fn findMarkersInTree(self: *TreeBuilder, scope: *TreeNode, name: []const u8) !Markers {
+        var node = scope.first_child;
+        while (node) |descendant| : (node = nextDescendant(descendant, scope)) {
+            // Steps 1.1-1.2.
+            if (descendant.node_type != .processing_instruction) continue;
+            const target = descendant.pi_target orelse continue;
+            const marker = std.mem.eql(u8, target, "marker");
+            if (!marker and !std.mem.eql(u8, target, "start")) continue;
+            if (!try self.piNameIs(descendant, name)) continue;
+            // Step 1.3.
+            if (marker) return .{ .start = descendant, .end = descendant };
+            // Step 1.4.
+            var nesting: usize = 0;
+            var sibling = descendant.next_sibling;
+            while (sibling) |candidate| : (sibling = candidate.next_sibling) {
+                if (candidate.node_type != .processing_instruction) continue;
+                const sibling_target = candidate.pi_target orelse continue;
+                if (std.mem.eql(u8, sibling_target, "start")) nesting += 1;
+                if (std.mem.eql(u8, sibling_target, "end")) {
+                    if (nesting == 0) return .{ .start = descendant, .end = candidate };
+                    nesting -= 1;
+                }
+            }
+            return .{ .start = descendant };
+        }
+        // Step 2.
+        return .{};
+    }
+
+    /// DOM "get a processing instruction attribute" given `pi` and "name"
+    /// is `name`: its data's pseudo-attributes (dom.pi_attributes, DOM 4.13
+    /// "update attributes from data"; a parse error is no attributes).
+    fn piNameIs(self: *TreeBuilder, pi: *TreeNode, name: []const u8) !bool {
+        var attributes = dom.pi_attributes.Attributes.init(self.allocator);
+        defer attributes.deinit();
+        attributes.parse(pi.text_content.toSlice()) catch |err| switch (err) {
+            error.InvalidPseudoAttributes => return false,
+            error.OutOfMemory => return error.OutOfMemory,
+        };
+        const value = attributes.get("name") orelse return false;
+        return std.mem.eql(u8, value, name);
+    }
+
+    /// The next node after `node` in tree order within `scope`, not
+    /// descending into an HTML template (its contents are another tree).
+    fn nextDescendant(node: *TreeNode, scope: *TreeNode) ?*TreeNode {
+        const is_template = node.node_type == .element and node.namespace == .html and node.hasTagName("template");
+        if (!is_template) if (node.first_child) |child| return child;
+        var current = node;
+        while (current != scope) {
+            if (current.next_sibling) |sibling| return sibling;
+            current = current.parent orelse return null;
+        }
+        return null;
+    }
+
+    /// The appropriate place for inserting a node, steps 4-8, on the
+    /// tree-then-convert path: inside a patching template, its insertion
+    /// target, before its end marker while the end marker is still the
+    /// target's child. The live DOM adapter resolves these steps against the
+    /// live DOM instead (parser_dom_mutation.resolve), so this tree keeps a
+    /// patching template's contents as its children there.
+    fn patchedLocation(self: *const TreeBuilder, location: InsertionLocation) InsertionLocation {
+        if (self.dom_adapter_prepare_content_patching != null or location.foster_table != null) return location;
+        const patch = location.parent.content_patch orelse return location;
+        const target = patch.target_node orelse return location;
+        const before = if (patch.end_node) |end| (if (end.parent == target) end else null) else null;
+        return .{ .parent = target, .before = before };
+    }
+
+    /// The template end tag's step 4, for a template that patches: remove
+    /// its start and end markers, then forget its patch (steps 6-8).
+    fn finishContentPatching(self: *TreeBuilder, template: *TreeNode) void {
+        const patch = template.content_patch orelse return;
+        self.flushPendingText();
+        if (self.dom_adapter_finish_content_patching) |finish| {
+            finish(patch, self.dom_adapter_context);
+        } else {
+            // Steps 4.4-4.5.
+            if (patch.start_node) |start| if (start.parent != null) {
+                start.remove();
+                self.keepDetached(start);
+            };
+            if (patch.end_node) |end| if (end.parent != null) {
+                end.remove();
+                self.keepDetached(end);
+            };
+        }
+        template.content_patch = null;
+        self.allocator.destroy(patch);
+    }
+
     /// Step 9 (and 7.1): insert an HTML element for the template start tag,
     /// then steps 2-5.
     fn insertTemplate(self: *TreeBuilder, tag: TagToken) !void {
@@ -2158,6 +2414,20 @@ pub const TreeBuilder = struct {
         if (self.currentNode()) |current| {
             if (!current.hasTagName("template")) {
                 self.reportError(.invalid_first_character_of_tag_name);
+            }
+        }
+
+        // Steps 3-4: the last template element in the stack of open elements
+        // - not necessarily the current node, as a patching template's
+        // content may have left an element open - and, if it patches, its
+        // markers go.
+        var index = self.open_elements.len;
+        while (index > 0) {
+            index -= 1;
+            const element = self.open_elements.get(index).?;
+            if (element.namespace == .html and element.hasTagName("template")) {
+                self.finishContentPatching(element);
+                break;
             }
         }
 
@@ -3068,6 +3338,17 @@ pub const TreeBuilder = struct {
     /// last child, a run not yet told - goes to the adapter first; text held
     /// anywhere else is left to the next flush, so no run is told in pieces.
     fn finishedParsingChildren(self: *TreeBuilder, element: *TreeNode) void {
+        // A patching template's markers go however it leaves the stack - its
+        // end tag (whose step 4 already ran this), an implied pop, or the
+        // pops at the end of the input. Stated deviation: the spec removes
+        // them only in the template end tag's step 4; Chrome, the one
+        // browser shipping <template for>, finalizes the patch when the
+        // template finishes parsing its children (Blink
+        // HTMLTemplateElement::FinishParsingChildren -> Patch::Finalize), and
+        // wpt.fyi's template-for-multiple-cases.html (Chrome 158 360/414)
+        // expects it: its 2- and 4-chunk cases drop the last characters of
+        // `</template>`, leaving the template open at EOF.
+        if (element.content_patch != null) self.finishContentPatching(element);
         const callback = self.dom_adapter_on_children_finished orelse return;
         if (self.pending_text) |text| {
             if (text.parent == element) self.flushPendingText();
@@ -4132,6 +4413,10 @@ pub const TreeBuilder = struct {
     /// HTML appropriate place for inserting a node, steps 1–3. The TreeNode
     /// models template contents as children; the DOM adapter resolves step 6.
     fn appropriateLocation(self: *TreeBuilder, override: ?*TreeNode) InsertionLocation {
+        return self.patchedLocation(self.appropriateLocationIgnoringPatches(override));
+    }
+
+    fn appropriateLocationIgnoringPatches(self: *TreeBuilder, override: ?*TreeNode) InsertionLocation {
         const target = override orelse self.currentNode() orelse self.document;
         if (self.foster_parenting and target.namespace == .html and
             (target.hasTagName("table") or target.hasTagName("tbody") or target.hasTagName("tfoot") or
@@ -4340,7 +4625,9 @@ pub const TreeBuilder = struct {
     fn insertCommentIn(self: *TreeBuilder, parent: *TreeNode, comment: CommentToken) !void {
         const node = try TreeNode.initComment(self.allocator);
         try node.appendText(comment.getData());
-        parent.appendChild(node);
+        // A patching template's comment goes to its insertion target.
+        const location = self.patchedLocation(.{ .parent = parent });
+        location.parent.insertBefore(node, location.before);
 
         // Notify DOM adapter of comment creation and parent-child relationship
         self.flushPendingText();
@@ -4349,7 +4636,7 @@ pub const TreeBuilder = struct {
         }
         self.flushPendingText();
         if (self.dom_adapter_on_child_appended) |callback| {
-            callback(parent, node, self.dom_adapter_context);
+            callback(location.parent, node, self.dom_adapter_context);
         }
     }
 
@@ -4370,7 +4657,10 @@ pub const TreeBuilder = struct {
     /// createProcessingInstruction; step 5 is the append.
     fn insertProcessingInstructionIn(self: *TreeBuilder, parent: *TreeNode, pi: ProcessingInstructionToken) !void {
         const node = try TreeNode.initProcessingInstruction(self.allocator, pi.getTarget(), pi.getData());
-        parent.appendChild(node);
+        // A patching template's processing instruction goes to its
+        // insertion target.
+        const location = self.patchedLocation(.{ .parent = parent });
+        location.parent.insertBefore(node, location.before);
 
         self.flushPendingText();
         if (self.dom_adapter_on_node_created) |callback| {
@@ -4378,7 +4668,7 @@ pub const TreeBuilder = struct {
         }
         self.flushPendingText();
         if (self.dom_adapter_on_child_appended) |callback| {
-            callback(parent, node, self.dom_adapter_context);
+            callback(location.parent, node, self.dom_adapter_context);
         }
     }
 

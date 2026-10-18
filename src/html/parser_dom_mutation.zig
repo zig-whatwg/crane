@@ -49,6 +49,10 @@ pub fn resolve(adapter: anytype, location: TreeBuilder.InsertionLocation) !Locat
     // A declarative shadow root's template: its template contents are the
     // shadow root ("in head", template start tag, step 7.11.6).
     if (location.foster_table == null) if (declarativeShadowRoot(location.parent)) |shadow| return .{ .parent = shadow, .before = null };
+    // Steps 5-8: a template that patches inserts into its insertion target,
+    // before its end marker while the end marker is still the target's
+    // child in the LIVE DOM - script may have moved or removed it.
+    if (location.foster_table == null) if (contentPatchLocation(location.parent)) |patched| return patched;
     const target = try dom.template_contents.insertionTarget(parent);
     if (target != parent) before = null;
     return .{ .parent = target, .before = before };
@@ -61,6 +65,25 @@ pub fn declarativeShadowRoot(template: *const TreeNode) ?*runtime.Instance {
     const request = template.declarative_shadow orelse return null;
     const shadow: *runtime.Instance = @ptrCast(@alignCast(request.shadow_root orelse return null));
     return if (runtime.SlabAllocator.generationOf(shadow) == request.shadow_generation) shadow else null;
+}
+
+/// A patching template's live insertion location (the appropriate place
+/// steps 5-8): its insertion target and, while it is still the target's
+/// child, its end marker. Null for any other node, or once the target is
+/// freed (a teardown net: the parser holds the patch's nodes).
+pub fn contentPatchLocation(template: *const TreeNode) ?Location {
+    const patch = template.content_patch orelse return null;
+    const target = liveNode(patch.target, patch.target_generation) orelse return null;
+    const end = liveNode(patch.end, patch.end_generation) orelse return .{ .parent = target, .before = null };
+    const end_base = dom.instance_bridge.getNodeBase(end) orelse return .{ .parent = target, .before = null };
+    const target_base = dom.instance_bridge.getNodeBase(target);
+    return .{ .parent = target, .before = if (end_base.parent_node == target_base) end else null };
+}
+
+/// The DOM node a content patch recorded, if it is still that node.
+pub fn liveNode(node: ?*anyopaque, generation: u64) ?*runtime.Instance {
+    const instance: *runtime.Instance = @ptrCast(@alignCast(node orelse return null));
+    return if (runtime.SlabAllocator.generationOf(instance) == generation) instance else null;
 }
 
 fn isHtmlTemplate(node: *const TreeNode) bool {
