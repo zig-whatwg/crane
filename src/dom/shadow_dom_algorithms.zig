@@ -275,6 +275,8 @@ pub fn assignSlottables(allocator: Allocator, slot: *NodeBase) Error!void {
     // and 4 nothing to change: each of those slottables already names slot.
     if (identical(slottables.items, state.assigned_nodes.items)) return;
     signalSlotChange(slot);
+    // The style engine's slot-assignment version (lane style2).
+    @import("style/root.zig").slotAssignmentChanged(slot);
 
     // A slottable slot no longer finds stops being assigned to it. The
     // standard never resets an assigned slot - a removed node, or one whose

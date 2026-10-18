@@ -173,6 +173,28 @@ pub const StyleMatcher = struct {
         return .{ .matcher = matcher };
     }
 
+    /// For the shadow host `host`, matched against the rules of its shadow
+    /// root `shadow`'s style sheets: seen from inside, the host is
+    /// featureless (CSS Scoping 3.1.1) - only :host, :host() and the logical
+    /// combinations of them match it - and nothing is above it.
+    pub fn initForHost(host: *runtime.Instance, shadow: *runtime.Instance, reads: *StateReads) ?StyleMatcher {
+        _ = instance_bridge.getNodeBase(host) orelse return null;
+        const shadow_node = instance_bridge.getNodeBase(shadow) orelse return null;
+        var matcher = Matcher.init(shadow_node, shadow);
+        matcher.state_reads = reads;
+        return .{ .matcher = matcher };
+    }
+
+    /// Whether `complex`, a rule of the host's shadow tree (`initForHost`),
+    /// matches the host `host` itself.
+    pub fn matchesHost(self: *StyleMatcher, host: *runtime.Instance, complex: *const ComplexSelector, pseudo: ?[]const u8) bool {
+        const node = instance_bridge.getNodeBase(host) orelse return false;
+        if (complex.compound.hasPseudoElement() != (pseudo != null)) return false;
+        self.matcher.pseudo_target = pseudo;
+        defer self.matcher.pseudo_target = null;
+        return self.matcher.matchesComplex(.{ .node = node, .featureless = true }, complex);
+    }
+
     /// Whether `complex` matches `element` - or, with `pseudo`, that
     /// pseudo-element of it: the subject compound must name the
     /// pseudo-element exactly when one is asked for.

@@ -78,7 +78,9 @@ fn changed(owner: *runtime.Instance, values: []const *runtime.Instance) void {
     const adopted = hooks.adoptedSheetsOf(owner) orelse return;
     adopted.replace(values);
     const document = nodeDocumentOf(owner) orelse return;
-    if (hooks.engineOf(document)) |e| e.sheetsChanged();
+    const e = hooks.engineOf(document) orelse return;
+    if (owner != document) e.addAdoptingRoot(owner) catch {};
+    e.sheetsChanged();
 }
 
 pub const array_hooks: engine.ObservableArrayHooks = .{

@@ -28,12 +28,14 @@ pub const Key = struct {
     /// The engine's active-sheet generation (sheets, their contents, the
     /// media environment).
     generation: u64,
+    /// The engine's slot-assignment version.
+    slot_version: u64 = 0,
     /// The document's focused, hovered, pointed, activated and target
     /// elements, by address and generation.
     singletons: [5]u64,
 
     pub fn eql(a: Key, b: Key) bool {
-        return a.tree_version == b.tree_version and a.generation == b.generation and std.mem.eql(u64, &a.singletons, &b.singletons);
+        return a.tree_version == b.tree_version and a.generation == b.generation and a.slot_version == b.slot_version and std.mem.eql(u64, &a.singletons, &b.singletons);
     }
 };
 
