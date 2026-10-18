@@ -180,7 +180,16 @@ fn firePointerEvent(target: *Instance, comptime event_type: []const u8, pointer:
         log.debug("{s} not fired: {}", .{ event_type, err });
         return true;
     };
-    return dispatch(target, event);
+    // Popover light dismiss is independent of preventDefault. Keep the
+    // event alive through the activity: its target edge keeps target alive
+    // when a dispatch listener removes it and collects wrappers.
+    const generation = runtime.SlabAllocator.generationOf(event);
+    defer event.releaseIfUnwrapped(generation);
+    const result = dom.fire_event.dispatchTrusted(target, event) catch true;
+    if (comptime std.mem.eql(u8, event_type, "pointerdown") or std.mem.eql(u8, event_type, "pointerup")) {
+        @import("popover.zig").lightDismiss(target, comptime std.mem.eql(u8, event_type, "pointerdown"));
+    }
+    return result;
 }
 
 /// HTML "fire a synthetic pointer event named click" at `target`, with the
@@ -540,6 +549,11 @@ pub fn pointerDown(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
     } else if (nodeDocument(focus_target)) |document| {
         focus.focusingSteps(document, null, .click);
     }
+    // Keep ordinary focus before the picker focusing steps: the shipping
+    // browsers split (select-events.optional.html, df642c4142: Chrome155
+    // skips select focus; Safari27 focuses it). HTML decides the tie,
+    // row61 Q19; the helper must not swallow this click-focus default.
+    if (pointer.currentTarget()) |current| @import("forms/select_picker.zig").mouseDown(current, button);
 }
 
 /// Whether a click at `target` is one a disabled form control swallows: HTML
@@ -550,6 +564,9 @@ fn isInDisabledFormControl(target: *Instance) bool {
     var current: ?*Instance = target;
     while (current) |n| : (current = parentOf(n)) {
         if (!isElement(n)) return false;
+        // HTML option disabledness also suppresses trusted clicks. An
+        // enabled option must still reach a disabled ancestor select.
+        if (n.stateAs(interfaces.HTMLOptionElement.State) != null and @import("forms/options.zig").isDisabled(n)) return true;
         if (form_associated.isButton(n) or form_associated.isInput(n) or form_associated.isSelect(n) or form_associated.isTextArea(n)) {
             return form_associated.isDisabled(n);
         }
@@ -593,7 +610,9 @@ pub fn pointerUp(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
         _ = firePointerEvent(target, "pointermove", pointer, modifiers, @intCast(button), 0, null);
     }
     const up_target = pointer.currentTarget() orelse return;
-    if (!suppressed) _ = fireMouseEvent(up_target, "mouseup", modifiers, @intCast(button), pointer.buttons, 1, null);
+    if (!suppressed and fireMouseEvent(up_target, "mouseup", modifiers, @intCast(button), pointer.buttons, 1, null)) {
+        if (pointer.currentTarget()) |current| @import("forms/select_picker.zig").mouseUp(current, button);
+    }
     const pressed = down orelse return;
     const click_up = pointer.currentTarget() orelse return;
     if (!isConnected(pressed) or nodeDocument(pressed) != nodeDocument(click_up)) return;
@@ -704,11 +723,17 @@ pub fn keyDown(keyboard: *Keyboard, document: *Instance, key: Key, modifiers: Mo
     // The key may have moved the focus: the default action is the focused
     // element's now.
     const focused = keyTarget(document) orelse return;
+    if (@import("forms/select_picker.zig").keyDown(focused, key.key, modifiers.ctrl or modifiers.alt or modifiers.meta)) return;
     const produces_character = key.text != null and !modifiers.ctrl and !modifiers.meta;
     if (produces_character or isKey(key, "Enter")) {
         const char_code: u32 = if (key.text) |t| firstCodePoint(t) else 13;
         // keypress's keyCode is its charCode, as in every browser.
         if (!fireKeyboardEvent(focused, "keypress", key, modifiers, char_code, char_code)) return;
+        // Typeahead is a printable-keypress default. Script can cancel it;
+        // Ctrl/Alt/Meta shortcuts never enter the select's prefix session.
+        if (produces_character and !modifiers.alt) {
+            if (@import("forms/select_picker.zig").typeAhead(focused, key.text.?)) return;
+        }
     }
     defaultKeyDownAction(keyboard, focused, key, modifiers);
 }

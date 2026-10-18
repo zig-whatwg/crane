@@ -1,8 +1,8 @@
 //! Implementation for HTMLOptionElement interface
 //!
 //! This file owns the SELECTION MODEL for `<select>`/`<option>`: the list of
-//! options, selectedness, dirtiness, and the lazily-evaluated form of the
-//! selectedness setting algorithm ("ask for a reset"). `HTMLSelectElement.zig`
+//! options, selectedness, dirtiness, and the selectedness setting algorithm
+//! ("ask for a reset"). `HTMLSelectElement.zig`
 //! reaches its selection steps through dom.form_controls; the option owns
 //! the state, while the shared forms helper owns option-list traversal.
 
@@ -15,6 +15,10 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const HTMLOptionElement = interfaces.HTMLOptionElement;
 const log = std.log.scoped(.option);
+const dom = @import("dom");
+const selected_content = @import("html").forms.selected_content;
+const option_list = @import("html").forms.options;
+const controls = dom.form_controls;
 
 // An element's local name, namespace and attributes, read in place
 // (dom.element_data, which Element installs).
@@ -93,15 +97,6 @@ const StateMap = struct {
         return (existing(instance) orelse return null).getPtr(@intFromPtr(instance));
     }
 
-    /// The entry for `instance`, creating a default one if this is the first
-    /// write. Nothing is stored until something assigns, so a parser-created
-    /// element that script never touches costs nothing at all.
-    fn getOrPut(instance: *runtime.Instance) !*InternalState {
-        const entry = try (try ensure(instance)).getOrPut(@intFromPtr(instance));
-        if (!entry.found_existing) entry.value_ptr.* = .{};
-        return entry.value_ptr;
-    }
-
     fn remove(instance: *runtime.Instance) ?InternalState {
         const map = existing(instance) orelse return null;
         if (map.fetchRemove(@intFromPtr(instance))) |kv| return kv.value;
@@ -122,47 +117,16 @@ fn cleanupAllRemainingInternal(scope: *runtime.BrowserScope) void {
     StateMap.sweep(scope);
 }
 
-/// https://html.spec.whatwg.org/multipage/form-elements.html#concept-option-selectedness
-///
-/// An option's selectedness is NOT a reflection of the `selected` content
-/// attribute. It starts out tracking that attribute and detaches permanently
-/// once anything assigns to `option.selected` - the DIRTINESS flag. On top of
-/// that sits the select's reset algorithm, which can select an option that was
-/// never marked selected at all.
-///
-/// Four states rather than a bool-plus-flag, because the two ways of clearing an
-/// option differ in one observable respect:
-///
-///   * `option.selected = false` asks the owning select for a reset, so a
-///     single-select immediately re-selects its first enabled option.
-///   * `select.value = <no match>` and `select.selectedIndex = -1` do NOT ask for
-///     a reset - the spec allows them to leave nothing selected at all, and
-///     `selected-index.html` asserts exactly that (`selectedIndex == -1`,
-///     `value == ""`).
-///
-/// Collapsing those two into one "false" makes one of the two tests fail
-/// whichever way the reset is then applied.
-pub const Selectedness = enum {
-    /// Nothing has assigned: follows the `selected` content attribute, and the
-    /// option is still eligible for the reset algorithm's auto-selection.
-    clean,
-    /// Explicitly selected, by `option.selected = true` or by
-    /// `select.value`/`select.selectedIndex` picking this option.
-    on,
-    /// Explicitly deselected by `option.selected = false`. Ask-for-a-reset still
-    /// applies afterwards.
-    off,
-    /// Deselected by `select.value`/`select.selectedIndex`, which do not ask for
-    /// a reset. Nothing is auto-selected in their wake.
-    off_no_reset,
-};
-
-/// Internal state for HTMLOptionElement.
-///
-/// One byte, deliberately: `InternalState = struct {}` is zero-sized and used to
-/// abort the process on `createIn` before 75dac607a.
+/// HTML option selectedness and dirtiness are independent scalars. The
+/// existing BrowserScope map stores only selectedness differing from the
+/// attribute, dirtiness, or the single select's processed selection. An implicit selection is a real stored bit,
+/// so an unread option retains it when removed (row61 Q14/Q21).
 pub const InternalState = struct {
-    selectedness: Selectedness = .clean,
+    selectedness: bool = false,
+    dirtiness: bool = false,
+    /// Selected and processed by a single select. Later, unprocessed members
+    /// of one DOM insertion batch must retain their initial selectedness.
+    settled: bool = false,
 };
 
 /// The hooks this type owns (src/dom), installed once, at process start,
@@ -170,8 +134,32 @@ pub const InternalState = struct {
 pub fn installHooks() void {
     // The select element's reset algorithm is this file's, as the rest of
     // the selection model is: installed before any option exists.
-    @import("dom").form_controls.install(.{ .is = &isSelectElement, .reset = &resetSelect, .selected_index = &selectedIndex, .set_selected_index = &setSelectedIndex });
+    controls.install(.{ .is = &isSelectElement, .reset = &resetSelect, .selected_index = &selectedIndex, .set_selected_index = &setSelectedIndex, .pick_option = &pickOption, .selection_invariant = &selectionInvariant });
     @import("dom").teardown_sweeps.install(.element_types, &cleanupAllRemainingInternal);
+    dom.attribute_change_steps.install("option", &optionAttributeChanged);
+    dom.attribute_change_steps.install("select", &selectAttributeChanged);
+    dom.attribute_change_steps.install("optgroup", &optgroupAttributeChanged);
+    dom.finish_parsing_children.install("option", .{ .finished = &finishedParsingChildren });
+    dom.mutation.registerPostConnectionStepsCallback(&postConnectionSteps) catch {};
+    dom.mutation.registerInsertionStepsCallback(&insertionSteps) catch {};
+    dom.mutation.registerRemovingStepsCallback(&removingSteps) catch {};
+    dom.mutation.registerMovingStepsCallback(&movingSteps) catch {};
+}
+
+fn finishedParsingChildren(option: *runtime.Instance) void {
+    const select = ownerSelect(option) orelse return;
+    if (!dom.form_controls.selectedcontentInterest(select)) return;
+    if (!(get_selected(option) catch false)) return;
+    selected_content.updateAll(select) catch {};
+}
+
+fn postConnectionSteps(node: *dom.NodeBase) void {
+    if (node.node_type != interfaces.Node.get_ELEMENT_NODE()) return;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse return));
+    if (instance.stateAs(State) == null) return;
+    // HTML option post-connection steps and parser-pop steps run the same
+    // update, only after the tree is consistent and only for a selected option.
+    finishedParsingChildren(instance);
 }
 
 /// HTMLOptionElement's own construction steps: the generated chain runs HTMLElement's first.
@@ -254,34 +242,13 @@ const collectOptions = @import("html").forms.options.collect;
 ///
 /// Walks ancestors rather than re-running `collectOptions`, stopping at the same
 /// elements that stop the forward walk so the two agree.
-pub fn ownerSelect(option: *runtime.Instance) ?*runtime.Instance {
-    var optgroups: u32 = 0;
-    var parent = interfaces.Node.get_parentNode(option) catch null;
-    while (parent) |node| {
-        if (localName(node)) |name| {
-            if (std.ascii.eqlIgnoreCase(name, "select")) {
-                return if (optgroups <= 1) node else null;
-            }
-            if (std.ascii.eqlIgnoreCase(name, "datalist") or
-                std.ascii.eqlIgnoreCase(name, "option") or
-                std.ascii.eqlIgnoreCase(name, "hr"))
-            {
-                return null;
-            }
-            if (std.ascii.eqlIgnoreCase(name, "optgroup")) optgroups += 1;
-        }
-        parent = interfaces.Node.get_parentNode(node) catch null;
-    }
-    return null;
-}
+const ownerSelect = @import("html").forms.select_picker.ownerSelect;
 
 // ---------------------------------------------------------------------------
 // Selectedness
 // ---------------------------------------------------------------------------
 
 /// What an option says about itself, before the select's reset algorithm.
-pub const Explicit = enum { on, off, off_no_reset, absent };
-
 fn isSelectElement(element: *runtime.Instance) bool {
     return element.stateAs(interfaces.HTMLSelectElement.State) != null;
 }
@@ -292,132 +259,376 @@ fn isSelectElement(element: *runtime.Instance) bool {
 /// optionElement has a selected attribute, then set optionElement's
 /// selectedness to true; otherwise set it to false; and set optionElement's
 /// dirtiness to false. 3. Run the selectedness setting algorithm given
-/// selectElement." A clean option IS its selected attribute, and the
-/// selectedness setting algorithm runs whenever selectedness is read.
+/// selectElement." Removing sparse entries restores the attributes, then
+/// the algorithm records its implicit selection before returning.
 fn resetSelect(select: *runtime.Instance) void {
-    const allocator = select.ctx.allocator;
-    var options = std.ArrayListUnmanaged(*runtime.Instance).empty;
-    defer options.deinit(allocator);
-    collectOptions(select, allocator, &options) catch return;
-    for (options.items) |option| _ = StateMap.remove(option);
+    // Reset steps 2–3 can share one borrowed traversal: no script runs
+    // between clearing dirtiness and normalizing selectedness. Avoid a
+    // temporary option list and re-reading every now-absent sparse entry.
+    // These pointers live only on this stack, during the existing tree walk.
+    const Reset = struct {
+        multiple: bool,
+        first: ?*runtime.Instance = null,
+        last: ?*runtime.Instance = null,
+
+        fn visit(self: *@This(), option: *runtime.Instance) !void {
+            // Reset step 2: removing the override restores the selected
+            // attribute and clears dirtiness and insertion settledness.
+            _ = StateMap.remove(option);
+            if (hasAttr(option, "selected")) {
+                // Selectedness setting step 5.1: the last selected option
+                // wins in a single select, including a disabled one.
+                if (!self.multiple) if (self.last) |previous|
+                    try writeSelection(previous, false, false, false);
+                self.last = option;
+            }
+            // Step 5.2: only a single select needs a default candidate.
+            if (!self.multiple and self.first == null and !optionIsDisabled(option)) self.first = option;
+        }
+    };
+    var reset: Reset = .{ .multiple = hasAttr(select, "multiple") };
+    @import("html").forms.options.forEach(select, &reset, Reset.visit) catch return;
+    if (!reset.multiple) {
+        // Step 6: select the first enabled option only when no selected
+        // attribute won and this is a one-row select.
+        if (reset.last == null and displaySize(select) == 1) reset.last = reset.first;
+        if (reset.last) |selected| writeSelection(selected, true, false, true) catch return;
+    }
+    controls.setHasSelectedOption(select, reset.last != null) catch return;
+    // HTML select reset algorithm, step 4.
+    selected_content.updateAll(select) catch {};
 }
 
-// The select's non-IDL steps keep this owner’s lazy selectedness model.
+// The select's non-IDL steps read this owner's selection model once.
 fn selectedIndex(select: *runtime.Instance) !?usize {
     var options: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
     defer options.deinit(select.ctx.allocator);
     try collectOptions(select, select.ctx.allocator, &options);
-    return selectedIndexOf(select, options.items);
+    return selectedIndexOf(options.items);
 }
 
 fn setSelectedIndex(select: *runtime.Instance, index: ?usize) !void {
     var options: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
     defer options.deinit(select.ctx.allocator);
     try collectOptions(select, select.ctx.allocator, &options);
+    const matching = if (index) |i| (if (i < options.items.len) index else null) else null;
     for (options.items, 0..) |option, i| {
-        try setSelectedness(option, if (index) |selected| (if (selected == i) .on else .off) else .off_no_reset);
+        const selected = matching != null and matching.? == i;
+        // The selected index/value setter dirties only the matching option.
+        try writeSelection(option, selected, if (selected) true else null, selected and !hasAttr(select, "multiple"));
     }
+    try controls.setHasSelectedOption(select, matching != null);
+    // HTML set selected index and value setters, step 4.
+    try selected_content.updateAll(select);
 }
 
-/// The option's own selectedness, which never consults the owning select - that
-/// is what keeps `get_selected` from recursing through its siblings.
-fn explicitSelectedness(option: *runtime.Instance) Explicit {
-    if (StateMap.get(option)) |internal| {
-        switch (internal.selectedness) {
-            .on => return .on,
-            .off => return .off,
-            .off_no_reset => return .off_no_reset,
-            .clean => {},
+fn ownSelectedness(option: *runtime.Instance) bool {
+    if (StateMap.get(option)) |state| return state.selectedness;
+    return hasAttr(option, "selected");
+}
+
+fn isSettled(option: *runtime.Instance) bool {
+    return if (StateMap.get(option)) |state| state.settled else false;
+}
+
+/// Null flags preserve them; false selectedness always clears settledness.
+/// Copy before a possible map growth; no
+/// borrowed value pointer survives writing another option's entry.
+fn writeSelection(option: *runtime.Instance, selected: bool, dirtiness: ?bool, settled: ?bool) !void {
+    if (StateMap.get(option)) |state| {
+        const dirty = dirtiness orelse state.dirtiness;
+        const processed = selected and (settled orelse state.settled);
+        if (dirty or processed or selected != hasAttr(option, "selected")) {
+            // No allocation or other option write while this value is
+            // borrowed. The common dirty-setter path needs one map lookup.
+            state.* = .{ .selectedness = selected, .dirtiness = dirty, .settled = processed };
+            return;
+        }
+        _ = StateMap.remove(option);
+        return;
+    }
+    const dirty = dirtiness orelse false;
+    const processed = selected and (settled orelse false);
+    if (!dirty and !processed and selected == hasAttr(option, "selected")) return;
+    try StateMap.put(option, .{ .selectedness = selected, .dirtiness = dirty, .settled = processed });
+}
+
+fn deselectOthers(options: []const *runtime.Instance, chosen: *runtime.Instance) !void {
+    return deselectOthersForInsertion(options, chosen, false);
+}
+
+fn deselectOthersForInsertion(options: []const *runtime.Instance, chosen: *runtime.Instance, inserting: bool) !void {
+    var after_chosen = false;
+    for (options) |option| if (option != chosen) {
+        // DOM insert step 7 processes fragment children in order. Crane's
+        // batch links them first; later unprocessed selected options have
+        // not reached their own insertion steps yet (row61 Q25).
+        if (inserting and after_chosen and ownSelectedness(option) and !isSettled(option)) continue;
+        try writeSelection(option, false, null, false);
+    } else {
+        after_chosen = true;
+    };
+}
+
+fn pickOption(select: *runtime.Instance, option: *runtime.Instance, toggle: bool) !void {
+    var options: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    defer options.deinit(select.ctx.allocator);
+    try collectOptions(select, select.ctx.allocator, &options);
+    if (std.mem.indexOfScalar(*runtime.Instance, options.items, option) == null) return;
+    const selected = if (toggle) !ownSelectedness(option) else true;
+    try writeSelection(option, selected, true, selected and !hasAttr(select, "multiple"));
+    if (selected and !hasAttr(select, "multiple")) try deselectOthers(options.items, option);
+    try controls.setHasSelectedOption(select, selectedIndexOf(options.items) != null);
+    // Pick/toggle does not ask for reset or update selectedcontent inline:
+    // those notifications belong to the queued element task (row61 Q3(c)).
+}
+
+fn optionAttributeChanged(option: *runtime.Instance, name: []const u8, old: ?[]const u8, value: ?[]const u8, namespace: ?[]const u8) void {
+    if (namespace != null or (old != null) == (value != null)) return;
+    if (std.mem.eql(u8, name, "disabled")) {
+        resetAfterDisabledChange(option);
+        return;
+    }
+    if (!std.mem.eql(u8, name, "selected")) return;
+    // The hook runs after the attribute write. A stored bit preserves the
+    // old selection, otherwise the previous attribute gives it.
+    const previous = if (StateMap.get(option)) |state| state.* else InternalState{ .selectedness = old != null };
+    var changed = false;
+    if (!previous.dirtiness) {
+        changed = previous.selectedness != (value != null);
+        _ = StateMap.remove(option);
+    }
+    const select = ownerSelect(option) orelse return;
+    var options: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    defer options.deinit(select.ctx.allocator);
+    collectOptions(select, select.ctx.allocator, &options) catch return;
+    if (changed and value != null and !hasAttr(select, "multiple")) deselectOthers(options.items, option) catch return;
+    changed = (setSelectednessForList(select, options.items) catch return) or changed;
+    if (changed) selected_content.updateAll(select) catch {};
+}
+
+fn resetAfterDisabledChange(node: *runtime.Instance) void {
+    const select = ownerSelect(node) orelse return;
+    var options: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    defer options.deinit(select.ctx.allocator);
+    collectOptions(select, select.ctx.allocator, &options) catch return;
+    // Reset selectedness uses the stored bits, not a guess from the NEW
+    // disabled attributes. Only an actual selection change clones content.
+    if (setSelectednessForList(select, options.items) catch return) selected_content.updateAll(select) catch {};
+}
+
+fn optgroupAttributeChanged(group: *runtime.Instance, name: []const u8, old: ?[]const u8, value: ?[]const u8, namespace: ?[]const u8) void {
+    if (namespace == null and std.mem.eql(u8, name, "disabled") and (old != null) != (value != null)) resetAfterDisabledChange(group);
+}
+
+fn parsedSize(value: ?[]const u8, multiple: bool) u32 {
+    const fallback: u32 = if (multiple) 4 else 1;
+    const raw = value orelse return fallback;
+    const parsed = std.fmt.parseInt(u32, std.mem.trim(u8, raw, " \t\n\r\x0c"), 10) catch return fallback;
+    return if (parsed == 0) fallback else parsed;
+}
+
+fn selectAttributeChanged(select: *runtime.Instance, name: []const u8, old: ?[]const u8, value: ?[]const u8, namespace: ?[]const u8) void {
+    if (namespace != null) return;
+    const multiple_change = std.mem.eql(u8, name, "multiple");
+    if (!multiple_change and !std.mem.eql(u8, name, "size")) return;
+    if (multiple_change and (old != null) == (value != null)) return;
+    var options: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    defer options.deinit(select.ctx.allocator);
+    collectOptions(select, select.ctx.allocator, &options) catch return;
+    // A parser assigns attributes before adding options: preserve that
+    // empty-list fast path, with nothing to reset or clone.
+    if (options.items.len == 0) return;
+    if (multiple_change and value == null) {
+        var seen = false;
+        for (options.items) |option| {
+            if (ownSelectedness(option)) {
+                if (seen) writeSelection(option, false, null, false) catch return;
+                seen = true;
+            }
         }
     }
-    // Clean: track the `selected` content attribute. A boolean attribute is true
-    // by PRESENCE, so selected="false" is still true.
-    if (hasAttr(option, "selected")) return .on;
-    return .absent;
+    const changed = setSelectednessForList(select, options.items) catch return;
+    if (changed or multiple_change) selected_content.updateAll(select) catch {};
 }
 
-/// Record an explicit selectedness. Used by `option.selected` and, through this
-/// module, by `select.value` / `select.selectedIndex`.
-fn setSelectedness(option: *runtime.Instance, state: Selectedness) !void {
-    const internal = try StateMap.getOrPut(option);
-    internal.selectedness = state;
+/// Selectedness setting algorithm, steps 1–7. Dirtiness is unaffected.
+fn setSelectednessForList(select: *runtime.Instance, options: []const *runtime.Instance) !bool {
+    return setSelectednessForInsertion(select, options, null);
+}
+
+fn setSelectednessForInsertion(select: *runtime.Instance, options: []const *runtime.Instance, inserted: ?*runtime.Instance) !bool {
+    if (hasAttr(select, "multiple")) {
+        for (options) |option| if (isSettled(option)) try writeSelection(option, ownSelectedness(option), null, false);
+        try controls.setHasSelectedOption(select, selectedIndexOf(options) != null);
+        return false;
+    }
+    var last: ?*runtime.Instance = null;
+    var first: ?*runtime.Instance = null;
+    var changed = false;
+    var after_inserted = false;
+    for (options) |option| {
+        if (option == inserted) {
+            after_inserted = true;
+        } else if (after_inserted and ownSelectedness(option) and !isSettled(option)) continue;
+        if (ownSelectedness(option)) {
+            if (last) |previous| {
+                try writeSelection(previous, false, null, false);
+                changed = true;
+            }
+            last = option;
+        }
+        if (first == null and !optionIsDisabled(option)) first = option;
+    }
+    if (last == null and first != null and displaySize(select) == 1) {
+        try writeSelection(first.?, true, null, true);
+        last = first;
+        changed = true;
+    }
+    if (last) |selected| try writeSelection(selected, true, null, true);
+    try controls.setHasSelectedOption(select, last != null);
+    return changed;
 }
 
 /// https://html.spec.whatwg.org/multipage/form-elements.html#concept-option-disabled
 ///
-/// The `disabled` attribute on the option, or on an ancestor optgroup. The spec
-/// walks ancestors in reverse tree order and stops at select/hr/datalist/option;
-/// within a select that is the parent optgroup, so the loop below stops there
-/// too.
+/// The shared algorithm also serves focusability, keeping wrapper and
+/// nearest-optgroup handling identical to default selection.
 pub fn optionIsDisabled(option: *runtime.Instance) bool {
-    if (hasAttr(option, "disabled")) return true;
-    var parent = interfaces.Node.get_parentNode(option) catch null;
-    while (parent) |node| {
-        if (localName(node)) |name| {
-            if (std.ascii.eqlIgnoreCase(name, "optgroup")) {
-                if (hasAttr(node, "disabled")) return true;
-            } else {
-                return false;
-            }
-        }
-        parent = interfaces.Node.get_parentNode(node) catch null;
-    }
-    return false;
+    return @import("html").forms.options.isDisabled(option);
 }
 
 /// https://html.spec.whatwg.org/multipage/form-elements.html#concept-select-size
 ///
-/// 1 unless `size` parses as a positive integer. size="0" behaves as 1, which is
-/// what browsers do and what keeps `<select size=0><option>` selecting its
-/// option.
+/// Defaults to 1 for a single select and 4 for a multiple select. Preserve
+/// the browser size="0" default used by the existing selection model.
 pub fn displaySize(select: *runtime.Instance) u32 {
-    const raw = attrValue(select, "size") orelse return 1;
-    const parsed = std.fmt.parseInt(u32, std.mem.trim(u8, raw, " \t\n\r\x0C"), 10) catch return 1;
-    return if (parsed == 0) 1 else parsed;
+    return parsedSize(attrValue(select, "size"), hasAttr(select, "multiple"));
 }
 
-/// https://html.spec.whatwg.org/multipage/form-elements.html#selectedness-setting-algorithm
-///
-/// The reset algorithm, evaluated LAZILY at read time instead of on every DOM
-/// mutation. The spec model runs it whenever an option is inserted, removed or
-/// toggled; nothing in this tree notifies an impl of those, so instead the same
-/// predicate is applied to the current list of options on each read. The
-/// observable result is the same, and `<select><option>a</option></select>`
-/// reports `value == "a"` rather than "" - which is the case React hits first.
-///
-/// Returns the index into `options` of the selected option, or null when nothing
-/// is selected.
-fn selectedIndexOf(select: *runtime.Instance, options: []const *runtime.Instance) ?usize {
-    var first_on: ?usize = null;
-    var last_on: ?usize = null;
-    var any_no_reset = false;
+/// Reads never select or normalize: insertion and reset already did so.
+fn selectedIndexOf(options: []const *runtime.Instance) ?usize {
     for (options, 0..) |option, i| {
-        switch (explicitSelectedness(option)) {
-            .on => {
-                if (first_on == null) first_on = i;
-                last_on = i;
-            },
-            .off_no_reset => any_no_reset = true,
-            .off, .absent => {},
-        }
-    }
-
-    // A multiple select gets no reset algorithm at all: any number of options
-    // may be selected, and `value`/`selectedIndex` report the FIRST of them.
-    if (hasAttr(select, "multiple")) return first_on;
-
-    // Single select. The spec's step "if two or more options have selectedness
-    // true, set all but the LAST to false" is what makes the last assignment
-    // win, so resolve to the last rather than the first.
-    if (last_on) |i| return i;
-
-    // Nothing selected. Two ways to get here, and only one of them auto-selects.
-    if (any_no_reset) return null;
-    if (displaySize(select) != 1) return null;
-    for (options, 0..) |option, i| {
-        if (!optionIsDisabled(option)) return i;
+        if (ownSelectedness(option)) return i;
     }
     return null;
+}
+
+fn optionInstance(node: *dom.NodeBase) ?*runtime.Instance {
+    if (node.node_type != interfaces.Node.get_ELEMENT_NODE()) return null;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse return null));
+    return if (instance.stateAs(State) != null) instance else null;
+}
+
+/// HTML option insertion: update its owner, run selectedness setting, and
+/// intentionally leave cloning to the selected option's post-connection step.
+fn insertedInto(select: *runtime.Instance, option: *runtime.Instance) !void {
+    const selected = ownSelectedness(option);
+    if (hasAttr(select, "multiple")) {
+        if (selected) try controls.setHasSelectedOption(select, true);
+        return;
+    }
+    // Blink HTMLSelectElement::OptionInserted likewise avoids a reset for
+    // an ordinary append when a selection already exists (row61 Q14).
+    if (!selected and controls.hasSelectedOption(select)) return;
+    var options: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    defer options.deinit(select.ctx.allocator);
+    try collectOptions(select, select.ctx.allocator, &options);
+    // HTML 4.10.7: adding a selected option to a single select deselects
+    // its other options, in DOM insertion order (row61 Q25).
+    if (selected) try deselectOthersForInsertion(options.items, option, true);
+    _ = try setSelectednessForInsertion(select, options.items, option);
+}
+
+fn insertionSteps(node: *dom.NodeBase) void {
+    const option = optionInstance(node) orelse return;
+    const select = ownerSelect(option) orelse return;
+    // Updating the nearest ancestor select, step 4: insertion of a whole
+    // select preserves its options' owner, including a cleared selection.
+    if (controls.optionOwnerUnchanged(select)) return;
+    insertedInto(select, option) catch {};
+}
+
+/// Reconstruct only the old ancestor walk, replacing the edge the DOM just
+/// changed. No owner pointer is cached. Removal passes the original parent
+/// to each descendant; moveBefore passes it only for the moved subtree root.
+fn ownerBeforeChange(option: *runtime.Instance, moved_root: ?*dom.NodeBase, old_parent: ?*dom.NodeBase) ?*runtime.Instance {
+    var current = dom.instance_bridge.getNodeBase(option) orelse return null;
+    var crossed = false;
+    var optgroup = false;
+    while (true) {
+        // A shadow root ends the option-list ancestor walk.
+        if (current.node_type == interfaces.Node.get_DOCUMENT_FRAGMENT_NODE() or current.node_type == interfaces.Node.get_DOCUMENT_NODE()) return null;
+        const next = if (!crossed and (current == moved_root or (moved_root == null and current.parent_node == null))) blk: {
+            crossed = true;
+            break :blk old_parent;
+        } else current.parent_node;
+        current = next orelse return null;
+        const ancestor: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(current) orelse return null));
+        if (ancestor.stateAs(interfaces.HTMLDataListElement.State) != null or
+            ancestor.stateAs(interfaces.HTMLHRElement.State) != null or
+            ancestor.stateAs(State) != null) return null;
+        if (ancestor.stateAs(interfaces.HTMLOptGroupElement.State) != null) {
+            if (optgroup) return null;
+            optgroup = true;
+        }
+        if (isSelectElement(ancestor)) return ancestor;
+    }
+}
+
+fn changedOwner(option: *runtime.Instance, old_select: ?*runtime.Instance) void {
+    const new_select = ownerSelect(option);
+    if (old_select == new_select) return;
+    if (isSettled(option)) writeSelection(option, ownSelectedness(option), null, false) catch return;
+    if (old_select) |select| {
+        if (ownSelectedness(option) or !controls.hasSelectedOption(select)) {
+            var options: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+            defer options.deinit(select.ctx.allocator);
+            collectOptions(select, select.ctx.allocator, &options) catch return;
+            _ = setSelectednessForList(select, options.items) catch return;
+        }
+    }
+    if (new_select) |select| insertedInto(select, option) catch {};
+    // HTML option removing/moving steps queue selectedcontent microtasks.
+    // The unwrapped task holder is row52 Q9 / row61 Q3(c), not an inline clone.
+}
+
+fn removingSteps(node: *dom.NodeBase, old_parent: ?*dom.NodeBase) void {
+    const option = optionInstance(node) orelse return;
+    changedOwner(option, ownerBeforeChange(option, null, old_parent));
+}
+
+fn movedOptions(node: *dom.NodeBase, root: *dom.NodeBase, old_parent: *dom.NodeBase) void {
+    if (optionInstance(node)) |option| changedOwner(option, ownerBeforeChange(option, root, old_parent));
+    for (node.child_nodes.items()) |child| movedOptions(child, root, old_parent);
+}
+
+fn movingSteps(node: *dom.NodeBase, old_parent: ?*dom.NodeBase) void {
+    // Only the root receives the old parent. Walk its own subtree once;
+    // descendant callbacks carry null and must not reset the same select again.
+    movedOptions(node, node, old_parent orelse return);
+}
+
+/// Read-only diagnostic for native tests, never a production write-path
+/// assertion. The option owner alone can inspect its private sparse map.
+fn selectionInvariant(select: *runtime.Instance) bool {
+    const Check = struct {
+        any_selected: bool = false,
+        settled_count: usize = 0,
+        valid: bool = true,
+        fn visit(self: *@This(), option: *runtime.Instance) anyerror!void {
+            const selected = ownSelectedness(option);
+            self.any_selected = self.any_selected or selected;
+            if (isSettled(option)) {
+                self.settled_count += 1;
+                self.valid = self.valid and selected;
+            }
+        }
+    };
+    var check: Check = .{};
+    option_list.forEach(select, &check, Check.visit) catch return false;
+    return check.valid and check.any_selected == controls.hasSelectedOption(select) and
+        check.settled_count <= @as(usize, if (hasAttr(select, "multiple")) 0 else 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -524,16 +735,11 @@ fn optionText(instance: *runtime.Instance) anyerror!runtime.DOMString {
 // IDL attributes
 // ---------------------------------------------------------------------------
 
-/// Getter for form: "If the option element has a select element as its
-/// parent, or has an optgroup element as its parent and that optgroup element
-/// has a select element as its parent, then the form IDL attribute must
-/// return the same value as the form IDL attribute on that select element.
-/// Otherwise, it must return null."
+/// HTML option form getter, steps 1–3 (cached 2026-10-17): return the
+/// nearest ancestor select's form owner, or null when there is no such select.
 pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    var parent = (interfaces.Node.get_parentNode(instance) catch null) orelse return null;
-    if (isElementNamed(parent, "optgroup")) parent = (interfaces.Node.get_parentNode(parent) catch null) orelse return null;
-    if (parent.stateAs(interfaces.HTMLSelectElement.State) == null) return null;
-    return interfaces.HTMLSelectElement.get_form(parent);
+    const select = ownerSelect(instance) orelse return null;
+    return interfaces.HTMLSelectElement.get_form(select);
 }
 
 /// Getter for label
@@ -549,22 +755,7 @@ pub fn get_label(instance: *runtime.Instance) anyerror!runtime.DOMString {
 
 /// Getter for selected
 pub fn get_selected(instance: *runtime.Instance) anyerror!bool {
-    const explicit = explicitSelectedness(instance);
-
-    const select = ownerSelect(instance) orelse return explicit == .on;
-
-    // A multiple select never reduces the set, so the option's own answer stands.
-    if (hasAttr(select, "multiple")) return explicit == .on;
-
-    // Single select: exactly one option can be selected, and which one is the
-    // reset algorithm's business rather than any single option's.
-    const allocator = instance.ctx.allocator;
-    var options = std.ArrayListUnmanaged(*runtime.Instance).empty;
-    defer options.deinit(allocator);
-    collectOptions(select, allocator, &options) catch return explicit == .on;
-
-    const selected = selectedIndexOf(select, options.items) orelse return false;
-    return options.items[selected] == instance;
+    return ownSelectedness(instance);
 }
 
 /// Getter for value
@@ -602,10 +793,17 @@ pub fn get_index(instance: *runtime.Instance) anyerror!i32 {
 
 /// Setter for selected
 pub fn set_selected(instance: *runtime.Instance, value: bool) anyerror!void {
-    // Sets selectedness AND dirtiness, then asks for a reset - which is why
-    // `false` maps to `.off` rather than `.off_no_reset`: a single select
-    // re-selects its first enabled option immediately afterwards.
-    try setSelectedness(instance, if (value) .on else .off);
+    if (ownerSelect(instance)) |select| {
+        var options: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+        defer options.deinit(instance.ctx.allocator);
+        try collectOptions(select, instance.ctx.allocator, &options);
+        try writeSelection(instance, value, true, value and !hasAttr(select, "multiple"));
+        // Whenever selectedness becomes true in a single select, deselect
+        // every other option before the selectedness-setting algorithm.
+        if (value and !hasAttr(select, "multiple")) try deselectOthers(options.items, instance);
+        _ = try setSelectednessForList(select, options.items);
+        try selected_content.updateAll(select);
+    } else try StateMap.put(instance, .{ .selectedness = value, .dirtiness = true });
 }
 
 /// Setter for text

@@ -321,3 +321,5 @@ pub const ErrorInfo = event_utils.ErrorInfo;
 test {
     std.testing.refAllDecls(@This());
 }
+
+pub const popover = @import("popover.zig");

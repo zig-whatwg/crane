@@ -62,12 +62,6 @@ pub const InternalState = struct {
     cryptographic_nonce: ?[]u8 = null,
 
     // === Popover State ===
-    /// Current popover visibility state
-    /// Spec: https://html.spec.whatwg.org/multipage/popover.html#popover-visibility-state
-    popover_showing: bool = false,
-
-    /// Popover invoker element (the element that opened this popover)
-    popover_invoker: ?*runtime.Instance = null,
 
     // === Focus State ===
     /// Whether this element has been focused programmatically
@@ -103,8 +97,6 @@ pub const InternalState = struct {
         return .{
             .allocator = allocator,
             .cryptographic_nonce = null,
-            .popover_showing = false,
-            .popover_invoker = null,
             .was_focused_by_script = false,
             .element_internals = null,
             .internals_attached = false,
@@ -789,21 +781,7 @@ pub fn set_nonce(instance: *runtime.Instance, value: runtime.DOMString) anyerror
 /// Operation: togglePopover
 /// Spec: https://html.spec.whatwg.org/multipage/popover.html#dom-togglepopover
 pub fn call_togglePopover(instance: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) anyerror!bool {
-    const internal = getInternalState(instance) orelse return error.InvalidStateError;
-    _ = options; // ShowPopoverOptions - simplified for now
-
-    // Check if this is a popover
-    if ((try get_popover(instance)) == null) {
-        return error.NotSupportedError;
-    }
-
-    if (internal.popover_showing) {
-        try call_hidePopover(instance);
-        return false;
-    } else {
-        try call_showPopover(instance, webidl.Opt(dictionaries.ShowPopoverOptions).notPassed());
-        return true;
-    }
+    return @import("html").popover.toggleMethod(instance, if (options.was_passed) options.value else null);
 }
 
 /// Operation: blur (HTMLOrSVGElement): the unfocusing steps
@@ -877,57 +855,13 @@ fn isDisabledFormControl(instance: *runtime.Instance) bool {
 /// Operation: showPopover
 /// Spec: https://html.spec.whatwg.org/multipage/popover.html#dom-showpopover
 pub fn call_showPopover(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ShowPopoverOptions)) anyerror!void {
-    const internal = getInternalState(instance) orelse return error.InvalidStateError;
-    _ = options; // ShowPopoverOptions - simplified for now
-
-    // Check if this is a popover
-    if ((try get_popover(instance)) == null) {
-        return error.NotSupportedError;
-    }
-
-    // Check if already showing
-    if (internal.popover_showing) {
-        return error.InvalidStateError;
-    }
-
-    // Fire beforetoggle event
-    // TODO(events): fire "beforetoggle" at the element - nothing is dispatched
-    // yet. (This used to read the onbeforetoggle handler and drop it.)
-
-    // Show the popover (add to top layer)
-    internal.popover_showing = true;
-
-    // Fire toggle event
-    // TODO(events): fire "toggle" at the element - nothing is dispatched
-    // yet. (This used to read the ontoggle handler and drop it.)
+    try @import("html").popover.showPopover(instance, true, if (options.was_passed) options.value.source else null);
 }
 
 /// Operation: hidePopover
 /// Spec: https://html.spec.whatwg.org/multipage/popover.html#dom-hidepopover
 pub fn call_hidePopover(instance: *runtime.Instance) anyerror!void {
-    const internal = getInternalState(instance) orelse return error.InvalidStateError;
-
-    // Check if this is a popover
-    if ((try get_popover(instance)) == null) {
-        return error.NotSupportedError;
-    }
-
-    // Check if already hidden
-    if (!internal.popover_showing) {
-        return error.InvalidStateError;
-    }
-
-    // Fire beforetoggle event
-    // TODO(events): fire "beforetoggle" at the element - nothing is dispatched
-    // yet. (This used to read the onbeforetoggle handler and drop it.)
-
-    // Hide the popover (remove from top layer)
-    internal.popover_showing = false;
-    internal.popover_invoker = null;
-
-    // Fire toggle event
-    // TODO(events): fire "toggle" at the element - nothing is dispatched
-    // yet. (This used to read the ontoggle handler and drop it.)
+    try @import("html").popover.hideMethod(instance);
 }
 
 /// Operation: focus (HTMLOrSVGElement): the focusing steps
@@ -979,6 +913,8 @@ fn ensureInternals(instance: *runtime.Instance) !*runtime.Instance {
 }
 
 pub fn installHooks() void {
+    dom.attribute_change_steps.installForAttribute("http://www.w3.org/1999/xhtml", "popover", .{ .change = &@import("html").popover.attributeChanged });
+    dom.mutation.registerRemovingStepsCallback(&@import("html").popover.removingSteps) catch @panic("out of memory installing popover removal steps");
     dom.attribute_change_steps.installForAttribute("http://www.w3.org/1999/xhtml", "nonce", .{ .change = &nonceAttributeChanged, .read = &nonceValueOf });
     dom.mutation.registerPostConnectionStepsCallback(&nonceConnectionSteps) catch @panic("out of memory installing nonce connection steps");
     dom.cloning_steps.install(&nonceCloningSteps);
@@ -1055,7 +991,7 @@ fn nonceCloningSteps(node: *runtime.Instance, copy: *runtime.Instance, _: bool) 
 
 fn popoverShowing(instance: *runtime.Instance) bool {
     if (instance.stateAs(State) == null) return false;
-    return (getInternalState(instance) orelse return false).popover_showing;
+    return @import("html").popover.showing(instance);
 }
 
 fn attachedInternals(instance: *runtime.Instance) ?*runtime.Instance {

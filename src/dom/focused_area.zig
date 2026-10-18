@@ -14,8 +14,9 @@
 //! means it without touching freed state. Null is the document's viewport,
 //! the focused area of a document nothing else in has the focus.
 //!
-//! Read it through html.focus.focusedAreaOf, which applies the focus fixup
-//! rule; this hook is the raw designation.
+//! Designation reads use html.focus.designatedAreaOf's liveness/connection
+//! checks. focusedAreaOf applies update-the-rendering step 17's focus fixup
+//! (the integrator's Q34 patch); this hook is the raw designation.
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/interaction.html#focused-area-of-the-document
 //!

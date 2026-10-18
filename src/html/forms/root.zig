@@ -4,6 +4,7 @@ const runtime = @import("runtime");
 const form_associated = @import("../form_associated.zig");
 pub const ValidityFlags = @import("dictionaries").ValidityStateFlags;
 pub const options = @import("options.zig");
+pub const selected_content = @import("selected_content.zig");
 pub const picker = @import("picker.zig");
 pub const color_values = @import("color_values.zig");
 
@@ -223,3 +224,5 @@ test {
     // Pure color-value tests require both HTML sanitization and CSS parsing.
     _ = color_values;
 }
+
+pub const select_picker = @import("select_picker.zig");

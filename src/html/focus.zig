@@ -3,22 +3,22 @@
 //! activeElement getter's steps.
 //!
 //! A document's focused area is Document's state, designated through the
-//! hook Document installs (dom.focused_area) and read only through
-//! `focusedAreaOf`, which applies the focus fixup rule. Elements are reached
+//! hook Document installs (dom.focused_area). Designation reads use
+//! `designatedAreaOf`, without requesting style or performing fixup.
+//! `focusedAreaOf` is the separate rendering-time focus fixup.
+//! Elements are reached
 //! through their interfaces; the navigables through their Browser's list of
 //! browsing contexts (dom.browser_state).
 //!
 //! Stated deviations:
-//!   * "Being rendered" has no layout to answer it: an element is taken to be
-//!     rendered when it is connected, not inside a `hidden` subtree (the UA
-//!     style sheet's `[hidden] { display: none }`) and not inside `head`.
+//!   * "Being rendered" has no layout to answer it: computed display and
+//!     flat-tree membership answer whether rendering exists or is delegated.
 //!   * Focus navigation scopes are the document's tree only: shadow trees,
 //!     slots and delegatesFocus are not flattened into the sequential focus
 //!     navigation order, and a shadow host is focused as itself.
-//!   * The focus fixup rule is applied when the focused area is read, rather
-//!     than as the state change the spec makes it during "update the
-//!     rendering" (see `focusedAreaOf`); nothing observes the difference,
-//!     since the rule fires no event.
+//!   * Rendering-time fixup retains the existing no-blur deviation. Focus
+//!     actions validate their target, but their bookkeeping, script reads,
+//!     and selector matching only observe the designation (HTML 6.6.2–6.6.6).
 //!   * Every top-level traversable is taken to have system focus.
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/interaction.html#focus
@@ -160,7 +160,9 @@ fn isNavigableContainer(element: *Instance) bool {
 /// focusable" when their tabindex value is null (6.6.3).
 fn isFocusableByDefault(element: *Instance) bool {
     if (named(element, "a")) return form_associated.hasAttribute(element, "href");
-    if (form_associated.isButton(element) or form_associated.isSelect(element) or form_associated.isTextArea(element)) return true;
+    if (element.stateAs(interfaces.HTMLOptionElement.State) != null) return @import("forms/select_picker.zig").optionFocusable(element);
+    if (form_associated.isSelect(element)) return !(@import("forms/select_picker.zig").isListbox(element) and @import("forms/select_picker.zig").baseAppearance(element));
+    if (form_associated.isButton(element) or form_associated.isTextArea(element)) return true;
     if (form_associated.isInput(element)) {
         var buffer: [16]u8 = undefined;
         return !std.mem.eql(u8, form_associated.inputType(element, &buffer), "hidden");
@@ -178,41 +180,33 @@ fn isActuallyDisabled(element: *Instance) bool {
     }
     if (named(element, "optgroup")) return form_associated.hasAttribute(element, "disabled");
     if (named(element, "option")) {
-        if (form_associated.hasAttribute(element, "disabled")) return true;
-        const parent = form_associated.parentOf(element) orelse return false;
-        return named(parent, "optgroup") and form_associated.hasAttribute(parent, "disabled");
+        // HTML option disabledness (cached 2026-10-17) crosses ordinary
+        // wrappers and stops at the nearest optgroup or ownership barrier.
+        return @import("forms/options.zig").isDisabled(element);
     }
     return false;
 }
 
-/// HTML "inert": an inclusive ancestor has the inert attribute.
+/// HTML "inert": an inclusive ancestor has the inert attribute or is a
+/// select's own button (4.10.6), whose whole subtree is inert.
 fn isInert(node: *Instance) bool {
     var current: ?*Instance = node;
     while (current) |n| : (current = form_associated.parentOf(n)) {
-        if (isElement(n) and form_associated.hasAttribute(n, "inert")) return true;
+        if (isElement(n) and (form_associated.hasAttribute(n, "inert") or
+            @import("forms/select_picker.zig").isSelectButton(n))) return true;
     }
     return false;
 }
 
-/// "Being rendered", without layout (stated deviation): connected in a
-/// document with a browsing context, and no inclusive ancestor is `hidden`
-/// (other than until-found) or a `head`.
+/// HTML 6.6.2 accepts rendered elements and those delegating rendering to
+/// their children. The style owner checks flat-tree membership and display
+/// on the element and its ancestors, including display:contents (Q35/Q37).
 fn isBeingRendered(element: *Instance) bool {
     if (!(interfaces.Node.get_isConnected(element) catch false)) return false;
     // A document with no browsing context (`new Document()`) renders nothing.
     const document = nodeDocument(element) orelse return false;
     if (windowOf(document) == null) return false;
-    var current: ?*Instance = element;
-    while (current) |n| : (current = form_associated.parentOf(n)) {
-        if (!isElement(n)) continue;
-        if (named(n, "head")) return false;
-        if (form_associated.hasAttribute(n, "hidden")) {
-            var value = (interfaces.Element.call_getAttribute(n, runtime.DOMString.initInterned("hidden")) catch null) orelse return false;
-            defer value.deinit(n.ctx.allocator);
-            if (!std.ascii.eqlIgnoreCase(value.asSlice(), "until-found")) return false;
-        }
-    }
-    return true;
+    return dom.style.engine.isBeingRenderedOrDelegating(element) catch false;
 }
 
 /// Whether `element` is a focusable area (6.6.2's first row): its tabindex
@@ -236,6 +230,12 @@ pub fn isClickFocusable(element: *Instance) bool {
 /// tabindex value is not negative.
 pub fn isSequentiallyFocusable(element: *Instance) bool {
     if (!isFocusableArea(element)) return false;
+    if (element.stateAs(interfaces.HTMLOptionElement.State) != null) {
+        const picker = @import("forms/select_picker.zig");
+        if (picker.ownerSelect(element)) |select| {
+            if (picker.isListbox(select) and picker.baseOptions(select)) return picker.firstFocusable(select, true) == element;
+        }
+    }
     const value = tabindexValue(element) orelse return true;
     return value >= 0;
 }
@@ -244,24 +244,31 @@ pub fn isSequentiallyFocusable(element: *Instance) bool {
 // The focused area of a document, and of a top-level traversable (6.6.2)
 // ============================================================================
 
-/// The DOM anchor of `document`'s focused area, or null for its viewport.
+/// The DOM anchor designated in this document, or null for its viewport.
+/// HTML 6.6.2's designation and 6.6.6's activeElement step 1 are reads, not
+/// focusability checks. The generation, connection and document checks
+/// observe synchronous removing steps without style or state writes.
+pub fn designatedAreaOf(document: *Instance) ?*Instance {
+    const designation = dom.focused_area.get(document) orelse return null;
+    if (!designation.isLive()) return null;
+    const element = designation.element;
+    if (!(interfaces.Node.get_isConnected(element) catch false) or nodeDocument(element) != document) return null;
+    return element;
+}
+
+/// Apply rendering-time focus fixup and return the document's focused area.
 ///
 /// HTML "focus fixup rule": "When the designated focused area of the
 /// document is removed from that Document in some way (e.g. it stops being a
 /// focusable area, it is removed from the DOM, it becomes inert, etc.),
 /// designate the Document's viewport to be the new focused area of the
 /// document." The spec runs it as a state change in "update the rendering";
-/// here it runs when the designation is read (stated deviation), which every
-/// reader of the focused area does through this function. The rule fires no
-/// event, so the two cannot be told apart.
+/// this helper retains the existing no-blur deviation. Update-the-rendering
+/// step 17 calls it; designation reads never repair focus. This reverses
+/// row61 Q16's provisional lazy script-read fixup, as required by Q42/Q43.
 pub fn focusedAreaOf(document: *Instance) ?*Instance {
-    const designation = dom.focused_area.get(document) orelse return null;
-    if (designation.isLive()) {
-        const element = designation.element;
-        const in_document = (interfaces.Node.get_isConnected(element) catch false) and
-            nodeDocument(element) == document;
-        if (in_document and isFocusableArea(element)) return element;
-    }
+    if (dom.focused_area.get(document) == null) return null;
+    if (designatedAreaOf(document)) |element| if (isFocusableArea(element)) return element;
     dom.focused_area.set(document, null);
     // HTML removing steps, applied lazily with this focus fixup: removal
     // clears the navigation flag rather than counting as a focus update.
@@ -278,12 +285,12 @@ pub fn currentlyFocusedArea(document: *Instance) *Instance {
     // Step 3: while its focused area is a navigable container with a content
     // navigable, descend into that navigable's active document.
     var depth: usize = 0;
-    while (focusedAreaOf(candidate)) |area| : (depth += 1) {
+    while (designatedAreaOf(candidate)) |area| : (depth += 1) {
         if (depth == 64 or !isNavigableContainer(area)) break;
         candidate = contentDocumentOf(area) orelse break;
     }
     // Steps 4-5.
-    return focusedAreaOf(candidate) orelse candidate;
+    return designatedAreaOf(candidate) orelse candidate;
 }
 
 /// HTML "has focus steps" for `document`.
@@ -292,7 +299,8 @@ pub fn hasFocus(document: *Instance) bool {
     var depth: usize = 0;
     while (depth < 64) : (depth += 1) {
         if (candidate == document) return true;
-        const area = focusedAreaOf(candidate) orelse return false;
+        // Has-focus steps 3.2–3.3 read the designation, without fixup.
+        const area = designatedAreaOf(candidate) orelse return false;
         if (!isNavigableContainer(area)) return false;
         candidate = contentDocumentOf(area) orelse return false;
     }
@@ -398,8 +406,7 @@ fn focusUpdateSteps(old_chain_in: Chain, new_chain_in: Chain, new_focus_target: 
     const target_document = if (new_focus_target) |target| nodeDocument(target) else null;
     const target_document_generation = if (target_document) |document| runtime.SlabAllocator.generationOf(document) else 0;
     var expected_target_focus: ?dom.focused_area.Designation = if (target_document) |document| designation: {
-        _ = focusedAreaOf(document);
-        break :designation dom.focused_area.get(document);
+        break :designation if (designatedAreaOf(document) != null) dom.focused_area.get(document) else null;
     } else null;
     const target_had_focus = expected_target_focus != null;
     // Step 2: for each entry in old chain, in order.
@@ -417,7 +424,7 @@ fn focusUpdateSteps(old_chain_in: Chain, new_chain_in: Chain, new_focus_target: 
         // and Gecko nsFocusManager::SetFocusInner/BlurImpl clear focus before
         // blur and preserve a handler's new focus, even the original element.
         if (document) |d| {
-            if (isElement(entry) and focusedAreaOf(d) == entry) {
+            if (isElement(entry) and designatedAreaOf(d) == entry) {
                 dom.focused_area.set(d, null);
                 if (d == target_document) expected_target_focus = null;
             }
@@ -429,13 +436,13 @@ fn focusUpdateSteps(old_chain_in: Chain, new_chain_in: Chain, new_focus_target: 
         // Step 2.4.
         if (blur_target) |target| fireFocusEvent(target, "blur", related);
         if (document) |d| {
-            if (runtime.SlabAllocator.generationOf(d) == document_generation and focusedAreaOf(d) != null) return;
+            if (runtime.SlabAllocator.generationOf(d) == document_generation and designatedAreaOf(d) != null) return;
         }
     }
     if (target_document) |document| {
         if (runtime.SlabAllocator.generationOf(document) != target_document_generation) return;
-        _ = focusedAreaOf(document);
-        if (!std.meta.eql(dom.focused_area.get(document), expected_target_focus)) return;
+        const current = if (designatedAreaOf(document) != null) dom.focused_area.get(document) else null;
+        if (!std.meta.eql(current, expected_target_focus)) return;
     }
     // Step 3: no platform conventions.
     // Step 4: for each entry in new chain, in reverse order.
@@ -447,13 +454,13 @@ fn focusUpdateSteps(old_chain_in: Chain, new_chain_in: Chain, new_focus_target: 
         // Step 4.1: designate a focusable area as its document's focused area.
         if (isElement(entry)) {
             if (nodeDocument(entry)) |document| {
-                if (focusedAreaOf(document) != entry) {
+                if (designatedAreaOf(document) != entry) {
                     if (windowOf(document)) |window| dom.navigation_api.setFocusChanged(window, true);
                     dom.focused_area.set(document, entry);
                 }
             }
         } else if (isDocument(entry)) {
-            if (focusedAreaOf(entry) != null or (entry == target_document and target_had_focus)) {
+            if (designatedAreaOf(entry) != null or (entry == target_document and target_had_focus)) {
                 if (windowOf(entry)) |window| dom.navigation_api.setFocusChanged(window, true);
                 dom.focused_area.set(entry, null);
             }
@@ -471,7 +478,7 @@ fn focusUpdateSteps(old_chain_in: Chain, new_chain_in: Chain, new_focus_target: 
     // the focus would stay the document's focused area.
     if (new_focus_target) |target| {
         if (target == target_document and runtime.SlabAllocator.generationOf(target) == target_document_generation and isDocument(target) and
-            (focusedAreaOf(target) != null or target_had_focus))
+            (designatedAreaOf(target) != null or target_had_focus))
         {
             if (windowOf(target)) |window| dom.navigation_api.setFocusChanged(window, true);
             dom.focused_area.set(target, null);
@@ -589,7 +596,8 @@ pub fn activeElement(this: *Instance) ?*Instance {
     const document = nodeDocument(this) orelse return null;
     // Step 1: "Let candidate be this's node document's focused area's DOM
     // anchor." (The viewport's DOM anchor is the Document.)
-    var candidate: *Instance = focusedAreaOf(document) orelse document;
+    // This step does not run rendering-time fixup (Q42's Q16 reversal).
+    var candidate: *Instance = designatedAreaOf(document) orelse document;
     // Step 2: "Set candidate to the result of retargeting candidate against
     // this."
     candidate = retarget(candidate, this);
@@ -847,6 +855,14 @@ fn sequentialSearch(document: *Instance, starting_point: ?*Instance, direction: 
 pub fn navigateSequentially(document: *Instance, direction: Direction) void {
     // Step 1: the starting point.
     var starting_point = currentlyFocusedArea(document);
+    if (starting_point.stateAs(interfaces.HTMLOptionElement.State) != null) {
+        const picker = @import("forms/select_picker.zig");
+        if (picker.ownerSelect(starting_point)) |select| {
+            if (picker.isListbox(select) and picker.baseOptions(select)) {
+                starting_point = picker.firstFocusable(select, true) orelse starting_point;
+            }
+        }
+    }
     var depth: usize = 0;
     while (depth < 64) : (depth += 1) {
         const starting_document = nodeDocument(starting_point) orelse return;

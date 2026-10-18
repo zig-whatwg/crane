@@ -22,11 +22,27 @@ pub fn forEach(select: *runtime.Instance, context: anytype, comptime visit: fn (
     }
 }
 
-fn hasOptgroupAncestor(node: *runtime.Instance, select: *runtime.Instance) bool {
+pub fn hasOptgroupAncestor(node: *runtime.Instance, select: *runtime.Instance) bool {
     var ancestor = associated.parentOf(node);
     while (ancestor) |element| : (ancestor = associated.parentOf(element)) {
         if (element == select) return false;
         if (element.stateAs(interfaces.HTMLOptGroupElement.State) != null) return true;
+    }
+    return false;
+}
+
+/// HTML 4.10.10 option disabledness, steps 1–3 (cached 2026-10-17).
+/// Ordinary wrappers do not stop the walk; the nearest optgroup does.
+pub fn isDisabled(option: *runtime.Instance) bool {
+    if (associated.hasAttribute(option, "disabled")) return true;
+    var ancestor = associated.parentOf(option);
+    while (ancestor) |element| : (ancestor = associated.parentOf(element)) {
+        if (element.stateAs(interfaces.HTMLSelectElement.State) != null or
+            element.stateAs(interfaces.HTMLHRElement.State) != null or
+            element.stateAs(interfaces.HTMLDataListElement.State) != null or
+            element.stateAs(interfaces.HTMLOptionElement.State) != null) return false;
+        if (element.stateAs(interfaces.HTMLOptGroupElement.State) != null)
+            return associated.hasAttribute(element, "disabled");
     }
     return false;
 }

@@ -97,6 +97,8 @@ pub const SpeculationEagerness = @import("dom").document_scripts.SpeculationEage
 /// Spec: https://dom.spec.whatwg.org/#concept-document
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
+    /// Allocated only by an open popover/picker. The document owns all holds.
+    top_layer: ?*@import("dom").top_layer.State = null,
 
     /// Cached DOMImplementation instance ([SameObject])
     implementation: ?*runtime.Instance,
@@ -514,6 +516,11 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
+        if (self.top_layer) |layer| {
+            self.top_layer = null;
+            layer.releaseAfterRealmEnded();
+            self.allocator.destroy(layer);
+        }
         self.script_delivery_continuation_suppressed = true;
         // Borrowed membership ends before parsers/module owners release nodes.
         self.render_blocking_elements.clear();
@@ -656,7 +663,24 @@ pub const InternalState = struct {
         if (self.selection) |sel| self.selection_kept.release(sel, interfaces.Selection.deinit);
         if (self.style_sheets) |ss| self.style_sheets_kept.release(ss, interfaces.StyleSheetList.deinit);
     }
+
+    fn clearTopLayer(self: *InternalState) void {
+        const layer = self.top_layer orelse return;
+        self.top_layer = null;
+        layer.deinit();
+        self.allocator.destroy(layer);
+    }
 };
+
+fn topLayerState(instance: *runtime.Instance, create: bool) !?*@import("dom").top_layer.State {
+    const internal = getInternal(instance) orelse return null;
+    if (internal.top_layer) |layer| return layer;
+    if (!create) return null;
+    const layer = try internal.allocator.create(@import("dom").top_layer.State);
+    layer.* = @import("dom").top_layer.State.init(internal.allocator, instance);
+    internal.top_layer = layer;
+    return layer;
+}
 
 /// dom.style's `engine_of`: this document's style engine.
 fn styleEngineOf(instance: *runtime.Instance) ?*@import("dom").style.StyleEngine {
@@ -731,6 +755,7 @@ fn policyContainerOf(document: *runtime.Instance) ?*fetch.internal.PolicyContain
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    @import("dom").top_layer.install(.{ .get = &topLayerState });
     // Its states left at its Browser's end (Browser.deinit).
     @import("dom").teardown_sweeps.install(.documents, &sweepRemaining);
     // The style engine this document keeps, and the media environment its
@@ -1076,6 +1101,7 @@ pub fn getBoundV8Wrapper(instance: *runtime.Instance) ?*anyopaque {
 
 /// Document's own teardown: the generated chain runs Node's after it.
 pub fn deinitOwn(instance: *runtime.Instance) void {
+    if (getInternal(instance)) |internal| internal.clearTopLayer();
     if (getInternal(instance)) |internal| internal.script_delivery_continuation_suppressed = true;
     @import("html").script_execution.discardDocumentScripts(instance);
     // Clean up internal state from registry
