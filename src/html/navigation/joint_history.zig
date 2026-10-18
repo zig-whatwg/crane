@@ -27,6 +27,7 @@ const Allocator = std.mem.Allocator;
 /// A policy container, as a document state's history policy container keeps
 /// one (Fetch's: CSP list, referrer policy).
 pub const PolicyContainer = @import("fetch").internal.PolicyContainer;
+pub const NotRestoredReasons = @import("not_restored_reasons.zig").NotRestoredReasons;
 pub const ReferrerPolicy = @import("fetch").internal.ReferrerPolicy;
 
 /// Whether a document whose referrer policy is `policy` hides its URL from
@@ -114,6 +115,13 @@ pub const Entry = struct {
     /// recorded for that document's navigation.activation - on one entry of
     /// the state (`setActivation`). Owned.
     activation: ?*Activation = null,
+    /// The document state's not restored reasons (HTML "document state"
+    /// item): why its document was not kept in the back/forward cache, built
+    /// when it was unloaded as a top-level traversable's active document
+    /// (`setNotRestoredReasons`). The document a back/forward traversal
+    /// makes for the state reports them. Shared by the entries of the
+    /// document state, each holding its own copy. Owned.
+    not_restored_reasons: ?NotRestoredReasons = null,
 
     fn deinit(self: *Entry, allocator: Allocator) void {
         allocator.free(self.url);
@@ -123,6 +131,12 @@ pub const Entry = struct {
         if (self.resource) |r| allocator.free(r);
         self.dropHistoryPolicyContainer();
         self.dropActivation(allocator);
+        self.dropNotRestoredReasons(allocator);
+    }
+
+    fn dropNotRestoredReasons(self: *Entry, allocator: Allocator) void {
+        if (self.not_restored_reasons) |*reasons| reasons.deinit(allocator);
+        self.not_restored_reasons = null;
     }
 
     fn dropHistoryPolicyContainer(self: *Entry) void {
@@ -521,6 +535,8 @@ pub const JointHistory = struct {
         // And so is its history policy container.
         var history_container: ?PolicyContainer = if (current.history_policy_container) |*c| try c.clone(self.allocator) else null;
         errdefer if (history_container) |*c| c.deinit();
+        var current_reasons: ?NotRestoredReasons = if (current.not_restored_reasons) |*r| try r.clone(self.allocator) else null;
+        errdefer if (current_reasons) |*r| r.deinit(self.allocator);
         const new_api_state = api_state orelse try current.api_state.clone(self.allocator);
         try self.commit(navigable, url, current.document_state, current.document, state, new_api_state, origin, handling, true, null);
         const committed = self.currentEntry(navigable) orelse unreachable;
@@ -529,6 +545,12 @@ pub const JointHistory = struct {
         committed.dropHistoryPolicyContainer();
         committed.history_policy_container = history_container;
         history_container = null;
+        // And its not restored reasons.
+        if (current_reasons) |reasons| {
+            committed.dropNotRestoredReasons(self.allocator);
+            committed.not_restored_reasons = reasons;
+            current_reasons = null;
+        }
     }
 
     /// HTML "populate a session history entry" step 7.2.3: `document_state`'s
@@ -541,6 +563,36 @@ pub const JointHistory = struct {
             entry.dropHistoryPolicyContainer();
             entry.history_policy_container = copy;
         }
+    }
+
+    /// HTML "build not restored reasons for document state" step 7:
+    /// `document_state`'s not restored reasons become `reasons` (taken) - a
+    /// copy on every entry of the state. Out of memory, an entry keeps none.
+    pub fn setNotRestoredReasons(self: *JointHistory, document_state: u64, reasons: NotRestoredReasons) void {
+        var owned = reasons;
+        defer owned.deinit(self.allocator);
+        for (self.entries.items) |*entry| {
+            if (entry.document_state != document_state) continue;
+            entry.dropNotRestoredReasons(self.allocator);
+            entry.not_restored_reasons = owned.clone(self.allocator) catch null;
+        }
+    }
+
+    /// The not restored reasons of the document state of the entry whose id
+    /// is `entry_id`, if it has them. BORROWED: the entry keeps them.
+    pub fn notRestoredReasons(self: *JointHistory, entry_id: u64) ?*const NotRestoredReasons {
+        const entry = self.entryById(entry_id) orelse return null;
+        if (entry.not_restored_reasons) |*reasons| return reasons;
+        return null;
+    }
+
+    /// The document state whose document is `document`, if an entry still
+    /// has it.
+    pub fn documentStateOf(self: *const JointHistory, document: *anyopaque) ?u64 {
+        for (self.entries.items) |entry| {
+            if (entry.document == document) return entry.document_state;
+        }
+        return null;
     }
 
     /// The history policy container of the document state of the entry whose

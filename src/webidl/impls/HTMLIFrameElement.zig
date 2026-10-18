@@ -2629,6 +2629,17 @@ fn pageSwapOf(integration: *IFrameIntegration, record: *Navigation, response: *c
     };
 }
 
+/// HTML "a Document's not restored reasons" for the document `record`
+/// commits: its top-level traversable's traversed-to entry's document
+/// state's, for a back/forward traversal (not a reload); null otherwise.
+fn notRestoredReasonsOf(integration: *IFrameIntegration, record: *const Navigation) ?*const dom_module.performance_timeline.NotRestoredReasons {
+    if (record.traversal_entry == 0 or record.traversal_entry == record.traversal_from) return null;
+    const bc = integration.browsing_context orelse return null;
+    if (bc.parent != null) return null;
+    const history = bc.getTop().joint_history orelse return null;
+    return history.notRestoredReasons(record.traversal_entry);
+}
+
 /// The pageswap step of "unload a document and its descendants" (6.1), at
 /// `document` in its realm. False when its listeners took the navigable
 /// away, or the document is no longer the one it shows: the unload stops
@@ -2698,6 +2709,14 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
                 // it into the timing info, HTTP fetch step 3.5.3).
                 .service_worker_timing = timing.timing_info.service_worker_timing_info,
                 .redirect_count = timing.redirect_count,
+                // Step 11: the document's not restored reasons - a
+                // top-level traversable's, after a back/forward traversal.
+                // Null after a reload, though HTML keeps the document state
+                // (and so its reasons) across one: Chromium, the one engine
+                // that ships NotRestoredReasons, resets them, and
+                // performance-navigation-timing-reload.tentative expects
+                // null (Edge 157 passes it on wpt.fyi).
+                .not_restored_reasons = notRestoredReasonsOf(integration, record),
                 // A traversal to the entry it leaves is a reload (as the
                 // navigation API's activation reads it), any other is
                 // back_forward; a push or replace navigates.
@@ -2954,6 +2973,14 @@ fn unloadDocumentAndDescendants(document: *runtime.Instance, integration: *IFram
 fn unloadDocumentAndDescendantsSwapping(document: *runtime.Instance, integration: *IFrameIntegration, page_swap: ?*const PageSwapStep) bool {
     var documents = dom_module.navigables.inclusiveDescendantDocuments(document, integration.allocator);
     defer documents.deinit(integration.allocator);
+    // "Unload" step 19 for a top-level traversable's document: "build not
+    // restored reasons for a top-level traversable and its descendants",
+    // read now, while every document of the tree is fully active, and
+    // completed once the cleanup steps (step 18, run below by
+    // destroyWindowDocuments) have recorded their reasons (dom.bfcache
+    // .Builder), into the document state of the entry that showed it.
+    var reasons = NotRestoredReasonsStep.begin(document, integration);
+    defer reasons.deinit();
     // Children first: the list is parents-first, so walk it backwards.
     var i = documents.items.len;
     while (i > 0) {
@@ -2976,9 +3003,39 @@ fn unloadDocumentAndDescendantsSwapping(document: *runtime.Instance, integration
         }
     }
     if (integration.browsing_context) |bc| dom_module.navigables.destroyWindowDocuments(bc);
+    reasons.finish(integration);
     destroyChildNavigables(integration);
     return true;
 }
+
+/// "Unload" step 19, for a top-level traversable (a popup: Crane's top-level
+/// page is never unloaded by a navigation): its not restored reasons, kept
+/// with the document state of the history entry that showed `document`.
+const NotRestoredReasonsStep = struct {
+    builder: ?dom_module.bfcache.Builder = null,
+    document_state: u64 = 0,
+
+    fn begin(document: *runtime.Instance, integration: *IFrameIntegration) NotRestoredReasonsStep {
+        const bc = integration.browsing_context orelse return .{};
+        if (bc.parent != null) return .{};
+        const history = bc.getTop().joint_history orelse return .{};
+        const state = history.documentStateOf(@ptrCast(document)) orelse return .{};
+        const builder = dom_module.bfcache.Builder.begin(document, integration.allocator) catch return .{};
+        return .{ .builder = builder, .document_state = state };
+    }
+
+    fn finish(self: *NotRestoredReasonsStep, integration: *IFrameIntegration) void {
+        const builder = if (self.builder) |*b| b else return;
+        const bc = integration.browsing_context orelse return;
+        const history = bc.getTop().joint_history orelse return;
+        const tree = builder.finish() catch return;
+        history.setNotRestoredReasons(self.document_state, tree);
+    }
+
+    fn deinit(self: *NotRestoredReasonsStep) void {
+        if (self.builder) |*b| b.deinit();
+    }
+};
 
 /// The navigables of the iframes in a document that is going - unloaded and
 /// destroyed by `unloadDocumentAndDescendantsSwapping` - are destroyed after
