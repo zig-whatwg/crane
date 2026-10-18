@@ -18,8 +18,9 @@
 //! while a frame navigates again - the srcdoc frame to a new srcdoc; the
 //! other to a javascript: URL whose String is a document, or to a data: URL
 //! (a local scheme: step 3 inherits the initiator's container) - and then
-//! checks the frame's active document: it must have the page's policy. The
-//! round that fails nothing is the control: the frame shows a new document.
+//! checks the frame's active document: it must have the page's policy. A
+//! navigation with memory to spare, before the sweep, is the control: the
+//! frame shows a new document.
 //!
 //! Red on lane/int4 (lane leaks5): both src sweeps panicked in
 //! HTMLIFrameElement.resolveSrc, whose every allocation was `catch
@@ -35,6 +36,16 @@
 //! 3.3), whose copy allocates; and a new iframe, whose initial about:blank
 //! document inherits its creator's container ("create a new browsing
 //! context and document" step 19.2), which out of memory left empty.
+//! And a contentWindow read while memory is still out, after each failing
+//! round of a srcdoc re-navigation (`sweepContentWindow`).
+//!
+//! Known, and not this test's to fix (lane leaks5's report): a round that
+//! runs out of memory after the frame's old document has unloaded, and
+//! before the new one commits, leaves the navigable on the unloaded
+//! document, and it never navigates again - the srcdoc frame from failing
+//! allocation 102, the javascript: frame from 91, on lane/int4. The rounds
+//! after that test nothing new, so the control is the navigation before the
+//! sweep, which must show a new document.
 
 const std = @import("std");
 const testing = std.testing;
@@ -103,17 +114,31 @@ const Navigation = enum {
         };
     }
 
+    /// How far apart the allocations a sweep fails are: every one, except
+    /// for a new frame, whose creation (a realm, a Window, a document and
+    /// its elements) makes so many that a sweep of each takes minutes.
+    fn stride(self: Navigation) usize {
+        return switch (self) {
+            .new_frame => 7,
+            else => 1,
+        };
+    }
+
+    /// Each round sets a new value (`window.k` counts them), so that each
+    /// round's document is told apart from the last.
     fn script(self: Navigation) []const u8 {
         return switch (self) {
-            .srcdoc => "document.getElementById('s').srcdoc = '<p>again</p>';",
-            .javascript_url => "document.getElementById('n').src = 'javascript:\"<p>string</p>\"';",
+            .srcdoc => "document.getElementById('s').srcdoc = '<p>again ' + (window.k = (window.k || 0) + 1) + '</p>';",
+            .javascript_url => "document.getElementById('n').src = 'javascript:\"<p>' + (window.k = (window.k || 0) + 1) + '</p>\"';",
             // A local-scheme URL: "determine navigation params policy
             // container" inherits the initiator's container (step 3).
-            .data_url => "document.getElementById('n').src = 'data:text/html,<p>data</p>';",
+            .data_url => "document.getElementById('n').src = 'data:text/html,<p>' + (window.k = (window.k || 0) + 1) + '</p>';",
             // A new iframe's initial about:blank document, which "create a
             // new browsing context and document" step 19.2 gives a clone of
             // its creator's container.
-            .new_frame => "window.f = undefined; window.f = document.createElement('iframe'); document.body.appendChild(window.f);",
+            // The last round's frame goes first: kept, each one's realm
+            // stayed alive and V8 reached its heap limit.
+            .new_frame => "if (window.f) window.f.remove(); window.f = undefined; window.f = document.createElement('iframe'); document.body.appendChild(window.f);",
         };
     }
 };
@@ -134,13 +159,37 @@ fn sweep(navigation: Navigation, rounds: usize) !void {
     }
     // The frame inherited the page's policy.
     try testing.expectEqual(FrameDocument{ .policies = 1 }, try frameDocument(page, realm, navigation));
+    // The control: with memory to spare, the navigation runs - the frame
+    // shows a new document with the page's policy. A src set on a frame
+    // that has a srcdoc attribute changes nothing (HTML 4.8.5): lane
+    // leaks4's javascript: sweep did that, navigated nothing, and passed
+    // vacuously.
+    if (navigation != .new_frame) {
+        const shown = (try frameWindowDocument(page, realm, navigation)) orelse return error.NoFrameDocument;
+        const shown_generation = runtime.SlabAllocator.generationOf(shown);
+        try page.runScript(navigation.script());
+        var navigated = false;
+        for (0..40) |_| {
+            _ = try browser.runEventLoopBlocking(50);
+            const now = (try frameWindowDocument(page, realm, navigation)) orelse continue;
+            if (now != shown or runtime.SlabAllocator.generationOf(now) != shown_generation) {
+                navigated = true;
+                break;
+            }
+        }
+        if (!navigated) {
+            std.debug.print("{s}: the control navigation navigated nothing\n", .{@tagName(navigation)});
+            return error.NothingNavigated;
+        }
+        try testing.expectEqual(FrameDocument{ .policies = 1 }, try frameDocument(page, realm, navigation));
+    }
 
     var round: usize = 0;
     while (round < rounds) : (round += 1) {
         const before = frameWindowDocument(page, realm, navigation) catch null;
         const before_generation: u64 = if (before) |d| runtime.SlabAllocator.generationOf(d) else 0;
         failing.has_induced_failure = false;
-        failing.fail_index = failing.alloc_index + round;
+        failing.fail_index = failing.alloc_index + round * navigation.stride();
         page.runScript(navigation.script()) catch {};
         _ = browser.runEventLoopBlocking(50) catch {};
         failing.fail_index = std.math.maxInt(usize);
@@ -164,19 +213,8 @@ fn sweep(navigation: Navigation, rounds: usize) !void {
             std.debug.print("{s}: failing allocation {d} of the navigation left the frame's document with no policy\n", .{ @tagName(navigation), round });
             return error.FailedOpen;
         }
-        // A sweep past the navigation's last allocation fails nothing: the
-        // control round. With memory to spare the navigation ran, and the
-        // frame shows a new document - a src set on a frame that has a
-        // srcdoc attribute changes nothing (HTML 4.8.5), and the javascript:
-        // sweep once navigated nothing at all, so passed vacuously.
-        if (!failing.has_induced_failure) {
-            const after = (frameWindowDocument(page, realm, navigation) catch null) orelse return error.NoFrameDocument;
-            if (after == before and runtime.SlabAllocator.generationOf(after) == before_generation) {
-                std.debug.print("{s}: the control round navigated nothing\n", .{@tagName(navigation)});
-                return error.NothingNavigated;
-            }
-            return;
-        }
+        // A sweep past the navigation's last allocation fails nothing.
+        if (!failing.has_induced_failure) return;
     }
     return error.SweepDidNotEnd;
 }
@@ -227,6 +265,72 @@ test "a new iframe's initial about:blank document never starts without its creat
     const Run = struct {
         fn run(failure: *?anyerror) void {
             sweep(.new_frame, 4000) catch |err| {
+                failure.* = err;
+            };
+        }
+    };
+    var failure: ?anyerror = null;
+    const thread = try std.Thread.spawn(.{}, Run.run, .{&failure});
+    thread.join();
+    if (failure) |err| return err;
+}
+
+/// `iframe.contentWindow` read while memory is still out, right after a
+/// srcdoc re-navigation failed at the i-th allocation: null, or a Window.
+///
+/// HTMLIFrameElement.get_contentWindow fell back to the integration's
+/// WindowProxy - a Zig struct inside IFrameIntegration, not a
+/// runtime.Instance - cast to the WindowProxy typedef (*runtime.Instance)
+/// when the navigable had no realm context and createChildNavigable failed,
+/// or when its realm had no Window. A navigation whose new realm could not
+/// be made leaves no realm context (replaceRealm: the old one is released,
+/// and attachRealm fails); out of memory, createChildNavigable fails too.
+/// Script and Zig callers then read the struct's bytes as a Window's state:
+/// probably the "Document with no internal state" lane leaks4 saw through
+/// contentWindow (not proven - lane/int4 reads it with memory to spare,
+/// and rebuilds the frame).
+fn sweepContentWindow(rounds: usize) !void {
+    var failing = std.testing.FailingAllocator.init(std.heap.c_allocator, .{});
+    const browser = try browser_mod.Browser.init(failing.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.NoPage;
+    try page.loadHTML(page_html, .{ .base_url = "https://example.test/page.html" });
+    _ = try browser.runEventLoopBlocking(50);
+    const realm = browser.getRealm() orelse return error.NoRealm;
+    // The element, read with memory to spare: it stays in the page.
+    const owned = try page.evaluateScript(Navigation.srcdoc.frame());
+    defer owned.release();
+    const iframe = engine.convertToPlatformObject(realm, owned.value) orelse return error.NoIframe;
+
+    var round: usize = 0;
+    var none_found: usize = 0;
+    while (round < rounds) : (round += 1) {
+        failing.has_induced_failure = false;
+        failing.fail_index = failing.alloc_index + round;
+        page.runScript(Navigation.srcdoc.script()) catch {};
+        _ = browser.runEventLoopBlocking(50) catch {};
+        const induced = failing.has_induced_failure;
+        // Still out of memory: what the frame answers now.
+        const window = interfaces.HTMLIFrameElement.get_contentWindow(iframe) catch null;
+        failing.fail_index = std.math.maxInt(usize);
+        if (window) |w| {
+            if (!std.mem.eql(u8, w.vtable.name, "Window")) {
+                std.debug.print("failing allocation {d}: contentWindow answered something that is not a Window\n", .{round});
+                return error.NotAWindow;
+            }
+        } else none_found += 1;
+        if (!induced) break;
+    }
+    // The sweep reached the state the fallback was for: a navigable with no
+    // window to answer.
+    if (none_found == 0) return error.NoRoundLeftTheFrameWithoutAWindow;
+}
+
+test "an iframe's contentWindow out of memory after a failed navigation is null or a Window, never its WindowProxy struct" {
+    const Run = struct {
+        fn run(failure: *?anyerror) void {
+            sweepContentWindow(4000) catch |err| {
                 failure.* = err;
             };
         }

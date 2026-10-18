@@ -4151,11 +4151,16 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
         return null;
     }
 
+    // No window to answer - a navigable left with no realm (a navigation
+    // whose new realm could not be made), a child navigable that could not
+    // be made, a realm with no Window - is null: "no content window". It
+    // used to answer the integration's WindowProxy, a Zig struct inside
+    // IFrameIntegration, cast to the WindowProxy typedef (*runtime.Instance):
+    // script and Zig callers read the struct's bytes as a Window's state, a
+    // type confusion (lane leaks5; probably the Document with no internal
+    // state lane leaks4's iframe sweep saw through contentWindow).
     if (!internal.integration.hasRealmContext()) {
-        if (!createChildNavigable(instance)) {
-            if (internal.integration.getContentWindow()) |proxy| return @ptrCast(proxy);
-            return null;
-        }
+        if (!createChildNavigable(instance)) return null;
     }
 
     // Return the Window of the navigable's realm. The Window IS bound to the
@@ -4168,10 +4173,6 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
         }
     }
 
-    // Fall back to old WindowProxy behavior if no Window instance available
-    if (internal.integration.getContentWindow()) |proxy| {
-        return @ptrCast(proxy);
-    }
     return null;
 }
 
