@@ -321,6 +321,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [One module loader serves every settings object](architecture-one-module-loader-serves-every-settings-object.md) - When a mechanism exists for one kind of owner, look for the one field that ties it there before writing a second copy - and when you move it, write down the teardown order the new owner needs.
 - [A per-name query can still scan every node](architecture-a-per-name-query-can-still-scan-every-node.md) - Allocation-free named queries must also avoid walking the document before ordinary property reads.
 - [Build URL replacements before releasing old fields](architecture-build-url-replacements-before-releasing-old-fields.md) - Reuse a failure-safe constructor, then swap; do not partially destroy an object while constructing its replacement.
+- [Focus selectors must not run style-dependent focus fixup](architecture-focus-selectors-must-not-run-style-dependent-focus-fixup.md) - Separate the stored designation from style-dependent validation.
 
 ### Spec Compliance
 - [A [LegacyOverrideBuiltIns] getter shadows the unforgeables Crane puts on the prototype](spec-compliance-a-legacyoverridebuiltins-getter-shadows-unforgeables-on-the-prototype.md) - When a [LegacyOverrideBuiltIns] interface gains a named getter, list its [LegacyUnforgeable] members and test that a named element of each name does not shadow it: Crane's binding cannot see them as own properties yet.
