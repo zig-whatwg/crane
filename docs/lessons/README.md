@@ -310,6 +310,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Publish owned unions only after initialization](architecture-publish-owned-unions-only-after-initialization.md) - An errdefer destructor is safe only when every field it can observe is fully initialized. Stage fallible union payloads before publishing them.
 - [A promise delivery hold lasts through its callback](architecture-a-promise-delivery-hold-lasts-through-its-callback.md) - The reaction is still using its record while it calls script; release its hold when delivery returns, not when delivery begins.
 - [Serialization can replace the entry being updated](architecture-serialization-can-replace-the-entry-being-updated.md) - A serializer is a script boundary: keep the captured object, then look up its surviving container again.
+- [An embedder override can pin an algorithm to its synchronous path](architecture-an-embedder-override-can-pin-an-algorithm-to-its-synchronous-path.md) - When a capability exists but one path still avoids it, look for an override consulted in the wrong order before building anything new.
 
 ### Spec Compliance
 - [A wait that the page's own load waits on deadlocks](spec-compliance-a-wait-the-page-s-own-load-waits-on-deadlocks.md) - Before implementing a spec wait, check whether what it waits for waits on the caller; if it does, follow the browser majority's break of the cycle and state it, rather than adding a special case per caller.
@@ -694,6 +695,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [V8 gives an API function called with null its OWN realm's global proxy](debugging-v8-gives-an-api-function-called-with-null-the-functions-own-global.md) - Measure how the engine converts a receiver before writing a heuristic to undo it: here the conversion already gave the spec's answer.
 - [A streaming encoder retries from this call's cursor](debugging-a-streaming-encoder-retries-from-this-calls-cursor.md) - Checkpoint input and state together; error position, input consumption, and output capacity are different facts.
 - [Bound intermediate output before consuming input](debugging-bound-intermediate-output-before-consuming-input.md) - Input boundaries, intermediate-unit boundaries and final-byte boundaries are independent; exercise all three, including the empty call that drains pending output.
+- [A token's attribute slice dies with the element's creation](debugging-a-token-attribute-slice-dies-with-the-elements-creation.md) - A slice into a token is valid only until the token's element exists; a path that passes in one driver and fails in the other is the first sign of a dangling borrow.
 
 ### Workflow
 - [Zig optimizes a compilation at its root module's level; a module's own mode is its semantics](workflow-zig-optimizes-a-compilation-at-its-root-module-s-level.md) - The root module's mode is the optimizer; every other module's mode is its semantics. To speed up a binary without losing a module's Debug-only checks, raise the root and leave the module.
