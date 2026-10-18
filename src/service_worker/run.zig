@@ -104,7 +104,7 @@ fn fetchForUpdate(manager: *Manager, plan: *const registry_mod.FetchPlan) regist
     // origin - the script url's, which Register checked against the scope's.
     const own_origin = scope_mod.originOf(manager.allocator, plan.script_url) catch return .{ .failure = .network };
     defer manager.allocator.free(own_origin);
-    var fetcher: Fetcher = .{ .client = client, .manager = manager, .fallback_origin = own_origin };
+    var fetcher: Fetcher = .{ .client = client, .manager = manager, .fallback_origin = own_origin, .referrer = plan.referrer };
     return update_fetch.run(manager.allocator, plan, fetcher.interface());
 }
 
@@ -114,6 +114,8 @@ const Fetcher = struct {
     manager: *Manager,
     /// The request's origin when the client has none to give.
     fallback_origin: []const u8,
+    /// The job's referrer (BORROWED from the plan), or null.
+    referrer: ?[]const u8 = null,
 
     fn interface(self: *Fetcher) update_fetch.Fetcher {
         return .{ .ctx = self, .fetch = fetchOne, .wrap_policy = wrapPolicy };
@@ -130,6 +132,7 @@ const Fetcher = struct {
             .cookie_jar = if (client) |c| c.cookie_jar else null,
             .network = if (client) |c| c.network else self.networkOfManager(),
             .blob_url_store = if (client) |c| c.blob_url_store else null,
+            .referrer = self.referrer,
         });
     }
 
@@ -224,7 +227,28 @@ const OwnerEnd = struct {
 const service_hooks: worker_host.ServiceHooks = .{
     .evaluated = evaluated,
     .import_script = importScript,
+    .module_fetched = moduleFetched,
 };
+
+/// A module service worker's graph fetched `url` (a good response): kept in
+/// the worker's script resource map while it is parsed or installing, for
+/// an update to compare (update_fetch.zig).
+fn moduleFetched(manager_ptr: *anyopaque, worker_id: u64, url: []const u8, content_type: []const u8, body: []const u8) void {
+    const manager = managerOf(manager_ptr);
+    const allocator = manager.allocator;
+    const owned_url = allocator.dupe(u8, url) catch return;
+    const owned_body = allocator.dupe(u8, body) catch {
+        allocator.free(owned_url);
+        return;
+    };
+    const owned_type = allocator.dupe(u8, content_type) catch {
+        allocator.free(owned_url);
+        allocator.free(owned_body);
+        return;
+    };
+    manager.addModuleScript(worker_id, .{ .url = owned_url, .body = owned_body, .content_type = owned_type }) catch |err|
+        log.debug("a service worker's imported module was not kept: {s}", .{@errorName(err)});
+}
 
 fn managerOf(ctx: *anyopaque) *Manager {
     return @ptrCast(@alignCast(ctx));
@@ -236,6 +260,9 @@ fn managerOf(ctx: *anyopaque) *Manager {
 /// time, when the script's has ever been evaluated flag is unset).
 fn evaluated(manager: *anyopaque, worker_id: u64, ok: bool, global: ?*runtime.Instance) void {
     const handles_fetch = if (global) |g| dom.event_listener_types.hasListenersOfType(g, "fetch") else false;
+    // Before the job thread hears of it - and so before Install or Activate
+    // can change what they show: the global's own objects exist.
+    if (ok) if (global) |g| realm_mod.makeOwnObjects(g);
     managerOf(manager).report(.{ .evaluated = .{ .worker = worker_id, .ok = ok, .handles_fetch = handles_fetch } });
 }
 

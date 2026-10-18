@@ -871,6 +871,13 @@ const Navigation = struct {
     /// document's, and step 8 makes it the String's document's origin. It
     /// outlives the source document. Null with no source document.
     initiator_origin: ?*OriginRecord = null,
+    /// Navigate step 4's initiatorOriginSnapshot for a navigation that is
+    /// fetched: the source document's origin, serialized - the request's
+    /// origin ("create navigation params by fetching" step 3, startFetch).
+    /// Kept apart from `initiator_origin`, which its own readers (a
+    /// javascript: URL's checks, about:blank's document origin) take only for
+    /// the navigations they handle. Null with no source document. OWNED.
+    request_origin: ?[]u8 = null,
     /// The fetch in flight, until it answers.
     fetch: ?*fetch_mod.algorithms.AsyncFetch = null,
     /// What the fetch answered, until the commit takes it.
@@ -915,6 +922,7 @@ const Navigation = struct {
         if (self.post_content_type) |t| self.allocator.free(t);
         if (self.target_origin) |o| self.allocator.free(o);
         if (self.initiator_origin) |record| record.release();
+        if (self.request_origin) |o| self.allocator.free(o);
         if (self.referrer) |r| self.allocator.free(r);
         if (self.initiator_policy_container) |*container| container.deinit();
         if (self.javascript_policy_container) |*container| container.deinit();
@@ -1328,6 +1336,9 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
             if (dom_module.document_origin.shareable(source) catch null) |origin| record.initiator_origin = origin.retain();
         }
     }
+    // The same snapshot, serialized, for the navigation's request (its
+    // origin, startFetch).
+    if (options.source_document) |source| record.request_origin = documentOriginOf(source, allocator);
     navigations.put(std.heap.page_allocator, id, record) catch {
         record.destroy();
         return;
@@ -1603,6 +1614,41 @@ fn startFetch(record: *Navigation) void {
         request.prohibits_mixed_security_contexts = record.prohibits_mixed_security_contexts;
         // UIR 4.1 step 2.1: GET and POST form navigations both qualify.
         request.form_submission = record.csp_navigation_type == .form_submission;
+        // "Create navigation params by fetching" step 3: the request's origin
+        // is the document state's initiator origin - not "client", which on
+        // this request reads every URL as same-origin: with it set, a POST
+        // navigation sends Origin, a hop after a cross-origin redirect
+        // serializes it as "null" (its redirect-taint), and a service
+        // worker's copy of the hop keeps both (navigation-headers.https.html).
+        // A navigation with no initiator (the user agent's own) keeps
+        // "client".
+        if (record.request_origin) |origin| request.setOrigin(origin) catch {
+            request.deinit();
+            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+            return queueNavigationTask(record.integration, record.id, &runCommit);
+        };
+        // "Create navigation params by fetching" steps 7-8: a traversal to the
+        // entry the navigable is on is a reload - its document state's reload
+        // pending - and the request's reload-navigation flag is set; any other
+        // traversal goes to an entry whose document state was populated
+        // before (ever populated: no entry is traversed to that never was),
+        // and its history-navigation flag is set. (Chrome ships both flags as
+        // Request.isReloadNavigation/isHistoryNavigation; Firefox and Safari
+        // do not ship the attributes.)
+        if (record.traversal_entry != 0) {
+            if (record.traversal_entry == record.traversal_from) {
+                request.reload_navigation = true;
+                // A reload revalidates what it fetches: cache mode
+                // "no-cache". No spec sets it; Chrome and Firefox do
+                // (fetch-event.https.html "Service Worker responds to fetch
+                // event with the correct cache types", wpt.fyi df642c4142:
+                // Chrome 155 and Firefox 158 pass, Safari 27 fails) - golden
+                // rule 2, the majority.
+                request.cache_mode = .no_cache;
+            } else {
+                request.history_navigation = true;
+            }
+        }
         // "Create navigation params by fetching" step 3: "If
         // sourceSnapshotParams's fetch client is navigable's container
         // document's relevant settings object, then set request's initiator

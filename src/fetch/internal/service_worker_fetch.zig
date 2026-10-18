@@ -81,6 +81,12 @@ pub const Route = struct {
         /// A service worker's fetch event is under way: wait for the call's
         /// answer. The caller holds one reference.
         call: *Call,
+        /// Handle Fetch 13.3.4, a "race-network-and-fetch-handler" source:
+        /// the fetch event is under way, and the fetching side fetches the
+        /// request from the network beside it (AsyncFetch's race) - the
+        /// first usable answer is the fetch's. The caller holds one
+        /// reference.
+        race: *Call,
     };
 };
 
@@ -98,7 +104,7 @@ pub const Call = struct {
     /// worker side before the call is handed to fetch, read only by `wait`.
     blocking: ?Blocking = null,
 
-    pub const State = enum { pending, answered, taken, abandoned };
+    pub const State = enum { pending, answered, taken, abandoned, lost };
 
     /// How Handle Fetch ended for the request.
     pub const Answer = union(enum) {
@@ -197,6 +203,21 @@ pub const Call = struct {
         if (waiting) |value| freeAnswer(value);
     }
 
+    /// The fetching side no longer wants the answer, but the fetch event is
+    /// still to run: the network won Handle Fetch 13.3.4's race (step 13.3.4.5
+    /// enqueued its response first) while Create Fetch Event and Dispatch,
+    /// which runs in parallel, goes on. Unlike `abandon`, `isAbandoned` stays
+    /// false, so the worker's thread still fires the event. An answer
+    /// waiting, or one still to come, is freed.
+    pub fn lose(self: *Call) void {
+        lock(&self.mutex);
+        const waiting = self.slot;
+        self.slot = null;
+        if (self.state != .abandoned) self.state = .lost;
+        unlock(&self.mutex);
+        if (waiting) |value| freeAnswer(value);
+    }
+
     /// One more holder (the service worker side handing its reference on
     /// while it still uses the call).
     pub fn retain(self: *Call) *Call {
@@ -241,10 +262,28 @@ pub const BodyRelay = struct {
     end: End = .open,
     /// The fetching side has no reader left: the writer may stop.
     cancelled: bool = false,
+    /// What the writer asks to hear when the reader goes (`watchCancel`).
+    reader_gone: ?ReaderGone = null,
+    /// The reader's count of the bytes it has drained: what Resource Timing
+    /// reports as the relayed body's size. Touched by the reader only.
+    drained: u64 = 0,
     /// Bumped by every write and end: the futex word `collect` sleeps on.
     wake: std.atomic.Value(u32) = .init(0),
 
     pub const End = enum { open, closed, errored };
+
+    /// The writer's word that the reader went: a writer waiting on its own
+    /// source - a stream's read still pending - would otherwise learn of the
+    /// cancel only at its next write, which may never come
+    /// (fetch-event-respond-with-readable-stream.https.html: a cancel or
+    /// abort in the page is observable in the service worker). Exactly one
+    /// of the two runs, once: `run` on the reader's thread when it cancels,
+    /// `drop` when the relay goes with no cancel.
+    pub const ReaderGone = struct {
+        context: *anyopaque,
+        run: *const fn (context: *anyopaque) void,
+        drop: *const fn (context: *anyopaque) void,
+    };
 
     pub fn create(allocator: Allocator) Allocator.Error!*BodyRelay {
         const self = try allocator.create(BodyRelay);
@@ -281,6 +320,20 @@ pub const BodyRelay = struct {
         self.finishWith(.errored);
     }
 
+    /// The writer asks to hear the reader's cancel (`ReaderGone`). A reader
+    /// gone already: `hook` runs at once, here.
+    pub fn watchCancel(self: *BodyRelay, hook: ReaderGone) void {
+        lock(&self.mutex);
+        if (self.cancelled) {
+            unlock(&self.mutex);
+            return hook.run(hook.context);
+        }
+        const old = self.reader_gone;
+        self.reader_gone = hook;
+        unlock(&self.mutex);
+        if (old) |o| o.drop(o.context);
+    }
+
     /// Whether the reader is gone.
     pub fn isCancelled(self: *BodyRelay) bool {
         lock(&self.mutex);
@@ -311,6 +364,7 @@ pub const BodyRelay = struct {
         const end = self.end;
         unlock(&self.mutex);
         defer taken.deinit(self.allocator);
+        self.drained += taken.items.len;
         if (taken.items.len > 0) source.push(taken.items);
         switch (end) {
             .open => {},
@@ -347,17 +401,23 @@ pub const BodyRelay = struct {
         }
     }
 
-    /// The reader is gone: what was written goes, and the writer stops.
+    /// The reader is gone: what was written goes, and the writer stops -
+    /// told so now if it asked (`watchCancel`).
     pub fn cancel(self: *BodyRelay) void {
         lock(&self.mutex);
+        const first = !self.cancelled;
         self.cancelled = true;
         self.pending.clearAndFree(self.allocator);
+        const hook = if (first) self.reader_gone else null;
+        if (first) self.reader_gone = null;
         unlock(&self.mutex);
+        if (hook) |h| h.run(h.context);
     }
 
     /// Let go of one reference.
     pub fn release(self: *BodyRelay) void {
         if (self.refs.fetchSub(1, .acq_rel) != 1) return;
+        if (self.reader_gone) |h| h.drop(h.context);
         self.pending.deinit(self.allocator);
         self.allocator.destroy(self);
     }
@@ -433,6 +493,23 @@ test "an answer to a call fetch gave up on is freed, before or after it comes" {
         call.release();
         call.release();
     }
+}
+
+test "a call the network won a race for frees its answer, but its fetch event is not abandoned" {
+    const call = try Call.create(testing.allocator);
+    call.lose();
+    try testing.expect(!call.isAbandoned());
+    try testing.expect(call.take() == null);
+    // The worker's answer, after the race was lost, is freed here.
+    const relay = try BodyRelay.create(testing.allocator);
+    call.answer(.{ .response = .{ .response = try testResponse(201), .body = relay } });
+    // The reader's reference went with the answer, cancelled.
+    try testing.expect(relay.isCancelled());
+    relay.release();
+    // Abandoned later (the fetch ended): still nothing to take.
+    call.abandon();
+    call.release();
+    call.release();
 }
 
 const Waiting = struct {
@@ -511,6 +588,62 @@ test "a relay that fails errors the pipe; one whose reader is gone stops its wri
         try testing.expect(!relay.write("more"));
         relay.release();
         relay.release();
+    }
+}
+
+const Gone = struct {
+    runs: u32 = 0,
+    drops: u32 = 0,
+
+    fn hook(self: *Gone) BodyRelay.ReaderGone {
+        return .{ .context = self, .run = run, .drop = drop };
+    }
+
+    fn run(context: *anyopaque) void {
+        const self: *Gone = @ptrCast(@alignCast(context));
+        self.runs += 1;
+    }
+
+    fn drop(context: *anyopaque) void {
+        const self: *Gone = @ptrCast(@alignCast(context));
+        self.drops += 1;
+    }
+};
+
+test "a relay's writer hears its reader's cancel once - or its hook is dropped when the relay goes uncancelled" {
+    {
+        // Cancelled while the writer waits: the hook runs, once.
+        var gone: Gone = .{};
+        const relay = try BodyRelay.create(testing.allocator);
+        relay.watchCancel(gone.hook());
+        relay.cancel();
+        relay.cancel();
+        try testing.expectEqual(@as(u32, 1), gone.runs);
+        relay.release();
+        relay.release();
+        try testing.expectEqual(@as(u32, 0), gone.drops);
+    }
+    {
+        // Cancelled before the writer asked: it hears at once.
+        var gone: Gone = .{};
+        const relay = try BodyRelay.create(testing.allocator);
+        relay.cancel();
+        relay.watchCancel(gone.hook());
+        try testing.expectEqual(@as(u32, 1), gone.runs);
+        relay.release();
+        relay.release();
+        try testing.expectEqual(@as(u32, 0), gone.drops);
+    }
+    {
+        // Read to its end, never cancelled: the hook is dropped.
+        var gone: Gone = .{};
+        const relay = try BodyRelay.create(testing.allocator);
+        relay.watchCancel(gone.hook());
+        relay.close();
+        relay.release();
+        relay.release();
+        try testing.expectEqual(@as(u32, 0), gone.runs);
+        try testing.expectEqual(@as(u32, 1), gone.drops);
     }
 }
 

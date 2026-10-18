@@ -175,6 +175,10 @@ fn redirectSteps(allocator: Allocator, params: *FetchParams, response: *Internal
 pub const ServiceWorkerStep = struct {
     call: *service_worker_fetch.Call,
     start_time: f64,
+    /// Handle Fetch 13.3.4: the network races the fetch event
+    /// (`Route.Start.race`) - the event loop's driver fetches the request
+    /// beside it.
+    race: bool = false,
 };
 
 /// HTTP fetch step 3: "If request's service-workers mode is "all"", hand it
@@ -195,6 +199,7 @@ pub fn handleFetchStart(params: *FetchParams) HttpFetchError!?ServiceWorkerStep 
     return switch (started) {
         .network => null,
         .call => |call| .{ .call = call, .start_time = start_time },
+        .race => |call| .{ .call = call, .start_time = start_time, .race = true },
     };
 }
 

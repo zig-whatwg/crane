@@ -268,7 +268,8 @@ pub const Delivery = union(enum) {
     worker_state: struct { worker: u64, state: WorkerState },
     registration_slot: struct { registration: u64, slot: Slot, worker: ?WorkerInfo },
     update_found: struct { registration: u64 },
-    controller_change,
+    /// The new controller as Notify Controller Change saw it.
+    controller_change: ?WorkerInfo,
     ready: RegistrationInfo,
     /// getRegistration() step 8.2: the registration matched, or undefined.
     resolve_optional_registration: struct { promise: u64, registration: ?RegistrationInfo },
@@ -312,7 +313,7 @@ pub const Delivery = union(enum) {
                 .worker = if (m.worker) |w| try WorkerInfo.of(allocator, w) else null,
             } },
             .update_found => |m| .{ .update_found = .{ .registration = m.registration } },
-            .controller_change => .controller_change,
+            .controller_change => |m| .{ .controller_change = if (m) |w| try WorkerInfo.of(allocator, w) else null },
             .ready => |snapshot| .{ .ready = try infoOfSnapshot(allocator, registry, snapshot) },
         };
     }
@@ -321,6 +322,7 @@ pub const Delivery = union(enum) {
         switch (self.*) {
             .resolve_registration => |*m| m.registration.deinit(allocator),
             .registration_slot => |*m| if (m.worker) |*w| w.deinit(allocator),
+            .controller_change => |*m| if (m.*) |*w| w.deinit(allocator),
             .ready => |*info| info.deinit(allocator),
             .resolve_optional_registration => |*m| if (m.registration) |*info| info.deinit(allocator),
             .resolve_registrations => |m| {
@@ -522,6 +524,11 @@ pub fn copyRequestForWorker(allocator: Allocator, request: *const InternalReques
         .origin => |origin| try copy.setOrigin(origin),
         .client => {},
     }
+    // Its URL list is the hop alone: the redirect-taint the earlier hops
+    // gave the request goes with it (InternalRequest.redirect_tainted).
+    // Not computable (an unparsable URL in the list): tainted - the origin
+    // serializes as "null".
+    copy.redirect_tainted = !(request.redirectTaintIsSameOrigin() catch false);
     if (request.integrity_metadata.len > 0) copy.integrity_metadata = try allocator.dupe(u8, request.integrity_metadata);
     return copy;
 }
@@ -1477,6 +1484,9 @@ pub const Manager = struct {
         // Handle Fetch step 15.1's preloadRequest header value.
         var preload_header: ?[]u8 = null;
         defer if (preload_header) |value| self.allocator.free(value);
+        // Step 13.3.4: a "race-network-and-fetch-handler" source - the fetch
+        // event races the network.
+        var race = false;
         // Step 13: the active worker's list of router rules (a reference),
         // whether it runs, the environment whose realm evaluates them on
         // this thread, and the storage key a cache source reads.
@@ -1496,6 +1506,19 @@ pub const Manager = struct {
             self.lock();
             defer self.unlock();
             const existing = if (reserved.environment != 0) self.registry.findEnvironment(reserved.environment) else null;
+            // 9.1-9.2 for a nested navigable's reserved environment: HTML "is
+            // a secure context" reads an environment's top-level creation URL
+            // (step 2), so a frame inside a document that is not a secure
+            // context is none either, whatever its own URL - its creator, the
+            // container document, says so. Step 9.2.1's URL check is a
+            // top-level navigation's answer. All three browsers bypass the
+            // service worker here (secure-context.https.html: an https frame
+            // in an http document is not intercepted; wpt.fyi df642c4142).
+            if (request.destination == .iframe or request.destination == .frame) {
+                if (reserved.creator != 0) if (self.registry.findEnvironment(reserved.creator)) |creator| {
+                    if (!creator.secure_context) return .network;
+                };
+            }
             // 9.5-9.8, 11-12.
             const matched = (try self.registry.handleFetchNonSubresource(.{
                 .url = url,
@@ -1579,9 +1602,16 @@ pub const Manager = struct {
                     if (try self.cacheSourceAnswer(&routing, name, request)) |call| return .{ .call = call };
                     return .network;
                 },
-                // 13.3.4. race-network-and-fetch-handler (a GET): not raced
-                // yet - the fetch event answers alone (stated).
-                .race_network_and_fetch_handler => {},
+                // 13.3.4. race-network-and-fetch-handler, for a GET: the fetch
+                // event is dispatched as for fetch-event (13.3.4.7), and the
+                // call goes back to fetch as a race - its driver fetches the
+                // request from the network beside it (13.3.4.5, AsyncFetch's
+                // race) and takes the first usable answer. No navigation
+                // preload (13.3.4.6 resolves preloadResponse with
+                // undefined). The Soft Update of 13.3.4.1 is the event's own
+                // (step 19's), once - two would queue one update. Another
+                // method: 13.3.5, fetch-event.
+                .race_network_and_fetch_handler => race = std.mem.eql(u8, request.method, "GET"),
                 // 13.3.5. fetch-event: on to step 14.
                 .fetch_event => {},
             };
@@ -1594,6 +1624,11 @@ pub const Manager = struct {
             if (soft_update) self.report(.{ .soft_update = registration_id });
             return .network;
         }
+        // 13.3.4.6: a raced request's preloadResponse is undefined.
+        if (race) if (preload_header) |value| {
+            self.allocator.free(value);
+            preload_header = null;
+        };
         // 3.1-3.2 (HTTP fetch): requestForServiceWorker, for the worker's
         // thread. A body only a stream holds goes to the network (stated).
         const copy = (try copyRequestForWorker(self.allocator, request)) orelse return .network;
@@ -1622,6 +1657,7 @@ pub const Manager = struct {
         // 17. Create Fetch Event and Dispatch, from step 15, on the job
         // thread.
         self.report(.{ .fetch = dispatch });
+        if (race) return .{ .race = call };
         return .{ .call = call };
     }
 
@@ -2330,6 +2366,14 @@ pub const Manager = struct {
         self.lock();
         defer self.unlock();
         return self.registry.addImportedScript(worker_id, resource, checked_network);
+    }
+
+    /// A module service worker's graph fetched `resource` (taken) beyond its
+    /// root: Registry.addModuleScript.
+    pub fn addModuleScript(self: *Manager, worker_id: u64, resource: registry_mod.Resource) Allocator.Error!void {
+        self.lock();
+        defer self.unlock();
+        return self.registry.addModuleScript(worker_id, resource);
     }
 
     /// The service worker `worker_id`'s thread has ended, and its owner (the

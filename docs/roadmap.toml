@@ -522,6 +522,7 @@ progress = [
   "a3b66752d2a, 1a9fdbd1a42, 9d683d9d305, cc296e964b2 - service workers batch 1: each Browser's registrations, job queues, workers and clients in a BrowserScope supplement (service_worker.Manager) under one lock, its job thread in the Browser's WorkerRegistry, every service worker on a thread of its own (html.worker_host's third kind); register/update/unregister, install/activate with waitUntil, skipWaiting, claim, idle termination; per-realm ServiceWorker/ServiceWorkerRegistration objects (sw1 lane)",
   "08d8f490341 (merge), e5ba46b939d - service workers batch 2: messages between pages and service workers and the client message queue, Clients get/matchAll, Cache Storage per Browser over the platform storage engine shared across threads; a service worker's realm is a secure context",
   "f13e81794f7 (merge) - service workers batch 3: every window and worker a service worker client from its creation, Handle Fetch (FetchEvent, respondWith, subresource and navigation interception, the response across threads), WindowClient.navigate and Soft Update; opaque responses keep their internal response",
+  "c7de8b6e99f..a84b0e7cc58 - service workers batch 5: race-network-and-fetch-handler races a sibling network fetch; the report timing steps at the body's end; module imports byte-checked on update; the request's redirect taint and navigation origin carried to the worker; controllerchange and a worker's own objects without lazy-state races; a page's cancel reaches the worker's stream (sw1-b5 lane)",
 ]
 
   [[infra.items]]

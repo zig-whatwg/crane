@@ -184,3 +184,37 @@ test "an unchanged main script with imported scripts: each import is fetched and
     try testing.expectEqual(@as(usize, 3), b.resources.items.len);
     try testing.expectEqual(@as(usize, 3), changed.fetched.items.len);
 }
+
+test "a module worker's unchanged main script: the modules its graph imported are fetched and compared too" {
+    // The imported module joined the script resource map when the worker's
+    // graph was fetched (Registry.addModuleScript); no classic script was
+    // imported. Every browser compares it on update (update-bytecheck
+    // module cases: Chrome, Firefox and Safari 8/8, wpt.fyi df642c4142).
+    var resources = [_]registry.Resource{
+        resource("https://e.com/sw.mjs", "main"),
+        resource("https://e.com/dep.mjs", "dep1"),
+    };
+    const newest: registry.FetchPlan.Newest = .{ .script_url = @constCast("https://e.com/sw.mjs"), .worker_type = .module, .classic_scripts_imported = false, .resources = &resources };
+    var p = plan("https://e.com/sw.mjs", "https://e.com/", newest);
+    p.worker_type = .module;
+
+    var same: Table = .{ .entries = &.{
+        .{ .url = "https://e.com/sw.mjs", .body = "main" },
+        .{ .url = "https://e.com/dep.mjs", .body = "dep1" },
+    } };
+    defer same.deinit();
+    var a = update_fetch.run(testing.allocator, &p, same.fetcher());
+    defer freeOutcome(&a);
+    try testing.expect(a.failure == null);
+    try testing.expect(!a.has_updated_resources);
+    try testing.expectEqual(@as(usize, 2), same.fetched.items.len);
+
+    var changed: Table = .{ .entries = &.{
+        .{ .url = "https://e.com/sw.mjs", .body = "main" },
+        .{ .url = "https://e.com/dep.mjs", .body = "dep2" },
+    } };
+    defer changed.deinit();
+    var b = update_fetch.run(testing.allocator, &p, changed.fetcher());
+    defer freeOutcome(&b);
+    try testing.expect(b.has_updated_resources);
+}

@@ -345,9 +345,13 @@ pub const RealmEnvironment = struct {
                 const instance = entry.object.live() orelse return;
                 dom.navigables.fireSimpleEvent(instance, "updatefound");
             },
-            // Notify Controller Change step 2.
-            .controller_change => {
+            // Notify Controller Change step 2. The new controller's object is
+            // made first, from the controller as the change saw it (registry
+            // notifyControllerChange says why): the event's listeners read
+            // container.controller, and find that object.
+            .controller_change => |*m| {
                 const container = (self.container orelse return).live() orelse return;
+                if (m.*) |info| _ = try self.workerObject(info);
                 dom.navigables.fireSimpleEvent(container, "controllerchange");
             },
             // Activate step 7 and the ready getter's step 3.4: resolve the
@@ -927,9 +931,11 @@ fn windowDataOf(allocator: std.mem.Allocator, realm: runtime.Context) !?WindowDa
     if (!dom.document_activity.fullyActive(global, runtime.SlabAllocator.generationOf(global))) return null;
     const document = try interfaces.Window.get_document(global);
     var data: WindowData = .{};
-    // visibilityState, and the has focus steps.
+    // visibilityState, and the has focus steps (html.focus: the focused
+    // areas from the top-level traversable's active document down). Not
+    // document.hasFocus(), whose impl answers true for every document.
     data.visible = (try interfaces.Document.get_visibilityState(document)) == ._visible_;
-    data.focused = try interfaces.Document.call_hasFocus(document);
+    data.focused = html.focus.hasFocus(document);
     // The active document's ancestor origins list.
     const location = try interfaces.Window.get_location(global);
     const list = try interfaces.Location.get_ancestorOrigins(location);
@@ -1360,6 +1366,30 @@ pub fn registrationOf(global: *runtime.Instance) !*runtime.Instance {
     var info = (try environment.manager.registrationOfWorker(environment.allocator, environment.service_worker_id)) orelse return error.InvalidStateError;
     defer info.deinit(environment.allocator);
     return environment.registrationObject(&info);
+}
+
+/// A service worker's global's registration and service worker objects,
+/// made once its script has run and before the job thread hears so - so the
+/// tasks that update them (Update Worker State, Update Registration State)
+/// find them, in their order. Made by the getters, when script first read
+/// them, they took the state of that moment: skip-waiting-installed.https
+/// .html's worker first reads registration.active in skipWaiting()'s
+/// reaction, after its activate event had ended on the job thread, and saw
+/// "activated" where the tasks still queued said "activating" (Chrome and
+/// Firefox pass it). Chromium makes both when the global is initialized,
+/// from the registration and version info it starts with
+/// (ServiceWorkerGlobalScope::InitializeGlobalScope). Run in the realm: the
+/// caller is the worker's thread outside any task.
+pub fn makeOwnObjects(global: *runtime.Instance) void {
+    engine.runTaskInRealm(global.ctx, makeOwnObjectsInRealm, global) catch |err| {
+        log.debug("a service worker's own objects: {s}", .{@errorName(err)});
+    };
+}
+
+fn makeOwnObjectsInRealm(data: ?*anyopaque) void {
+    const global: *runtime.Instance = @ptrCast(@alignCast(data.?));
+    _ = registrationOf(global) catch |err| log.debug("a service worker's registration object: {s}", .{@errorName(err)});
+    _ = serviceWorkerOf(global) catch |err| log.debug("a service worker's own object: {s}", .{@errorName(err)});
 }
 
 /// skipWaiting() steps 1-3: the job thread sets the flag and tries to

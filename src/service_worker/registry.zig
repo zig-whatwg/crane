@@ -357,8 +357,9 @@ pub const Message = union(enum) {
     /// Install step 9: fire updatefound at the registration's objects.
     update_found: struct { registration: u64 },
     /// Notify Controller Change: fire controllerchange at the realm's
-    /// ServiceWorkerContainer.
-    controller_change,
+    /// ServiceWorkerContainer - its new controller, the environment's active
+    /// service worker, as it is now (null: none).
+    controller_change: ?WorkerSnapshot,
     /// Activate step 7: resolve the realm's ready promise if it is pending.
     ready: RegistrationSnapshot,
 };
@@ -414,6 +415,9 @@ pub const FetchPlan = struct {
     /// The newest worker's script url and type, and its script resource map,
     /// copied - null when there is none.
     newest: ?Newest,
+    /// The job's referrer (its client's creation URL), serialized - null
+    /// for a job with no client (Soft Update's). OWNED.
+    referrer: ?[]u8 = null,
 
     pub const Newest = struct {
         script_url: []u8,
@@ -425,6 +429,7 @@ pub const FetchPlan = struct {
     pub fn deinit(self: *FetchPlan, allocator: Allocator) void {
         allocator.free(self.script_url);
         allocator.free(self.scope_url);
+        if (self.referrer) |r| allocator.free(r);
         if (self.newest) |*newest| {
             allocator.free(newest.script_url);
             for (newest.resources) |*r| r.deinit(allocator);
@@ -1185,6 +1190,10 @@ pub const Registry = struct {
         errdefer self.allocator.free(plan.script_url);
         plan.scope_url = try self.allocator.dupe(u8, registration.scope_url);
         errdefer self.allocator.free(plan.scope_url);
+        // The request's referrer: the job's (Update step 7 fetches "given
+        // job's client", whose request referrer it is).
+        plan.referrer = if (job.referrer) |r| try self.allocator.dupe(u8, r) else null;
+        errdefer if (plan.referrer) |r| self.allocator.free(r);
         if (newest) |n| {
             const resources = try self.allocator.alloc(Resource, n.resources.items.len);
             var made: usize = 0;
@@ -1825,11 +1834,19 @@ pub const Registry = struct {
             self.updateWorkerState(worker, .redundant);
             self.updateRegistrationState(registration, .waiting, null);
         }
-        // 4. The active worker.
+        // 4. The active worker. Its registration attribute is cleared before
+        // its statechange to "redundant" is posted - the spec's 4.2-4.3 the
+        // other way round: Chrome, Firefox and Safari all show the
+        // registration's active as null to the statechange's reactions
+        // (registration-service-worker-attributes.https.html "active should
+        // be null after redundant", wpt.fyi df642c4142) - golden rule 2, the
+        // browsers.
         if (registration.active) |worker| {
             self.effects.terminate_worker(self.effects.ctx, worker);
-            self.updateWorkerState(worker, .redundant);
+            worker.refs += 1;
+            defer self.releaseWorker(worker);
             self.updateRegistrationState(registration, .active, null);
+            self.updateWorkerState(worker, .redundant);
         }
     }
 
@@ -1891,9 +1908,19 @@ pub const Registry = struct {
         self.effects.notify(self.effects.ctx, environment, message);
     }
 
-    /// Notify Controller Change.
+    /// Notify Controller Change. The task carries the new controller as it
+    /// is when the change is made - Activate step 8 makes it in step 5's
+    /// "activating" - and the realm makes its ServiceWorker object from that
+    /// before firing controllerchange. Read later, when the task runs, the
+    /// worker may be "activated" already (the activate event ended on the
+    /// job thread meanwhile), and a controller object made then would show
+    /// that: skip-waiting-using-registration.https.html expects
+    /// "activating" in the event, as Chromium's SetController hands the
+    /// container its controller with the state of that moment
+    /// (ServiceWorkerContainerHost::SendSetControllerServiceWorker).
     fn notifyControllerChange(self: *Registry, environment: *Environment) void {
-        self.notifyEnvironment(environment, .controller_change);
+        const controller: ?WorkerSnapshot = if (environment.active_worker) |w| snapshotWorker(w) else null;
+        self.notifyEnvironment(environment, .{ .controller_change = controller });
     }
 
     /// Post `message` to every environment whose origin is `url`'s.
@@ -2090,6 +2117,28 @@ pub const Registry = struct {
         try self.markUsed(worker, owned.url);
         // 14. Set the classic scripts imported flag.
         worker.classic_scripts_imported = true;
+    }
+
+    /// A module script a module service worker's graph fetched beyond its
+    /// root (the Update fetch hook's step 4, the "perform the fetch" hook
+    /// for a non-top-level fetch): `resource` (taken) joins the worker's
+    /// script resource map and set of used scripts while the worker is
+    /// parsed or installing - its installed map, which an update compares
+    /// (update_fetch.zig says why: the browsers do) - and is let go after.
+    /// The classic scripts imported flag is not set.
+    pub fn addModuleScript(self: *Registry, worker_id: u64, resource: Resource) Allocator.Error!void {
+        var owned = resource;
+        const worker = self.findWorker(worker_id) orelse return owned.deinit(self.allocator);
+        if (worker.state != .parsed and worker.state != .installing) return owned.deinit(self.allocator);
+        for (worker.resources.items) |*existing| {
+            if (std.mem.eql(u8, existing.url, owned.url)) {
+                existing.deinit(self.allocator);
+                existing.* = owned;
+                return self.markUsed(worker, existing.url);
+            }
+        }
+        try worker.resources.append(self.allocator, owned);
+        try self.markUsed(worker, owned.url);
     }
 
     fn markUsed(self: *Registry, worker: *Worker, url: []const u8) Allocator.Error!void {
