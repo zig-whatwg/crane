@@ -19,8 +19,9 @@
 //! style1); step 2 removes it. `disabled` reads and sets its disabled flag.
 //!
 //! `sheet` is the sheet's CSSStyleSheet object (dom.style.objects), which
-//! the element keeps until the sheet is removed. Not modelled, stated:
-//! render-blocking is not kept. Critical imports of parser-created stylesheets block scripts.
+//! the element keeps until the sheet is removed. A style element the parser
+//! made, or one whose blocking attribute says `render`, blocks rendering
+//! until its critical subresources are obtained (style_sheet_loading). Critical imports of parser-created stylesheets block scripts.
 //! HTML names the XML parser
 //! too, but Crane has none (DOMParser's XML types are a TODO): only the HTML
 //! parser drivers make style elements. The fragment parser's (innerHTML)
@@ -331,7 +332,15 @@ fn poppedByParser(element: *runtime.Instance) void {
 fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, old_value: ?[]const u8, value: ?[]const u8, namespace: ?[]const u8) void {
     _ = old_value;
     const internal = getInternal(element) orelse return;
-    if (namespace != null or !std.mem.eql(u8, local_name, "media")) return;
+    if (namespace != null) return;
+    // HTML 3.1.6: a render-blocking element whose blocking attribute no
+    // longer makes it potentially render-blocking is unblocked.
+    if (std.mem.eql(u8, local_name, "blocking")) {
+        const parser_made = if (internal.parser_document) |d| (interfaces.Node.get_ownerDocument(element) catch null) == d else false;
+        if (!style_sheet_loading.potentiallyRenderBlocking(element, parser_made)) dom_module.document_rendering.unblock(element);
+        return;
+    }
+    if (!std.mem.eql(u8, local_name, "media")) return;
     // The associated CSS style sheet's media follows the attribute.
     if (internal.sheet) |record| {
         record.setMedia(value orelse "") catch {};

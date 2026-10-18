@@ -17,7 +17,9 @@
 //! manifest, ...) fetch nothing; a preload fills no map of preloaded
 //! resources, and a modulepreload no module map, so what they fetched is
 //! fetched again by its consumer; alternative style sheets are fetched as any other;
-//! render-blocking is not kept. `sheet` is the sheet's CSSStyleSheet object
+//! a stylesheet link the parser made, or one whose blocking attribute says
+//! `render`, blocks rendering while it loads (style_sheet_loading). `sheet`
+//! is the sheet's CSSStyleSheet object
 //! (dom.style.objects), which the element keeps until the sheet is removed. Parser-created enabled stylesheets enter
 //! their document's script-blocking set until their load event finishes.
 
@@ -165,6 +167,7 @@ fn fetchAndProcess(element: *runtime.Instance) void {
     const href = attribute(element, "href") orelse return;
     if (href.len == 0) return;
     const options: style_sheet_loading.LinkOptions = .{
+        .parser_created = parserCreated(internal, element),
         .href = href,
         .cors = style_sheet_loading.CorsSetting.fromAttribute(attribute(element, "crossorigin")),
         .referrer_policy = referrerPolicyState(attribute(element, "referrerpolicy")),
@@ -234,6 +237,14 @@ fn createdByParser(element: *runtime.Instance) void {
     internal.enabled_at_creation = linkType(element) == .stylesheet and
         attribute(element, "href") != null and attribute(element, "href").?.len != 0 and
         attribute(element, "disabled") == null and !isAlternate(element, internal);
+}
+
+/// The element was created by its node document's parser: a stylesheet
+/// link is then implicitly potentially render-blocking (HTML 4.6.7.23).
+fn parserCreated(internal: *const InternalState, element: *runtime.Instance) bool {
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
+    return internal.parser_document == document and
+        runtime.SlabAllocator.generationOf(document) == internal.parser_document_generation;
 }
 
 fn parserSheetEnabled(internal: *const InternalState, document: *runtime.Instance) bool {
@@ -400,6 +411,12 @@ fn attributeChangeSteps(
     else
         false;
     if (!refetch) {
+        // HTML 3.1.6: "Whenever a render-blocking element el ... el's
+        // blocking attribute's value is changed so that el is no longer
+        // potentially render-blocking, then unblock rendering on el."
+        if (std.mem.eql(u8, local_name, "blocking") and !style_sheet_loading.potentiallyRenderBlocking(element, parserCreated(internal, element))) {
+            dom_module.document_rendering.unblock(element);
+        }
         if (std.mem.eql(u8, local_name, "media")) {
             // The associated CSS style sheet's media follows the attribute.
             if (internal.sheet) |record| {

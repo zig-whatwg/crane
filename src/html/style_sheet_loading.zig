@@ -70,6 +70,9 @@ pub const CorsSetting = enum {
 
 /// What a link element's request takes from its link processing options.
 pub const LinkOptions = struct {
+    /// The element was created by its node document's parser (implicitly
+    /// potentially render-blocking, for a stylesheet link).
+    parser_created: bool = false,
     /// The href attribute's value.
     href: []const u8,
     cors: CorsSetting = .no_cors,
@@ -125,6 +128,10 @@ const Load = struct {
     /// href changed), or is gone. The queued task only ends the load.
     superseded: bool = false,
     document_abort_pending: bool = false,
+    /// The load put its element in its node document's render-blocking
+    /// element set (HTML 4.2.6 step 6 for a style element, 4.6.7.23 for a
+    /// stylesheet link): it takes the element out when it ends.
+    render_blocking: bool = false,
     /// Static eligibility for the node document's script-blocking style
     /// sheet set: enabled at parser creation. Root and media are current
     /// conditions, checked by blocksScripts. Completion, cancellation and
@@ -391,7 +398,37 @@ pub fn startLink(element: *runtime.Instance, options: LinkOptions, parser_sheet_
     const id = startLinkFetch(element, .stylesheet, options, .style) orelse return null;
     const load = find(id) orelse return null;
     load.blocks_scripts = parser_sheet_enabled;
+    // The stylesheet link type's linked resource fetch setup steps, step 4:
+    // "If el is potentially render-blocking, then block rendering on el" -
+    // a link the parser made is implicitly so (4.6.7.23).
+    blockRenderingFor(load, options.parser_created);
     return id;
+}
+
+/// HTML "block rendering" on the load's element when it is potentially
+/// render-blocking - its blocking attribute has `render`, or it is
+/// implicitly so (`parser_created`) - and its media matches the
+/// environment (4.2.6 step 6's condition, the same for a link).
+fn blockRenderingFor(load: *Load, parser_created: bool) void {
+    if (!potentiallyRenderBlocking(load.element, parser_created)) return;
+    if (!mediaMatches(load.element)) return;
+    dom.document_rendering.block(load.element) catch return;
+    load.render_blocking = dom.document_rendering.contains(load.document, load.element);
+}
+
+/// HTML 2.5.8 "potentially render-blocking": the blocking tokens set holds
+/// "render", or the element is implicitly potentially render-blocking.
+pub fn potentiallyRenderBlocking(element: *runtime.Instance, implicitly: bool) bool {
+    if (implicitly) return true;
+    const blocking = interfaces.Element.call_getAttributeNS(element, null, runtime.DOMString.initInterned("blocking")) catch null;
+    return dom.document_rendering.hasRenderToken(if (blocking) |b| b.asSlice() else "");
+}
+
+/// "Unblock rendering" on the load's element, if it blocked it.
+fn unblockRenderingFor(load: *Load) void {
+    if (!load.render_blocking) return;
+    load.render_blocking = false;
+    if (load.elementIsLive() and load.documentIsLive()) dom.document_rendering.remove(load.document, load.element);
 }
 
 /// HTML "fetch and process the linked resource" for `element`, a link
@@ -476,6 +513,11 @@ pub fn startStyle(element: *runtime.Instance, text: []const u8, parser_created: 
     // Without critical subresources the rules are immediately available
     // to script (HTML 4.2.7), even though the load event runs in a task.
     load.blocks_scripts = parser_created and load.in_flight > 0;
+    // 4.2.6 step 6: "If element's media attribute's value matches the
+    // environment and element is potentially render-blocking, then block
+    // rendering on element" - a style element the parser made is implicitly
+    // so.
+    blockRenderingFor(load, parser_created);
     // "If the style sheet has no critical subresources, once the style sheet
     // has been parsed and processed": now.
     if (load.in_flight == 0) complete(load);
@@ -617,6 +659,7 @@ const Ending = enum {
 /// `load` is over: it leaves the list, and - unless it ends in teardown -
 /// its document is told.
 fn release(load: *Load, ending: Ending) void {
+    unblockRenderingFor(load);
     for (loads.items, 0..) |l, i| {
         if (l == load) {
             _ = loads.swapRemove(i);
@@ -642,6 +685,10 @@ fn release(load: *Load, ending: Ending) void {
 
 /// Every fetch has ended: queue the task that fires the event.
 fn complete(load: *Load) void {
+    // The style element's steps once its critical subresources are
+    // obtained, and the link's "process the linked resource": "unblock
+    // rendering on el".
+    unblockRenderingFor(load);
     if (!load.elementIsLive() or load.realm.engine_ctx == null) return release(load, .teardown);
     const loop = load.element.ctx.getOptionalEventLoop() orelse {
         log.warn("style sheet load event not queued: the element's realm has no event loop", .{});
