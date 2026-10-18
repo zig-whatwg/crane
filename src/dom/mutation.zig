@@ -2089,62 +2089,52 @@ fn runLiveRangePreRemoveSteps(node: anytype) void {
     for (internal.ranges.items) |range| {
         var points = live.points(range) orelse continue;
 
+        // Each boundary node is looked up once - the instance bridge is a
+        // pure lookup, which nothing in these steps changes - and once for
+        // both when the range starts and ends in one node (a collapsed range,
+        // a selection's caret), which also asks step 5's question of step 4.
+        const one_node = points.end_container != null and points.end_container == points.start_container;
+        var start_base: ?*NodeBase = if (points.start_container) |start_node| instance_bridge.getNodeBase(start_node) else null;
+        var end_base: ?*NodeBase = if (one_node) start_base else if (points.end_container) |end_node| instance_bridge.getNodeBase(end_node) else null;
+
         // Step 4: For each live range whose start node is an inclusive descendant of node,
         // set its start to (parent, index)
-        if (points.start_container) |start_node| {
-            // Get the NodeBase from the start container using instance bridge
-            if (instance_bridge.getNodeBase(start_node)) |start_base| {
-                if (tree_helpers.isInclusiveDescendant(node_ptr, start_base)) {
-                    // Cast parent to runtime.Instance
-                    if (instance_bridge.getInstance(parent)) |parent_instance| {
-                        const container: *runtime.Instance = @ptrCast(@alignCast(parent_instance));
-                        live.set_start(range, container, @intCast(index));
-                        points.start_container = container;
-                        points.start_offset = @intCast(index);
-                    }
-                }
+        const start_inside = if (start_base) |base| tree_helpers.isInclusiveDescendant(node_ptr, base) else false;
+        if (start_inside) {
+            // Cast parent to runtime.Instance
+            if (instance_bridge.getInstance(parent)) |parent_instance| {
+                const container: *runtime.Instance = @ptrCast(@alignCast(parent_instance));
+                live.set_start(range, container, @intCast(index));
+                points.start_container = container;
+                points.start_offset = @intCast(index);
+                start_base = instance_bridge.getNodeBase(container);
             }
         }
 
         // Step 5: For each live range whose end node is an inclusive descendant of node,
         // set its end to (parent, index)
-        if (points.end_container) |end_node| {
-            // Get the NodeBase from the end container using instance bridge
-            if (instance_bridge.getNodeBase(end_node)) |end_base| {
-                if (tree_helpers.isInclusiveDescendant(node_ptr, end_base)) {
-                    // Cast parent to runtime.Instance
-                    if (instance_bridge.getInstance(parent)) |parent_instance| {
-                        const container: *runtime.Instance = @ptrCast(@alignCast(parent_instance));
-                        live.set_end(range, container, @intCast(index));
-                        points.end_container = container;
-                        points.end_offset = @intCast(index);
-                    }
-                }
+        const end_inside = if (one_node) start_inside else if (end_base) |base| tree_helpers.isInclusiveDescendant(node_ptr, base) else false;
+        if (end_inside) {
+            // Cast parent to runtime.Instance
+            if (instance_bridge.getInstance(parent)) |parent_instance| {
+                const container: *runtime.Instance = @ptrCast(@alignCast(parent_instance));
+                live.set_end(range, container, @intCast(index));
+                points.end_container = container;
+                points.end_offset = @intCast(index);
+                end_base = instance_bridge.getNodeBase(container);
             }
         }
 
         // Step 6: For each live range whose start node is parent and start offset is greater than index,
         // decrease its start offset by 1
-        if (points.start_container) |start_node| {
-            if (instance_bridge.getNodeBase(start_node)) |start_base| {
-                if (start_base == parent) {
-                    if (points.start_offset > index) {
-                        live.set_start_offset(range, @intCast(points.start_offset - 1));
-                    }
-                }
-            }
+        if (start_base == parent and points.start_offset > index) {
+            live.set_start_offset(range, @intCast(points.start_offset - 1));
         }
 
         // Step 7: For each live range whose end node is parent and end offset is greater than index,
         // decrease its end offset by 1
-        if (points.end_container) |end_node| {
-            if (instance_bridge.getNodeBase(end_node)) |end_base| {
-                if (end_base == parent) {
-                    if (points.end_offset > index) {
-                        live.set_end_offset(range, @intCast(points.end_offset - 1));
-                    }
-                }
-            }
+        if (end_base == parent and points.end_offset > index) {
+            live.set_end_offset(range, @intCast(points.end_offset - 1));
         }
     }
 }
@@ -2374,31 +2364,26 @@ fn updateRangesForInsertionWithCount(doc: anytype, parent: anytype, child_index:
 
     // For each live range, update offsets if necessary
     for (internal.ranges.items) |range| {
-        // Get range boundary points (an offset change moves no container)
+        // Get range boundary points (an offset change moves no container),
+        // and their nodes - one lookup when the range starts and ends in one
+        // node, as in the pre-remove steps.
         const points = live.points(range) orelse continue;
+        const start_base: ?*NodeBase = if (points.start_container) |start_node| instance_bridge.getNodeBase(start_node) else null;
+        const end_base: ?*NodeBase = if (points.end_container) |end_node|
+            (if (points.start_container == end_node) start_base else instance_bridge.getNodeBase(end_node))
+        else
+            null;
 
         // For each live range whose start node is parent and start offset is greater than child's index,
         // increase its start offset by count.
-        if (points.start_container) |start_node| {
-            if (instance_bridge.getNodeBase(start_node)) |start_base| {
-                if (start_base == parent_base) {
-                    if (points.start_offset > child_index) {
-                        live.set_start_offset(range, @intCast(points.start_offset + count));
-                    }
-                }
-            }
+        if (start_base == parent_base and points.start_offset > child_index) {
+            live.set_start_offset(range, @intCast(points.start_offset + count));
         }
 
         // For each live range whose end node is parent and end offset is greater than child's index,
         // increase its end offset by count.
-        if (points.end_container) |end_node| {
-            if (instance_bridge.getNodeBase(end_node)) |end_base| {
-                if (end_base == parent_base) {
-                    if (points.end_offset > child_index) {
-                        live.set_end_offset(range, @intCast(points.end_offset + count));
-                    }
-                }
-            }
+        if (end_base == parent_base and points.end_offset > child_index) {
+            live.set_end_offset(range, @intCast(points.end_offset + count));
         }
     }
 }
