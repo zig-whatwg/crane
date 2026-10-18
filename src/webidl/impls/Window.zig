@@ -620,11 +620,18 @@ fn settingsFetchGroup(instance: *runtime.Instance) ?*@import("dom").document_fet
 }
 
 /// The settings object's policy container: the window's associated
-/// Document's (HTML 7.1.6), reached through dom.policy_containers.
+/// Document's (HTML 7.1.6), reached through dom.policy_containers. A Window
+/// always keeps one, so one that cannot be found - no Window state, no
+/// document, a document with no internal state - answers the static
+/// PolicyContainer.unavailable, against which every CSP decision is
+/// "Blocked". Null read as "this global keeps none": its requests stayed on
+/// "client" and main fetch checked no CSP, and its eval, Function, wasm and
+/// Trusted Types checks allowed everything (lane leaks4's report).
 fn settingsPolicyContainer(instance: *runtime.Instance) ?*const @import("fetch").internal.PolicyContainer {
-    const internal = getInternal(instance) orelse return null;
-    const document = internal.document orelse return null;
-    return @import("dom").policy_containers.of(document);
+    const unavailable = &@import("fetch").internal.PolicyContainer.unavailable;
+    const internal = getInternal(instance) orelse return unavailable;
+    const document = internal.document orelse return unavailable;
+    return @import("dom").policy_containers.of(document) orelse unavailable;
 }
 
 /// Referrer Policy 8.3 step 3.1.3: while the document is srcdoc, use its

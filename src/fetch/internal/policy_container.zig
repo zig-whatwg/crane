@@ -69,6 +69,21 @@ pub const PolicyContainer = struct {
 
     const NavigationUpgrade = struct { host: []const u8, port: ?u16 };
 
+    /// The container a global's settings object answers with when the one
+    /// it keeps cannot be found - a Window whose document, or whose
+    /// document's container, is gone. Not knowing the policies is not "no
+    /// policies": its CSP list is csp.CSPList.unavailable (empty,
+    /// unenforceable), so every CSP decision against it, or against a clone
+    /// of it - a request's (Fetch "populate request from client" step 3), a
+    /// worker's - is "Blocked", and the strictest referrer policy applies.
+    /// Static and read-only: reading or cloning it allocates nothing. Never
+    /// deinit.
+    pub const unavailable: PolicyContainer = .{
+        .allocator = std.mem.Allocator.failing,
+        .csp_list = csp.CSPList.unavailable,
+        .referrer_policy = .no_referrer,
+    };
+
     /// A new policy container: every policy at its initial value.
     pub fn init(allocator: Allocator) PolicyContainer {
         return .{ .allocator = allocator, .csp_list = csp.CSPList.init(allocator) };

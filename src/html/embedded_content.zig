@@ -573,11 +573,14 @@ fn displayNoPlugin(content: *Content) void {
 fn pluginWithoutUrlCheck(element: *runtime.Instance) void {
     const type_attribute = attributeValue(element, "type") orelse return;
     if (std.mem.trim(u8, type_attribute, " \t\n\r\x0c").len == 0) return;
+    // A document whose policy container cannot be found fails closed
+    // (dom.csp_violations.documentCspList) - unobservable here, as the
+    // answer always is: no plugin content loads either way.
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
-    const container = dom.policy_containers.of(document) orelse return;
-    if (container.csp_list.isEmpty()) return;
+    const list = dom.csp_violations.documentCspList(document);
+    if (list.isEmpty()) return;
     const window = (interfaces.Document.get_defaultView(document) catch null) orelse return;
-    _ = csp.plugin_check.shouldPluginContentWithoutUrlBeBlocked(&container.csp_list, dom.csp_violations.reporterFor(window), element);
+    _ = csp.plugin_check.shouldPluginContentWithoutUrlBeBlocked(list, dom.csp_violations.reporterFor(window), element);
 }
 
 // ============================================================================
