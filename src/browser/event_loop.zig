@@ -56,7 +56,17 @@ pub const EventLoop = struct {
     promise_arena: std.heap.ArenaAllocator,
 
     /// The task queue: the engine has none of its own for the host's tasks.
+    /// Its first `waiting` tasks are the ones the last drain left in place
+    /// because their documents were not fully active (`drainTasks`).
     tasks: std.ArrayList(Task),
+
+    /// How many tasks at the front of `tasks` the last drain left waiting:
+    /// their documents are not fully active, and may be again (HTML 8.1.7.1,
+    /// "a task is runnable if its document is either null or fully active").
+    /// Exact between drains - nothing but a drain and `deinit` removes from
+    /// `tasks`, and queueing appends - so `tasks.len > waiting` is "a
+    /// runnable task may be queued" (`runnableQueued`). 0 while a drain runs.
+    waiting: usize = 0,
 
     /// Track if we're inside runOnce to prevent reentrancy
     in_run_once: bool,
@@ -294,7 +304,7 @@ pub const EventLoop = struct {
             // A task left for the next turn is work waiting now: poll, but
             // do not block. So is one another thread posted meanwhile, and a
             // tree still waiting for its teardown.
-            if (self.tasks.items.len > 0 or self.sink.hasPosted() or self.deferredPending()) break :blk 0;
+            if (self.runnableQueued() or self.sink.hasPosted() or self.deferredPending()) break :blk 0;
             var wait = max_wait_ms;
             if (self.timer_manager) |mgr| {
                 if (mgr.getNextTimerDeadline()) |deadline| wait = @min(deadline, wait);
@@ -377,7 +387,7 @@ pub const EventLoop = struct {
             _ = queue.runSlice(DeferredTeardown.slice_budget);
             if (queue.isEmpty()) break;
             if (queue.pendingNodes() > DeferredTeardown.loop_low_water) continue;
-            if (self.tasks.items.len > 0 or self.sink.hasPosted()) break;
+            if (self.runnableQueued() or self.sink.hasPosted()) break;
             if (monotonicNs() - start >= deferred_teardown_turn_ns) break;
         }
         return true;
@@ -404,39 +414,91 @@ pub const EventLoop = struct {
     /// turn, as HTML's event loop runs one task per iteration: draining until
     /// the queue was empty let a task that queues a task keep a turn from
     /// ever returning, and with it the deadline its caller checks between
-    /// turns. Whether any task ran.
+    /// turns. Whether any task ran, or was dropped.
     fn runQueuedTasks(self: *Self) bool {
+        return self.drainTasks(classifyTask, checkpointAfterTask);
+    }
+
+    /// How a drain classifies a task's document: dom.document_activity's
+    /// answer, or a test's.
+    const Classify = *const fn (task: Task) dom.document_activity.Activity;
+
+    /// What a drain does after each task it runs: the microtask checkpoint,
+    /// or a test's nothing.
+    const AfterTask = *const fn (self: *Self) void;
+
+    /// The drain, step 2: each task queued before it began, from the front,
+    /// classified by its document (HTML 8.1.7.3 step 2.3, "the first runnable
+    /// task in taskQueue"):
+    ///
+    /// - fully active, or no document: removed and run, then `after`;
+    /// - inactive - not fully active, and it may be again: LEFT IN PLACE,
+    ///   ahead of every task queued after it, to run once its document is
+    ///   fully active again (a task queue is a set, not a queue, for exactly
+    ///   this: "grabs the first runnable task ... instead of dequeuing the
+    ///   first task");
+    /// - gone - it can never be fully active again: removed without running,
+    ///   its `drop` freeing what it carries ("destroy a document" step 5
+    ///   removes its tasks; here at the first drain after, as before).
+    ///
+    /// The waiting tasks end up a prefix of the queue, `waiting` long; every
+    /// drain classifies them again (O(waiting)). WebKit's EventLoop::run does
+    /// the same: a suspended group's tasks are put back, in order, ahead of
+    /// those queued meanwhile, a stopped group's are discarded
+    /// (WebCore/dom/EventLoop.cpp). Whether any task ran or was dropped.
+    fn drainTasks(self: *Self, classify: Classify, after: AfterTask) bool {
         var budget = self.tasks.items.len;
-        if (budget == 0) return false;
-        while (budget > 0 and self.tasks.items.len > 0) : (budget -= 1) {
-            const task = self.tasks.orderedRemove(0);
-            if (!isRunnable(task)) {
-                if (task.drop) |drop| drop(task.context);
-                continue;
+        // Until this drain is done, any queued task may be runnable.
+        self.waiting = 0;
+        const index: usize = 0;
+        var progressed = false;
+        // Tasks the ones run here queue are appended: the budget never
+        // reaches them, and nothing else removes from the queue, so
+        // `index` is always at a task queued before the drain.
+        while (budget > 0 and index < self.tasks.items.len) : (budget -= 1) {
+            const task = self.tasks.items[index];
+            switch (classify(task)) {
+                .inactive, .gone => {
+                    _ = self.tasks.orderedRemove(index);
+                    if (task.drop) |drop| drop(task.context);
+                    progressed = true;
+                },
+                .fully_active => {
+                    _ = self.tasks.orderedRemove(index);
+                    task.callback(task.context);
+                    after(self);
+                    progressed = true;
+                },
             }
-            task.callback(task.context);
-            self.checkpoint();
         }
-        return true;
+        self.waiting = index;
+        return progressed;
     }
 
     /// HTML 8.1.7.1: "A task is runnable if its document is either null or
-    /// fully active."
-    ///
-    /// Stated simplification: HTML leaves a task that is not runnable in its
-    /// queue, to run once its document is fully active again. Crane keeps no
-    /// bfcache, so a document that stops being fully active never becomes
-    /// so again, and "destroy a document" (step 6) removes its tasks from
-    /// the queues without running them - so the loop drops such a task
-    /// (`drop` frees what it carries) instead of keeping it forever.
-    fn isRunnable(task: Task) bool {
-        const document = task.document orelse return true;
-        return dom.document_activity.fullyActive(document, task.document_generation);
+    /// fully active" - and when it is not, whether it may be again.
+    fn classifyTask(task: Task) dom.document_activity.Activity {
+        const document = task.document orelse return .fully_active;
+        return dom.document_activity.activity(document, task.document_generation);
+    }
+
+    fn checkpointAfterTask(self: *Self) void {
+        self.checkpoint();
+    }
+
+    /// Whether a task that may be runnable is queued: one the last drain did
+    /// not leave waiting, or any while a drain runs.
+    fn runnableQueued(self: *const Self) bool {
+        return self.tasks.items.len > self.waiting;
     }
 
     /// Whether there is pending work that should keep the loop from idling.
     pub fn hasPendingWork(self: *Self) bool {
-        if (self.tasks.items.len > 0) return true;
+        // A task waiting for its document to be fully active again is not
+        // work: only a task of this loop can make it so (reactivation), and
+        // that task is work of its own (WebKit's
+        // EventLoop::hasTasksForFullyActiveDocument).
+        if (self.runnableQueued()) return true;
         // Collected trees waiting for their teardown.
         if (self.deferredPending()) return true;
         // Posted by another thread, and not taken yet.
@@ -504,8 +566,9 @@ pub const EventLoop = struct {
     /// computeDeadline. Whether one started.
     fn startIdlePeriod(self: *Self, now: i64) bool {
         if (self.idle_requests.items.len == 0) return false;
-        // A runnable task: not idle.
-        if (self.tasks.items.len > 0) return false;
+        // A runnable task: not idle. Tasks waiting for their documents are
+        // not runnable ("has no runnable task").
+        if (self.runnableQueued()) return false;
         if (!self.idlePeriodMayStart(now)) return false;
 
         // Step 5.1.
@@ -599,7 +662,7 @@ pub const EventLoop = struct {
 
     fn queueTask(ptr: *anyopaque, task: Task) void {
         const self: *Self = @ptrCast(@alignCast(ptr));
-        // A task with a document may be dropped without running (isRunnable):
+        // A task with a document may be dropped without running (drainTasks):
         // it must be able to free what it carries.
         std.debug.assert(task.document == null or task.drop != null);
         self.tasks.append(self.allocator, task) catch {
@@ -794,7 +857,7 @@ test "work a frame long keeps idle periods away for a frame" {
 }
 
 test "a task with no document is runnable" {
-    try testing.expect(EventLoop.isRunnable(.{ .callback = &noop, .context = null }));
+    try testing.expectEqual(dom.document_activity.Activity.fully_active, EventLoop.classifyTask(.{ .callback = &noop, .context = null }));
 }
 
 /// What a test task carries: whether it ran or was dropped.
@@ -824,6 +887,193 @@ test "a task the queue cannot take is dropped, not leaked" {
     try testing.expectEqual(@as(usize, 0), loop.tasks.items.len);
     try testing.expectEqual(@as(u32, 1), tally.dropped);
     try testing.expectEqual(@as(u32, 0), tally.ran);
+}
+
+/// A task's document, as the drain tests classify it: its activity is
+/// whatever the test sets.
+const TestDocument = struct {
+    activity: dom.document_activity.Activity = .fully_active,
+
+    fn classify(task: Task) dom.document_activity.Activity {
+        const document: *TestDocument = @ptrCast(@alignCast(task.document orelse return .fully_active));
+        return document.activity;
+    }
+};
+
+/// The drain tests run no agent: nothing after each task.
+fn noCheckpoint(_: *EventLoop) void {}
+
+/// A test task that records the order tasks ran in.
+const Ordered = struct {
+    log: *std.ArrayListUnmanaged(u8),
+    name: u8,
+    dropped: bool = false,
+    /// A task this one queues when it runs.
+    queues: ?*Ordered = null,
+    loop: ?*EventLoop = null,
+
+    fn run(data: ?*anyopaque) void {
+        const self: *Ordered = @ptrCast(@alignCast(data.?));
+        self.log.append(testing.allocator, self.name) catch {};
+        if (self.queues) |next| self.loop.?.eventLoop().queueTask(next.task(null));
+    }
+
+    fn drop(data: ?*anyopaque) void {
+        const self: *Ordered = @ptrCast(@alignCast(data.?));
+        self.dropped = true;
+    }
+
+    fn task(self: *Ordered, document: ?*TestDocument) Task {
+        return .{ .callback = &run, .context = self, .drop = &drop, .document = document, .document_generation = 0 };
+    }
+};
+
+test "a task whose document is not fully active stays queued, in place, and is not work waiting" {
+    var loop = try testLoop();
+    defer loop.deinit();
+    var log: std.ArrayListUnmanaged(u8) = .empty;
+    defer log.deinit(testing.allocator);
+    var first: TestDocument = .{ .activity = .inactive };
+    var second: TestDocument = .{ .activity = .inactive };
+    var a: Ordered = .{ .log = &log, .name = 'a' };
+    var b: Ordered = .{ .log = &log, .name = 'b' };
+    var c: Ordered = .{ .log = &log, .name = 'c' };
+    const queue = loop.eventLoop();
+    queue.queueTask(a.task(&first));
+    queue.queueTask(b.task(null));
+    queue.queueTask(c.task(&second));
+
+    try testing.expect(loop.drainTasks(TestDocument.classify, noCheckpoint));
+    try testing.expectEqualStrings("b", log.items);
+    // Neither run nor dropped: still queued, in their order, at the front.
+    try testing.expect(!a.dropped and !c.dropped);
+    try testing.expectEqual(@as(usize, 2), loop.tasks.items.len);
+    try testing.expectEqual(@as(?*anyopaque, &a), loop.tasks.items[0].context);
+    try testing.expectEqual(@as(?*anyopaque, &c), loop.tasks.items[1].context);
+    try testing.expectEqual(@as(usize, 2), loop.waiting);
+    // Not work: the loop may idle, and wait, with them queued.
+    try testing.expect(!loop.runnableQueued());
+    try testing.expect(!loop.hasPendingWork());
+    // A drain that finds only waiting tasks did nothing.
+    try testing.expect(!loop.drainTasks(TestDocument.classify, noCheckpoint));
+    try testing.expectEqualStrings("b", log.items);
+}
+
+test "a waiting task runs once its document is fully active again, before the tasks queued after it" {
+    var loop = try testLoop();
+    defer loop.deinit();
+    var log: std.ArrayListUnmanaged(u8) = .empty;
+    defer log.deinit(testing.allocator);
+    var document: TestDocument = .{ .activity = .inactive };
+    var a: Ordered = .{ .log = &log, .name = 'a' };
+    var d: Ordered = .{ .log = &log, .name = 'd' };
+    const queue = loop.eventLoop();
+    queue.queueTask(a.task(&document));
+    _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
+    try testing.expectEqual(@as(usize, 1), loop.waiting);
+
+    // Queued after it: work again.
+    queue.queueTask(d.task(null));
+    try testing.expect(loop.hasPendingWork());
+    document.activity = .fully_active;
+    try testing.expect(loop.drainTasks(TestDocument.classify, noCheckpoint));
+    try testing.expectEqualStrings("ad", log.items);
+    try testing.expectEqual(@as(usize, 0), loop.tasks.items.len);
+    try testing.expectEqual(@as(usize, 0), loop.waiting);
+}
+
+test "a waiting task whose document is gone is dropped without running" {
+    var loop = try testLoop();
+    defer loop.deinit();
+    var log: std.ArrayListUnmanaged(u8) = .empty;
+    defer log.deinit(testing.allocator);
+    var document: TestDocument = .{ .activity = .inactive };
+    var a: Ordered = .{ .log = &log, .name = 'a' };
+    loop.eventLoop().queueTask(a.task(&document));
+    _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
+    try testing.expect(!a.dropped);
+
+    // Destroyed: "remove any tasks whose document is document".
+    document.activity = .gone;
+    try testing.expect(loop.drainTasks(TestDocument.classify, noCheckpoint));
+    try testing.expect(a.dropped);
+    try testing.expectEqualStrings("", log.items);
+    try testing.expectEqual(@as(usize, 0), loop.tasks.items.len);
+    try testing.expectEqual(@as(usize, 0), loop.waiting);
+}
+
+test "a task whose document is gone is dropped at once, and one with none runs" {
+    var loop = try testLoop();
+    defer loop.deinit();
+    var log: std.ArrayListUnmanaged(u8) = .empty;
+    defer log.deinit(testing.allocator);
+    var gone: TestDocument = .{ .activity = .gone };
+    var a: Ordered = .{ .log = &log, .name = 'a' };
+    var b: Ordered = .{ .log = &log, .name = 'b' };
+    loop.eventLoop().queueTask(a.task(&gone));
+    loop.eventLoop().queueTask(b.task(null));
+    try testing.expect(loop.drainTasks(TestDocument.classify, noCheckpoint));
+    try testing.expect(a.dropped);
+    try testing.expectEqualStrings("b", log.items);
+    try testing.expectEqual(@as(usize, 0), loop.tasks.items.len);
+}
+
+test "a task queued while waiting tasks are passed over waits for the next drain, behind them" {
+    var loop = try testLoop();
+    defer loop.deinit();
+    var log: std.ArrayListUnmanaged(u8) = .empty;
+    defer log.deinit(testing.allocator);
+    var document: TestDocument = .{ .activity = .inactive };
+    var a: Ordered = .{ .log = &log, .name = 'a' };
+    var e: Ordered = .{ .log = &log, .name = 'e' };
+    var b: Ordered = .{ .log = &log, .name = 'b', .queues = &e, .loop = &loop };
+    const queue = loop.eventLoop();
+    queue.queueTask(a.task(&document));
+    queue.queueTask(b.task(null));
+    _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
+    // b ran and queued e; e waits for the next turn, behind a.
+    try testing.expectEqualStrings("b", log.items);
+    try testing.expectEqual(@as(usize, 1), loop.waiting);
+    try testing.expectEqual(@as(usize, 2), loop.tasks.items.len);
+    try testing.expectEqual(@as(?*anyopaque, &e), loop.tasks.items[1].context);
+    try testing.expect(loop.hasPendingWork());
+    _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
+    try testing.expectEqualStrings("be", log.items);
+    try testing.expectEqual(@as(usize, 1), loop.waiting);
+}
+
+test "the loop's end drops a waiting task" {
+    var log: std.ArrayListUnmanaged(u8) = .empty;
+    defer log.deinit(testing.allocator);
+    var document: TestDocument = .{ .activity = .inactive };
+    var a: Ordered = .{ .log = &log, .name = 'a' };
+    {
+        var loop = try testLoop();
+        defer loop.deinit();
+        loop.eventLoop().queueTask(a.task(&document));
+        _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
+        try testing.expect(!a.dropped);
+    }
+    try testing.expect(a.dropped);
+    try testing.expectEqualStrings("", log.items);
+}
+
+test "an idle period starts while only waiting tasks are queued" {
+    var loop = try testLoop();
+    defer loop.deinit();
+    var log: std.ArrayListUnmanaged(u8) = .empty;
+    defer log.deinit(testing.allocator);
+    var document: TestDocument = .{ .activity = .inactive };
+    var a: Ordered = .{ .log = &log, .name = 'a' };
+    loop.eventLoop().queueTask(a.task(&document));
+    var w: TestWindow = .{};
+    loop.requestIdlePeriod(&w.realm, &TestWindow.start);
+    // Queued, not yet drained: maybe runnable, so not idle.
+    try testing.expect(!loop.startIdlePeriod(1_000 * std.time.ns_per_ms));
+    _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
+    // "has no runnable task": idle.
+    try testing.expect(loop.startIdlePeriod(1_000 * std.time.ns_per_ms));
+    try testing.expectEqual(@as(usize, 1), w.starts);
 }
 
 /// Posts one task to `sink` from a thread of its own.
