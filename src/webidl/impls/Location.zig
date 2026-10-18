@@ -955,15 +955,18 @@ fn topLevelNavigate(window: *runtime.Instance, url: []const u8, params: dom.top_
     const allocator = window.ctx.allocator;
     const document_url = interfaces.Document.get_URL(document) catch return;
     defer document.ctx.allocator.free(document_url);
-    // Steps 12-13: history handling.
-    const handling = navigate_steps.resolveHistoryHandling(switch (params.history_behavior) {
+    // Steps 12-13: history handling - a form's POST to the page's own URL
+    // stays a push, as the browsers do
+    // (navigate_steps.resolveHistoryHandlingWithResource; the hook's
+    // form_data is non-null exactly for a POST resource).
+    const handling = navigate_steps.resolveHistoryHandlingWithResource(switch (params.history_behavior) {
         .auto => .auto,
         .push => .push,
         .replace => .replace,
     }, url, .{
         .url = document_url,
         .is_initial_about_blank = dom.document_lifecycle.isInitialAboutBlank(document),
-    }, sameOriginSource(params.source_document, document_url, allocator));
+    }, sameOriginSource(params.source_document, document_url, allocator), params.form_data != null);
 
     // Step 14: a fragment navigation - never one with a document resource,
     // a form's POST resource.
@@ -1312,6 +1315,12 @@ fn topLevelFragmentNavigation(
     const new_fragment = navigate_steps.fragmentOf(url);
     const same = if (old_fragment) |a| (if (new_fragment) |b| std.mem.eql(u8, a, b) else false) else new_fragment == null;
     if (!same) queueHashChange(allocator, window, old_url, url);
+
+    // Step 16: "Scroll to the fragment given navigable's active document" -
+    // which sets its target element (:target), now that its URL is the
+    // fragment's (navigation-api/navigation-methods/navigate-same-document.html).
+    const active = interfaces.Window.get_document(window) catch return;
+    dom.fragment_scroll.scrollToTheFragment(active);
 }
 
 /// "Update document for history step application" step 6.4.3 for a
