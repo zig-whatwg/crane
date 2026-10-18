@@ -177,7 +177,7 @@ pub const EntryData = struct {
     name: []const u8,
     entry_type: EntryType,
     start_time: f64,
-    /// "end time": 0 until set, and duration is 0 while it is.
+    /// "end time": 0 until set. For a measure, 0 is a valid completed end.
     end_time: f64 = 0,
     /// `id`: 0 while unset (the generated ids start above 100).
     id: u64 = 0,
@@ -185,10 +185,11 @@ pub const EntryData = struct {
     /// when the entry was queued; 0 for none.
     navigation_id: u64 = 0,
 
-    /// The duration getter: 0 while the end time is 0, otherwise end time -
-    /// startTime.
+    /// User Timing 2.1.3 step 8: a measure's duration is end time minus
+    /// startTime, even when it ends at 0 (and may be negative). Other entry
+    /// types retain their unset-end sentinel, including a loading navigation.
     pub fn duration(self: *const EntryData) f64 {
-        if (self.end_time == 0) return 0;
+        if (self.entry_type != .measure and self.end_time == 0) return 0;
         return self.end_time - self.start_time;
     }
 };

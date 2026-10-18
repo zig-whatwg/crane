@@ -396,10 +396,22 @@ fn convertNameToTimestamp(instance: *runtime.Instance, name: []const u8) !f64 {
     if (!instance.ctx.isWindow()) return error.TypeError;
     // 2.
     if (std.mem.eql(u8, name, "navigationStart")) return 0;
-    // 3-6. TODO(perftimeline): PerformanceTiming's values come from the
-    // navigation's timing (Navigation Timing); until they are recorded every
-    // other attribute reads 0, which step 5 makes an InvalidAccessError.
-    return error.InvalidAccessError;
+    // 3. Read the obsolete interface's integer epoch timestamps, not the
+    // fractional relative values of PerformanceNavigationTiming.
+    const timing = try interfaces.Performance.get_timing(instance);
+    const start_time = try interfaces.PerformanceTiming.get_navigationStart(timing);
+    inline for (performance_timeline.performance_timing_attributes) |attribute| {
+        if (std.mem.eql(u8, name, attribute)) {
+            // 4-5. Zero means unavailable; a nonzero epoch timestamp equal
+            // to navigationStart is available and converts to zero.
+            const end_time = try @field(interfaces.PerformanceTiming, "get_" ++ attribute)(timing);
+            if (end_time == 0) return error.InvalidAccessError;
+            // 6. Subtract before converting to a high resolution timestamp.
+            // Keep the difference signed: an earlier event can be negative.
+            return @floatFromInt(@as(i128, end_time) - @as(i128, start_time));
+        }
+    }
+    unreachable; // convertMarkToTimestamp accepts only an interface attribute.
 }
 
 /// User Timing 3.1 "convert a mark to a timestamp".
