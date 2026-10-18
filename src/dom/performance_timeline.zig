@@ -1292,10 +1292,23 @@ pub fn recordLoadTiming(realm: runtime.Context, moment: LoadTimingMoment) void {
         .dom_complete => if (info.dom_complete == 0) {
             info.dom_complete = now_ms;
         },
-        .dom_content_loaded_event_start => info.dom_content_loaded_event_start = now_ms,
-        .dom_content_loaded_event_end => info.dom_content_loaded_event_end = now_ms,
-        .load_event_start => info.load_event_start = now_ms,
+        // HTML "the end" 6.1/6.3 and 9.4/9.8 set these unconditionally,
+        // but Chrome, Firefox and Safari retain the first navigation's
+        // times through document.open() (navigation-timing/{nav2-test-,test-}
+        // document-open.html). Follow that existing browser behavior, as
+        // Blink Document::FinishedParsing and LocalDOMWindow::DispatchLoadEvent
+        // do: later load events still fire without replacing the times.
+        .dom_content_loaded_event_start => if (info.dom_content_loaded_event_start == 0) {
+            info.dom_content_loaded_event_start = now_ms;
+        },
+        .dom_content_loaded_event_end => if (info.dom_content_loaded_event_end == 0) {
+            info.dom_content_loaded_event_end = now_ms;
+        },
+        .load_event_start => if (info.load_event_start == 0) {
+            info.load_event_start = now_ms;
+        },
         .load_event_end => {
+            if (info.load_event_end != 0) return;
             info.load_event_end = now_ms;
             // Navigation Timing 3.1: the entry's duration is loadEventEnd -
             // startTime, which an end time of loadEventEnd gives.
