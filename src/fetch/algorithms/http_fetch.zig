@@ -235,6 +235,13 @@ pub fn serviceWorkerResponse(allocator: Allocator, params: *FetchParams, respons
         response.deinit();
         return .{ .response = try internal_response.networkError(allocator) };
     }
+    // The client's timing allow check for the worker's response. Stated:
+    // the spec runs no TAO check on it (step 4.5 is the network's), so main
+    // fetch step 19 would pass any service worker response; Chrome and
+    // Firefox hide a filtered one's timing unless it passed
+    // (resource-timing-cross-origin-server-timing.https.html cases 1-6,
+    // wpt.fyi df642c4142; Safari fails case 1).
+    if (!serviceWorkerResponseTimingAllowed(request, response)) request.timing_allow_failed = true;
     // An opaque-redirect response is what step 6's "manual" makes: it is
     // handed on as it is - but for a navigation, whose step 6 reads its
     // internal response's redirect status (3.5.5's internalResponse, which a
@@ -243,6 +250,39 @@ pub fn serviceWorkerResponse(allocator: Allocator, params: *FetchParams, respons
     // respondWith(fetch(event.request)) of a navigation's redirect hop).
     if (kind == .opaqueredirect and request.mode != .navigate) return .{ .response = response };
     return redirectSteps(allocator, params, response);
+}
+
+/// Whether a service worker's `response` keeps the client `request`'s
+/// timing allowed - Chromium's ServiceWorkerSubresourceLoader: a synthetic
+/// ("default") or basic response is the client's own origin's, and passes;
+/// a filtered one (CORS, opaque) wraps a cross-origin response and passes
+/// only when the worker's fetch of it passed the TAO check (its timing
+/// allow passed flag) AND its `Timing-Allow-Origin` passes for the client's
+/// origin - `*` or the request origin, serialized. Anything else (an
+/// opaque-redirect) does not pass.
+fn serviceWorkerResponseTimingAllowed(request: *const InternalRequest, response: *const InternalResponse) bool {
+    return switch (response.response_type) {
+        .default, .basic => true,
+        .cors, .@"opaque" => response.timing_allow_passed and timingAllowOriginNames(request, response),
+        .@"error", .opaqueredirect => false,
+    };
+}
+
+/// TAO check steps 3-5 alone: `response`'s `Timing-Allow-Origin` values
+/// hold `*` or `request`'s origin, serialized.
+fn timingAllowOriginNames(request: *const InternalRequest, response: *const InternalResponse) bool {
+    if (response.header_list.getFirstValue("Timing-Allow-Origin") == null) return false;
+    const serialized = request.serializeOrigin(request.allocator) catch return false;
+    defer request.allocator.free(serialized);
+    for (response.header_list.entries.items) |header| {
+        if (!std.ascii.eqlIgnoreCase(header.name, "Timing-Allow-Origin")) continue;
+        var values = std.mem.splitScalar(u8, header.value, ',');
+        while (values.next()) |raw| {
+            const value = std.mem.trim(u8, raw, " \t");
+            if (std.mem.eql(u8, value, "*") or std.mem.eql(u8, value, serialized)) return true;
+        }
+    }
+    return false;
 }
 
 /// Fetch 4.11 "TAO check" for `request` and `response`.
