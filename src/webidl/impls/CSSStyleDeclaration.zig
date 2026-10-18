@@ -373,7 +373,9 @@ pub fn call_setNamedItem(instance: *runtime.Instance, name: runtime.DOMString, v
     const property = propertyNameOf(name.asSlice(), &buffer) orelse return;
     if (properties.lookup(property) == null) return;
     if (internal.kind == .computed) return error.NoModificationAllowedError;
-    return call_setProperty(instance, runtime.DOMString.initInterned(property), value, webidl.Opt(typedefs.CSSOMString).notPassed());
+    // CSSOM 6.6.1: a named CSS setter invokes setProperty. Use its generated
+    // interface so HTML CEReactions steps 1-6 finish before this setter returns.
+    return interfaces.CSSStyleDeclaration.call_setProperty(instance, runtime.DOMString.initInterned(property), value, webidl.Opt(typedefs.CSSOMString).notPassed());
 }
 
 /// The names the binding's named handlers answer for: every supported CSS
