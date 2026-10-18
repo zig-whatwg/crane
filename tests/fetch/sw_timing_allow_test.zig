@@ -71,10 +71,42 @@ test "HTTP fetch 3.5.3: the timing info takes the service worker response's timi
     const response = try fetch.internal.InternalResponse.init(allocator);
     response.status = 200;
     response.service_worker_timing_info = .{ .start_time = 5.0, .fetch_event_dispatch_time = 9.5 };
+    timing.post_redirect_start_time = 3.0;
     const next = try fetch.algorithms.http_fetch.serviceWorkerResponse(allocator, params, response, 4.0);
     defer next.response.deinit();
     try std.testing.expectEqual(@as(f64, 4.0), timing.final_service_worker_start_time);
     const sw = timing.service_worker_timing_info orelse return error.TestExpectedServiceWorkerTiming;
     try std.testing.expectEqual(@as(f64, 5.0), sw.start_time);
     try std.testing.expectEqual(@as(f64, 9.5), sw.fetch_event_dispatch_time);
+    // No connection was made for the client: its connection times are its
+    // fetch start (Chrome, Firefox and Safari: connectStart == fetchStart,
+    // resource-timing-fetch-variants.https.html), no TLS time.
+    const connection = timing.final_connection_timing_info orelse return error.TestExpectedConnectionTiming;
+    try std.testing.expectEqual(@as(f64, 3.0), connection.domain_lookup_start_time);
+    try std.testing.expectEqual(@as(f64, 3.0), connection.connection_end_time);
+    try std.testing.expectEqual(@as(f64, 0), connection.secure_connection_start_time);
+}
+
+// Fetch response handover 4.2.4's body info, as Crane reads it: hidden for
+// an opaque, opaque-redirect or error response; a CORS response keeps it
+// (whatwg/fetch #1556) unless a service worker provided it and its timing
+// allow check failed (Chrome and Firefox; the integrator's ruling B).
+test "a service worker's CORS response without TAO hides its body sizes" {
+    const allocator = std.testing.allocator;
+    const Case = struct { type: fetch.internal.ResponseType, passed: bool, from_worker: bool, hidden: bool };
+    for ([_]Case{
+        .{ .type = .cors, .passed = false, .from_worker = true, .hidden = true },
+        .{ .type = .cors, .passed = true, .from_worker = true, .hidden = false },
+        .{ .type = .cors, .passed = false, .from_worker = false, .hidden = false },
+        .{ .type = .basic, .passed = false, .from_worker = true, .hidden = false },
+        .{ .type = .@"opaque", .passed = true, .from_worker = false, .hidden = true },
+        .{ .type = .opaqueredirect, .passed = true, .from_worker = false, .hidden = true },
+    }) |case| {
+        const response = try fetch.internal.InternalResponse.init(allocator);
+        defer response.deinit();
+        response.response_type = case.type;
+        response.timing_allow_passed = case.passed;
+        if (case.from_worker) response.service_worker_timing_info = .{ .start_time = 1, .fetch_event_dispatch_time = 2 };
+        try std.testing.expectEqual(case.hidden, fetch.algorithms.fetch_job.bodyInfoHidden(response));
+    }
 }

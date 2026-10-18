@@ -216,6 +216,16 @@ pub fn serviceWorkerResponse(allocator: Allocator, params: *FetchParams, respons
     // 3.5.3. The fetch timing info's service worker timing info: the
     // response's (Create Fetch Event and Dispatch step 18 set it).
     params.timing_info.service_worker_timing_info = response.service_worker_timing_info;
+    // Stated: the client made no connection, so its final connection
+    // timing info is a reused connection's at its fetch start, with no TLS
+    // time - Chrome, Firefox and Safari all report connectStart ==
+    // fetchStart for a service worker's response (resource-timing-fetch-
+    // variants.https.html "Connection info...", wpt.fyi df642c4142); Blink's
+    // PerformanceResourceTiming::connectStart returns fetchStart when no
+    // network request was made. The spec leaves it null.
+    var connection = @import("../internal/fetch_timing.zig").ConnectionTimingInfo.forReusedConnection(params.timing_info.post_redirect_start_time);
+    connection.secure_connection_start_time = 0;
+    params.timing_info.final_connection_timing_info = connection;
     // 3.5.4. A request body goes no further: a byte body is borrowed and
     // needs no cancel; a stream body was never handed to the service worker
     // (its route sends such a request to the network).
