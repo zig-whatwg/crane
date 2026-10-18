@@ -3062,6 +3062,11 @@ fn navigateToFragment(integration: *IFrameIntegration, url: []const u8, old_url:
     const new_fragment = navigate_steps.fragmentOf(url);
     const same = if (old_fragment) |a| (if (new_fragment) |b| std.mem.eql(u8, a, b) else false) else new_fragment == null;
     if (!same) queueHashChange(integration, old_url, url);
+    // Step 16: "Scroll to the fragment given navigable's active document" -
+    // which sets its target element (:target), now that its URL is the
+    // fragment's. The popstate listeners may have taken the frame away.
+    if (integration.state == .discarded) return;
+    if (activeDocumentOf(integration)) |document| dom_module.fragment_scroll.scrollToTheFragment(document);
 }
 
 /// "Update document for history step application" step 6.4.3 for a
