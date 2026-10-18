@@ -1162,11 +1162,14 @@ fn sameOriginDomain(a: *runtime.Instance, b: *runtime.Instance) bool {
 }
 
 /// Getter for name - The window's target name
-/// Per spec: Returns the browsing context name.
+/// Per spec: Returns the navigable's target name, or "" without a navigable.
 /// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.browsing_context.target_name);
+    // HTML name getter step 1: a Window without a navigable has no name.
+    const navigable = navigableOf(instance, internal) orelse return runtime.DOMString.initEmpty();
+    // Step 2.
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, navigable.target_name);
 }
 
 /// Getter for location
@@ -1847,8 +1850,10 @@ pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance 
 /// This is used for targeting links (e.g., target="myframe") and window.open().
 pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const str_slice = value.asSlice();
-    try internal.browsing_context.setTargetName(str_slice);
+    // HTML name setter step 1: a destroyed navigable cannot be renamed.
+    const navigable = navigableOf(instance, internal) orelse return;
+    // Step 2: set the navigable's target name.
+    try navigable.setTargetName(value.asSlice());
 }
 
 /// Setter for status - Set the status bar text
