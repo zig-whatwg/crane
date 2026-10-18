@@ -1188,9 +1188,9 @@ pub fn matchesNth(index: i64, pattern: NthPattern) bool {
 
 /// HTML 3.2.6.2: the language of an element - the first of its xml:lang
 /// (XML namespace), its lang in no namespace (HTML and SVG elements), its
-/// shadow root's host's language, its parent element's - else unknown, the
-/// empty string. (Crane models no pragma-set default language and no HTTP
-/// Content-Language: those fallbacks are unknown here.)
+/// shadow root's host's language, its parent element's, then its document's
+/// pragma-set default. HTTP Content-Language is not recorded yet, so the
+/// final fallback is the empty string (unknown).
 fn languageOf(start: *NodeBase) []const u8 {
     var current: ?*NodeBase = start;
     while (current) |node| {
@@ -1202,14 +1202,16 @@ fn languageOf(start: *NodeBase) []const u8 {
                 }
             }
         }
-        const parent = node.parent_node orelse return "";
+        const parent = node.parent_node orelse break;
         if (isShadowRoot(parent)) {
             current = hostOf(parent);
         } else if (parent.node_type == ELEMENT_NODE) {
             current = parent;
-        } else return "";
+        } else break;
     }
-    return "";
+    const instance = instanceOf(start) orelse return "";
+    const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return "";
+    return @import("document_language.zig").get(document) orelse "";
 }
 
 /// Selectors 4 7.2 and RFC 4647 3.3.2 "Extended Filtering", ASCII

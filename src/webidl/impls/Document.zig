@@ -146,6 +146,10 @@ pub const InternalState = struct {
     /// Stored as DOMString for proper memory management
     encoding: runtime.DOMString,
 
+    /// HTML 4.2.5.3: owned pragma-set default language, null before any
+    /// content-language pragma. Removing its meta does not clear it.
+    pragma_language: ?[]const u8 = null,
+
     /// Document ready state
     ready_state: enums.DocumentReadyState,
     /// HTML "page showing": set when pageshow fires at the end of loading.
@@ -570,6 +574,7 @@ pub const InternalState = struct {
         // Free DOMString storage
         self.content_type.deinit(self.allocator);
         self.encoding.deinit(self.allocator);
+        if (self.pragma_language) |language| self.allocator.free(language);
         self.design_mode.deinit(self.allocator);
 
         // Event handlers
@@ -784,6 +789,10 @@ pub fn installHooks() void {
         .domain = &originDomain,
         .record = &originRecord,
         .shareable = &shareableOrigin,
+    });
+    @import("dom").document_language.install(.{
+        .get = &pragmaLanguage,
+        .set = &setPragmaLanguage,
     });
     // Its policy container, for whatever sets or reads one without naming
     // this impl (navigation, meta referrer, a Window's settings object).
@@ -1549,6 +1558,19 @@ fn isRegistrableDomainSuffixOfOrEqualTo(allocator: std.mem.Allocator, host_suffi
 /// Whether `suffix`, prefixed by ".", matches the end of `host`.
 fn endsWithDotted(host: []const u8, suffix: []const u8) bool {
     return host.len > suffix.len and std.mem.endsWith(u8, host, suffix) and host[host.len - suffix.len - 1] == '.';
+}
+
+/// dom.document_language: the Document-owned pragma default, or null.
+fn pragmaLanguage(document: *runtime.Instance) ?[]const u8 {
+    const internal = getInternal(document) orelse return null;
+    return internal.pragma_language;
+}
+
+fn setPragmaLanguage(document: *runtime.Instance, language: []const u8) @import("dom").document_language.Error!void {
+    const internal = getInternal(document) orelse return error.InvalidStateError;
+    const owned = try internal.allocator.dupe(u8, language);
+    if (internal.pragma_language) |old| internal.allocator.free(old);
+    internal.pragma_language = owned;
 }
 
 /// dom.document_origin: `document`'s origin's domain, or null.
