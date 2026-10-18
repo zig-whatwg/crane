@@ -13,12 +13,6 @@ src/dom/document_internals.zig Document.DocType 1
 src/dom/document_internals.zig Document.InternalState 1
 src/dom/document_internals.zig Document.SpeculationEagerness 1
 src/dom/document_internals.zig Document.getInternal 1
-src/dom/mutation_observer_algorithms.zig MutationObserver.clearRecordQueue 1
-src/dom/mutation_observer_algorithms.zig MutationObserver.enqueueRecord 1
-src/dom/mutation_observer_algorithms.zig MutationObserver.getRecordQueue 1
-src/dom/mutation_observer_algorithms.zig MutationObserver.invokeCallback 1
-src/dom/mutation_observer_algorithms.zig MutationObserver.queueNotifyMicrotask 1
-src/dom/mutation_observer_algorithms.zig MutationRecord.create 1
 src/html/dom_tree_adapter.zig DocumentType.getInternal 1
 src/html/event_utils.zig ErrorEvent.createErrorEvent 1
 src/html/full.zig impls.@import 1

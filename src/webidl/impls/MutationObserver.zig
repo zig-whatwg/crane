@@ -25,6 +25,7 @@ const MutationObserver = interfaces.MutationObserver;
 const dom_module = @import("dom");
 const instance_bridge = dom_module.instance_bridge;
 const RegisteredObserver = dom_module.node_base.RegisteredObserverType;
+const RecordQueue = dom_module.observer_registrations.RecordQueue;
 const handles = dom_module.handles;
 const same_object = @import("same_object.zig");
 
@@ -58,7 +59,7 @@ pub const InternalState = struct {
     // observers are strong references in the spec; nothing else here would
     // keep an observer alive that script no longer names, and a collected
     // observer left every node that listed it pointing into the slab -
-    // `enqueueRecord` then wrote into freed memory on the next mutation, a
+    // enqueueing a record then wrote into freed memory on the next mutation, a
     // crash charged to whichever file ran next. Held by the wrapper cache,
     // not a Global of its own: a removed frame's realm turns the cache's
     // holds into edges from its global object, so a frame whose script
@@ -76,8 +77,10 @@ pub const InternalState = struct {
     /// keeps its transient registration nodes.
     transient_nodes: std.ArrayListUnmanaged(same_object.Link) = .empty,
 
-    /// Queue of pending mutation records
-    record_queue: std.ArrayListUnmanaged(*runtime.Instance),
+    /// Queue of pending mutation records. Its type is the mutation observer
+    /// algorithms' (dom.observer_registrations), which reach it through
+    /// `recordQueueOf`; the state is this observer's.
+    record_queue: RecordQueue,
 
     /// Every attributeFilter this observer has registered and not yet
     /// replaced or disconnected. The registrations on the observed nodes
@@ -90,7 +93,7 @@ pub const InternalState = struct {
             .allocator = undefined,
             .callback = null,
             .node_list = .empty,
-            .record_queue = .empty,
+            .record_queue = .{ .allocator = undefined },
         };
     }
 
@@ -99,7 +102,7 @@ pub const InternalState = struct {
             .allocator = allocator,
             .callback = null,
             .node_list = .empty,
-            .record_queue = .empty,
+            .record_queue = .{ .allocator = allocator },
         };
     }
 
@@ -148,10 +151,7 @@ pub const InternalState = struct {
         self.transient_nodes.deinit(self.allocator);
 
         // Free MutationRecord instances we own
-        for (self.record_queue.items) |record| {
-            runtime.Instance.deinit(record);
-        }
-        self.record_queue.deinit(self.allocator);
+        self.record_queue.deinit();
 
         self.releaseAllFilters();
     }
@@ -174,6 +174,8 @@ pub fn installHooks() void {
         .node_released = &nodeReleasedHook,
         .transient_added = &transientAddedHook,
         .remove_transients = &removeTransientsHook,
+        .record_queue = &recordQueueOf,
+        .invoke_callback = &invokeCallback,
     });
 }
 
@@ -528,10 +530,7 @@ pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
     unregisterFromNodes(instance, internal);
 
     // Step 2: Empty this's record queue after freeing records we own.
-    for (internal.record_queue.items) |record| {
-        runtime.Instance.deinit(record);
-    }
-    internal.record_queue.clearRetainingCapacity();
+    internal.record_queue.freeRecords();
 
     // No registration is left to use a filter, or to keep this alive.
     internal.releaseAllFilters();
@@ -547,7 +546,7 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance);
 
     // Step 1: Let records be a clone of this's record queue.
-    const records = internal.record_queue.toOwnedSlice(internal.allocator) catch return error.OutOfMemory;
+    const records = internal.record_queue.records.toOwnedSlice(internal.allocator) catch return error.OutOfMemory;
     defer internal.allocator.free(records);
 
     // Step 2: Empty this's record queue.
@@ -569,29 +568,10 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
 // Internal methods (for mutation algorithms)
 // ============================================================================
 
-/// Enqueue a mutation record to this observer's record queue
-///
-/// Called by mutation observation algorithms when mutations occur.
-/// This is an internal method, not exposed in the WebIDL.
-pub fn enqueueRecord(instance: *runtime.Instance, record: *runtime.Instance) ImplError!void {
-    const internal = getInternal(instance);
-    internal.record_queue.append(internal.allocator, record) catch return error.OutOfMemory;
-}
-
-/// Get the record queue for this observer
-///
-/// Used by the notify mutation observers algorithm.
-pub fn getRecordQueue(instance: *runtime.Instance) []const *runtime.Instance {
-    const internal = getInternal(instance);
-    return internal.record_queue.items;
-}
-
-/// Clear the record queue
-///
-/// Used by the notify mutation observers algorithm.
-pub fn clearRecordQueue(instance: *runtime.Instance) void {
-    const internal = getInternal(instance);
-    internal.record_queue.clearRetainingCapacity();
+/// dom.observer_registrations: this observer's record queue, which "queue a
+/// mutation record" enqueues to and "notify mutation observers" empties.
+fn recordQueueOf(instance: *runtime.Instance) *RecordQueue {
+    return &getInternal(instance).record_queue;
 }
 
 /// Invoke the observer's callback with the given mutation records
@@ -601,7 +581,9 @@ pub fn clearRecordQueue(instance: *runtime.Instance) void {
 /// function which will clean them up after the callback returns.
 ///
 /// Spec: https://dom.spec.whatwg.org/#notify-mutation-observers step 6.4
-pub fn invokeCallback(instance: *runtime.Instance, records: []const *runtime.Instance) !void {
+///
+/// dom.observer_registrations: the notify algorithm reaches it there.
+fn invokeCallback(instance: *runtime.Instance, records: []const *runtime.Instance) !void {
     std.log.debug("[MutationObserver.invokeCallback] Called with {} records", .{records.len});
 
     const internal = getInternal(instance);
@@ -652,51 +634,4 @@ fn reportException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
         .error_value = if (info.error_value == .undefined) null else info.error_value,
     };
     _ = @import("html").report_exception.reportErrorInfo(global, &extracted, .{});
-}
-
-// ============================================================================
-// Microtask Queueing (for proper async MutationObserver callback delivery)
-// ============================================================================
-
-/// Context for the mutation observer microtask callback
-const MutationMicrotaskContext = struct {
-    allocator: std.mem.Allocator,
-};
-
-/// The microtask's steps: notify mutation observers.
-fn mutationMicrotask(data: ?*anyopaque) void {
-    const ctx: *MutationMicrotaskContext = @ptrCast(@alignCast(data orelse return));
-    const allocator = ctx.allocator;
-
-    // Free the context first (we've captured what we need)
-    allocator.destroy(ctx);
-
-    const mutation_observer_algorithms = @import("dom").mutation_observer_algorithms;
-    mutation_observer_algorithms.notifyMutationObservers(allocator) catch |err| {
-        std.log.err("MutationObserver: notifyMutationObservers failed: {}", .{err});
-    };
-}
-
-/// DOM "queue a mutation observer microtask", step 3: queue a microtask to
-/// notify mutation observers, in the agent of `realm` - the surrounding
-/// agent, which the caller names by a realm of it.
-///
-/// Spec: https://dom.spec.whatwg.org/#queue-a-mutation-observer-compound-microtask
-pub fn queueNotifyMicrotask(allocator: std.mem.Allocator, realm: runtime.Context) !void {
-    const ctx = allocator.create(MutationMicrotaskContext) catch return error.OutOfMemory;
-    ctx.* = .{ .allocator = allocator };
-
-    const queued: engine.Error!void = if (realm.agent) |agent| engine.queueMicrotask(agent, mutationMicrotask, ctx) else error.NotSupported;
-    queued catch |err| {
-        allocator.destroy(ctx);
-        switch (err) {
-            error.OutOfMemory => return error.OutOfMemory,
-            // No engine behind the realm (unit tests of the DOM alone), so
-            // no microtask queue: notify now.
-            else => {
-                const mutation_observer_algorithms = @import("dom").mutation_observer_algorithms;
-                try mutation_observer_algorithms.notifyMutationObservers(allocator);
-            },
-        }
-    };
 }

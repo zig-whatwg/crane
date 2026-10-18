@@ -119,29 +119,35 @@ fn getInternal(instance: *runtime.Instance) *InternalState {
     return Accessor.getCast(instance);
 }
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+/// What "queue a mutation record" step 4.1 gives a new record, its one
+/// construction argument (`.record`, an anonymous struct): `mutation_type` (a
+/// literal), `target`, `added_nodes` and `removed_nodes` (slices),
+/// `previous_sibling` and `next_sibling` (optional), and `attribute_name`,
+/// `attribute_namespace` and `old_value` (optional strings, copied).
+pub const construction_args = .{"record"};
 
-    // Initialize internal state
+/// MutationRecord's own construction steps: its state, with every field
+/// the `record` construction argument sets, holding every node it names.
+/// Without the argument the record is empty.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
     const internal = try allocator.create(InternalState);
     internal.* = InternalState.init(allocator, instance);
 
     // Store internal state in instance
     const state = instance.getState(State);
     state.own._internal = internal;
+    errdefer {
+        state.own._internal = null;
+        internal.deinit();
+        allocator.destroy(internal);
+    }
 
-    return instance;
+    if (@hasField(@TypeOf(args), "record")) try setFields(internal, allocator, args.record);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// MutationRecord's own teardown.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal_ptr| {
         const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
@@ -151,32 +157,17 @@ pub fn deinit(instance: *runtime.Instance) void {
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
-// ============================================================================
-// Factory function for creating MutationRecords
-// ============================================================================
-
-/// Create a new MutationRecord with all fields set, holding every node it
-/// names. Used by mutation observation algorithms ("queue a mutation record"
-/// step 4.1).
-pub fn create(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    mutation_type: []const u8,
-    target: *runtime.Instance,
-    added_nodes: []const *runtime.Instance,
-    removed_nodes: []const *runtime.Instance,
-    previous_sibling: ?*runtime.Instance,
-    next_sibling: ?*runtime.Instance,
-    attribute_name: ?[]const u8,
-    attribute_namespace: ?[]const u8,
-    old_value: ?[]const u8,
-) !*runtime.Instance {
-    const instance = try init(allocator, State, &MutationRecord.vtable, ctx);
-    errdefer deinit(instance);
+/// Set a new record's fields, holding every node it names.
+fn setFields(internal: *InternalState, allocator: std.mem.Allocator, record: anytype) !void {
+    const added_nodes: []const *runtime.Instance = record.added_nodes;
+    const removed_nodes: []const *runtime.Instance = record.removed_nodes;
 
     // The strings are copied: an attribute's name and old value belong to
     // its element, which frees them as soon as the change that queued this
     // record is done - long before an observer reads them.
+    const attribute_name: ?[]const u8 = record.attribute_name;
+    const attribute_namespace: ?[]const u8 = record.attribute_namespace;
+    const old_value: ?[]const u8 = record.old_value;
     const name_copy: ?[]const u8 = if (attribute_name) |n| try allocator.dupe(u8, n) else null;
     errdefer if (name_copy) |n| allocator.free(n);
     const namespace_copy: ?[]const u8 = if (attribute_namespace) |ns| try allocator.dupe(u8, ns) else null;
@@ -185,8 +176,7 @@ pub fn create(
 
     errdefer if (old_value_copy) |v| allocator.free(v);
 
-    const internal = getInternal(instance);
-    internal.mutation_type = mutation_type;
+    internal.mutation_type = record.mutation_type;
 
     // Everything it names is held from now: the record is queued
     // unwrapped, and script may let every node in it go before it is
@@ -195,9 +185,9 @@ pub fn create(
     var fixed: [16]?*runtime.Instance = undefined;
     const nodes = if (count <= fixed.len) fixed[0..count] else try allocator.alloc(?*runtime.Instance, count);
     defer if (count > fixed.len) allocator.free(nodes);
-    nodes[InternalState.target_index] = target;
-    nodes[InternalState.previous_index] = previous_sibling;
-    nodes[InternalState.next_index] = next_sibling;
+    nodes[InternalState.target_index] = record.target;
+    nodes[InternalState.previous_index] = record.previous_sibling;
+    nodes[InternalState.next_index] = record.next_sibling;
     for (added_nodes, 0..) |node, i| nodes[InternalState.nodes_from + i] = node;
     for (removed_nodes, 0..) |node, i| nodes[InternalState.nodes_from + added_nodes.len + i] = node;
     try internal.held.hold(?*runtime.Instance, nodes, null);
@@ -207,8 +197,6 @@ pub fn create(
     internal.attribute_name = name_copy;
     internal.attribute_namespace = namespace_copy;
     internal.old_value = old_value_copy;
-
-    return instance;
 }
 
 // ============================================================================

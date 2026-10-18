@@ -26,6 +26,7 @@ const MutationRecord = interfaces.MutationRecord;
 const dictionaries = @import("dictionaries");
 const MutationObserverInit = dictionaries.MutationObserverInit;
 const engine = @import("engine");
+const observer_registrations = @import("observer_registrations.zig");
 
 /// Global mutation observer state (per similar-origin window agent)
 /// In a real implementation, this would be per-agent state
@@ -513,8 +514,6 @@ fn queueMutationRecordInternal(
 ) !void {
     const instance_bridge = @import("instance_bridge.zig");
     const handles = @import("handles.zig");
-    const MutationObserverImpl = @import("impls").MutationObserver;
-    const MutationRecordImpl = @import("impls").MutationRecord;
 
     // Get target's NodeBase for accessing registered observers
     const target_nodebase = instance_bridge.getNodeBase(@ptrCast(target)) orelse {
@@ -576,25 +575,33 @@ fn queueMutationRecordInternal(
         const observer = entry.observer;
         const mapped_old_value = entry.mapped_old_value;
 
-        // Step 4.1: Let record be a new MutationRecord object
+        // Step 4.1: "Let record be a new MutationRecord object with its type
+        // set to type, target set to target, attributeName set to name,
+        // attributeNamespace set to namespace, oldValue set to
+        // mappedOldValue, addedNodes set to addedNodes, removedNodes set to
+        // removedNodes, previousSibling set to previousSibling, and
+        // nextSibling set to nextSibling." Those are its construction
+        // arguments; it holds every node it names from here.
         const ctx = target.ctx;
-        const record = try MutationRecordImpl.create(
-            allocator,
-            ctx,
-            mutation_type.name(),
-            target,
-            added_nodes,
-            removed_nodes,
-            previous_sibling,
-            next_sibling,
-            name,
-            namespace,
-            mapped_old_value,
-        );
+        const record = try MutationRecord.initWith(allocator, ctx, .{ .record = .{
+            .mutation_type = mutation_type.name(),
+            .target = target,
+            .added_nodes = added_nodes,
+            .removed_nodes = removed_nodes,
+            .previous_sibling = previous_sibling,
+            .next_sibling = next_sibling,
+            .attribute_name = name,
+            .attribute_namespace = namespace,
+            .old_value = mapped_old_value,
+        } });
 
         // Step 4.2: Enqueue record to observer's record queue
         std.log.debug("[MutationObserver] Enqueueing record to observer", .{});
-        MutationObserverImpl.enqueueRecord(observer, record) catch {
+        const queue = observer_registrations.recordQueueOf(observer) orelse {
+            runtime.Instance.deinit(record);
+            continue;
+        };
+        queue.enqueue(record) catch {
             // If enqueueing fails, clean up the record
             std.log.debug("[MutationObserver] Failed to enqueue record!", .{});
             runtime.Instance.deinit(record);
@@ -635,8 +642,6 @@ fn queueMutationRecordInternal(
 /// `realm` names the surrounding agent: a realm of it. Null only where no
 /// realm is known, and then the notify steps run at once.
 fn queueMutationObserverMicrotask(allocator: Allocator, realm: ?runtime.Context) !void {
-    const MutationObserverImpl = @import("impls").MutationObserver;
-
     const agent = try getAgent(allocator);
 
     // Step 1: If the surrounding agent's mutation observer microtask queued is true, then return
@@ -648,11 +653,49 @@ fn queueMutationObserverMicrotask(allocator: Allocator, realm: ?runtime.Context)
     const surrounding = realm orelse return notifyMutationObservers(allocator);
 
     // Step 3: Queue a microtask to notify mutation observers
-    // Delegate to the impl, which queues it through the engine
-    MutationObserverImpl.queueNotifyMicrotask(allocator, surrounding) catch {
+    queueNotifyMicrotask(allocator, surrounding) catch {
         // If queueing fails, fall back to synchronous execution
         std.log.err("MutationObserver: failed to queue microtask, falling back to synchronous", .{});
         try notifyMutationObservers(allocator);
+    };
+}
+
+/// Context for the mutation observer microtask callback
+const MutationMicrotaskContext = struct {
+    allocator: std.mem.Allocator,
+};
+
+/// The microtask's steps: notify mutation observers.
+fn mutationMicrotask(data: ?*anyopaque) void {
+    const ctx: *MutationMicrotaskContext = @ptrCast(@alignCast(data orelse return));
+    const allocator = ctx.allocator;
+
+    // Free the context first (we've captured what we need)
+    allocator.destroy(ctx);
+
+    notifyMutationObservers(allocator) catch |err| {
+        std.log.err("MutationObserver: notifyMutationObservers failed: {}", .{err});
+    };
+}
+
+/// DOM "queue a mutation observer microtask", step 3: queue a microtask to
+/// notify mutation observers, in the agent of `realm` - the surrounding
+/// agent, which the caller names by a realm of it.
+///
+/// Spec: https://dom.spec.whatwg.org/#queue-a-mutation-observer-compound-microtask
+fn queueNotifyMicrotask(allocator: std.mem.Allocator, realm: runtime.Context) !void {
+    const ctx = allocator.create(MutationMicrotaskContext) catch return error.OutOfMemory;
+    ctx.* = .{ .allocator = allocator };
+
+    const queued: engine.Error!void = if (realm.agent) |agent| engine.queueMicrotask(agent, mutationMicrotask, ctx) else error.NotSupported;
+    queued catch |err| {
+        allocator.destroy(ctx);
+        switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            // No engine behind the realm (unit tests of the DOM alone), so
+            // no microtask queue: notify now.
+            else => try notifyMutationObservers(allocator),
+        }
     };
 }
 
@@ -662,8 +705,6 @@ fn queueMutationObserverMicrotask(allocator: Allocator, realm: ?runtime.Context)
 ///
 /// Spec: https://dom.spec.whatwg.org/#notify-mutation-observers
 pub fn notifyMutationObservers(allocator: Allocator) !void {
-    const MutationObserverImpl = @import("impls").MutationObserver;
-
     std.log.debug("[MutationObserver] notifyMutationObservers called", .{});
 
     const agent = try getAgent(allocator);
@@ -704,7 +745,8 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
         if (runtime.SlabAllocator.generationOf(mo_instance) != generations[mo_index]) continue;
 
         // Step 6.1: Let records be a clone of mo's record queue
-        const records = MutationObserverImpl.getRecordQueue(mo_instance);
+        const queue = observer_registrations.recordQueueOf(mo_instance);
+        const records: []const *runtime.Instance = if (queue) |q| q.records.items else &.{};
 
         std.log.debug("[MutationObserver] Processing observer {*}, records.len={}", .{ mo_instance, records.len });
 
@@ -715,18 +757,18 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
         for (records) |record| {
             records_copy.append(record) catch continue;
         }
-        MutationObserverImpl.clearRecordQueue(mo_instance);
+        if (queue) |q| q.records.clearRetainingCapacity();
 
         // Step 6.3: "For each node of mo's node list, remove all transient
         // registered observers whose observer is mo from node's registered
         // observer list."
-        @import("observer_registrations.zig").removeTransients(mo_instance);
+        observer_registrations.removeTransients(mo_instance);
 
         // Step 6.4: If records is not empty, then invoke mo's callback with « records, mo »
         if (records_copy.len > 0) {
             // Delegate callback invocation to the impl layer which has V8 access
             std.log.debug("[MutationObserver] Invoking callback with {} records", .{records_copy.len});
-            MutationObserverImpl.invokeCallback(mo_instance, records_copy.items()) catch |err| {
+            observer_registrations.invokeCallback(mo_instance, records_copy.items()) catch |err| {
                 std.log.err("[MutationObserver] invokeCallback failed: {}", .{err});
                 // If callback invocation fails, clean up records
                 for (records_copy.items()) |record| {
