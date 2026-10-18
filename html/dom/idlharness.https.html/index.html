@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../html/"><code>html/</code></a></li><li><a href="../../../html/dom/"><code>dom/</code></a></li><li aria-current="page"><code>idlharness.<wbr>https.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>idlharness.<wbr>https.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="html/dom/idlharness.https.html">
-<p class="figures-main"><span class="fg-pass">5,843</span><span class="fg-of"> / 5,940</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>97</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">5,844</span><span class="fg-of"> / 5,940</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>96</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-d5762d302d</code>, <span class="nowrap">18 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/d5762d302d"><code>d5762d302d</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-e048d1ea6e</code>, <span class="nowrap">18 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/e048d1ea6e"><code>e048d1ea6e</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/dom/idlharness.https.html"><code>html/<wbr>dom/<wbr>idlharness.<wbr>https.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -34,7 +34,7 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/html/dom/idlharness.https.html?exclude=(Document|Window|HTML.+)</code> <span class="gate">OK</span> <span class="fcount"><b>1,693</b> / 1,743</span></h3>
+<h3 class="run-head"><code>/html/dom/idlharness.https.html?exclude=(Document|Window|HTML.+)</code> <span class="gate">OK</span> <span class="fcount"><b>1,694</b> / 1,743</span></h3>
 <ol class="subtests">
 <li class="sub s-fail" id="s-dd82e8c5"><details><summary><span class="mark">FAIL</span><span class="sub-name">TextTrackCueList must be primary interface of document.createElement(&quot;video&quot;).addTextTrack(&quot;subtitles&quot;).cues</span></summary><pre class="msg">assert_equals: Unexpected exception when evaluating object expected null but got object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-dd82e8c5" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-4cfe4dbe"><details><summary><span class="mark">FAIL</span><span class="sub-name">Stringification of document.createElement(&quot;video&quot;).addTextTrack(&quot;subtitles&quot;).cues</span></summary><pre class="msg">assert_equals: Unexpected exception when evaluating object expected null but got object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-4cfe4dbe" aria-label="Link to this subtest">&para;</a></li>
@@ -67,7 +67,6 @@
 <li class="sub s-fail" id="s-5d30c747"><details><summary><span class="mark">FAIL</span><span class="sub-name">CanvasRenderingContext2D interface: document.createElement(&quot;canvas&quot;).getContext(&quot;2d&quot;) must inherit property &quot;fontVariantCaps&quot; with the proper type</span></summary><pre class="msg">assert_equals: expected &quot;string&quot; but got &quot;undefined&quot;</pre></details><a class="self" href="#s-5d30c747" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-155efdc4"><details><summary><span class="mark">FAIL</span><span class="sub-name">CanvasRenderingContext2D interface: document.createElement(&quot;canvas&quot;).getContext(&quot;2d&quot;) must inherit property &quot;textRendering&quot; with the proper type</span></summary><pre class="msg">assert_equals: expected &quot;string&quot; but got &quot;undefined&quot;</pre></details><a class="self" href="#s-155efdc4" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-6bab6a89"><details><summary><span class="mark">FAIL</span><span class="sub-name">CanvasRenderingContext2D interface: document.createElement(&quot;canvas&quot;).getContext(&quot;2d&quot;) must inherit property &quot;wordSpacing&quot; with the proper type</span></summary><pre class="msg">assert_equals: expected &quot;string&quot; but got &quot;undefined&quot;</pre></details><a class="self" href="#s-6bab6a89" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-341589e4"><details><summary><span class="mark">FAIL</span><span class="sub-name">CustomStateSet interface: setlike&lt;DOMString&gt;</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;value&#39;)</pre></details><a class="self" href="#s-341589e4" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-4508a101"><details><summary><span class="mark">FAIL</span><span class="sub-name">Location interface: stringifier</span></summary><pre class="msg">assert_own_property: interface prototype object missing non-static operation expected property &quot;toString&quot; missing</pre></details><a class="self" href="#s-4508a101" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-85a1403e"><details><summary><span class="mark">FAIL</span><span class="sub-name">NavigationTransition interface: attribute committed</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-85a1403e" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-2d2d67e6"><details><summary><span class="mark">FAIL</span><span class="sub-name">NavigationTransition interface: attribute finished</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-2d2d67e6" aria-label="Link to this subtest">&para;</a></li>
@@ -87,7 +86,7 @@
 <li class="sub s-fail" id="s-5ff84ebd"><details><summary><span class="mark">FAIL</span><span class="sub-name">External interface: window.external must inherit property &quot;AddSearchProvider()&quot; with the proper type</span></summary><pre class="msg">assert_equals: wrong typeof object expected &quot;object&quot; but got &quot;undefined&quot;</pre></details><a class="self" href="#s-5ff84ebd" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-604020ff"><details><summary><span class="mark">FAIL</span><span class="sub-name">External interface: window.external must inherit property &quot;IsSearchProviderInstalled()&quot; with the proper type</span></summary><pre class="msg">assert_equals: wrong typeof object expected &quot;object&quot; but got &quot;undefined&quot;</pre></details><a class="self" href="#s-604020ff" aria-label="Link to this subtest">&para;</a></li>
 </ol>
-<p class="omitted">1,693 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+<p class="omitted">1,694 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
 </div>
 <div class="run">
 <h3 class="run-head"><code>/html/dom/idlharness.https.html?include=(Document|Window)</code> <span class="gate">OK</span> <span class="fcount"><b>285</b> / 298</span></h3>
