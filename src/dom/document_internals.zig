@@ -100,6 +100,21 @@ pub fn getEncoding(instance: *runtime.Instance) ?[]const u8 {
     return internal.encoding.asSlice();
 }
 
+/// HTML "set the frozen base URL": own a copy until the next base mutation
+/// or document destruction. Null restores the live fallback base URL.
+pub fn setFrozenBaseURL(instance: *runtime.Instance, url: ?[]const u8) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const copy = if (url) |value| try internal.allocator.dupe(u8, value) else null;
+    if (internal.frozen_base_url) |old| internal.allocator.free(old);
+    internal.frozen_base_url = copy;
+}
+
+/// Borrowed until a base mutation; an IDL getter copies the serialization.
+pub fn getFrozenBaseURL(instance: *runtime.Instance) ?[]const u8 {
+    const internal = getInternal(instance) orelse return null;
+    return internal.frozen_base_url;
+}
+
 /// Set the content type (e.g., "text/html", "application/xml")
 /// Used during document creation and initialization.
 pub fn setContentType(instance: *runtime.Instance, content_type: []const u8) !void {

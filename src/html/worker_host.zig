@@ -2327,12 +2327,22 @@ const SharedConnect = struct {
         // worker's realm). A failed fetch is a null script: onComplete 1.
         var fetched = workers.fetchWorkerScript(allocator, self.url, .{
             .worker_type = self.worker_type,
+            // HTML classic-worker fetch step 1 ignores the credentials
+            // option; worklet/module-worker graph steps 1-2 forward it.
+            .credentials = if (self.worker_type == .module) switch (self.credentials) {
+                .omit => .omit,
+                .same_origin => .same_origin,
+                .include => .include,
+            } else .same_origin,
             .requesting_origin = self.origin,
             // A blob: script's blob is in the outside settings' Browser's
             // blob URL store.
             .blob_url_store = @ptrCast(@import("dom").browser_state.blobURLStoreOf(self.owner_realm)),
             // The outside settings' Browser's network.
             .network = @import("dom").browser_state.networkOf(self.owner_realm),
+            // The script response's cookies belong to the creator's jar,
+            // before the new shared worker receives that same borrowed jar.
+            .cookie_jar = creatorCookieJar(self.owner_realm),
             .shared = true,
             // The outside settings' policy container: its CSP decides
             // whether the script may be fetched at all.
