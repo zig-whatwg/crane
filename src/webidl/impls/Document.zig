@@ -5060,18 +5060,27 @@ fn completeLoading(document: *runtime.Instance) void {
     // its own load or pageshow listeners start is (Blink fires the owner's
     // load while its Document's load_event_progress_ is
     // kLoadEventInProgress, Document::DispatchLoadEventAndFinalize).
+    //
+    // Step 9.10, "set the Document's page showing to true", comes before
+    // them too, and step 9.11's pageshow after: a frame its container's
+    // listeners remove or navigate away is unloaded showing, so "unload a
+    // document" fires pagehide at it, as all three browsers do for a frame
+    // removed as soon as its load event fired
+    // (fetch/api/basic/keepalive.any.js's "on 'pagehide'" cases pass in
+    // Chrome 155, Firefox 158 and Safari 27; Blink's
+    // Document::DispatchUnloadEvents fires pagehide once the load event has
+    // started, whether pageshow has fired or not).
     const container = @import("dom").navigable_container.of(window);
+    const was_showing = internal.page_showing;
+    internal.page_showing = true;
     if (container) |element| runContainerLoadEventSteps(element);
-    // Steps 9.9-9.11: page showing becomes true and pageshow fires,
-    // persisted false - unless the document is showing already, or the
-    // container's listeners left it not fully active (they removed the
-    // frame: its document is destroyed). A navigation they started has not
-    // committed: the document is still active, and gets its pageshow.
+    // Step 9.11: pageshow, persisted false - unless the document was showing
+    // already, or the container's listeners left it not fully active (they
+    // removed the frame: its document is destroyed, and had its pagehide).
+    // A navigation they started has not committed: the document is still
+    // active, and gets its pageshow.
     if (!isShownByItsWindow(document)) return;
-    if (!internal.page_showing) {
-        internal.page_showing = true;
-        firePageShow(document, window);
-    }
+    if (!was_showing) firePageShow(document, window);
     // Step 9.12's "completely finish loading" step 2: the completely loaded
     // time - after pageshow, so a navigation its listeners start is a
     // replace (replace-before-load/*-during-pageshow.html).
