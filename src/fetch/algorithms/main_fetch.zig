@@ -491,7 +491,9 @@ pub fn mainFetchFinish(
     // filter: Mixed Content 4.5 reads the INTERNAL response URL. Step 16
     // supplies the request URL list when the response has none. Blocking
     // only makes a network error, which the filtering steps leave alone.
-    const response = blockedByMime(request, blockedByMixedContent(request, fetched));
+    // Then CSP 4.1.3 (step 20's second check, on the same internal
+    // response), then the MIME and nosniff checks.
+    const response = blockedByMime(request, blockedByCsp(request, blockedByMixedContent(request, fetched)));
 
     // Step 20: a response to HEAD or CONNECT, or with a null body status, has
     // a null body, "and disregard any enqueuing toward it" - a body still
@@ -599,6 +601,50 @@ fn blockedByMixedContent(request: *const InternalRequest, response: *InternalRes
     // A network error hides the same data as the opaque filter (URL list,
     // status/message, headers and body), but has type "error". Reuse its
     // allocation-free clearing rather than risk returning data on OOM.
+    response.response_type = .@"opaque";
+    response.applyFilter();
+    response.response_type = .@"error";
+    response.network_error_cause = .unspecified;
+    response.timing_allow_passed = false;
+    response.body_info = .{};
+    response.cache_state = .empty;
+    return response;
+}
+
+/// Main fetch step 20's "should internalResponse to request be blocked by
+/// Content Security Policy?" (CSP 4.1.3, csp_check.shouldResponseBeBlocked):
+/// a network error in place of a response whose URL the request's policy
+/// refuses. Its URL is its internal response's - an opaque filtered
+/// response a service worker answered with keeps it there.
+///
+/// Run only for a response whose URL is not the request's current URL, and
+/// that is equivalent to running it for every response: a response with no
+/// URL list of its own gets the request's (step 16), and a network
+/// response's URL list is the request's - every URL of it a hop whose main
+/// fetch ran step 7, "should request be blocked by Content Security
+/// Policy?", over that URL with that hop's redirect count (HTTP-redirect
+/// fetch's recursive main fetch, before the hop is fetched; a navigation
+/// following its redirects by hand runs the same main fetch per hop). The
+/// post-request check over the same URL and redirect count is that check
+/// again, and would report a report-only violation a second time. Only a
+/// service worker's answer (HTTP fetch step 3.5) can carry another URL -
+/// as Blink runs the check only when WasFetchedViaServiceWorker().
+fn blockedByCsp(request: *const InternalRequest, response: *InternalResponse) *InternalResponse {
+    // Not `isNetworkError(response)`: an opaque filtered response a worker
+    // answered with has status 0 - its internal response has its status.
+    if (response.response_type == .@"error") return response;
+    const internal = response.internal orelse response;
+    if (isNetworkError(internal)) return response;
+    const response_url = internal.url() orelse return response;
+    if (std.mem.eql(u8, response_url, request.currentUrl())) return response;
+    if (!csp_check.shouldResponseBeBlocked(request, response_url)) return response;
+    // The internal response goes first: a network error has none.
+    if (response.internal) |kept| {
+        response.internal = null;
+        kept.deinit();
+    }
+    // A network error hides what the opaque filter hides; as the Mixed
+    // Content check does, clear in place (nothing to allocate).
     response.response_type = .@"opaque";
     response.applyFilter();
     response.response_type = .@"error";

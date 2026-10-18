@@ -532,6 +532,18 @@ pub fn copyRequestForWorker(allocator: Allocator, request: *const InternalReques
     // Not computable (an unparsable URL in the list): tainted - the origin
     // serializes as "null".
     copy.redirect_tainted = !(request.redirectTaintIsSameOrigin() catch false);
+    // So does what the earlier hops made of its Sec-Fetch-Site (Fetch
+    // Metadata 2.3 walks the URL list against the origin;
+    // InternalRequest.dropped_urls_site): `fetch(event.request)` of a hop
+    // after a cross-site redirect is cross-site (whatwg/fetch#1335 - the URL
+    // list goes through the worker; Chrome passes navigation-headers'
+    // passthrough and navpreload Sec-Fetch cases, 83/83 at wpt.fyi
+    // 23b0b89b1a, golden rule 2: a newer spec one browser ships).
+    const items = request.url_list.items;
+    copy.dropped_urls_site = try fetch.algorithms.fetch_metadata.droppedUrlsSite(allocator, request.origin, items[0..items.len -| 1], request.dropped_urls_site);
+    // Fetch Metadata's Sec-Fetch-User for the navigation preload made from
+    // this copy (Handle Fetch step 15.1.1: a clone of the request).
+    copy.user_activation = request.user_activation;
     if (request.integrity_metadata.len > 0) copy.integrity_metadata = try allocator.dupe(u8, request.integrity_metadata);
     return copy;
 }

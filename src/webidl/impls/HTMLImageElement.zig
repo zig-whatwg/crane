@@ -179,6 +179,16 @@ pub const InternalState = struct {
     /// is held: a restarted update keeps no second one (the keep is
     /// counted), and only the first release of it ends it.
     kept_alive: bool = false,
+    /// The document whose load event the element's update of the image data
+    /// delays, with its slab generation (HTML "update the image data" step
+    /// 26: an eager img's fetch "must delay the load event of element's node
+    /// document until the task that is queued by the networking task source
+    /// once the resource has been fetched has been run"). One per element:
+    /// an update that supersedes another keeps it. Ended with the update's
+    /// keep (`releaseLoad`: its event's task ran or was dropped, a document
+    /// abort, its realm's end, a document that will never be fully active)
+    /// and by `deinit`.
+    load_delay: ?same_object.Link = null,
 
     fn keepLoad(self: *InternalState, instance: *runtime.Instance) void {
         if (self.kept_alive) return;
@@ -187,9 +197,32 @@ pub const InternalState = struct {
     }
 
     fn releaseLoad(self: *InternalState, instance: *runtime.Instance) void {
+        // The update has ended: so has its delay of the load event.
+        self.endLoadDelay();
         if (!self.kept_alive) return;
         self.kept_alive = false;
         engine.releasePlatformObject(instance);
+    }
+
+    /// Delay `document`'s load event for this element's update ("delay the
+    /// load event", Blink's IncrementLoadEventDelayCount in ImageLoader). A
+    /// delay held on another document - the element was adopted - ends.
+    fn delayLoad(self: *InternalState, document: *runtime.Instance) void {
+        if (self.load_delay) |held| {
+            if (held.instance == document and held.isLive()) return;
+            self.endLoadDelay();
+        }
+        self.load_delay = same_object.Link.to(document);
+        dom.document_lifecycle.delayLoadEvent(document);
+    }
+
+    /// The end of the element's delay, if it holds one; a document that has
+    /// gone is not undelayed. Undelaying only queues the load event's task
+    /// (Document's loadDelayMayHaveEnded), so it is safe from any caller.
+    fn endLoadDelay(self: *InternalState) void {
+        const held = self.load_delay orelse return;
+        self.load_delay = null;
+        if (held.isLive()) dom.document_lifecycle.undelayLoadEvent(held.instance);
     }
 
     fn cancelFetch(self: *InternalState) void {
@@ -219,6 +252,7 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
+        self.endLoadDelay();
         self.cancelFetch();
         self.forgetRequests();
     }
@@ -815,6 +849,16 @@ fn startLoad(instance: *runtime.Instance, selection: Selection, url_str: []const
         releaseLoadHold(instance, runtime.SlabAllocator.generationOf(instance), internal.load_generation);
     }
     const current_generation = internal.load_generation;
+    // Steps 24 and 26: an update that fetches an eager img's image delays
+    // its node document's load event until the task that fires load or
+    // error has run (`releaseLoad`). Taken now, when the update is invoked,
+    // not when the fetch starts after the microtask: Blink's ImageLoader
+    // takes it in UpdateFromElement (delay_until_do_update_from_element_)
+    // and holds it through the fetch and the event, so "the end" - which
+    // can reach step 8 before the microtask has run - waits for the image.
+    if (selection == .fetch and !isLazy(instance)) {
+        if (internal.document) |document| internal.delayLoad(document.instance);
+    }
 
     // Step 8: Queue a microtask for the rest of the algorithm.
     const event_loop = instance.ctx.getOptionalEventLoop() orelse {
@@ -842,6 +886,14 @@ fn startLoad(instance: *runtime.Instance, selection: Selection, url_str: []const
         .callback = &loadMicrotaskCallback,
         .context = ctx,
     });
+}
+
+/// Step 24: the img's lazy loading attribute is in the Lazy state - its
+/// value "lazy", ASCII case-insensitive. Missing or any other value is the
+/// Eager state (the attribute's missing and invalid value default).
+fn isLazy(instance: *runtime.Instance) bool {
+    const value = attributeValue(instance, "loading") orelse return false;
+    return std.ascii.eqlIgnoreCase(value, "lazy");
 }
 
 /// Steps 11 and 13 after the microtask: the current request is broken and
@@ -1107,7 +1159,8 @@ fn decodeBody(allocator: std.mem.Allocator, headers: *const fetch.internal.Heade
 ///
 /// Its response is decoded when the whole body has arrived (decodeResponse),
 /// and the outcome applied in a task. Not modelled, stated: the list of
-/// available images; delaying the document's load event.
+/// available images. The document's load event waits for the update
+/// (InternalState.load_delay).
 const ImageFetch = struct {
     allocator: std.mem.Allocator,
     element: *runtime.Instance,

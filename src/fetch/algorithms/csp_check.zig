@@ -1,7 +1,8 @@
 //! Main fetch's Content Security Policy hooks: step 4's "report Content
-//! Security Policy violations for request" (CSP 4.1.1) and step 7's "should
-//! request be blocked by Content Security Policy?" (CSP 4.1.2), asked of the
-//! request's policy container's CSP list.
+//! Security Policy violations for request" (CSP 4.1.1), step 7's "should
+//! request be blocked by Content Security Policy?" (CSP 4.1.2) and step 20's
+//! "should internalResponse to request be blocked by Content Security
+//! Policy?" (CSP 4.1.3), asked of the request's policy container's CSP list.
 //!
 //! The algorithms are CSP's (csp.request_check); this file hands it the
 //! request as the parts they read. A violation (CSP 2.4.2) goes to the
@@ -14,6 +15,7 @@
 //! frame's navigation (destination "iframe" or "frame") is frame-src's.
 //!
 //! Spec: https://w3c.github.io/webappsec-csp/#should-block-request
+//! Spec: https://w3c.github.io/webappsec-csp/#should-block-response
 
 const std = @import("std");
 const csp = @import("csp");
@@ -101,6 +103,63 @@ pub fn reportViolationsForRequestWithOptions(request: *const InternalRequest, op
     if (request.csp_violation_reporter == null) return;
     var reporting: RequestReporting = .{ .url = options.report_url orelse request.getUrl(), .client = request.csp_violation_reporter };
     csp.request_check.reportViolationsForRequest(&container.csp_list, requestOf(request), reporting.reporter().?);
+}
+
+/// Main fetch step 20's "should internalResponse to request be blocked by
+/// Content Security Policy?" (CSP 4.1.3) for a response whose URL is
+/// `response_url`: each policy of the request's policy container's CSP list
+/// whose directives' post-request checks block the response is reported to
+/// the request's client - an enforced one, or a report-only one - and an
+/// enforced one blocks it. "That a Service Worker hasn't substituted a file
+/// which would violate the page's CSP."
+///
+/// A fetch directive's post-request check (CSP 6.1.x.2, the script
+/// directives' 6.7.1.2) is its pre-request check with "Does response to
+/// request match source list?" - the response's URL - in place of "Does
+/// request match source list?" - the request's current URL: the same
+/// nonce, integrity and 'strict-dynamic' steps, then the URL. So the
+/// pre-request checks (`doesRequestViolatePolicy`) run here over a request
+/// whose URL is the response's. Not modelled, stated: 6.7.1.2 step 1.1's
+/// "potentially report hash".
+///
+/// The response's URL is matched as a redirected one: its path is ignored
+/// (6.7.2.7 step 5.2's redirect count), where the spec passes the request's
+/// redirect count - zero for a worker's answer to a request that was never
+/// redirected. Chrome and Safari do so (golden rule 2, no newer spec):
+/// fetch-csp.https.html's "When the request was fetched via SW, CSP match
+/// algorithm should ignore the path component of the URL" passes in both,
+/// 1/1 at wpt.fyi 23b0b89b1a; Firefox fails the file at the case before it
+/// ("... redirected via SW ...": img-src https://a/redirect.py, a worker's
+/// response from https://a/image). Blink's ResourceLoader runs the check
+/// with RedirectStatus::kFollowedRedirect.
+pub fn shouldResponseBeBlocked(request: *const InternalRequest, response_url: []const u8) bool {
+    // 1. Let CSP list be request's policy container's CSP list.
+    const container = checkedContainer(request) orelse return false;
+    var checked = requestOf(request);
+    checked.url = urlParts(response_url);
+    checked.redirect_count = @max(checked.redirect_count, 1);
+    // A violation names the request's URL (CSP 2.4.2: "create a violation
+    // object for request, and policy").
+    var reporting: RequestReporting = .{ .url = request.getUrl(), .client = request.csp_violation_reporter };
+    const reporter = reporting.reporter();
+    // 2. Let result be "Allowed".
+    var blocked = false;
+    // 3. For each policy of CSP list: for each directive of policy, if its
+    //    post-request check is "Blocked":
+    for (container.csp_list.policies.items) |*policy| {
+        const directive = csp.request_check.doesRequestViolatePolicy(checked, policy) orelse continue;
+        // 3.1.1.1. Report a violation.
+        if (reporter) |r| r.report(r.context, .{
+            .policy = policy,
+            .directive = directive,
+            .effective_directive = csp.request_check.effectiveDirective(checked) orelse directive,
+        });
+        // 3.1.1.2. If policy's disposition is "enforce", then set result to
+        //          "Blocked".
+        if (policy.disposition == .enforce) blocked = true;
+    }
+    // 4. Return result.
+    return blocked;
 }
 
 /// Main fetch step 7 for a request a caller answers without main fetch - a

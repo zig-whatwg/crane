@@ -342,6 +342,18 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
     // Step 12's "initiator type": "fetch" - what Resource Timing reports for
     // the request when fetch() fetches it.
     base_request.initiator_type = .fetch;
+    // Step 12's new request takes no destination - its field list has none -
+    // so it is the empty string, whatever `input`'s was: a service worker's
+    // fetch(event.request) of a navigation sends `Sec-Fetch-Dest: empty`,
+    // as Chrome and Safari do (navigation-headers.https.html's "... with
+    // passthrough service worker sets correct sec-fetch headers", wpt.fyi
+    // 23b0b89b1a). event.request itself keeps its destination: the fetch
+    // event's request object is made from the worker's copy, not here.
+    // A copy of a top-level navigation stays one for SameSite cookies, as in
+    // every browser (InternalRequest.main_frame_navigation; whatwg/fetch#1327
+    // - no spec concept yet).
+    if (base_request.mode == .navigate and base_request.destination == .document) base_request.main_frame_navigation = true;
+    base_request.destination = .empty;
 
     // Step 13: If init is not empty
     // Step 10: If init["window"] exists and is non-null, then throw a
@@ -388,8 +400,28 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
         base_request.origin = .client;
         base_request.origin_owned = false;
 
-        // Steps 13.7-8: already the defaults of a request this constructor
-        // built.
+        // Step 13.7: Set request's URL to request's current URL.
+        // Step 13.8: Set request's URL list to « request's URL ». A request
+        // this constructor built from a URL has that list already; a clone
+        // of `input`'s request keeps its redirect hops, which init makes the
+        // service worker's own request ("it no longer appears to come from
+        // the original source"): the list becomes its current URL alone, and
+        // what the hops made of it goes with them - its redirect-taint
+        // (`redirect_tainted`: the Origin header) and its Sec-Fetch-Site
+        // relation (`dropped_urls_site`). navigation-headers.https.html's
+        // "... redirect and change-request service worker" cases: Origin is
+        // the worker's, Sec-Fetch-Site same-origin.
+        if (base_request.url_list.items.len > 1) {
+            const current = base_request.url_list.pop().?;
+            for (base_request.url_list.items) |hop| base_request.allocator.free(hop);
+            base_request.url_list.clearRetainingCapacity();
+            base_request.url_list.appendAssumeCapacity(current);
+        }
+        base_request.redirect_tainted = false;
+        base_request.dropped_urls_site = .same_origin;
+        // The worker's own request now (mode "same-origin"): not a
+        // navigation's copy for SameSite cookies either.
+        base_request.main_frame_navigation = false;
 
         // Step 13.5: Set request's referrer to "client". A Request passed as
         // `input` brings its own, which init replaces.
