@@ -278,6 +278,8 @@ pub const Grammar = enum {
     line_height,
     opacity,
     z_index,
+    /// CSS Text 4 text-transform (`values.TextTransform`).
+    text_transform,
 };
 
 pub const Info = struct {
@@ -368,7 +370,7 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .padding_top, .inherited = false, .initial = zero, .grammar = .length_percentage_nonneg, .quirky_length = true },
         .{ .longhand = .position, .inherited = false, .initial = Value.kw(.static), .grammar = .keywords, .keywords = &.{ .static, .relative, .absolute, .sticky, .fixed } },
         .{ .longhand = .right, .inherited = false, .initial = Value.kw(.auto), .grammar = .length_percentage_auto, .quirky_length = true },
-        .{ .longhand = .text_transform, .inherited = true, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .capitalize, .uppercase, .lowercase } },
+        .{ .longhand = .text_transform, .inherited = true, .initial = .{ .text_transform = .{} }, .grammar = .text_transform },
         .{ .longhand = .text_wrap_mode, .inherited = true, .initial = Value.kw(.wrap), .grammar = .keywords, .keywords = &.{ .wrap, .nowrap } },
         .{ .longhand = .top, .inherited = false, .initial = Value.kw(.auto), .grammar = .length_percentage_auto, .quirky_length = true },
         .{ .longhand = .unicode_bidi, .inherited = false, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .normal, .embed, .isolate, .bidi_override, .isolate_override, .plaintext } },
@@ -723,6 +725,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .color => return colorValue(options, stream, def),
         .image => return imageValue(options, stream),
         .display => return displayValue(stream),
+        .text_transform => return textTransformValue(stream),
         .font_family => return fontFamilyValue(options, stream),
         .font_size => {
             if (takeKeyword(stream, &.{ .xx_small, .x_small, .small, .medium, .large, .x_large, .xx_large, .xxx_large, .larger, .smaller })) |k| return Value.kw(k);
@@ -994,6 +997,40 @@ fn displayValue(stream: *Stream) ?Value {
     const i = inner orelse .flow;
     const o = outer orelse (if (i == .ruby or i == .math) Display.Outer.inline_ else .block);
     return .{ .display = .{ .outer = o, .inner = i } };
+}
+
+/// `none | [capitalize | uppercase | lowercase] || full-width ||
+/// full-size-kana | math-auto`: each component at most once.
+fn textTransformValue(stream: *Stream) ?Value {
+    if (takeKeyword(stream, &.{.none}) != null) return .{ .text_transform = .{} };
+    if (takeKeyword(stream, &.{.math_auto}) != null) return .{ .text_transform = .{ .math_auto = true } };
+    var transform: values.TextTransform = .{};
+    var count: usize = 0;
+    while (count < 3) : (count += 1) {
+        const k = identKeyword(stream.peek()) orelse break;
+        switch (k) {
+            .capitalize, .uppercase, .lowercase => {
+                if (transform.case != .none) return null;
+                transform.case = switch (k) {
+                    .capitalize => .capitalize,
+                    .uppercase => .uppercase,
+                    else => .lowercase,
+                };
+            },
+            .full_width => {
+                if (transform.full_width) return null;
+                transform.full_width = true;
+            },
+            .full_size_kana => {
+                if (transform.full_size_kana) return null;
+                transform.full_size_kana = true;
+            },
+            else => break,
+        }
+        _ = stream.next();
+    }
+    if (count == 0) return null;
+    return .{ .text_transform = transform };
 }
 
 fn innerKeyword(s: []const u8) ?Display.Inner {
@@ -1419,6 +1456,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
             .named => |n| try out.appendSlice(allocator, n.name.bytes),
         },
         .display => |d| try d.serialize(out, allocator),
+        .text_transform => |t| try t.serialize(out, allocator),
         .text => |t| try out.appendSlice(allocator, t.bytes),
     }
 }
@@ -1644,6 +1682,25 @@ test "colors: named, hex, rgb(), currentcolor, system colors" {
     try expectSerialized("color", "CanvasText", "canvastext");
     try expectInvalid("color", "notacolor");
     try expectInvalid("color", "red blue");
+}
+
+test "text-transform: a case keyword, full-width and full-size-kana in any order, or math-auto" {
+    // css/css-text/parsing/text-transform-valid.html and -invalid.html.
+    try expectSerialized("text-transform", "none", "none");
+    try expectSerialized("text-transform", "UPPERCASE", "uppercase");
+    try expectSerialized("text-transform", "full-width", "full-width");
+    try expectSerialized("text-transform", "full-size-kana", "full-size-kana");
+    try expectSerialized("text-transform", "math-auto", "math-auto");
+    try expectSerialized("text-transform", "full-width lowercase", "lowercase full-width");
+    try expectSerialized("text-transform", "full-size-kana full-width", "full-width full-size-kana");
+    try expectSerialized("text-transform", "full-size-kana full-width capitalize", "capitalize full-width full-size-kana");
+    try expectInvalid("text-transform", "none full-width");
+    try expectInvalid("text-transform", "capitalize none");
+    try expectInvalid("text-transform", "capitalize full-width lowercase");
+    try expectInvalid("text-transform", "full-width full-size-kana full-width");
+    try expectInvalid("text-transform", "math-auto uppercase");
+    try expectInvalid("text-transform", "uppercase math-auto");
+    try expectInvalid("text-transform", "full-width math-auto");
 }
 
 test "display: legacy, two-keyword and list-item forms" {
