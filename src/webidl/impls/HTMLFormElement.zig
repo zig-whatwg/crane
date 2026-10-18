@@ -1184,7 +1184,7 @@ fn appendFieldEntries(allocator: std.mem.Allocator, entries: *EntryList, field: 
     } else {
         // 5.10: the value of the field element.
         const value = if (form_associated.isTextArea(field))
-            try takeString(allocator, field, try interfaces.HTMLTextAreaElement.get_value(field))
+            try forms.textarea_value.submissionValue(allocator, field)
         else if (form_associated.isButton(field))
             try takeString(allocator, field, try interfaces.HTMLButtonElement.get_value(field))
         else

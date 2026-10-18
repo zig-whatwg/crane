@@ -6,6 +6,7 @@ pub const ValidityFlags = @import("dictionaries").ValidityStateFlags;
 pub const options = @import("options.zig");
 pub const picker = @import("picker.zig");
 pub const color_values = @import("color_values.zig");
+pub const textarea_value = @import("textarea_value.zig");
 
 pub const TargetPolicy = struct { noopener: bool, noreferrer: bool };
 
@@ -222,4 +223,5 @@ pub fn checkValidity(instance: *runtime.Instance, candidate: bool, flags: Validi
 test {
     // Pure color-value tests require both HTML sanitization and CSS parsing.
     _ = color_values;
+    _ = textarea_value;
 }
