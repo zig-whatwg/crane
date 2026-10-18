@@ -540,7 +540,7 @@ pub fn copyRequestForWorker(allocator: Allocator, request: *const InternalReques
     // passthrough and navpreload Sec-Fetch cases, 83/83 at wpt.fyi
     // 23b0b89b1a, golden rule 2: a newer spec one browser ships).
     const items = request.url_list.items;
-    copy.dropped_urls_site = try fetch.algorithms.fetch_metadata.droppedUrlsSite(allocator, request.origin, items[0 .. items.len -| 1], request.dropped_urls_site);
+    copy.dropped_urls_site = try fetch.algorithms.fetch_metadata.droppedUrlsSite(allocator, request.origin, items[0..items.len -| 1], request.dropped_urls_site);
     // Fetch Metadata's Sec-Fetch-User for the navigation preload made from
     // this copy (Handle Fetch step 15.1.1: a clone of the request).
     copy.user_activation = request.user_activation;
