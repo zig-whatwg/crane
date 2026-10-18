@@ -185,8 +185,7 @@ fn attributeChangeSteps(
 
 /// Getter for form
 pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
+    return @import("html").form_associated.formOwner(instance);
 }
 
 /// The contentDocument getter steps: "return this's content document".
