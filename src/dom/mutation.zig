@@ -51,9 +51,8 @@ const NodeList = interfaces.NodeList;
 const Node = interfaces.Node;
 const Document = interfaces.Document;
 
-// Implementation modules for creating NodeLists
+// The Range impl, for the live-range steps
 const impls = @import("impls");
-const NodeListImpl = impls.NodeList;
 const RangeImpl = impls.Range;
 
 /// DOM Exception types as defined in WebIDL
@@ -357,25 +356,17 @@ fn isConnectedThroughShadow(node: anytype) bool {
         const root_opaque = instance_bridge.getInstance(@constCast(current)) orelse return false;
         const root_instance: *runtime.Instance = @ptrCast(@alignCast(root_opaque));
 
-        // Try to get it as a ShadowRoot and check its host
-        const ShadowRootImpl = impls.ShadowRoot;
-        if (ShadowRootImpl.getInternalState(root_instance)) |shadow_internal| {
-            // This is a ShadowRoot - check if its host is connected
-            if (shadow_internal.host) |host| {
-                // Get the host's NodeBase
-                const NodeImpl = impls.Node;
-                if (NodeImpl.getInternalState(host)) |host_internal| {
-                    if (host_internal.node_base) |host_node_base| {
-                        // Check cached value first
-                        if (host_node_base.is_connected) {
-                            return true;
-                        }
-                        // Recurse to follow further shadow hosts
-                        return isConnectedThroughShadow(host_node_base);
-                    }
-                }
-            }
+        // A ShadowRoot whose host is alive (a host torn down first leaves
+        // its shadow root a hostless fragment: dom.shadow_hosts).
+        if (root_instance.stateAs(interfaces.ShadowRoot.State) == null) return false;
+        const host = interfaces.ShadowRoot.get_host(root_instance) catch return false;
+        const host_node_base = instance_bridge.getNodeBase(host) orelse return false;
+        // Check cached value first
+        if (host_node_base.is_connected) {
+            return true;
         }
+        // Recurse to follow further shadow hosts
+        return isConnectedThroughShadow(host_node_base);
     }
 
     return false;
@@ -1709,6 +1700,102 @@ pub fn remove(
         refcount.checkAround(@ptrCast(parent));
         refcount.checkAround(@ptrCast(node));
     }
+}
+
+// ============================================================================
+// The mutation algorithms on platform objects
+// ============================================================================
+//
+// For another DOM algorithm whose steps run one of the algorithms above on
+// nodes it was given as platform objects: ParentNode's prepend() and
+// append(), ChildNode's before(), after(), replaceWith() and remove(), and
+// "converting nodes into a node". They call these, never Node's IDL members:
+// appendChild, insertBefore and replaceChild are [CEReactions], and their
+// generated functions open a reaction scope, which would run the element
+// queue in the middle of the outer algorithm (impls-boundary design 3.1, a4;
+// Blink opens the scope only in its bindings, `CEReactionsScope` in the V8
+// callback, and its C++ calls make none).
+//
+// Each reports an algorithm's exception as Node's own members have: a
+// HierarchyRequestError and a NotFoundError as they are, anything else - an
+// OutOfMemory among them - an InvalidStateError, and so does an object that
+// is no node.
+
+/// The exceptions of the mutation algorithms on platform objects.
+pub const NodeError = error{ HierarchyRequestError, NotFoundError, InvalidStateError };
+
+fn nodeError(err: (DOMException || error{OutOfMemory})) NodeError {
+    return switch (err) {
+        error.HierarchyRequestError => error.HierarchyRequestError,
+        error.NotFoundError => error.NotFoundError,
+        else => error.InvalidStateError,
+    };
+}
+
+/// `instance`'s node, or an InvalidStateError for an object that is no node.
+fn nodeOfInstance(instance: *runtime.Instance) NodeError!*NodeBase {
+    return instance_bridge.getNodeBase(instance) orelse error.InvalidStateError;
+}
+
+/// "Pre-insert `node` into `parent` before `child`". A `child` that is no
+/// node is null: the end of `parent`'s children.
+pub fn preInsertNode(node: *runtime.Instance, parent: *runtime.Instance, child: ?*runtime.Instance) NodeError!void {
+    const parent_ptr = try nodeOfInstance(parent);
+    const node_ptr = try nodeOfInstance(node);
+    const child_ptr: ?*NodeBase = if (child) |c| instance_bridge.getNodeBase(c) else null;
+    _ = preInsert(node_ptr, parent_ptr, child_ptr) catch |err| return nodeError(err);
+}
+
+/// "Append `node` to `parent`".
+pub fn appendNode(node: *runtime.Instance, parent: *runtime.Instance) NodeError!void {
+    const parent_ptr = try nodeOfInstance(parent);
+    const node_ptr = try nodeOfInstance(node);
+    _ = append(node_ptr, parent_ptr) catch |err| return nodeError(err);
+}
+
+/// "Replace `child` with `node` within `parent`".
+pub fn replaceNode(child: *runtime.Instance, node: *runtime.Instance, parent: *runtime.Instance) NodeError!void {
+    const parent_ptr = try nodeOfInstance(parent);
+    const child_ptr = try nodeOfInstance(child);
+    const node_ptr = try nodeOfInstance(node);
+    _ = replace(child_ptr, node_ptr, parent_ptr) catch |err| return nodeError(err);
+}
+
+/// "Remove `node`".
+pub fn removeNode(node: *runtime.Instance) NodeError!void {
+    const node_ptr = try nodeOfInstance(node);
+    remove(node_ptr, false) catch |err| return nodeError(err);
+}
+
+/// DOM "converting nodes into a node", given `nodes` (the ParentNode and
+/// ChildNode mixins' `(Node or DOMString)...`: a slice of a union with a
+/// `node` and a `string` arm) and `document`.
+/// Spec: https://dom.spec.whatwg.org/#converting-nodes-into-a-node
+pub fn convertNodesIntoNode(nodes: anytype, document: *runtime.Instance) !*runtime.Instance {
+    // Steps 1-2: "Replace each string of nodes with a new Text node whose data
+    // is the string and node document is document. If nodes contains one node,
+    // then return nodes[0]."
+    if (nodes.len == 1) return nodeOrText(nodes[0], document);
+
+    // Step 3: "Let fragment be a new DocumentFragment node whose node document
+    // is document."
+    const fragment = try interfaces.Document.call_createDocumentFragment(document);
+
+    // Step 4: "For each node of nodes: append node to fragment."
+    for (nodes) |item| try appendNode(try nodeOrText(item, document), fragment);
+
+    // Step 5: "Return fragment."
+    return fragment;
+}
+
+/// A node of a "converting nodes into a node" list: the node itself, or a new
+/// Text node holding the string, whose node document is `document`.
+fn nodeOrText(item: anytype, document: *runtime.Instance) !*runtime.Instance {
+    return switch (item) {
+        .node => |node| node,
+        // createTextNode copies the data; the binding owns the slice.
+        .string => |data| try interfaces.Document.call_createTextNode(document, runtime.DOMString.initInterned(data)),
+    };
 }
 
 /// DOM §4.2.5 - Move

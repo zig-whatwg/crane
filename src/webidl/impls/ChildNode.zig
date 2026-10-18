@@ -3,15 +3,16 @@
 //! Spec: https://dom.spec.whatwg.org/#interface-childnode
 //!
 //! CharacterData, DocumentType and Element include ChildNode and inherit these
-//! members by alias. Every includer is a Node, so Node is this mixin's
-//! ancestor: its tree is reached through the Node impl.
+//! members by alias. Every includer is a Node: its tree is read through Node's
+//! interface, and changed by DOM's mutation algorithms (src/dom/mutation.zig),
+//! never by Node's [CEReactions] members (see "The mutation algorithms on
+//! platform objects" there).
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const mixins = @import("mixins");
-
-const NodeImpl = @import("Node.zig");
+const mutation = @import("dom").mutation;
 
 pub const State = interfaces.ChildNode.State;
 
@@ -62,7 +63,7 @@ pub fn call_before(instance: *runtime.Instance, nodes: []const NodeOrString) any
 
     // Step 4: "Let node be the result of converting nodes into a node, given
     // nodes and this's node document."
-    const node = try NodeImpl.convertNodesIntoNode(nodes, try nodeDocument(instance));
+    const node = try mutation.convertNodesIntoNode(nodes, try nodeDocument(instance));
 
     // Step 5: "If viablePreviousSibling is null, then set it to parent's first
     // child; otherwise to viablePreviousSibling's next sibling." Read after
@@ -70,7 +71,7 @@ pub fn call_before(instance: *runtime.Instance, nodes: []const NodeOrString) any
     const reference = if (viable_previous_sibling) |sibling| (interfaces.Node.get_nextSibling(sibling) catch null) else (interfaces.Node.get_firstChild(parent) catch null);
 
     // Step 6: "Pre-insert node into parent before viablePreviousSibling."
-    _ = try NodeImpl.call_insertBefore(parent, node, reference);
+    try mutation.preInsertNode(node, parent, reference);
 }
 
 /// after(...nodes)
@@ -85,10 +86,10 @@ pub fn call_after(instance: *runtime.Instance, nodes: []const NodeOrString) anye
 
     // Step 4: "Let node be the result of converting nodes into a node, given
     // nodes and this's node document."
-    const node = try NodeImpl.convertNodesIntoNode(nodes, try nodeDocument(instance));
+    const node = try mutation.convertNodesIntoNode(nodes, try nodeDocument(instance));
 
     // Step 5: "Pre-insert node into parent before viableNextSibling."
-    _ = try NodeImpl.call_insertBefore(parent, node, viable_next_sibling);
+    try mutation.preInsertNode(node, parent, viable_next_sibling);
 }
 
 /// replaceWith(...nodes)
@@ -103,16 +104,16 @@ pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const NodeOrString
 
     // Step 4: "Let node be the result of converting nodes into a node, given
     // nodes and this's node document."
-    const node = try NodeImpl.convertNodesIntoNode(nodes, try nodeDocument(instance));
+    const node = try mutation.convertNodesIntoNode(nodes, try nodeDocument(instance));
 
     if ((interfaces.Node.get_parentNode(instance) catch null) == parent) {
         // Step 5: "If this's parent is parent, replace this with node within
         // parent." (This could have been inserted into node.)
-        _ = try NodeImpl.call_replaceChild(parent, node, instance);
+        try mutation.replaceNode(instance, node, parent);
     } else {
         // Step 6: "Otherwise, pre-insert node into parent before
         // viableNextSibling."
-        _ = try NodeImpl.call_insertBefore(parent, node, viable_next_sibling);
+        try mutation.preInsertNode(node, parent, viable_next_sibling);
     }
 }
 
@@ -120,10 +121,10 @@ pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const NodeOrString
 /// Spec: https://dom.spec.whatwg.org/#dom-childnode-remove
 pub fn call_remove(instance: *runtime.Instance) anyerror!void {
     // Step 1: "If this's parent is null, then return."
-    const parent = (interfaces.Node.get_parentNode(instance) catch null) orelse return;
+    if ((interfaces.Node.get_parentNode(instance) catch null) == null) return;
 
     // Step 2: "Remove this."
-    try NodeImpl.removeNodeFromParent(instance, parent);
+    try mutation.removeNode(instance);
 }
 
 // =============================================================================

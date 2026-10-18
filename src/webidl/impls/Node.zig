@@ -1721,53 +1721,6 @@ fn findOwnerDocument(node: *runtime.Instance) ?*runtime.Instance {
     return internal.owner_document;
 }
 
-/// Remove node from parent - delegates to src/dom/mutation.zig
-/// Note: This is public so ChildNode mixin and other impls can use it
-pub fn removeNodeFromParent(node: *runtime.Instance, parent: *runtime.Instance) !void {
-    _ = parent; // Parent verification done by mutation.remove
-    const node_internal = getInternal(node) orelse return error.InvalidStateError;
-    const node_base = node_internal.node_base orelse return error.InvalidStateError;
-
-    // Delegate to src/dom/mutation.zig - single source of truth
-    dom_module.mutation.remove(node_base, false) catch |err| {
-        return switch (err) {
-            error.HierarchyRequestError => error.HierarchyRequestError,
-            error.NotFoundError => error.NotFoundError,
-            else => error.InvalidStateError,
-        };
-    };
-}
-
-/// DOM "converting nodes into a node" (§4.2.6), for the ParentNode and
-/// ChildNode mixins, whose includers are all Nodes.
-/// Spec: https://dom.spec.whatwg.org/#converting-nodes-into-a-node
-pub fn convertNodesIntoNode(nodes: []const mixins.ParentNode.NodeOrString, document: *runtime.Instance) !*runtime.Instance {
-    // Steps 1-2: "Replace each string of nodes with a new Text node whose data
-    // is the string and node document is document. If nodes contains one node,
-    // then return nodes[0]."
-    if (nodes.len == 1) return nodeOrText(nodes[0], document);
-
-    // Step 3: "Let fragment be a new DocumentFragment node whose node document
-    // is document."
-    const fragment = try interfaces.Document.call_createDocumentFragment(document);
-
-    // Step 4: "For each node of nodes: append node to fragment."
-    for (nodes) |item| _ = try call_appendChild(fragment, try nodeOrText(item, document));
-
-    // Step 5: "Return fragment."
-    return fragment;
-}
-
-/// A node of a "converting nodes into a node" list: the node itself, or a new
-/// Text node holding the string, whose node document is `document`.
-fn nodeOrText(item: mixins.ParentNode.NodeOrString, document: *runtime.Instance) !*runtime.Instance {
-    return switch (item) {
-        .node => |node| node,
-        // createTextNode copies the data; the binding owns the slice.
-        .string => |data| try interfaces.Document.call_createTextNode(document, runtime.DOMString.initInterned(data)),
-    };
-}
-
 /// Operation: appendChild
 /// https://dom.spec.whatwg.org/#dom-node-appendchild
 /// Delegates to src/dom/mutation.zig - THE single source of truth for tree operations

@@ -26,8 +26,6 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 
-// Import impl modules for accessing internal state
-const NodeImpl = @import("Node.zig");
 const live_collections = @import("dom").live_collections;
 const dom = @import("dom");
 const NodeBase = dom.NodeBase;
@@ -192,10 +190,10 @@ pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOM
 pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     // Step 1: "Let node be the result of converting nodes into a node given
     // nodes and this's node document."
-    const node = try NodeImpl.convertNodesIntoNode(nodes, nodeDocument(instance));
+    const node = try dom.mutation.convertNodesIntoNode(nodes, nodeDocument(instance));
 
     // Step 2: "Pre-insert node into this before this's first child."
-    _ = try NodeImpl.call_insertBefore(instance, node, firstChild(instance));
+    try dom.mutation.preInsertNode(node, instance, firstChild(instance));
 }
 
 /// append(...nodes)
@@ -203,10 +201,10 @@ pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNod
 pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     // Step 1: "Let node be the result of converting nodes into a node given
     // nodes and this's node document."
-    const node = try NodeImpl.convertNodesIntoNode(nodes, nodeDocument(instance));
+    const node = try dom.mutation.convertNodesIntoNode(nodes, nodeDocument(instance));
 
     // Step 2: "Append node to this."
-    _ = try NodeImpl.call_appendChild(instance, node);
+    try dom.mutation.appendNode(node, instance);
 }
 
 /// replaceChildren(...nodes)
@@ -214,7 +212,7 @@ pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode
 pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     // Step 1: "Let node be the result of converting nodes into a node given
     // nodes and this's node document."
-    const node = try NodeImpl.convertNodesIntoNode(nodes, nodeDocument(instance));
+    const node = try dom.mutation.convertNodesIntoNode(nodes, nodeDocument(instance));
 
     // Step 2: ensure pre-insert validity, excluding this's current children.
     const parent_base = dom.instance_bridge.getNodeBase(instance) orelse return error.InvalidStateError;
@@ -271,7 +269,7 @@ pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, chi
     }
 
     // Remove from old position
-    NodeImpl.removeNodeFromParent(node, old_parent) catch return error.HierarchyRequestError;
+    dom.mutation.removeNode(node) catch return error.HierarchyRequestError;
 
     // Insert at new position (use interface per Golden Rule #13)
     if (reference_child) |rc| {
