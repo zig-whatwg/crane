@@ -18,9 +18,9 @@
 //! which the element owns and the document's style engine applies - lane
 //! style1); step 2 removes it. `disabled` reads and sets its disabled flag.
 //!
-//! Not modelled, stated: `sheet` (the CSSStyleSheet object over the sheet)
-//! is null until the CSSOM objects land (style batch 2); render-blocking is
-//! not kept. Critical imports of parser-created stylesheets block scripts.
+//! `sheet` is the sheet's CSSStyleSheet object (dom.style.objects), which
+//! the element keeps until the sheet is removed. Not modelled, stated:
+//! render-blocking is not kept. Critical imports of parser-created stylesheets block scripts.
 //! HTML names the XML parser
 //! too, but Crane has none (DOMParser's XML types are a TODO): only the HTML
 //! parser drivers make style elements. The fragment parser's (innerHTML)
@@ -227,7 +227,12 @@ fn removeSheet(element: *runtime.Instance, internal: *InternalState) void {
         }
     }
     internal.sheet_document = null;
-    record.destroy();
+    // CSSOM "remove a CSS style sheet" step 2: its owner node goes; the
+    // element no longer keeps the sheet's object, which script may still
+    // hold (and with it the sheet).
+    record.detach();
+    dom_module.style.objects.ownerReleased(element);
+    record.unref();
 }
 
 /// dom.style's `style_sheet_of`.
@@ -348,11 +353,13 @@ pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
     return record.disabled;
 }
 
-/// Getter for sheet: the associated CSS style sheet - not parsed into CSSOM
-/// (see the file comment).
+/// Getter for sheet (LinkStyle, CSSOM 6.3.2): "the associated CSS style
+/// sheet of the node or null if there is no associated CSS style sheet" -
+/// its CSSStyleSheet object, made on first read and kept by the element.
 pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
+    const internal = getInternal(instance) orelse return null;
+    const record = internal.sheet orelse return null;
+    return try dom_module.style.objects.sheetObject(record, instance.ctx);
 }
 
 /// Setter for disabled: "If this does not have an associated CSS style

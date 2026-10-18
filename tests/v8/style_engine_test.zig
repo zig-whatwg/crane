@@ -226,3 +226,55 @@ test "a style read marks its document's engine resolving only while it runs (Cod
     _ = try dom.style.isBeingRendered(element);
     try testing.expect(!engine.resolving);
 }
+
+test "a sheet script holds outlives its style element's removal and a collection, rules and all" {
+    dom.style.ua_sheet.build();
+    const page = try Page.open();
+    defer page.close();
+    try page.eval(html_page);
+    try page.eval(
+        \\globalThis.style = d.createElement('style');
+        \\style.textContent = 'a { color: red } @supports (display: block) { b { color: blue } }';
+        \\d.head.appendChild(style);
+        \\globalThis.sheet = style.sheet;
+        \\globalThis.rules = sheet.cssRules;
+        \\globalThis.group = rules[1];
+        \\globalThis.inner = group.cssRules[0];
+        \\globalThis.decl = rules[0].style;
+    );
+    try page.expect("String(sheet instanceof CSSStyleSheet) + '|' + String(sheet.ownerNode === style)", "true|true");
+    try page.expect("String(d.styleSheets[0] === sheet) + '|' + d.styleSheets.length", "true|1");
+    try page.eval("style.remove(); globalThis.style = null;");
+    try page.collect();
+    try page.expect("String(sheet.ownerNode) + '|' + d.styleSheets.length", "null|0");
+    try page.expect("rules.length + '|' + rules[0].cssText", "2|a { color: red; }");
+    try page.expect("String(rules[1] === group) + '|' + String(inner.parentRule === group)", "true|true");
+    try page.expect("String(inner.parentStyleSheet === sheet) + '|' + inner.cssText", "true|b { color: blue; }");
+    try page.expect("decl.color + '|' + String(decl.parentRule === rules[0])", "red|true");
+    // Dropping every script reference lets the sheet, its rules and their
+    // objects go (the counts are std.testing.allocator's, checked at the
+    // end of the test, and leaks --atExit for the C++ side).
+    try page.eval("globalThis.sheet = globalThis.rules = globalThis.group = globalThis.inner = globalThis.decl = null;");
+    try page.collect();
+}
+
+test "a removed rule keeps its data and loses its parents; deleteRule and insertRule edit the list" {
+    dom.style.ua_sheet.build();
+    const page = try Page.open();
+    defer page.close();
+    try page.eval(html_page);
+    try page.eval(
+        \\globalThis.style = d.createElement('style');
+        \\style.textContent = 'a { color: red } b { color: blue }';
+        \\d.head.appendChild(style);
+        \\globalThis.sheet = style.sheet;
+        \\globalThis.first = sheet.cssRules[0];
+        \\sheet.deleteRule(0);
+    );
+    try page.collect();
+    try page.expect("sheet.cssRules.length + '|' + String(first.parentStyleSheet) + '|' + first.cssText", "1|null|a { color: red; }");
+    try page.expect("sheet.insertRule('i { color: green }', 1) + '|' + sheet.cssRules[1].selectorText", "1|i");
+    try page.expect("(() => { try { sheet.insertRule('@import url(x.css)', 2); return 'no'; } catch (e) { return e.name; } })()", "HierarchyRequestError");
+    try page.expect("(() => { try { sheet.insertRule('{{', 0); return 'no'; } catch (e) { return e.name; } })()", "SyntaxError");
+    try page.expect("(() => { try { sheet.deleteRule(9); return 'no'; } catch (e) { return e.name; } })()", "IndexSizeError");
+}

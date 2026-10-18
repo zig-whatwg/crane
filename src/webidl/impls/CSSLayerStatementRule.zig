@@ -1,12 +1,14 @@
-//! Implementation for CSSLayerStatementRule interface
+//! Implementation for CSSLayerStatementRule interface (CSS Cascade 5 7.2)
+//!
+//! Spec: https://drafts.csswg.org/css-cascade-5/#the-csslayerstatementrule-interface
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
+const webidl = @import("webidl");
+const dom = @import("dom");
 const CSSLayerStatementRule = interfaces.CSSLayerStatementRule;
 
 pub const State = CSSLayerStatementRule.State;
@@ -15,32 +17,25 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+/// The rule this object is a view of: its CSSRule part's.
+fn ruleOf(instance: *runtime.Instance) ?*dom.style.Rule {
+    return dom.style.hooks.cssRuleOf(instance);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Getter for nameList
+/// Getter for nameList: "a list of the names of the associated cascade
+/// layers", a frozen array.
 pub fn get_nameList(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+    const rule = ruleOf(instance) orelse return error.InvalidStateError;
+    const names = switch (rule.data) {
+        .layer_statement => |l| l.names,
+        else => &.{},
+    };
+    const allocator = instance.ctx.allocator;
+    const values = try allocator.alloc(runtime.JSValue, names.len);
+    defer allocator.free(values);
+    for (names, 0..) |n, i| values[i] = runtime.JSValue.fromStringRef(n);
+    const array = try engine.createFrozenArray(engine.currentRealm() orelse instance.ctx, values);
+    return array.take();
 }

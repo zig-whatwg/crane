@@ -80,6 +80,8 @@ const Owner = struct {
 
 /// One sheet in the cascade, in final order.
 const ActiveSheet = struct {
+    /// Held while the active sheets are: a sheet removed since they were
+    /// built is still here, and freed, when they are next rebuilt.
     record: *SheetRecord,
     contents: *Contents,
     contents_version: u64,
@@ -98,15 +100,33 @@ const Active = struct {
     media: MediaValues,
     quirks: bool,
     sheets: std.ArrayList(ActiveSheet) = .empty,
+    /// Every top-level sheet the build looked at - the disabled ones and
+    /// those whose media did not match too - with the version it saw, held:
+    /// a sheet enabled again or edited moves its version.
+    watched: std.ArrayList(Watched) = .empty,
+
+    const Watched = struct { record: *SheetRecord, version: u64 };
 
     fn deinit(self: *Active, allocator: Allocator) void {
-        for (self.sheets.items) |s| allocator.free(s.layer_order);
+        for (self.sheets.items) |s| {
+            allocator.free(s.layer_order);
+            s.record.unref();
+        }
         self.sheets.deinit(allocator);
+        for (self.watched.items) |w| w.record.unref();
+        self.watched.deinit(allocator);
     }
 
-    /// Whether every sheet's rules are the ones it was built from.
+    /// `record` was looked at.
+    fn watch(self: *Active, allocator: Allocator, record: *SheetRecord) Error!void {
+        try self.watched.append(allocator, .{ .record = record, .version = record.contents_version });
+        record.ref();
+    }
+
+    /// Whether every sheet's rules and flags are the ones it was built from.
     fn contentsCurrent(self: *const Active) bool {
         for (self.sheets.items) |s| if (s.record.contents_version != s.contents_version) return false;
+        for (self.watched.items) |w| if (w.record.contents_version != w.version) return false;
         return true;
     }
 };
@@ -234,13 +254,7 @@ pub const StyleEngine = struct {
             if (root.node_type != NodeBase.DOCUMENT_NODE) continue;
             try owners.append(self.allocator, o.element);
         }
-        std.mem.sort(*runtime.Instance, owners.items, {}, struct {
-            fn lessThan(_: void, a: *runtime.Instance, b: *runtime.Instance) bool {
-                const na = instance_bridge.getNodeBase(a) orelse return false;
-                const nb = instance_bridge.getNodeBase(b) orelse return false;
-                return precedes(na, nb);
-            }
-        }.lessThan);
+        sortTreeOrder(owners.items);
 
         // CSSOM "add a CSS style sheet" steps 4-6: the preferred CSS style
         // sheet set name is the first titled, non-alternate sheet's title;
@@ -259,6 +273,7 @@ pub const StyleEngine = struct {
         defer pending.deinit(self.allocator);
         for (owners.items) |owner| {
             const record = hooks.sheetOf(owner) orelse continue;
+            try active.watch(self.allocator, record);
             if (record.disabled) continue;
             if (record.title.len != 0) {
                 const p = preferred orelse continue;
@@ -274,6 +289,8 @@ pub const StyleEngine = struct {
             errdefer self.allocator.free(map);
             for (p.layer_nodes, 0..) |node, i| map[i] = layers.nodes.items[node].rank;
             self.allocator.free(p.layer_nodes);
+            p.record.ref();
+            errdefer p.record.unref();
             try active.sheets.append(self.allocator, .{
                 .record = p.record,
                 .contents = p.contents,
@@ -298,17 +315,16 @@ pub const StyleEngine = struct {
     /// rule").
     fn addSheet(self: *StyleEngine, document: *runtime.Instance, record: *SheetRecord, parent_layer: ?usize, media: *const MediaValues, layers: *LayerTree, pending: *std.ArrayList(Pending), depth: usize) Error!void {
         if (depth > 16) return;
-        var resolver_context: UrlContext = .{ .document = document, .base = record.base_url };
-        const contents = try record.contentsOf(.{ .context = &resolver_context, .resolve = &resolveUrl });
+        var url_context = record.urlContext(document);
+        const contents = try record.contentsOf(record.parseOptions(&url_context));
         // The sheet's layer declarations, in order, under `parent_layer`.
         const layer_nodes = try self.allocator.alloc(usize, contents.layers.items.len);
         var layer_nodes_owned = true;
         defer if (layer_nodes_owned) self.allocator.free(layer_nodes);
         for (contents.layers.items, 0..) |name, i| layer_nodes[i] = try layers.declare(parent_layer, name);
-        for (contents.imports.items, 0..) |import_rule, i| {
-            if (i >= record.imports.items.len) break;
-            const child = record.imports.items[i] orelse continue;
-            if (import_rule.media) |m| if (!m.matches(media)) continue;
+        for (contents.imports.items) |import_rule| {
+            const child = import_rule.child orelse continue;
+            if (!import_rule.media.matches(media)) continue;
             const child_layer: ?usize = if (import_rule.layer) |l| layer_nodes[l] else parent_layer;
             try self.addSheet(document, child, child_layer, media, layers, pending, depth + 1);
         }
@@ -384,24 +400,6 @@ const LayerTree = struct {
         rank.* +|= 1;
     }
 };
-
-const UrlContext = struct {
-    document: *runtime.Instance,
-    base: []const u8,
-};
-
-/// A url() in a sheet, parsed against the sheet's base URL (CSS Values 4
-/// 4.5.1); null when it does not parse (it stays as written).
-fn resolveUrl(context: *const anyopaque, allocator: Allocator, url: []const u8) ?[]u8 {
-    const ctx: *const UrlContext = @ptrCast(@alignCast(context));
-    const webidl = @import("webidl");
-    const base_arg = if (ctx.base.len > 0) webidl.Opt(runtime.USVString).passed(ctx.base) else webidl.Opt(runtime.USVString).notPassed();
-    const parsed = (interfaces.URL.call_static_parse(ctx.document, url, base_arg) catch null) orelse return null;
-    defer runtime.Instance.deinit(parsed);
-    const href = interfaces.URL.get_href(parsed) catch return null;
-    defer ctx.document.ctx.allocator.free(href);
-    return allocator.dupe(u8, href) catch null;
-}
 
 fn isQuirks(document: *runtime.Instance) bool {
     return document_internals.getMode(document) == .quirks;
@@ -732,8 +730,8 @@ fn inlineBlock(element: *runtime.Instance, state: *ElementStyle, quirks: bool) E
 /// Parse `value` into the element's inline declaration block.
 pub fn reparseInline(element: *runtime.Instance, state: *ElementStyle, value: []const u8, quirks: bool) Error!void {
     const document = interfaces.Node.get_ownerDocument(element) catch null;
-    var url_context: UrlContext = .{ .document = document orelse element, .base = "" };
-    const options: css.properties.ParseOptions = .{ .allocator = state.allocator, .quirks = quirks, .url_resolver = if (document != null) .{ .context = &url_context, .resolve = &resolveUrl } else null };
+    var url_context: sheet_mod.UrlContext = .{ .instance = document orelse element, .base = "" };
+    const options: css.properties.ParseOptions = .{ .allocator = state.allocator, .quirks = quirks, .url_resolver = if (document != null) url_context.resolver() else null };
     if (state.inline_block) |*b| {
         try b.setCssText(options, value);
     } else {
@@ -788,6 +786,42 @@ pub fn hasComputedStyle(element: *runtime.Instance) Error!bool {
 /// The engine of `document`, for the owners' registration.
 pub fn engineOf(document: *runtime.Instance) ?*StyleEngine {
     return hooks.engineOf(document);
+}
+
+/// CSSOM 6.2 "document or shadow root CSS style sheets" of `scope` - a
+/// Document or a ShadowRoot - appended to `out`: the CSS style sheets
+/// associated with it, in tree order (style and link elements whose root is
+/// `scope` and that have a sheet - disabled ones and ones whose media does
+/// not match included). Borrowed: valid until the sheets next change.
+/// (Crane has no style sheets from HTTP Link headers.)
+pub fn scopeSheets(scope: *runtime.Instance, out: *std.ArrayList(*SheetRecord), allocator: Allocator) Error!void {
+    const scope_node = instance_bridge.getNodeBase(scope) orelse return;
+    const document = if (scope_node.node_type == NodeBase.DOCUMENT_NODE) scope else ((interfaces.Node.get_ownerDocument(scope) catch null) orelse return);
+    const engine = hooks.engineOf(document) orelse return;
+    var owners: std.ArrayList(*runtime.Instance) = .empty;
+    defer owners.deinit(allocator);
+    for (engine.owners.items) |o| {
+        if (!o.live()) continue;
+        const node = instance_bridge.getNodeBase(o.element) orelse continue;
+        if (!node.is_connected) continue;
+        var root = node;
+        while (root.parent_node) |p| root = p;
+        if (root != scope_node) continue;
+        if (hooks.sheetOf(o.element) == null) continue;
+        try owners.append(allocator, o.element);
+    }
+    sortTreeOrder(owners.items);
+    for (owners.items) |owner| try out.append(allocator, hooks.sheetOf(owner).?);
+}
+
+fn sortTreeOrder(items: []*runtime.Instance) void {
+    std.mem.sort(*runtime.Instance, items, {}, struct {
+        fn lessThan(_: void, a: *runtime.Instance, b: *runtime.Instance) bool {
+            const na = instance_bridge.getNodeBase(a) orelse return false;
+            const nb = instance_bridge.getNodeBase(b) orelse return false;
+            return precedes(na, nb);
+        }
+    }.lessThan);
 }
 
 /// CSSOM View 4.2 "evaluate media queries and report changes" for

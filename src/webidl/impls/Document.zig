@@ -2199,13 +2199,13 @@ pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.In
     return internal.pointer_lock_element;
 }
 
-/// Getter for styleSheets
-/// Returns the StyleSheetList of stylesheets associated with this document.
-/// Lazily creates an empty StyleSheetList on first access.
+/// Getter for styleSheets: "a StyleSheetList collection representing the
+/// document or shadow root CSS style sheets" (CSSOM 6.2.3) - the list
+/// reads this document's style engine live; made on first access.
 pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const sheets = internal.style_sheets orelse blk: {
-        const made = interfaces.StyleSheetList.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+        const made = interfaces.StyleSheetList.initWith(internal.allocator, instance.ctx, .{ .sheets_of = instance }) catch return error.OutOfMemory;
         internal.style_sheets = made;
         internal.style_sheets_kept.made(made);
         break :blk made;

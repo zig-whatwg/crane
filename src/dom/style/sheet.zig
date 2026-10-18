@@ -1,22 +1,29 @@
 //! A CSS style sheet as the style engine holds it (CSSOM 6.1 "CSS style
-//! sheet": its owner node, title, alternate and disabled flags, media,
-//! location and origin-clean flag), and its rules compiled for matching.
+//! sheet": its owner node and owner rule, title, alternate and disabled
+//! flags, media, location and origin-clean flag, the constructed and
+//! disallow-modification flags, its CSS rules), and its rules compiled for
+//! matching.
 //!
 //! Blink's split: a CSSStyleSheet holds the sheet's state over a
-//! StyleSheetContents, whose rules a RuleSet indexes. Here the state is a
-//! `SheetRecord`, owned by what the sheet is associated with - the style or
-//! link element (HTML "create a CSS style sheet"), or the UA - and the
-//! parsed rules are its `Contents`, made the first time the cascade needs
-//! them: a page that never reads style never parses its sheets beyond the
-//! @import scan its loads already do (design section 5.4). The sheet keeps
-//! its text, base URL and parser mode from its creation for that parse.
+//! StyleSheetContents, whose rule tree a RuleSet indexes. Here the state is a
+//! `SheetRecord`, COUNTED: held by what the sheet is associated with - the
+//! style or link element (HTML "create a CSS style sheet"), the @import rule
+//! that fetched it - and by the CSSStyleSheet object made for it, so a sheet
+//! script still holds after its owner let it go ("remove a CSS style sheet")
+//! stays readable, with no owner. Its CSS rules are a tree of `rules.Rule`,
+//! parsed the first time the cascade or CSSOM needs them: a page that never
+//! reads style never parses its sheets beyond the @import scan its loads
+//! already do (design section 5.4). The sheet keeps its text, base URL and
+//! parser mode from its creation for that parse.
 //!
-//! Compiling (CSS Cascade 5 section 5 "Filtering", CSS Conditional 3): a
-//! style rule whose selector list does not parse is dropped; each complex
-//! selector becomes one `RuleData` with its specificity, its declarations,
-//! its layer and its chain of @media conditions. @supports is decided at
-//! parse time. @import rules are kept with their media; the sheets they
-//! fetch are attached as `imports` by the loader.
+//! Compiling (CSS Cascade 5 section 5 "Filtering", CSS Conditional 3) is
+//! `Contents`: an index into the rule tree - each complex selector of a style
+//! rule one `RuleData` with its specificity, its declarations, its layer and
+//! its chain of @media conditions; @supports decided at parse time; @import
+//! rules with their media and layer, and the sheets the loader attached to
+//! them. It is made again whenever `contents_version` moves (every CSSOM
+//! edit, every import arriving), and points into the tree only while it is
+//! current.
 //!
 //! Stated deviations: @container (it needs layout), @scope and
 //! @starting-style rules are skipped; a sheet whose @namespace declares the
@@ -31,12 +38,16 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
+const interfaces = @import("interfaces");
 const css = @import("css");
 const selector = @import("selector");
+const rules_mod = @import("rules.zig");
 
 const DeclarationBlock = css.declarations.DeclarationBlock;
 const MediaQueryList = css.media_queries.MediaQueryList;
 const MediaValues = css.media_queries.MediaValues;
+pub const Rule = rules_mod.Rule;
+pub const ObjectLink = rules_mod.ObjectLink;
 
 const html_namespace = "http://www.w3.org/1999/xhtml";
 
@@ -45,15 +56,43 @@ pub const ParseMode = struct {
     quirks: bool = false,
 };
 
-/// Resolves a url() in the sheet against its base URL; supplied by the
-/// engine, which can parse URLs.
+/// Resolves a url() in the sheet against its base URL.
 pub const UrlResolver = css.properties.UrlResolver;
+
+/// What a url() in a sheet is resolved with: the sheet's base URL, and an
+/// object of the realm to run the URL parser in.
+pub const UrlContext = struct {
+    instance: *runtime.Instance,
+    base: []const u8,
+
+    pub fn resolver(self: *const UrlContext) UrlResolver {
+        return .{ .context = self, .resolve = &resolveUrl };
+    }
+};
+
+/// A url() in a sheet, parsed against the sheet's base URL (CSS Values 4
+/// 4.5.1); null when it does not parse (it stays as written).
+fn resolveUrl(context: *const anyopaque, allocator: Allocator, url: []const u8) ?[]u8 {
+    const ctx: *const UrlContext = @ptrCast(@alignCast(context));
+    const webidl = @import("webidl");
+    const base_arg = if (ctx.base.len > 0) webidl.Opt(runtime.USVString).passed(ctx.base) else webidl.Opt(runtime.USVString).notPassed();
+    const parsed = (interfaces.URL.call_static_parse(ctx.instance, url, base_arg) catch null) orelse return null;
+    defer runtime.Instance.deinit(parsed);
+    const href = interfaces.URL.get_href(parsed) catch return null;
+    defer ctx.instance.ctx.allocator.free(href);
+    return allocator.dupe(u8, href) catch null;
+}
 
 pub const SheetRecord = struct {
     allocator: Allocator,
+    refs: u32 = 1,
     /// CSSOM "owner node": the element the sheet is associated with, a raw
-    /// back link (the element owns this record).
+    /// back link (the element holds this record); null once removed.
     owner_node: ?*runtime.Instance = null,
+    /// CSSOM "owner CSS rule": the @import rule whose sheet this is, a raw
+    /// back link (the rule holds this record); its parent sheet is this
+    /// sheet's "parent CSS style sheet".
+    owner_rule: ?*Rule = null,
     /// CSSOM "title", "alternate flag", "disabled flag".
     title: []u8 = &.{},
     alternate: bool = false,
@@ -62,33 +101,52 @@ pub const SheetRecord = struct {
     media_text: []u8 = &.{},
     media: ?MediaQueryList = null,
     media_parsed: bool = false,
+    /// CSSOM "location": the URL it was fetched from; null for an embedded
+    /// sheet (a style element's).
+    location: ?[]u8 = null,
     /// The sheet's base URL ("style sheet base URL"): its location, or the
     /// node document's base URL when it has none.
     base_url: []u8 = &.{},
     /// CSSOM "origin-clean flag".
     origin_clean: bool = true,
+    /// CSSOM "constructed flag", "disallow modification flag", and
+    /// "constructor document" (a raw back link with its generation).
+    constructed: bool = false,
+    disallow_modification: bool = false,
+    constructor_document: ?*runtime.Instance = null,
+    constructor_document_generation: u64 = 0,
     mode: ParseMode = .{},
     /// The text, until it is parsed.
     text: ?[]u8 = null,
-    contents: ?*Contents = null,
-    /// The sheets the @import rules fetched, by the rule's index among the
-    /// sheet's @import rules; null until fetched (or never: a failure).
-    imports: std.ArrayList(?*SheetRecord) = .empty,
-    /// Moves whenever the rules change (an import arriving; CSSOM edits
-    /// later): the engine compares it with what it built from.
-    contents_version: u64 = 0,
+    /// CSSOM "CSS rules", once parsed; each held.
+    rules: ?std.ArrayList(*Rule) = null,
+    /// The @import rules as parsed, by the index the loader delivers their
+    /// sheets by (null where CSS dropped one the loader still fetches);
+    /// each held, so an import a CSSOM edit removed still finds its rule.
+    import_slots: std.ArrayList(?*Rule) = .empty,
+    /// The compiled index of `rules`, and the version it was made at.
+    compiled: ?*Contents = null,
+    compiled_version: u64 = 0,
+    /// Moves whenever what the sheet contributes changes (an import
+    /// arriving, a CSSOM edit, its media or disabled flag): the engine
+    /// compares it with what it built from.
+    contents_version: u64 = 1,
+    /// The CSSStyleSheet object made for this sheet.
+    object: ObjectLink = .{},
 
     pub const Options = struct {
         owner_node: ?*runtime.Instance = null,
         title: []const u8 = "",
         alternate: bool = false,
         media: []const u8 = "",
+        location: ?[]const u8 = null,
         base_url: []const u8 = "",
         origin_clean: bool = true,
         mode: ParseMode = .{},
     };
 
-    /// HTML "create a CSS style sheet" with `text` as its contents.
+    /// HTML "create a CSS style sheet" with `text` as its contents. The
+    /// caller holds the one reference it returns with.
     pub fn create(allocator: Allocator, text: []const u8, options: Options) Allocator.Error!*SheetRecord {
         const self = try allocator.create(SheetRecord);
         errdefer allocator.destroy(self);
@@ -97,6 +155,7 @@ pub const SheetRecord = struct {
         self.title = try allocator.dupe(u8, options.title);
         self.media_text = try allocator.dupe(u8, options.media);
         self.base_url = try allocator.dupe(u8, options.base_url);
+        if (options.location) |l| self.location = try allocator.dupe(u8, l);
         self.text = try allocator.dupe(u8, text);
         return self;
     }
@@ -105,22 +164,64 @@ pub const SheetRecord = struct {
         self.allocator.free(self.title);
         self.allocator.free(self.media_text);
         self.allocator.free(self.base_url);
+        if (self.location) |l| self.allocator.free(l);
+        self.location = null;
         if (self.text) |t| self.allocator.free(t);
         self.text = null;
     }
 
-    /// The sheet is removed ("remove a CSS style sheet") and its owner
-    /// lets it go: its imports go with it.
-    pub fn destroy(self: *SheetRecord) void {
-        for (self.imports.items) |child| if (child) |c| c.destroy();
-        self.imports.deinit(self.allocator);
-        if (self.contents) |c| c.destroy();
+    pub fn ref(self: *SheetRecord) void {
+        self.refs += 1;
+    }
+
+    /// One holder lets the sheet go; the last frees it, and its rules (an
+    /// import's sheet goes with its rule, unless something else holds it).
+    pub fn unref(self: *SheetRecord) void {
+        self.refs -= 1;
+        if (self.refs > 0) return;
+        self.dropCompiled();
+        for (self.import_slots.items) |slot| if (slot) |r| r.unref();
+        self.import_slots.deinit(self.allocator);
+        if (self.rules) |*list| {
+            for (list.items) |r| {
+                r.parent_sheet = null;
+                r.unref();
+            }
+            list.deinit(self.allocator);
+        }
         if (self.media) |*m| m.deinit();
         self.freeStrings();
         self.allocator.destroy(self);
     }
 
-    /// The media changed (the owner's media attribute).
+    /// CSSOM "remove a CSS style sheet" step 2, for the owner letting the
+    /// sheet go: "Set the CSS style sheet's parent CSS style sheet, owner
+    /// node and owner CSS rule to null." The caller then drops its hold.
+    pub fn detach(self: *SheetRecord) void {
+        self.owner_node = null;
+        self.owner_rule = null;
+    }
+
+    /// CSSOM "parent CSS style sheet": the sheet whose @import rule this
+    /// sheet is.
+    pub fn parentSheet(self: *const SheetRecord) ?*SheetRecord {
+        const rule = self.owner_rule orelse return null;
+        return rule.sheet();
+    }
+
+    /// The constructor document, while it lives.
+    pub fn constructorDocument(self: *const SheetRecord) ?*runtime.Instance {
+        const document = self.constructor_document orelse return null;
+        if (runtime.SlabAllocator.generationOf(document) != self.constructor_document_generation) return null;
+        return document;
+    }
+
+    /// What the sheet contributes changed.
+    pub fn changed(self: *SheetRecord) void {
+        self.contents_version +%= 1;
+    }
+
+    /// The media changed (the owner's media attribute, MediaList).
     pub fn setMedia(self: *SheetRecord, text: []const u8) Allocator.Error!void {
         const copy = try self.allocator.dupe(u8, text);
         self.allocator.free(self.media_text);
@@ -128,38 +229,116 @@ pub const SheetRecord = struct {
         if (self.media) |*m| m.deinit();
         self.media = null;
         self.media_parsed = false;
+        self.changed();
     }
 
-    /// Whether the sheet's media matches (an empty media list matches).
-    pub fn mediaMatches(self: *SheetRecord, values: *const MediaValues) bool {
+    /// The parsed media list (empty when the text is).
+    pub fn mediaList(self: *SheetRecord) ?*const MediaQueryList {
         if (!self.media_parsed) {
             self.media_parsed = true;
             if (std.mem.trim(u8, self.media_text, " \t\n\r\x0c").len != 0) {
                 self.media = MediaQueryList.parse(self.allocator, self.media_text) catch null;
             }
         }
-        const media = self.media orelse return true;
+        return if (self.media) |*m| m else null;
+    }
+
+    /// Whether the sheet's media matches (an empty media list matches).
+    pub fn mediaMatches(self: *SheetRecord, values: *const MediaValues) bool {
+        const media = self.mediaList() orelse return true;
         return media.matches(values);
     }
 
-    /// The sheet's rules, parsed and compiled on first use.
-    pub fn contentsOf(self: *SheetRecord, resolver: ?UrlResolver) Allocator.Error!*Contents {
-        if (self.contents) |c| return c;
-        const text = self.text orelse "";
-        const contents = try Contents.parse(self.allocator, text, .{ .quirks = self.mode.quirks, .url_resolver = resolver });
-        self.contents = contents;
-        if (self.text) |t| self.allocator.free(t);
-        self.text = null;
-        return contents;
+    /// The options the sheet's text and rules are parsed with; `context`
+    /// lives as long as the parse.
+    pub fn parseOptions(self: *const SheetRecord, context: *const UrlContext) css.properties.ParseOptions {
+        return .{ .allocator = self.allocator, .quirks = self.mode.quirks, .url_resolver = context.resolver() };
     }
 
-    /// The import at `index` was fetched: `child` is its sheet (taken).
-    pub fn attachImport(self: *SheetRecord, index: usize, child: *SheetRecord) Allocator.Error!void {
-        errdefer child.destroy();
-        while (self.imports.items.len <= index) try self.imports.append(self.allocator, null);
-        if (self.imports.items[index]) |old| old.destroy();
-        self.imports.items[index] = child;
-        self.contents_version +%= 1;
+    /// The URL context for this sheet's url()s, the URL parser run on
+    /// `instance`.
+    pub fn urlContext(self: *const SheetRecord, instance: *runtime.Instance) UrlContext {
+        return .{ .instance = instance, .base = self.base_url };
+    }
+
+    /// CSSOM "CSS rules": parsed from the kept text on first use.
+    /// `instance` is an object of the realm url()s are parsed in.
+    pub fn rulesOf(self: *SheetRecord, instance: *runtime.Instance) Allocator.Error!*std.ArrayList(*Rule) {
+        var context = self.urlContext(instance);
+        return self.rulesWith(self.parseOptions(&context));
+    }
+
+    pub fn rulesWith(self: *SheetRecord, options: css.properties.ParseOptions) Allocator.Error!*std.ArrayList(*Rule) {
+        if (self.rules) |*list| return list;
+        var list: std.ArrayList(*Rule) = .empty;
+        errdefer {
+            for (list.items) |r| r.unref();
+            list.deinit(self.allocator);
+        }
+        var slots: std.ArrayList(?*Rule) = .empty;
+        errdefer {
+            for (slots.items) |slot| if (slot) |r| r.unref();
+            slots.deinit(self.allocator);
+        }
+        try rules_mod.parseSheet(.{ .parse = options }, self.text orelse "", &list, &slots);
+        for (list.items) |r| r.parent_sheet = self;
+        self.rules = list;
+        self.import_slots = slots;
+        if (self.text) |t| self.allocator.free(t);
+        self.text = null;
+        return &self.rules.?;
+    }
+
+    /// CSSOM "set sheet's CSS rules to rules" (replace(), replaceSync()):
+    /// the old rules lose their parent sheet.
+    pub fn setRules(self: *SheetRecord, new_rules: std.ArrayList(*Rule)) void {
+        if (self.rules) |*list| {
+            for (list.items) |r| {
+                r.parent_sheet = null;
+                r.unref();
+            }
+            list.deinit(self.allocator);
+        }
+        if (self.text) |t| self.allocator.free(t);
+        self.text = null;
+        for (new_rules.items) |r| r.parent_sheet = self;
+        self.rules = new_rules;
+        self.changed();
+    }
+
+    fn dropCompiled(self: *SheetRecord) void {
+        if (self.compiled) |c| c.destroy();
+        self.compiled = null;
+    }
+
+    /// The sheet's rules, compiled for matching (and parsed first, if they
+    /// are not yet), made again when the rules have changed.
+    pub fn contentsOf(self: *SheetRecord, options: css.properties.ParseOptions) Allocator.Error!*Contents {
+        if (self.compiled) |c| if (self.compiled_version == self.contents_version) return c;
+        self.dropCompiled();
+        const list = try self.rulesWith(options);
+        self.compiled = try Contents.compile(self.allocator, list.items);
+        self.compiled_version = self.contents_version;
+        return self.compiled.?;
+    }
+
+    /// The import at `index` was fetched: `child` is its sheet (the hold is
+    /// taken). Its rule is the one parsed at that index, still in the rules
+    /// or not; with none (CSS dropped it), the sheet goes.
+    pub fn attachImport(self: *SheetRecord, options: css.properties.ParseOptions, index: usize, child: *SheetRecord) Allocator.Error!void {
+        _ = self.rulesWith(options) catch |err| {
+            child.unref();
+            return err;
+        };
+        const rule = (if (index < self.import_slots.items.len) self.import_slots.items[index] else null) orelse return child.unref();
+        const import = &rule.data.import;
+        if (import.child) |old| {
+            old.owner_rule = null;
+            old.unref();
+        }
+        import.child = child;
+        child.owner_rule = rule;
+        self.changed();
     }
 
     /// The import reached by `path` (indices of @import rules, outermost
@@ -167,21 +346,26 @@ pub const SheetRecord = struct {
     pub fn importAt(self: *SheetRecord, path: []const u16) ?*SheetRecord {
         var record: *SheetRecord = self;
         for (path) |index| {
-            if (index >= record.imports.items.len) return null;
-            record = record.imports.items[index] orelse return null;
+            if (index >= record.import_slots.items.len) return null;
+            const rule = record.import_slots.items[index] orelse return null;
+            record = rule.data.import.child orelse return null;
         }
         return record;
     }
 };
 
-/// One style rule's selectors and declarations, kept at a stable address.
-pub const StyleRule = struct {
-    /// The selector's text, owned: the parsed selectors' names are slices
-    /// of it (selector.parse decodes only escaped tokens), so it lives as
-    /// long as they do.
-    prelude: []u8,
-    selectors: selector.SelectorList,
-    block: DeclarationBlock,
+/// What a MediaList is a view of: a sheet's media, or an @media or
+/// @import rule's media query list. Held by the MediaList.
+pub const MediaOf = union(enum) {
+    sheet: *SheetRecord,
+    rule: *Rule,
+};
+
+/// What a CSSRuleList lists: a sheet's CSS rules, or a group rule's child
+/// CSS rules. Held by the list.
+pub const RulesOf = union(enum) {
+    sheet: *SheetRecord,
+    rule: *Rule,
 };
 
 /// One complex selector of a style rule: what the cascade matches.
@@ -201,20 +385,24 @@ pub const RuleData = struct {
 };
 
 pub const Condition = struct {
-    media: MediaQueryList,
+    /// The @media rule's list, in the rule tree.
+    media: *const MediaQueryList,
     parent: ?u32,
 };
 
-/// An @import rule.
+/// An @import rule, as the cascade substitutes its sheet.
 pub const ImportRule = struct {
-    media: ?MediaQueryList,
+    media: *const MediaQueryList,
     /// The rule's layer (`layer` / `layer(name)`), an index into `layers`.
     layer: ?u16,
+    /// The sheet the loader fetched for it.
+    child: ?*SheetRecord,
 };
 
 pub const Contents = struct {
     allocator: Allocator,
-    style_rules: std.ArrayList(*StyleRule) = .empty,
+    /// The style rules indexed, in order (the tree holds them).
+    style_rules: std.ArrayList(*Rule) = .empty,
     rules: std.ArrayList(RuleData) = .empty,
     conditions: std.ArrayList(Condition) = .empty,
     /// The sheet's layer names, as dotted paths (anonymous layers get a
@@ -225,6 +413,8 @@ pub const Contents = struct {
     /// only (stated in the file comment).
     html_only: bool = false,
     buckets: Buckets,
+    /// A sheet parsed on its own (`parse`: the UA sheet) owns its tree.
+    owned_tree: ?std.ArrayList(*Rule) = null,
 
     pub const Buckets = struct {
         id: std.StringHashMapUnmanaged(std.ArrayList(u32)) = .empty,
@@ -245,34 +435,44 @@ pub const Contents = struct {
         }
     };
 
+    /// A sheet of its own: `text` parsed into a tree this owns, compiled.
     pub fn parse(allocator: Allocator, text: []const u8, options: struct { quirks: bool = false, url_resolver: ?UrlResolver = null }) Allocator.Error!*Contents {
+        var tree: std.ArrayList(*Rule) = .empty;
+        var tree_owned = true;
+        defer if (tree_owned) {
+            for (tree.items) |r| r.unref();
+            tree.deinit(allocator);
+        };
+        try rules_mod.parseSheet(.{ .parse = .{ .allocator = allocator, .quirks = options.quirks, .url_resolver = options.url_resolver } }, text, &tree, null);
+        const self = try compile(allocator, tree.items);
+        self.owned_tree = tree;
+        tree_owned = false;
+        return self;
+    }
+
+    /// The index of the rule tree `items` (a sheet's top-level rules).
+    pub fn compile(allocator: Allocator, items: []const *Rule) Allocator.Error!*Contents {
         const self = try allocator.create(Contents);
         self.* = .{ .allocator = allocator, .buckets = .{} };
         errdefer self.destroy();
-        var parsed = try css.rules.parseStyleSheetContents(allocator, text);
-        defer parsed.deinit();
-        var compiler: Compiler = .{ .contents = self, .options = .{ .allocator = allocator, .quirks = options.quirks, .url_resolver = options.url_resolver } };
-        try compiler.ruleList(parsed.items, null, null, true);
+        var compiler: Compiler = .{ .contents = self };
+        try compiler.ruleList(items, null, null);
         return self;
     }
 
     pub fn destroy(self: *Contents) void {
         const a = self.allocator;
-        for (self.style_rules.items) |rule| {
-            rule.selectors.deinit();
-            rule.block.deinit();
-            a.free(rule.prelude);
-            a.destroy(rule);
-        }
         self.style_rules.deinit(a);
         self.rules.deinit(a);
-        for (self.conditions.items) |*c| c.media.deinit();
         self.conditions.deinit(a);
         for (self.layers.items) |name| a.free(name);
         self.layers.deinit(a);
-        for (self.imports.items) |*i| if (i.media) |*m| m.deinit();
         self.imports.deinit(a);
         self.buckets.deinit(a);
+        if (self.owned_tree) |*tree| {
+            for (tree.items) |r| r.unref();
+            tree.deinit(a);
+        }
         a.destroy(self);
     }
 
@@ -325,62 +525,40 @@ pub const ElementKeys = struct {
 
 const Compiler = struct {
     contents: *Contents,
-    options: css.properties.ParseOptions,
     position: u32 = 0,
     anonymous_layers: u32 = 0,
 
-    /// Compile a list of rules. `imports_allowed`: still at the sheet's
-    /// start, where @import may stand (after @charset and @layer
-    /// statements only).
-    fn ruleList(self: *Compiler, items: []const css.rules.Rule, condition: ?u32, layer: ?u16, top: bool) Allocator.Error!void {
-        var imports_allowed = top;
-        for (items) |*rule| {
-            switch (rule.kind) {
-                .qualified => {
-                    imports_allowed = false;
-                    try self.styleRule(rule, condition, layer);
-                },
-                .at_rule => {
-                    const name = rule.name;
-                    if (std.mem.eql(u8, name, "import")) {
-                        if (imports_allowed and !rule.has_block) try self.importRule(rule);
-                        continue;
-                    }
-                    if (std.mem.eql(u8, name, "charset")) continue;
-                    if (std.mem.eql(u8, name, "namespace")) {
-                        if (top) self.namespaceRule(rule);
-                        continue;
-                    }
-                    if (std.mem.eql(u8, name, "layer") and !rule.has_block) {
-                        // A statement: declares its layers' order.
-                        var names = std.mem.splitScalar(u8, rule.prelude, ',');
-                        while (names.next()) |n| _ = try self.declareLayer(layer, std.mem.trim(u8, n, " \t\n\r\x0c"));
-                        continue;
-                    }
-                    imports_allowed = false;
-                    if (std.mem.eql(u8, name, "media")) {
-                        const media = try MediaQueryList.parse(self.contents.allocator, rule.prelude);
-                        const index: u32 = @intCast(self.contents.conditions.items.len);
-                        self.contents.conditions.append(self.contents.allocator, .{ .media = media, .parent = condition }) catch |err| {
-                            var m = media;
-                            m.deinit();
-                            return err;
-                        };
-                        try self.ruleList(rule.children, index, layer, false);
-                    } else if (std.mem.eql(u8, name, "supports")) {
-                        // CSS Conditional 3 6.1: decided once, when parsed.
-                        if (css.supports.supportsCondition(self.contents.allocator, rule.prelude, &selectorSupported))
-                            try self.ruleList(rule.children, condition, layer, false);
-                    } else if (std.mem.eql(u8, name, "layer")) {
-                        const sub = try self.declareLayer(layer, std.mem.trim(u8, rule.prelude, " \t\n\r\x0c"));
-                        try self.ruleList(rule.children, condition, sub, false);
-                    }
-                    // Every other at-rule (@font-face, @keyframes, @page,
-                    // @container, @scope, ...) has no style rules the
-                    // cascade applies here.
-                },
-            }
-        }
+    /// Index a list of rules of the tree (CSS's ordering constraints were
+    /// applied when the tree was built: an @import or @namespace here
+    /// stands where one may).
+    fn ruleList(self: *Compiler, items: []const *Rule, condition: ?u32, layer: ?u16) Allocator.Error!void {
+        for (items) |rule| switch (rule.data) {
+            .style => try self.styleRule(rule, condition, layer),
+            .import => |*import| {
+                // Cascade 5 2: `layer` puts the imported sheet in a new
+                // anonymous layer, `layer(name)` in that layer.
+                const import_layer: ?u16 = if (import.layer) |name| try self.declareLayer(null, name) else null;
+                try self.contents.imports.append(self.contents.allocator, .{ .media = &import.media, .layer = import_layer, .child = import.child });
+            },
+            .namespace => |n| self.namespaceRule(n.prefix, n.uri),
+            // A statement declares its layers' order.
+            .layer_statement => |l| for (l.names) |name| {
+                _ = try self.declareLayer(layer, name);
+            },
+            .media => |*m| {
+                const index: u32 = @intCast(self.contents.conditions.items.len);
+                try self.contents.conditions.append(self.contents.allocator, .{ .media = &m.list, .parent = condition });
+                try self.ruleList(m.children.items, index, layer);
+            },
+            // CSS Conditional 3 6.1: decided once, when parsed.
+            .supports => |*s| if (s.holds) try self.ruleList(s.children.items, condition, layer),
+            .layer_block => |*l| {
+                const sub = try self.declareLayer(layer, l.name orelse "");
+                try self.ruleList(l.children.items, condition, sub);
+            },
+            // Descriptors, not style rules.
+            .font_face, .page => {},
+        };
     }
 
     /// Cascade 5 6.4.2: a layer named `name` inside `parent` - its index,
@@ -420,101 +598,25 @@ const Compiler = struct {
         return @intCast(self.contents.layers.items.len - 1);
     }
 
-    /// CSS Namespaces 3: `@namespace "http://www.w3.org/1999/xhtml"` or
-    /// `@namespace url(...)` with no prefix.
-    fn namespaceRule(self: *Compiler, rule: *const css.rules.Rule) void {
-        const prelude = std.mem.trim(u8, rule.prelude, " \t\n\r\x0c");
-        if (std.mem.indexOf(u8, prelude, html_namespace) == null) return;
-        // A prefix before the URL: a prefixed declaration, not the default.
-        const first = prelude[0];
-        if (first == '"' or first == '\'' or std.ascii.startsWithIgnoreCase(prelude, "url(")) self.contents.html_only = true;
+    /// CSS Namespaces 3: the default namespace (no prefix) declared as
+    /// HTML's.
+    fn namespaceRule(self: *Compiler, prefix: []const u8, uri: []const u8) void {
+        if (prefix.len == 0 and std.mem.eql(u8, uri, html_namespace)) self.contents.html_only = true;
     }
 
-    /// `@import <url> [layer | layer(<name>)]? <media-query-list>?` (the
-    /// supports() condition is not evaluated: stated).
-    fn importRule(self: *Compiler, rule: *const css.rules.Rule) Allocator.Error!void {
+    fn styleRule(self: *Compiler, rule: *Rule, condition: ?u32, layer: ?u16) Allocator.Error!void {
         const a = self.contents.allocator;
-        var rest = std.mem.trim(u8, rule.prelude, " \t\n\r\x0c");
-        // Skip the URL: a string or url(...).
-        if (rest.len == 0) return;
-        if (rest[0] == '"' or rest[0] == '\'') {
-            const end = std.mem.indexOfScalarPos(u8, rest, 1, rest[0]) orelse return;
-            rest = rest[end + 1 ..];
-        } else if (std.ascii.startsWithIgnoreCase(rest, "url(")) {
-            // The prelude is serialized (css.rules): a url() is
-            // `url("...")`, its string escaped - the `)` that ends it is the
-            // one after the string's closing quote, not one inside it.
-            var i: usize = "url(".len;
-            while (i < rest.len and rest[i] == ' ') i += 1;
-            if (i < rest.len and (rest[i] == '"' or rest[i] == '\'')) {
-                const quote = rest[i];
-                i += 1;
-                while (i < rest.len and rest[i] != quote) : (i += 1) {
-                    if (rest[i] == '\\') i += 1;
-                }
-                i += 1;
-            }
-            const end = std.mem.indexOfScalarPos(u8, rest, @min(i, rest.len), ')') orelse return;
-            rest = rest[end + 1 ..];
-        } else return;
-        rest = std.mem.trim(u8, rest, " \t\n\r\x0c");
-        // Every valid @import is kept, at its index among them (the
-        // loader's css.import_rules counts the same ones); a remainder that
-        // does not parse leaves its layer and media unset.
-        var layer: ?u16 = null;
-        if (std.ascii.startsWithIgnoreCase(rest, "layer(")) {
-            if (std.mem.indexOfScalar(u8, rest, ')')) |end| {
-                layer = try self.declareLayer(null, std.mem.trim(u8, rest["layer(".len..end], " "));
-                rest = std.mem.trim(u8, rest[end + 1 ..], " \t\n\r\x0c");
-            } else rest = "";
-        } else if (rest.len >= 5 and std.ascii.eqlIgnoreCase(rest[0..5], "layer") and (rest.len == 5 or rest[5] == ' ')) {
-            layer = try self.declareLayer(null, "");
-            rest = std.mem.trim(u8, rest[5..], " \t\n\r\x0c");
-        }
-        if (std.ascii.startsWithIgnoreCase(rest, "supports(")) {
-            rest = if (std.mem.lastIndexOfScalar(u8, rest, ')')) |end| std.mem.trim(u8, rest[end + 1 ..], " \t\n\r\x0c") else "";
-        }
-        const media: ?MediaQueryList = if (rest.len == 0) null else try MediaQueryList.parse(a, rest);
-        self.contents.imports.append(a, .{ .media = media, .layer = layer }) catch |err| {
-            if (media) |m| {
-                var copy = m;
-                copy.deinit();
-            }
-            return err;
-        };
-    }
-
-    fn styleRule(self: *Compiler, rule: *const css.rules.Rule, condition: ?u32, layer: ?u16) Allocator.Error!void {
-        const a = self.contents.allocator;
-        if (rule.prelude.len == 0) return;
-        const prelude = try a.dupe(u8, rule.prelude);
-        errdefer a.free(prelude);
-        var selectors = selector.parse(a, prelude) catch |err| switch (err) {
-            error.OutOfMemory => return error.OutOfMemory,
-            // "a style rule whose selector is invalid is dropped"
-            else => {
-                a.free(prelude);
-                return;
-            },
-        };
-        errdefer selectors.deinit();
-        var block = try DeclarationBlock.fromDeclarations(self.options, rule.declarations);
-        errdefer block.deinit();
-        const stored = try a.create(StyleRule);
-        stored.* = .{ .prelude = prelude, .selectors = selectors, .block = block };
-        self.contents.style_rules.append(a, stored) catch |err| {
-            a.destroy(stored);
-            return err;
-        };
+        const style = &rule.data.style;
+        try self.contents.style_rules.append(a, rule);
         const position = self.position;
         self.position += 1;
-        for (stored.selectors.selectors) |*complex| {
+        for (style.selectors.selectors) |*complex| {
             const spec = complex.calculateSpecificity();
             const index: u32 = @intCast(self.contents.rules.items.len);
             try self.contents.rules.append(a, .{
                 .complex = complex,
                 .specificity = .{ .a = spec.id, .b = spec.class, .c = spec.element },
-                .block = &stored.block,
+                .block = &style.block,
                 .position = position,
                 .layer = layer,
                 .condition = condition,
@@ -558,13 +660,6 @@ fn pseudoElementOf(compound: *const selector.CompoundSelector) ?[]const u8 {
         else => {},
     };
     return null;
-}
-
-/// supports()'s selector() function: whether `text` parses as a selector.
-fn selectorSupported(allocator: Allocator, text: []const u8) bool {
-    var list = selector.parse(allocator, text) catch return false;
-    list.deinit();
-    return true;
 }
 
 // ============================================================================
@@ -637,17 +732,36 @@ test "the HTML default namespace marks the sheet HTML-only" {
 }
 
 test "a record parses lazily, keeps its media, and owns its imports" {
-    const record = try SheetRecord.create(testing.allocator, "p { color: red }", .{ .media = "print" });
-    defer record.destroy();
-    try testing.expect(record.contents == null);
+    const record = try SheetRecord.create(testing.allocator, "@import url(a.css); @import url(b.css); p { color: red }", .{ .media = "print" });
+    defer record.unref();
+    try testing.expect(record.rules == null);
     try testing.expect(!record.mediaMatches(&.{}));
-    const contents = try record.contentsOf(null);
+    const options: css.properties.ParseOptions = .{ .allocator = testing.allocator };
+    const contents = try record.contentsOf(options);
     try testing.expectEqual(@as(usize, 1), contents.rules.items.len);
     try testing.expect(record.text == null);
     const child = try SheetRecord.create(testing.allocator, "q { color: blue }", .{});
-    try record.attachImport(1, child);
+    try record.attachImport(options, 1, child);
     try testing.expect(record.importAt(&.{1}) == child);
     try testing.expect(record.importAt(&.{0}) == null);
+    try testing.expect(child.owner_rule != null);
+    try testing.expect(child.parentSheet() == record);
+    // The import's arrival moved the version: the index is made again, and
+    // sees the child.
+    const again = try record.contentsOf(options);
+    try testing.expect(again.imports.items[1].child == child);
     try record.setMedia("");
     try testing.expect(record.mediaMatches(&.{}));
+}
+
+test "a record a second holder keeps outlives its owner's hold, its rules readable" {
+    const record = try SheetRecord.create(testing.allocator, "@media print { a { color: red } }", .{});
+    const rules = try record.rulesWith(.{ .allocator = testing.allocator });
+    try testing.expectEqual(@as(usize, 1), rules.items.len);
+    record.ref(); // the CSSStyleSheet object's hold
+    record.detach();
+    record.unref(); // the owner lets it go
+    try testing.expectEqual(@as(usize, 1), record.rules.?.items.len);
+    try testing.expect(record.rules.?.items[0].parent_sheet == record);
+    record.unref();
 }

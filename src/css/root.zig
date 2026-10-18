@@ -21,7 +21,7 @@
 //! - Property parser framework for routing
 //! - The @import rules a style sheet starts with (import_rules)
 //! - A style sheet's rules, as "parse a stylesheet's contents" gives them
-//!   (rules), for the CSSOM objects that wrap them (src/dom/cssom.zig)
+//!   (rules), for the rule tree the CSSOM objects wrap (src/dom/style/rules.zig)
 //!
 //! - The style system's pure layer: values (style_values), the supported
 //!   properties (properties), declaration blocks (declarations), the
@@ -31,7 +31,7 @@
 //! This module does NOT include:
 //! - Selector parsing or matching (see src/selector/, src/dom/selector_matching.zig)
 //! - The style engine that matches rules against the DOM (src/dom/style/)
-//! - The CSSOM objects themselves (src/dom/cssom.zig, the CSS* impls)
+//! - The CSSOM objects themselves (src/dom/style, the CSS* impls)
 //!
 //! ## Quirks Mode Support
 //!

@@ -74,8 +74,10 @@ pub const InternalState = struct {
     /// Pointer lock element (from DocumentOrShadowRoot mixin)
     pointer_lock_element: ?*runtime.Instance,
 
-    /// StyleSheetList (from DocumentOrShadowRoot mixin)
+    /// StyleSheetList (from DocumentOrShadowRoot mixin), and its keeping:
+    /// see same_object.KeptChild.
     style_sheets: ?*runtime.Instance,
+    style_sheets_kept: @import("same_object.zig").KeptChild = .{},
 
     /// Adopted style sheets (from DocumentOrShadowRoot mixin): the value it
     /// was last set to, HELD by the shadow root (engine.retainValue) and
@@ -196,6 +198,8 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
 pub fn deinitOwn(instance: *runtime.Instance) void {
     // Get internal state from registry (where it was stored in init)
     if (Registry.get(instance)) |internal| {
+        if (internal.style_sheets) |ss| internal.style_sheets_kept.release(ss, interfaces.StyleSheetList.deinit);
+        internal.style_sheets = null;
         internal.registry_edge.release(instance);
         internal.deinit();
     }
@@ -387,18 +391,19 @@ pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.In
     return internal.pointer_lock_element;
 }
 
-/// DocumentOrShadowRoot.styleSheets getter
-/// Returns the StyleSheetList of stylesheets associated with this shadow root.
-/// Lazily creates an empty StyleSheetList on first access.
+/// DocumentOrShadowRoot.styleSheets getter: "a StyleSheetList collection
+/// representing the document or shadow root CSS style sheets" (CSSOM
+/// 6.2.3) - the list reads the style engine live; made on first access and
+/// kept as long as the shadow root (same_object.KeptChild).
 pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.style_sheets) |sheets| {
-        return sheets;
-    }
-    // Lazily create an empty StyleSheetList
-    const StyleSheetList = interfaces.StyleSheetList;
-    const sheets = StyleSheetList.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
-    internal.style_sheets = sheets;
+    const sheets = internal.style_sheets orelse blk: {
+        const made = interfaces.StyleSheetList.initWith(internal.allocator, instance.ctx, .{ .sheets_of = instance }) catch return error.OutOfMemory;
+        internal.style_sheets = made;
+        internal.style_sheets_kept.made(made);
+        break :blk made;
+    };
+    internal.style_sheets_kept.handOut(instance, sheets, .{ .name = "styleSheets" });
     return sheets;
 }
 

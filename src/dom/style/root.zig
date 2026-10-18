@@ -8,6 +8,9 @@
 pub const css = @import("css");
 pub const hooks = @import("hooks.zig");
 pub const sheet = @import("sheet.zig");
+pub const rules = @import("rules.zig");
+pub const objects = @import("objects.zig");
+pub const cssom = @import("cssom.zig");
 pub const element_style = @import("element_style.zig");
 pub const ua_sheet = @import("ua_sheet.zig");
 pub const engine = @import("engine.zig");
@@ -15,11 +18,15 @@ pub const inline_style = @import("inline_style.zig");
 
 pub const StyleEngine = engine.StyleEngine;
 pub const SheetRecord = sheet.SheetRecord;
+pub const Rule = rules.Rule;
+pub const MediaOf = sheet.MediaOf;
+pub const RulesOf = sheet.RulesOf;
 pub const ElementStyle = element_style.ElementStyle;
 pub const computedStyle = engine.computedStyle;
 pub const hasComputedStyle = engine.hasComputedStyle;
 pub const isBeingRendered = engine.isBeingRendered;
 pub const reportMediaQueryChanges = engine.reportMediaQueryChanges;
+pub const scopeSheets = engine.scopeSheets;
 pub const inlineValue = inline_style.inlineValue;
 
 /// What a computed CSSStyleDeclaration is of (getComputedStyle's construction
@@ -52,8 +59,9 @@ pub fn deliverSheet(owner: *@import("runtime").Instance, path: []const u16, byte
     if (path.len == 0) return hooks.linkSheetArrived(owner, text, url, origin_clean);
     const root = hooks.sheetOf(owner) orelse return;
     const parent = root.importAt(path[0 .. path.len - 1]) orelse return;
-    const child = SheetRecord.create(allocator, text, .{ .base_url = url, .origin_clean = origin_clean, .mode = root.mode }) catch return;
-    parent.attachImport(path[path.len - 1], child) catch return;
+    const child = SheetRecord.create(allocator, text, .{ .location = url, .base_url = url, .origin_clean = origin_clean, .mode = root.mode }) catch return;
+    var url_context = parent.urlContext(owner);
+    parent.attachImport(parent.parseOptions(&url_context), path[path.len - 1], child) catch return;
     const document = (@import("interfaces").Node.get_ownerDocument(owner) catch null) orelse return;
     sheetsChanged(document);
 }

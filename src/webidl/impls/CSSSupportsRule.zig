@@ -1,12 +1,14 @@
-//! Implementation for CSSSupportsRule interface
+//! Implementation for CSSSupportsRule interface (CSS Conditional 3 9.3)
+//!
+//! Spec: https://drafts.csswg.org/css-conditional-3/#the-csssupportsrule-interface
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
+const webidl = @import("webidl");
+const dom = @import("dom");
 const CSSSupportsRule = interfaces.CSSSupportsRule;
 
 pub const State = CSSSupportsRule.State;
@@ -15,32 +17,19 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+/// The rule this object is a view of: its CSSRule part's.
+fn ruleOf(instance: *runtime.Instance) ?*dom.style.Rule {
+    return dom.style.hooks.cssRuleOf(instance);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Getter for matches
+/// Getter for matches (CSS Conditional 5): whether the condition holds,
+/// decided when the rule was parsed.
 pub fn get_matches(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    const rule = ruleOf(instance) orelse return false;
+    return switch (rule.data) {
+        .supports => |s| s.holds,
+        else => false,
+    };
 }

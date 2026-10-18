@@ -23,8 +23,8 @@
 //! .unsupported`, JavaScriptCore's public API) no graph is ever made: a
 //! <script type=module> has a null result, so it fires `error`.
 //!
-//! CSS module scripts export a constructed CSSStyleSheet (the CSSOM's model
-//! is src/dom/cssom.zig) through the engine's
+//! CSS module scripts export a constructed CSSStyleSheet (its model is
+//! dom.style.SheetRecord) through the engine's
 //! CreateDefaultExportSyntheticModule; import.meta.resolve is the engine's
 //! builtin over `resolve` (the hosts' HostHooks.importMetaResolve).
 

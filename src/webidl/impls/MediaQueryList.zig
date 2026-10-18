@@ -75,6 +75,7 @@ pub fn installHooks() void {
 /// media query list be the result of parsing query", and the list's
 /// document.
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
     const document: *runtime.Instance = args.media_document;
     const query: []const u8 = args.media_query;
     var list = try css.media_queries.MediaQueryList.parse(allocator, query);
@@ -94,7 +95,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
         .reported_matches = false,
     };
     internal.reported_matches = evaluate(internal);
-    instance.getState(StateType).own._internal = internal;
+    instance.getState(State).own._internal = internal;
     if (dom.style.engine.engineOf(document)) |engine| engine.addMediaQueryList(instance) catch |err| {
         // The list still answers `matches`; it reports no change.
         log.warn("MediaQueryList not registered for change events: {}", .{err});

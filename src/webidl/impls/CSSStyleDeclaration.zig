@@ -14,8 +14,12 @@
 //!   (dom.style.computedStyle) and reads the resolved values of every
 //!   supported longhand, in lexicographic order. It holds its element, as
 //!   Blink's CSSComputedStyleDeclaration holds its Member<Element>.
-//! - `detached`: a block of the object's own (a CSSStyleRule's copy of its
-//!   declarations; a `new`-less object script cannot make otherwise).
+//! - `rule`: a CSS rule's declaration block (CSSOM 6.4.3 CSSStyleRule
+//!   `style`), which the rule (dom.style.Rule, held) owns - every change
+//!   moves its sheet's version, so the sheet is compiled again for the
+//!   cascade - and whose rule is `parentRule`.
+//! - `detached`: a block of the object's own (an object script cannot
+//!   otherwise make).
 //!
 //! Spec: https://drafts.csswg.org/cssom-1/#the-cssstyledeclaration-interface
 
@@ -42,7 +46,7 @@ pub const ImplError = error{
 /// Facts given at construction (interfaces.X.initWith): the element whose
 /// inline style this is, or the element (and pseudo-element) whose computed
 /// style this is.
-pub const construction_args = .{ "inline_owner", "computed_for" };
+pub const construction_args = .{ "inline_owner", "computed_for", "rule_block_of" };
 
 /// getComputedStyle's object: its element and pseudo-element.
 pub const ComputedFor = dom.style.ComputedFor;
@@ -63,13 +67,17 @@ pub const InternalState = struct {
     computed_element: dom.node_holds.MemberHold = .{},
     pseudo: ?[]u8 = null,
     no_object: bool = false,
+    /// `rule`: the rule whose block this is, held.
+    rule: ?*dom.style.Rule = null,
     /// `detached`: the block.
     own: DeclarationBlock,
 
-    pub const Kind = enum { inline_style, computed, detached };
+    pub const Kind = enum { inline_style, computed, rule, detached };
 
     fn deinit(self: *InternalState, instance: *runtime.Instance) void {
         if (self.kind == .computed) self.computed_element.release(instance, element_slot);
+        if (self.rule) |r| r.unref();
+        self.rule = null;
         if (self.pseudo) |p| self.allocator.free(p);
         self.pseudo = null;
         self.own.deinit();
@@ -106,6 +114,12 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
         if (target.pseudo) |p| internal.pseudo = try allocator.dupe(u8, p);
         internal.computed_element.take(instance, target.element, element_slot);
     }
+    if (@hasField(@TypeOf(args), "rule_block_of")) {
+        const rule: *dom.style.Rule = args.rule_block_of;
+        internal.kind = .rule;
+        internal.rule = rule;
+        rule.ref();
+    }
 }
 
 pub fn deinitOwn(instance: *runtime.Instance) void {
@@ -126,17 +140,24 @@ fn writableBlock(internal: *InternalState) !?*DeclarationBlock {
             const owner = internal.inlineOwner() orelse break :blk null;
             break :blk try dom.style.inline_style.blockOf(owner);
         },
+        .rule => if (internal.rule) |r| r.block() else null,
         .computed => null,
     };
 }
 
 fn parseOptions(internal: *InternalState) properties.ParseOptions {
     if (internal.kind == .inline_style) if (internal.inlineOwner()) |owner| return dom.style.inline_style.parseOptions(owner);
+    if (internal.kind == .rule) if (internal.rule) |r| return .{ .allocator = r.allocator, .quirks = if (r.sheet()) |s| s.mode.quirks else false };
     return .{ .allocator = internal.allocator };
 }
 
-/// After a change of an inline block: CSSOM "update style attribute for".
+/// After a change: a rule's sheet is compiled again; an inline block runs
+/// CSSOM "update style attribute for".
 fn changed(internal: *InternalState) !void {
+    if (internal.kind == .rule) {
+        if (internal.rule) |r| if (r.sheet()) |s| s.changed();
+        return;
+    }
     if (internal.kind != .inline_style) return;
     const owner = internal.inlineOwner() orelse return;
     try dom.style.inline_style.updateStyleAttribute(owner);
@@ -193,12 +214,12 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     return @intCast(block.length());
 }
 
-/// parentRule: null for the declarations Crane hands out (an inline or
-/// computed block has none; a rule's copy is detached, stated in
-/// CSSStyleRule).
+/// parentRule: "the CSS rule the CSS declaration block is associated
+/// with" - a rule's block's rule; null for an inline or computed block.
 pub fn get_parentRule(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
+    const internal = getInternal(instance) orelse return null;
+    const rule = internal.rule orelse return null;
+    return try dom.style.objects.ruleObject(rule, instance.ctx);
 }
 
 // ============================================================================

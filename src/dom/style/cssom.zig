@@ -1,0 +1,270 @@
+//! CSSOM's edits of a style sheet's rules (CSSOM 6.4 "insert a CSS rule",
+//! "remove a CSS rule"; 6.1.2 replace() and replaceSync()), over the rule
+//! tree (rules.zig) - for CSSStyleSheet and CSSGroupingRule, which own the
+//! objects these are called on. Every edit moves the containing sheet's
+//! version, so the cascade compiles the sheet again on its next read.
+//!
+//! Stated: an @import rule insertRule() adds to a sheet that is not
+//! constructed is not fetched (its styleSheet stays null); nested
+//! declarations (CSS Nesting's "nested" flag) are not inserted, since style
+//! rules hold no child rules here.
+//!
+//! Spec: https://drafts.csswg.org/cssom-1/#insert-a-css-rule
+//! Spec: https://drafts.csswg.org/cssom-1/#remove-a-css-rule
+
+const std = @import("std");
+const runtime = @import("runtime");
+const engine = @import("engine");
+const css = @import("css");
+const sheet_mod = @import("sheet.zig");
+const rules_mod = @import("rules.zig");
+const objects = @import("objects.zig");
+
+const SheetRecord = sheet_mod.SheetRecord;
+const Rule = rules_mod.Rule;
+const RulesOf = sheet_mod.RulesOf;
+
+pub const InsertOptions = struct {
+    /// CSSStyleSheet.insertRule() step 5: a constructed sheet takes no
+    /// @import.
+    forbid_import: bool = false,
+};
+
+/// The rule list `of` names, parsed first if it is a sheet's; `object` is
+/// the object the edit was called on (its realm parses url()s).
+fn listOf(of: RulesOf, object: *runtime.Instance) !*std.ArrayList(*Rule) {
+    return switch (of) {
+        .sheet => |record| record.rulesOf(object),
+        .rule => |rule| rule.children() orelse error.InvalidStateError,
+    };
+}
+
+/// The sheet whose rules `of` are in.
+fn sheetOf(of: RulesOf) ?*SheetRecord {
+    return switch (of) {
+        .sheet => |record| record,
+        .rule => |rule| rule.sheet(),
+    };
+}
+
+/// CSSOM "insert a CSS rule" `text` in the rule list `of` at `index`, the
+/// parse first (CSSStyleSheet.insertRule() steps 3-5 parse before "insert a
+/// CSS rule" checks the index; CSSGroupingRule.insertRule() goes to "insert
+/// a CSS rule" directly, `of` a rule).
+pub fn insertRule(object: *runtime.Instance, of: RulesOf, text: []const u8, index: u32, options: InsertOptions) !u32 {
+    const allocator = object.ctx.allocator;
+    const list = try listOf(of, object);
+    const record = sheetOf(of);
+    const nested = of == .rule;
+    // CSSGroupingRule: "insert a CSS rule" step 2 before its parse.
+    if (nested and index > list.items.len) return error.IndexSizeError;
+    // "Parse a CSS rule": parse a rule, then by the CSS specifications -
+    // where it would stand, so that its own validity is all that decides
+    // (its position is step 6's).
+    var parsed = (try css.rules.parseRule(allocator, text)) orelse return error.SyntaxError;
+    defer parsed.deinitOwned(allocator);
+    var url_context: sheet_mod.UrlContext = .{ .instance = object, .base = if (record) |r| r.base_url else "" };
+    const parse_options: css.properties.ParseOptions = .{
+        .allocator = if (record) |r| r.allocator else allocator,
+        .quirks = if (record) |r| r.mode.quirks else false,
+        .url_resolver = url_context.resolver(),
+    };
+    const new_rule = (try rules_mod.build(.{ .parse = parse_options }, &parsed, .imports_allowed)) orelse return error.SyntaxError;
+    var inserted = false;
+    defer if (!inserted) new_rule.unref();
+    const kind = new_rule.kind();
+    // CSSStyleSheet.insertRule() step 5.
+    if (kind == .import and options.forbid_import) return error.SyntaxError;
+    // 1-2. "If index is greater than length, then throw an IndexSizeError."
+    if (index > list.items.len) return error.IndexSizeError;
+    // 6. "If new rule cannot be inserted into list at the zero-indexed
+    // position index due to constraints specified by CSS, then throw a
+    // HierarchyRequestError": an @import or @namespace only at a sheet's
+    // top level, @imports (and @layer statements) before everything else,
+    // @namespace after them and before every other rule.
+    try checkPosition(list.items, index, kind, nested);
+    // 7. "If new rule is an @namespace at-rule, and list contains anything
+    // other than @import at-rules, and @namespace at-rules, throw an
+    // InvalidStateError exception."
+    if (kind == .namespace) {
+        for (list.items) |r| switch (r.kind()) {
+            .import, .namespace => {},
+            else => return error.InvalidStateError,
+        };
+    }
+    // 8. "Insert new rule into list at the zero-indexed position index."
+    switch (of) {
+        .sheet => |r| new_rule.parent_sheet = r,
+        .rule => |parent| new_rule.parent_rule = parent,
+    }
+    try list.insert(allocator, index, new_rule);
+    inserted = true;
+    if (record) |r| r.changed();
+    // 9. "Return index."
+    return index;
+}
+
+fn checkPosition(items: []const *Rule, index: usize, kind: rules_mod.Kind, nested: bool) !void {
+    if (nested) {
+        if (kind == .import or kind == .namespace) return error.HierarchyRequestError;
+        return;
+    }
+    switch (kind) {
+        // Only @imports and @layer statements before it, and no @import or
+        // @namespace... after it but imports.
+        .import => {
+            for (items[0..index]) |r| switch (r.kind()) {
+                .import, .layer_statement => {},
+                else => return error.HierarchyRequestError,
+            };
+        },
+        .namespace => {
+            for (items[0..index]) |r| switch (r.kind()) {
+                .import, .namespace, .layer_statement => {},
+                else => return error.HierarchyRequestError,
+            };
+            for (items[index..]) |r| if (r.kind() == .import) return error.HierarchyRequestError;
+        },
+        // A @layer statement may stand among the imports.
+        .layer_statement => {
+            for (items[index..]) |r| if (r.kind() == .namespace) return error.HierarchyRequestError;
+        },
+        else => {
+            for (items[index..]) |r| switch (r.kind()) {
+                .import, .namespace => return error.HierarchyRequestError,
+                else => {},
+            };
+        },
+    }
+}
+
+/// CSSOM "remove a CSS rule" from the rule list `of` at `index`.
+pub fn removeRule(object: *runtime.Instance, of: RulesOf, index: u32) !void {
+    const list = try listOf(of, object);
+    // 1-2. "If index is greater than or equal to length, then throw an
+    // IndexSizeError exception."
+    if (index >= list.items.len) return error.IndexSizeError;
+    // 3. "Set old rule to the indexth item in list."
+    const old = list.items[index];
+    // 4. "If old rule is an @namespace at-rule, and list contains anything
+    // other than @import at-rules, and @namespace at-rules, throw an
+    // InvalidStateError exception."
+    if (old.kind() == .namespace) {
+        for (list.items) |r| switch (r.kind()) {
+            .import, .namespace => {},
+            else => return error.InvalidStateError,
+        };
+    }
+    // 5. "Remove rule old rule from list at the zero-indexed position
+    // index." 6. "Set old rule's parent CSS rule and parent CSS style sheet
+    // to null."
+    _ = list.orderedRemove(index);
+    objects.ruleRemoved(old);
+    if (sheetOf(of)) |r| r.changed();
+    old.unref();
+}
+
+/// CSSOM "synchronously replace the rules of a CSSStyleSheet", steps 2-4
+/// (step 1's checks are the caller's): "Let rules be the result of running
+/// parse a stylesheet's contents from text. If rules contains one or more
+/// @import rules, remove those rules from rules. Set sheet's CSS rules to
+/// rules."
+pub fn replaceRules(object: *runtime.Instance, record: *SheetRecord, text: []const u8) !void {
+    var url_context = record.urlContext(object);
+    var new_rules: std.ArrayList(*Rule) = .empty;
+    errdefer {
+        for (new_rules.items) |r| r.unref();
+        new_rules.deinit(record.allocator);
+    }
+    try rules_mod.parseSheet(.{ .parse = record.parseOptions(&url_context) }, text, &new_rules, null);
+    var i: usize = 0;
+    while (i < new_rules.items.len) {
+        if (new_rules.items[i].kind() == .import) {
+            new_rules.orderedRemove(i).unref();
+            continue;
+        }
+        i += 1;
+    }
+    // The old rules leave the sheet (a rule script still holds keeps its
+    // data, with no parent).
+    const old = try record.rulesOf(object);
+    for (old.items) |r| objects.ruleRemoved(r);
+    record.setRules(new_rules);
+}
+
+/// replace(text), its promise settled from a task (CSSStyleSheet.zig
+/// states why). The sheet is kept alive until it runs.
+pub fn replace(object: *runtime.Instance, record: *SheetRecord, text: []const u8) !runtime.JSValue {
+    const realm = object.ctx;
+    var capability = try engine.createPromise(realm);
+    const promise = engine.retainValue(realm, capability.promise) catch |err| {
+        engine.releasePromiseCapability(&capability);
+        return err;
+    };
+    errdefer promise.release();
+    // 2. "If the constructed flag is not set, or the disallow modification
+    // flag is set, reject promise with a NotAllowedError DOMException and
+    // return promise."
+    if (!record.constructed or record.disallow_modification) {
+        defer engine.releasePromiseCapability(&capability);
+        const exception = try engine.createDOMException(realm, "NotAllowedError", "replace() needs a constructed sheet that is not being replaced");
+        defer exception.release();
+        try engine.rejectPromise(&capability, exception.value);
+        return promise.take();
+    }
+    // 3. "Set the disallow modification flag."
+    record.disallow_modification = true;
+    const task = realm.allocator.create(ReplaceTask) catch {
+        record.disallow_modification = false;
+        engine.releasePromiseCapability(&capability);
+        return error.OutOfMemory;
+    };
+    const copy = realm.allocator.dupe(u8, text) catch {
+        realm.allocator.destroy(task);
+        record.disallow_modification = false;
+        engine.releasePromiseCapability(&capability);
+        return error.OutOfMemory;
+    };
+    task.* = .{ .object = object, .record = record, .text = copy, .capability = capability };
+    record.ref();
+    engine.keepPlatformObjectAlive(object);
+    if (realm.getOptionalEventLoop()) |loop| {
+        loop.queueTask(.{ .callback = ReplaceTask.run, .context = task, .drop = ReplaceTask.drop });
+    } else ReplaceTask.run(task);
+    return promise.take();
+}
+
+const ReplaceTask = struct {
+    object: *runtime.Instance,
+    record: *SheetRecord,
+    text: []u8,
+    capability: engine.PromiseCapability,
+
+    fn run(data: ?*anyopaque) void {
+        const self: *ReplaceTask = @ptrCast(@alignCast(data orelse return));
+        defer self.finish();
+        // 4.1-4.3.
+        replaceRules(self.object, self.record, self.text) catch |err| {
+            std.log.scoped(.css).warn("replace(): rules not replaced: {}", .{err});
+        };
+        // 4.4. "Unset sheet's disallow modification flag."
+        self.record.disallow_modification = false;
+        // 4.5. "Resolve promise with sheet."
+        engine.resolvePromise(&self.capability, .{ .instance = self.object }) catch {};
+    }
+
+    fn drop(data: ?*anyopaque) void {
+        const self: *ReplaceTask = @ptrCast(@alignCast(data orelse return));
+        self.record.disallow_modification = false;
+        self.finish();
+    }
+
+    fn finish(self: *ReplaceTask) void {
+        const allocator = self.object.ctx.allocator;
+        engine.releasePromiseCapability(&self.capability);
+        self.record.unref();
+        engine.releasePlatformObject(self.object);
+        allocator.free(self.text);
+        allocator.destroy(self);
+    }
+};
