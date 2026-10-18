@@ -203,7 +203,7 @@ pub fn call_pipeTo(instance: *runtime.Instance, destination: *runtime.Instance, 
 pub fn call_tee(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = srd.streamOf(instance) orelse return error.TypeError;
     const realm = try js.Realm.of(instance);
-    const branches = try srd.tee(realm, instance);
+    const branches = try srd.tee(realm, instance, false);
     const b1 = try realm.wrap(branches[0]);
     const b2 = try realm.wrap(branches[1]);
     return sw.give(try js.arrayFrom(realm, &.{ b1, b2 }));

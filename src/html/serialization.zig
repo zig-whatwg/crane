@@ -314,9 +314,18 @@ const Writer = struct {
                     try self.bindings.append(self.allocator, .{ .prefix = attr.local_name, .namespace = attr_ns });
             }
             // XML element steps 11–12: choose a prefix or a default declaration.
-            if (same(inherited, ns)) {
-                ignore_default = default_ns != null;
+            // Firefox and Safari retain an element's explicit prefix and
+            // an explicit empty default declaration; Chrome drops them.
+            // DOM Parsing is unmaintained: follow the browser majority.
+            // https://wpt.fyi/results/domparsing/XMLSerializer-serializeToString.html?sha=df642c4142
+            if (same(inherited, ns) and prefix == null) {
+                ignore_default = if (default_ns) |d| ns != null or !same(nullable(d), ns) else false;
                 prefix = if (same(ns, xml_ns)) "xml" else null;
+            } else if (prefix == null and default_ns != null and same(nullable(default_ns.?), ns)) {
+                // All three browsers use a matching explicit default, even
+                // when an ancestor also declared a prefix for this URI.
+                // https://wpt.fyi/results/domparsing/XMLSerializer-serializeToString.html?sha=df642c4142
+                child_ns = ns;
             } else {
                 var candidate = self.preferred(prefix, ns);
                 if (same(prefix, "xmlns")) {
@@ -329,8 +338,9 @@ const Writer = struct {
                         if (!std.mem.eql(u8, d, xml_ns)) child_ns = nullable(d);
                     }
                 } else if (prefix) |p| {
-                    if (self.localPrefix(scope_start, p) != null) prefix = try self.generatePrefix(ns);
-                    try self.bindings.append(self.allocator, .{ .prefix = prefix.?, .namespace = ns });
+                    if (self.localPrefix(scope_start, p) != null) {
+                        prefix = try self.generatePrefix(ns);
+                    } else try self.bindings.append(self.allocator, .{ .prefix = p, .namespace = ns });
                     declare = .{ .prefix = prefix.?, .namespace = ns };
                     if (default_ns) |d| child_ns = nullable(d);
                 } else if (default_ns == null or !same(default_ns, ns)) {
@@ -379,17 +389,25 @@ const Writer = struct {
     }
 
     fn found(self: *Writer, prefix: []const u8, namespace: ?[]const u8) bool {
-        for (self.bindings.items) |binding|
-            if (std.mem.eql(u8, binding.prefix, prefix) and same(binding.namespace, namespace)) return true;
-        return false;
+        const binding = self.localPrefix(0, prefix) orelse return false;
+        return same(binding.namespace, namespace);
     }
 
     fn preferred(self: *Writer, prefix: ?[]const u8, namespace: ?[]const u8) ?[]const u8 {
+        // Chrome and Firefox skip shadowed prefixes and choose the nearest
+        // active binding. Safari also rejects the draft's stale mapping,
+        // but redeclares it instead. Blink's NamespaceContext does this
+        // with a prefix-to-URI map alongside its URI-to-prefix candidates.
+        // https://wpt.fyi/results/domparsing/XMLSerializer-serializeToString.html?sha=df642c4142
         var result: ?[]const u8 = null;
-        for (self.bindings.items) |binding| {
+        var index = self.bindings.items.len;
+        while (index > 0) {
+            index -= 1;
+            const binding = self.bindings.items[index];
             if (!same(binding.namespace, namespace)) continue;
+            if (self.localPrefix(index + 1, binding.prefix) != null) continue;
             if (same(prefix, binding.prefix)) return binding.prefix;
-            result = binding.prefix;
+            if (result == null) result = binding.prefix;
         }
         return result;
     }
@@ -405,14 +423,23 @@ const Writer = struct {
     }
 
     fn generatePrefix(self: *Writer, namespace: ?[]const u8) ![]const u8 {
-        // DOM Parsing "generate a prefix", steps 1–4.
-        const prefix = try std.fmt.allocPrint(self.allocator, "ns{d}", .{self.prefix_index});
-        errdefer self.allocator.free(prefix);
-        try self.generated.append(self.allocator, prefix);
-        errdefer _ = self.generated.pop();
-        self.prefix_index += 1;
-        try self.bindings.append(self.allocator, .{ .prefix = prefix, .namespace = namespace });
-        return prefix;
+        // All three browsers avoid collisions. Chrome and Safari use nsN;
+        // Firefox uses aN. The draft's unconditional nsN can emit duplicate
+        // xmlns attributes. Blink's GeneratePrefix also skips bound names.
+        // https://wpt.fyi/results/domparsing/XMLSerializer-serializeToString.html?sha=df642c4142
+        while (true) {
+            const prefix = try std.fmt.allocPrint(self.allocator, "ns{d}", .{self.prefix_index});
+            errdefer self.allocator.free(prefix);
+            self.prefix_index += 1;
+            if (self.localPrefix(0, prefix) != null) {
+                self.allocator.free(prefix);
+                continue;
+            }
+            try self.generated.append(self.allocator, prefix);
+            errdefer _ = self.generated.pop();
+            try self.bindings.append(self.allocator, .{ .prefix = prefix, .namespace = namespace });
+            return prefix;
+        }
     }
 
     fn namespaceAttribute(self: *Writer, binding: Binding) !void {
@@ -437,11 +464,21 @@ const Writer = struct {
                     const local = self.localPrefix(start, attr.local_name);
                     if ((local == null or !same(local.?.namespace, nullable(attr.value))) and self.found(attr.local_name, nullable(attr.value))) return;
                 }
-                if (self.well_formed and (std.mem.eql(u8, attr.value, xmlns_ns) or attr.value.len == 0)) return error.InvalidStateError;
+                // A default xmlns="" is a valid namespace undeclaration.
+                // The empty-value prohibition is for namespace prefixes;
+                // keeping a default declaration must not make XML fragment
+                // serialization throw where the browsers serialize it.
+                if (self.well_formed and (std.mem.eql(u8, attr.value, xmlns_ns) or (attr.prefix != null and attr.value.len == 0))) return error.InvalidStateError;
                 if (same(attr.prefix, "xmlns")) prefix = "xmlns";
             } else if (prefix == null) {
-                prefix = if (attr.prefix != null and self.localPrefix(start, attr.prefix.?) == null) attr.prefix else try self.generatePrefix(ns);
-                try self.bindings.append(self.allocator, .{ .prefix = prefix.?, .namespace = ns });
+                // All three keep an unused attribute prefix. For a prefix
+                // bound by an ancestor to another URI, Chrome and Safari
+                // generate nsN (Firefox aN), rather than rebinding it.
+                // https://wpt.fyi/results/domparsing/XMLSerializer-serializeToString.html?sha=df642c4142
+                if (attr.prefix != null and self.localPrefix(0, attr.prefix.?) == null) {
+                    prefix = attr.prefix;
+                    try self.bindings.append(self.allocator, .{ .prefix = prefix.?, .namespace = ns });
+                } else prefix = try self.generatePrefix(ns);
                 try self.namespaceAttribute(.{ .prefix = prefix.?, .namespace = ns });
             }
         }
