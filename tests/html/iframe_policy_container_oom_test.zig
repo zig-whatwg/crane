@@ -29,6 +29,12 @@
 //! The Browser's allocator is a FailingAllocator over c_allocator, which
 //! fails every allocation from the i-th on until the round ends (an
 //! out-of-memory path elsewhere may leak; that is not this test's).
+//!
+//! Two sweeps more: the parent's policy also has upgrade-insecure-requests,
+//! so every navigation inherits the parent's navigation upgrade tuples (UIR
+//! 3.3), whose copy allocates; and a new iframe, whose initial about:blank
+//! document inherits its creator's container ("create a new browsing
+//! context and document" step 19.2), which out of memory left empty.
 
 const std = @import("std");
 const testing = std.testing;
@@ -40,7 +46,7 @@ const dom = @import("dom");
 
 const page_html =
     \\<!doctype html>
-    \\<head><meta http-equiv="Content-Security-Policy" content="img-src 'none'"></head>
+    \\<head><meta http-equiv="Content-Security-Policy" content="img-src 'none'; upgrade-insecure-requests"></head>
     \\<body><iframe id="s" srcdoc="<p>first</p>"></iframe><iframe id="n"></iframe></body>
 ;
 
@@ -49,9 +55,12 @@ const FrameDocument = union(enum) {
     /// No document: a navigation whose realm could not be made leaves the
     /// frame without one - closed: nothing runs in it.
     none,
-    /// A Document with no internal state, so no policy container: what the
-    /// frame names after an out-of-memory path outside this test's sites
-    /// (reported, not this lane's: lane leaks4's report).
+    /// A Document with no internal state, so no policy container: what
+    /// lane leaks4 saw the frame name after an out-of-memory path. Closed
+    /// now - every CSP decision against such a document is Blocked
+    /// (dom.csp_violations.documentCspList, the Window's settings answer
+    /// PolicyContainer.unavailable) - and printed with the failing
+    /// allocation's stack. Lane leaks5's sweeps on lane/int4 met none.
     no_container,
     /// Its CSP list's policies; maxInt for an unenforceable list.
     policies: usize,
@@ -80,6 +89,7 @@ const Navigation = enum {
     srcdoc,
     javascript_url,
     data_url,
+    new_frame,
 
     /// The frame the navigation is of: the srcdoc frame, or the frame with
     /// no srcdoc attribute - a src set on a frame that has one changes
@@ -89,6 +99,7 @@ const Navigation = enum {
         return switch (self) {
             .srcdoc => "document.getElementById('s')",
             .javascript_url, .data_url => "document.getElementById('n')",
+            .new_frame => "window.f",
         };
     }
 
@@ -99,6 +110,10 @@ const Navigation = enum {
             // A local-scheme URL: "determine navigation params policy
             // container" inherits the initiator's container (step 3).
             .data_url => "document.getElementById('n').src = 'data:text/html,<p>data</p>';",
+            // A new iframe's initial about:blank document, which "create a
+            // new browsing context and document" step 19.2 gives a clone of
+            // its creator's container.
+            .new_frame => "window.f = undefined; window.f = document.createElement('iframe'); document.body.appendChild(window.f);",
         };
     }
 };
@@ -112,6 +127,11 @@ fn sweep(navigation: Navigation, rounds: usize) !void {
     try page.loadHTML(page_html, .{ .base_url = "https://example.test/page.html" });
     _ = try browser.runEventLoopBlocking(50);
     const realm = browser.getRealm() orelse return error.NoRealm;
+    // The control: a new frame made with memory to spare.
+    if (navigation == .new_frame) {
+        try page.runScript(navigation.script());
+        _ = try browser.runEventLoopBlocking(50);
+    }
     // The frame inherited the page's policy.
     try testing.expectEqual(FrameDocument{ .policies = 1 }, try frameDocument(page, realm, navigation));
 
@@ -193,6 +213,20 @@ test "an iframe's src navigation to a data: URL never panics on out of memory, a
     const Run = struct {
         fn run(failure: *?anyerror) void {
             sweep(.data_url, 4000) catch |err| {
+                failure.* = err;
+            };
+        }
+    };
+    var failure: ?anyerror = null;
+    const thread = try std.Thread.spawn(.{}, Run.run, .{&failure});
+    thread.join();
+    if (failure) |err| return err;
+}
+
+test "a new iframe's initial about:blank document never starts without its creator's policy" {
+    const Run = struct {
+        fn run(failure: *?anyerror) void {
+            sweep(.new_frame, 4000) catch |err| {
                 failure.* = err;
             };
         }
