@@ -1506,6 +1506,19 @@ pub const Manager = struct {
             self.lock();
             defer self.unlock();
             const existing = if (reserved.environment != 0) self.registry.findEnvironment(reserved.environment) else null;
+            // 9.1-9.2 for a nested navigable's reserved environment: HTML "is
+            // a secure context" reads an environment's top-level creation URL
+            // (step 2), so a frame inside a document that is not a secure
+            // context is none either, whatever its own URL - its creator, the
+            // container document, says so. Step 9.2.1's URL check is a
+            // top-level navigation's answer. All three browsers bypass the
+            // service worker here (secure-context.https.html: an https frame
+            // in an http document is not intercepted; wpt.fyi df642c4142).
+            if (request.destination == .iframe or request.destination == .frame) {
+                if (reserved.creator != 0) if (self.registry.findEnvironment(reserved.creator)) |creator| {
+                    if (!creator.secure_context) return .network;
+                };
+            }
             // 9.5-9.8, 11-12.
             const matched = (try self.registry.handleFetchNonSubresource(.{
                 .url = url,
