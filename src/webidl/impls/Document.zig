@@ -5847,32 +5847,65 @@ pub fn setStylesheetBlockingResolvedCallback(
 // Named Property Access (HTML Standard § 7.3.3)
 // =============================================================================
 
-/// Get the supported property names for named property access.
-/// Per HTML spec, documents expose named elements (name/id attributes) as properties.
-/// This is used by the named property enumerator for Object.keys(document).
-///
-/// TODO: Implement proper named element collection per HTML spec.
-/// Currently returns empty array to avoid breaking compilation.
+/// HTML 3.1.7: "The supported property names of a Document object document
+/// at any moment consist of the following, for each element element in a
+/// document tree with document as its root, in tree order, ignoring later
+/// duplicates: the value of element's id content attribute, if element is a
+/// named element with that value as its name; and then the value of
+/// element's name content attribute, if element is a named element with
+/// that value as its name." Enumeration only (Object.keys(document)): a
+/// walk, and none at all while the document's maps hold no name
+/// (domindex1). The browsers order these three ways - Blink by insertion,
+/// WebKit sorted, Gecko by hash - and none is a majority, so the spec's
+/// order stands; id-before-name per element is also Chrome's and Safari's
+/// (nameditem-supported-property-names-order: Chrome, Safari pass).
 pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
-    _ = instance;
-    _ = allocator;
-    // TODO: Return names of elements with name/id attributes that are
-    // accessible via document.name syntax per HTML spec § 7.3.3
-    return &.{};
+    return @import("dom").tree_ordered_map.supportedNames(instance, .document, allocator);
 }
 
-/// Named property getter for accessing elements by name/id.
-/// Per HTML spec § 7.3.3, documents expose named elements as properties.
-/// For example: document.myForm returns the form with name="myForm" or id="myForm".
+/// WebIDL 3.9.7 step 1 for ONE name - "is P a supported property name?" -
+/// which the [LegacyOverrideBuiltIns] interceptor asks before every
+/// property read of a document (document.body included): one lookup in the
+/// document's maps, and none while they hold no name (domindex1; WebKit
+/// HTMLDocument::isSupportedPropertyName, Blink HTMLDocument::HasNamedItem).
+/// Agrees with the list above by construction: both read the maps' rule
+/// (dom.tree_ordered_map keysOf).
+pub fn isSupportedPropertyName(instance: *runtime.Instance, name: runtime.DOMString) anyerror!bool {
+    return @import("dom").tree_ordered_map.isNamed(instance, .document, name.asSlice());
+}
+
+/// HTML 3.1.7 "determine the value of a named property" name for a
+/// Document (domindex1):
 ///
-/// TODO: Implement proper named element access per HTML spec.
-/// Currently returns null to indicate property not found.
+/// 1. "Let elements be the list of named elements with the name name that
+///    are in a document tree with the Document as their root." (The maps
+///    count them and know the first.)
+/// 2. "If elements has only one element, and that element is an iframe
+///    element, and that iframe element's content navigable is not null, then
+///    return the active WindowProxy of the element's content navigable."
+/// 3. "Otherwise, if elements has only one element, return that element."
+/// 4. "Otherwise, return an HTMLCollection rooted at the Document node,
+///    whose filter matches only named elements with the name name." The
+///    same collection while its wrapper lives (`document.a === document.a`;
+///    Blink's EnsureCachedCollection(kDocumentNamedItems), WebKit's
+///    documentNamedItems cache): all three browsers keep it
+///    (nameditem-tree-order).
 pub fn call_getter(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = name;
-    // TODO: Implement HTML spec § 7.3.3 named element access
-    // Should return the element with matching name/id, or HTMLCollection if multiple
-    return .null;
+    const tree_ordered_map = @import("dom").tree_ordered_map;
+    // Step 1.
+    const elements = tree_ordered_map.named(instance, .document, name.asSlice());
+    if (elements.count == 0) return .undefined;
+    if (elements.count == 1) {
+        const first = elements.first.?;
+        // Step 2.
+        if (first.stateAs(interfaces.HTMLIFrameElement.State) != null) {
+            if (try interfaces.HTMLIFrameElement.get_contentWindow(first)) |window| return .{ .instance = window };
+        }
+        // Step 3.
+        return .{ .instance = first };
+    }
+    // Step 4.
+    return .{ .instance = try tree_ordered_map.namedCollection(instance, .document, name.asSlice()) };
 }
 
 /// dom.teardown_sweeps: at its Browser's end, every Document state still in
