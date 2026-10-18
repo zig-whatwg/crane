@@ -122,6 +122,10 @@ pub const InternalState = struct {
     /// attribute's declaration block and its cached computed style. Made on
     /// first use, freed with this state (lane style1).
     style: ?*dom.style.ElementStyle = null,
+    /// Set only while `appendAttributeHook` appends a style attribute copied
+    /// by cloning, and consumed by the style attribute's change steps
+    /// (`styleAttributeChangeSteps`), which then skip their CSP check.
+    appending_clone: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -1252,6 +1256,11 @@ fn attributeCountHook(element: *runtime.Instance) usize {
 /// fields given.
 fn appendAttributeHook(element: *runtime.Instance, attribute: dom.element_attributes.Attribute) dom.element_attributes.Error!void {
     const internal = getInternal(element) orelse return error.InvalidStateError;
+    // A style attribute a clone copies skips its CSP check (see
+    // styleAttributeChangeSteps). Cleared however the append ends, so an
+    // error or a later change cannot see it.
+    internal.appending_clone = attribute.by_cloning and attribute.namespace == null and std.mem.eql(u8, attribute.local_name, "style");
+    defer internal.appending_clone = false;
     return appendAttribute(element, internal, attribute.namespace, attribute.prefix, attribute.local_name, attribute.value);
 }
 
@@ -2689,10 +2698,9 @@ fn compileRawEventHandler(target: *runtime.Instance, event_type: []const u8) dom
 /// attribute's value must not be applied to the element." Removing the
 /// attribute is not checked: there is nothing to apply.
 ///
-/// CSSOM's own writes (element.style) would set the attribute with the
-/// declaration block's updating flag set, and its attribute change steps
-/// then do nothing; Crane's CSSOM does not write the attribute back at all,
-/// so they never reach here.
+/// CSSOM's own writes (element.style) set the attribute with the
+/// declaration block's updating flag set ("update style attribute for",
+/// dom.style.inline_style), and its attribute change steps then do nothing.
 ///
 /// An allowed value is parsed into the element's inline declaration block
 /// (CSSOM 6.7's attribute change steps) when the style engine or
@@ -2701,10 +2709,16 @@ fn compileRawEventHandler(target: *runtime.Instance, event_type: []const u8) dom
 /// apply (dom.style.ElementStyle.inline_state). CSSOM's own writes come with
 /// the block's updating flag set and change nothing here.
 ///
-/// Blink, Gecko and WebKit skip the CSP check for an attribute copied by
-/// cloning (WPT style-src/inline-style-allowed-while-cloning-objects reads
-/// the clone's style); HTML has no such exception, so this checks every
-/// write (ruling Q8 decides it with the phase-2 evidence).
+/// Golden rule 2: a style attribute copied by cloning ("clone a single
+/// node" step 3) skips the CSP check - no block, no violation report - as
+/// all three browsers do and HTML does not say: Blink's
+/// Element::StyleAttributeChanged lets AttributeModificationReason::kByCloning
+/// through before AllowInline, WebKit's StyledElement::styleAttributeChanged
+/// does the same for AttributeModificationReason::ByCloning, and on wpt.fyi
+/// (df642c4142) Chrome, Firefox and Safari all pass
+/// content-security-policy/style-src/inline-style-allowed-while-cloning-objects
+/// subtests 1, 3, 5, 7 and 8 (the clones' declarations) and all fail 19 and 20.
+/// A parsed or set value is still checked (crane/style3-clone-style-csp.html).
 fn styleAttributeChangeSteps(instance: *runtime.Instance, internal: *InternalState, value: ?[]const u8) void {
     const ns = if (internal.data.namespace_uri) |n| n.asSlice() else return;
     if (!std.mem.eql(u8, ns, "http://www.w3.org/1999/xhtml") and
@@ -2717,7 +2731,9 @@ fn styleAttributeChangeSteps(instance: *runtime.Instance, internal: *InternalSta
         if (internal.style) |style_state| style_state.inline_state = .unparsed;
         return;
     };
-    if (dom.csp_violations.shouldBlockInline(instance, .style_attribute, v, .{})) {
+    const by_cloning = internal.appending_clone;
+    internal.appending_clone = false;
+    if (!by_cloning and dom.csp_violations.shouldBlockInline(instance, .style_attribute, v, .{})) {
         const style_state = dom.style.element_style.of(instance) orelse return;
         if (style_state.inline_block) |*block| block.clear();
         style_state.inline_state = .blocked;
