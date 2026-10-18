@@ -388,8 +388,25 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
         base_request.origin = .client;
         base_request.origin_owned = false;
 
-        // Steps 13.7-8: already the defaults of a request this constructor
-        // built.
+        // Step 13.7: Set request's URL to request's current URL.
+        // Step 13.8: Set request's URL list to « request's URL ». A request
+        // this constructor built from a URL has that list already; a clone
+        // of `input`'s request keeps its redirect hops, which init makes the
+        // service worker's own request ("it no longer appears to come from
+        // the original source"): the list becomes its current URL alone, and
+        // what the hops made of it goes with them - its redirect-taint
+        // (`redirect_tainted`: the Origin header) and its Sec-Fetch-Site
+        // relation (`dropped_urls_site`). navigation-headers.https.html's
+        // "... redirect and change-request service worker" cases: Origin is
+        // the worker's, Sec-Fetch-Site same-origin.
+        if (base_request.url_list.items.len > 1) {
+            const current = base_request.url_list.pop().?;
+            for (base_request.url_list.items) |hop| base_request.allocator.free(hop);
+            base_request.url_list.clearRetainingCapacity();
+            base_request.url_list.appendAssumeCapacity(current);
+        }
+        base_request.redirect_tainted = false;
+        base_request.dropped_urls_site = .same_origin;
 
         // Step 13.5: Set request's referrer to "client". A Request passed as
         // `input` brings its own, which init replaces.
