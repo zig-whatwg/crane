@@ -7643,14 +7643,23 @@ pub fn V8Interface(comptime Interface: type) type {
             }
         }
 
-        /// A pair iterable entry's value as a V8 string, OWNED; null for a
-        /// value that is not a string (not converted yet).
+        /// A pair iterable entry's value converted to an ECMAScript value
+        /// (WebIDL 3.7.10.2 "get the next iteration result"), OWNED, or null
+        /// when it cannot be. FormDataEntryValue's File arm is the File the
+        /// entry keeps - the object get() and getAll() return - as its
+        /// wrapper: a Global of our own (`v8_Global_Clone`), since the wrapper
+        /// cache keeps the wrapper's. It was null, so a File entry iterated
+        /// as `undefined` and forEach skipped it
+        /// (xhr/formdata/set-blob.any.js, foreach.any.js; Codex row 44 D7).
         fn entryValue(isolate: *v8.Isolate, entry: anytype) ?*v8.Value {
             const ValueType = @TypeOf(entry.value);
             if (@typeInfo(ValueType) == .@"union") {
                 return switch (entry.value) {
                     .usvstring => |s| conv.newStringFromWtf8(isolate, s) orelse return null,
-                    else => null, // Skip non-string variants for now
+                    inline else => |payload| if (comptime @TypeOf(payload) == *runtime.Instance)
+                        v8.v8_Global_Clone(conv.instanceToV8(isolate, payload))
+                    else
+                        null,
                 };
             }
             return conv.newStringFromWtf8(isolate, entry.value) orelse return null;
