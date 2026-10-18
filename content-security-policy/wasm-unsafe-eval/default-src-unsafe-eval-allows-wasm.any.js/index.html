@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../content-security-policy/"><code>content-<wbr>security-<wbr>policy/</code></a></li><li><a href="../../../content-security-policy/wasm-unsafe-eval/"><code>wasm-<wbr>unsafe-<wbr>eval/</code></a></li><li aria-current="page"><code>default-<wbr>src-<wbr>unsafe-<wbr>eval-<wbr>allows-<wbr>wasm.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>default-<wbr>src-<wbr>unsafe-<wbr>eval-<wbr>allows-<wbr>wasm.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="content-security-policy/wasm-unsafe-eval/default-src-unsafe-eval-allows-wasm.any.js">
-<p class="figures-main"><span class="fg-pass">9</span><span class="fg-of"> / 15</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>6</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">15</span><span class="fg-of"> / 15</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-05978d11df</code>, <span class="nowrap">18 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/05978d11df"><code>05978d11df</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-ae02a55dc8</code>, <span class="nowrap">18 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/ae02a55dc8"><code>ae02a55dc8</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/wasm-unsafe-eval/default-src-unsafe-eval-allows-wasm.any.js"><code>content-<wbr>security-<wbr>policy/<wbr>wasm-<wbr>unsafe-<wbr>eval/<wbr>default-<wbr>src-<wbr>unsafe-<wbr>eval-<wbr>allows-<wbr>wasm.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -34,33 +34,33 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/default-src-unsafe-eval-allows-wasm.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 5</span></h3>
+<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/default-src-unsafe-eval-allows-wasm.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>5</b> / 5</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-cd1f579b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WebAssembly.instantiate() is allowed</span></div><a class="self" href="#s-cd1f579b" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-688084c9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WebAssembly.compile() is allowed</span></div><a class="self" href="#s-688084c9" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-442fddb2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">new WebAssembly.Module() is allowed</span></div><a class="self" href="#s-442fddb2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e73b6579"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.compileStreaming() is allowed</span></summary><pre class="msg">WebAssembly.compileStreaming is not a function</pre></details><a class="self" href="#s-e73b6579" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-342e2f7c"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.instantiateStreaming() is allowed</span></summary><pre class="msg">WebAssembly.instantiateStreaming is not a function</pre></details><a class="self" href="#s-342e2f7c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e73b6579"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WebAssembly.compileStreaming() is allowed</span></div><a class="self" href="#s-e73b6579" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-342e2f7c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WebAssembly.instantiateStreaming() is allowed</span></div><a class="self" href="#s-342e2f7c" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/default-src-unsafe-eval-allows-wasm.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 5</span></h3>
+<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/default-src-unsafe-eval-allows-wasm.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>5</b> / 5</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-0f67678e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WebAssembly.instantiate() is allowed</span></div><a class="self" href="#s-0f67678e" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-425affe3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WebAssembly.compile() is allowed</span></div><a class="self" href="#s-425affe3" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-9ca621f2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">new WebAssembly.Module() is allowed</span></div><a class="self" href="#s-9ca621f2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b9fa1aaf"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.compileStreaming() is allowed</span></summary><pre class="msg">WebAssembly.compileStreaming is not a function</pre></details><a class="self" href="#s-b9fa1aaf" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-230c8c6e"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.instantiateStreaming() is allowed</span></summary><pre class="msg">WebAssembly.instantiateStreaming is not a function</pre></details><a class="self" href="#s-230c8c6e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b9fa1aaf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WebAssembly.compileStreaming() is allowed</span></div><a class="self" href="#s-b9fa1aaf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-230c8c6e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WebAssembly.instantiateStreaming() is allowed</span></div><a class="self" href="#s-230c8c6e" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/default-src-unsafe-eval-allows-wasm.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 5</span></h3>
+<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/default-src-unsafe-eval-allows-wasm.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>5</b> / 5</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-a6ba2345"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WebAssembly.instantiate() is allowed</span></div><a class="self" href="#s-a6ba2345" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-6f2507e5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WebAssembly.compile() is allowed</span></div><a class="self" href="#s-6f2507e5" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-da60f38d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">new WebAssembly.Module() is allowed</span></div><a class="self" href="#s-da60f38d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ce9e1c98"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.compileStreaming() is allowed</span></summary><pre class="msg">WebAssembly.compileStreaming is not a function</pre></details><a class="self" href="#s-ce9e1c98" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-59fe8975"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.instantiateStreaming() is allowed</span></summary><pre class="msg">WebAssembly.instantiateStreaming is not a function</pre></details><a class="self" href="#s-59fe8975" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ce9e1c98"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WebAssembly.compileStreaming() is allowed</span></div><a class="self" href="#s-ce9e1c98" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-59fe8975"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WebAssembly.instantiateStreaming() is allowed</span></div><a class="self" href="#s-59fe8975" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

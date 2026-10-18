@@ -21,23 +21,29 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../user-timing/"><code>user-<wbr>timing/</code></a></li><li aria-current="page"><code>measure_<wbr>associated_<wbr>with_<wbr>navigation_<wbr>timing.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>measure_<wbr>associated_<wbr>with_<wbr>navigation_<wbr>timing.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="user-timing/measure_associated_with_navigation_timing.html">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 0</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">8</span><span class="fg-of"> / 8</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-error g-block">ERROR</span> <span class="quiet">runner status <code>ERROR</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-05978d11df</code>, <span class="nowrap">18 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/05978d11df"><code>05978d11df</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-ae02a55dc8</code>, <span class="nowrap">18 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/ae02a55dc8"><code>ae02a55dc8</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/user-timing/measure_associated_with_navigation_timing.html"><code>user-<wbr>timing/<wbr>measure_<wbr>associated_<wbr>with_<wbr>navigation_<wbr>timing.<wbr>html</code></a></dd></div>
 </dl>
-<div class="harness"><p class="harness-label">Harness message</p><pre class="msg">InvalidAccessError: InvalidAccessError</pre></div>
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/user-timing/measure_associated_with_navigation_timing.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><span class="quiet">none reported</span></span></h3>
-<pre class="msg harness-msg">InvalidAccessError: InvalidAccessError</pre>
-<p class="omitted">No subtests were reported.</p>
+<ol class="subtests">
+<li class="sub s-pass" id="s-862678ec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Measure of navigationStart to now should be positive value.</span></div><a class="self" href="#s-862678ec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e72bfe66"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Measure of navigationStart to loadEventEnd should be positive value.</span></div><a class="self" href="#s-e72bfe66" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2e3109ae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Measure of current mark to navigationStart should be negative value.</span></div><a class="self" href="#s-2e3109ae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b96e664a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">loadTime plus loadEventEnd to a mark &quot;a&quot; should equal to navigationStart to &quot;a&quot;.</span></div><a class="self" href="#s-b96e664a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-585ab359"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Second measure of current mark to navigationStart should be negative value.</span></div><a class="self" href="#s-585ab359" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-612c8122"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Measures of loadTime should have same duration.</span></div><a class="self" href="#s-612c8122" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-612b60fb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Measure from domComplete event to most recent mark &quot;a&quot; should have longer duration.</span></div><a class="self" href="#s-612b60fb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4aa34b5d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Measure from most recent mark to navigationStart should have longer duration.</span></div><a class="self" href="#s-4aa34b5d" aria-label="Link to this subtest">&para;</a></li>
+</ol>
 </div>
 </section>
 <footer class="foot">
