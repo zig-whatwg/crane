@@ -172,6 +172,10 @@ pub const mutation_observer_algorithms = @import("mutation_observer_algorithms.z
 pub const shadow_dom_algorithms = @import("shadow_dom_algorithms.zig");
 pub const range_tracking = @import("range_tracking.zig");
 pub const event_dispatch = @import("event_dispatch.zig");
+/// DOM 2.9 dispatch steps 4-6.11: building an event's path across shadow
+/// trees (retargeting, the shadow-tree booleans, activationTarget,
+/// clearTargets).
+pub const event_path = @import("event_path.zig");
 pub const selectors = @import("selectors.zig");
 /// querySelector / matches / closest over platform objects.
 pub const selector_matching = @import("selector_matching.zig");

@@ -114,6 +114,12 @@ pub const InternalState = struct {
     /// which is what removes an entry. Null for every other entry.
     lazy: ?LazyEntry = null,
 
+    /// A Window's "current event" (HTML), which `window.event` returns: the
+    /// event whose listener is running in the Window's realm, or null for
+    /// undefined (`swapCurrentEvent`). BORROWED: set only while a dispatch
+    /// that holds the event calls a listener. Null for every other target.
+    current_event: ?*runtime.Instance = null,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -678,36 +684,29 @@ fn removeAnEventListener(internal: *InternalState, realm: runtime.Context, liste
     }
 }
 
-/// Each Window's "current event" (HTML), which `window.event` returns: the
-/// event whose listener is running in that Window's realm, else undefined.
-/// DOM's inner invoke (steps 2.8-2.10, 2.13) sets it around every listener
-/// call and restores the previous value afterwards, so nested dispatch unwinds
-/// correctly. Kept here, beside the dispatch that owns it; entries restored to
-/// null are dropped, so the list only ever holds windows mid-dispatch.
-const CurrentEvent = struct {
-    window: *runtime.Instance,
-    event: *runtime.Instance,
-};
-var current_events: std.ArrayListUnmanaged(CurrentEvent) = .empty;
-
-/// `window`'s current event, or null for undefined (dom.fire_event).
+/// `window`'s current event (HTML), which `window.event` returns, or null for
+/// undefined (dom.fire_event): the event whose listener is running in that
+/// Window's realm. DOM's inner invoke (steps 2.9-2.10, 2.15) sets it around
+/// every listener call and restores the previous value afterwards, so nested
+/// dispatch unwinds correctly.
+///
+/// It is the Window's own state - its EventTarget entry's - reached through
+/// its Browser's registry. It was one process-wide list every thread's
+/// dispatch appended to without a lock, so two Browsers' listeners on two
+/// threads raced on it (docs/instances.md: state has an owner).
 fn currentEvent(window: *runtime.Instance) ?*runtime.Instance {
-    for (current_events.items) |entry| {
-        if (entry.window == window) return entry.event;
-    }
-    return null;
+    const internal = getInternalFromRegistry(window) orelse return null;
+    return internal.current_event;
 }
 
-/// Set `window`'s current event to `event`, returning the previous one.
+/// Set `window`'s current event to `event`, returning the previous one. Each
+/// call looks the entry up again: a listener can end the window it runs in.
 fn swapCurrentEvent(window: *runtime.Instance, event: ?*runtime.Instance) ?*runtime.Instance {
-    for (current_events.items, 0..) |*entry, i| {
-        if (entry.window != window) continue;
-        const previous = entry.event;
-        if (event) |e| entry.event = e else _ = current_events.swapRemove(i);
-        return previous;
-    }
-    if (event) |e| current_events.append(std.heap.c_allocator, .{ .window = window, .event = e }) catch {};
-    return null;
+    const found = if (event != null) lazyInternal(window) catch null else getInternalFromRegistry(window);
+    const internal = found orelse return null;
+    const previous = internal.current_event;
+    internal.current_event = event;
+    return previous;
 }
 
 /// The next event handler's serial. Atomic: event handlers are set on every
@@ -1164,19 +1163,6 @@ fn dispatchEventWithTrust(instance: *runtime.Instance, event: *runtime.Instance,
 // https://dom.spec.whatwg.org/#concept-event-dispatch
 // ============================================================================
 
-/// One struct of the event path, per "append to an event path" (DOM §2.9).
-///
-/// The shadow-tree booleans and the touch target list live on the event's own
-/// path (`dom.event_dispatch.PathItem`), which this is mirrored into so
-/// `composedPath()` can see the path while listeners run.
-const PathStruct = struct {
-    /// invocation target: whose event listener list is consulted.
-    invocation_target: *runtime.Instance,
-    /// shadow-adjusted target: non-null exactly where the event is AT_TARGET.
-    shadow_adjusted_target: ?*runtime.Instance,
-    related_target: ?*runtime.Instance,
-};
-
 /// The two values the spec's `phase` argument to "invoke" can take.
 const ListenerPhase = enum { capturing, bubbling };
 
@@ -1202,178 +1188,87 @@ const Invocation = struct {
     passive: bool,
 };
 
-/// Guard against a cycle in parent pointers turning dispatch into a hang.
-/// No real tree is anywhere near this deep.
-const max_event_path_depth: usize = 8192;
-
-/// DOM §2.9 - get the parent
-///
-/// https://dom.spec.whatwg.org/#get-the-parent - "A node's get the parent
-/// algorithm, given an event, returns the node's assigned slot, if node is
-/// assigned; otherwise node's parent."
-///
-/// HTML overrides it for Document: return null if event's type is "load" or the
-/// document has no browsing context, and the document's relevant global object
-/// (its Window) otherwise. That override is the whole difference between the two
-/// halves of Event-dispatch-bubbles-true.html, which expects `window` in a
-/// click's path and not in a load's.
-fn getTheParent(target: *runtime.Instance, event_type: []const u8) ?*runtime.Instance {
-    // node_type is EventTarget's duck-typing discriminator: 0 for a plain
-    // EventTarget (and for Window, which therefore ends the path).
-    const node_type = getNodeType(target);
-    // IndexedDB: ordinary request -> transaction; open request -> null;
-    // transaction -> connection; connection -> null (ED 2.7 and 2.8).
-    if (node_type == 0) return dom_module.indexeddb.getTheParent(target);
-
-    if (node_type == interfaces.Node.get_DOCUMENT_NODE()) {
-        if (std.mem.eql(u8, event_type, "load")) return null;
-        // No browsing context means no defaultView, so one null covers both.
-        return interfaces.Document.get_defaultView(target) catch null;
-    }
-
-    // "the node's assigned slot, if node is assigned" - the internal one, a
-    // closed shadow root's included (the IDL assignedSlot hides those).
-    // Element and Text nodes are the slottables.
-    if (node_type == interfaces.Node.get_ELEMENT_NODE() or node_type == interfaces.Node.get_TEXT_NODE()) {
-        if (dom_module.shadow_dom_algorithms.assignedSlotOf(target)) |slot| return slot;
-    }
-
-    return interfaces.Node.get_parentNode(target) catch null;
-}
-
-/// DOM §2.9 dispatch, steps 6.3 and 6.8-6.9: build the event path.
-///
-/// The path is computed ONCE, before any listener runs, which is what
-/// Event-dispatch-target-moved.html checks: a listener that moves the target
-/// elsewhere in the tree must not change where the rest of the event goes.
-fn buildEventPath(
-    path: *infra.List(PathStruct),
-    target: *runtime.Instance,
-    event_type: []const u8,
-    related_target: ?*runtime.Instance,
-) !void {
-    // Step 6.3: append with target as BOTH invocation target and shadow-adjusted
-    // target. Being the only struct with a non-null shadow-adjusted target is
-    // what makes the target - and only the target - report AT_TARGET.
-    try path.append(.{
-        .invocation_target = target,
-        .shadow_adjusted_target = target,
-        .related_target = related_target,
-    });
-
-    var parent = getTheParent(target, event_type);
-    var depth: usize = 0;
-    while (parent) |p| {
-        if (depth >= max_event_path_depth) break;
-        depth += 1;
-
-        // Step 6.9.6. Without shadow roots in the path, target's root is always
-        // a shadow-including inclusive ancestor of every ancestor, so this
-        // branch always wins and the shadow-adjusted target is null. The
-        // retargeting branches 6.9.7 and 6.9.8 only become reachable once shadow
-        // trees are in play; they are a TODO rather than a silent approximation.
-        try path.append(.{
-            .invocation_target = p,
-            .shadow_adjusted_target = null,
-            .related_target = related_target,
-        });
-
-        parent = getTheParent(p, event_type);
-    }
-}
-
-/// Mirror the path onto the event so `composedPath()` reports it.
-/// Dispatch step 9 empties it again.
-fn publishEventPath(state: *EventState, structs: []const PathStruct, allocator: std.mem.Allocator) void {
-    for (structs) |s| {
-        state.path.append(.{
-            .invocation_target = s.invocation_target,
-            .invocation_target_in_shadow_tree = false,
-            .shadow_adjusted_target = s.shadow_adjusted_target,
-            .related_target = s.related_target,
-            .touch_target_list = infra.List(*runtime.Instance).init(allocator),
-            .root_of_closed_tree = false,
-            .slot_in_closed_tree = false,
-        }) catch return;
-    }
-}
-
 /// DOM §2.9 - dispatch
 /// https://dom.spec.whatwg.org/#concept-event-dispatch
 ///
 /// `state` is `event`'s (`dom.event_dispatch.of`), BORROWED for the dispatch.
 /// Returns false if the event's canceled flag is set, true otherwise.
+///
+/// Steps 4-6.11 - the path across shadow trees, activationTarget and
+/// clearTargets - are dom.event_path's; the passes over the path and steps
+/// 1 and 7-13 are here, beside the listener lists they read.
 fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, state: *EventState, did_throw: ?*bool) !bool {
-    const allocator = target.ctx.allocator;
-
     // Step 1: Set event's dispatch flag.
     state.dispatch_flag = true;
 
-    // Steps 7, 8 and 10 have to happen however we leave.
+    // Steps 7-10 have to happen however we leave.
     errdefer state.endDispatch(event);
-
-    // Steps 2-5. targetOverride is target: the legacy target override flag is
-    // only ever passed by HTML, and only for a Window. clearTargets (steps 5,
-    // 6.10-6.11) needs shadow roots, which do not exist yet.
-    const related_target = state.related_target;
 
     // `get_type` hands back a borrowed slice into the event's own storage, and
     // `initEvent` returns early while the dispatch flag is set, so no callback
     // can invalidate it mid-dispatch.
     const event_type_string = interfaces.Event.get_type(event) catch runtime.DOMString.initEmpty();
     const event_type = event_type_string.asSlice();
+    const bubbles = interfaces.Event.get_bubbles(event) catch false;
 
-    // Step 6
-    var path = infra.List(PathStruct).init(allocator);
-    defer path.deinit();
-    try buildEventPath(&path, target, event_type, related_target);
-    const structs = path.toSlice();
+    // Steps 2-6.11. Step 2: targetOverride is target - the legacy target
+    // override flag is HTML's, for a Window, and Crane's HTML does not pass
+    // it. Step 6.4: isActivationEvent - "event is a MouseEvent object and
+    // event's type attribute is click"; the behaviours are the element
+    // types' own (dom.activation).
+    const is_activation_event = std.mem.eql(u8, event_type, "click") and event.stateAs(interfaces.MouseEvent.State) != null;
+    const built = try dom_module.event_path.build(state, target, .{
+        .event_type = event_type,
+        .composed = interfaces.Event.get_composed(event) catch false,
+        .bubbles = bubbles,
+        .activation_of = if (is_activation_event) &dom_module.activation.of else null,
+    });
+    const activation_target = built.activation_target;
 
-    publishEventPath(state, structs, allocator);
+    // The path does not change while it runs: nothing appends to it until
+    // step 9 empties it, and a listener can neither redispatch this event
+    // (step 1 of dispatchEvent) nor reinitialize it (initEvent's step 1).
+    const path = state.path.toSlice();
 
-    // Steps 3, 6.4, 6.5 and 6.9.6.1: activationTarget - the target, if it has
-    // activation behaviour, else (for a bubbling event) the first ancestor on
-    // the path that has it; only for a MouseEvent named "click". The
-    // behaviours are the element types' own (dom.activation).
-    const activation_target: ?ActivationTarget = activationTargetOf(structs, event, event_type);
-
-    // Step 12 (6.12 in the spec's numbering): legacy-pre-activation behaviour.
+    // Step 6.12: legacy-pre-activation behaviour.
     if (activation_target) |at| {
         if (at.behavior.legacy_pre_activation) |pre| pre(at.target);
     }
 
-    // Step 13: for each struct of event's path, IN REVERSE ORDER, invoke with
+    // Step 6.13: for each item of event's path, IN REVERSE ORDER, invoke with
     // "capturing".
-    var i = structs.len;
+    var i = path.len;
     while (i > 0) {
         i -= 1;
-        state.phase = if (structs[i].shadow_adjusted_target != null)
+        // Steps 6.13.1-6.13.2.
+        state.phase = if (path[i].shadow_adjusted_target != null)
             interfaces.Event.get_AT_TARGET()
         else
             interfaces.Event.get_CAPTURING_PHASE();
-        invoke(structs, i, event, state, .capturing, did_throw);
+        // Step 6.13.3.
+        invoke(&path[i], event, state, .capturing, did_throw);
     }
 
-    // Step 14: for each struct of event's path, in order, invoke with "bubbling".
-    const bubbles = interfaces.Event.get_bubbles(event) catch false;
-    for (structs, 0..) |s, index| {
-        if (s.shadow_adjusted_target != null) {
-            // Step 14.1 - the target itself is AT_TARGET in both passes, which
-            // is how its capturing listeners run before its bubbling ones.
+    // Step 6.14: for each item of event's path, in order, invoke with "bubbling".
+    for (path) |*item| {
+        if (item.shadow_adjusted_target != null) {
+            // Step 6.14.1 - a target is AT_TARGET in both passes, which is
+            // how its capturing listeners run before its bubbling ones.
             state.phase = interfaces.Event.get_AT_TARGET();
         } else {
-            // Step 14.2.1
+            // Step 6.14.2.1
             if (!bubbles) continue;
-            // Step 14.2.2
+            // Step 6.14.2.2
             state.phase = interfaces.Event.get_BUBBLING_PHASE();
         }
-        invoke(structs, index, event, state, .bubbling, did_throw);
+        // Step 6.14.3
+        invoke(item, event, state, .bubbling, did_throw);
     }
 
-    // Steps 7, 8, 9 and 10
-    state.endDispatch(event);
-
-    // Step 11 (clearTargets) is not reachable yet.
+    // Steps 7-11: eventPhase NONE, currentTarget null, the path empty, the
+    // flags unset and - when clearTargets - the target, relatedTarget and
+    // touch target list cleared; then the values the event keeps are kept.
+    state.finishDispatch(event, built.clear_targets);
 
     // Step 12: "If activationTarget is non-null: if event's canceled flag is
     // unset, then run activationTarget's activation behavior with event;
@@ -1393,87 +1288,58 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, st
     return !state.canceled_flag;
 }
 
-const ActivationTarget = struct {
-    target: *runtime.Instance,
-    behavior: @import("dom").activation.Behavior,
-};
-
-/// DOM dispatch steps 6.4-6.5 and 6.9.6.1 over the built path: with no
-/// shadow trees, every parent is appended through step 6.9.6, so the target
-/// comes first and each ancestor after it in path order.
-fn activationTargetOf(structs: []const PathStruct, event: *runtime.Instance, event_type: []const u8) ?ActivationTarget {
-    // Step 6.4: "Let isActivationEvent be true, if event is a MouseEvent
-    // object and event's type attribute is "click"; otherwise false."
-    if (!std.mem.eql(u8, event_type, "click")) return null;
-    if (event.stateAs(interfaces.MouseEvent.State) == null) return null;
-    const activation = @import("dom").activation;
-    if (structs.len == 0) return null;
-    // Step 6.5: the target itself.
-    if (activation.of(structs[0].invocation_target)) |behavior| {
-        return .{ .target = structs[0].invocation_target, .behavior = behavior };
-    }
-    // Step 6.9.6.1: an ancestor, only when the event bubbles.
-    const bubbles = interfaces.Event.get_bubbles(event) catch false;
-    if (!bubbles) return null;
-    for (structs[1..]) |s| {
-        if (activation.of(s.invocation_target)) |behavior| {
-            return .{ .target = s.invocation_target, .behavior = behavior };
-        }
-    }
-    return null;
-}
-
 /// DOM §2.9 - invoke
 /// https://dom.spec.whatwg.org/#concept-event-listener-invoke
-fn invoke(structs: []const PathStruct, index: usize, event: *runtime.Instance, state: *EventState, phase: ListenerPhase, did_throw: ?*bool) void {
-    const s = structs[index];
+///
+/// `item` is BORROWED from the event's path, which outlives the call.
+fn invoke(item: *const dom_module.event_dispatch.PathItem, event: *runtime.Instance, state: *EventState, phase: ListenerPhase, did_throw: ?*bool) void {
+    // Steps 1-3: event's target is the shadow-adjusted target of the last
+    // item at or before this one whose shadow-adjusted target is non-null -
+    // recorded on the item when the path was built. Written raw: the path
+    // holds it, and the end of dispatch keeps the one the event ends with.
+    state.target = item.target;
 
-    // Step 1: event's target is the shadow-adjusted target of the last struct at
-    // or before this one whose shadow-adjusted target is non-null.
-    var j = index + 1;
-    while (j > 0) {
-        j -= 1;
-        if (structs[j].shadow_adjusted_target) |shadow_adjusted| {
-            state.setTarget(event, shadow_adjusted);
-            break;
-        }
+    // Step 4: "Set event's relatedTarget to pathItem's relatedTarget."
+    state.related_target = item.related_target;
+
+    // Step 5: "Set event's touch target list to pathItem's touch target
+    // list." Both are empty for every event but a TouchEvent's.
+    if (state.touch_target_list.len > 0 or item.touch_target_list.len > 0) {
+        state.touch_target_list.clear();
+        state.touch_target_list.appendSlice(item.touch_target_list.toSlice()) catch {};
     }
 
-    // Step 2
-    state.related_target = s.related_target;
-
-    // Step 3: event's touch target list - needs UI Events, TODO.
-
-    // Step 4: stopPropagation() ends the walk here, but the caller still has to
+    // Step 6: stopPropagation() ends the walk here, but the caller still has to
     // run steps 7-10, so this returns rather than unwinding.
     if (state.stop_propagation_flag) return;
 
-    // Step 5
-    state.current_target = s.invocation_target;
+    // Step 7
+    state.current_target = item.invocation_target;
 
-    // Steps 6-8.
+    // Steps 8-10.
     //
     // Event handler IDL attributes (onclick, onload, ...) run from inside
     // here too: HTML specifies them as ordinary event listeners in the same
     // list, and `activateEventHandler` puts one there, so a handler runs in
     // registration order among the addEventListener listeners - and, being
     // non-capturing, only in the bubbling pass.
-    const found = innerInvoke(event, state, s.invocation_target, phase, did_throw);
+    const in_shadow_tree = item.invocation_target_in_shadow_tree;
+    const found = innerInvoke(event, state, item.invocation_target, phase, in_shadow_tree, did_throw);
 
-    // Step 9: "If found is false and event's isTrusted attribute is true:"
+    // Step 11: "If found is false and event's isTrusted attribute is true:"
     if (found or !state.is_trusted) return;
     const event_type = interfaces.Event.get_type(event) catch return;
-    // Step 9.2: rename a legacy-mapped type, "and return otherwise".
+    // Step 11.2: rename a legacy-mapped type, "and return otherwise".
     const legacy = dom_module.event_dispatch.legacyEventType(event_type.asSlice()) orelse return;
-    // Step 9.1: "Let originalEventType be event's type attribute value" -
+    // Step 11.1: "Let originalEventType be event's type attribute value" -
     // the value the event held, handed back by the rename.
     const original_event_type = dom_module.event_dispatch.swapType(event, runtime.DOMString.initInterned(legacy)) orelse return;
-    // Step 9.3: "Inner invoke with event, listeners, phase,
+    // Step 11.3: "Inner invoke with event, listeners, phase,
     // invocationTargetInShadowTree, and legacyOutputDidListenersThrowFlag if
     // given." found was false, so no listener ran and the list is still the
-    // one step 6 cloned; innerInvoke's own snapshot is that clone.
-    _ = innerInvoke(event, state, s.invocation_target, phase, did_throw);
-    // Step 9.4: "Set event's type attribute value to originalEventType."
+    // one step 8 cloned; innerInvoke's own snapshot is that clone.
+    _ = innerInvoke(event, state, item.invocation_target, phase, in_shadow_tree, did_throw);
+    // Step 11.4: "Set event's type attribute value to originalEventType."
     _ = dom_module.event_dispatch.swapType(event, original_event_type);
 }
 
@@ -1481,8 +1347,9 @@ fn invoke(structs: []const PathStruct, index: usize, event: *runtime.Instance, s
 /// https://dom.spec.whatwg.org/#concept-event-listener-inner-invoke
 ///
 /// Returns `found`: whether any listener matched the event's type, regardless of
-/// phase. Only step 9 of "invoke" consumes it.
-fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *runtime.Instance, phase: ListenerPhase, did_throw: ?*bool) bool {
+/// phase. Only step 11 of "invoke" consumes it. `in_shadow_tree` is the path
+/// item's invocation-target-in-shadow-tree.
+fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *runtime.Instance, phase: ListenerPhase, in_shadow_tree: bool, did_throw: ?*bool) bool {
     const internal = getInternalFromRegistry(current_target) orelse return false;
     const list = internal.event_listener_list orelse return false;
     if (list.len == 0) return false;
@@ -1490,7 +1357,7 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
     const event_type_string = interfaces.Event.get_type(event) catch return false;
     const event_type = event_type_string.asSlice();
 
-    // Step 6 of "invoke": let listeners be a clone of the listener list. See
+    // Step 8 of "invoke": let listeners be a clone of the listener list. See
     // Invocation for why this clones identity rather than the records.
     var snapshot = infra.List(Invocation).init(internal.allocator);
     defer snapshot.deinit();
@@ -1533,21 +1400,23 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
         if (candidate.once) expired = detachListener(internal, candidate);
         defer if (expired) |value| value.release();
 
-        // Step 2.9
+        // Step 2.11
         if (candidate.passive) state.in_passive_listener_flag = true;
 
-        // Step 2.11 - an exception is reported, never propagated. An event
+        // Step 2.13 - an exception is reported, never propagated. An event
         // handler's listener runs the event handler processing algorithm.
+        // Steps 2.9-2.10 and 2.15 (the listener global's current event) are
+        // the callers', around the call.
         if (candidate.listener_id != 0) {
-            if (expired orelse callback) |value| callListener(value, event, current_target, did_throw);
+            if (expired orelse callback) |value| callListener(value, event, current_target, in_shadow_tree, did_throw);
         } else {
-            invokeIdlEventHandler(current_target, event, did_throw);
+            invokeIdlEventHandler(current_target, event, in_shadow_tree, did_throw);
         }
 
-        // Step 2.12
+        // Step 2.14
         if (candidate.passive) state.in_passive_listener_flag = false;
 
-        // Step 2.14
+        // Step 2.16
         if (state.stop_immediate_propagation_flag) break;
     }
 
@@ -1596,7 +1465,7 @@ fn detachListener(internal: *InternalState, candidate: Invocation) ?engine.Callb
 /// `callback` is BORROWED: the record's, or the detached once listener's. The
 /// call holds a value of its own, since the callback can remove its listener
 /// and so release the record's.
-fn callListener(callback: engine.CallbackInterface, event: *runtime.Instance, current_target: *runtime.Instance, did_throw: ?*bool) void {
+fn callListener(callback: engine.CallbackInterface, event: *runtime.Instance, current_target: *runtime.Instance, in_shadow_tree: bool, did_throw: ?*bool) void {
     const realm = current_target.ctx;
     const object = engine.retainValue(realm, callback.object.value) catch |err| {
         log.debug("listener not called: {}", .{err});
@@ -1605,12 +1474,15 @@ fn callListener(callback: engine.CallbackInterface, event: *runtime.Instance, cu
     const held: engine.CallbackInterface = .{ .object = object, .context = callback.context };
     defer held.release();
 
-    // Steps 2.8-2.10: the global of the listener callback's associated realm
+    // Steps 2.9-2.10: the global of the listener callback's associated realm
     // has the event as its current event for the duration of the call
-    // (`window.event`), and step 2.13 restores whatever it was before.
+    // (`window.event`) - unless invocationTargetInShadowTree, when it keeps
+    // the one it has - and step 2.15 restores whatever it was before.
     const listener_window = windowOfRealm(associatedRealm(held.object.value) orelse held.context orelse realm);
-    const previous_event = if (listener_window) |w| swapCurrentEvent(w, event) else null;
-    defer if (listener_window) |w| {
+
+    const current_event_window = if (in_shadow_tree) null else listener_window;
+    const previous_event = if (current_event_window) |w| swapCurrentEvent(w, event) else null;
+    defer if (current_event_window) |w| {
         _ = swapCurrentEvent(w, previous_event);
     };
 
@@ -1639,7 +1511,7 @@ fn callListener(callback: engine.CallbackInterface, event: *runtime.Instance, cu
 /// The event handler processing algorithm (HTML §8.1.8.1) for `instance`'s
 /// event handler for `event`'s type - the callback of the event handler's
 /// listener, run by inner invoke.
-fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance, did_throw: ?*bool) void {
+fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance, in_shadow_tree: bool, did_throw: ?*bool) void {
     const realm = instance.ctx;
     const event_type_str = interfaces.Event.get_type(event) catch return;
 
@@ -1677,9 +1549,10 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance, 
     } else &event_argument;
     defer if (special_error_event_handling) error_arguments.deinit(event.ctx.allocator);
 
-    // DOM inner invoke steps 2.8-2.10 / 2.13 for the event handler's listener,
-    // whose callback belongs to the target's realm.
-    const handler_window = windowOfRealm(realm);
+    // DOM inner invoke steps 2.9-2.10 / 2.15 for the event handler's listener,
+    // whose callback belongs to the target's realm - not for an invocation
+    // target in a shadow tree (step 2.10.2).
+    const handler_window = if (in_shadow_tree) null else windowOfRealm(realm);
     const previous_event = if (handler_window) |w| swapCurrentEvent(w, event) else null;
     defer if (handler_window) |w| {
         _ = swapCurrentEvent(w, previous_event);

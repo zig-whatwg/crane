@@ -26,8 +26,10 @@ const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const infra = @import("infra");
+const KeptInstance = @import("custom_elements.zig").KeptInstance;
 
-/// One struct of an event's path (DOM 2.9 "append to an event path").
+/// One struct of an event's path (DOM 2.9 "append to an event path"), built
+/// by dom.event_path.
 pub const PathItem = struct {
     invocation_target: *runtime.Instance,
     invocation_target_in_shadow_tree: bool,
@@ -36,6 +38,14 @@ pub const PathItem = struct {
     touch_target_list: infra.List(*runtime.Instance),
     root_of_closed_tree: bool,
     slot_in_closed_tree: bool,
+    /// Not a field of the standard's struct: what "invoke" steps 1-3 set the
+    /// event's target to for this item - the shadow-adjusted target of the
+    /// last item at or before it whose shadow-adjusted target is non-null.
+    /// That item is the last one dispatch appended through step 6.3 or
+    /// 6.9.8, so this is dispatch's `target` when the item was appended;
+    /// recorded then, invoke finds it without walking back along the path
+    /// (Blink keeps it per tree scope: TreeScopeEventContext::Target).
+    target: *runtime.Instance,
 };
 
 /// Event's eventPhase values (DOM 2.2).
@@ -53,6 +63,16 @@ pub const Phase = struct {
 /// once the target's tree was collected (lane ownerdoc,
 /// crane/od-event-keeps-its-targets.html).
 pub const target_slot: engine.TracedSlot = .{ .name = "target" };
+
+/// The member an event keeps its relatedTarget in (engine.traceChild). The
+/// relatedTarget is DOM's (2.2), one per event, which the relatedTarget
+/// attributes of MouseEvent, FocusEvent and their subclasses return
+/// (UI Events): dispatch retargets it item by item and can leave it on a
+/// different object than the one it was initialized to - a shadow host
+/// instead of a node in its shadow tree - so the event keeps the one it
+/// holds. Blink: Event::Trace visits the related target (MouseEvent::Trace
+/// related_target_, FocusEvent's); WebKit: RefPtr<EventTarget>.
+pub const related_target_slot: engine.TracedSlot = .{ .name = "relatedTarget" };
 
 /// An Event's internal state (DOM 2.2): every flag, the path, the targets,
 /// the phase and isTrusted. Owned by the event (Event's impl creates and
@@ -74,7 +94,9 @@ pub const EventState = struct {
     /// The target attribute's value, initially null (srcElement returns it
     /// too). Set with `setTarget`, which keeps it for script.
     target: ?*runtime.Instance = null,
-    /// DOM 2.2 "relatedTarget", initially null.
+    /// DOM 2.2 "relatedTarget", initially null. Set with `setRelatedTarget`,
+    /// which keeps it; dispatch writes it per path item ("invoke" step 4)
+    /// and keeps the value it ends with (`endDispatch`).
     related_target: ?*runtime.Instance = null,
     /// The currentTarget attribute's value, initially null.
     current_target: ?*runtime.Instance = null,
@@ -88,6 +110,12 @@ pub const EventState = struct {
 
     /// The target `target_slot`'s edge holds, or null for none (`keepTarget`).
     traced_target: ?*runtime.Instance = null,
+
+    /// The related target `related_target_slot`'s edge holds, or null for
+    /// none (`keepRelatedTarget`), with its slab generation and realm: the
+    /// teardown net - a realm's teardown frees its Instances whatever points
+    /// at them, and the getter then reads null, never a freed object.
+    kept_related_target: ?KeptInstance = null,
 
     pub fn init(allocator: std.mem.Allocator) EventState {
         return .{
@@ -144,6 +172,51 @@ pub const EventState = struct {
         self.traced_target = null;
     }
 
+    /// Set `event`'s relatedTarget to `related` and keep it: what the
+    /// constructors and the legacy init*Event() methods of MouseEvent,
+    /// FocusEvent and their subclasses initialize.
+    pub fn setRelatedTarget(self: *EventState, event: *runtime.Instance, related: ?*runtime.Instance) void {
+        self.related_target = related;
+        self.keepRelatedTarget(event);
+    }
+
+    /// The relatedTarget attribute's value: `related_target`, or null once
+    /// the realm of the one the event keeps has been torn down (the net).
+    /// Mid-dispatch it is the current path item's, which the path holds.
+    pub fn relatedTarget(self: *const EventState) ?*runtime.Instance {
+        const related = self.related_target orelse return null;
+        if (self.kept_related_target) |kept| {
+            if (kept.instance == related) return kept.get();
+        }
+        return related;
+    }
+
+    /// Keep `related_target`, and let go of one the event no longer holds.
+    ///
+    /// Unlike the target's edge, this one is drawn whether or not script has
+    /// wrapped the event (an owner script has not seen holds it until its
+    /// wrapper is made): the constructors set it before the binding wraps
+    /// the event, and the events that carry one - focus, mouse and drag
+    /// events - are few, so nothing wraps a node per fired event.
+    pub fn keepRelatedTarget(self: *EventState, event: *runtime.Instance) void {
+        const related = self.related_target;
+        const kept: ?*runtime.Instance = if (self.kept_related_target) |k| k.instance else null;
+        if (related == kept) return;
+        if (related) |r| {
+            self.kept_related_target = KeptInstance.of(r);
+            engine.traceChild(event, r, related_target_slot);
+        } else {
+            self.kept_related_target = null;
+            engine.forgetTracedChild(event, related_target_slot);
+        }
+    }
+
+    /// End `event`'s edge to its relatedTarget, at the event's teardown.
+    pub fn forgetRelatedTarget(self: *EventState, event: *runtime.Instance) void {
+        if (self.kept_related_target != null) engine.forgetTracedChild(event, related_target_slot);
+        self.kept_related_target = null;
+    }
+
     /// DOM 2.2 "set the canceled flag" given the event, whose cancelable
     /// attribute value is `cancelable`: set the canceled flag if cancelable
     /// is true and the in passive listener flag is unset, and do nothing
@@ -160,22 +233,38 @@ pub const EventState = struct {
         self.path.clear();
     }
 
-    /// Dispatch steps 7-10: leave `event` in a state in which it can be
+    /// Dispatch steps 7-11: leave `event` in a state in which it can be
     /// dispatched again. Step 7: eventPhase NONE. Step 8: currentTarget
     /// null. Step 9: the path empty. Step 10: the dispatch, stop propagation
     /// and stop immediate propagation flags unset - leaving them set made the
     /// next dispatch of the same event object a no-op, which is how a
     /// `stopPropagation()` in one dispatch silently swallowed every later
-    /// one. Dispatch is over: a listener may have wrapped the event since its
-    /// target was set, so the target is kept now.
-    pub fn endDispatch(self: *EventState, event: *runtime.Instance) void {
+    /// one. Step 11: with `clear_targets`, the target, relatedTarget and
+    /// touch target list cleared.
+    ///
+    /// Dispatch is over: invoke wrote the target and relatedTarget raw, item
+    /// by item, while the path held them, and a listener may have wrapped
+    /// the event meanwhile - so the values the event ends with are kept
+    /// now, after step 11, never an edge to a value step 11 then drops.
+    pub fn finishDispatch(self: *EventState, event: *runtime.Instance, clear_targets: bool) void {
         self.phase = Phase.none;
         self.current_target = null;
         self.clearPath();
         self.dispatch_flag = false;
         self.stop_propagation_flag = false;
         self.stop_immediate_propagation_flag = false;
+        if (clear_targets) {
+            self.target = null;
+            self.related_target = null;
+            self.touch_target_list.clear();
+        }
         self.keepTarget(event);
+        self.keepRelatedTarget(event);
+    }
+
+    /// Dispatch steps 7-10, for a dispatch whose clearTargets is false.
+    pub fn endDispatch(self: *EventState, event: *runtime.Instance) void {
+        self.finishDispatch(event, false);
     }
 };
 
