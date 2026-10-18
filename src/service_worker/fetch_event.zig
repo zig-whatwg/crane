@@ -434,10 +434,21 @@ const CancelWatch = struct {
         self.release();
     }
 
+    /// On the worker's thread, which runs a sink's task outside any realm:
+    /// the cancel runs as a task of the pump's realm (it calls into script -
+    /// the stream's underlying source).
     fn cancelOnWorker(data: ?*anyopaque) void {
         const self: *CancelWatch = @ptrCast(@alignCast(data.?));
         defer self.release();
-        if (self.pump) |pump| pump.cancelForReader();
+        const pump = self.pump orelse return;
+        engine.runTaskInRealm(pump.realm, cancelInRealm, pump) catch |err| {
+            log.debug("a service worker's body cancel found no realm: {s}", .{@errorName(err)});
+        };
+    }
+
+    fn cancelInRealm(data: ?*anyopaque) void {
+        const pump: *BodyPump = @ptrCast(@alignCast(data.?));
+        pump.cancelForReader();
     }
 
     fn dropTask(data: ?*anyopaque) void {
