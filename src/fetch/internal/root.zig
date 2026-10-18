@@ -94,6 +94,7 @@ pub const Initiator = request.Initiator;
 pub const Destination = request.Destination;
 pub const Priority = request.Priority;
 pub const RequestMode = request.RequestMode;
+pub const SiteRelation = request.SiteRelation;
 pub const CredentialsMode = request.CredentialsMode;
 pub const CacheMode = request.CacheMode;
 pub const RedirectMode = request.RedirectMode;

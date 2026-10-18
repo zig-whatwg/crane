@@ -34,6 +34,7 @@ pub const data_url = @import("data_url.zig");
 pub const scheme_fetch = @import("scheme_fetch.zig");
 pub const main_fetch = @import("main_fetch.zig");
 pub const csp_check = @import("csp_check.zig");
+pub const fetch_metadata = @import("fetch_metadata.zig");
 pub const http_fetch = @import("http_fetch.zig");
 pub const fetch_algorithm = @import("fetch.zig");
 pub const fetch_job = @import("fetch_job.zig");

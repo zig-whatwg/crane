@@ -34,6 +34,7 @@ const clock = @import("clock");
 const BodyPipe = @import("../internal/body_pipe.zig").BodyPipe;
 const service_worker_fetch = @import("../internal/service_worker_fetch.zig");
 const cookies = @import("cookies.zig");
+const fetch_metadata = @import("fetch_metadata.zig");
 
 // URL Standard, for a redirect's location URL. The same three modules `xhr`
 // takes for `open()` - `url`'s root re-exports neither the serializer nor a
@@ -944,6 +945,14 @@ fn httpRequestHeaders(allocator: Allocator, request: *InternalRequest, added: *s
             return err;
         };
     }
+    // 8.13. Append the Fetch metadata headers for httpRequest - to the
+    //       request sent, as the headers above: each hop's own.
+    if (try fetch_metadata.headersFor(allocator, fetch_metadata.Input.of(request))) |metadata| {
+        try addHeader(allocator, added, "Sec-Fetch-Dest", metadata.dest);
+        try addHeader(allocator, added, "Sec-Fetch-Mode", metadata.mode);
+        try addHeader(allocator, added, "Sec-Fetch-Site", metadata.site);
+        if (metadata.user) |user| try addHeader(allocator, added, "Sec-Fetch-User", user);
+    }
     // 8.14. The prefetch purpose is added after the CORS header decision.
     if (request.initiator == .prefetch) try addHeader(allocator, added, "Sec-Purpose", "prefetch");
     // 8.15. If httpRequest's header list does not contain `User-Agent`,
@@ -1492,6 +1501,16 @@ fn buildPreflightRequest(allocator: Allocator, request: *InternalRequest) !Netwo
             return err;
         };
         try headers.append(allocator, .{ .name = "Origin", .value = origin });
+    }
+    // 8.13 runs for the preflight too (Fetch Metadata 3): its mode is
+    // "cors"; its destination, origin and URL list are request's. The
+    // values are static strings.
+    var preflight_input = fetch_metadata.Input.of(request);
+    preflight_input.mode = .cors;
+    if (try fetch_metadata.headersFor(allocator, preflight_input)) |metadata| {
+        try headers.append(allocator, .{ .name = "Sec-Fetch-Dest", .value = metadata.dest });
+        try headers.append(allocator, .{ .name = "Sec-Fetch-Mode", .value = metadata.mode });
+        try headers.append(allocator, .{ .name = "Sec-Fetch-Site", .value = metadata.site });
     }
     // 8.15 runs for the preflight too: its header list has no User-Agent.
     try headers.append(allocator, .{ .name = "User-Agent", .value = userAgentOf(request) });

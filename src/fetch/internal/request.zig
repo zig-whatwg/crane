@@ -250,6 +250,11 @@ pub const ReferrerPolicy = enum {
     unsafe_url,
 };
 
+/// How related a URL is to a request's origin, least related last: same
+/// origin, same site (HTML's schemeful "same site"), or neither - the values
+/// Fetch Metadata's `Sec-Fetch-Site` walks a URL list to.
+pub const SiteRelation = enum(u2) { same_origin, same_site, cross_site };
+
 /// Request origin - either "client" sentinel or actual origin string.
 pub const RequestOrigin = union(enum) {
     /// "client" - will be resolved during fetch
@@ -538,6 +543,17 @@ pub const InternalRequest = struct {
     /// ... redirect and passthrough service worker" cases). Copied by clone:
     /// `new Request(event.request)` keeps it.
     redirect_tainted: bool = false,
+    /// What the hops this request's URL list no longer holds made of its
+    /// `Sec-Fetch-Site` (Fetch Metadata 2.3 walks the whole URL list against
+    /// the request's origin): set, as `redirect_tainted` is, on a service
+    /// worker's request copy (manager.copyRequestForWorker), whose list is
+    /// its hop alone - so that `fetch(event.request)` of a hop after a
+    /// cross-site redirect is cross-site, as the request itself would be
+    /// (whatwg/fetch#1335: the URL list goes through the service worker;
+    /// navigation-headers.https.html's "... redirect and passthrough service
+    /// worker" Sec-Fetch cases). Copied by clone; the Request constructor's
+    /// step 13.8 resets it with the URL list.
+    dropped_urls_site: SiteRelation = .same_origin,
 
     const Self = @This();
 
@@ -852,6 +868,7 @@ pub const InternalRequest = struct {
             .done = self.done,
             .timing_allow_failed = self.timing_allow_failed,
             .redirect_tainted = self.redirect_tainted,
+            .dropped_urls_site = self.dropped_urls_site,
         };
         return new_request;
     }
@@ -1165,6 +1182,17 @@ test "a request whose dropped hops redirect-tainted it serializes its origin as 
     defer copy.deinit();
     try std.testing.expect(copy.redirect_tainted);
     try std.testing.expect(!try copy.redirectTaintIsSameOrigin());
+}
+
+test "a request's dropped hops' Sec-Fetch-Site relation is copied by clone" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "https://a.test/hop");
+    defer request.deinit();
+    try std.testing.expectEqual(SiteRelation.same_origin, request.dropped_urls_site);
+    request.dropped_urls_site = .cross_site;
+    const copy = try request.clone();
+    defer copy.deinit();
+    try std.testing.expectEqual(SiteRelation.cross_site, copy.dropped_urls_site);
 }
 
 test "a request owns its policy container: set, replaced, cloned, released" {
