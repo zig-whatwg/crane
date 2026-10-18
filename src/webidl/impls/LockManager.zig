@@ -192,14 +192,21 @@ fn associatedDocumentFullyActive(instance: *runtime.Instance) bool {
 /// terminate remaining locks and requests with its agent", and "when an agent
 /// terminates" (a worker's realm ends: the steps run for it too). Runs on the
 /// environment's own thread, while its realm still lives.
+///
+/// HTML's not restored reason "lock": "While unloading, held locks and lock
+/// requests were terminated" - so a document whose held locks or requests
+/// this ends is made unsalvageable with it (a record is a request or a lock
+/// still held: each is destroyed once released).
 fn endEnvironment(realm: runtime.Context) void {
     const scope = realm.browser_scope orelse return;
     const registry = scope.existing(web_locks.Registry) orelse return;
     const client = registry.clientOf(realm) orelse return;
+    const was_ended = registry.ended(client);
     registry.terminate(client);
     // The LockManager is the realm's, held until it ends: alive here.
     const instance: *runtime.Instance = @ptrCast(@alignCast(client.owner));
     const internal = getInternal(instance) orelse return;
+    if (!was_ended and internal.records.items.len > 0) dom.bfcache.makeUnsalvageableIn(realm, .lock);
     // Requests that will never be granted: their promises and callbacks go.
     // A held lock's record stays with its waiting promise's reaction.
     var i: usize = 0;

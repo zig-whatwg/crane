@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A task that may wait needs a third answer, and every "is there work" check must ask it](architecture-a-task-that-may-wait-needs-a-third-answer.md) - When a queue gains items that may not run yet, grep every "queue is non-empty" check: each one is a busy-wait or a hang unless it counts only what may run.
 - [An ID index is kept at the link, not in the removing steps](architecture-an-id-index-is-kept-at-the-link-not-in-the-removing-steps.md) - An index of the tree is part of the tree's state: update it where the tree changes, not in the steps that run after, because some of those steps read it.
 - [A shared append hook needs the reason carried with the attribute](architecture-a-shared-append-hook-needs-the-reason-carried-with-the-attribute.md) - If two callers share a hook and only one may skip a check, the reason must travel with the call (Blink's AttributeModificationReason); state the element "notices" cannot tell them apart.
 - [Failing closed needs an allocation-free state that every fast path reads](architecture-fail-closed-needs-an-allocation-free-state-every-fast-path-reads.md) - Fail-closed state must cost no allocation and must live where every reader already looks; route "is there anything to check?" through the type's own method, never through a length a flag cannot change.
@@ -747,6 +748,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Console Label Insertion Must Roll Back on OOM](debugging-console-label-insertion-must-roll-back-on-oom.md) - Failed owned-key allocation must leave the map without the new borrowed entry.
 
 ### Workflow
+- [wpt.fyi's search answers 0/0 for browsers it has no aligned run of - read the runs' raw reports](workflow-wpt-fyi-search-hides-subtests-read-the-runs-raw-report.md) - For a browser-behaviour ruling, read the aligned stable runs' raw report.json - subtest status and message per browser - never the search endpoint's file counts.
 - [leaks --atExit sees only the process it launched - run the WPT runner without --parallel](workflow-leaks-at-exit-sees-only-the-process-it-launched.md) - A leak count of zero means nothing until the same method has found a leak: run a positive control, and make sure the inspected process is the one that ran the code.
 - [Zig optimizes a compilation at its root module's level; a module's own mode is its semantics](workflow-zig-optimizes-a-compilation-at-its-root-module-s-level.md) - The root module's mode is the optimizer; every other module's mode is its semantics. To speed up a binary without losing a module's Debug-only checks, raise the root and leave the module.
 - [`pgrep -f` matches the shell that is running it](workflow-pgrep-f-matches-the-shell-that-is-running-it.md) - Wait on what the process WRITES, not on whether a string is in the process table - the string is in yours too.

@@ -178,6 +178,17 @@ pub const InternalState = struct {
     /// HTML "destroy" has run: the document's browsing context is null. It
     /// stays readable - script elsewhere may hold it - but has no view.
     destroyed: bool = false,
+    /// HTML "bfcache blocking details": the reasons "make document
+    /// unsalvageable" recorded (dom.bfcache), in the order first recorded.
+    bfcache_blocking_details: @import("html_core").navigation.not_restored_reasons.BlockingDetails = .{},
+    /// HTML "suspension time": the current high resolution time of its
+    /// window when it was last unloaded (unload step 15), 0 before. Its
+    /// reactivation shifts the suspended timers by the time since (the
+    /// back/forward cache's phase B).
+    suspension_time: f64 = 0,
+    /// HTML "suspended timer handles": the keys of its window's map of
+    /// active timers when it was last unloaded (unload step 16). OWNED.
+    suspended_timer_handles: []runtime.TimerId = &.{},
     /// HTML "about base URL": the document base URL of the document that
     /// created it, or of the navigation's source document, for an
     /// about:blank or about:srcdoc document; null otherwise. Owned.
@@ -572,6 +583,8 @@ pub const InternalState = struct {
             self.allocator.free(url);
             self.about_base_url = null;
         }
+        self.allocator.free(self.suspended_timer_handles);
+        self.suspended_timer_handles = &.{};
         // A refresh still waiting must not fire into a freed document.
         if (self.declarative_refresh) |refresh| {
             self.declarative_refresh = null;
@@ -867,8 +880,15 @@ pub fn installHooks() void {
     });
     // html's script processing model reaches a document's script state.
     installScriptHooks();
-    // The event loop runs a task only while its document is fully active.
-    @import("dom").document_activity.install(.{ .fully_active = &isFullyActive });
+    // The event loop runs a task only while its document is fully active,
+    // keeps it while the document may be again, and drops it once it cannot.
+    @import("dom").document_activity.install(.{ .activity = &documentActivity });
+    // "Make document unsalvageable", from the steps that end what a cached
+    // document could not keep (WebSocket, LockManager, the navigation code).
+    @import("dom").bfcache.install(.{
+        .make_unsalvageable = &makeUnsalvageable,
+        .blocking_details = &bfcacheBlockingDetails,
+    });
 }
 
 fn templateOwnerDocument(document: *runtime.Instance) !*runtime.Instance {
@@ -935,38 +955,56 @@ fn renderBlockingTime(document: *runtime.Instance) f64 {
     return hr_time.clock.toMilliseconds(@max(0, now - coarsened_origin));
 }
 
-/// dom.document_activity: whether a task's document is fully active - "the
+/// dom.document_activity: a task's document classified - fully active ("the
 /// active document of a navigable navigable, and either navigable is a
 /// top-level traversable or navigable's container document is fully
-/// active". A destroyed document is no navigable's active document; nor is one whose
-/// window is no navigable's active window any more, or whose navigable shows
-/// another. Removing a frame discards its navigable and every one inside it
-/// (BrowsingContext.discard closes them all), so the container documents
-/// need no walk. A document with no window (createHTMLDocument, DOMParser)
-/// is not fully active.
+/// active"), inactive (not fully active, and it may be again: its tasks
+/// wait), or gone (it never can be again: its tasks are dropped).
+///
+/// Gone: a destroyed document (HTML "destroy" step 5 removes its tasks); one
+/// with no window (createHTMLDocument, DOMParser - never given a browsing
+/// context); one whose window is no navigable's active window any more, or
+/// whose navigable has closed. Removing a frame discards its navigable and
+/// every one inside it (BrowsingContext.discard closes them all), so the
+/// container documents need no walk yet (phase C of the back/forward cache,
+/// which keeps frames of a cached page alive, adds it).
+///
+/// Inactive: a live, undestroyed document whose navigable is open but shows
+/// another document. No path reaches it until the back/forward cache keeps
+/// documents (phase B): a document a load replaces loses its window at once
+/// (Window.setDocument), and one being unloaded is still its navigable's
+/// active document while its handlers run.
 ///
 /// A global task on a Window names the Window: its associated Document when
 /// the task runs is the one asked about (see runtime.EventLoopTask.document).
+/// It is never inactive yet: a Window whose navigable moved to another
+/// Window is no navigable's (Navigables.ofWindow), so gone.
 ///
 /// The navigable's own record, not `Window.document`: the event loop asks
 /// with no script running, and the getter's cross-origin check would answer
 /// for whichever realm happens to be current - a message to a cross-origin
 /// or sandboxed frame was dropped that way (the lesson "A frame's load event
 /// has exactly one owner": engine code must not use script's getters).
-fn isFullyActive(object: *runtime.Instance) bool {
+fn documentActivity(object: *runtime.Instance) @import("dom").document_activity.Activity {
     if (object.stateAs(interfaces.Window.State) != null) {
-        const navigable = @import("dom").browser_state.browsingContextOf(object) orelse return false;
-        if (navigable.is_closed) return false;
-        const active = navigable.active_document orelse return true;
-        return isActiveDocumentFullyActive(@ptrCast(@alignCast(active)));
+        const navigable = @import("dom").browser_state.browsingContextOf(object) orelse return .gone;
+        if (navigable.is_closed) return .gone;
+        const active = navigable.active_document orelse return .fully_active;
+        return if (isActiveDocumentFullyActive(@ptrCast(@alignCast(active)))) .fully_active else .gone;
     }
-    const internal = getInternal(object) orelse return false;
-    if (internal.destroyed) return false;
-    const window = internal.default_view orelse return false;
-    const navigable = @import("dom").browser_state.browsingContextOf(window) orelse return false;
-    if (navigable.is_closed) return false;
-    const active = navigable.active_document orelse return true;
-    return active == @as(*anyopaque, @ptrCast(object));
+    const internal = getInternal(object) orelse return .gone;
+    if (internal.destroyed) return .gone;
+    const window = internal.default_view orelse return .gone;
+    const navigable = @import("dom").browser_state.browsingContextOf(window) orelse return .gone;
+    if (navigable.is_closed) return .gone;
+    const active = navigable.active_document orelse return .fully_active;
+    if (active == @as(*anyopaque, @ptrCast(object))) return .fully_active;
+    return .inactive;
+}
+
+/// Whether `object` is fully active (`documentActivity`).
+fn isFullyActive(object: *runtime.Instance) bool {
+    return documentActivity(object) == .fully_active;
 }
 
 /// A navigable's active document, as its own state says: neither unloaded nor
@@ -4221,7 +4259,10 @@ fn abortDocument(document: *runtime.Instance, for_navigation: bool) void {
     if (had_engine and !realm.hasEngine()) return;
     if (runtime.SlabAllocator.generationOf(document) != generation) return;
     const internal = getInternal(document) orelse return;
-    if (canceled) internal.salvageable = false;
+    // Step 2: "If this resulted in any instances of the fetch algorithm
+    // being canceled ..., then make document unsalvageable given document
+    // and "fetch"."
+    if (canceled) makeUnsalvageable(document, .fetch);
     internal.parsing_end_waiting_on_scripts = false;
     if (internal.input_stream_manager == null and internal.active_parser == null) return;
     if (internal.active_parser) |failed| if (failed.trace_failure != null) {
@@ -4232,7 +4273,9 @@ fn abortDocument(document: *runtime.Instance, for_navigation: bool) void {
         const cleanup_call = failed.protectForCleanup() catch return;
         defer cleanup_call.deinit();
         internal.active_parser_was_aborted = true;
-        internal.salvageable = false;
+        // Step 4.3: "Make document unsalvageable given document and
+        // "parser-aborted"."
+        makeUnsalvageable(document, .parser_aborted);
         @import("html").script_execution.discardParserScripts(document);
         if (had_engine and !realm.hasEngine()) return;
         if (runtime.SlabAllocator.generationOf(document) != generation) return;
@@ -4249,7 +4292,9 @@ fn abortDocument(document: *runtime.Instance, for_navigation: bool) void {
         null;
     defer if (parser_call) |held| held.deinit();
     internal.active_parser_was_aborted = true;
-    internal.salvageable = false;
+    // Step 4.3: "Make document unsalvageable given document and
+    // "parser-aborted"."
+    makeUnsalvageable(document, .parser_aborted);
     @import("html").script_execution.discardParserScripts(document);
     // "Abort a parser", steps 1-2 discard the input, step 3 announces
     // interactive, step 4 pops the open elements, then step 5 is complete.
@@ -4269,6 +4314,22 @@ fn abortDocument(document: *runtime.Instance, for_navigation: bool) void {
         current.insertion_point = null;
     }
     engine.runInRealm(realm, becomeComplete, document) catch {};
+}
+
+/// dom.bfcache: HTML "make document unsalvageable" given `document` and
+/// `reason`: "1. Let details be a new not restored reason details whose
+/// reason is reason. 2. Append details to document's bfcache blocking
+/// details. 3. Set document's salvageable state to false."
+fn makeUnsalvageable(document: *runtime.Instance, reason: @import("dom").bfcache.Reason) void {
+    const internal = getInternal(document) orelse return;
+    internal.bfcache_blocking_details.append(reason);
+    internal.salvageable = false;
+}
+
+/// dom.bfcache: `document`'s bfcache blocking details, BORROWED.
+fn bfcacheBlockingDetails(document: *runtime.Instance) []const @import("dom").bfcache.Reason {
+    const internal = getInternal(document) orelse return &.{};
+    return internal.bfcache_blocking_details.items();
 }
 
 /// "Abort a document and its descendants", step 3.2.
@@ -4633,7 +4694,8 @@ fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
 ///
 /// Step 5: Crane keeps no document alive for history traversal, so
 /// intendToKeepInBfcache is false and the document is not salvageable.
-/// Steps 16 and 18-20 (suspended timers, cleanup steps, destroy) are the
+/// Steps 15-16 (suspension time, suspended timer handles) and 20 (destroy)
+/// run here; steps 18-19 (cleanup steps, not restored reasons) are the
 /// navigable's: navigation clears the window's timers once this returns.
 fn lifecycleUnload(document: *runtime.Instance) void {
     engine.runInRealm(document.ctx, unloadSteps, document) catch |err| {
@@ -4671,9 +4733,24 @@ fn unloadSteps(data: ?*anyopaque) void {
     // Step 14.
     termination_nesting.leave();
     terminating = false;
-    // Step 19: "If oldDocument's salvageable state is false, then destroy
+    // Steps 15-16: "Set oldDocument's suspension time to the current high
+    // resolution time given document's relevant global object", and its
+    // "suspended timer handles to the result of getting the keys for the map
+    // of active timers". Read by reactivation (the back/forward cache's
+    // phase B); a document destroyed below never is.
+    recordSuspension(document, internal);
+    // Step 20: "If oldDocument's salvageable state is false, then destroy
     // oldDocument." Its handlers above still saw it fully active.
     if (!internal.salvageable) lifecycleDestroy(document);
+}
+
+/// "Unload a document" steps 15-16 for `document`. Out of memory, the handles
+/// are left empty: a reactivation then shifts no timer, as if none were set.
+fn recordSuspension(document: *runtime.Instance, internal: *InternalState) void {
+    internal.suspension_time = renderBlockingTime(document);
+    const handles: []runtime.TimerId = @import("dom").window_documents.activeTimerHandles(document.ctx, internal.allocator) catch &.{};
+    internal.allocator.free(internal.suspended_timer_handles);
+    internal.suspended_timer_handles = handles;
 }
 
 /// dom.document_lifecycle: HTML "destroy" `document` (§7.5.5), the steps
