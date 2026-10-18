@@ -424,6 +424,22 @@ pub const CSPList = struct {
 
     const Self = @This();
 
+    /// The list a decision is made against when the policy container that
+    /// holds the real one cannot be found - a Document with no internal
+    /// state, a Window with no document. Not knowing the policies is not
+    /// "no policies": an empty, unenforceable list, so every decision
+    /// against it is "Blocked", exactly as for a policy that could not be
+    /// recorded. Static and read-only: reading it, or copying it
+    /// (parsing.copyList, which keeps the flag), allocates nothing - the
+    /// state a fail-closed path needs (docs/lessons/architecture-fail-closed-
+    /// needs-an-allocation-free-state-every-fast-path-reads.md). Never
+    /// appended to or deinit.
+    pub const unavailable: Self = .{
+        .policies = .empty,
+        .allocator = std.mem.Allocator.failing,
+        .unenforceable = true,
+    };
+
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
             .policies = .empty,

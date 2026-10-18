@@ -621,10 +621,23 @@ fn settingsFetchGroup(instance: *runtime.Instance) ?*@import("dom").document_fet
 
 /// The settings object's policy container: the window's associated
 /// Document's (HTML 7.1.6), reached through dom.policy_containers.
+///
+/// A container that cannot be found - a Window with no state, or one whose
+/// document has no Document state (a Registry entry gone) - answers the
+/// static PolicyContainer.unavailable, against which every CSP decision is
+/// "Blocked". Null read as "this global keeps none": its requests stayed on
+/// "client" and main fetch checked no CSP, and its eval, Function, wasm and
+/// Trusted Types checks allowed everything (lane leaks4's report).
+///
+/// A Window not given a document yet keeps none (null), as before: nothing
+/// has delivered a policy to it. HTML has no such Window; Crane makes one
+/// while a realm is set up, and tests/v8 realms run script in one (an
+/// innerHTML there is not a Trusted Types violation).
 fn settingsPolicyContainer(instance: *runtime.Instance) ?*const @import("fetch").internal.PolicyContainer {
-    const internal = getInternal(instance) orelse return null;
+    const unavailable = &@import("fetch").internal.PolicyContainer.unavailable;
+    const internal = getInternal(instance) orelse return unavailable;
     const document = internal.document orelse return null;
-    return @import("dom").policy_containers.of(document);
+    return @import("dom").policy_containers.of(document) orelse unavailable;
 }
 
 /// Referrer Policy 8.3 step 3.1.3: while the document is srcdoc, use its

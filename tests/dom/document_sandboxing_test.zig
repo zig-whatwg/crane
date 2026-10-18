@@ -24,6 +24,9 @@ const Fixture = struct {
     ctx_data: runtime.ContextData,
 
     fn init(self: *Fixture) !void {
+        // The hooks these documents answer through (no Browser here:
+        // crane.Process is not started).
+        interfaces.process_hooks.startHooksForTest();
         runtime.initializeRuntime(testing.allocator);
         self.ctx_data = try runtime.ContextData.init(testing.allocator, .{});
     }

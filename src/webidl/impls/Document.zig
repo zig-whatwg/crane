@@ -5675,7 +5675,10 @@ pub fn isInlineScriptAllowedByCSP(
     nonce: ?[]const u8,
     parser_inserted: bool,
 ) bool {
-    const internal = getInternal(instance) orelse return true; // No document = allow
+    // A document with no internal state has no policy container to read:
+    // not knowing its policies fails closed (csp.CSPList.unavailable). It
+    // used to allow ("No document = allow").
+    const internal = getInternal(instance) orelse return false;
     if (internal.policy_container.csp_list.isEmpty()) return true;
     // CSP §4.2.3 uses the same nonce eligibility and violation-reporting
     // algorithm for inline scripts as for the other inline behaviors.

@@ -71,10 +71,12 @@ pub fn shouldBlockInline(
     // 1. "Assert: element is not null."
     // "element's Document's global object's CSP list": a Window's is its
     // associated Document's policy container's (§4.2.2); a document with no
-    // window is read the same way, its own container.
-    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
-    const container = policy_containers.of(document) orelse return false;
-    if (container.csp_list.isEmpty()) return false;
+    // window is read the same way, its own container. One that cannot be
+    // found fails closed (`documentCspList`): an element always has a node
+    // document, and not knowing its policies is not having none.
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return true;
+    const list = documentCspList(document);
+    if (list.isEmpty()) return false;
     var eligible = matching;
     // §6.7.3.1 steps 1-2, reached by §6.7.3.3 step 2: a supplied nonce
     // cannot authorize a script with dangling markup in an attribute. Read
@@ -98,11 +100,11 @@ pub fn shouldBlockInline(
     const window: ?*runtime.Instance = interfaces.Document.get_defaultView(document) catch null;
     // A list that could not record a policy blocks everything (fail closed,
     // csp.CSPList.unenforceable).
-    if (container.csp_list.blocksEverything()) return true;
+    if (list.blocksEverything()) return true;
     // 2. Let result be "Allowed".
     var blocked = false;
     // 3. For each policy of the CSP list:
-    for (container.csp_list.policies.items) |*policy| {
+    for (list.policies.items) |*policy| {
         // 3.1.1. A directive whose inline check allows it is skipped.
         const directive = csp.inline_check.blockingDirective(policy, eligible, inline_type, source) orelse continue;
         // 3.1.2-3.1.7. A violation of the effective directive for inline
@@ -226,11 +228,25 @@ const ElementReporter = struct {
 /// A caller skips it when the target is the initiator: its list was just
 /// checked.
 pub fn shouldTargetBlockJavascriptUrl(target_window: *runtime.Instance, url: []const u8) bool {
-    const document = windowDocument(target_window) orelse return false;
-    const container = policy_containers.of(document) orelse return false;
-    if (container.csp_list.isEmpty()) return false;
+    // A target whose document - or its policy container - cannot be found
+    // fails closed (`documentCspList`).
+    const document = windowDocument(target_window) orelse return true;
+    const list = documentCspList(document);
+    if (list.isEmpty()) return false;
     const request = csp.navigation_check.NavigationRequest.ofSerialized(url);
-    return csp.navigation_check.javascriptUrlInlineChecks(&container.csp_list, request, reporterFor(target_window)) == .blocked;
+    return csp.navigation_check.javascriptUrlInlineChecks(list, request, reporterFor(target_window)) == .blocked;
+}
+
+/// `document`'s CSP list - its policy container's - for a decision against
+/// it; csp.CSPList.unavailable when the container cannot be found (a
+/// Document with no internal state), against which every decision is
+/// "Blocked". A missing container used to read as "no policies" (`orelse
+/// return false`), and every host check allowed what the document's real
+/// policies might have blocked (lane leaks4's report). BORROWED for as long
+/// as the document lives; the unavailable list is static.
+pub fn documentCspList(document: *runtime.Instance) *const csp.CSPList {
+    const container = policy_containers.of(document) orelse return &csp.CSPList.unavailable;
+    return &container.csp_list;
 }
 
 /// The reporter for violations of `global`'s policies (a Window's or a

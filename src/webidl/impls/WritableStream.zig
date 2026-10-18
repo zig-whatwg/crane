@@ -10,6 +10,7 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
+const engine = @import("engine");
 const WritableStream = interfaces.WritableStream;
 const js = @import("streams_js.zig");
 const sw = @import("streams_writable.zig");
@@ -37,8 +38,16 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// `new WritableStream(underlyingSink, strategy)` - § 5.2.4.
 pub fn call_constructor(ctx: runtime.Context, underlyingSink: webidl.Opt(runtime.JSValue), strategy: webidl.Opt(dictionaries.QueuingStrategy)) !*runtime.Instance {
-    const realm = try js.Realm.ofContext(ctx);
     const strat = if (strategy.was_passed) strategy.value else dictionaries.QueuingStrategy{};
+    // The strategy's `size` callback is this constructor's from here: the
+    // binding hands a callback member over (it adopts the handle Get made
+    // for it), and only step 5's ExtractSizeAlgorithm takes it. Every return
+    // before that releases it - step 1 or 2 throwing, step 3's RangeError -
+    // or its Global stays for the agent's life (as ReadableStream's did:
+    // lane leaks4, c12bba6177d).
+    var size_callback = strat.size;
+    errdefer if (size_callback) |size| engine.takeCallbackFunction(@ptrCast(size)).release();
+    const realm = try js.Realm.ofContext(ctx);
 
     // Step 1: If underlyingSink is missing, set it to null. It is typed
     // `object`, so undefined is "missing" and every other non-object throws.
@@ -63,7 +72,9 @@ pub fn call_constructor(ctx: runtime.Context, underlyingSink: webidl.Opt(runtime
     var sink: ?sw.Sink = sw.sinkFromUnderlyingSink(dict);
     errdefer if (sink) |s| s.vtable.deinit(s.ctx, ctx.allocator);
 
-    // Step 5: Let sizeAlgorithm be ! ExtractSizeAlgorithm(strategy).
+    // Step 5: Let sizeAlgorithm be ! ExtractSizeAlgorithm(strategy). It
+    // takes the callback, and releases it itself if it fails.
+    size_callback = null;
     var size = try sw.extractSizeAlgorithm(strat);
     errdefer if (size == .callback) js.dispose(size.callback);
 
