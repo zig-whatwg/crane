@@ -99,8 +99,6 @@ tests/cookiestore/integration_test.zig CookieStoreManager.CookieSubscription 3
 tests/cookiestore/integration_test.zig CookieStoreManager.InternalState 6
 tests/cookiestore/query_items_test.zig CookieStore.freeItems 6
 tests/cookiestore/query_items_test.zig CookieStore.queryItems 6
-tests/dom/characterdata_sso_test.zig CharacterData.INLINE_TEXT_CAPACITY 1
-tests/dom/characterdata_sso_test.zig CharacterData.InternalState 1
 tests/dom/worker_script_url_test.zig Worker.resolveScriptURL 4
 tests/v8/sa_transform_setup_oom_test.zig TransformStream.streams_transform 1
 tests/v8/streams_wrap_test.zig Response.streams_js 1
