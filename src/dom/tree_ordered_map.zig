@@ -239,6 +239,9 @@ pub const Maps = struct {
     /// How many of `map`'s keys no element has any more (kept for reuse;
     /// `remove` says how long).
     empty_slots: u32 = 0,
+    /// The most keys elements had at once since the last sweep of the
+    /// emptied ones: what bounds how many emptied keys are kept.
+    live_peak: u32 = 0,
 
     pub fn init(allocator: std.mem.Allocator, scope: Scope) Maps {
         return .{ .allocator = allocator, .scope = scope };
@@ -268,6 +271,7 @@ pub const Maps = struct {
         self.map.clearRetainingCapacity();
         self.totals = .initFill(0);
         self.empty_slots = 0;
+        self.live_peak = 0;
     }
 
     /// An allocation failed, or the maps were found inexact: empty them and
@@ -295,6 +299,7 @@ pub const Maps = struct {
                 return err;
             };
             gop.value_ptr.* = .initFill(.{});
+            self.live_peak = @max(self.live_peak, self.map.count() - self.empty_slots);
         } else if (slotIsEmpty(gop.value_ptr)) {
             self.empty_slots -= 1;
         }
@@ -337,12 +342,13 @@ pub const Maps = struct {
         }
         if (!slotIsEmpty(slot)) return;
         // Its key stays for the next element that has it - a churn of the
-        // same elements makes no key copy per insertion - until the emptied
-        // keys outnumber the kept ones, when they all go: memory is bounded
-        // by twice the scope's keys, and each sweep is paid for by as many
-        // removals as it visits.
+        // same elements (all removed, then all put back) makes no key copy
+        // and no hash insert - until the emptied keys outnumber the most the
+        // scope had live at once since the last sweep (and 64), when they
+        // all go: kept keys are bounded by twice the scope's peak, and each
+        // sweep is paid for by at least as many removals as it visits.
         self.empty_slots += 1;
-        if (self.empty_slots > @max(64, self.map.count() - self.empty_slots)) self.sweepEmptySlots();
+        if (self.empty_slots > @max(64, self.live_peak)) self.sweepEmptySlots();
     }
 
     fn sweepEmptySlots(self: *Maps) void {
@@ -354,6 +360,7 @@ pub const Maps = struct {
             self.allocator.free(owned);
         }
         self.empty_slots = 0;
+        self.live_peak = self.map.count();
     }
 
     fn inexact(self: *Maps, comptime what: []const u8, key: []const u8) void {
@@ -563,9 +570,9 @@ pub const OldName = union(enum) {
 
 /// Before `element`'s ID changes, or after its name attribute did: take it
 /// out of its tree scope's maps as they hold it - its current ID, and
-/// `old_name` or its current name. Null when it is in no tree scope.
-pub fn beginChange(element: *runtime.Instance, old_name: OldName) ?Change {
-    const data = element_data.of(element) orelse return null;
+/// `old_name` or its current name. Null when it is in no tree scope. `data`
+/// is the element's own (Element passes it: no lookup).
+pub fn beginChange(element: *runtime.Instance, data: *const element_data.ElementData, old_name: OldName) ?Change {
     var facts = factsOfData(data);
     switch (old_name) {
         .current => {},
@@ -576,6 +583,9 @@ pub fn beginChange(element: *runtime.Instance, old_name: OldName) ?Change {
         },
     }
     const node = instance_bridge.getNodeBase(element) orelse return null;
+    // A parentless element is its own tree's root, no tree scope: the
+    // parser's and createElement's attributes, set before insertion.
+    if (node.parent_node == null) return null;
     const maps = mapsOfRoot(rootOf(node)) orelse return null;
     if (maps.degraded) return null;
     const member = Link.to(element);
@@ -584,10 +594,9 @@ pub fn beginChange(element: *runtime.Instance, old_name: OldName) ?Change {
 }
 
 /// After `element`'s ID or name changed: put it back as it is now.
-pub fn endChange(element: *runtime.Instance, change: ?Change) void {
+pub fn endChange(data: *const element_data.ElementData, change: ?Change) void {
     const taken = change orelse return;
     if (taken.maps.degraded) return;
-    const data = element_data.of(element) orelse return;
     const facts = factsOfData(data);
     if (facts.hasKeys()) taken.maps.register(facts, taken.member);
 }

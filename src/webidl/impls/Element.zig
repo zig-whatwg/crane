@@ -1056,9 +1056,9 @@ fn attributeChangeSteps(
         if (sameAttributeValue(old_value, value)) {
             replaceCachedValue(internal, &internal.data.id, value);
         } else {
-            const change = dom.tree_ordered_map.beginChange(instance, .current);
+            const change = dom.tree_ordered_map.beginChange(instance, &internal.data, .current);
             replaceCachedValue(internal, &internal.data.id, value);
-            dom.tree_ordered_map.endChange(instance, change);
+            dom.tree_ordered_map.endChange(&internal.data, change);
         }
     } else if (std.mem.eql(u8, local_name, "name")) {
         // domindex1: and its name attribute, which names embed, form,
@@ -1066,7 +1066,7 @@ fn attributeChangeSteps(
         // Element::updateName) - an img's ID too, while the name is
         // non-empty.
         if (!sameAttributeValue(old_value, value)) {
-            dom.tree_ordered_map.endChange(instance, dom.tree_ordered_map.beginChange(instance, .{ .was = old_value orelse "" }));
+            dom.tree_ordered_map.endChange(&internal.data, dom.tree_ordered_map.beginChange(instance, &internal.data, .{ .was = old_value orelse "" }));
         }
     } else if (std.mem.eql(u8, local_name, "class")) {
         replaceCachedValue(internal, &internal.data.class_name, value);
