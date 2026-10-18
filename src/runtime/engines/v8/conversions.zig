@@ -3100,6 +3100,66 @@ pub fn dictionaryValueIsOwned(comptime T: type) bool {
     return isDictionaryValue(T);
 }
 
+/// Release what a dictionary an operation RETURNED hands over with its
+/// JavaScript values: each runtime.JSValue member's `.handle` (a member of
+/// its inherited dictionary included), once toV8Value has built the object
+/// from it - or failed to.
+///
+/// The rule: a JSValue member of a returned dictionary is handed to the
+/// binding with engine.Owned.take(), exactly as a JSValue result is
+/// (convertReturnValue's runtime.JSValue case), so the binding owns it.
+/// toV8Value cannot know that - a `.handle` member of a dictionary it
+/// converts anywhere else is the impl's own (`memberValueIsOwned`) - so it
+/// keeps it, and V8 has copied the value into the object by the time this
+/// runs. Kept, NavigationResult's committed and finished promises leaked two
+/// Globals per navigation API call: 1,154 of the 1,170 leaks under leaks
+/// --atExit over navigation-api/ (lane leaks5).
+///
+/// Every other arm is not a hold: undefined, null, a boolean, a number and
+/// a string are values, and an `.instance` converts to the wrapper cache's
+/// wrapper. A member not set (null, an Opt not passed) holds nothing.
+///
+/// The same holds for a [Default] toJSON record (codegen's `default_to_json`
+/// struct), which an operation returns the same way. Audited 2026-10-18:
+/// only NavigationResult hands a `.handle` over today. The other returned
+/// dictionaries with a runtime.JSValue member (EffectTiming,
+/// ComputedEffectTiming, MediaTrackCapabilities, MediaTrackSettings,
+/// AuthenticationExtensionsClientOutputs) and toJSON records with one
+/// (NotRestoredReasons, PaymentResponse, DigitalCredential,
+/// PerformanceNavigationTiming, PerformanceLongTaskTiming, ContactAddress,
+/// LayoutShift, PerformanceLongAnimationFrameTiming) are NotImplemented;
+/// PerformanceResourceTiming's sets serverTiming to undefined, waiting for
+/// this member ownership (its call_toJSON says so). An impl must never put a
+/// handle it keeps into one: hand over a hold (engine.retainValue(...).take()).
+/// tests/v8/returned_dictionary_handles_test.zig pins it.
+pub fn releaseReturnedDictionaryHandles(comptime T: type, value: T) void {
+    @setEvalBranchQuota(100_000);
+    if (comptime !isDictionaryValue(T)) return;
+    inline for (std.meta.fields(T)) |field| {
+        const field_value = @field(value, field.name);
+        if (comptime isInheritedDictionaryField(field)) {
+            releaseReturnedDictionaryHandles(field.type, field_value);
+        } else {
+            releaseReturnedMember(field.type, field_value);
+        }
+    }
+}
+
+/// One member of a returned dictionary (`releaseReturnedDictionaryHandles`):
+/// a runtime.JSValue's `.handle`, through an optional or a webidl.Opt.
+fn releaseReturnedMember(comptime M: type, value: M) void {
+    if (comptime M == runtime.JSValue) {
+        switch (value) {
+            .handle => |h| v8.v8_Global_Dispose(@ptrCast(@alignCast(h.ptr))),
+            else => {},
+        }
+    } else if (comptime @typeInfo(M) == .optional) {
+        if (value) |child| releaseReturnedMember(@typeInfo(M).optional.child, child);
+    } else if (comptime isOptValue(M)) {
+        if (value.wasPassed()) releaseReturnedMember(@TypeOf(value.getValue()), value.getValue());
+    }
+}
+
 /// Whether toV8Value(T, ..., value) of a union `T` is a Global made for the
 /// call: toV8Value converts the ACTIVE member as a value of its own type, so
 /// the member decides, by the rule any value put into an object follows

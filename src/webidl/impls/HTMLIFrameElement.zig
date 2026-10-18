@@ -668,21 +668,36 @@ fn inRealm(realm: runtime.Context, comptime steps: anytype, args: anytype) bool 
 /// fetch a relative URL, and the navigation failed silently - so an iframe
 /// with `src="resources/x.html"` simply never loaded. That is most of WPT:
 /// the 52 moving-between-documents files all waited on such a frame.
-fn resolveSrc(instance: *runtime.Instance, src: []const u8) []const u8 {
+///
+/// error.OutOfMemory when the URL cannot be made: the caller starts no
+/// navigation. Every step here used to `catch unreachable` an allocation
+/// failure, so an iframe src navigation (an attribute set, srcdoc removed)
+/// out of memory was a panic (lane leaks4's iframe sweep); and the parse and
+/// the serialization read out of memory as "does not parse", which
+/// navigated to about:blank instead.
+fn resolveSrc(instance: *runtime.Instance, src: []const u8) error{OutOfMemory}![]const u8 {
     const allocator = instance.ctx.allocator;
     const blank = "about:blank";
-    if (src.len == 0) return allocator.dupe(u8, blank) catch unreachable;
-    const base = interfaces.Node.get_baseURI(instance) catch
-        return allocator.dupe(u8, src) catch unreachable;
+    if (src.len == 0) return allocator.dupe(u8, blank);
+    const base = interfaces.Node.get_baseURI(instance) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return allocator.dupe(u8, src),
+    };
     defer allocator.free(base);
     const base_arg = if (base.len > 0)
         webidl.Opt(runtime.USVString).passed(base)
     else
         webidl.Opt(runtime.USVString).notPassed();
-    const url = (interfaces.URL.call_static_parse(instance, src, base_arg) catch null) orelse
-        return allocator.dupe(u8, blank) catch unreachable;
+    const parsed = interfaces.URL.call_static_parse(instance, src, base_arg) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => null,
+    };
+    const url = parsed orelse return allocator.dupe(u8, blank);
     defer runtime.Instance.deinit(url);
-    return interfaces.URL.get_href(url) catch allocator.dupe(u8, blank) catch unreachable;
+    return interfaces.URL.get_href(url) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return allocator.dupe(u8, blank),
+    };
 }
 
 /// Location URL update callback for iframes
@@ -1279,16 +1294,22 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // snapshot params given sourceDocument" - its source policy container a
     // clone of sourceDocument's policy container.
     if (options.source_document) |source| {
-        if (dom_module.policy_containers.of(source)) |container| {
-            // Fails closed: a navigation whose source policies could not be
-            // snapshotted does not start. Null here gave a local (about:,
-            // blob:, data:) document a new, empty container - no CSP - at
-            // "determine navigation params policy container" step 4.
-            record.initiator_policy_container = container.clone(allocator) catch {
-                record.destroy();
-                return;
-            };
-        }
+        // Fails closed: a navigation whose source policies could not be
+        // snapshotted does not start - out of memory, or a source document
+        // whose container cannot be found (no internal state: not knowing
+        // its policies is not having none). Null here gave a local (about:,
+        // blob:, data:) document a new, empty container - no CSP - at
+        // "determine navigation params policy container" step 4, and let a
+        // javascript: URL skip its CSP check.
+        const container = dom_module.policy_containers.of(source) orelse {
+            log.warn("[navigation] the source document of {s} has no policy container: the navigation does not start", .{url});
+            record.destroy();
+            return;
+        };
+        record.initiator_policy_container = container.clone(allocator) catch {
+            record.destroy();
+            return;
+        };
         // The source snapshot params' fetch client is sourceDocument's
         // relevant settings object: the request's client, whose global a
         // violation of the request is (CSP 2.4.2).
@@ -1311,13 +1332,17 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // snapshot params given navigable's active document".
     if (options.traversal_entry != 0 and options.source_document == null) {
         if (active) |doc| {
-            if (dom_module.policy_containers.of(doc)) |container| {
-                // Fails closed, as the source snapshot above does.
-                record.traversal_policy_container = container.clone(allocator) catch {
-                    record.destroy();
-                    return;
-                };
-            }
+            // Fails closed, as the source snapshot above does - a container
+            // that cannot be found included.
+            const container = dom_module.policy_containers.of(doc) orelse {
+                log.warn("[navigation] the active document of {s} has no policy container: the traversal does not start", .{url});
+                record.destroy();
+                return;
+            };
+            record.traversal_policy_container = container.clone(allocator) catch {
+                record.destroy();
+                return;
+            };
         }
     }
     // Step 5: "Let initiatorBaseURLSnapshot be sourceDocument's document base
@@ -2231,9 +2256,13 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
     const is_local = std.mem.eql(u8, scheme, "about") or std.mem.eql(u8, scheme, "blob") or std.mem.eql(u8, scheme, "data");
     var result = blk: {
         // 2. A srcdoc document inherits its container document's policies.
+        // A container document whose container cannot be found stops the
+        // navigation (runCommit): the srcdoc document is not made with a
+        // new, empty one in its place.
         if (record.srcdoc != null or navigate_steps.matchesAboutSrcdoc(response_url)) {
             if (containerDocumentOf(integration)) |parent| {
-                if (dom_module.policy_containers.of(parent)) |container| break :blk try container.clone(allocator);
+                const container = dom_module.policy_containers.of(parent) orelse return error.NoPolicyContainer;
+                break :blk try container.clone(allocator);
             }
         }
         // 3. A local response inherits its initiator's policy container.
@@ -2270,16 +2299,16 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
     // embedding document's insecure requests policy is Upgrade has Upgrade,
     // and so does every Document created in it.
     if (containerDocumentOf(integration)) |parent| {
-        if (dom_module.policy_containers.of(parent)) |container| {
-            if (container.upgradesInsecureRequests()) result.inherited_upgrade_insecure_requests = true;
-            // UIR 3.3: the new document owns a snapshot of the parent's
-            // inherited and own navigation opt-ins, independent of later
-            // policy changes in that parent.
-            result.inheritUpgradeInsecureNavigations(container) catch |err| {
-                result.deinit();
-                return err;
-            };
-        }
+        // An embedding document whose container cannot be found stops the
+        // navigation, as above: its insecure requests policy is not known.
+        const container = dom_module.policy_containers.of(parent) orelse return error.NoPolicyContainer;
+        if (container.upgradesInsecureRequests()) result.inherited_upgrade_insecure_requests = true;
+        // UIR 3.3: the new document owns a snapshot of the parent's
+        // inherited and own navigation opt-ins, independent of later
+        // policy changes in that parent. Its failure is released by the
+        // errdefer above, once: this used to deinit `result` here as well,
+        // a double deinit on out of memory.
+        try result.inheritUpgradeInsecureNavigations(container);
     }
     return result;
 }
@@ -3296,11 +3325,11 @@ fn javascriptNavigationInRealm(integration: *IFrameIntegration, record: *Navigat
     // document it replaces, not its initiator's (whatever navigated it).
     // Taken before that document unloads.
     if (active) |old| {
-        if (dom_module.policy_containers.of(old)) |container| {
-            // Fails closed: no String document without the policies it
-            // keeps (null gave it a new, empty container).
-            record.javascript_policy_container = container.clone(integration.allocator) catch return endLoadDelay(integration);
-        }
+        // Fails closed: no String document without the policies it keeps
+        // (null gave it a new, empty container) - out of memory, or a
+        // replaced document whose container cannot be found.
+        const container = dom_module.policy_containers.of(old) orelse return endLoadDelay(integration);
+        record.javascript_policy_container = container.clone(integration.allocator) catch return endLoadDelay(integration);
     }
     // Step 13: "Let finalSandboxFlags be policyContainer's CSP list's
     // CSP-derived sandboxing flags". Deviation, stated (golden rule 2): the
@@ -3873,8 +3902,12 @@ fn processIframeAttributes(element: *runtime.Instance, initial_insertion: bool) 
         navigateIframeOrFrame(element, "about:srcdoc", markup, initial_insertion);
         return;
     }
-    // Step 2.1: the shared attribute processing steps.
-    const url = sharedAttributeProcessingSteps(element) orelse return;
+    // Step 2.1: the shared attribute processing steps. Out of memory starts
+    // no navigation: the frame keeps the document it has.
+    const url = (sharedAttributeProcessingSteps(element) catch |err| {
+        log.warn("[navigation] an iframe's src could not be processed: {s}", .{@errorName(err)});
+        return;
+    }) orelse return;
     defer element.ctx.allocator.free(url);
     // Step 2.3: a URL that matches about:blank, on initial insertion, is not
     // navigated to: the frame keeps its initial about:blank document - whose
@@ -3894,12 +3927,12 @@ fn processIframeAttributes(element: *runtime.Instance, initial_insertion: bool) 
 /// ancestor navigables already show it (step 3: no infinite nesting - see
 /// ancestorShows for the one level engines allow).
 /// Step 4 (URL and history update steps for about:blank?query) is not
-/// modelled.
-fn sharedAttributeProcessingSteps(element: *runtime.Instance) ?[]const u8 {
+/// modelled. error.OutOfMemory when the URL cannot be made (`resolveSrc`).
+fn sharedAttributeProcessingSteps(element: *runtime.Instance) error{OutOfMemory}!?[]const u8 {
     const ElementImpl = @import("Element.zig");
     const src = ElementImpl.call_getAttribute(element, runtime.DOMString.initInterned("src")) catch null;
     const value: []const u8 = if (src) |s| s.asSlice() else "";
-    const url = resolveSrc(element, value);
+    const url = try resolveSrc(element, value);
     if (ancestorShows(element, url)) {
         element.ctx.allocator.free(url);
         return null;
@@ -3937,7 +3970,9 @@ fn ancestorShows(element: *runtime.Instance, url: []const u8) bool {
     var found_one_self_reference = false;
     while (document) |doc| : (depth += 1) {
         if (depth > 32) return false;
-        const doc_url = documentUrlOf(doc, element.ctx.allocator) catch return false;
+        // Out of memory reads as a match: the navigation does not start,
+        // rather than nest without the check.
+        const doc_url = documentUrlOf(doc, element.ctx.allocator) catch return true;
         defer element.ctx.allocator.free(doc_url);
         if (navigate_steps.equalsExcludingFragments(doc_url, url)) {
             if (found_one_self_reference) return true;
@@ -3962,8 +3997,12 @@ fn processFrameAttributes(element: *runtime.Instance, integration: *IFrameIntegr
     if (integration.state == .discarded or integration.browsing_context == null) return;
     // Step 1: "Let url be the result of running the shared attribute
     // processing steps for iframe and frame elements given element and
-    // initialInsertion." Step 2: "If url is null, then return."
-    const url = sharedAttributeProcessingSteps(element) orelse return;
+    // initialInsertion." Step 2: "If url is null, then return." Out of
+    // memory starts no navigation either.
+    const url = (sharedAttributeProcessingSteps(element) catch |err| {
+        log.warn("[navigation] a frame's src could not be processed: {s}", .{@errorName(err)});
+        return;
+    }) orelse return;
     defer element.ctx.allocator.free(url);
     // Step 3: "If url matches about:blank and initialInsertion is true: fire
     // an event named load at element" - the frame keeps its initial
@@ -4115,11 +4154,16 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
         return null;
     }
 
+    // No window to answer - a navigable left with no realm (a navigation
+    // whose new realm could not be made), a child navigable that could not
+    // be made, a realm with no Window - is null: "no content window". It
+    // used to answer the integration's WindowProxy, a Zig struct inside
+    // IFrameIntegration, cast to the WindowProxy typedef (*runtime.Instance):
+    // script and Zig callers read the struct's bytes as a Window's state, a
+    // type confusion (lane leaks5; probably the Document with no internal
+    // state lane leaks4's iframe sweep saw through contentWindow).
     if (!internal.integration.hasRealmContext()) {
-        if (!createChildNavigable(instance)) {
-            if (internal.integration.getContentWindow()) |proxy| return @ptrCast(proxy);
-            return null;
-        }
+        if (!createChildNavigable(instance)) return null;
     }
 
     // Return the Window of the navigable's realm. The Window IS bound to the
@@ -4132,10 +4176,6 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
         }
     }
 
-    // Fall back to old WindowProxy behavior if no Window instance available
-    if (internal.integration.getContentWindow()) |proxy| {
-        return @ptrCast(proxy);
-    }
     return null;
 }
 
@@ -4297,10 +4337,22 @@ fn initialDocumentOrigin(window_origin: ?[]const u8, creator: ?*runtime.Instance
 /// Give `document` a clone of `from`'s policy container (HTML "clone a
 /// policy container"): an initial about:blank document's creator's, a
 /// srcdoc document's parent's, a local URL's initiator's.
+///
+/// Fails closed: when `from`'s container cannot be found, or its clone
+/// cannot be made (out of memory), `document`'s own CSP list becomes
+/// unenforceable (csp.CSPList.unenforceable, allocation-free), and every CSP
+/// decision against it is "Blocked". Both returns used to leave `document`
+/// the new, empty container it was made with: no CSP at all.
 fn inheritPolicyContainer(document: *runtime.Instance, from: *runtime.Instance) void {
-    const source = dom_module.policy_containers.of(from) orelse return;
-    const clone = source.clone(document.ctx.allocator) catch return;
+    const source = dom_module.policy_containers.of(from) orelse return failInheritanceClosed(document);
+    const clone = source.clone(document.ctx.allocator) catch return failInheritanceClosed(document);
     dom_module.policy_containers.set(document, clone);
+}
+
+fn failInheritanceClosed(document: *runtime.Instance) void {
+    log.warn("[navigation] a document could not inherit its creator's policy container: its CSP list fails closed", .{});
+    const own = dom_module.policy_containers.of(document) orelse return;
+    own.csp_list.markUnenforceable();
 }
 
 /// A realm for `integration`'s navigable (engine.createWindowRealm with

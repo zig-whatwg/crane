@@ -5326,8 +5326,12 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
                 // A dictionary (URLPatternResult, NavigationResult): its object
                 // is made for this call (WebIDL 3.2.18), and released once
-                // set - kept, it leaked a Global per call.
+                // set - kept, it leaked a Global per call. A JavaScript value
+                // the impl handed over in it is the binding's too, as a
+                // JSValue result is: released once the object holds it
+                // (conv.releaseReturnedDictionaryHandles).
                 owned.* = comptime conv.dictionaryValueIsOwned(ReturnType);
+                defer conv.releaseReturnedDictionaryHandles(ReturnType, result);
                 return conv.toV8Value(ReturnType, isolate, v8_context, result) catch {
                     owned.* = true;
                     return v8.v8_Undefined(isolate);
