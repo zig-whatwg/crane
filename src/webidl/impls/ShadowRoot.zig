@@ -249,6 +249,11 @@ fn cloneFlags(source: *runtime.Instance, copy: *runtime.Instance) void {
     const to = getInternal(copy) orelse return;
     to.declarative_flag = from.declarative_flag;
     to.keep_custom_element_registry_null = from.keep_custom_element_registry_null;
+    // DOM clone step 6 omits this flag. Blink Element::Clone and WebKit
+    // ShadowRoot::cloneNodeInternal preserve it; both pass the scoped-registry
+    // upgrade WPT 5/5 (Firefox does not ship scoped registries). Follow that
+    // browser behavior: there is no newer spec step to implement instead.
+    to.available_to_element_internals = from.available_to_element_internals;
 }
 
 fn keepsRegistryNull(instance: *runtime.Instance) bool {
