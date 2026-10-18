@@ -258,7 +258,7 @@ fn runCommand(element: *runtime.Instance) !void {
     // owner's show/hide algorithms still lack beforetoggle/toggle/source
     // propagation; this passes source for when the owner implements them.
     if (hide or (toggle and showing)) {
-        if (showing) interfaces.HTMLElement.call_hidePopover(after) catch {};
+        if (showing) @import("html").popover.hidePopover(after, true, true, element) catch {};
     } else if (!showing) {
         interfaces.HTMLElement.call_showPopover(after, .passed(.{ .source = element })) catch {};
     }
