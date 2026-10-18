@@ -3,6 +3,11 @@
 //! Never bound: V8 provides WebAssembly itself (interface_bindings
 //! engine_provided_namespaces). These exist because the generated namespace
 //! delegates here.
+//!
+//! compileStreaming and instantiateStreaming (the WebAssembly Web API's
+//! partial namespace) are V8's too: it defines them in the realms of an agent
+//! whose host supplies HostHooks.compilePotentialWebAssemblyResponse - the
+//! Response checks and the body, html/webassembly_streaming.zig.
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");

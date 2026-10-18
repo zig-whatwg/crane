@@ -38,6 +38,7 @@ pub const capabilities: engine.Capabilities = .{
     .code_generation_checks = .unsupported,
     .html_constructor = .unsupported,
     .cross_origin_objects = .unsupported,
+    .webassembly_streaming = .unsupported,
 };
 
 /// No engine behind it.
@@ -505,6 +506,16 @@ pub fn structuredSerializeWithTransfer(_: Context, _: JSValue, _: []const JSValu
 pub fn structuredDeserializeWithTransfer(_: Context, _: []const u8, _: []const []const u8, _: []const *Instance) Error!Owned {
     return error.NotSupported;
 }
+
+// 4.11a WebAssembly Web API 2 [webassembly_streaming]: unsupported, so the
+// hook is never called and nothing is ever handed a compilation.
+pub fn appendWebAssemblyResponseBytes(_: *engine.WebAssemblyResponseCompilation, _: []const u8) Error!void {
+    return error.NotSupported;
+}
+
+pub fn finishWebAssemblyResponse(_: *engine.WebAssemblyResponseCompilation, _: []const u8) void {}
+
+pub fn abortWebAssemblyResponse(_: *engine.WebAssemblyResponseCompilation, _: ?JSValue) void {}
 
 // 4.12 Platform objects
 pub fn hasWrapper(_: *Instance) bool {

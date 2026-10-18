@@ -39,6 +39,7 @@ const protocol_agents = @import("protocol_agents.zig");
 const protocol_modules = @import("protocol_modules.zig");
 const protocol_realms = @import("protocol_realms.zig");
 const protocol_scripts = @import("protocol_scripts.zig");
+const protocol_webassembly = @import("protocol_webassembly.zig");
 const support = @import("protocol_support.zig");
 
 /// The worker and agent operations.
@@ -80,6 +81,10 @@ pub const capabilities: engine.Capabilities = .{
     // and Location templates, per-realm security tokens, and
     // FunctionTemplate::SetAcceptAnyReceiver (cross_origin.zig).
     .cross_origin_objects = .native,
+    // Isolate::SetWasmStreamingCallback: V8 defines compileStreaming and
+    // instantiateStreaming and hands each fulfilled source to the host
+    // (protocol_webassembly.zig).
+    .webassembly_streaming = .native,
 };
 
 /// Every operation is V8 code: a test binary that compiles them all links V8.
@@ -825,6 +830,14 @@ pub fn structuredSerializeWithTransfer(realm: Context, value: JSValue, transfer_
 pub fn structuredDeserializeWithTransfer(realm: Context, serialized: []const u8, array_buffers: []const []const u8, transferred: []const *Instance) Error!Owned {
     return owned(structured_serialization.structuredDeserializeWithTransfer(realm, serialized, array_buffers, transferred) catch |err| return protocolError(err));
 }
+
+// ============================================================================
+// 4.11a WebAssembly Web API 2 [webassembly_streaming] (protocol_webassembly.zig)
+// ============================================================================
+
+pub const appendWebAssemblyResponseBytes = protocol_webassembly.appendWebAssemblyResponseBytes;
+pub const finishWebAssemblyResponse = protocol_webassembly.finishWebAssemblyResponse;
+pub const abortWebAssemblyResponse = protocol_webassembly.abortWebAssemblyResponse;
 
 // ============================================================================
 // 4.12 Platform objects

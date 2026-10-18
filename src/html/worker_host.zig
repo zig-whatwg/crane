@@ -67,6 +67,7 @@ const code_generation = @import("code_generation.zig");
 
 // The agent cluster a dedicated worker's agent is in: its owner's.
 const agent_clusters = @import("agent_clusters.zig");
+const webassembly_streaming = @import("webassembly_streaming.zig");
 
 // Worker types from html_core
 const html_core = @import("html_core");
@@ -2610,6 +2611,9 @@ const worker_hooks: engine.HostHooks = .{
     .getCodeForEval = code_generation.hooks.getCodeForEval,
     .ensureCanCompileWasmBytes = code_generation.hooks.ensureCanCompileWasmBytes,
     .agentClusterOf = @import("agent_clusters.zig").agentClusterOf,
+    // WebAssembly Web API 2: compileStreaming and instantiateStreaming
+    // ([Exposed=(Window,Worker)]), as a window agent's.
+    .compilePotentialWebAssemblyResponse = if (webassembly_streaming.supported) webassembly_streaming.compilePotentialWebAssemblyResponse else null,
 };
 
 /// A worker's module evaluation promise, waiting to settle. Its host
