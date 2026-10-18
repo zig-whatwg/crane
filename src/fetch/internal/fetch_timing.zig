@@ -98,6 +98,19 @@ pub const ResponseBodyInfo = struct {
     }
 };
 
+/// Service Workers 2.2 "service worker timing info": the times Navigation
+/// and Resource Timing read of a service worker's handling of a request. Of
+/// its items Crane records the start time (Handle Fetch step 14) and the
+/// fetch event dispatch time (Create Fetch Event and Dispatch step 17.4.12);
+/// the static routing items stay 0 / empty, as Crane reports no router
+/// source to timing yet.
+///
+/// Spec: https://w3c.github.io/ServiceWorker/#service-worker-timing-info
+pub const ServiceWorkerTimingInfo = struct {
+    start_time: DOMHighResTimeStamp = 0,
+    fetch_event_dispatch_time: DOMHighResTimeStamp = 0,
+};
+
 /// Fetch timing info maintains timing information needed by Resource Timing
 /// and Navigation Timing specs.
 ///
@@ -126,6 +139,10 @@ pub const FetchTimingInfo = struct {
     /// When final service worker started processing (DOMHighResTimeStamp).
     /// 0 if no service worker handled the request.
     final_service_worker_start_time: DOMHighResTimeStamp = 0,
+
+    /// Its service worker timing info (Fetch HTTP fetch step 3.5.3): the
+    /// service worker's response's, or null.
+    service_worker_timing_info: ?ServiceWorkerTimingInfo = null,
 
     /// When final network request started (DOMHighResTimeStamp).
     final_network_request_start_time: DOMHighResTimeStamp = 0,

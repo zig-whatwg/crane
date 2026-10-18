@@ -25,7 +25,8 @@
 //!   Chromium compares every script the installed version stored
 //!   (ServiceWorkerUpdateChecker). The modules are the ones the worker's
 //!   graph fetched while it was parsed or installing
-//!   (Registry.addModuleScript), fetched again here as imported scripts are.
+//!   (Registry.addModuleScript), fetched again here with the graph's request
+//!   (destination "serviceworker", mode "cors", credentials "omit").
 //!
 //! Spec: https://w3c.github.io/ServiceWorker/#update-algorithm
 
@@ -122,7 +123,10 @@ fn runFallible(allocator: Allocator, plan: *const registry_mod.FetchPlan, fetche
             // 21.1.1. Not the main script.
             if (std.mem.eql(u8, stored.url, plan.script_url)) continue;
             // 21.1.2-4. A request with no-cache per 21.3.
-            var fetched = fetcher.fetch(fetcher.ctx, allocator, stored.url, .imported_script, plan.bypass_http_cache_for_imports) catch |err| switch (err) {
+            // A module worker's imported module is fetched as its graph
+            // fetched it (script_fetch's `.imported_module`).
+            const kind: script_fetch.ServiceWorkerResourceKind = if (newest.worker_type == .module) .imported_module else .imported_script;
+            var fetched = fetcher.fetch(fetcher.ctx, allocator, stored.url, kind, plan.bypass_http_cache_for_imports) catch |err| switch (err) {
                 error.OutOfMemory => return error.OutOfMemory,
                 error.NetworkError => continue,
             };

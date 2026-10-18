@@ -10,7 +10,7 @@ test "UIR preserves navigation headers, destination exemptions and explicit port
         .{ .document, "http://example.test/page", true, true, "https://example.test/page" },
         .{ .iframe, "http://example.test:80/page", true, true, "https://example.test:80/page" },
         .{ .frame, "http://example.test/page", true, true, "https://example.test/page" },
-        .{ .object, "https://example.test/page", true, false, "https://example.test/page" },
+        .{ .object, "https://example.test/page", true, true, "https://example.test/page" },
         .{ .empty, "wss://example.test/socket", true, false, "wss://example.test/socket" },
     };
     inline for (cases) |case| {

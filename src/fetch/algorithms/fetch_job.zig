@@ -852,8 +852,10 @@ pub const FetchJob = struct {
         }
         // 4.2.4 reads the filtered response's body info. Both opaque and
         // opaque-redirect filters hide it, including a same-origin manual
-        // redirect whose request tainting is still basic.
-        if (opaque_response) {
+        // redirect whose request tainting is still basic - and, stated, a
+        // service worker's CORS response whose timing allow check failed
+        // (`bodyInfoHidden`).
+        if (bodyInfoHidden(response, request.response_tainting) and response.response_type != .@"error") {
             facts.body_info = .{};
             facts.hides_body = true;
         }
@@ -904,6 +906,33 @@ pub const FetchJob = struct {
         });
     }
 };
+
+/// Whether the report timing steps hide `response`'s body info (fetch
+/// response handover step 4.2.4 reads the FILTERED response's): an opaque,
+/// opaque-redirect or error response's is hidden. A CORS response's stays -
+/// body sizes are CORS-protected, not TAO-protected (whatwg/fetch #1556) -
+/// except, stated, a service worker's CORS response whose timing allow
+/// check failed, for a client whose own request was not a CORS request
+/// (`client_tainting`, the client request's response tainting - the worker
+/// put another origin's response in its place): Chrome and Firefox hide its
+/// sizes
+/// (service-workers/.../resource-timing-cross-origin-server-timing.https.html
+/// cases 1-6, wpt.fyi df642c4142; Safari fails earlier), Chromium's
+/// ServiceWorkerSubresourceLoader leaving its timing_allow_passed false, and
+/// WPT still expects 0. A spec change no browser ships on this path is not
+/// yet adopted (the user's ruling of 2026-10-18 on setHeaderValue; the
+/// integrator's ruling B for lane sw1-b6). A service worker's response is
+/// the one carrying a service worker timing info. A client whose request
+/// was itself a CORS request keeps the sizes #1556 gives it
+/// (resource-timing-bodySize.https.html's passthrough, cors cases, which
+/// Chrome alone fails).
+pub fn bodyInfoHidden(response: *const InternalResponse, client_tainting: internal_request.ResponseTainting) bool {
+    return switch (response.response_type) {
+        .@"opaque", .opaqueredirect, .@"error" => true,
+        .cors => response.service_worker_timing_info != null and !response.timing_allow_passed and client_tainting != .cors,
+        .basic, .default => false,
+    };
+}
 
 /// What the driver measured of a body, at its end (FetchJob.bodyEnded): the
 /// network hands its body over decoded, and a service worker's relay its

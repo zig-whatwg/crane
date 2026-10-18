@@ -213,8 +213,19 @@ pub fn serviceWorkerResponse(allocator: Allocator, params: *FetchParams, respons
     const request = params.request;
     // 3.5.2. The fetch timing info's final service worker start time.
     params.timing_info.final_service_worker_start_time = start_time;
-    // 3.5.3. Its service worker timing info: Crane has no static routing,
-    // so there is none to set (Service Workers 2.2's router fields).
+    // 3.5.3. The fetch timing info's service worker timing info: the
+    // response's (Create Fetch Event and Dispatch step 18 set it).
+    params.timing_info.service_worker_timing_info = response.service_worker_timing_info;
+    // Stated: the client made no connection, so its final connection
+    // timing info is a reused connection's at its fetch start, with no TLS
+    // time - Chrome, Firefox and Safari all report connectStart ==
+    // fetchStart for a service worker's response (resource-timing-fetch-
+    // variants.https.html "Connection info...", wpt.fyi df642c4142); Blink's
+    // PerformanceResourceTiming::connectStart returns fetchStart when no
+    // network request was made. The spec leaves it null.
+    var connection = @import("../internal/fetch_timing.zig").ConnectionTimingInfo.forReusedConnection(params.timing_info.post_redirect_start_time);
+    connection.secure_connection_start_time = 0;
+    params.timing_info.final_connection_timing_info = connection;
     // 3.5.4. A request body goes no further: a byte body is borrowed and
     // needs no cancel; a stream body was never handed to the service worker
     // (its route sends such a request to the network).
@@ -235,6 +246,13 @@ pub fn serviceWorkerResponse(allocator: Allocator, params: *FetchParams, respons
         response.deinit();
         return .{ .response = try internal_response.networkError(allocator) };
     }
+    // The client's timing allow check for the worker's response. Stated:
+    // the spec runs no TAO check on it (step 4.5 is the network's), so main
+    // fetch step 19 would pass any service worker response; Chrome and
+    // Firefox hide a filtered one's timing unless it passed
+    // (resource-timing-cross-origin-server-timing.https.html cases 1-6,
+    // wpt.fyi df642c4142; Safari fails case 1).
+    if (!serviceWorkerResponseTimingAllowed(request, response)) request.timing_allow_failed = true;
     // An opaque-redirect response is what step 6's "manual" makes: it is
     // handed on as it is - but for a navigation, whose step 6 reads its
     // internal response's redirect status (3.5.5's internalResponse, which a
@@ -243,6 +261,39 @@ pub fn serviceWorkerResponse(allocator: Allocator, params: *FetchParams, respons
     // respondWith(fetch(event.request)) of a navigation's redirect hop).
     if (kind == .opaqueredirect and request.mode != .navigate) return .{ .response = response };
     return redirectSteps(allocator, params, response);
+}
+
+/// Whether a service worker's `response` keeps the client `request`'s
+/// timing allowed - Chromium's ServiceWorkerSubresourceLoader: a synthetic
+/// ("default") or basic response is the client's own origin's, and passes;
+/// a filtered one (CORS, opaque) wraps a cross-origin response and passes
+/// only when the worker's fetch of it passed the TAO check (its timing
+/// allow passed flag) AND its `Timing-Allow-Origin` passes for the client's
+/// origin - `*` or the request origin, serialized. Anything else (an
+/// opaque-redirect) does not pass.
+fn serviceWorkerResponseTimingAllowed(request: *const InternalRequest, response: *const InternalResponse) bool {
+    return switch (response.response_type) {
+        .default, .basic => true,
+        .cors, .@"opaque" => response.timing_allow_passed and timingAllowOriginNames(request, response),
+        .@"error", .opaqueredirect => false,
+    };
+}
+
+/// TAO check steps 3-5 alone: `response`'s `Timing-Allow-Origin` values
+/// hold `*` or `request`'s origin, serialized.
+fn timingAllowOriginNames(request: *const InternalRequest, response: *const InternalResponse) bool {
+    if (response.header_list.getFirstValue("Timing-Allow-Origin") == null) return false;
+    const serialized = request.serializeOrigin(request.allocator) catch return false;
+    defer request.allocator.free(serialized);
+    for (response.header_list.entries.items) |header| {
+        if (!std.ascii.eqlIgnoreCase(header.name, "Timing-Allow-Origin")) continue;
+        var values = std.mem.splitScalar(u8, header.value, ',');
+        while (values.next()) |raw| {
+            const value = std.mem.trim(u8, raw, " \t");
+            if (std.mem.eql(u8, value, "*") or std.mem.eql(u8, value, serialized)) return true;
+        }
+    }
+    return false;
 }
 
 /// Fetch 4.11 "TAO check" for `request` and `response`.
@@ -278,11 +329,20 @@ fn taoCheckPasses(request: *const InternalRequest, response: *const InternalResp
     }
     // 6. A navigation of a nested navigable to another origin than its
     //    request's ORIGINAL origin: failure (not the serialization above).
+    //    Stated: a navigation whose redirect-taint is not "same-origin"
+    //    (SO -> XO -> SO) fails too, whatever its current URL - Chromium's
+    //    CorsURLLoader::PassesTimingAllowOriginCheck fails a navigate-mode
+    //    request that is `tainted_`, and Chrome, Firefox and Safari all mask
+    //    SO-XO-SO-redirect-chain-tao.https.html's partial-TAO iframe (wpt.fyi
+    //    df642c4142), where the spec's step 6 alone passes its last hop.
     const origin: []const u8 = switch (request.origin) {
         .origin => |o| o,
         .client => "null",
     };
-    if (request.mode == .navigate and !sameHttpOrigin(request.currentUrl(), origin)) return false;
+    if (request.mode == .navigate) {
+        if (!sameHttpOrigin(request.currentUrl(), origin)) return false;
+        if (!(request.redirectTaintIsSameOrigin() catch false)) return false;
+    }
     // 7. If request's response tainting is "basic", then return success.
     // 8. Return failure.
     return request.response_tainting == .basic;

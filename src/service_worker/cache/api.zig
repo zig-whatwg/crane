@@ -229,6 +229,7 @@ fn storedResponseOf(allocator: Allocator, filtered: *const InternalResponse) All
         .status = response.status,
         .range_requested = response.range_requested,
         .request_includes_credentials = response.request_includes_credentials,
+        .timing_allow_passed = response.timing_allow_passed,
     };
     errdefer out.deinit(allocator);
     const urls = try allocator.alloc([]u8, response.url_list.items.len);
@@ -269,6 +270,7 @@ fn internalResponseOf(allocator: Allocator, stored: *const records.StoredRespons
     if (stored.body) |body| response.body = try fetch.internal.Body.fromBytes(allocator, body);
     response.range_requested = stored.range_requested;
     response.request_includes_credentials = stored.request_includes_credentials;
+    response.timing_allow_passed = stored.timing_allow_passed;
     // An opaque record is the internal response's: filtered again, as the
     // Response object script gets shows it, the record kept as its
     // internal response.

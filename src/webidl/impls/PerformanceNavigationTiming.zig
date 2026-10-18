@@ -59,7 +59,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// "create the navigation timing entry" steps 2-8 (Navigation Timing 5).
-fn createEntry(realm: runtime.Context, timing: *const performance_timeline.ResourceTiming, redirect_count: u16, navigation_type: performance_timeline.NavigationType) anyerror!*runtime.Instance {
+fn createEntry(realm: runtime.Context, timing: *const performance_timeline.ResourceTiming, redirect_count: u16, navigation_type: performance_timeline.NavigationType, service_worker_timing: ?performance_timeline.NavigationServiceWorkerTiming) anyerror!*runtime.Instance {
     const allocator = realm.allocator;
     // 2. A new PerformanceNavigationTiming in global's realm.
     const instance = try init(allocator, State, &PerformanceNavigationTiming.vtable, realm);
@@ -68,7 +68,16 @@ fn createEntry(realm: runtime.Context, timing: *const performance_timeline.Resou
     // PerformanceEntry (startTime 0, "navigation", the document's URL), and
     // steps 4-11 are the rest of `timing`.
     try performance_timeline.initializeEntry(instance, timing.start_time, .navigation, timing.url, timing.end_time);
-    try performance_timeline.setupResourceTiming(instance, timing);
+    // 8, and the fetchStart getter steps: with a service worker timing,
+    // fetchStart is its fetch event dispatch time (made relative to the
+    // time origin, as every other attribute), not the fetch's post-redirect
+    // start - so it follows the worker's activation. Chrome and Firefox
+    // mark fetchStart after activation, Safari does not
+    // (service-workers/.../navigation-timing-extended.https.html, wpt.fyi
+    // df642c4142). The entry's setup copies what it is given.
+    var own = timing.*;
+    if (service_worker_timing) |sw| own.fetch_start = sw.fetch_event_dispatch_time;
+    try performance_timeline.setupResourceTiming(instance, &own);
     // 6-7. Redirect count and navigation type.
     const internal = try allocator.create(InternalState);
     internal.* = .{ .allocator = allocator, .redirect_count = redirect_count, .navigation_type = navigation_type };

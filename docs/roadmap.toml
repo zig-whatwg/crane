@@ -525,6 +525,7 @@ progress = [
   "08d8f490341 (merge), e5ba46b939d - service workers batch 2: messages between pages and service workers and the client message queue, Clients get/matchAll, Cache Storage per Browser over the platform storage engine shared across threads; a service worker's realm is a secure context",
   "f13e81794f7 (merge) - service workers batch 3: every window and worker a service worker client from its creation, Handle Fetch (FetchEvent, respondWith, subresource and navigation interception, the response across threads), WindowClient.navigate and Soft Update; opaque responses keep their internal response",
   "c7de8b6e99f..a84b0e7cc58 - service workers batch 5: race-network-and-fetch-handler races a sibling network fetch; the report timing steps at the body's end; module imports byte-checked on update; the request's redirect taint and navigation origin carried to the worker; controllerchange and a worker's own objects without lazy-state races; a page's cancel reaches the worker's stream (sw1-b5 lane)",
+  "7905e783ef7..aa1d486e942 - service workers batch 6: the service worker timing info reaches navigation timing (fetchStart after activation); a worker's response keeps the client's timing allowed only as its own fetch did, its CORS sizes hidden where it substituted another origin's response, Cache Storage keeping the flag; TAO step 6 fails a redirect-tainted navigation; Upgrade-Insecure-Requests on every navigation; module imports re-fetched with the graph's request on update (sw1-b6 lane)",
 ]
 
   [[infra.items]]

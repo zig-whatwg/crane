@@ -2665,6 +2665,9 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
                 .report = &report,
                 .unload_event_start = timing.unload_event_start,
                 .unload_event_end = timing.unload_event_end,
+                // The response's service worker timing info (fetch copied
+                // it into the timing info, HTTP fetch step 3.5.3).
+                .service_worker_timing = timing.timing_info.service_worker_timing_info,
                 .redirect_count = timing.redirect_count,
                 // A traversal to the entry it leaves is a reload (as the
                 // navigation API's activation reads it), any other is
