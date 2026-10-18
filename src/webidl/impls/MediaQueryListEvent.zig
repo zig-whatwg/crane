@@ -11,7 +11,7 @@ const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
-const clock = @import("clock");
+const performance_timeline = @import("dom").performance_timeline;
 const MediaQueryListEvent = interfaces.MediaQueryListEvent;
 
 pub const State = MediaQueryListEvent.State;
@@ -55,7 +55,8 @@ pub fn call_constructor(ctx: runtime.Context, @"type": typedefs.CSSOMString, eve
     // What deinit reads, should anything below fail.
     state.base.own.type = runtime.DOMString.initEmpty();
     state.base.own.type = try @"type".clone(ctx.allocator);
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
+    // DOM inner event creation step 3: relative to the relevant global.
+    state.base.own.timeStamp = performance_timeline.now(instance.ctx) orelse 0;
     state.base.own.bubbles = init_dict.base.bubbles orelse false;
     state.base.own.cancelable = init_dict.base.cancelable orelse false;
     state.base.own.composed = init_dict.base.composed orelse false;
