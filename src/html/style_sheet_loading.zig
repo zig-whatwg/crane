@@ -154,6 +154,11 @@ const Sheet = struct {
     /// For an @import's sheet: the rule's index among its sheet's @import
     /// rules (`css.import_rules` order, which the style engine counts too).
     import_index: u16 = 0,
+    /// Once fetched: the sheet's location (its response's URL, OWNED) and the
+    /// referrer policy its response's Referrer-Policy header gave - the
+    /// referrer and policy its own @imports are fetched with.
+    location: ?[]u8 = null,
+    referrer_policy: fetch.internal.ReferrerPolicy = .empty,
     /// While the fetch runs.
     fetch: ?*AsyncFetch = null,
 
@@ -621,6 +626,7 @@ fn release(load: *Load, ending: Ending) void {
     terminateFetches(load);
     for (load.sheets.items) |sheet| {
         load.allocator.free(sheet.url);
+        if (sheet.location) |l| load.allocator.free(l);
         load.allocator.destroy(sheet);
     }
     load.sheets.deinit(load.allocator);
@@ -787,6 +793,20 @@ fn startFetchOrFail(load: *Load, url: []const u8, parent: ?*Sheet, import_index:
         try fetch.internal.populateRequestFromClient(request, client.request);
     }
 
+    // An @import of a fetched sheet: the sheet's URL is the referrer, and
+    // its own Referrer-Policy header, if it had one, the policy. Golden rule
+    // 2: CSS Values 4 "fetch a style resource" sets the referrer to
+    // "client" for a no-cors request; Chrome and Firefox send the style
+    // sheet's URL under the style sheet's policy (referrer-policy/
+    // css-integration/child-css/external-import-stylesheet.html and
+    // internal-import-stylesheet.html: Chrome 1/1, Firefox 1/1, Safari 0/1 at
+    // wpt.fyi stable, df642c4142). A style element's own imports stay the
+    // document's: the sheet has no location.
+    if (parent) |p| {
+        if (p.location) |location| try request.setReferrerUrl(location);
+        if (p.referrer_policy != .empty) request.referrer_policy = p.referrer_policy;
+    }
+
     // The fetch owns the request from here, even when it fails to start.
     request_owned = false;
     const started = try AsyncFetch.start(allocator, request, .{}, dom.agent_fetches.of(load.realm), sheet.client());
@@ -892,6 +912,10 @@ fn processResponse(sheet: *Sheet, outcome: fetch.algorithms.FetchError!fetch.alg
     // CORS-same-origin response, independently of its URL or TAO headers.
     sheet.origin_clean = cors_same_origin;
     const location = response.url() orelse sheet.url;
+    sheet.location = load.allocator.dupe(u8, location) catch null;
+    const policy_header = response.header_list.get(load.allocator, "Referrer-Policy") catch null;
+    defer if (policy_header) |h| load.allocator.free(h);
+    sheet.referrer_policy = fetch.internal.policy_container.parseReferrerPolicyHeader(policy_header);
     deliver(load, sheet, body.getBytes(), location);
     fetchImports(load, sheet, body.getBytes(), location);
 }
