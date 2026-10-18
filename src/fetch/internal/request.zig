@@ -124,6 +124,9 @@ pub const Destination = enum {
     serviceworker,
     sharedworker,
     style,
+    /// HTML "fetch destination from module type": `import ... with { type:
+    /// "text" }` (whatwg/fetch, CSP connect-src).
+    text,
     track,
     video,
     webidentity,
@@ -744,10 +747,10 @@ pub const InternalRequest = struct {
 
     /// Is this a subresource request?
     /// Spec: destination is audio, audioworklet, font, image, json, manifest,
-    /// paintworklet, script, style, track, video, xslt, or empty.
+    /// paintworklet, script, style, text, track, video, xslt, or empty.
     pub fn isSubresourceRequest(self: *const Self) bool {
         return switch (self.destination) {
-            .audio, .audioworklet, .font, .image, .json, .manifest, .paintworklet, .script, .style, .track, .video, .xslt, .empty => true,
+            .audio, .audioworklet, .font, .image, .json, .manifest, .paintworklet, .script, .style, .text, .track, .video, .xslt, .empty => true,
             else => false,
         };
     }

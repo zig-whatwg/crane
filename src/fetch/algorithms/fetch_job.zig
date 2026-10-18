@@ -996,8 +996,7 @@ fn networkError(allocator: Allocator) FetchError!*InternalResponse {
 /// Fetch: the document `Accept` header value.
 const document_accept_value = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
 
-/// Fetch "fetch" steps 12.1-12.3: the `Accept` value for `request`. (Step
-/// 12.3's "text" destination is not one Crane's requests have.)
+/// Fetch "fetch" steps 12.1-12.3: the `Accept` value for `request`.
 fn acceptValue(request: *const InternalRequest) []const u8 {
     // 12.2. A prefetch: the document `Accept` header value.
     if (request.initiator == .prefetch) return document_accept_value;
@@ -1007,6 +1006,7 @@ fn acceptValue(request: *const InternalRequest) []const u8 {
         .image => "image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
         .json => "application/json,*/*;q=0.5",
         .style => "text/css,*/*;q=0.1",
+        .text => "text/plain,*/*;q=0.5",
         else => "*/*",
     };
 }

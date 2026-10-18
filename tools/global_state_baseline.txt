@@ -29,7 +29,7 @@ src/dom/attribute_change_steps.zig test_calls 1 G X decl:3796f88280404836
 src/dom/auxiliary_navigables.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/auxiliary_navigables.zig top_level_chooser 1 G P-res decl:687f4918d611e3cc
 src/dom/blob_bytes.zig steps 1 G H decl:da3da99c8e42439e
-src/dom/character_data.zig steps 1 G P-res decl:da3da99c8e42439e
+src/dom/character_data.zig steps 1 G P-res decl:4dad5b7413d7153c
 src/dom/child_navigables.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/client_message_queues.zig enable_step 1 G P-res decl:8cb618e18fc22ffa
 src/dom/cloning_steps.zig installed 1 G H decl:58f95f076a85d7c6
@@ -140,7 +140,7 @@ src/dom/teardown_sweeps.zig test_sweeps 1 G X decl:3796f88280404836
 src/dom/template_contents.zig hooks 1 G P-res decl:4dad5b7413d7153c
 src/dom/token_lists.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/top_level_navigation.zig implementation 1 G H decl:9c737e7125e9c3d4
-src/dom/traversal.zig node_iterator 1 G H decl:d977cb3dc433f236
+src/dom/traversal.zig node_iterator 1 G H decl:82cd93d362367cd5
 src/dom/traversal.zig tree_walker 1 G H decl:d5e806e980531fcb
 src/dom/trusted_types.zig table 1 G P-res decl:f6c637cc7c367f73
 src/dom/unloading_cleanup.zig count 1 G H decl:3796f88280404836
@@ -175,7 +175,6 @@ src/html/embedder_scripts.zig registered 1 TL I/engine decl:985bda748b35fe88
 src/html/focus.zig last_modality 1 TL T decl:c2a587c8ee049550
 src/html/focus.zig pending_edit_count 1 TL T decl:3796f88280404836
 src/html/focus.zig pending_edits 1 TL T decl:24e66cb0bfffdc4e
-src/html/module_script.zig fetch_failed_marker 1 G P-const decl:f33e1c60fc8c8315
 src/html/module_script.zig live_scripts 1 G I/engine decl:e09f2695a7281e49
 src/html/module_script.zig mimeEssence.R.buf 1 TL C decl:6d938526b5bf4769
 src/html/module_script.zig parseMimeEssence.S.buf 1 TL C decl:6d938526b5bf4769

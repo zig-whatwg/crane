@@ -52,12 +52,35 @@ pub const ModuleType = enum {
     javascript,
     json,
     css,
+    /// "text": the response body, UTF-8 decoded, as the default export
+    /// (HTML "create a text module script", whatwg/html#11933, merged
+    /// 2026-04-01 - TC39 proposal-import-text's CreateTextModule). Golden
+    /// rule 2: newer spec, shipped by two browsers - text-module/module.html
+    /// and charset-bom.any.html Chrome PASS, Firefox PASS, Safari ERROR
+    /// ('Import attribute type "text" is not valid') at wpt.fyi stable,
+    /// df642c4142.
+    text,
 
     fn keyPrefix(self: ModuleType) []const u8 {
         return switch (self) {
             .javascript => "js:",
             .json => "json:",
             .css => "css:",
+            .text => "text:",
+        };
+    }
+
+    /// HTML "fetch destination from module type" given
+    /// `default_destination`: "json", "style" and "text" for those types,
+    /// else the default ("script", or a worklet's destination).
+    ///
+    /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#fetch-destination-from-module-type
+    pub fn fetchDestination(self: ModuleType, default_destination: fetch.internal.Destination) fetch.internal.Destination {
+        return switch (self) {
+            .json => .json,
+            .css => .style,
+            .text => .text,
+            .javascript => default_destination,
         };
     }
 };
@@ -185,12 +208,16 @@ pub const ModuleScript = struct {
     }
 };
 
-/// The document's module map, reached through its owner.
+/// The settings object's module map - a document's or a worker global
+/// scope's - reached through its owner.
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#module-map
-/// Keyed by (URL, module type). Values are a `*ModuleScript`, or
-/// `fetch_failed` for a fetch that failed ("null" in the spec) - both cast to
-/// *anyopaque. The owner frees values through `disposeEntry`.
+/// Keyed by (URL, module type). Values are a `*ModuleScript`, cast to
+/// *anyopaque; the owner frees them through `disposeEntry`. A fetch that
+/// failed leaves no entry (fetch a single module script step 13.1.2, after
+/// whatwg/html#10327): the next import of the URL fetches it again. A fetch
+/// still in flight is the asynchronous loader's (`AsyncModuleLoader.pending`,
+/// the spec's callback list), not an entry here.
 pub const ModuleMap = struct {
     context: *anyopaque,
     getFn: *const fn (context: *anyopaque, key: []const u8) ?*anyopaque,
@@ -205,14 +232,9 @@ pub const ModuleMap = struct {
     }
 };
 
-/// The map's "null": a fetch that failed. Never dereferenced.
-var fetch_failed_marker: u8 = 0;
-pub const fetch_failed: *anyopaque = @ptrCast(&fetch_failed_marker);
-
 /// Free a module map value. The owner of the map installs this as its dispose
 /// function.
 pub fn disposeEntry(value: *anyopaque) void {
-    if (value == fetch_failed) return;
     const script: *ModuleScript = @ptrCast(@alignCast(value));
     script.destroy();
 }
@@ -233,6 +255,9 @@ pub const FetchOptions = struct {
     /// module graph but a worklet's, whose WorkletOptions name it (HTML
     /// "fetch a worklet/module worker script graph" step 1).
     credentials_mode: fetch.internal.CredentialsMode = .same_origin,
+    /// The fetch priority: a modulepreload link's fetchpriority attribute;
+    /// "auto" otherwise (and for every descendant).
+    fetch_priority: fetch.internal.request.Priority = .auto,
 };
 
 /// Everything the loader needs from the document it loads for.
@@ -400,10 +425,15 @@ pub const ClassicScript = struct {
     }
 };
 
+/// The classic script a Script Record's [[HostDefined]] is (a worker's: its
+/// host makes every one it runs).
+pub fn classicScriptOf(host_defined: *anyopaque) *const ClassicScript {
+    return @ptrCast(@alignCast(host_defined));
+}
+
 /// The base URL of the classic script a Script Record's [[HostDefined]] is.
 pub fn classicScriptBaseUrl(host_defined: *anyopaque) []const u8 {
-    const script: *const ClassicScript = @ptrCast(@alignCast(host_defined));
-    return script.base_url;
+    return classicScriptOf(host_defined).base_url;
 }
 
 /// HTML HostGetImportMetaProperties(moduleRecord), steps 1-3 - the engine's
@@ -474,6 +504,26 @@ fn createCssModuleScript(env: *const Environment, source: []const u8, url: []con
     return script;
 }
 
+/// Create a text module script.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#creating-a-text-module-script
+/// "5. Let result be CreateTextModule(text)" - TC39 proposal-import-text:
+/// CreateDefaultExportSyntheticModule(text), a Synthetic Module Record whose
+/// default export is the string. `text` is the UTF-8 decoded body (fetch a
+/// single module script step 13.7.1), as UTF-8. Nothing is parsed, so there
+/// is no parse error.
+///
+/// HTML step 3 makes the script's base URL null. The record still names
+/// `url`, as a CSS or JSON one does: nothing resolves against it, since a
+/// text module imports nothing.
+fn createTextModuleScript(env: *const Environment, text: []const u8, url: []const u8) !*ModuleScript {
+    if (!supported) return error.NotSupported;
+    const script = try ModuleScript.create(env.allocator, url, env.fetch_options);
+    errdefer script.destroy();
+    script.record = try engine.createDefaultExportSyntheticModule(env.realm(), runtime.JSValue.fromStringRef(text), url, script);
+    return script;
+}
+
 /// A second hold (OWNED) on a value a script keeps, in its realm.
 fn copyOf(env: *const Environment, value: engine.Owned) ?engine.Owned {
     return engine.retainValue(env.realm(), value.value) catch null;
@@ -501,23 +551,24 @@ fn makeError(env: *const Environment, kind: ErrorKind, message: []const u8) ?eng
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-single-module-script
 /// Returns the module script, or null for "null" (a failed fetch, a status
 /// that is not ok, or a MIME type that does not match the module type).
+/// Used where no event loop can carry an asynchronous fetch: a module
+/// worker's own graph, a ShadowRealm's import(), an engine-less context.
 fn fetchSingleModuleScript(env: *const Environment, url: []const u8, module_type: ModuleType) ?*ModuleScript {
-    // Steps 4-6: moduleMap[(url, moduleType)] - an entry means this fetch has
-    // already happened, and its result (including a null) is reused.
+    // Step 5: moduleMap[(url, moduleType)] is a module script - reused. (No
+    // fetch is ever in flight here, so step 6's callback list never is.)
     const key = std.mem.concat(env.allocator, u8, &.{ module_type.keyPrefix(), url }) catch return null;
     defer env.allocator.free(key);
 
-    if (env.map.get(key)) |entry| {
-        if (entry == fetch_failed) return null;
-        return @ptrCast(@alignCast(entry));
-    }
+    if (env.map.get(key)) |entry| return @ptrCast(@alignCast(entry));
 
-    const script = fetchAndCreate(env, url, module_type);
+    // Step 13.1: a failure removes the entry - here, never makes one - so a
+    // later import fetches again (repeated-imports.any.js).
+    const script = fetchAndCreate(env, url, module_type) orelse return null;
 
-    // Step 13.8 (and 13.1 for failures): moduleMap[(url, moduleType)] = result.
-    if (!env.map.put(key, if (script) |s| @ptrCast(s) else fetch_failed)) {
+    // Step 13.9: moduleMap[(url, moduleType)] = moduleScript.
+    if (!env.map.put(key, @ptrCast(script))) {
         // The map could not take ownership; nothing else will free it.
-        if (script) |s| s.destroy();
+        script.destroy();
         return null;
     }
     return script;
@@ -545,11 +596,7 @@ fn fetchAndCreate(env: *const Environment, url: []const u8, module_type: ModuleT
     request.parser_metadata = if (options.parser_inserted) .parser_inserted else .not_parser_inserted;
     request.referrer_policy = options.referrer_policy;
     request.render_blocking = options.render_blocking;
-    request.destination = switch (module_type) {
-        .javascript => .script,
-        .json => .json,
-        .css => .style,
-    };
+    request.destination = module_type.fetchDestination(env.script_destination);
     request.initiator_type = .script;
     script_request.populateRequestFromClient(request, env.context_instance.ctx) catch return null;
     if (env.referrer.len > 0) request.setReferrerUrl(env.referrer) catch return null;
@@ -772,10 +819,7 @@ pub fn moduleWorkerScriptGraph(env: *const Environment, url: []const u8, respons
     if (!supported) return null;
     const key = std.mem.concat(env.allocator, u8, &.{ ModuleType.javascript.keyPrefix(), url }) catch return null;
     defer env.allocator.free(key);
-    const script: *ModuleScript = if (env.map.get(key)) |entry| blk: {
-        if (entry == fetch_failed) return null;
-        break :blk @ptrCast(@alignCast(entry));
-    } else blk: {
+    const script: *ModuleScript = if (env.map.get(key)) |entry| @ptrCast(@alignCast(entry)) else blk: {
         const created = createJavaScriptModuleScript(env, source, response_url) catch return null;
         if (!env.map.put(key, @ptrCast(created))) {
             created.destroy();
@@ -793,6 +837,10 @@ pub fn moduleTypeFromAttribute(type_attribute: ?[]const u8) ?ModuleType {
     const t = type_attribute orelse return .javascript;
     if (std.mem.eql(u8, t, "json")) return .json;
     if (std.mem.eql(u8, t, "css")) return .css;
+    if (std.mem.eql(u8, t, "text")) return .text;
+    // "javascript-or-wasm" is the internal name of the default type: as an
+    // attribute it is no type at all (module type from module request step
+    // 2.1), and neither is anything else.
     return null;
 }
 
@@ -905,50 +953,75 @@ pub const GraphProgress = struct {
     }
 };
 
-/// HTML's asynchronous module-map callback lists and per-root graph linkers.
-/// Owned by Document; destroyed before that document's module-map records.
-/// All operations happen on its realm's event-loop thread.
+/// HTML's asynchronous module-map callback lists and per-root graph linkers,
+/// for one settings object: a Document's (script elements, import(),
+/// modulepreload, a worklet's graphs) or a worker global scope's (import()).
+/// Owned by its owner - the Document, or the WorkerHost - and destroyed
+/// before that owner's module-map records. All operations happen on the
+/// owner's event-loop thread: the window agent's, or the worker's own.
 ///
 /// Design reference: Blink core/loader/modulescript/module_tree_linker.cc,
-/// FetchDescendants / NotifyModuleLoadFinished / FindFirstParseError.
+/// FetchDescendants / NotifyModuleLoadFinished / FindFirstParseError; one
+/// loader for every kind of owner as WebKit's ScriptModuleLoader serves a
+/// Document and a WorkerGlobalScope alike (its OwnerType).
 pub const AsyncModuleLoader = struct {
     allocator: std.mem.Allocator,
     env: Environment,
-    document: *runtime.Instance,
-    document_generation: u64,
+    /// The platform object whose settings object this is - the Document, or
+    /// the WorkerGlobalScope - as (address, slab generation): its liveness is
+    /// the loader's (`alive`).
+    owner: *runtime.Instance,
+    owner_generation: u64,
     pending: std.StringHashMap(*SingleFetch),
     graphs: std.ArrayListUnmanaged(*Graph) = .empty,
 
     pub const Client = struct {
         context: *anyopaque,
         done: *const fn (context: *anyopaque, result: ?*ModuleScript) void,
-        /// A destroyed document or canceled graph produces no script event.
+        /// A destroyed owner or canceled graph produces no script event.
         gone: *const fn (context: *anyopaque) void,
         /// Lets parser replacement cancel just its own element's graph.
         element: ?*runtime.Instance = null,
+        /// An import(): a graph that needs no fetch - every module of it in
+        /// the module map already - completes from a microtask, not a task.
+        /// HTML fetch a single module script step 5 runs onComplete at once
+        /// for a module in the map (whatwg/html#8264, with tc39/ecma262#2905
+        /// HostLoadImportedModule); ECMA-262 ContinueDynamicImport then links
+        /// and evaluates in a reaction to the already-settled loadPromise -
+        /// one microtask, which is where this completion lands. A script
+        /// element's graph keeps its task (lesson: a result the spec hands
+        /// over from onComplete arrives in a task).
+        ///
+        /// microtasks/basic.any.js "...when loading an already loaded
+        /// module", wpt.fyi stable df642c4142: Safari PASS in the Window and
+        /// workers, Firefox PASS in workers (FAIL in the Window), Chrome FAIL
+        /// (Blink's ModuleMap posts a task for a finished entry). Golden rule
+        /// 2's first case: the newer spec, which a browser ships (wpt
+        /// PR #35949 added the test with the HTML change).
+        settle_cached_in_microtask: bool = false,
     };
 
-    pub fn create(env: Environment, document: *runtime.Instance) !*AsyncModuleLoader {
-        // Queued payloads can outlive the document allocator on silent
-        // destruction. Only module records use the document's allocator.
+    pub fn create(env: Environment, owner: *runtime.Instance) !*AsyncModuleLoader {
+        // Queued payloads can outlive the owner's allocator on silent
+        // destruction. Only module records use the owner's allocator.
         const allocator = std.heap.c_allocator;
         const self = try allocator.create(AsyncModuleLoader);
         self.* = .{
             .allocator = allocator,
             .env = env,
-            .document = document,
-            .document_generation = runtime.SlabAllocator.generationOf(document),
+            .owner = owner,
+            .owner_generation = runtime.SlabAllocator.generationOf(owner),
             .pending = std.StringHashMap(*SingleFetch).init(allocator),
         };
         // Resolution and request client data must survive the source element.
-        self.env.context_instance = document;
+        self.env.context_instance = owner;
         self.env.fetch_options = .{};
         self.env.referrer = "";
         return self;
     }
 
     fn alive(self: *const AsyncModuleLoader) bool {
-        return runtime.SlabAllocator.generationOf(self.document) == self.document_generation and
+        return runtime.SlabAllocator.generationOf(self.owner) == self.owner_generation and
             self.env.realm().engine_ctx != null;
     }
 
@@ -1002,6 +1075,27 @@ pub const AsyncModuleLoader = struct {
     /// URL as referrer. Borrow it only until startSingle makes its existing
     /// owned copy; the graph and its queued tasks keep no additional string.
     pub fn startWithReferrer(self: *AsyncModuleLoader, url: []const u8, module_type: ModuleType, inline_script: ?*ModuleScript, options: FetchOptions, referrer: []const u8, client: Client) !void {
+        return self.startGraph(url, module_type, inline_script, options, referrer, null, client);
+    }
+
+    /// HTML "fetch a modulepreload module script graph" step 1: fetch a
+    /// single module script of `url` - "javascript-or-wasm", the link's
+    /// `destination`, referrer "client" - into the module map, and run
+    /// `client.done` with the result: the module script, a parse error and
+    /// all, or null. A later import() of the URL finds it there, or joins
+    /// the fetch while it is in flight, instead of fetching again under its
+    /// own options (modulepreload-referrerpolicy.html,
+    /// modulepreload-inline-referrerpolicy.html). Step 1.3's optional
+    /// "fetch the descendants of and link" is not done: the load event
+    /// never waits for them, and nothing else observes them.
+    pub fn startModulePreload(self: *AsyncModuleLoader, url: []const u8, destination: fetch.internal.Destination, options: FetchOptions, client: Client) !void {
+        // Resource Timing's initiatorType stays "link" for the request, as
+        // the link fetch it replaces had it (Firefox and Safari; row 47
+        // Q5/Q6), where fetch-single step 11 says "script".
+        return self.startGraph(url, .javascript, null, options, "", .{ .destination = destination, .initiator_type = .link }, client);
+    }
+
+    fn startGraph(self: *AsyncModuleLoader, url: []const u8, module_type: ModuleType, inline_script: ?*ModuleScript, options: FetchOptions, referrer: []const u8, modulepreload: ?RequestShape, client: Client) !void {
         if (!supported) return error.NotSupported;
         const loop = self.env.realm().getOptionalEventLoop() orelse return error.NotSupported;
         const graph = try self.allocator.create(Graph);
@@ -1021,12 +1115,19 @@ pub const AsyncModuleLoader = struct {
             .inline_script = inline_script,
             .options = options,
             .progress = GraphProgress.init(self.allocator),
+            .modulepreload = modulepreload,
         };
         graph.options.nonce = nonce;
         graph.options.integrity = integrity;
         try self.graphs.append(self.allocator, graph);
         graph.startRoot(referrer);
         graph.task_queued = true;
+        // Every module of an import()'s graph was in the module map: it
+        // completes from a microtask (Client.settle_cached_in_microtask).
+        // Should the microtask not queue, the task below completes it.
+        if (client.settle_cached_in_microtask and !graph.failed and graph.progress.pending == 0) {
+            if (engine.queueRealmMicrotask(self.env.realm(), &Graph.microtask_steps, graph)) |_| return else |_| {}
+        }
         // queueTask may drop and destroy the graph on allocation failure.
         loop.queueTask(.{ .callback = Graph.runTask, .context = graph, .drop = Graph.dropTask });
     }
@@ -1050,6 +1151,13 @@ pub const AsyncModuleLoader = struct {
         children: std.ArrayListUnmanaged(*Node) = .empty,
     };
 
+    /// A request's destination and Resource Timing initiator type, where
+    /// they are not the module type's (HTML fetch-single steps 9 and 11).
+    const RequestShape = struct {
+        destination: fetch.internal.Destination,
+        initiator_type: fetch.internal.InitiatorType = .script,
+    };
+
     const Graph = struct {
         allocator: std.mem.Allocator,
         loader: ?*AsyncModuleLoader,
@@ -1059,6 +1167,10 @@ pub const AsyncModuleLoader = struct {
         inline_script: ?*ModuleScript,
         options: FetchOptions,
         progress: GraphProgress,
+        /// A modulepreload's fetch of a single module script: its root's
+        /// request shape. Nothing is expanded or linked; onComplete is given
+        /// the root's module script as it is.
+        modulepreload: ?RequestShape = null,
         nodes: std.ArrayListUnmanaged(*Node) = .empty,
         task_queued: bool = false,
         cancel_requested: bool = false,
@@ -1121,6 +1233,23 @@ pub const AsyncModuleLoader = struct {
             };
         }
 
+        /// A cached import() graph's completion, queued as a microtask of
+        /// the owner's realm. While queued it owns the graph as a queued
+        /// task does (`task_queued`): a cancellation leaves the graph to
+        /// this, or to its drop - at the realm's end - which is `dropTask`.
+        const microtask_steps: engine.PromiseReactionSteps = .{ .fulfilled = runMicrotask, .dropped = dropTask };
+
+        fn runMicrotask(data: ?*anyopaque, _: runtime.JSValue) void {
+            const self: *Graph = @ptrCast(@alignCast(data orelse return));
+            const loader = self.loader orelse return self.destroy();
+            if (!loader.alive()) {
+                self.task_queued = false;
+                return self.cancel();
+            }
+            // In a checkpoint of the realm's agent already: no task to run.
+            processTask(self);
+        }
+
         fn startRoot(self: *Graph, referrer: []const u8) void {
             const loader = self.loader.?;
             const root = self.addNode(self.url, self.module_type) catch {
@@ -1132,7 +1261,7 @@ pub const AsyncModuleLoader = struct {
             // blob URL request. AsyncFetch.start never delivers client callbacks.
             if (self.inline_script) |script| {
                 self.receive(root, script);
-            } else loader.fetchSingle(self, root, self.options, referrer);
+            } else loader.fetchSingle(self, root, self.options, referrer, self.modulepreload orelse loader.shapeFor(root.module_type));
             // Fetch-inline step 2 and fetch-descendants step 5 start known
             // imports through LoadRequestedModules before returning. A cached
             // root (fetch-single step 5) has the same immediate continuation.
@@ -1148,6 +1277,8 @@ pub const AsyncModuleLoader = struct {
         }
 
         fn expandReady(self: *Graph) void {
+            // A modulepreload is one module script.
+            if (self.modulepreload != null) return;
             // New cached children can be appended during this walk. Remote
             // children come back through a later networking delivery task.
             var index: usize = 0;
@@ -1240,7 +1371,7 @@ pub const AsyncModuleLoader = struct {
                 if (!child.settled and loader.pending.get(child.key) == null) {
                     var options = script.descendantFetchOptions();
                     options.integrity = env.resolveIntegrity(request.url);
-                    loader.fetchSingle(self, child, options, script.base_url);
+                    loader.fetchSingle(self, child, options, script.base_url, loader.shapeFor(child.module_type));
                 } else if (!child.settled) {
                     try loader.pending.get(child.key).?.addWaiter(self, child);
                 }
@@ -1296,27 +1427,33 @@ pub const AsyncModuleLoader = struct {
             }
         }
 
+        /// Fetch the descendants of and link, steps 6-7, for the root
+        /// `script` of a graph whose every module has loaded: its error to
+        /// rethrow is the first parse or validation error in source order,
+        /// else Link's. Null when that cannot be recorded (out of memory).
+        fn linkRoot(self: *Graph, script: *ModuleScript) ?*ModuleScript {
+            const env = &self.loader.?.env;
+            if (firstError(self.nodes.items[0])) |value| {
+                const copy = copyOf(env, value) orelse return null;
+                script.setErrorToRethrow(copy);
+                script.load_error = true;
+                return script;
+            }
+            self.recordEdges() catch return null;
+            if (link(env, script)) |value| script.setErrorToRethrow(value) else if (script.error_to_rethrow) |old| {
+                old.release();
+                script.error_to_rethrow = null;
+            }
+            return script;
+        }
+
         fn finish(self: *Graph) void {
             const loader = self.loader.?;
             var result: ?*ModuleScript = if (self.failed or self.nodes.items.len == 0) null else self.nodes.items[0].script;
-            if (result) |script| {
-                const env = &loader.env;
-                if (firstError(self.nodes.items[0])) |value| {
-                    if (copyOf(env, value)) |copy| {
-                        script.setErrorToRethrow(copy);
-                        script.load_error = true;
-                    } else result = null;
-                } else {
-                    self.recordEdges() catch {
-                        result = null;
-                    };
-                    if (result != null) {
-                        if (link(env, script)) |value| script.setErrorToRethrow(value) else if (script.error_to_rethrow) |old| {
-                            old.release();
-                            script.error_to_rethrow = null;
-                        }
-                    }
-                }
+            // A modulepreload's onComplete takes fetch-single's result as it
+            // is; a graph's root is linked, or carries its error to rethrow.
+            if (self.modulepreload == null) {
+                if (result) |script| result = self.linkRoot(script);
             }
             // Null out all resource waiters before this root calls script.
             loader.forgetGraph(self);
@@ -1444,13 +1581,17 @@ pub const AsyncModuleLoader = struct {
         }
     };
 
-    fn fetchSingle(self: *AsyncModuleLoader, graph: *Graph, node: *Node, options: FetchOptions, referrer: []const u8) void {
+    /// The request shape of a module of `module_type` in a graph: the fetch
+    /// destination from module type, given the loader's script destination.
+    fn shapeFor(self: *const AsyncModuleLoader, module_type: ModuleType) RequestShape {
+        return .{ .destination = module_type.fetchDestination(self.env.script_destination) };
+    }
+
+    fn fetchSingle(self: *AsyncModuleLoader, graph: *Graph, node: *Node, options: FetchOptions, referrer: []const u8, shape: RequestShape) void {
         // HTML fetch-single steps 5-6: completed script or callback list.
         if (self.env.map.get(node.key)) |entry| {
-            if (entry != fetch_failed) {
-                graph.receive(node, @ptrCast(@alignCast(entry)));
-                return;
-            }
+            graph.receive(node, @ptrCast(@alignCast(entry)));
+            return;
         }
         if (self.pending.get(node.key)) |single| {
             single.addWaiter(graph, node) catch {
@@ -1458,12 +1599,12 @@ pub const AsyncModuleLoader = struct {
             };
             return;
         }
-        self.startSingle(graph, node, options, referrer) catch {
+        self.startSingle(graph, node, options, referrer, shape) catch {
             graph.failed = true;
         };
     }
 
-    fn startSingle(self: *AsyncModuleLoader, graph: *Graph, node: *Node, options: FetchOptions, referring_url: []const u8) !void {
+    fn startSingle(self: *AsyncModuleLoader, graph: *Graph, node: *Node, options: FetchOptions, referring_url: []const u8, shape: RequestShape) !void {
         const single = try self.allocator.create(SingleFetch);
         errdefer self.allocator.destroy(single);
         const key = try self.allocator.dupe(u8, node.key);
@@ -1489,17 +1630,14 @@ pub const AsyncModuleLoader = struct {
         defer if (request_owned) request.deinit();
         request.mode = .cors;
         request.credentials_mode = options.credentials_mode;
-        request.destination = switch (node.module_type) {
-            .javascript => self.env.script_destination,
-            .json => .json,
-            .css => .style,
-        };
-        request.initiator_type = .script;
+        request.destination = shape.destination;
+        request.initiator_type = shape.initiator_type;
         if (nonce.len > 0) try request.setCryptographicNonceMetadata(nonce);
         try request.setIntegrityMetadata(integrity);
         request.parser_metadata = if (options.parser_inserted) .parser_inserted else .not_parser_inserted;
         request.referrer_policy = options.referrer_policy;
         request.render_blocking = options.render_blocking;
+        request.priority = options.fetch_priority;
         try script_request.populateRequestFromClient(request, self.env.context_instance.ctx);
         if (referrer.len > 0) try request.setReferrerUrl(referrer);
         request_owned = false;
@@ -1530,6 +1668,18 @@ fn createFromResponse(env: *const Environment, url: []const u8, module_type: Mod
             const text = css_rules.decodeUtf8(env.allocator, body) catch break :blk null;
             defer env.allocator.free(text);
             break :blk createCssModuleScript(&response_env, text, base_url) catch null;
+        },
+        // Step 13.7.1-13.7.2: "Let sourceText be the result of UTF-8
+        // decoding bodyBytes. If moduleType is "text", then set moduleScript
+        // to the result of creating a text module script given sourceText" -
+        // whatever the MIME type: the response's Content-Type is not looked
+        // at (text-module/ignore-content-type.any.js). "UTF-8 decode" strips
+        // a UTF-8 BOM and never fails: a bad sequence is U+FFFD
+        // (charset-bom.any.js - a UTF-16 BOM is two of them).
+        .text => blk: {
+            const text = css_rules.decodeUtf8(env.allocator, body) catch break :blk null;
+            defer env.allocator.free(text);
+            break :blk createTextModuleScript(&response_env, text, base_url) catch null;
         },
     };
 }
@@ -1798,8 +1948,8 @@ test "canceling one module graph preserves a shared fetch until its last waiter 
     var loader: AsyncModuleLoader = .{
         .allocator = allocator,
         .env = undefined,
-        .document = undefined,
-        .document_generation = 0,
+        .owner = undefined,
+        .owner_generation = 0,
         .pending = std.StringHashMap(*AsyncModuleLoader.SingleFetch).init(allocator),
     };
     defer loader.pending.deinit();
@@ -1828,7 +1978,7 @@ test "canceling one module graph preserves a shared fetch until its last waiter 
     try std.testing.expectEqual(@as(usize, 1), single.waiters.items.len);
     try std.testing.expectEqual(@as(usize, 1), loader.pending.count());
     try std.testing.expectEqual(@as(usize, 1), count);
-    // Last cancellation detaches queued payloads from the document. They
+    // Last cancellation detaches queued payloads from the owner. They
     // remain owned only by their task, which may be dropped after teardown.
     single.task_queued = true;
     second.task_queued = true;
@@ -1880,4 +2030,23 @@ test "isJavaScriptMimeTypeEssence matches whole essences only" {
     try std.testing.expect(isJavaScriptMimeTypeEssence("application/x-javascript"));
     try std.testing.expect(!isJavaScriptMimeTypeEssence("text/javascript2"));
     try std.testing.expect(!isJavaScriptMimeTypeEssence("application/json"));
+}
+
+test "moduleTypeFromAttribute: json, css and text are module types; javascript-or-wasm and the rest are not" {
+    try std.testing.expectEqual(ModuleType.javascript, moduleTypeFromAttribute(null).?);
+    try std.testing.expectEqual(ModuleType.json, moduleTypeFromAttribute("json").?);
+    try std.testing.expectEqual(ModuleType.css, moduleTypeFromAttribute("css").?);
+    try std.testing.expectEqual(ModuleType.text, moduleTypeFromAttribute("text").?);
+    try std.testing.expect(moduleTypeFromAttribute("javascript-or-wasm") == null);
+    try std.testing.expect(moduleTypeFromAttribute("Text") == null);
+    try std.testing.expect(moduleTypeFromAttribute("") == null);
+}
+
+test "fetch destination from module type: json, style and text; the default otherwise" {
+    try std.testing.expectEqual(fetch.internal.Destination.json, ModuleType.json.fetchDestination(.script));
+    try std.testing.expectEqual(fetch.internal.Destination.style, ModuleType.css.fetchDestination(.script));
+    try std.testing.expectEqual(fetch.internal.Destination.text, ModuleType.text.fetchDestination(.paintworklet));
+    try std.testing.expectEqual(fetch.internal.Destination.paintworklet, ModuleType.javascript.fetchDestination(.paintworklet));
+    // Each type has its own module map key.
+    try std.testing.expect(!std.mem.eql(u8, ModuleType.text.keyPrefix(), ModuleType.javascript.keyPrefix()));
 }

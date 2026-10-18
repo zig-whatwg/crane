@@ -49,6 +49,9 @@ const css = @import("css");
 const dom = @import("dom");
 
 const AsyncFetch = fetch.algorithms.AsyncFetch;
+// modulepreload: the document's module loader.
+const module_script = @import("module_script.zig");
+const script_execution = @import("script_execution.zig");
 
 const log = std.log.scoped(.style_sheets);
 
@@ -120,6 +123,9 @@ const Load = struct {
     sheets: std.ArrayListUnmanaged(*Sheet) = .empty,
     /// Fetches not yet answered.
     in_flight: u32 = 0,
+    /// A modulepreload's module fetch, through the document's module
+    /// loader, is one of them (`ModulePreload`).
+    module_in_flight: bool = false,
     /// A fetch failed: the event is `error`.
     failed: bool = false,
     /// The event's task is queued.
@@ -455,25 +461,106 @@ pub fn startPrefetch(element: *runtime.Instance, options: LinkOptions) ?u64 {
 /// HTML "fetch and process the linked resource" for `element`, a link
 /// element whose modulepreload link is to be fetched, `destination` its `as`
 /// attribute's state ("script" when it has none): step 3, a destination
-/// that is not script-like fires `error` from a task; otherwise "fetch a
-/// modulepreload module script graph" - "fetch a single module script" -
-/// then `error` if there is no module script, `load` if there is.
+/// that is not a module preload destination fires `error` from a task;
+/// otherwise step 14, "fetch a modulepreload module script graph" - "fetch
+/// a single module script" into the node document's module map, through its
+/// module loader (script_execution.fetchModulePreload) - then `error` if
+/// there is no module script, `load` if there is (a module that fails to
+/// parse is a module script, with a parse error). A later import of the URL
+/// takes the module from the map, or joins its fetch.
 ///
-/// Not modelled, stated: the module map, which the fetched script would
-/// enter for a later import to find, and "fetch the descendants" - the
-/// script's own imports; and the script is not parsed, so a module that
-/// fails to parse still fires load.
+/// Not done, stated: step 1.3's optional "fetch the descendants of and
+/// link" - the script's own imports.
 pub fn startModulePreload(element: *runtime.Instance, options: LinkOptions, destination: fetch.internal.Destination) ?u64 {
-    if (!destination.isScriptLike()) {
-        const load = newLoad(element, .modulepreload) orelse return null;
-        // `complete` can free the load.
-        const id = load.id;
+    const load = newLoad(element, .modulepreload) orelse return null;
+    // `complete` and `release` can free the load.
+    const id = load.id;
+    // Step 3: "A module preload destination is "json", "style", "text", or
+    // a script-like destination."
+    if (!(destination.isScriptLike() or destination == .json or destination == .style or destination == .text)) {
         load.failed = true;
         complete(load);
         return id;
     }
-    return startLinkFetch(element, .modulepreload, options, destination);
+    const document_allocator = load.document.ctx.allocator;
+    // Steps 4-5: encoding-parse the href relative to the node document;
+    // failure is no fetch.
+    const base = interfaces.Node.get_baseURI(load.document) catch null;
+    defer if (base) |b| document_allocator.free(b);
+    const url = resolve(element, options.href, base) orelse {
+        release(load, .settled);
+        return null;
+    };
+    defer element.ctx.allocator.free(url);
+    // Steps 7-13: the script fetch options - the crossorigin attribute's
+    // CORS settings attribute credentials mode, the nonce, the integrity
+    // (the import map's, for an absent attribute: the caller's), "not
+    // parser-inserted", the referrer policy and the fetch priority.
+    const module_options: module_script.FetchOptions = .{
+        .nonce = options.nonce,
+        .integrity = options.integrity,
+        .parser_inserted = false,
+        .referrer_policy = options.referrer_policy,
+        .credentials_mode = if (options.cors == .use_credentials) .include else .same_origin,
+        .fetch_priority = options.fetch_priority,
+    };
+    const preload = std.heap.c_allocator.create(ModulePreload) catch {
+        load.failed = true;
+        complete(load);
+        return id;
+    };
+    preload.* = .{ .load_id = id };
+    // The fetch counts as in flight from here: its client can run at once
+    // (a task dropped by an ending loop).
+    load.module_in_flight = true;
+    load.in_flight += 1;
+    if (!script_execution.fetchModulePreload(load.document, element, url, destination, module_options, preload.client())) {
+        std.heap.c_allocator.destroy(preload);
+        load.module_in_flight = false;
+        load.in_flight -= 1;
+        load.failed = true;
+        complete(load);
+    }
+    return id;
 }
+
+/// A modulepreload's fetch, as its module loader's client. It names its load
+/// by id rather than by address: a load that ended first - its element went,
+/// or fetches again - is not found, and the fetch, which the module map
+/// still takes, ends with no event (WebKit's ScriptModuleLoader clears a
+/// loader's client the same way; Blink's ModuleMap keeps the fetch).
+const ModulePreload = struct {
+    load_id: u64,
+
+    fn client(self: *ModulePreload) module_script.AsyncModuleLoader.Client {
+        return .{ .context = self, .done = done, .gone = gone };
+    }
+
+    /// The load still waiting on this fetch, freeing `self`.
+    fn take(context: *anyopaque) ?*Load {
+        const self: *ModulePreload = @ptrCast(@alignCast(context));
+        const id = self.load_id;
+        std.heap.c_allocator.destroy(self);
+        const load = find(id) orelse return null;
+        if (!load.module_in_flight) return null;
+        load.module_in_flight = false;
+        load.in_flight -= 1;
+        return load;
+    }
+
+    /// Step 14's onComplete: `error` for null, `load` for a module script.
+    fn done(context: *anyopaque, result: ?*module_script.ModuleScript) void {
+        const load = take(context) orelse return;
+        if (result == null) load.failed = true;
+        if (load.in_flight == 0 and !load.event_queued) complete(load);
+    }
+
+    /// The document or its realm is going away: no event.
+    fn gone(context: *anyopaque) void {
+        const load = take(context) orelse return;
+        if (load.in_flight == 0 and !load.event_queued) release(load, .teardown);
+    }
+};
 
 fn startLinkFetch(element: *runtime.Instance, kind: Kind, options: LinkOptions, destination: fetch.internal.Destination) ?u64 {
     const load = newLoad(element, kind) orelse return null;
@@ -633,8 +720,13 @@ fn find(id: u64) ?*Load {
 }
 
 /// Terminate every fetch `load` has running. Their clients hear nothing
-/// more.
+/// more. A modulepreload's module fetch runs on - the module map takes it -
+/// but no longer counts for the load (`ModulePreload`).
 fn terminateFetches(load: *Load) void {
+    if (load.module_in_flight) {
+        load.module_in_flight = false;
+        load.in_flight -= 1;
+    }
     for (load.sheets.items) |sheet| {
         if (sheet.fetch) |f| {
             sheet.fetch = null;
@@ -807,13 +899,6 @@ fn startFetchOrFail(load: *Load, url: []const u8, parent: ?*Sheet, import_index:
     request.destination = destination;
     request.mode = if (cors == .no_cors) .no_cors else .cors;
     request.credentials_mode = if (cors == .anonymous) .same_origin else .include;
-    // A module script is fetched "cors" whatever the attribute, with its
-    // "CORS settings attribute credentials mode": "same-origin" for No CORS
-    // and Anonymous, "include" for Use Credentials.
-    if (load.kind == .modulepreload) {
-        request.mode = .cors;
-        request.credentials_mode = if (cors == .use_credentials) .include else .same_origin;
-    }
     request.use_url_credentials = true;
     // "Set request's referrer policy to options's referrer policy."
     request.referrer_policy = options.referrer_policy;
@@ -823,9 +908,9 @@ fn startFetchOrFail(load: *Load, url: []const u8, parent: ?*Sheet, import_index:
     if (options.nonce.len != 0) try request.setCryptographicNonceMetadata(options.nonce);
     request.priority = options.fetch_priority;
     // Resource Timing initiatorType: CSS imports (including an inline
-    // style's first import) are "css"; link requests are "link". For
-    // modulepreload, Firefox/Safari agree on "link", unlike Chrome/WPT's
-    // "other" (aligned stable runs, 2026-10-16; row 47 Q5/Q6).
+    // style's first import) are "css"; link requests are "link" (a
+    // modulepreload's too - its request is the module loader's,
+    // module_script.AsyncModuleLoader.startModulePreload).
     // CSS Values 4 §4.5.4 step 7: an origin-dirty parent does not expose
     // its imported URLs through resource timing. Inline styles are clean.
     request.initiator_type = if (parent != null and !parent.?.origin_clean) null else if (parent != null or load.kind == .style) .css else .link;
@@ -924,17 +1009,6 @@ fn processResponse(sheet: *Sheet, outcome: fetch.algorithms.FetchError!fetch.alg
     // at el. Otherwise, fire an event named load at el" - whatever its
     // status or type.
     if (load.kind == .preload) return;
-    // A modulepreload - "fetch a single module script": no module script
-    // when the status is not ok, or the MIME type is not a JavaScript MIME
-    // type (for a script-like destination).
-    if (load.kind == .modulepreload) {
-        if (!fetch.internal.isOkStatus(response.status)) return fail(load);
-        const essence = fetch.internal.mime.extractMimeEssence(load.allocator, &response.header_list) catch return fail(load);
-        const e = essence orelse return fail(load);
-        defer load.allocator.free(e);
-        if (!fetch.internal.mime.isJavaScriptEssence(e)) return fail(load);
-        return;
-    }
     if (!fetch.internal.isOkStatus(response.status)) return fail(load);
     // "If the resource's Content-Type metadata is not text/css, then set
     // success to false" - with the quirk: "If the document has been set to

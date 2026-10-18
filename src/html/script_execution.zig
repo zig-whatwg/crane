@@ -2099,9 +2099,10 @@ fn loadImport(realm: runtime.Context, base: ImportBase, specifier: []const u8, t
         return finishImportWithTypeError(realm, request, "Failed to resolve module specifier");
     defer window.ctx.allocator.free(url);
 
-    // Step 14: fetch - as a task, so the imported module is fetched and
-    // evaluated after the script that called import() and its microtasks,
-    // the way a real network fetch completes.
+    // Step 14: fetch a single imported module script. A Window's starts
+    // its request now and completes from a task - or from a microtask when
+    // every module is in the map already (module_script Client). A
+    // ShadowRealm's still fetches from a task, synchronously.
     const loop = window.ctx.getOptionalEventLoop() orelse
         return finishImportWithTypeError(realm, request, "No event loop to load the module on");
     const import_referrer = switch (base) {
@@ -2130,6 +2131,9 @@ fn loadImport(realm: runtime.Context, base: ImportBase, specifier: []const u8, t
             .context = task,
             .done = dynamicModuleGraphDone,
             .gone = dynamicModuleGraphGone,
+            // A graph wholly in the module map settles in microtasks
+            // (microtasks/basic.any.html; see Client).
+            .settle_cached_in_microtask = true,
         }) catch {
             task.destroy();
             return finishImportWithTypeError(realm, request, "Failed to start module fetch");
@@ -2350,6 +2354,37 @@ fn prepareInlineModuleScript(script_element: *runtime.Instance, document: *runti
     }
     if (module_script.fetchDescendantsAndLink(&env, script)) |graph| setResult(script_element, moduleResult(graph));
     return false;
+}
+
+/// HTML "fetch a modulepreload module script graph" for `link`, a link
+/// element whose node document is `document` (the modulepreload link type's
+/// step 14, style_sheet_loading): fetch a single module script of `url`
+/// through the document's module loader, so that the module enters the
+/// document's module map - a later import of the URL finds it, or joins its
+/// fetch - and `client.done` hears the result (null, or the module script).
+/// False when the fetch could not start (no event loop, no memory): nothing
+/// of `client` runs then.
+pub fn fetchModulePreload(
+    document: *runtime.Instance,
+    link: *runtime.Instance,
+    url: []const u8,
+    destination: fetch.internal.Destination,
+    options: module_script.FetchOptions,
+    client: module_script.AsyncModuleLoader.Client,
+) bool {
+    if (!module_script.supported) return false;
+    if (link.ctx.getOptionalEventLoop() == null) return false;
+    const module_allocator = document_modules.allocator(document) orelse return false;
+    const env: module_script.Environment = .{
+        .allocator = module_allocator,
+        .context_instance = link,
+        .map = documentModuleMap(document),
+        .resolveImportFn = &documentResolveImport,
+        .resolveIntegrityFn = &documentResolveIntegrity,
+    };
+    const loader = documentModuleLoader(document, env) orelse return false;
+    loader.startModulePreload(url, destination, options, client) catch return false;
+    return true;
 }
 
 fn documentModuleLoader(document: *runtime.Instance, env: module_script.Environment) ?*module_script.AsyncModuleLoader {
@@ -4946,8 +4981,8 @@ pub const delivery_drop_test_cases = if (@import("builtin").is_test) struct {
             var loader: module_script.AsyncModuleLoader = .{
                 .allocator = allocator,
                 .env = moduleEnvironment(fixture.element, fixture.document).?,
-                .document = fixture.document,
-                .document_generation = runtime.SlabAllocator.generationOf(fixture.document),
+                .owner = fixture.document,
+                .owner_generation = runtime.SlabAllocator.generationOf(fixture.document),
                 .pending = Pending.init(allocator),
             };
             defer {
