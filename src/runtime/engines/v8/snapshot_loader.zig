@@ -117,11 +117,24 @@ const snapshot_only_flags = "--hash-seed=0 --predictable";
 /// wasm/core/exceptions/ failed. Measured pure gain on wasm/ (+155 subtests,
 /// no file lost a subtest, no crash). Drop it with the V8 upgrade (>= 13.7).
 ///
+/// `--experimental-wasm-jspi` enables WebAssembly JavaScript Promise
+/// Integration: WasmJs::Install then defines WebAssembly.Suspending and
+/// WebAssembly.promising on each new context (13.1 wasm-js.cc
+/// InstallJSPromiseIntegration). A staged feature in 13.1
+/// (wasm-feature-flags.h), shipped from V8 13.7 (Chrome 137); Chrome,
+/// Firefox and Safari all pass wasm/jsapi/jspi/ on wpt.fyi (stable run
+/// 23b0b89b1a, 2026-10-18), so golden rule 2 says implement. 13.1 has no
+/// WebAssembly.SuspendError, which notraps.any.js's last case needs. Not in a
+/// jitless build: JSPI switches stacks for compiled WebAssembly, and V8 >= 13.7
+/// installs it only `if (!v8_flags.wasm_jitless)` (wasm-js.cc
+/// InstallConditionalFeatures), a guard 13.1's WasmJs::Install lacks. Drop it
+/// with the V8 upgrade (>= 13.7).
+///
 /// `--jitless` is appended when built for a target that cannot JIT. iOS gives
 /// third-party apps no W^X exception, so V8 generating code there gets the process
 /// killed; interpreter-only is the only way to run at all. It is a build-time
 /// decision rather than runtime because it must be set before V8 initializes.
-pub const RUNTIME_V8_FLAGS = "--harmony-shadow-realm --js-float16array --experimental-wasm-memory64 --experimental-wasm-exnref" ++ if (build_options.jitless) " --jitless" else "";
+pub const RUNTIME_V8_FLAGS = "--harmony-shadow-realm --js-float16array --experimental-wasm-memory64 --experimental-wasm-exnref" ++ if (build_options.jitless) " --jitless" else " --experimental-wasm-jspi";
 
 /// Initialize V8 platform with proper flags for snapshot support.
 /// This MUST be called instead of v8_Platform_Initialize() when using snapshots.

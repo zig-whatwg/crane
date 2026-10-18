@@ -14109,3 +14109,109 @@ int v8_RegExpBuiltinExecCaptures(Isolate* isolate, PatternMatcher* matcher, cons
 
 } // extern "C"
 // ---- end lane: regexop ----
+// ---- lane: wasmweb1 (WebAssembly Web API 2: compileStreaming, instantiateStreaming) ----
+//
+// V8 defines WebAssembly.compileStreaming and instantiateStreaming itself, on
+// every context it creates in an isolate with a WasmStreamingCallback
+// (wasm-js.cc WasmJs::Install). Each call does Promise.resolve(source).then:
+// a rejection rejects the call's promise (WasmStreamingPromiseFailedCallback),
+// and a fulfilment calls the embedder's callback with the value and a
+// WasmStreaming the embedder feeds bytes into - the design of Blink's
+// v8_wasm_response_extensions.cc (StreamFromResponseCallback). Here the
+// callback hands the value to the agent's
+// HostHooks.compilePotentialWebAssemblyResponse through one process-wide
+// dispatcher, and the host ends what it is handed with Finish or Abort below.
+
+/// One compilation V8 handed the embedder: the WasmStreaming, kept until the
+/// host (or the engine, at its realm's or agent's end) finishes or aborts it.
+/// Opaque to Zig (ffi.WasmResponseCompilation); deleted by Finish and Abort.
+struct CraneWasmResponseCompilation {
+    Isolate* isolate;
+    std::shared_ptr<WasmStreaming> streaming;
+};
+
+/// Hands `source` (borrowed for the call) and `compilation` (owned from here)
+/// to the host of `isolate`'s agent; false when there is none, and then the
+/// compilation is still the caller's.
+typedef bool (*ProtocolWasmStreamingDispatch)(Isolate* isolate, Global<Context>* context, Global<Value>* source, CraneWasmResponseCompilation* compilation);
+
+// process-wide: the one dispatcher (a Zig function finding the agent's hooks by isolate), set once by engine.initializeEngine before any agent's thread runs, beside g_protocol_code_generation; every agent's isolate reads the same function.
+static ProtocolWasmStreamingDispatch g_protocol_wasm_streaming = nullptr;
+
+/// Reject a compilation no host took with a TypeError of the current
+/// context, and delete it.
+static void RefuseWasmStreaming(Isolate* isolate, CraneWasmResponseCompilation* compilation, const char* message) {
+    {
+        HandleScope scope(isolate);
+        Local<Value> error = Exception::TypeError(String::NewFromUtf8(isolate, message).ToLocalChecked());
+        compilation->streaming->Abort(error);
+    }
+    delete compilation;
+}
+
+/// Isolate::SetWasmStreamingCallback's callback: `info[0]` is what the call's
+/// source fulfilled with, `info.Data()` the Managed<WasmStreaming>.
+static void ProtocolWasmStreamingCallback(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    HandleScope scope(isolate);
+    auto* compilation = new CraneWasmResponseCompilation{isolate, WasmStreaming::Unpack(isolate, info.Data())};
+    Local<Context> context = isolate->GetCurrentContext();
+    auto dispatch = g_protocol_wasm_streaming;
+    if (!dispatch || context.IsEmpty()) {
+        RefuseWasmStreaming(isolate, compilation, "WebAssembly streaming compilation is not available here");
+        return;
+    }
+    Global<Context> realm(isolate, context);
+    Global<Value> source(isolate, info[0]);
+    if (!dispatch(isolate, &realm, &source, compilation)) {
+        RefuseWasmStreaming(isolate, compilation, "WebAssembly streaming compilation is not available here");
+    }
+}
+
+extern "C" {
+
+/// The process's dispatcher: once, at process start (initializeEngine).
+void v8_SetProtocolWasmStreamingDispatcher(ProtocolWasmStreamingDispatch dispatch) {
+    g_protocol_wasm_streaming = dispatch;
+}
+
+/// Isolate::SetWasmStreamingCallback: every context made in `isolate` from
+/// now on has WebAssembly.compileStreaming and instantiateStreaming.
+void v8_Isolate_SetProtocolWasmStreaming(Isolate* isolate) {
+    isolate->SetWasmStreamingCallback(ProtocolWasmStreamingCallback);
+}
+
+/// WasmStreaming::OnBytesReceived: `bytes` are copied.
+void v8_WasmResponseCompilation_Append(CraneWasmResponseCompilation* compilation, const uint8_t* bytes, size_t length) {
+    if (length == 0) return;
+    compilation->streaming->OnBytesReceived(bytes, length);
+}
+
+/// WasmStreaming::SetUrl (when `url` is not empty) and Finish, then delete the
+/// compilation. With `compilation`'s isolate entered.
+void v8_WasmResponseCompilation_Finish(CraneWasmResponseCompilation* compilation, const char* url, size_t url_length) {
+    {
+        HandleScope scope(compilation->isolate);
+        if (url_length != 0) compilation->streaming->SetUrl(url, url_length);
+        compilation->streaming->Finish();
+    }
+    delete compilation;
+}
+
+/// WasmStreaming::Abort with `reason` (borrowed), or with none - the call's
+/// promise is then never settled - and delete the compilation. With
+/// `compilation`'s isolate entered.
+void v8_WasmResponseCompilation_Abort(CraneWasmResponseCompilation* compilation, Global<Value>* reason) {
+    {
+        HandleScope scope(compilation->isolate);
+        if (reason) {
+            compilation->streaming->Abort(reason->Get(compilation->isolate));
+        } else {
+            compilation->streaming->Abort(MaybeLocal<Value>());
+        }
+    }
+    delete compilation;
+}
+
+} // extern "C"
+// ---- end lane: wasmweb1 ----

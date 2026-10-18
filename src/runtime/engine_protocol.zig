@@ -593,7 +593,40 @@ pub const HostHooks = struct {
     /// phased hook instead: resolve (steps 1-9), initialize (9.2-9.9),
     /// take_entry (12-13), commit (15).
     htmlConstructor: ?*const fn (host: ?*anyopaque, realm: Context, new_target: JSValue, interface: []const u8) Error!HTMLConstructed = null,
+    /// WebAssembly Web API 2, "compile a potential WebAssembly response"
+    /// [webassembly_streaming], split across the seam as browsers split it
+    /// (Blink's WasmResponseExtensions, SpiderMonkey's ConsumeStreamCallback,
+    /// JSC's GlobalObjectMethodTable::compileStreaming): the engine does step
+    /// 1, step 2's reaction to `source` - a rejection rejects returnValue
+    /// without this hook - and steps 2.9.1-2.9.2, asynchronously compiling
+    /// the bytes and resolving returnValue (instantiateStreaming then
+    /// instantiates the module). The host does steps 2.1-2.8 - the Response,
+    /// its Content-Type, CORS-same-origin and ok status checks, and consuming
+    /// its body - and hands the body's bytes over through
+    /// `appendWebAssemblyResponseBytes`, then `finishWebAssemblyResponse`, or
+    /// rejects returnValue with `abortWebAssemblyResponse`.
+    ///
+    /// Called when `source` fulfills: on the agent's thread, inside a
+    /// microtask. `realm`: the current realm of the compileStreaming or
+    /// instantiateStreaming call. `source`: unwrappedSource, BORROWED for the
+    /// call - any value; one that is not a Response is the host's TypeError.
+    /// `compilation`: OWNED by the host from this call until it ends it with
+    /// exactly one finishWebAssemblyResponse or abortWebAssemblyResponse - at
+    /// the latest when `realm` ends: a promise reaction in `realm` that holds
+    /// it ends with the realm (its `dropped` end is where an abort with no
+    /// reason belongs). What the host has not ended when `realm` ends is
+    /// ended by the engine without settling, and the host's later end only
+    /// frees it; what it has not ended when the agent ends is freed by the
+    /// engine, and the host must not touch it after.
+    ///
+    /// Not installed: the engine does not define the two functions.
+    compilePotentialWebAssemblyResponse: ?*const fn (host: ?*anyopaque, realm: Context, source: JSValue, compilation: *WebAssemblyResponseCompilation) void = null,
 };
+
+/// One "compile a potential WebAssembly response" (WebAssembly Web API 2) in
+/// progress, from HostHooks.compilePotentialWebAssemblyResponse to the
+/// host's finishWebAssemblyResponse or abortWebAssemblyResponse.
+pub const WebAssemblyResponseCompilation = opaque {};
 
 /// What HostHooks.htmlConstructor hands the engine: the element the
 /// [HTMLConstructor] construction results in.
@@ -823,6 +856,15 @@ pub const Capabilities = struct {
     /// or Location is reached as a same-origin one would be. A
     /// security-relevant difference, declared.
     cross_origin_objects: Support,
+    /// WebAssembly Web API section 2, "Streaming Module Compilation and
+    /// Instantiation": the engine defines `WebAssembly.compileStreaming` and
+    /// `WebAssembly.instantiateStreaming` in the realms of an agent with
+    /// `HostHooks.compilePotentialWebAssemblyResponse`, and hands that hook
+    /// each Response a call's source fulfills with. Unsupported: the two
+    /// functions are absent (JavaScriptCore's public C API has no streaming
+    /// hook - WebKit's compileStreaming is the private GlobalObjectMethodTable
+    /// - and QuickJS has no WebAssembly).
+    webassembly_streaming: Support,
 };
 
 /// The capabilities of the engine this build selected.
@@ -1959,6 +2001,44 @@ pub inline fn structuredSerializeWithTransfer(realm: Context, value: JSValue, tr
 /// `memory`); a reference past `transferred` is a DataCloneError. OWNED.
 pub inline fn structuredDeserializeWithTransfer(realm: Context, serialized: []const u8, array_buffers: []const []const u8, transferred: []const *Instance) Error!Owned {
     return impl.structuredDeserializeWithTransfer(realm, serialized, array_buffers, transferred);
+}
+
+// ============================================================================
+// 4.11a WebAssembly Web API 2, "compile a potential WebAssembly response"
+// [webassembly_streaming]
+// ============================================================================
+//
+// The host's side of a compilation HostHooks.compilePotentialWebAssemblyResponse
+// handed it: the body's bytes, then the end. Each call is on the agent's
+// thread. A compilation the engine already ended at its realm's end takes
+// the bytes and the end without effect (the end frees it).
+
+/// Step 2.9.1's stableBytes, a part at a time: `bytes` (BORROWED, copied)
+/// follow the parts appended before. The engine may start compiling them as
+/// they arrive; the result is the one the whole would give.
+pub inline fn appendWebAssemblyResponseBytes(compilation: *WebAssemblyResponseCompilation, bytes: []const u8) Error!void {
+    comptime gate(.webassembly_streaming, "appendWebAssemblyResponseBytes");
+    return impl.appendWebAssemblyResponseBytes(compilation, bytes);
+}
+
+/// The bytes are all there: steps 2.9.1-2.9.2 - asynchronously compile them
+/// (an invalid module rejects returnValue with a CompileError), resolve
+/// returnValue with the module, and for instantiateStreaming instantiate
+/// it. `url` (BORROWED): the response's URL, the module's associated URL
+/// (WebAssembly Web API section 4: a WebAssembly location in a stack trace
+/// reads `${url}:wasm-function[${funcIndex}]:${pcOffset}`); empty for none.
+/// Ends `compilation`.
+pub inline fn finishWebAssemblyResponse(compilation: *WebAssemblyResponseCompilation, url: []const u8) void {
+    comptime gate(.webassembly_streaming, "finishWebAssemblyResponse");
+    impl.finishWebAssemblyResponse(compilation, url);
+}
+
+/// Reject returnValue with `reason` (BORROWED): a step 2.1-2.7 TypeError, or
+/// step 2.9's bodyPromise rejection. Null ends the compilation without
+/// settling returnValue - its realm is ending. Ends `compilation`.
+pub inline fn abortWebAssemblyResponse(compilation: *WebAssemblyResponseCompilation, reason: ?JSValue) void {
+    comptime gate(.webassembly_streaming, "abortWebAssemblyResponse");
+    impl.abortWebAssemblyResponse(compilation, reason);
 }
 
 // ============================================================================

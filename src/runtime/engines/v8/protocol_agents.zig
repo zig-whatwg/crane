@@ -28,6 +28,10 @@ const context_manager = @import("context_manager.zig");
 /// worker_realm.zig's agent operations.
 const worker_realm = @import("worker_realm.zig");
 const protocol_realms = @import("protocol_realms.zig");
+const protocol_webassembly = @import("protocol_webassembly.zig");
+/// An agent's WebAssembly streaming compilations (AgentRecord
+/// `webassembly_compilations`), named for tests/v8.
+pub const WebAssemblyCompilations = protocol_webassembly.Compilations;
 
 const Context = engine.Context;
 const Agent = engine.Agent;
@@ -62,6 +66,8 @@ pub fn initializeEngine(options: engine.EngineOptions) Error!void {
     ffi.v8_SetProtocolCodeGenerationDispatchers(onCodeGenerationFromStrings, onWasmCodeGeneration);
     // HostCreateShadowRealmContextCallback's, the same way.
     shadow_realm.installDispatcher();
+    // [webassembly_streaming]: the WasmStreamingCallback's, the same way.
+    ffi.v8_SetProtocolWasmStreamingDispatcher(protocol_webassembly.onWasmStreaming);
     // [cross_origin_objects]: the access checks' dispatch, the same way.
     @import("cross_origin.zig").installDispatch();
     engine_snapshot = null;
@@ -170,6 +176,11 @@ const AgentRecord = struct {
     /// freed with the record (forgetAgent). Every Window realm ends before
     /// its agent, so it is empty by then.
     window_realms: protocol_realms.WindowRealms = .empty,
+    /// [webassembly_streaming]: the compilations handed to the host's
+    /// compilePotentialWebAssemblyResponse that it has not ended
+    /// (protocol_webassembly.zig); the agent's end ends and frees them,
+    /// before the isolate is disposed.
+    webassembly_compilations: protocol_webassembly.Compilations,
 };
 
 /// The agent's PatternMatcher, made on its first use; null for an isolate
@@ -307,7 +318,7 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
 
     const record = std.heap.c_allocator.create(AgentRecord) catch return error.OutOfMemory;
     errdefer std.heap.c_allocator.destroy(record);
-    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .host_agent = host_agent, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .deferred_teardown = options.deferred_teardown };
+    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .host_agent = host_agent, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .deferred_teardown = options.deferred_teardown, .webassembly_compilations = .{ .allocator = options.allocator } };
     {
         std.Io.Threaded.mutexLock(&agents_lock);
         defer std.Io.Threaded.mutexUnlock(&agents_lock);
@@ -334,6 +345,10 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     const load = options.hooks.loadImportedModule != null;
     const meta = options.hooks.importMetaUrl != null;
     const resolve = options.hooks.importMetaResolve != null;
+    // [webassembly_streaming]: WebAssembly.compileStreaming and
+    // instantiateStreaming, in every realm made from here on - V8 installs
+    // them per context only on an isolate with the callback.
+    if (options.hooks.compilePotentialWebAssemblyResponse != null) ffi.v8_Isolate_SetProtocolWasmStreaming(isolate);
     if (load or meta) {
         ffi.v8_Isolate_SetProtocolModuleHooks(
             isolate,
@@ -389,6 +404,10 @@ pub fn endAgent(agent: *Agent) void {
     const deferred_teardown = if (record) |r| r.deferred_teardown else null;
     const intl_objects = if (record) |r| r.intl_objects else null;
     const observable_arrays = if (record) |r| r.observable_arrays else null;
+    // The compilations the host never ended: V8's side of each holds a
+    // WasmStreaming, which must not outlive the isolate, and its record is
+    // the agent's. Ended before the record goes with forgetAgent.
+    if (record) |r| r.webassembly_compilations.endAll();
     forgetAgent(agent);
     const entered = EnteredIsolate.of(agent);
     defer entered.leave();

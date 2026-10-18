@@ -199,6 +199,11 @@ pub const code_generation = @import("code_generation.zig");
 /// what a WebAssembly.Module's serialization is bound to.
 pub const agent_clusters = @import("agent_clusters.zig");
 
+/// WebAssembly Web API 2, "compile a potential WebAssembly response": the
+/// host's steps behind the engine's compileStreaming and instantiateStreaming
+/// (HostHooks.compilePotentialWebAssemblyResponse).
+pub const webassembly_streaming = @import("webassembly_streaming.zig");
+
 /// Script runner for coordinating script scheduling
 pub const script_runner = @import("script_runner.zig");
 

@@ -251,6 +251,7 @@ src/runtime/engines/v8/v8_wrapper.cpp g_protocol_import_meta_resolve 1 C++G H de
 src/runtime/engines/v8/v8_wrapper.cpp g_protocol_import_meta_url 1 C++G H decl:70ca9288052ee146
 src/runtime/engines/v8/v8_wrapper.cpp g_protocol_promise_reject 1 C++G H decl:d0a937e41815c8d2
 src/runtime/engines/v8/v8_wrapper.cpp g_protocol_wasm_code_generation 1 C++G P-res decl:26a45e5240a188b5
+src/runtime/engines/v8/v8_wrapper.cpp g_protocol_wasm_streaming 1 C++G P-res decl:1035edb7e802b1f2
 src/runtime/engines/v8/v8_wrapper.cpp g_shadow_realm_dispatch 1 C++G P-res decl:ba5a12cea7b63cd3
 src/runtime/engines/v8/v8_wrapper.cpp g_site_count 1 C++G D decl:c4af8dddffd39994
 src/runtime/engines/v8/v8_wrapper.cpp g_site_pc 1 C++G D decl:cccefce67abe09da

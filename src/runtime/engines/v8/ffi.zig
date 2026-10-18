@@ -3387,3 +3387,25 @@ pub extern fn v8_RegExpCreateCheck(isolate: *Isolate, matcher: ?*PatternMatcher,
 /// out of memory, -3 terminating. A native step.
 pub extern fn v8_RegExpBuiltinExecCaptures(isolate: *Isolate, matcher: ?*PatternMatcher, pattern: [*]const u16, pattern_len: c_int, ignore_case: bool, input: [*]const u16, input_len: c_int, out: *?[*]u8, out_len: *usize) c_int;
 // ---- end lane: regexop ----
+
+// ---- lane: wasmweb1 (WebAssembly Web API 2: compileStreaming, instantiateStreaming) ----
+
+/// One compilation V8 handed the embedder (v8_wrapper.cpp
+/// CraneWasmResponseCompilation: the WasmStreaming). Deleted by
+/// v8_WasmResponseCompilation_Finish and _Abort, exactly one of which ends it.
+pub const WasmResponseCompilation = opaque {};
+/// The WebAssembly streaming dispatcher: hand `source` (borrowed for the call)
+/// and `compilation` (owned from here) to the host of `isolate`'s agent; false
+/// when there is none, and the caller then rejects and deletes it.
+pub const ProtocolWasmStreamingDispatch = *const fn (isolate: *Isolate, context: *Context, source: *Value, compilation: *WasmResponseCompilation) callconv(.c) bool;
+/// The process's dispatcher: once, at process start (initializeEngine).
+pub extern fn v8_SetProtocolWasmStreamingDispatcher(dispatch: ?ProtocolWasmStreamingDispatch) void;
+/// Isolate::SetWasmStreamingCallback: every context made in `isolate` from then
+/// on has WebAssembly.compileStreaming and instantiateStreaming.
+pub extern fn v8_Isolate_SetProtocolWasmStreaming(isolate: *Isolate) void;
+/// WasmStreaming::OnBytesReceived; `bytes` copied.
+pub extern fn v8_WasmResponseCompilation_Append(compilation: *WasmResponseCompilation, bytes: [*]const u8, length: usize) void;
+/// WasmStreaming::SetUrl (a non-empty `url`) and Finish; deletes `compilation`.
+pub extern fn v8_WasmResponseCompilation_Finish(compilation: *WasmResponseCompilation, url: [*]const u8, url_length: usize) void;
+/// WasmStreaming::Abort with `reason` (borrowed) or none; deletes `compilation`.
+pub extern fn v8_WasmResponseCompilation_Abort(compilation: *WasmResponseCompilation, reason: ?*Value) void;
