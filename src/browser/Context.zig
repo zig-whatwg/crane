@@ -2557,6 +2557,15 @@ fn animationFrameHandler(_: ?*anyopaque) void {
     if (animationFrameDispatchState(&token) != null) {
         if (last_realm) |realm| if (realm.hasEngine()) performMicrotaskCheckpoint(realm);
     }
+    // HTML update-the-rendering step 17, after the document turns. Retain
+    // focusedAreaOf's existing no-blur deviation; never fix up in a selector.
+    for (documents.items) |document| {
+        if (animationFrameDispatchState(&token) == null) break;
+        if (!document.current()) continue;
+        if (dom_mod.focused_area.get(document.document) == null) continue;
+        if (!dom_mod.document_activity.fullyActive(document.document, document.document_generation)) continue;
+        _ = html_mod.focus.focusedAreaOf(document.document);
+    }
 }
 
 /// requestAnimationFrame(callback) - HTML "animation frames", step 2 onwards,
