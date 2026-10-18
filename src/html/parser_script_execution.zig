@@ -346,6 +346,30 @@ pub fn domAdapterOnChildrenMoved(source: *TreeNode, destination: *TreeNode, cont
     parser_mutation.moveChildren(adapter, source, destination) catch {};
 }
 
+/// The tree builder's "insert a character" step 4 for the live parser: the
+/// LIVE DOM's previous sibling of the adjusted insertion location `location`
+/// (parser_dom_mutation.resolve: the fostered table's live parent, template
+/// contents). Reads node fields only - no wrapper, no copy. Passed to
+/// tree_builder.setDomAdapterTextBeforeCallback().
+pub fn domAdapterTextBefore(location: TreeBuilder.InsertionLocation, context: ?*anyopaque) html_core.parser.LiveTextBefore {
+    const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return .unknown));
+    const target = parser_mutation.resolve(adapter, location) catch return .unknown;
+    const parent = dom.instance_bridge.getNodeBase(target.parent) orelse return .unknown;
+    const previous_sibling = if (target.before) |before| blk: {
+        const reference = dom.instance_bridge.getNodeBase(before) orelse return .unknown;
+        // Script moved the reference child elsewhere: the insertion itself
+        // will not take place there (parser_mutation.insert drops it).
+        if (reference.parent_node != parent) return .unknown;
+        break :blk reference.previous_sibling;
+    } else parent.last_child;
+    const previous = previous_sibling orelse return .none;
+    // Step 5: "If previousSibling is a Text node" - a CDATASection is one too.
+    if (previous.node_type != interfaces.Node.get_TEXT_NODE() and previous.node_type != interfaces.Node.get_CDATA_SECTION_NODE()) return .none;
+    const instance = dom.instance_bridge.getInstanceTyped(runtime.Instance, previous) orelse return .unknown;
+    const data = dom.character_data.dataOf(instance) orelse return .unknown;
+    return .{ .text = .{ .node = instance, .generation = runtime.SlabAllocator.generationOf(instance), .data = data } };
+}
+
 /// Static callback wrapper for onTextContentChanged.
 /// This is passed to tree_builder.setDomAdapterCallbacks().
 pub fn domAdapterOnTextContentChanged(tree_node: *TreeNode, context: ?*anyopaque) void {

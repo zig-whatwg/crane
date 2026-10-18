@@ -228,6 +228,26 @@ pub const DeclarativeShadow = struct {
     }
 };
 
+/// What the live DOM has immediately before an adjusted insertion location:
+/// HTML "insert a character" step 4's previousSibling, as the live DOM
+/// adapter sees it (`TreeBuilder.dom_adapter_text_before`).
+pub const LiveTextBefore = union(enum) {
+    /// The adapter cannot resolve the location in the live DOM (its parent
+    /// is gone, or script moved the reference child out of it): the parser's
+    /// own tree decides, as without an adapter.
+    unknown,
+    /// previousSibling is null or not a Text node.
+    none,
+    /// previousSibling is a Text node: the DOM node, typed opaquely as
+    /// html_core does not import runtime, its slab generation, and its data,
+    /// BORROWED until the node next changes - copy it at once.
+    text: struct {
+        node: *anyopaque,
+        generation: u64,
+        data: []const u8,
+    },
+};
+
 /// A node in the DOM tree being constructed.
 ///
 /// This is a simplified node representation for the parser.
@@ -757,6 +777,14 @@ pub const TreeBuilder = struct {
     /// the conversion attaches it.
     dom_adapter_attach_declarative_shadow: ?*const fn (*DeclarativeShadow, ?*anyopaque) bool = null,
 
+    /// The live DOM adapter's answer to "insert a character" step 4: what
+    /// the LIVE DOM has immediately before an adjusted insertion location.
+    /// Script can remove the parser's last text node or insert a Text node of
+    /// its own between two tokens; step 5 appends to the live previous
+    /// sibling, whatever made it. Null (the tree-then-convert path, where no
+    /// script runs) lets the parser's tree answer.
+    dom_adapter_text_before: ?*const fn (InsertionLocation, ?*anyopaque) LiveTextBefore = null,
+
     /// HTML parser "allow declarative shadow roots" (initially false).
     allow_declarative_shadow_roots: bool = false,
 
@@ -908,6 +936,12 @@ pub const TreeBuilder = struct {
 
     pub fn setDomAdapterFinishedCallback(self: *TreeBuilder, on_finished: ?*const fn (*TreeNode, ?*anyopaque) void) void {
         self.dom_adapter_on_children_finished = on_finished;
+    }
+
+    /// Set the adapter's live previous-sibling query (see
+    /// `dom_adapter_text_before`); it shares `dom_adapter_context`.
+    pub fn setDomAdapterTextBeforeCallback(self: *TreeBuilder, text_before: ?*const fn (InsertionLocation, ?*anyopaque) LiveTextBefore) void {
+        self.dom_adapter_text_before = text_before;
     }
 
     /// Set the adapter's attribute-added callback (see
@@ -4193,6 +4227,27 @@ pub const TreeBuilder = struct {
         const location = self.appropriateLocation(null);
         if (location.parent.node_type == .document) return;
         const previous = if (location.before) |reference| reference.prev_sibling else location.parent.last_child;
+        // Steps 4-5 against the LIVE DOM: the previous sibling is the DOM's,
+        // not this tree's. Script between two tokens can have removed the
+        // text node this tree still ends with (document.write after
+        // body.textContent = "" wrote into the removed node), or inserted a
+        // Text node of its own, which the parser then appends to (the spec's
+        // own examples under "insert a character": "A<script>...</script>B"
+        // after the script removes itself is one Text node "AB").
+        if (self.dom_adapter_text_before) |text_before| switch (text_before(location, self.dom_adapter_context)) {
+            .unknown => {},
+            .none => return self.insertNewTextRun(location, data),
+            .text => |live| {
+                if (previous) |last| if (last.node_type == .text and !last.dom_revoked and
+                    last.dom_node == live.node and last.dom_generation == live.generation)
+                {
+                    try last.text_content.appendSlice(data);
+                    self.markTextPending(last);
+                    return;
+                };
+                return self.adoptLiveText(location, live.node, live.generation, live.data, data);
+            },
+        };
         if (previous) |last| {
             if (last.node_type == .text) {
                 // Append entire slice at once (much faster than per-character)
@@ -4201,7 +4256,38 @@ pub const TreeBuilder = struct {
                 return;
             }
         }
+        return self.insertNewTextRun(location, data);
+    }
 
+    /// "Insert a character" step 5, when the live DOM's previous sibling is a
+    /// Text node this tree does not have there: append `data` to that node.
+    /// It joins this tree at `location` as a text node mapped to the live
+    /// one - the DOM already has it there, so the adapter hears no insertion,
+    /// only the pending data, which is the live data copied now plus `data`.
+    fn adoptLiveText(self: *TreeBuilder, location: InsertionLocation, node: *anyopaque, generation: u64, live_data: []const u8, data: []const u8) !void {
+        // The pending text is flushed before any script runs, so script can
+        // never have moved the node it maps here; it still belongs to it.
+        if (self.pending_text) |pending| if (pending.dom_node == node and pending.dom_generation == generation) {
+            try pending.text_content.appendSlice(data);
+            return;
+        };
+        const text = try TreeNode.initText(self.allocator);
+        errdefer text.deinit();
+        // Copy the borrowed live data before anything can change it.
+        try text.text_content.appendSlice(live_data);
+        try text.text_content.appendSlice(data);
+        self.flushPendingText();
+        text.dom_node = node;
+        text.dom_generation = generation;
+        text.dom_revoked = false;
+        const before = if (location.before) |reference| (if (reference.parent == location.parent) reference else null) else null;
+        location.parent.insertBefore(text, before);
+        self.markTextPending(text);
+    }
+
+    /// "Insert a character" step 5's otherwise: a new Text node with `data`,
+    /// inserted at `location`.
+    fn insertNewTextRun(self: *TreeBuilder, location: InsertionLocation, data: []const u8) !void {
         // Create new text node with entire content at once
         const text = try TreeNode.initText(self.allocator);
         errdefer text.deinit();
