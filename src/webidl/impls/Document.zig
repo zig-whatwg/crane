@@ -4857,7 +4857,7 @@ fn updateVisibilityState(document: *runtime.Instance, state: enums.DocumentVisib
     fireEvent(document, document, "visibilitychange", true);
 }
 
-const LifecycleStep = enum { dom_content_loaded, load, container_load, declarative_refresh, resume_script_delivery };
+const LifecycleStep = enum { dom_content_loaded, load, declarative_refresh, resume_script_delivery };
 
 const LifecycleTask = struct {
     allocator: std.mem.Allocator,
@@ -4926,7 +4926,7 @@ fn lifecycleTaskSteps(data: ?*anyopaque) void {
     // frame's container, for a document the frame no longer shows.
     switch (task.step) {
         .dom_content_loaded, .load, .declarative_refresh => if (!isShownByItsWindow(task.target)) return,
-        .container_load, .resume_script_delivery => {},
+        .resume_script_delivery => {},
     }
 
     switch (task.step) {
@@ -4953,16 +4953,7 @@ fn lifecycleTaskSteps(data: ?*anyopaque) void {
             }
             completeLoading(task.target);
         },
-        // "Completely finish loading" step 4: the container's load event
-        // steps - the iframe's own (dom.content_navigables), which end the
-        // delay its navigation put on its node document's load event; step
-        // 5 for any other container: "fire an event named load at element".
-        .container_load => {
-            if (!@import("dom").content_navigables.runLoadEventSteps(task.target)) {
-                fireEvent(task.target, task.target, "load", false);
-            }
-            completeLoadingWithChild(task.target);
-        },
+
         // A refresh set up while the document loaded starts waiting now.
         .declarative_refresh => armDeclarativeRefresh(task.target),
         .resume_script_delivery => resumeScriptDelivery(task),
@@ -5005,11 +4996,10 @@ fn isShownByItsWindow(document: *runtime.Instance) bool {
 /// navigating-across-documents/grandparent_session_aboutsrcdoc.sub.window.html
 /// passes 4/4 in Chrome 154, Firefox 157 and Safari 27; its frame's
 /// navigation on the first message is a push only if the frame has
-/// completely loaded by then. Not taken, stated: the container's load
-/// event steps stay a task of their own ("completely finish loading" step
-/// 4), which Blink (LocalDOMWindow::DispatchLoadEvent, owner->DispatchLoad())
-/// and Gecko (nsGlobalWindowInner::FireFrameLoadEvent) run inside the
-/// child's load event dispatch - a further flip, to measure on its own.
+/// completely loaded by then. It runs from the child's completeLoading, once
+/// the child's container load and pageshow are done (Blink's
+/// DidFinishNavigation checks the parent after Document::ImplicitClose,
+/// which dispatched both).
 fn completeLoadingWithChild(container: *runtime.Instance) void {
     const document = (interfaces.Node.get_ownerDocument(container) catch null) orelse return;
     const internal = getInternal(document) orelse return;
@@ -5020,8 +5010,31 @@ fn completeLoadingWithChild(container: *runtime.Instance) void {
     completeLoading(document);
 }
 
-/// "The end" step 9's task: readiness "complete", load at the window,
-/// pageshow, and the container's load.
+/// "The end" step 9's task: readiness "complete", load at the window, the
+/// container's load, pageshow, and the parent's completion.
+///
+/// Deviation from the spec text, stated (golden rule 2; no newer spec is
+/// involved). HTML fires pageshow (step 9.11) and then "completely finish
+/// loading" (9.12) QUEUES the container's load event steps (its steps 4-5):
+/// a frame's pageshow comes before the iframe element's load. All three
+/// browsers fire the container's load inside the child's window load
+/// dispatch, before pageshow: Blink LocalDOMWindow::DispatchLoadEvent
+/// (`owner->DispatchLoad()` after the window's load;
+/// DispatchLoadAndPageshowEvents fires pageshow after it,
+/// core/frame/local_dom_window.cc), WebKit LocalDOMWindow::dispatchLoadEvent
+/// ("Send a separate load event to the element that owns this frame",
+/// page/LocalDOMWindow.cpp) and Gecko nsGlobalWindowInner::FireFrameLoadEvent
+/// (from PostHandleEvent for the window's load, dom/base/nsGlobalWindowInner.cpp).
+/// wpt.fyi (stable runs of 2026-10-18): navigation-api/ordering-and-transition/
+/// {navigate,back}-cross-document-event-order-with-pagehide.html pass in
+/// Chrome 155, Firefox 158 and Safari 27, which want [..., readystatecomplete,
+/// onload (the iframe's), onpageshow]; the variants with unload pass in
+/// Firefox and Safari (Chrome fires no unload, and still the iframe's load
+/// before pageshow). So "completely finish loading" steps 2-5 run here,
+/// right after the window's load, with the container's load event steps
+/// synchronous, in the container's realm; then pageshow, if the container's
+/// listeners left this document fully active (one that removes the frame
+/// destroys it); then the parent's own completion.
 fn completeLoading(document: *runtime.Instance) void {
     // Step 9.1: "Update the current document readiness to "complete"."
     updateReadiness(document, ._complete_);
@@ -5033,26 +5046,58 @@ fn completeLoading(document: *runtime.Instance) void {
     fireEvent(document, window, "load", false);
     // Step 9.8: the load event end time.
     @import("dom").performance_timeline.recordLoadTiming(document.ctx, .load_event_end);
-    // Steps 9.9-9.11: page showing becomes true and pageshow fires,
-    // persisted false - unless the document is showing already.
     const internal = getInternal(document) orelse return;
+    // The window's load listeners ran script: a document they took out of
+    // its navigable (they removed its frame) finishes nothing more.
+    if (!isShownByItsWindow(document)) return;
+    // Step 9.12, moved before steps 9.9-9.11 (above): "completely finish
+    // loading". Its step 2 sets the completely loaded time - before the
+    // container's listeners run, as the spec's order within it has it, so a
+    // navigation of the frame they start is not one of a document that has
+    // not completely loaded. Steps 3-5: the container's load event steps,
+    // now, in its realm (the iframe load event steps, or a load at an object
+    // or embed element).
+    internal.completely_loaded = true;
+    const container = @import("dom").navigable_container.of(window);
+    if (container) |element| runContainerLoadEventSteps(element);
+    // Steps 9.9-9.11: page showing becomes true and pageshow fires,
+    // persisted false - unless the document is showing already, or the
+    // container's listeners left it not fully active (they removed the
+    // frame: its document is destroyed). A navigation they started has not
+    // committed: the document is still active, and gets its pageshow.
+    if (!isShownByItsWindow(document)) return;
     if (!internal.page_showing) {
         internal.page_showing = true;
         firePageShow(document, window);
     }
-    // Step 9.12: "completely finish loading". Its step 2 sets the completely
-    // loaded time; step 4 queues the container's load event (the iframe load
-    // event steps).
-    internal.completely_loaded = true;
-    if (@import("dom").navigable_container.of(window)) |container| {
-        queueLifecycleTask(container, .container_load);
-    }
+    // This frame no longer delays its container document: the parent's own
+    // load completes now if nothing else delays it (completeLoadingWithChild),
+    // after this document's pageshow.
+    if (container) |element| completeLoadingWithChild(element);
     // Step 9.13: "Queue the navigation timing entry for the Document."
     @import("dom").performance_timeline.queueNavigationTimingEntry(document.ctx);
     // A declarative refresh comes due `time` seconds after the completely
     // loaded time. Its wait starts in a task queued behind the container's
     // load event, so a refresh of no time never overtakes that event.
     if (internal.declarative_refresh != null) queueLifecycleTask(document, .declarative_refresh);
+}
+
+/// "Completely finish loading" steps 4-5 for `container`, run in the
+/// container's realm - the child document's task is in the child's: the
+/// iframe load event steps (dom.content_navigables), which also end the
+/// delay its navigation put on its node document's load event, or for any
+/// other container "fire an event named load at element".
+fn runContainerLoadEventSteps(container: *runtime.Instance) void {
+    engine.runInRealm(container.ctx, containerLoadEventSteps, container) catch |err| {
+        log.debug("a container's load event steps did not run: {}", .{err});
+    };
+}
+
+fn containerLoadEventSteps(data: ?*anyopaque) void {
+    const container: *runtime.Instance = @ptrCast(@alignCast(data.?));
+    if (!@import("dom").content_navigables.runLoadEventSteps(container)) {
+        fireEvent(container, container, "load", false);
+    }
 }
 
 /// Fire an event named `event_type` at `target`, created in `realm_of`'s
