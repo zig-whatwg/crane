@@ -536,7 +536,10 @@ pub fn removed(node: *NodeBase, old_parent: *NodeBase) void {
 
 /// DOM move steps 13-20, once `node` is linked under `new_parent`: its light
 /// subtree's elements leave `old_parent`'s scope and join `new_parent`'s -
-/// the same one, often, and the move still forgets their order.
+/// the same one, often, and the move still forgets their order. Not yet
+/// reached: nothing calls mutation.move (moveBefore removes and inserts, so
+/// it reaches `removed` and `inserted`), and mutation.move has never
+/// compiled (docs/lessons/testing-a-hook-in-a-function-nothing-calls-has-never-compiled.md).
 pub fn moved(node: *NodeBase, old_parent: *NodeBase, new_parent: *NodeBase) void {
     var old_scope: LazyScope = .{ .parent = old_parent };
     var new_scope: LazyScope = .{ .parent = new_parent };
