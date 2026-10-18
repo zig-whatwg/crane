@@ -3082,11 +3082,9 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // return null" - no popups from beforeunload, pagehide or unload.
     if (html_core.navigation.termination_nesting.active()) return null;
 
-    // The window open steps never read `this`: every step works from the
-    // ENTRY global - the window whose script is running. For
-    // `frame.contentWindow.open(url)` called by the page that is the page,
-    // not the frame: the page is the opener, `url` resolves against the
-    // page's document, and the popup lives, and goes, with the page.
+    // The entry global supplies the source Document, URL/referrer, and
+    // creator for a new popup. Existing-target selection starts from this
+    // Window, matching browsers (see the named lookup below).
     const instance = entryWindow() orelse this;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const allocator = internal.allocator;
@@ -3159,7 +3157,17 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
             if (url_record) |u| navigables.navigateByTarget(source_document, .{ .target = target_str, .url = u, .current_document = this_document, .noopener = noopener });
             return if (noopener) null else frame_window;
         }
-        if (popupByName(instance, target_str)) |found| {
+        // Deviation from HTML window-open step 13, which starts selection
+        // from sourceDocument's entry global: all three engines use the
+        // receiver. Blink LocalDOMWindow::open selects on GetFrame()->Tree();
+        // WebKit LocalDOMWindow::open passes this->frame() to createWindow;
+        // Gecko OpenWindow2 looks up names relative to its receiver parent.
+        // https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/frame/local_dom_window.cc
+        // https://github.com/WebKit/WebKit/blob/main/Source/WebCore/page/LocalDOMWindow.cpp
+        // https://github.com/mozilla-firefox/firefox/blob/main/toolkit/components/windowwatcher/nsWindowWatcher.cpp
+        // Steps 4 and 7 must share the receiver: skipping the entry top here
+        // can exclude a popup whose callback has called into its opener.
+        if (popupByName(this, target_str)) |found| {
             // Step 16.1: "If urlRecord is not null, then navigate targetNavigable
             // to urlRecord using sourceDocument, with referrerPolicy and
             // exceptionsEnabled set to true."
