@@ -899,8 +899,16 @@ V8ErrorInfo* v8_Exception_GetErrorInfo(Global<Context>* context, Global<Value>* 
     if (!message.IsEmpty()) {
         info->line_number = message->GetLineNumber(ctx).FromMaybe(-1);
         info->column_number = message->GetStartColumn();
-        String::Utf8Value resource(isolate, message->GetScriptResourceName());
-        info->resource_name = strdup(*resource ? *resource : "");
+        // A value made with no script on the stack has no script resource
+        // name (undefined): its filename is "", as engine.ErrorInfo says -
+        // not ToString(undefined), "undefined".
+        Local<Value> resource_name = message->GetScriptResourceName();
+        if (resource_name->IsString()) {
+            String::Utf8Value resource(isolate, resource_name);
+            info->resource_name = strdup(*resource ? *resource : "");
+        } else {
+            info->resource_name = strdup("");
+        }
     }
 
     return info;

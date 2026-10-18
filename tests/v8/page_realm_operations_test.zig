@@ -2482,6 +2482,11 @@ test "protocol: extractErrorInformation reads an error's message and where it wa
     defer std.testing.allocator.free(plain.message);
     defer std.testing.allocator.free(plain.filename);
     try std.testing.expect(plain.message.len > 0);
+    // Made with no script running, it has no script resource name: its
+    // filename is "" (engine.ErrorInfo's contract), never the string
+    // "undefined" - the navigation API's navigateerror read that for a
+    // traversal canceled from its navigate event.
+    try std.testing.expectEqualStrings("", plain.filename);
 }
 
 // ----------------------------------------------------------------------------

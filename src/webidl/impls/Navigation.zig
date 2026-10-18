@@ -1354,7 +1354,7 @@ fn fireTraverseHook(window: *runtime.Instance, entry_id: u64, user_involvement: 
         .is_same_document = same_document,
     }) orelse return true;
     // Step 9.
-    return innerFire(instance, internal, s, .{
+    const proceed = innerFire(instance, internal, s, .{
         .navigation_type = .traverse,
         .destination = destination,
         .destination_url = url,
@@ -1362,6 +1362,59 @@ fn fireTraverseHook(window: *runtime.Instance, entry_id: u64, user_involvement: 
         .is_same_document = same_document,
         .user_involvement = user_involvement,
     });
+    if (!proceed and s.navigable.parent == null) abortTraversalsCanceledAt(s, destination_she);
+    return proceed;
+}
+
+/// The traversable's navigate event canceled a traversal ("checking if
+/// unloading is canceled" step 4.4.5, "canceled-by-navigate") that a
+/// navigable under it asked for: that navigable's upcoming traverse API
+/// method trackers for the traversal - those whose destination step takes
+/// the traversable to `top_target`, the entry its canceled event named -
+/// are rejected with a new AbortError in their navigation's realm.
+///
+/// Deviation, stated (golden rule 2; no newer spec is involved): HTML's
+/// "perform a navigation API traversal" (step 12.5-12.6) settles the
+/// tracker only for "canceled-by-beforeunload" and "initiator-disallowed",
+/// and leaves "canceled-by-navigate" to the inner navigate event firing
+/// algorithm, which aborts only the traversable's own navigation - so a
+/// frame's traverseTo() canceled by its top-level page's navigate event
+/// would never settle. Chrome 155 and Safari 27 reject it with an
+/// AbortError of the frame's realm (navigate-event/
+/// navigation-traverseTo-in-iframe-same-document-preventDefault.html 1/1
+/// each; Firefox 158 times out, as the spec text does).
+fn abortTraversalsCanceledAt(s: navigation_entries.Scope, top_target: *const joint_history.Entry) void {
+    var tree: std.ArrayListUnmanaged(*html_core.BrowsingContext) = .empty;
+    defer tree.deinit(std.heap.page_allocator);
+    s.navigable.collectDescendants(std.heap.page_allocator, &tree) catch return;
+    for (tree.items) |bc| {
+        if (bc == s.navigable) continue;
+        const window: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse continue));
+        const target = targetOf(window) orelse continue;
+        const internal = target.internal;
+        var i: usize = 0;
+        while (i < internal.upcoming.items.len) {
+            const tracker = internal.upcoming.items[i];
+            const key = tracker.key orelse {
+                i += 1;
+                continue;
+            };
+            const entry = s.history.entryByKey(bc.id, &key) orelse {
+                i += 1;
+                continue;
+            };
+            if (s.history.entryAt(s.navigable.id, entry.step) != top_target) {
+                i += 1;
+                continue;
+            }
+            const reason = engine.createDOMException(target.instance.ctx, "AbortError", "The traversal was canceled by the top-level navigate event.") catch {
+                cleanUp(internal, tracker);
+                continue;
+            };
+            defer reason.release();
+            rejectFinished(internal, tracker, reason.value);
+        }
+    }
 }
 
 /// dom.navigation_api: HTML "fire a download request navigate event".
@@ -2137,7 +2190,22 @@ fn abortEvent(instance: *runtime.Instance, internal: *InternalState, record: *Ev
     // reason."
     var arena = std.heap.ArenaAllocator.init(internal.allocator);
     defer arena.deinit();
-    const info: ?engine.ErrorInfo = engine.extractErrorInformation(realm, reason, arena.allocator()) catch null;
+    var info: ?engine.ErrorInfo = engine.extractErrorInformation(realm, reason, arena.allocator()) catch null;
+    // "Extracting error information" leaves filename, lineno and colno to
+    // "the current JavaScript stack in the same underspecified way that the
+    // report the exception algorithm does". A reason made with no script
+    // running - the AbortError of a traversal canceled from its navigate
+    // event, in the traversal's task - has no stack to name a script: its
+    // filename is the navigation's document's URL, as Blink's
+    // CaptureSourceLocation answers with no stack (the execution context's
+    // URL). navigate-event/navigation-back-same-document-preventDefault.html
+    // (e.filename == location.href) passes in Chrome 155, Firefox 158 and
+    // Safari 27.
+    if (info) |*extracted| {
+        if (extracted.filename.len == 0) {
+            if (documentUrlOf(instance, internal, arena.allocator())) |url| extracted.filename = url;
+        }
+    }
     // 4. "Set navigation's ongoing navigate event to null."
     if (internal.ongoing_event == record) internal.ongoing_event = null;
     // 5. "If navigation's ongoing API method tracker is non-null, then reject
@@ -2597,6 +2665,16 @@ fn fireCurrentEntryChange(navigation: *runtime.Instance, navigation_type: ?enums
     const generation = runtime.SlabAllocator.generationOf(event);
     _ = @import("dom").fire_event.dispatchTrusted(navigation, event) catch {};
     event.releaseIfUnwrapped(generation);
+}
+
+/// The URL of `navigation`'s relevant global object's associated Document,
+/// allocated with `allocator`; null without one.
+fn documentUrlOf(navigation: *runtime.Instance, internal: *InternalState, allocator: Allocator) ?[]const u8 {
+    const window = windowOf(navigation, internal) orelse return null;
+    const document = interfaces.Window.get_document(window) catch return null;
+    const url = interfaces.Document.get_URL(document) catch return null;
+    defer document.ctx.allocator.free(url);
+    return allocator.dupe(u8, url) catch null;
 }
 
 /// Fire navigateerror at `navigation`, an ErrorEvent with `info`'s
