@@ -303,13 +303,11 @@ pub fn get_workerFinalRouterSource(instance: *runtime.Instance) anyerror!runtime
     return runtime.DOMString.initInterned("");
 }
 
-/// Operation: toJSON - WebIDL's default toJSON steps over PerformanceEntry's
-/// and PerformanceResourceTiming's attributes. `serverTiming` is left
-/// undefined (so JSON omits it). Codex timing3 Q3, integrator 2026-10-16:
-/// even a tracedValue read is Owned, but this generated record's nested
-/// JSValue is borrowed by conversion. Returning it leaks a handle; releasing
-/// it before return leaves a dead handle. The binding owner must add member
-/// ownership before this record can include the array safely.
+/// Operation: toJSON - WebIDL's default toJSON steps 3/5 collect and convert
+/// PerformanceEntry's and PerformanceResourceTiming's attributes, including
+/// serverTiming. The getter hands over an owned array handle; the binding
+/// releases that hold after converting the returned dictionary. The entry's
+/// traced edge and the returned object's array reference keep their values.
 pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.PerformanceResourceTiming.PerformanceResourceTimingToJSON {
     const timing = try timingOf(instance);
     const data = performance_timeline.dataOf(instance) orelse return error.InvalidStateError;
@@ -348,6 +346,6 @@ pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.PerformanceR
         .renderBlockingStatus = try get_renderBlockingStatus(instance),
         .contentType = runtime.DOMString.initInterned(timing.content_type),
         .contentEncoding = runtime.DOMString.initInterned(timing.content_encoding),
-        .serverTiming = .undefined,
+        .serverTiming = try get_serverTiming(instance),
     };
 }

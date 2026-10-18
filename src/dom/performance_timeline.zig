@@ -177,7 +177,7 @@ pub const EntryData = struct {
     name: []const u8,
     entry_type: EntryType,
     start_time: f64,
-    /// "end time": 0 until set, and duration is 0 while it is.
+    /// "end time": 0 until set. For a measure, 0 is a valid completed end.
     end_time: f64 = 0,
     /// `id`: 0 while unset (the generated ids start above 100).
     id: u64 = 0,
@@ -185,10 +185,11 @@ pub const EntryData = struct {
     /// when the entry was queued; 0 for none.
     navigation_id: u64 = 0,
 
-    /// The duration getter: 0 while the end time is 0, otherwise end time -
-    /// startTime.
+    /// User Timing 2.1.3 step 8: a measure's duration is end time minus
+    /// startTime, even when it ends at 0 (and may be negative). Other entry
+    /// types retain their unset-end sentinel, including a loading navigation.
     pub fn duration(self: *const EntryData) f64 {
-        if (self.end_time == 0) return 0;
+        if (self.entry_type != .measure and self.end_time == 0) return 0;
         return self.end_time - self.start_time;
     }
 };
@@ -887,19 +888,33 @@ pub fn setResourceTimingBufferSize(timeline: *Timeline, max_size: u32) void {
 }
 
 /// "copy secondary buffer".
-fn copySecondaryBuffer(timeline: *Timeline) void {
+pub fn copySecondaryBuffer(timeline: *Timeline) void {
     const state = &timeline.resource;
     const buffer = timeline.buffers.getPtr(.resource);
-    // 1. While the secondary buffer has entries and there is room, the
-    // oldest moves to the end of the buffer (its edge from the owner stays).
-    while (state.secondary_buffer.items.len > 0 and canAddResourceTimingEntry(timeline)) {
-        const entry = state.secondary_buffer.orderedRemove(0);
-        buffer.entries.append(timeline.allocator, entry) catch {
-            releaseEntry(timeline.owner, entry);
-            continue;
-        };
-        state.current_size += 1;
-    }
+    // Resource Timing 3.4, "copy secondary buffer" step 1: move the
+    // oldest entries that fit, keeping their existing edges from the owner.
+    // Reserve the whole prefix and compact the remainder once, rather than
+    // shifting it after every entry. No consumed slot survives into script.
+    const count = @min(state.secondary_buffer.items.len, state.size_limit -| state.current_size);
+    if (count == 0) return;
+    buffer.entries.ensureUnusedCapacity(timeline.allocator, count) catch {
+        // Preserve the per-entry allocation-failure behavior: use capacity
+        // already available and release each entry that cannot be appended.
+        while (state.secondary_buffer.items.len > 0 and canAddResourceTimingEntry(timeline)) {
+            const entry = state.secondary_buffer.orderedRemove(0);
+            buffer.entries.append(timeline.allocator, entry) catch {
+                releaseEntry(timeline.owner, entry);
+                continue;
+            };
+            state.current_size += 1;
+        }
+        return;
+    };
+    buffer.entries.appendSliceAssumeCapacity(state.secondary_buffer.items[0..count]);
+    const remaining = state.secondary_buffer.items.len - count;
+    std.mem.copyForwards(*Instance, state.secondary_buffer.items[0..remaining], state.secondary_buffer.items[count..]);
+    state.secondary_buffer.items.len = remaining;
+    state.current_size += count;
 }
 
 /// "fire a buffer full event", in `timeline`'s realm.
@@ -1291,10 +1306,23 @@ pub fn recordLoadTiming(realm: runtime.Context, moment: LoadTimingMoment) void {
         .dom_complete => if (info.dom_complete == 0) {
             info.dom_complete = now_ms;
         },
-        .dom_content_loaded_event_start => info.dom_content_loaded_event_start = now_ms,
-        .dom_content_loaded_event_end => info.dom_content_loaded_event_end = now_ms,
-        .load_event_start => info.load_event_start = now_ms,
+        // HTML "the end" 6.1/6.3 and 9.4/9.8 set these unconditionally,
+        // but Chrome, Firefox and Safari retain the first navigation's
+        // times through document.open() (navigation-timing/{nav2-test-,test-}
+        // document-open.html). Follow that existing browser behavior, as
+        // Blink Document::FinishedParsing and LocalDOMWindow::DispatchLoadEvent
+        // do: later load events still fire without replacing the times.
+        .dom_content_loaded_event_start => if (info.dom_content_loaded_event_start == 0) {
+            info.dom_content_loaded_event_start = now_ms;
+        },
+        .dom_content_loaded_event_end => if (info.dom_content_loaded_event_end == 0) {
+            info.dom_content_loaded_event_end = now_ms;
+        },
+        .load_event_start => if (info.load_event_start == 0) {
+            info.load_event_start = now_ms;
+        },
         .load_event_end => {
+            if (info.load_event_end != 0) return;
             info.load_event_end = now_ms;
             // Navigation Timing 3.1: the entry's duration is loadEventEnd -
             // startTime, which an end time of loadEventEnd gives.
