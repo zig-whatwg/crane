@@ -6,6 +6,7 @@
 const std = @import("std");
 const types = @import("types.zig");
 const parser = @import("parser.zig");
+const setlike_mod = @import("setlike.zig");
 const writer = @import("writer.zig");
 const files = @import("files.zig");
 const refs = @import("refs.zig");
@@ -1602,14 +1603,19 @@ fn generateInterfaceFile(
 
     var iterable_member: ?types.Iterable = null;
     var async_iterable_member: ?types.AsyncIterable = null;
+    var setlike_member: ?types.Setlike = null;
 
     for (interface.members) |member| {
         switch (member.type) {
             .setlike => {
-                // Keep the unmigrated interfaces byte-for-byte stable. Their
-                // old parser placeholder emitted only the empty constants
-                // heading; their owners can opt in with their implementations.
-                if (!std.mem.eql(u8, interface.name, "CustomStateSet")) try own_constants.append(allocator, .{
+                // WebIDL 2.5.12: the binding defines the members over the
+                // impl's set entries (setlike.zig), for an interface whose
+                // impl keeps them. The others stay byte-for-byte stable:
+                // their old parser placeholder emitted only the empty
+                // constants heading, until their owners opt in.
+                if (setlike_mod.isImplemented(interface.name)) {
+                    setlike_member = member.setlike;
+                } else try own_constants.append(allocator, .{
                     .name = "_skipped",
                     .idlType = .{ .type = "void" },
                     .value = .null,
@@ -1803,6 +1809,7 @@ fn generateInterfaceFile(
         async_iterable_member, // Async iterable declaration if present
         own_overload_ops.items, // Every overload, for each method's `length`
         &special,
+        setlike_member, // Setlike declaration if present (and implemented)
     );
     // HTML 3.2.3: an [HTMLConstructor] constructor's steps are HTML's.
     try writer.writeHTMLConstructor(w, own_constructors.items);
@@ -1891,6 +1898,11 @@ fn generateInterfaceFile(
     // Generate iterable support if interface has iterable declaration
     if (iterable_member) |iterable| {
         try writer.writeIterableSupport(w, impl_name, iterable);
+    }
+
+    // The set entries of a setlike declaration, for the binding's members.
+    if (setlike_member) |set| {
+        try setlike_mod.writeEntriesDelegate(w, impl_name, set);
     }
 
     // WebIDL 2.5.6.2: an interface that declares a named property getter
@@ -2999,8 +3011,16 @@ pub fn writeDictionary(
     // Which members are ByteStrings: a code unit above 0xFF is a TypeError
     // (the dictionary converter reads it).
     try writer.writeByteStringMembers(w, dictionary.members, ir);
+    // Which members are `object` (or sequences of it): a value that is not an
+    // Object throws a TypeError.
+    try writer.writeObjectMembers(w, dictionary.members, ir);
     // Which members keep a present null as `.null` (the converter reads it).
     try writer.writeAnyMembers(w, dictionary.members);
+    // Which inline union members (typed runtime.JSValue) keep a present
+    // null as `.null` for the impl's union conversion.
+    try writer.writeJsvalueUnionMembers(w, dictionary.members, ir);
+    // Each optional member's IDL default: written to script when unset.
+    try writer.writeMemberDefaults(w, dictionary.members, ir);
     // Which optional members' present null is the value null.
     try writer.writeNullableMembers(w, dictionary.members, ir);
     // Which integer members take [EnforceRange]'s or [Clamp]'s conversion.

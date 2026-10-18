@@ -11,4 +11,13 @@ pub const GPUPrimitiveState = struct {
     frontFace: ?enums.GPUFrontFace = null,
     cullMode: ?enums.GPUCullMode = null,
     unclippedDepth: ?bool = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "topology", .{ .string = "triangle-list" } },
+        .{ "frontFace", .{ .string = "ccw" } },
+        .{ "cullMode", .{ .string = "none" } },
+        .{ "unclippedDepth", .{ .boolean = false } },
+    };
 };

@@ -10,4 +10,14 @@ pub const CheckVisibilityOptions = struct {
     contentVisibilityAuto: ?bool = null,
     opacityProperty: ?bool = null,
     visibilityProperty: ?bool = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "checkOpacity", .{ .boolean = false } },
+        .{ "checkVisibilityCSS", .{ .boolean = false } },
+        .{ "contentVisibilityAuto", .{ .boolean = false } },
+        .{ "opacityProperty", .{ .boolean = false } },
+        .{ "visibilityProperty", .{ .boolean = false } },
+    };
 };

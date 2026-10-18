@@ -19,4 +19,20 @@ pub const EffectTiming = struct {
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{ "iterationStart", "delay", "endDelay", "playbackRate" };
+
+    /// Inline union members typed runtime.JSValue: one present with the
+    /// value null converts to `.null`, for the impl to convert by the union.
+    pub const jsvalue_union_members = .{"duration"};
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "fill", .{ .string = "auto" } },
+        .{ "iterationStart", .{ .number = 0 } },
+        .{ "iterations", .{ .number = 1 } },
+        .{ "direction", .{ .string = "normal" } },
+        .{ "easing", .{ .string = "linear" } },
+        .{ "playbackRate", .{ .number = 1 } },
+        .{ "duration", .{ .string = "auto" } },
+    };
 };

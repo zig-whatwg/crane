@@ -251,4 +251,10 @@ pub const ServiceWorker = struct {
             .{ .function = "call_postMessage__1", .implemented = @hasDecl(ServiceWorkerImpl, "call_postMessage__1"), .args = &.{ .{ .kinds = &.{.any} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
         } },
     };
+
+    /// WebIDL `object` arguments (or sequences of `object`): a value that is
+    /// not an Object throws a TypeError (bit i = argument i).
+    pub const object_arguments = .{
+        .{ "call_postMessage", 0b10 },
+    };
 };

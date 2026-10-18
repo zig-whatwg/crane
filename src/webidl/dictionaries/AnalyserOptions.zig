@@ -17,4 +17,13 @@ pub const AnalyserOptions = struct {
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{ "maxDecibels", "minDecibels", "smoothingTimeConstant" };
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "fftSize", .{ .number = 2048 } },
+        .{ "maxDecibels", .{ .number = -30 } },
+        .{ "minDecibels", .{ .number = -100 } },
+        .{ "smoothingTimeConstant", .{ .number = 0.8 } },
+    };
 };

@@ -16,6 +16,14 @@ pub const FetchEventInit = struct {
     replacesClientId: ?runtime.DOMString = null,
     handled: ?runtime.JSValue = null,
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "clientId", .{ .string = "" } },
+        .{ "resultingClientId", .{ .string = "" } },
+        .{ "replacesClientId", .{ .string = "" } },
+    };
+
     /// WebIDL interface types: the interface each interface-typed member
     /// converts to - a TypeError unless the value implements it.
     pub const interface_members = .{

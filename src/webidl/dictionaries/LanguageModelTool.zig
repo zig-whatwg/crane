@@ -10,4 +10,8 @@ pub const LanguageModelTool = struct {
     description: runtime.DOMString,
     inputSchema: runtime.JSValue,
     execute: callbacks.LanguageModelToolFunction,
+
+    /// WebIDL `object` members (or sequences of `object`): a value that is
+    /// not an Object throws a TypeError when the dictionary is converted.
+    pub const object_members = .{"inputSchema"};
 };

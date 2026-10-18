@@ -18,4 +18,14 @@ pub const WheelEventInit = struct {
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{ "deltaX", "deltaY", "deltaZ" };
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "deltaX", .{ .number = 0 } },
+        .{ "deltaY", .{ .number = 0 } },
+        .{ "deltaZ", .{ .number = 0 } },
+        .{ "deltaMode", .{ .number = 0 } },
+        .{ "momentum", .{ .boolean = false } },
+    };
 };

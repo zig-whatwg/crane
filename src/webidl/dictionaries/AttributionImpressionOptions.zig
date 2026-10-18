@@ -11,4 +11,14 @@ pub const AttributionImpressionOptions = struct {
     conversionCallers: ?[]const runtime.USVString = null,
     lifetimeDays: ?u32 = null,
     priority: ?i32 = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "matchValue", .{ .number = 0 } },
+        .{ "conversionSites", .empty_sequence },
+        .{ "conversionCallers", .empty_sequence },
+        .{ "lifetimeDays", .{ .number = 30 } },
+        .{ "priority", .{ .number = 0 } },
+    };
 };

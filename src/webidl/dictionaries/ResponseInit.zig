@@ -13,4 +13,11 @@ pub const ResponseInit = struct {
     /// WebIDL ByteString members: a code unit above 0xFF throws a TypeError
     /// when the dictionary is converted.
     pub const byte_string_members = .{"statusText"};
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "status", .{ .number = 200 } },
+        .{ "statusText", .{ .string = "" } },
+    };
 };

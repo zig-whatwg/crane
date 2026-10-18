@@ -28,6 +28,20 @@ pub const NotificationOptions = struct {
     /// not to "not present".
     pub const any_members = .{"data"};
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "dir", .{ .string = "auto" } },
+        .{ "lang", .{ .string = "" } },
+        .{ "body", .{ .string = "" } },
+        .{ "tag", .{ .string = "" } },
+        .{ "renotify", .{ .boolean = false } },
+        .{ "silent", .null },
+        .{ "requireInteraction", .{ .boolean = false } },
+        .{ "data", .null },
+        .{ "actions", .empty_sequence },
+    };
+
     /// Optional members whose IDL type is nullable: a present null is the
     /// value null. Any other member's present null converts by its type.
     pub const nullable_members = .{"silent"};

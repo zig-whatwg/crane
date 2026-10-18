@@ -20,4 +20,14 @@ pub const GPUTextureViewDescriptor = struct {
     baseArrayLayer: ?typedefs.GPUIntegerCoordinate = null,
     arrayLayerCount: ?typedefs.GPUIntegerCoordinate = null,
     swizzle: ?runtime.DOMString = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "usage", .{ .number = 0 } },
+        .{ "aspect", .{ .string = "all" } },
+        .{ "baseMipLevel", .{ .number = 0 } },
+        .{ "baseArrayLayer", .{ .number = 0 } },
+        .{ "swizzle", .{ .string = "rgba" } },
+    };
 };

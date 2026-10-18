@@ -15,4 +15,8 @@ pub const CrashReportBody = struct {
     is_top_level: ?bool = null,
     visibility_state: ?enums.DocumentVisibilityState = null,
     crash_report_api: ?runtime.JSValue = null,
+
+    /// WebIDL `object` members (or sequences of `object`): a value that is
+    /// not an Object throws a TypeError when the dictionary is converted.
+    pub const object_members = .{"crash_report_api"};
 };

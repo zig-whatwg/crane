@@ -13,4 +13,12 @@ pub const ScrollIntoViewOptions = struct {
     block: ?enums.ScrollLogicalPosition = null,
     @"inline": ?enums.ScrollLogicalPosition = null,
     container: ?enums.ScrollIntoViewContainer = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "block", .{ .string = "start" } },
+        .{ "inline", .{ .string = "nearest" } },
+        .{ "container", .{ .string = "all" } },
+    };
 };

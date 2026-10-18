@@ -14,4 +14,12 @@ pub const MediaCapabilitiesKeySystemConfiguration = struct {
     sessionTypes: ?[]const runtime.DOMString = null,
     audio: ?KeySystemTrackConfiguration = null,
     video: ?KeySystemTrackConfiguration = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "initDataType", .{ .string = "" } },
+        .{ "distinctiveIdentifier", .{ .string = "optional" } },
+        .{ "persistentState", .{ .string = "optional" } },
+    };
 };

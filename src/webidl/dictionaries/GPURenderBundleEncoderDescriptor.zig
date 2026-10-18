@@ -11,4 +11,11 @@ pub const GPURenderBundleEncoderDescriptor = struct {
 
     depthReadOnly: ?bool = null,
     stencilReadOnly: ?bool = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "depthReadOnly", .{ .boolean = false } },
+        .{ "stencilReadOnly", .{ .boolean = false } },
+    };
 };

@@ -11,4 +11,11 @@ pub const ClipboardChangeEventInit = struct {
 
     types: ?[]const runtime.DOMString = null,
     changeId: ?runtime.JSValue = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "types", .empty_sequence },
+        .{ "changeId", .{ .number = 0 } },
+    };
 };

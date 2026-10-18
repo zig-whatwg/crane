@@ -10,4 +10,10 @@ pub const DirectoryPickerOptions = struct {
     id: ?runtime.DOMString = null,
     startIn: ?typedefs.StartInDirectory = null,
     mode: ?enums.FileSystemPermissionMode = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "mode", .{ .string = "read" } },
+    };
 };

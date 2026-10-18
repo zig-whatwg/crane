@@ -17,6 +17,17 @@ pub const DisplayMediaStreamOptions = struct {
     monitorTypeSurfaces: ?enums.MonitorTypeSurfacesEnum = null,
     audioSelection: ?enums.AudioSelectionPreferenceEnum = null,
 
+    /// Inline union members typed runtime.JSValue: one present with the
+    /// value null converts to `.null`, for the impl to convert by the union.
+    pub const jsvalue_union_members = .{ "video", "audio" };
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "video", .{ .boolean = true } },
+        .{ "audio", .{ .boolean = false } },
+    };
+
     /// WebIDL interface types: the interface each interface-typed member
     /// converts to - a TypeError unless the value implements it.
     pub const interface_members = .{

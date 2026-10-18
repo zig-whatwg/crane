@@ -444,6 +444,47 @@ pub fn requireByteString(comptime T: type, value: T) ConversionError!void {
     }
 }
 
+/// WebIDL 3.2.14, object: "If V is not an Object, throw a TypeError" - for
+/// a value already converted as `any` (both are runtime.JSValue, so codegen
+/// marks the `object` positions: `object_arguments`, `object_members`). A
+/// `.handle` refers to an object, a function or a Symbol - not an Object; an
+/// `.instance` is a platform object; every other arm is a primitive. `value`
+/// is a JSValue, its nullable form (null passes: `object?`), an optional
+/// argument (`webidl.Opt`), or a sequence of them (each element: a
+/// `sequence<object>`'s are converted first and checked after, so a later
+/// element's iteration runs before an earlier one's TypeError).
+pub fn requireObject(comptime T: type, value: T) ConversionError!void {
+    if (comptime T == runtime.JSValue) {
+        switch (value) {
+            .handle => |h| if (!v8.v8_Value_IsObject(@ptrCast(@alignCast(h.ptr)))) return ConversionError.TypeError,
+            .instance => {},
+            else => return ConversionError.TypeError,
+        }
+        return;
+    }
+    switch (@typeInfo(T)) {
+        .optional => |o| if (value) |v| try requireObject(o.child, v),
+        .pointer => |ptr| if (comptime ptr.size == .slice) {
+            for (value) |v| try requireObject(ptr.child, v);
+        },
+        .@"struct" => if (comptime @hasField(T, "was_passed") and @hasField(T, "value")) {
+            if (value.was_passed) try requireObject(@FieldType(T, "value"), value.value);
+        },
+        else => {},
+    }
+}
+
+/// Whether dictionary `T` lists member `name` in `object_members`.
+fn isObjectMember(comptime T: type, comptime name: []const u8) bool {
+    comptime {
+        if (!@hasDecl(T, "object_members")) return false;
+        for (T.object_members) |member| {
+            if (std.mem.eql(u8, member, name)) return true;
+        }
+        return false;
+    }
+}
+
 /// Whether dictionary `T` lists member `name` in `byte_string_members`.
 fn isByteStringMember(comptime T: type, comptime name: []const u8) bool {
     comptime {
@@ -488,12 +529,20 @@ pub fn memberInterface(comptime T: type, comptime name: []const u8) ?type {
     }
 }
 
-/// Whether dictionary `T` lists member `name` in `any_members`.
+/// Whether dictionary `T` lists member `name` in `any_members` - or in
+/// `jsvalue_union_members`, an inline union typed runtime.JSValue: for both,
+/// a present null is `.null`, a value for the impl (WebIDL 3.2.18: only
+/// undefined is not present; 3.2.25 converts a union's null by its arms -
+/// SetHTMLOptions `{sanitizer: null}` is an empty SanitizerConfig, which read
+/// as absent took the default preset).
 fn isAnyMember(comptime T: type, comptime name: []const u8) bool {
     comptime {
-        if (!@hasDecl(T, "any_members")) return false;
-        for (T.any_members) |member| {
-            if (std.mem.eql(u8, member, name)) return true;
+        for ([_][]const u8{ "any_members", "jsvalue_union_members" }) |table| {
+            if (@hasDecl(T, table)) {
+                for (@field(T, table)) |member| {
+                    if (std.mem.eql(u8, member, name)) return true;
+                }
+            }
         }
         return false;
     }
@@ -1245,6 +1294,11 @@ fn convertBodyInit(
         return bodyInitCopy(allocator, all[info.byte_offset..][0..info.byte_length]);
     }
 
+    // Step 6 for a SharedArrayBuffer: converting it to ArrayBuffer (no
+    // [AllowShared]) is a TypeError (3.2.26 step 2) - not a string for step
+    // 15 to make "[object SharedArrayBuffer]" of.
+    if (v8.v8_Value_IsSharedArrayBuffer(value)) return ConversionError.TypeError;
+
     // Step 15: USVString - ToString, so null is "null" and a URL its href.
     const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.ExceptionPending;
     defer v8.v8_String_Dispose(string);
@@ -1546,8 +1600,8 @@ fn dictionaryMemberOrder(comptime T: type) [std.meta.fields(T).len]std.builtin.T
         var fields = std.meta.fields(T)[0..std.meta.fields(T).len].*;
         std.sort.insertion(std.builtin.Type.StructField, &fields, {}, struct {
             fn lessThan(_: void, a: std.builtin.Type.StructField, b: std.builtin.Type.StructField) bool {
-                if (std.mem.eql(u8, b.name, "base")) return false;
-                if (std.mem.eql(u8, a.name, "base")) return true;
+                if (isInheritedDictionaryField(b)) return false;
+                if (isInheritedDictionaryField(a)) return true;
                 return std.mem.lessThan(u8, a.name, b.name);
             }
         }.lessThan);
@@ -1809,6 +1863,15 @@ pub fn fromV8ValueAs(
         // so we need to check for byte slices specifically
 
         // String types: DOMString (union), or []const u8 (ByteString/USVString)
+        // - or an enumeration: WebIDL 2.13 counts "all enumeration types"
+        // among the string types, so 3.2.25 step 15 ("If types includes a
+        // string type, then return the result of converting V to that type")
+        // takes an enumeration arm - ToString, then a TypeError unless it is
+        // one of the values. A valid union has at most one string type (they
+        // are not distinguishable); a string arm is still preferred to an
+        // enumeration one, as before. Without it, an enumeration arm took
+        // nothing: (TaskPriority or TaskSignal), (Sanitizer or
+        // SanitizerConfig or SanitizerPresets).
         const string_idx: ?usize = comptime blk: {
             for (fields, 0..) |field, i| {
                 if (field.type == runtime.DOMString) {
@@ -1821,6 +1884,9 @@ pub fn fromV8ValueAs(
                 {
                     break :blk i;
                 }
+            }
+            for (fields, 0..) |field, i| {
+                if (@typeInfo(field.type) == .@"enum") break :blk i;
             }
             break :blk null;
         };
@@ -1944,7 +2010,10 @@ pub fn fromV8ValueAs(
         // arm's own conversion - a view over a SharedArrayBuffer is its
         // TypeError (3.2.26 step 3), not a reason to try the next arm.
         if (buffer_source_idx) |idx| {
-            if (v8.v8_Value_IsArrayBuffer(value) or v8.v8_Value_IsArrayBufferView(value)) {
+            // A SharedArrayBuffer too: step 6 converts it to ArrayBuffer,
+            // which throws a TypeError for a shared one (3.2.26 step 2) -
+            // it is not left for step 15 to stringify.
+            if (v8.v8_Value_IsArrayBuffer(value) or v8.v8_Value_IsSharedArrayBuffer(value) or v8.v8_Value_IsArrayBufferView(value)) {
                 return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
             }
         } else if (array_buffer_view_idx) |idx| {
@@ -2076,9 +2145,13 @@ pub fn fromV8ValueAs(
                     // exception propagates (ExceptionPending).
                     const str_idx = string_idx.?;
                     return @unionInit(T, fields[str_idx].name, try fromV8Value(fields[str_idx].type, allocator, isolate, context, value));
-                } else {
-                    // A union with one of step 11's arms as well: as before
-                    // (a toString attempt, then the dictionary arm below).
+                } else if (comptime dict_idx == null) {
+                    // A union with one of step 11's arms as well, but no
+                    // dictionary: as before (a toString attempt, then the
+                    // arms below). With a dictionary arm, step 11.4 takes the
+                    // object before step 15 could stringify it - no
+                    // toString() runs, and an enumeration arm (a string type)
+                    // never takes an object whose toString() names a value.
                     if (string_idx) |str_idx| {
                         // Call toString() on the object to get a string representation
                         if (v8.v8_Value_ToString(value, context)) |str_value| {
@@ -2484,6 +2557,9 @@ pub fn fromV8ValueAs(
                 // A ByteString member (`byte_string_members`, RequestInit's
                 // method): a code unit above 0xFF is a TypeError, likewise.
                 if (comptime isByteStringMember(T, field.name)) try requireByteString(field.type, @field(result, field.name));
+                // An `object` member (`object_members`, StructuredSerializeOptions'
+                // `transfer`): a value that is not an Object is a TypeError.
+                if (comptime isObjectMember(T, field.name)) try requireObject(field.type, @field(result, field.name));
             } else {
                 // Get returns an empty handle only when it THREW (an absent
                 // member reads as undefined, handled above): WebIDL § 3.2.18
@@ -3049,6 +3125,166 @@ pub fn unionValueIsOwned(comptime T: type, value: T) bool {
     }
 }
 
+/// Whether `field` is a dictionary's inherited dictionary: codegen keeps it
+/// in a field named `base` whose type is the inherited dictionary's struct.
+/// Only that: JsonLdOptions has a MEMBER named `base` (`USVString? base`).
+fn isInheritedDictionaryField(comptime field: std.builtin.Type.StructField) bool {
+    return comptime std.mem.eql(u8, field.name, "base") and isDictionaryValue(field.type);
+}
+
+/// Defines `key` on `obj` (CreateDataPropertyOrThrow: defined, never
+/// assigned, so no setter on Object.prototype runs) as `value`, which the
+/// caller keeps.
+fn defineMember(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object, comptime key: []const u8, value: *v8.Value) ConversionError!void {
+    const key_v8 = v8.v8_String_NewFromUtf8(isolate, key.ptr, @intCast(key.len)) orelse return ConversionError.OutOfMemory;
+    defer v8.v8_String_Dispose(key_v8);
+    _ = v8.v8_Object_CreateDataProperty(obj, context, key_v8, value);
+}
+
+/// The index of member `name` in dictionary `T`'s `member_defaults` (codegen
+/// lists each optional member that has an IDL default), or null.
+fn memberDefaultIndex(comptime T: type, comptime name: []const u8) ?usize {
+    comptime {
+        @setEvalBranchQuota(100_000);
+        if (!@hasDecl(T, "member_defaults")) return null;
+        for (T.member_defaults, 0..) |entry, index| {
+            if (std.mem.eql(u8, entry[0], name)) return index;
+        }
+        return null;
+    }
+}
+
+/// Member type `M`'s value type: through a webidl.Opt and an optional.
+fn MemberPayload(comptime M: type) type {
+    if (isOptValue(M)) return MemberPayload(@FieldType(M, "value"));
+    if (@typeInfo(M) == .optional) return MemberPayload(@typeInfo(M).optional.child);
+    return M;
+}
+
+/// Whether every field of struct `T` has a default, so that `.{}` is a value
+/// of it - a dictionary with no required member (WebIDL lets only such a
+/// dictionary member default to `{}`).
+fn defaultsToEmpty(comptime T: type) bool {
+    comptime {
+        for (std.meta.fields(T)) |f| {
+            if (f.default_value_ptr == null and !isInheritedDictionaryField(f)) return false;
+            if (isInheritedDictionaryField(f) and !defaultsToEmpty(f.type)) return false;
+        }
+        return true;
+    }
+}
+
+/// The empty value of dictionary `T` (`{}`): every member unset, the
+/// inherited dictionary's too.
+fn emptyDictionary(comptime T: type) T {
+    var result: T = undefined;
+    inline for (std.meta.fields(T)) |f| {
+        if (comptime isInheritedDictionaryField(f)) {
+            @field(result, f.name) = emptyDictionary(f.type);
+        } else {
+            @field(result, f.name) = f.defaultValue().?;
+        }
+    }
+    return result;
+}
+
+/// Member type `M`'s IDL default `default` (a `member_defaults` tag literal)
+/// as an ECMAScript value, made for the call (OWNED): WebIDL 2.7 interprets
+/// a dictionary member's default as an optional argument's - null, a
+/// boolean, a number (the infinities, NaN), a string (an enumeration's value
+/// is its string), [] an empty sequence, {} the member dictionary with its
+/// own defaults.
+fn memberDefaultToV8(comptime M: type, comptime default: anytype, isolate: *v8.Isolate, context: *v8.Context) ConversionError!*v8.Value {
+    const D = @TypeOf(default);
+    if (comptime @typeInfo(D) == .enum_literal) {
+        const tag = comptime @tagName(default);
+        if (comptime std.mem.eql(u8, tag, "null")) return toV8Null(isolate);
+        if (comptime std.mem.eql(u8, tag, "positive_infinity")) return @ptrCast(v8.v8_Number_New(isolate, std.math.inf(f64)));
+        if (comptime std.mem.eql(u8, tag, "negative_infinity")) return @ptrCast(v8.v8_Number_New(isolate, -std.math.inf(f64)));
+        if (comptime std.mem.eql(u8, tag, "nan")) return @ptrCast(v8.v8_Number_New(isolate, std.math.nan(f64)));
+        if (comptime std.mem.eql(u8, tag, "empty_sequence")) {
+            return @ptrCast(v8.v8_Array_NewInContext(context, 0) orelse return ConversionError.OutOfMemory);
+        }
+        if (comptime std.mem.eql(u8, tag, "empty_dictionary")) {
+            const Payload = MemberPayload(M);
+            if (comptime isDictionaryValue(Payload) and defaultsToEmpty(Payload)) {
+                return toV8Value(Payload, isolate, context, emptyDictionary(Payload));
+            }
+            // A union member typed JSValue whose default is its dictionary
+            // arm's `{}`: an object with no member.
+            return @ptrCast(v8.v8_Object_NewInContext(context) orelse return ConversionError.OutOfMemory);
+        }
+        @compileError("unknown dictionary member default ." ++ tag);
+    }
+    if (comptime @hasField(D, "boolean")) return @ptrCast(toV8Boolean(isolate, default.boolean));
+    if (comptime @hasField(D, "number")) return @ptrCast(v8.v8_Number_New(isolate, @as(f64, default.number)));
+    if (comptime @hasField(D, "string")) return newStringFromWtf8(isolate, default.string) orelse ConversionError.StringError;
+    @compileError("unknown dictionary member default " ++ @typeName(D));
+}
+
+/// WebIDL 3.2.18, an IDL dictionary value to an ECMAScript value, steps 2-3:
+/// the members of D and of every dictionary it inherits, "in order from least
+/// to most derived", each dictionary's "in lexicographical order" - written
+/// to the one object `obj`. Codegen keeps the inherited dictionary in a
+/// `base` field, so its members are written first, onto `obj` itself: kept
+/// as a property, Sanitizer.get()'s elements were `{base: {name, namespace},
+/// removeAttributes}` (Codex row 41 Q9). Declaration order is not the order
+/// either (`dictionaryMemberOrder`, the same order the members are read in).
+///
+/// Step 3.1.2, "If dictionary[key] exists": a required member, an optional
+/// one that is not null, a webidl.Opt that was passed - and, when the value
+/// leaves it unset, a member with an IDL default (`member_defaults`), which
+/// always exists (WebIDL 2.7; Blink and Gecko initialise every defaulted
+/// member, so their ToV8 always writes it). A nullable member whose default
+/// is null is so written as null (Sanitizer.get()'s `namespace: null`).
+/// Anything else is no property at all.
+fn writeDictionaryMembers(comptime T: type, isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object, value: T) ConversionError!void {
+    @setEvalBranchQuota(100_000);
+    const members = comptime dictionaryMemberOrder(T);
+    inline for (members) |field| {
+        const field_value = @field(value, field.name);
+        if (comptime isInheritedDictionaryField(field)) {
+            try writeDictionaryMembers(field.type, isolate, context, obj, field_value);
+        } else {
+            const present = if (comptime isOptValue(field.type))
+                field_value.wasPassed()
+            else if (comptime @typeInfo(field.type) == .optional)
+                field_value != null
+            else
+                true;
+            const default_index = comptime memberDefaultIndex(T, field.name);
+            if (present) {
+                const field_v8 = try toV8Value(field.type, isolate, context, field_value);
+                // Released once defined when it was made here
+                // (`memberValueIsOwned`: a union member by its active member,
+                // an Opt by its inner value, an `any` by its arm).
+                defer if (memberValueIsOwned(field.type, field_value)) v8.v8_Value_Dispose(field_v8);
+                try defineMember(isolate, context, obj, field.name, field_v8);
+            } else if (comptime default_index != null) {
+                // Every default is made for this member: released once defined.
+                const default_v8 = try memberDefaultToV8(field.type, T.member_defaults[default_index.?][1], isolate, context);
+                defer v8.v8_Value_Dispose(default_v8);
+                try defineMember(isolate, context, obj, field.name, default_v8);
+            }
+        }
+    }
+}
+
+/// A [Default] toJSON result (codegen marks its struct `default_to_json`) is
+/// not a dictionary: WebIDL 3.7.4.1 sets map[id] to every JSON-typed
+/// attribute's value, in the interface's attribute order, and creates a data
+/// property for each - so a nullable attribute that is null is a property
+/// whose value is null (toV8Value's null for an optional that is null).
+fn writeDefaultToJsonMembers(comptime T: type, isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object, value: T) ConversionError!void {
+    inline for (std.meta.fields(T)) |field| {
+        const field_value = @field(value, field.name);
+        const field_v8 = try toV8Value(field.type, isolate, context, field_value);
+        // A null is the Null toV8Null made (`memberValueIsOwned`).
+        defer if (memberValueIsOwned(field.type, field_value)) v8.v8_Value_Dispose(field_v8);
+        try defineMember(isolate, context, obj, field.name, field_v8);
+    }
+}
+
 pub fn toV8Value(
     comptime T: type,
     isolate: *v8.Isolate,
@@ -3254,64 +3490,20 @@ pub fn toV8Value(
         return enumToV8String(T, isolate, value);
     }
 
-    // Handle structs (convert to V8 object with fields)
-    // WebIDL dictionaries: optional fields that are null should NOT be set on the object
-    // (accessing them returns undefined, not null)
+    // Structs: a dictionary (WebIDL 3.2.18), or a [Default] toJSON result.
     if (type_info == .@"struct") {
-        // WebIDL 3.2.18, an IDL dictionary value to an ECMAScript value:
         // "Let O be OrdinaryObjectCreate(%Object.prototype%)" - of `context`'s
-        // realm (default-toJSON-cross-realm.html) - and for each member
-        // present, "Perform ! CreateDataPropertyOrThrow(O, key, jsValue)":
-        // defined, never assigned, so no setter on Object.prototype runs. An
-        // absent (null) member is no property at all.
-        //
-        // The object is the caller's (`dictionaryValueIsOwned`); every key
-        // and every member value this makes is released once the object has
-        // it. Kept, a dictionary an operation returned leaked a Global per
-        // member (Navigation.navigate's result, URLPattern.exec's).
+        // realm (default-toJSON-cross-realm.html). The object is the caller's
+        // (`dictionaryValueIsOwned`); every key and member value made for it
+        // is released once the object has it. Kept, a dictionary an
+        // operation returned leaked a Global per member (Navigation.navigate's
+        // result, URLPattern.exec's).
         const obj = v8.v8_Object_NewInContext(context) orelse return ConversionError.OutOfMemory;
         errdefer v8.v8_Object_Dispose(obj);
-        // A [Default] toJSON result (codegen marks its struct
-        // `default_to_json`) is not a dictionary: WebIDL 3.7.4.1 sets
-        // map[id] to every JSON-typed attribute's value and creates a data
-        // property for each - so a nullable attribute that is null is a
-        // property whose value is null, where a dictionary's absent member
-        // is no property at all.
-        const keep_null = comptime @hasDecl(T, "default_to_json");
-        inline for (std.meta.fields(T)) |field| {
-            const field_value = @field(value, field.name);
-            // A webidl.Opt member (a nullable member whose absence and null
-            // differ - codegen's presence-keeping members) exists only when
-            // it was passed: WebIDL 3.2.18 step 4.2, "If dictionary[key]
-            // exists", converts only the members that do. Not passed, it is
-            // no property, as an absent (null) optional member is none -
-            // converted, it was a property whose value was undefined.
-            const is_opt = comptime isOptValue(field.type);
-            const present = if (comptime is_opt)
-                field_value.wasPassed()
-            else if (comptime @typeInfo(field.type) == .optional)
-                field_value != null
-            else
-                true;
-            if (keep_null and !present and !is_opt) {
-                const field_name_str = v8.v8_String_NewFromUtf8(isolate, field.name.ptr, @intCast(field.name.len)) orelse
-                    return ConversionError.OutOfMemory;
-                defer v8.v8_String_Dispose(field_name_str);
-                // Owned (v8_Null makes a Global), released once defined.
-                const null_v8 = toV8Null(isolate);
-                defer v8.v8_Value_Dispose(null_v8);
-                _ = v8.v8_Object_CreateDataProperty(obj, context, field_name_str, null_v8);
-            } else if (present) {
-                const field_name_str = v8.v8_String_NewFromUtf8(isolate, field.name.ptr, @intCast(field.name.len)) orelse
-                    return ConversionError.OutOfMemory;
-                defer v8.v8_String_Dispose(field_name_str);
-                const field_v8 = try toV8Value(field.type, isolate, context, field_value);
-                // Released once defined when it was made here
-                // (`memberValueIsOwned`: a union member by its active member,
-                // an Opt by its inner value, an `any` by its arm).
-                defer if (memberValueIsOwned(field.type, field_value)) v8.v8_Value_Dispose(field_v8);
-                _ = v8.v8_Object_CreateDataProperty(obj, context, field_name_str, field_v8);
-            }
+        if (comptime @hasDecl(T, "default_to_json")) {
+            try writeDefaultToJsonMembers(T, isolate, context, obj, value);
+        } else {
+            try writeDictionaryMembers(T, isolate, context, obj, value);
         }
         return @ptrCast(obj);
     }

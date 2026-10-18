@@ -27,11 +27,18 @@ fn exercise() !void {
     try testing.expectEqual(internals, try dom.custom_elements.ensureInternals(target));
     const states = try interfaces.ElementInternals.get_states(internals);
     try testing.expectEqual(states, try interfaces.ElementInternals.get_states(internals));
-    try testing.expectEqual(states, try interfaces.CustomStateSet.call_add(states, runtime.DOMString.initInterned("ready")));
-    try testing.expectEqual(@as(u32, 1), try interfaces.CustomStateSet.get_size(states));
-    try testing.expect(try interfaces.CustomStateSet.call_has(states, runtime.DOMString.initInterned("ready")));
-    try testing.expect(try interfaces.CustomStateSet.call_delete(states, runtime.DOMString.initInterned("ready")));
-    try testing.expectEqual(@as(u32, 0), try interfaces.CustomStateSet.get_size(states));
+    // The states set's set entries (WebIDL 2.5.12), whose setlike members
+    // are the binding's: what add() and delete() change is what :state()
+    // reads (the custom states hook).
+    const entries = interfaces.CustomStateSet.setlikeEntries(states).?;
+    try entries.append("ready");
+    try testing.expectEqual(@as(usize, 1), entries.size());
+    try testing.expect(entries.contains("ready"));
+    try testing.expect(dom.custom_elements.matchesState(target, "ready"));
+    try testing.expect(!dom.custom_elements.matchesState(target, "other"));
+    try testing.expect(entries.remove("ready"));
+    try testing.expectEqual(@as(usize, 0), entries.size());
+    try testing.expect(!dom.custom_elements.matchesState(target, "ready"));
     const validity = try interfaces.ElementInternals.get_validity(internals);
     try testing.expectEqual(validity, try interfaces.ElementInternals.get_validity(internals));
     try testing.expect(try interfaces.ValidityState.get_valid(validity));

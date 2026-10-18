@@ -26,6 +26,13 @@ pub const WebTransportConnectionStats = struct {
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{ "smoothedRtt", "rttVariation", "minRtt" };
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "estimatedSendRate", .null },
+        .{ "atSendCapacity", .{ .boolean = false } },
+    };
+
     /// Optional members whose IDL type is nullable: a present null is the
     /// value null. Any other member's present null converts by its type.
     pub const nullable_members = .{"estimatedSendRate"};

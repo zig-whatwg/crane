@@ -19,4 +19,8 @@ pub const OptionalEffectTiming = struct {
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{ "delay", "endDelay", "iterationStart", "playbackRate" };
+
+    /// Inline union members typed runtime.JSValue: one present with the
+    /// value null converts to `.null`, for the impl to convert by the union.
+    pub const jsvalue_union_members = .{"duration"};
 };

@@ -18,6 +18,12 @@ pub const GPURenderPassDescriptor = struct {
     timestampWrites: ?GPURenderPassTimestampWrites = null,
     maxDrawCount: ?typedefs.GPUSize64 = null,
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "maxDrawCount", .{ .number = 50000000 } },
+    };
+
     /// WebIDL interface types: the interface each interface-typed member
     /// converts to - a TypeError unless the value implements it.
     pub const interface_members = .{

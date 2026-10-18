@@ -13,6 +13,15 @@ pub const ImageBitmapOptions = struct {
     resizeHeight: ?u32 = null,
     resizeQuality: ?enums.ResizeQuality = null,
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "imageOrientation", .{ .string = "from-image" } },
+        .{ "premultiplyAlpha", .{ .string = "default" } },
+        .{ "colorSpaceConversion", .{ .string = "default" } },
+        .{ "resizeQuality", .{ .string = "low" } },
+    };
+
     /// [EnforceRange] members: converted with that branch of ConvertToInt.
     pub const enforce_range_members = .{ "resizeWidth", "resizeHeight" };
 };

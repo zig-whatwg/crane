@@ -14,4 +14,15 @@ pub const AudioWorkletNodeOptions = struct {
     outputChannelCount: ?[]const u32 = null,
     parameterData: ?[]const struct { key: runtime.DOMString, value: f64 } = null,
     processorOptions: ?runtime.JSValue = null,
+
+    /// WebIDL `object` members (or sequences of `object`): a value that is
+    /// not an Object throws a TypeError when the dictionary is converted.
+    pub const object_members = .{"processorOptions"};
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "numberOfInputs", .{ .number = 1 } },
+        .{ "numberOfOutputs", .{ .number = 1 } },
+    };
 };

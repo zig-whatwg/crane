@@ -14,4 +14,10 @@ pub const IdentityProviderAPIConfig = struct {
     branding: ?IdentityProviderBranding = null,
     supports_use_other_account: ?bool = null,
     account_label: ?runtime.USVString = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "supports_use_other_account", .{ .boolean = false } },
+    };
 };

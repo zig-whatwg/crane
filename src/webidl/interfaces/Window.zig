@@ -2653,6 +2653,12 @@ pub const Window = struct {
         .{ "call_open", 0b100 },
     };
 
+    /// WebIDL `object` arguments (or sequences of `object`): a value that is
+    /// not an Object throws a TypeError (bit i = argument i).
+    pub const object_arguments = .{
+        .{ "call_postMessage", 0b100 },
+    };
+
     /// WebIDL interface types: the interface each interface-typed argument
     /// and attribute value converts to - a TypeError unless the value implements
     /// it (function, argument index - an attribute setter's value is 0 -,

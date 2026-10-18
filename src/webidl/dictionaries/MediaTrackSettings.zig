@@ -57,4 +57,8 @@ pub const MediaTrackSettings = struct {
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{ "aspectRatio", "frameRate", "latency", "exposureCompensation", "exposureTime", "colorTemperature", "iso", "brightness", "contrast", "saturation", "sharpness", "focusDistance", "pan", "tilt", "zoom", "screenPixelRatio" };
+
+    /// Inline union members typed runtime.JSValue: one present with the
+    /// value null converts to `.null`, for the impl to convert by the union.
+    pub const jsvalue_union_members = .{"echoCancellation"};
 };

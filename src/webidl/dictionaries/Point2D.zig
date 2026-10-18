@@ -11,4 +11,11 @@ pub const Point2D = struct {
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{ "x", "y" };
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "x", .{ .number = 0 } },
+        .{ "y", .{ .number = 0 } },
+    };
 };

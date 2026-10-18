@@ -12,4 +12,11 @@ pub const MLArgMinMaxOptions = struct {
 
     keepDimensions: ?bool = null,
     outputDataType: ?enums.MLOperandDataType = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "keepDimensions", .{ .boolean = false } },
+        .{ "outputDataType", .{ .string = "int32" } },
+    };
 };

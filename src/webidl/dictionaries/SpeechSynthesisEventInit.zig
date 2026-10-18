@@ -19,6 +19,15 @@ pub const SpeechSynthesisEventInit = struct {
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{"elapsedTime"};
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "charIndex", .{ .number = 0 } },
+        .{ "charLength", .{ .number = 0 } },
+        .{ "elapsedTime", .{ .number = 0 } },
+        .{ "name", .{ .string = "" } },
+    };
+
     /// WebIDL interface types: the interface each interface-typed member
     /// converts to - a TypeError unless the value implements it.
     pub const interface_members = .{

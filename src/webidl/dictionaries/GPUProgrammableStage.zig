@@ -10,6 +10,12 @@ pub const GPUProgrammableStage = struct {
     entryPoint: ?runtime.USVString = null,
     constants: ?[]const struct { key: runtime.USVString, value: typedefs.GPUPipelineConstantValue } = null,
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "constants", .empty_dictionary },
+    };
+
     /// WebIDL interface types: the interface each interface-typed member
     /// converts to - a TypeError unless the value implements it.
     pub const interface_members = .{

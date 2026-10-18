@@ -15,4 +15,15 @@ pub const XRWebGLLayerInit = struct {
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{"framebufferScaleFactor"};
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "antialias", .{ .boolean = true } },
+        .{ "depth", .{ .boolean = true } },
+        .{ "stencil", .{ .boolean = false } },
+        .{ "alpha", .{ .boolean = true } },
+        .{ "ignoreDepthValues", .{ .boolean = false } },
+        .{ "framebufferScaleFactor", .{ .number = 1 } },
+    };
 };

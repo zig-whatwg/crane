@@ -10,4 +10,10 @@ pub const ChannelMergerOptions = struct {
     base: AudioNodeOptions,
 
     numberOfInputs: ?u32 = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "numberOfInputs", .{ .number = 6 } },
+    };
 };

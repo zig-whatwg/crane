@@ -490,6 +490,9 @@ pub fn writeMetadata(
     /// The interface's special operations (special_operations.zig), for
     /// Meta's `special_operations` table; null writes none.
     special_ops: ?*const special_operations.Model,
+    /// The interface's setlike declaration, for `Meta.setlike`
+    /// (setlike.zig); null writes none.
+    setlike: ?types.Setlike,
 ) !void {
     _ = attributes; // Unused - we now use own_attributes for properties/lazy_properties
 
@@ -998,6 +1001,8 @@ pub fn writeMetadata(
 
         try writer.writeAll("        };\n");
     }
+
+    if (setlike) |set| try @import("setlike.zig").writeMeta(writer, set);
 
     // Generate async_iterable metadata if present
     if (async_iterable) |async_iter| {
@@ -3726,6 +3731,109 @@ fn writeByteStringArguments(
     try writer.writeAll("    };\n\n");
 }
 
+/// WebIDL 3.2.14 object: "If V is not an Object, throw a TypeError." Codegen
+/// types `object` as runtime.JSValue, as it types `any`, so the binding learns
+/// which arguments are `object` - or a sequence of `object` - from this
+/// table, keyed like `byte_string_arguments` (bit i for argument i):
+///
+///     pub const object_arguments = .{ .{ "call_postMessage", 0b10 } };
+///
+/// Without it any value converted: `port.postMessage(m, [1])` and
+/// `structuredClone(0, {transfer: [1]})` reached the serializer (a
+/// DataCloneError) where WebIDL - and Chrome - throw a TypeError in
+/// conversion.
+fn writeObjectArguments(
+    writer: anytype,
+    overload_ops: []const types.Operation,
+    model: ?*const ir.IR,
+) !void {
+    const allocator = std.heap.page_allocator;
+    var any = false;
+    for (overload_ops) |op| {
+        if (objectMask(op, model) != 0) any = true;
+    }
+    if (!any) return;
+    try writer.writeAll("    /// WebIDL `object` arguments (or sequences of `object`): a value that is\n");
+    try writer.writeAll("    /// not an Object throws a TypeError (bit i = argument i).\n");
+    try writer.writeAll("    pub const object_arguments = .{\n");
+    const overload_sets = try overload.groupOperationsByName(allocator, overload_ops);
+    defer overload.freeOverloadSets(allocator, overload_sets);
+    for (overload_sets) |set| {
+        if (set.isOverloaded() and !isResolvableOverloadSet(set)) continue;
+        for (set.operations, 0..) |op, k| {
+            const mask = objectMask(op, model);
+            if (mask == 0) continue;
+            const name = op.name orelse continue;
+            const prefix = if (op.static) "call_static_" else "call_";
+            if (k == 0) {
+                try writer.print("        .{{ \"{s}{s}\", 0b{b} }},\n", .{ prefix, name, mask });
+            } else {
+                try writer.print("        .{{ \"{s}{s}__{d}\", 0b{b} }},\n", .{ prefix, name, k, mask });
+            }
+        }
+    }
+    try writer.writeAll("    };\n\n");
+}
+
+fn objectMask(op: types.Operation, model: ?*const ir.IR) u32 {
+    var mask: u32 = 0;
+    for (op.arguments, 0..) |arg, i| {
+        if (i >= 32) break;
+        if (arg.variadic) continue;
+        if (isObjectType(arg.idlType, model)) mask |= @as(u32, 1) << @intCast(i);
+    }
+    return mask;
+}
+
+/// Whether `idl_type` is `object` (or `object?`, or a typedef of it), or a
+/// sequence or FrozenArray of `object`.
+pub fn isObjectType(idl_type: types.IDLType, model: ?*const ir.IR) bool {
+    if (idl_type.unionTypes != null or idl_type.record != null) return false;
+    if (idl_type.sequence) |inner| return !inner.nullable and inner.sequence == null and isObjectType(inner.*, model);
+    if (std.mem.eql(u8, idl_type.type, "sequence") or std.mem.eql(u8, idl_type.type, "FrozenArray")) {
+        const inner = idl_type.generic orelse return false;
+        return isObjectName(std.mem.trim(u8, inner, " \t"), model);
+    }
+    if (idl_type.generic != null) return false;
+    return isObjectName(idl_type.type, model);
+}
+
+fn isObjectName(type_name: []const u8, model: ?*const ir.IR) bool {
+    var name = type_name;
+    var depth: usize = 0;
+    while (depth < 8) : (depth += 1) {
+        if (std.mem.eql(u8, name, "object")) return true;
+        const m = model orelse return false;
+        const typedef = m.typedefs.get(name) orelse return false;
+        const target = typedef.idlType;
+        if (target.unionTypes != null or target.generic != null or target.sequence != null) return false;
+        name = target.type;
+    }
+    return false;
+}
+
+/// A dictionary's `object` members (or sequences of `object`), for the
+/// dictionary converter - `object_arguments`' rule for a member:
+///
+///     pub const object_members = .{ "transfer" };
+pub fn writeObjectMembers(w: anytype, members: []const types.DictionaryMember, model: ?*const ir.IR) !void {
+    var any = false;
+    for (members) |member| {
+        if (isObjectType(member.idlType, model)) any = true;
+    }
+    if (!any) return;
+    try w.writeAll("\n    /// WebIDL `object` members (or sequences of `object`): a value that is\n");
+    try w.writeAll("    /// not an Object throws a TypeError when the dictionary is converted.\n");
+    try w.writeAll("    pub const object_members = .{");
+    var first = true;
+    for (members) |member| {
+        if (!isObjectType(member.idlType, model)) continue;
+        try w.print("{s}\"{s}\"", .{ if (first) " " else ", ", member.name });
+        first = false;
+    }
+    try w.writeAll(" };\n");
+}
+
 fn byteStringSetter(attr: types.Attribute, model: ?*const ir.IR) bool {
     return !attr.readonly and !attr.static and isByteString(attr.idlType, model);
 }
@@ -4147,6 +4255,108 @@ pub fn writeAnyMembers(writer: anytype, members: []const types.DictionaryMember)
 fn isAnyMember(member: types.DictionaryMember) bool {
     const t = member.idlType;
     return !member.required and t.unionTypes == null and t.generic == null and t.sequence == null and t.record == null and std.mem.eql(u8, t.type, "any");
+}
+
+/// A dictionary's inline union members that the dictionary types
+/// `runtime.JSValue` (writeTypeSimple's fallback for an inline union), for
+/// the dictionary converter:
+///
+///     pub const jsvalue_union_members = .{ "sanitizer" };
+///
+/// WebIDL 3.2.18: a member is present unless its value is undefined, and a
+/// present member converts by its type - for a union, 3.2.25: null is the
+/// dictionary arm's defaults, "null" for a string arm, and so on. The impl
+/// converts these JSValues itself, so the converter must hand it a present
+/// null as `.null`; as an optional (`?runtime.JSValue`) null read as "not
+/// present" and the member's default applied (SetHTMLOptions
+/// `{sanitizer: null}` took the default preset). A union that includes a
+/// nullable type is not listed: its present null is the value null, which
+/// Zig's null already says (it is in `nullable_members`). Written inside the
+/// dictionary's struct; nothing when it has none.
+pub fn writeJsvalueUnionMembers(w: anytype, members: []const types.DictionaryMember, model: ?*const ir.IR) !void {
+    var any = false;
+    for (members) |member| {
+        if (isJsvalueUnionMember(member, model)) any = true;
+    }
+    if (!any) return;
+    try w.writeAll("\n    /// Inline union members typed runtime.JSValue: one present with the\n");
+    try w.writeAll("    /// value null converts to `.null`, for the impl to convert by the union.\n");
+    try w.writeAll("    pub const jsvalue_union_members = .{");
+    var first = true;
+    for (members) |member| {
+        if (!isJsvalueUnionMember(member, model)) continue;
+        try w.print("{s}\"{s}\"", .{ if (first) " " else ", ", member.name });
+        first = false;
+    }
+    try w.writeAll(" };\n");
+}
+
+/// Whether an optional dictionary member is an inline union (the dictionary
+/// types it runtime.JSValue) that includes no nullable type.
+pub fn isJsvalueUnionMember(member: types.DictionaryMember, model: ?*const ir.IR) bool {
+    if (member.required) return false;
+    if (member.idlType.unionTypes == null) return false;
+    return !isNullableIDLType(member.idlType, model, 0);
+}
+
+/// A dictionary's optional members that have an IDL default value, each with
+/// its default, for converting the dictionary to an ECMAScript value:
+///
+///     pub const member_defaults = .{
+///         .{ "bubbles", .{ .boolean = false } },
+///         .{ "namespace", .null },
+///     };
+///
+/// WebIDL 2.7: a default is "the value used by default when author code or
+/// specification text does not provide a value for that member", so a member
+/// with one always exists, and 3.2.18 writes every member that exists. Every
+/// optional member is `?T = null` (or a webidl.Opt) and keeps no default, so
+/// a member an impl leaves unset - or sets to null, for a nullable member
+/// whose default is null - would be written as nothing. Each default is a
+/// tag literal the converter reads at comptime: `.null`, `.{ .boolean = b }`,
+/// `.{ .number = n }`, `.{ .string = "s" }` (an enumeration's value too),
+/// `.positive_infinity`, `.negative_infinity`, `.nan`, `.empty_sequence`,
+/// `.empty_dictionary`. Members in declaration order; the inherited
+/// dictionary's are its own. Nothing when the dictionary has none.
+pub fn writeMemberDefaults(w: anytype, members: []const types.DictionaryMember, model: ?*const ir.IR) !void {
+    _ = model;
+    var any = false;
+    for (members) |member| {
+        if (!member.required and member.default != null) any = true;
+    }
+    if (!any) return;
+    try w.writeAll("\n    /// Optional members' IDL default values: a member the value leaves\n");
+    try w.writeAll("    /// unset is written with its default when converted to script.\n");
+    try w.writeAll("    pub const member_defaults = .{\n");
+    for (members) |member| {
+        if (member.required) continue;
+        const default = member.default orelse continue;
+        try w.print("        .{{ \"{s}\", ", .{member.name});
+        switch (default) {
+            .null => try w.writeAll(".null"),
+            .boolean => |b| try w.print(".{{ .boolean = {} }}", .{b}),
+            .integer => |i| try w.print(".{{ .number = {d} }}", .{i}),
+            .float => |f| try w.print(".{{ .number = {d} }}", .{f}),
+            .string => |token| {
+                // The token's text, without its quotes (the lexeme keeps them).
+                const s = if (token.len >= 2 and token[0] == '"' and token[token.len - 1] == '"') token[1 .. token.len - 1] else token;
+                try w.writeAll(".{ .string = \"");
+                for (s) |c| switch (c) {
+                    '"' => try w.writeAll("\\\""),
+                    '\\' => try w.writeAll("\\\\"),
+                    '\n' => try w.writeAll("\\n"),
+                    else => try w.writeByte(c),
+                };
+                try w.writeAll("\" }");
+            },
+            .infinity => |sign| try w.writeAll(if (sign == .positive) ".positive_infinity" else ".negative_infinity"),
+            .nan => try w.writeAll(".nan"),
+            .emptySequence => try w.writeAll(".empty_sequence"),
+            .emptyDictionary => try w.writeAll(".empty_dictionary"),
+        }
+        try w.writeAll(" },\n");
+    }
+    try w.writeAll("    };\n");
 }
 
 /// WebIDL (3.7.6, "create an operation function"): an operation whose return
@@ -4929,6 +5139,8 @@ pub fn writeDelegateFunctions(
     // Which string arguments and attribute values are ByteStrings: a code
     // unit above 0xFF throws for them.
     try writeByteStringArguments(writer, own_attributes, overload_ops, options.model);
+    // Which arguments are `object`: a value that is not an Object throws.
+    try writeObjectArguments(writer, overload_ops, options.model);
     // Which arguments and attribute values convert to an interface type, and
     // the interface each must implement.
     try writeInterfaceArguments(writer, own_attributes, own_operations, overload_ops, type_registry orelse if (options.model) |m| &m.type_registry else null);
@@ -5617,7 +5829,7 @@ test "writeMetadata generates Meta struct" {
 
     const writer = &buffer.writer;
 
-    try writeMetadata(writer, "Node", "https://dom.spec.whatwg.org/#interface-node", "EventTarget", true, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{}, null);
+    try writeMetadata(writer, "Node", "https://dom.spec.whatwg.org/#interface-node", "EventTarget", true, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{}, null, null);
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const Meta = struct {") != null);
@@ -5631,7 +5843,7 @@ test "writeMetadata handles no base type" {
 
     const writer = &buffer.writer;
 
-    try writeMetadata(writer, "EventTarget", null, null, false, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{}, null);
+    try writeMetadata(writer, "EventTarget", null, null, false, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{}, null, null);
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const BaseType = null;") != null);
@@ -5644,7 +5856,7 @@ test "writeMetadata includes mixins" {
     const writer = &buffer.writer;
 
     const mixins = [_][]const u8{"ParentNode"};
-    try writeMetadata(writer, "Node", null, null, false, &mixins, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{}, null);
+    try writeMetadata(writer, "Node", null, null, false, &mixins, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{}, null, null);
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const MixinTypes = &.{") != null);
@@ -5661,7 +5873,7 @@ test "writeMetadata includes extended attributes" {
         .{ .name = "Exposed", .rhs = .{ .identifier = "Window" } },
         .{ .name = "LegacyUnforgeable", .rhs = null },
     };
-    try writeMetadata(writer, "Event", null, null, false, &.{}, &ext_attrs, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{}, null);
+    try writeMetadata(writer, "Event", null, null, false, &.{}, &ext_attrs, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{}, null, null);
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const extended_attributes = .{") != null);
@@ -5693,7 +5905,7 @@ test "writeMetadata includes legacy unforgeable properties" {
         },
     };
 
-    try writeMetadata(writer, "Event", null, null, false, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, false, false, false, null, &attrs, null, &.{}, null);
+    try writeMetadata(writer, "Event", null, null, false, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, false, false, false, null, &attrs, null, &.{}, null, null);
 
     const output = buffer.written();
 

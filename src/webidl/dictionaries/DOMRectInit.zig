@@ -9,4 +9,13 @@ pub const DOMRectInit = struct {
     y: ?f64 = null,
     width: ?f64 = null,
     height: ?f64 = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "x", .{ .number = 0 } },
+        .{ "y", .{ .number = 0 } },
+        .{ "width", .{ .number = 0 } },
+        .{ "height", .{ .number = 0 } },
+    };
 };

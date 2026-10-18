@@ -281,16 +281,8 @@ pub const IR = struct {
             };
         }
         if (failed) return error.DuplicateDefinition;
-        // Staged with the owning implementation: this lane implements only
-        // CustomStateSet. Other setlike declarations stay in the model until
-        // their owners implement the surface; no second binding map is used.
-        if (self.interfaces.getPtr("CustomStateSet")) |iface| {
-            const original_len = iface.members.items.len;
-            for (0..original_len) |i| {
-                const member = iface.members.items[i];
-                if (member.setlike) |set| try @import("setlike.zig").appendMembers(self.allocator, self.merged.allocator(), iface.name, set, &iface.members);
-            }
-        }
+        // A setlike declaration stays a declaration: its members are the
+        // binding's, never operations (setlike.zig).
     }
 
     /// `file` (a source key) comes from a supplementary source - Crane's own

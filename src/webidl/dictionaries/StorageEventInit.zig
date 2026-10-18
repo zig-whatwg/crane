@@ -15,6 +15,16 @@ pub const StorageEventInit = struct {
     url: ?runtime.USVString = null,
     storageArea: ?*runtime.Instance = null,
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "key", .null },
+        .{ "oldValue", .null },
+        .{ "newValue", .null },
+        .{ "url", .{ .string = "" } },
+        .{ "storageArea", .null },
+    };
+
     /// Optional members whose IDL type is nullable: a present null is the
     /// value null. Any other member's present null converts by its type.
     pub const nullable_members = .{ "key", "oldValue", "newValue", "storageArea" };

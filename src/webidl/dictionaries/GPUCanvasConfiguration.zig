@@ -16,6 +16,16 @@ pub const GPUCanvasConfiguration = struct {
     toneMapping: ?GPUCanvasToneMapping = null,
     alphaMode: ?enums.GPUCanvasAlphaMode = null,
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "usage", .{ .number = 16 } },
+        .{ "viewFormats", .empty_sequence },
+        .{ "colorSpace", .{ .string = "srgb" } },
+        .{ "toneMapping", .empty_dictionary },
+        .{ "alphaMode", .{ .string = "opaque" } },
+    };
+
     /// WebIDL interface types: the interface each interface-typed member
     /// converts to - a TypeError unless the value implements it.
     pub const interface_members = .{

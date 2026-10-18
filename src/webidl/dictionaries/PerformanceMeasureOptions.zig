@@ -18,4 +18,8 @@ pub const PerformanceMeasureOptions = struct {
     /// `any` members: one present with the value null converts to `.null`,
     /// not to "not present".
     pub const any_members = .{"detail"};
+
+    /// Inline union members typed runtime.JSValue: one present with the
+    /// value null converts to `.null`, for the impl to convert by the union.
+    pub const jsvalue_union_members = .{ "start", "end" };
 };

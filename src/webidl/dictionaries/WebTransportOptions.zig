@@ -18,6 +18,19 @@ pub const WebTransportOptions = struct {
     protocols: ?[]const runtime.DOMString = null,
     datagramsReadableType: ?enums.ReadableStreamType = null,
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "allowPooling", .{ .boolean = false } },
+        .{ "requireUnreliable", .{ .boolean = false } },
+        .{ "headers", .empty_dictionary },
+        .{ "serverCertificateHashes", .empty_sequence },
+        .{ "congestionControl", .{ .string = "default" } },
+        .{ "anticipatedConcurrentIncomingUnidirectionalStreams", .null },
+        .{ "anticipatedConcurrentIncomingBidirectionalStreams", .null },
+        .{ "protocols", .empty_sequence },
+    };
+
     /// Optional members whose IDL type is nullable: a present null is the
     /// value null. Any other member's present null converts by its type.
     pub const nullable_members = .{ "anticipatedConcurrentIncomingUnidirectionalStreams", "anticipatedConcurrentIncomingBidirectionalStreams" };

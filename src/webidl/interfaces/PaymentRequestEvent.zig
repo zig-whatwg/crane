@@ -282,6 +282,12 @@ pub const PaymentRequestEvent = struct {
         return try PaymentRequestEventImpl.call_changePaymentMethod(instance, methodName, methodDetails);
     }
 
+    /// WebIDL `object` arguments (or sequences of `object`): a value that is
+    /// not an Object throws a TypeError (bit i = argument i).
+    pub const object_arguments = .{
+        .{ "call_changePaymentMethod", 0b10 },
+    };
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{

@@ -12,4 +12,12 @@ pub const CloseEventInit = struct {
     wasClean: ?bool = null,
     code: ?u16 = null,
     reason: ?runtime.USVString = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "wasClean", .{ .boolean = false } },
+        .{ "code", .{ .number = 0 } },
+        .{ "reason", .{ .string = "" } },
+    };
 };

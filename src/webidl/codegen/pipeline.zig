@@ -9,6 +9,7 @@ const std = @import("std");
 const parser = @import("parser.zig");
 const ir_mod = @import("ir.zig");
 const argument_unions = @import("argument_unions.zig");
+const member_unions = @import("member_unions.zig");
 const generator = @import("generator.zig");
 const format = @import("format.zig");
 const types = @import("types.zig");
@@ -244,6 +245,9 @@ pub fn processFiles(
     // a Trusted Type member is named first, in every position.
     try argument_unions.nameTrustedTypeUnions(&ir);
     try argument_unions.nameArgumentUnions(&ir);
+    // And a dictionary member's union the binding converts in its place
+    // (member_unions.zig's opt-in table).
+    try member_unions.nameMemberUnions(&ir, &member_unions.table);
 
     // Stage 2: Report merging statistics
     std.debug.print("\nStage 2: Partial interface merging\n", .{});

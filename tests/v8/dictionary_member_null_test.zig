@@ -29,6 +29,10 @@ const dictionaries = struct {
     const LockOptions = @typeInfo(@TypeOf(interfaces.LockManager.call_request__1)).@"fn".params[2].type.?;
     /// new Request(input, init)'s `init`.
     const RequestInit = @FieldType(@typeInfo(@TypeOf(interfaces.Request.call_constructor)).@"fn".params[2].type.?, "value");
+    /// element.setHTML(html, options)'s `options`: `(Sanitizer or
+    /// SanitizerConfig or SanitizerPresets) sanitizer = "default"`, an inline
+    /// union typed runtime.JSValue.
+    const SetHTMLOptions = @FieldType(@typeInfo(@TypeOf(interfaces.Element.call_setHTML)).@"fn".params[2].type.?, "value");
 };
 
 const Env = struct {
@@ -135,4 +139,25 @@ test "RequestInit's signal is AbortSignal?: a present null is null" {
     defer ffi.v8_Value_Dispose(object);
     const init = try conversions.fromV8Value(dictionaries.RequestInit, testing.allocator, e.isolate, e.context, object);
     try testing.expect(init.signal == null);
+}
+
+test "an inline union member typed JSValue keeps a present null apart from absent" {
+    // WebIDL 3.2.18: only undefined is "not present"; a present null converts
+    // by the union's type (3.2.25 step 4: to the SanitizerConfig arm, an empty
+    // dictionary). The impl converts the JSValue, so it must see the null:
+    // `{sanitizer: null}` read as absent took the default preset
+    // (crane/san-options-null.html). Codegen lists the member in
+    // `jsvalue_union_members`.
+    try testing.expect(@hasDecl(dictionaries.SetHTMLOptions, "jsvalue_union_members"));
+    const e = try env();
+    const present = try eval("({ sanitizer: null })");
+    defer ffi.v8_Value_Dispose(present);
+    const given = try conversions.fromV8Value(dictionaries.SetHTMLOptions, testing.allocator, e.isolate, e.context, present);
+    try testing.expect(given.sanitizer != null);
+    try testing.expect(given.sanitizer.? == .null);
+
+    const absent = try eval("({ sanitizer: undefined })");
+    defer ffi.v8_Value_Dispose(absent);
+    const omitted = try conversions.fromV8Value(dictionaries.SetHTMLOptions, testing.allocator, e.isolate, e.context, absent);
+    try testing.expect(omitted.sanitizer == null);
 }
