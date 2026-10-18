@@ -3710,6 +3710,109 @@ fn writeByteStringArguments(
     try writer.writeAll("    };\n\n");
 }
 
+/// WebIDL 3.2.14 object: "If V is not an Object, throw a TypeError." Codegen
+/// types `object` as runtime.JSValue, as it types `any`, so the binding learns
+/// which arguments are `object` - or a sequence of `object` - from this
+/// table, keyed like `byte_string_arguments` (bit i for argument i):
+///
+///     pub const object_arguments = .{ .{ "call_postMessage", 0b10 } };
+///
+/// Without it any value converted: `port.postMessage(m, [1])` and
+/// `structuredClone(0, {transfer: [1]})` reached the serializer (a
+/// DataCloneError) where WebIDL - and Chrome - throw a TypeError in
+/// conversion.
+fn writeObjectArguments(
+    writer: anytype,
+    overload_ops: []const types.Operation,
+    model: ?*const ir.IR,
+) !void {
+    const allocator = std.heap.page_allocator;
+    var any = false;
+    for (overload_ops) |op| {
+        if (objectMask(op, model) != 0) any = true;
+    }
+    if (!any) return;
+    try writer.writeAll("    /// WebIDL `object` arguments (or sequences of `object`): a value that is\n");
+    try writer.writeAll("    /// not an Object throws a TypeError (bit i = argument i).\n");
+    try writer.writeAll("    pub const object_arguments = .{\n");
+    const overload_sets = try overload.groupOperationsByName(allocator, overload_ops);
+    defer overload.freeOverloadSets(allocator, overload_sets);
+    for (overload_sets) |set| {
+        if (set.isOverloaded() and !isResolvableOverloadSet(set)) continue;
+        for (set.operations, 0..) |op, k| {
+            const mask = objectMask(op, model);
+            if (mask == 0) continue;
+            const name = op.name orelse continue;
+            const prefix = if (op.static) "call_static_" else "call_";
+            if (k == 0) {
+                try writer.print("        .{{ \"{s}{s}\", 0b{b} }},\n", .{ prefix, name, mask });
+            } else {
+                try writer.print("        .{{ \"{s}{s}__{d}\", 0b{b} }},\n", .{ prefix, name, k, mask });
+            }
+        }
+    }
+    try writer.writeAll("    };\n\n");
+}
+
+fn objectMask(op: types.Operation, model: ?*const ir.IR) u32 {
+    var mask: u32 = 0;
+    for (op.arguments, 0..) |arg, i| {
+        if (i >= 32) break;
+        if (arg.variadic) continue;
+        if (isObjectType(arg.idlType, model)) mask |= @as(u32, 1) << @intCast(i);
+    }
+    return mask;
+}
+
+/// Whether `idl_type` is `object` (or `object?`, or a typedef of it), or a
+/// sequence or FrozenArray of `object`.
+pub fn isObjectType(idl_type: types.IDLType, model: ?*const ir.IR) bool {
+    if (idl_type.unionTypes != null or idl_type.record != null) return false;
+    if (idl_type.sequence) |inner| return !inner.nullable and inner.sequence == null and isObjectType(inner.*, model);
+    if (std.mem.eql(u8, idl_type.type, "sequence") or std.mem.eql(u8, idl_type.type, "FrozenArray")) {
+        const inner = idl_type.generic orelse return false;
+        return isObjectName(std.mem.trim(u8, inner, " \t"), model);
+    }
+    if (idl_type.generic != null) return false;
+    return isObjectName(idl_type.type, model);
+}
+
+fn isObjectName(type_name: []const u8, model: ?*const ir.IR) bool {
+    var name = type_name;
+    var depth: usize = 0;
+    while (depth < 8) : (depth += 1) {
+        if (std.mem.eql(u8, name, "object")) return true;
+        const m = model orelse return false;
+        const typedef = m.typedefs.get(name) orelse return false;
+        const target = typedef.idlType;
+        if (target.unionTypes != null or target.generic != null or target.sequence != null) return false;
+        name = target.type;
+    }
+    return false;
+}
+
+/// A dictionary's `object` members (or sequences of `object`), for the
+/// dictionary converter - `object_arguments`' rule for a member:
+///
+///     pub const object_members = .{ "transfer" };
+pub fn writeObjectMembers(w: anytype, members: []const types.DictionaryMember, model: ?*const ir.IR) !void {
+    var any = false;
+    for (members) |member| {
+        if (isObjectType(member.idlType, model)) any = true;
+    }
+    if (!any) return;
+    try w.writeAll("\n    /// WebIDL `object` members (or sequences of `object`): a value that is\n");
+    try w.writeAll("    /// not an Object throws a TypeError when the dictionary is converted.\n");
+    try w.writeAll("    pub const object_members = .{");
+    var first = true;
+    for (members) |member| {
+        if (!isObjectType(member.idlType, model)) continue;
+        try w.print("{s}\"{s}\"", .{ if (first) " " else ", ", member.name });
+        first = false;
+    }
+    try w.writeAll(" };\n");
+}
+
 fn byteStringSetter(attr: types.Attribute, model: ?*const ir.IR) bool {
     return !attr.readonly and !attr.static and isByteString(attr.idlType, model);
 }
@@ -5014,6 +5117,8 @@ pub fn writeDelegateFunctions(
     // Which string arguments and attribute values are ByteStrings: a code
     // unit above 0xFF throws for them.
     try writeByteStringArguments(writer, own_attributes, overload_ops, options.model);
+    // Which arguments are `object`: a value that is not an Object throws.
+    try writeObjectArguments(writer, overload_ops, options.model);
     // Which arguments and attribute values convert to an interface type, and
     // the interface each must implement.
     try writeInterfaceArguments(writer, own_attributes, own_operations, overload_ops, type_registry orelse if (options.model) |m| &m.type_registry else null);

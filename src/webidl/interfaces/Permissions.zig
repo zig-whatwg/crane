@@ -172,6 +172,14 @@ pub const Permissions = struct {
         return try PermissionsImpl.call_request(instance, permissionDesc);
     }
 
+    /// WebIDL `object` arguments (or sequences of `object`): a value that is
+    /// not an Object throws a TypeError (bit i = argument i).
+    pub const object_arguments = .{
+        .{ "call_revoke", 0b1 },
+        .{ "call_query", 0b1 },
+        .{ "call_request", 0b1 },
+    };
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{

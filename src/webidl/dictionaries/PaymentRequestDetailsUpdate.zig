@@ -15,4 +15,8 @@ pub const PaymentRequestDetailsUpdate = struct {
     shippingOptions: ?[]const PaymentShippingOption = null,
     paymentMethodErrors: ?runtime.JSValue = null,
     shippingAddressErrors: ?AddressErrors = null,
+
+    /// WebIDL `object` members (or sequences of `object`): a value that is
+    /// not an Object throws a TypeError when the dictionary is converted.
+    pub const object_members = .{"paymentMethodErrors"};
 };

@@ -10,4 +10,8 @@ pub const PaymentDetailsModifier = struct {
     total: ?PaymentItem = null,
     additionalDisplayItems: ?[]const PaymentItem = null,
     data: ?runtime.JSValue = null,
+
+    /// WebIDL `object` members (or sequences of `object`): a value that is
+    /// not an Object throws a TypeError when the dictionary is converted.
+    pub const object_members = .{"data"};
 };

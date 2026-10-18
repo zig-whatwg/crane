@@ -1293,6 +1293,17 @@ fn constructorIntegerConversion(comptime Interface: type, comptime index: usize)
 /// 0xFF are a TypeError. ByteString and USVString are both `[]const u8`, so
 /// codegen writes the table (`byte_string_arguments` in a generated
 /// interface) from the IDL; an interface without one answers 0.
+/// WebIDL 3.2.14 object: the arguments of `fn_name` - bit i for argument i -
+/// that must be an Object, from codegen's `object_arguments` (`object` and
+/// `any` are both runtime.JSValue); an interface without one answers 0.
+pub fn objectMask(comptime Interface: type, comptime fn_name: []const u8) u32 {
+    if (!@hasDecl(Interface, "object_arguments")) return 0;
+    inline for (Interface.object_arguments) |entry| {
+        if (comptime std.mem.eql(u8, entry[0], fn_name)) return entry[1];
+    }
+    return 0;
+}
+
 pub fn byteStringMask(comptime Interface: type, comptime fn_name: []const u8) u32 {
     if (!@hasDecl(Interface, "byte_string_arguments")) return 0;
     inline for (Interface.byte_string_arguments) |entry| {
@@ -1340,6 +1351,7 @@ pub fn constructorArgumentInterface(comptime Interface: type, comptime variant: 
 pub const ArgModes = struct {
     restricted: u32 = 0,
     byte_string: u32 = 0,
+    object: u32 = 0,
     enforce_range: u32 = 0,
     clamp: u32 = 0,
     /// The interface whose `interface_arguments` name each argument's
@@ -1354,6 +1366,7 @@ pub const ArgModes = struct {
 pub const ArgMode = struct {
     restricted: bool = false,
     byte_string: bool = false,
+    object: bool = false,
     integer: conv.IntegerConversion = .modulo,
     interface: ?type = null,
 };
@@ -1362,6 +1375,7 @@ fn argModesOf(comptime Interface: type, comptime fn_name: []const u8) ArgModes {
     return .{
         .restricted = restrictedFloatMask(Interface, fn_name),
         .byte_string = byteStringMask(Interface, fn_name),
+        .object = objectMask(Interface, fn_name),
         .enforce_range = integerConversionMask(Interface, fn_name, .enforce_range),
         .clamp = integerConversionMask(Interface, fn_name, .clamp),
         .Interface = Interface,
@@ -1373,6 +1387,7 @@ fn argMode(comptime modes: ArgModes, comptime index: usize) ArgMode {
     return .{
         .restricted = restrictedBit(modes.restricted, index),
         .byte_string = restrictedBit(modes.byte_string, index),
+        .object = restrictedBit(modes.object, index),
         .integer = if (restrictedBit(modes.enforce_range, index)) .enforce_range else if (restrictedBit(modes.clamp, index)) .clamp else .modulo,
         .interface = if (modes.Interface == void) null else argumentInterface(modes.Interface, modes.fn_name, index),
     };
@@ -4698,6 +4713,14 @@ pub fn V8Interface(comptime Interface: type) type {
             }
             if (comptime mode.byte_string) {
                 conv.requireByteString(T, value) catch |err| {
+                    freeConvertedArg(T, allocator, value);
+                    return err;
+                };
+            }
+            // An `object` (`object_arguments`): a value that is not an
+            // Object is a TypeError, as part of this argument's conversion.
+            if (comptime mode.object) {
+                conv.requireObject(T, value) catch |err| {
                     freeConvertedArg(T, allocator, value);
                     return err;
                 };

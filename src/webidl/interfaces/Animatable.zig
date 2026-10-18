@@ -75,4 +75,10 @@ pub const Animatable = struct {
     pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         return try AnimatableImpl.call_animate(instance, keyframes, options);
     }
+
+    /// WebIDL `object` arguments (or sequences of `object`): a value that is
+    /// not an Object throws a TypeError (bit i = argument i).
+    pub const object_arguments = .{
+        .{ "call_animate", 0b1 },
+    };
 };

@@ -3011,6 +3011,9 @@ pub fn writeDictionary(
     // Which members are ByteStrings: a code unit above 0xFF is a TypeError
     // (the dictionary converter reads it).
     try writer.writeByteStringMembers(w, dictionary.members, ir);
+    // Which members are `object` (or sequences of it): a value that is not an
+    // Object throws a TypeError.
+    try writer.writeObjectMembers(w, dictionary.members, ir);
     // Which members keep a present null as `.null` (the converter reads it).
     try writer.writeAnyMembers(w, dictionary.members);
     // Which inline union members (typed runtime.JSValue) keep a present

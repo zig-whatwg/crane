@@ -14,6 +14,10 @@ pub const RegisteredTool = struct {
     origin: runtime.USVString,
     annotations: ?ToolAnnotations = null,
 
+    /// WebIDL `object` members (or sequences of `object`): a value that is
+    /// not an Object throws a TypeError when the dictionary is converted.
+    pub const object_members = .{"inputSchema"};
+
     /// WebIDL interface types: the interface each interface-typed member
     /// converts to - a TypeError unless the value implements it.
     pub const interface_members = .{

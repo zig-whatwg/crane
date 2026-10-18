@@ -274,6 +274,12 @@ pub const KeyframeEffect = struct {
         return try KeyframeEffectImpl.call_getKeyframes(instance);
     }
 
+    /// WebIDL `object` arguments (or sequences of `object`): a value that is
+    /// not an Object throws a TypeError (bit i = argument i).
+    pub const object_arguments = .{
+        .{ "call_setKeyframes", 0b1 },
+    };
+
     /// WebIDL interface types: the interface each interface-typed argument
     /// and attribute value converts to - a TypeError unless the value implements
     /// it (function, argument index - an attribute setter's value is 0 -,

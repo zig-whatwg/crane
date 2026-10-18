@@ -11,4 +11,8 @@ pub const PaymentValidationErrors = struct {
     shippingAddress: ?AddressErrors = null,
     @"error": ?runtime.DOMString = null,
     paymentMethod: ?runtime.JSValue = null,
+
+    /// WebIDL `object` members (or sequences of `object`): a value that is
+    /// not an Object throws a TypeError when the dictionary is converted.
+    pub const object_members = .{"paymentMethod"};
 };

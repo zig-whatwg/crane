@@ -444,6 +444,47 @@ pub fn requireByteString(comptime T: type, value: T) ConversionError!void {
     }
 }
 
+/// WebIDL 3.2.14, object: "If V is not an Object, throw a TypeError" - for
+/// a value already converted as `any` (both are runtime.JSValue, so codegen
+/// marks the `object` positions: `object_arguments`, `object_members`). A
+/// `.handle` refers to an object, a function or a Symbol - not an Object; an
+/// `.instance` is a platform object; every other arm is a primitive. `value`
+/// is a JSValue, its nullable form (null passes: `object?`), an optional
+/// argument (`webidl.Opt`), or a sequence of them (each element: a
+/// `sequence<object>`'s are converted first and checked after, so a later
+/// element's iteration runs before an earlier one's TypeError).
+pub fn requireObject(comptime T: type, value: T) ConversionError!void {
+    if (comptime T == runtime.JSValue) {
+        switch (value) {
+            .handle => |h| if (!v8.v8_Value_IsObject(@ptrCast(@alignCast(h.ptr)))) return ConversionError.TypeError,
+            .instance => {},
+            else => return ConversionError.TypeError,
+        }
+        return;
+    }
+    switch (@typeInfo(T)) {
+        .optional => |o| if (value) |v| try requireObject(o.child, v),
+        .pointer => |ptr| if (comptime ptr.size == .slice) {
+            for (value) |v| try requireObject(ptr.child, v);
+        },
+        .@"struct" => if (comptime @hasField(T, "was_passed") and @hasField(T, "value")) {
+            if (value.was_passed) try requireObject(@FieldType(T, "value"), value.value);
+        },
+        else => {},
+    }
+}
+
+/// Whether dictionary `T` lists member `name` in `object_members`.
+fn isObjectMember(comptime T: type, comptime name: []const u8) bool {
+    comptime {
+        if (!@hasDecl(T, "object_members")) return false;
+        for (T.object_members) |member| {
+            if (std.mem.eql(u8, member, name)) return true;
+        }
+        return false;
+    }
+}
+
 /// Whether dictionary `T` lists member `name` in `byte_string_members`.
 fn isByteStringMember(comptime T: type, comptime name: []const u8) bool {
     comptime {
@@ -2516,6 +2557,9 @@ pub fn fromV8ValueAs(
                 // A ByteString member (`byte_string_members`, RequestInit's
                 // method): a code unit above 0xFF is a TypeError, likewise.
                 if (comptime isByteStringMember(T, field.name)) try requireByteString(field.type, @field(result, field.name));
+                // An `object` member (`object_members`, StructuredSerializeOptions'
+                // `transfer`): a value that is not an Object is a TypeError.
+                if (comptime isObjectMember(T, field.name)) try requireObject(field.type, @field(result, field.name));
             } else {
                 // Get returns an empty handle only when it THREW (an absent
                 // member reads as undefined, handled above): WebIDL § 3.2.18
