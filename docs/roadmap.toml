@@ -326,6 +326,7 @@ progress = [
   "7eb7d4aa552 (merge, binding3 batch 1) - a dictionary member present as null converts by its type; [Global] members are the global's own; [SecureContext] exposure per realm; callbacks of a Window whose Document is not fully active do not run; structuredClone transfer handle leak and native [SameObject] reads traced",
   "f12aaaa6686 (merge, lane bindtype) - an interface-typed value converts only from a platform object that implements its interface (arguments, overloads, constructors, setters, dictionary members, sequence elements), from codegen tables naming every position's interface",
   "65ba206e671, b7cdedccdc5, 5bc3b68c535 (lane bindtype) - codegen names the interface of every interface-typed value (interface_arguments, constructor_interface_arguments, interface_members); the binding converts one only from a platform object that implements it, and an uncovered position is a compile error",
+  "85eddb05459, c5d1d544870, e7d9f135391, 3dcb23289f2, 4e401ddc74b, a42cac17dd2, 9b831681546 (lane binding4) - a dictionary converted to script is flattened, in WebIDL order, with defaulted and present-null members written; a JSValue union member keeps a present null; member_unions.zig (empty table) and enumeration union arms; setlike members defined by the binding over webidl.setlike.SetEntries (CustomStateSet); a failed argument conversion releases its handle; a FormData File entry iterates as its File; a SharedArrayBuffer for a BufferSource is a TypeError; an `object` that is not an Object is a TypeError",
 ]
 
   [[infra.items]]
@@ -383,6 +384,18 @@ progress = [
   [[infra.items]]
   name = "Dictionary members read in WebIDL order (inherited first, then lexicographic)"
   status = "done"
+
+  [[infra.items]]
+  name = "Dictionaries converted to script in WebIDL's shape: inherited members flattened, WebIDL order, defaulted and present-null members written"
+  status = "done"
+
+  [[infra.items]]
+  name = "Setlike declarations' members defined by the binding over the impl's set entries (maplike and interface-typed set values still to come)"
+  status = "doing"
+
+  [[infra.items]]
+  name = "A dictionary member's inline union converted by the binding (member_unions.zig; the sanitizer options are the first consumer)"
+  status = "doing"
 
   [[infra.items]]
   name = "A nullable dictionary member tells absent from null"
