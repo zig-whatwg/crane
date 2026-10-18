@@ -1086,12 +1086,17 @@ fn queueJavascriptNavigation(window: *runtime.Instance, url: []const u8, source:
     // Navigate step 4's source snapshot params' source policy container: a
     // clone of the source document's (the page's own with no source), which
     // "navigate to a javascript: URL" step 4's request carries.
+    // A document - or a container - that cannot be found fails closed: the
+    // request carries a clone of PolicyContainer.unavailable, which blocks
+    // the javascript: URL. It used to carry none, and the CSP check was
+    // skipped (lane leaks5).
     const container_document: ?*runtime.Instance = source orelse (interfaces.Window.get_document(window) catch null);
-    var initiator_container: ?dom.policy_containers.PolicyContainer = null;
-    if (container_document) |doc| {
-        if (dom.policy_containers.of(doc)) |container| initiator_container = try container.clone(allocator);
-    }
-    errdefer if (initiator_container) |*container| container.deinit();
+    const source_container: *const dom.policy_containers.PolicyContainer = if (container_document) |doc|
+        dom.policy_containers.of(doc) orelse &dom.policy_containers.PolicyContainer.unavailable
+    else
+        &dom.policy_containers.PolicyContainer.unavailable;
+    var initiator_container = try source_container.clone(allocator);
+    errdefer initiator_container.deinit();
     task.* = .{
         .allocator = allocator,
         .window = window,

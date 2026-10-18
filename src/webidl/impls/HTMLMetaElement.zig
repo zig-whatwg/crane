@@ -20,6 +20,8 @@ const NodeBase = dom_module.NodeBase;
 
 pub const State = HTMLMetaElement.State;
 
+const log = std.log.scoped(.html_meta);
+
 pub const ImplError = error{
     NotImplemented,
 };
@@ -82,11 +84,33 @@ fn insertionSteps(node: *NodeBase) void {
     // The "referrer" metadata name runs for a meta element inserted into the
     // document.
     referrerMetadataName(instance);
-    const http_equiv = (interfaces.Element.call_getAttribute(instance, runtime.DOMString.initInterned("http-equiv")) catch return) orelse return;
+    // An http-equiv that cannot be read names no state we can rule out: it
+    // may be the Content Security Policy state, so the document's CSP list
+    // fails closed (`pragmaUnreadable`). It used to `catch return`, and the
+    // pragma - a policy among them - was dropped without a word.
+    const http_equiv = (interfaces.Element.call_getAttribute(instance, runtime.DOMString.initInterned("http-equiv")) catch |err| {
+        pragmaUnreadable(instance, err);
+        return;
+    }) orelse return;
     // The attribute is an enumerated attribute: its keywords match ASCII
     // case-insensitively.
     if (std.ascii.eqlIgnoreCase(http_equiv.asSlice(), "refresh")) refreshState(instance);
     if (std.ascii.eqlIgnoreCase(http_equiv.asSlice(), "content-security-policy")) contentSecurityPolicyState(instance, node);
+}
+
+/// The insertion steps could not read `meta`'s http-equiv attribute (`err`):
+/// the pragma it names is unknown. A Content Security Policy pragma fails
+/// CLOSED - the node document's CSP list becomes unenforceable
+/// (csp.CSPList.unenforceable), as for a policy that cannot be recorded -
+/// and every other pragma fails visibly: logged, never silently skipped.
+/// The read allocates nothing for "http-equiv" (Element.getAttribute
+/// lowercases it in a buffer), so this is an element with no attribute
+/// state; the path is kept closed for whatever else can fail there.
+fn pragmaUnreadable(meta: *runtime.Instance, err: anyerror) void {
+    log.warn("a meta element's http-equiv could not be read ({s}): its pragma is not run, and the document's CSP list fails closed", .{@errorName(err)});
+    const document = (interfaces.Node.get_ownerDocument(meta) catch null) orelse return;
+    const container = dom_module.policy_containers.of(document) orelse return;
+    container.csp_list.markUnenforceable();
 }
 
 /// The Content Security Policy state (`http-equiv="content-security-policy"`):
@@ -167,11 +191,17 @@ fn referrerMetadataName(element: *runtime.Instance) void {
     if (!inDocumentTree(node)) return;
     // 2. "If element does not have a name attribute whose value is an ASCII
     // case-insensitive match for "referrer", then return."
-    const name = (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("name")) catch return) orelse return;
+    const name = (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("name")) catch |err| {
+        log.warn("a meta element's name could not be read ({s}): the referrer metadata name is not run", .{@errorName(err)});
+        return;
+    }) orelse return;
     if (!std.ascii.eqlIgnoreCase(name.asSlice(), "referrer")) return;
     // 3. "If element does not have a content attribute, or that attribute's
     // value is the empty string, then return."
-    const content = (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("content")) catch return) orelse return;
+    const content = (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("content")) catch |err| {
+        log.warn("a referrer meta element's content could not be read ({s}): its referrer policy is not set", .{@errorName(err)});
+        return;
+    }) orelse return;
     // 4-5. The value, ASCII lowercased, with the legacy values mapped.
     const policy = fetch.internal.policy_container.referrerPolicyFromMeta(content.asSlice()) orelse return;
     // 6. "If value is a referrer policy, then set element's node document's
@@ -196,7 +226,10 @@ fn inDocumentTree(node: *NodeBase) bool {
 fn refreshState(meta: *runtime.Instance) void {
     // Step 1: "If the meta element has no content attribute, or if that
     // attribute's value is the empty string, then return."
-    const content = (interfaces.Element.call_getAttribute(meta, runtime.DOMString.initInterned("content")) catch return) orelse return;
+    const content = (interfaces.Element.call_getAttribute(meta, runtime.DOMString.initInterned("content")) catch |err| {
+        log.warn("a refresh meta element's content could not be read ({s}): the refresh is not scheduled", .{@errorName(err)});
+        return;
+    }) orelse return;
     // Step 2: "Let input be the value of the element's content attribute."
     const input = content.asSlice();
     if (input.len == 0) return;
