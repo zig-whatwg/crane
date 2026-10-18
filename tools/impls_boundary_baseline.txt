@@ -94,4 +94,3 @@ src/webidl/impls/WorkerGlobalScope.zig WorkerNavigator.InternalState 1
 tests/v8/sa_transform_setup_oom_test.zig TransformStream.streams_transform 1
 tests/v8/streams_wrap_test.zig Response.streams_js 1
 tests/v8/union_arm_interface_test.zig Response.streams_js 1
-tools/interfaces_main.zig impls.@import 1
