@@ -177,6 +177,11 @@ pub fn installHooks() void {
         .download_hyperlink = &downloadHyperlink,
         .traverse_navigable = &traverseNavigable,
         .find_by_name = &frameWindowByName,
+        .integration_of = &struct {
+            fn of(browsing_context: *anyopaque) ?*IFrameIntegration {
+                return integrationOfBrowsingContext(@ptrCast(@alignCast(browsing_context)));
+            }
+        }.of,
         .create_browsing_context_and_document = &createBrowsingContextAndDocument,
         .process_frame_attributes = &processFrameAttributes,
     });
@@ -3603,29 +3608,42 @@ fn topDocumentOf(document: *runtime.Instance) *runtime.Instance {
     return current;
 }
 
-/// HTML "find a navigable by target name": a navigable whose target name is
-/// `name` among the inclusive descendant navigables of `document`'s
-/// top-level traversable (the implementation-defined subtree choice of step
-/// 3). Popups are searched by the window open steps, which the caller falls
-/// back to.
-fn findNavigableByName(document: *runtime.Instance, name: []const u8) ?*IFrameIntegration {
+/// HTML "find a navigable by target name": choose step 3's list of top-level
+/// traversable, then current navigable, and search it in reverse (step 4).
+/// Blink's FindFrameForNavigationInternal likewise searches the current
+/// subtree before the page. The caller's window open steps search popups.
+fn findNavigableByName(document: *runtime.Instance, name: []const u8) Chosen {
     const top = topDocumentOf(document);
-    var documents = dom_module.navigables.inclusiveDescendantDocuments(top, std.heap.page_allocator);
-    defer documents.deinit(std.heap.page_allocator);
-    for (documents.items) |entry| {
-        const browsing_context = entry.browsing_context orelse continue;
-        if (!std.mem.eql(u8, browsing_context.target_name, name)) continue;
-        if (integrationOfBrowsingContext(browsing_context)) |integration| return integration;
+    for ([_]*runtime.Instance{ document, top }, 0..) |root, index| {
+        if (index == 1 and root == document) break;
+        var documents = dom_module.navigables.inclusiveDescendantDocuments(root, std.heap.page_allocator);
+        defer documents.deinit(std.heap.page_allocator);
+        for (documents.items) |entry| {
+            // The inclusive root has no container integration. It still
+            // participates in step 4 through its active Window's navigable.
+            const browsing_context = entry.browsing_context orelse blk: {
+                const window = (interfaces.Document.get_defaultView(entry.document) catch null) orelse continue;
+                break :blk dom_module.browser_state.browsingContextOf(window) orelse continue;
+            };
+            if (!std.mem.eql(u8, browsing_context.target_name, name)) continue;
+            if (integrationOfBrowsingContext(browsing_context)) |integration| return .{ .navigable = integration };
+            return .{ .page = entry.document };
+        }
     }
-    return null;
+    return .none;
 }
 
 /// dom.navigables: "find a navigable by target name" among the frames of
 /// `current_document`'s page - the active window of the first found, or null.
 fn frameWindowByName(current_document: *runtime.Instance, name: []const u8) ?*runtime.Instance {
-    const integration = findNavigableByName(current_document, name) orelse return null;
-    const browsing_context = integration.browsing_context orelse return null;
-    return @ptrCast(@alignCast(browsing_context.getActiveWindow() orelse return null));
+    return switch (findNavigableByName(current_document, name)) {
+        .navigable => |integration| blk: {
+            const browsing_context = integration.browsing_context orelse return null;
+            break :blk @ptrCast(@alignCast(browsing_context.getActiveWindow() orelse return null));
+        },
+        .page => |page| interfaces.Document.get_defaultView(page) catch null,
+        .none => null,
+    };
 }
 
 /// dom.navigables: HTML "the rules for choosing a navigable" given
@@ -3658,7 +3676,7 @@ fn navigateByTargetWithReferrerPolicy(source_document: *runtime.Instance, reques
         // Step 7: "find a navigable by target name", whatever noopener is
         // (a rel=noreferrer link navigates the frame its target names).
         if (!std.ascii.eqlIgnoreCase(name, "_blank")) {
-            if (findNavigableByName(current, name)) |integration| break :blk .{ .navigable = integration };
+            break :blk findNavigableByName(current, name);
         }
         break :blk .none;
     };
@@ -3710,7 +3728,17 @@ fn navigateByTargetWithReferrerPolicy(source_document: *runtime.Instance, reques
         .none => {
             const window = (interfaces.Document.get_defaultView(current) catch null) orelse return;
             const chosen_top = dom_module.auxiliary_navigables.chooseTopLevel(window, name, request.noopener) orelse return;
-            const integration: *IFrameIntegration = @ptrCast(@alignCast(chosen_top.integration));
+            const opaque_integration = chosen_top.integration orelse {
+                var host_request = request;
+                host_request.target = "_self";
+                host_request.current_document = interfaces.Window.get_document(chosen_top.window) catch return;
+                // One bounded re-entry: _self goes straight to the existing
+                // page branch, preserving every request field without
+                // repeating name lookup or navigation machinery.
+                navigateByTargetWithReferrerPolicy(source_document, host_request, referrer_policy);
+                return;
+            };
+            const integration: *IFrameIntegration = @ptrCast(@alignCast(opaque_integration));
             navigate(integration, request.url, .{
                 .source_document = source_document,
                 .source_element = request.source_element,
@@ -3757,7 +3785,9 @@ fn followHyperlink(subject: *runtime.Instance, user_involvement: dom_module.navi
             interfaces.Element.call_getAttributeNS(subject, runtime.DOMString.initInterned("http://www.w3.org/1999/xlink"), runtime.DOMString.initInterned("href")) catch null
         else
             null) orelse return;
-    const url = parseRelativeToDocument(document, href.asSlice()) orelse return;
+    // Step 5 uses the document's encoding for the query, as the href getter
+    // does, rather than the URL constructor's UTF-8 default.
+    const url = (dom_module.encoding_parse.encodingParseAndSerialize(document, href.asSlice()) catch null) orelse return;
     defer document.ctx.allocator.free(url);
 
     // Step 6: "get an element's noopener".

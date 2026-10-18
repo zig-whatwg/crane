@@ -53,11 +53,12 @@ pub fn isInstalled() bool {
 }
 
 /// The navigable "the rules for choosing a navigable" chose among the
-/// top-level traversables: an open popup, or a new one. Both BORROWED - the
-/// popup is its opener window's, which owns it.
+/// top-level traversables: a related page or frame, or a new popup. The
+/// result is BORROWED for synchronous navigation; its owner keeps it alive.
 pub const Chosen = struct {
-    /// Its `html_core.IFrameIntegration`.
-    integration: *anyopaque,
+    /// Its `html_core.IFrameIntegration`, or null for a host page identified
+    /// by `window`, which uses the existing top-level page navigation.
+    integration: ?*anyopaque,
     /// Its active window.
     window: *runtime.Instance,
 };

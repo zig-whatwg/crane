@@ -131,12 +131,13 @@ pub fn call_removeItem(instance: *runtime.Instance, key: runtime.DOMString) anye
 }
 
 /// Operation: clear
-/// HTML 12.2.1: "1. Clear this's map. 2. Broadcast this with null, null, and
-/// null." Whether or not the map held anything, as the spec reads.
+/// HTML 12.2.1 steps 1-3: return if the map is empty; otherwise clear it and
+/// broadcast with null key, oldValue and newValue.
 pub fn call_clear(instance: *runtime.Instance) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
+    if (internal.storage.length() == 0) return;
     internal.storage.clear();
     broadcast(instance, null, null, null);
 }
