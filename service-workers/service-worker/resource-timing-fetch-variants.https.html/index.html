@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../service-workers/"><code>service-<wbr>workers/</code></a></li><li><a href="../../../service-workers/service-worker/"><code>service-<wbr>worker/</code></a></li><li aria-current="page"><code>resource-<wbr>timing-<wbr>fetch-<wbr>variants.<wbr>https.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>resource-<wbr>timing-<wbr>fetch-<wbr>variants.<wbr>https.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="service-workers/service-worker/resource-timing-fetch-variants.https.html">
-<p class="figures-main"><span class="fg-pass">2</span><span class="fg-of"> / 5</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>3</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">3</span><span class="fg-of"> / 5</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-3b12eef2f4</code>, <span class="nowrap">18 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/3b12eef2f4"><code>3b12eef2f4</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-05978d11df</code>, <span class="nowrap">18 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/05978d11df"><code>05978d11df</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/service-workers/service-worker/resource-timing-fetch-variants.https.html"><code>service-<wbr>workers/<wbr>service-<wbr>worker/<wbr>resource-<wbr>timing-<wbr>fetch-<wbr>variants.<wbr>https.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -36,7 +36,7 @@
 <div class="run">
 <ol class="subtests">
 <li class="sub s-pass" id="s-eb5a8210"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Redirects done from within a service-worker should not be exposed to client ResourceTiming</span></div><a class="self" href="#s-eb5a8210" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-620a31e8"><details><summary><span class="mark">FAIL</span><span class="sub-name">Connection info from within a service-worker should not be exposed to client ResourceTiming</span></summary><pre class="msg">assert_equals: expected (string) &quot;same&quot; but got (number) 0</pre></details><a class="self" href="#s-620a31e8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-620a31e8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Connection info from within a service-worker should not be exposed to client ResourceTiming</span></div><a class="self" href="#s-620a31e8" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-f4500fbd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">requestStart should never be before fetchStart</span></div><a class="self" href="#s-f4500fbd" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-dfabbeab"><details><summary><span class="mark">FAIL</span><span class="sub-name">Delay from within service-worker (after internal fetching) should be accessible through `responseStart`</span></summary><pre class="msg">assert_equals: expected &quot;responseStart&quot; but got &quot;responseEnd&quot;</pre></details><a class="self" href="#s-dfabbeab" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-6042320a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Delay from within service-worker (before internal fetching) should be measured before responseStart in the client ResourceTiming entry</span></summary><pre class="msg">assert_equals: expected &quot;responseStart&quot; but got &quot;responseEnd&quot;</pre></details><a class="self" href="#s-6042320a" aria-label="Link to this subtest">&para;</a></li>
