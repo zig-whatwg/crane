@@ -12,10 +12,11 @@
 //!
 //! Invoker commands keep their target only across synchronous dispatch;
 //! commandForElement itself is the weak reference HTML 2.6.1 requires.
-//! Dialog commands await the dialog owner's command algorithms.
+//! Dialog commands route through the dialog interface's lifecycle operations.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const forms = @import("html").forms;
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -171,6 +172,8 @@ fn runActivationBehavior(element: *runtime.Instance, event: *runtime.Instance) v
     runCommand(element) catch |err| log.warn("command not run: {}", .{err});
 }
 
+const DialogCommand = enum { show_modal, close, request_close };
+
 fn runCommand(element: *runtime.Instance) !void {
     const document = (try interfaces.Node.get_ownerDocument(element)) orelse return;
     if (!dom.document_activity.fullyActive(document, runtime.SlabAllocator.generationOf(document))) return;
@@ -182,9 +185,25 @@ fn runCommand(element: *runtime.Instance) !void {
     const show = std.ascii.eqlIgnoreCase(command, "show-popover");
     const hide = std.ascii.eqlIgnoreCase(command, "hide-popover");
     const toggle = std.ascii.eqlIgnoreCase(command, "toggle-popover");
-    // "Determine if a command is valid", steps 1-6. Dialog commands need
-    // the dialog owner's algorithms; no state is fabricated here.
-    if (!custom and (!(show or hide or toggle) or target.stateAs(interfaces.HTMLElement.State) == null)) return;
+    // "Determine if a command is valid", steps 1-6, and dialog's "is
+    // valid command steps": validity depends on the element type, not
+    // whether its current state permits the action (WebKit's
+    // HTMLDialogElement::isValidCommandType makes the same distinction).
+    var dialog_command: ?DialogCommand = null;
+    if (!custom) {
+        if (target.stateAs(interfaces.HTMLElement.State) == null) return;
+        if (!(show or hide or toggle)) {
+            if (target.stateAs(interfaces.HTMLDialogElement.State) == null) return;
+            dialog_command = if (std.ascii.eqlIgnoreCase(command, "show-modal"))
+                .show_modal
+            else if (std.ascii.eqlIgnoreCase(command, "close"))
+                .close
+            else if (std.ascii.eqlIgnoreCase(command, "request-close"))
+                .request_close
+            else
+                return;
+        }
+    }
 
     // A listener can remove target and collect wrappers. Hold it through
     // synchronous dispatch (WebKit HTMLButtonElement::handleCommand uses
@@ -192,13 +211,11 @@ fn runCommand(element: *runtime.Instance) !void {
     const kept = dom.custom_elements.KeptInstance.of(target);
     var hold: ?engine.Owned = if (target.ctx.hasEngine()) try engine.retainValue(target.ctx, .{ .instance = target }) else null;
     defer if (hold) |*owned| owned.release();
-    // HTML step 5.3 leaves composed false, matching the browser majority:
-    // wpt.fyi cc74d2669f (2026-10-06), button-event-dispatch.html:
-    // Chrome 57/57, Firefox 38/57, Safari 38/57 (all harness OK); the latter
-    // two fail precisely the 19 composed=true expectations. WebKit's
-    // HTMLButtonElement::handleCommand supplies {false, true, false} and
-    // CommandEvent passes EventInit unchanged; Blink's UA CommandEvent
-    // constructor uses ComposedMode::kScoped. Keep the 19 WPT failures.
+    // HTML step 5.3 leaves composed false. This is the newer spec rule:
+    // https://github.com/whatwg/html/pull/11255 (2025-08-15, supported by
+    // all three engine teams), not a reason to adopt older WPT expectations
+    // of true. WebKit's HTMLButtonElement::handleCommand likewise supplies
+    // {false, true, false}; cmd-command-scoped-event.html pins this rule.
     const command_event = try interfaces.CommandEvent.call_constructor(element.ctx, runtime.DOMString.initInterned("command"), .passed(.{
         .base = .{ .cancelable = true },
         .command = runtime.DOMString.initInterned(command),
@@ -210,10 +227,36 @@ fn runCommand(element: *runtime.Instance) !void {
     if (!try dom.fire_event.dispatchTrusted(target, command_event)) return;
     const after = kept.get() orelse return;
     if (!(try interfaces.Node.get_isConnected(after)) or custom) return;
+    const showing = dom.html_pseudo_classes.popoverShowing(after);
+    if (dialog_command) |kind| {
+        // Activation step 5.10, dialog command steps 1-4. Dispatch above
+        // precedes these state checks; a listener can cancel, remove the
+        // target, change its open state, or change the invoker's value.
+        if (showing) return;
+        const open = try interfaces.HTMLDialogElement.get_open(after);
+        if (kind == .show_modal) {
+            if (!open) interfaces.HTMLDialogElement.call_showModal(after) catch {};
+        } else if (open) {
+            const value = attribute(element, "value");
+            defer if (value) |text| element.ctx.allocator.free(text);
+            const return_value: webidl.Opt(runtime.DOMString) = if (value) |text|
+                .passed(runtime.DOMString.initInterned(text))
+            else
+                .notPassed();
+            switch (kind) {
+                .close => interfaces.HTMLDialogElement.call_close(after, return_value) catch {},
+                .request_close => interfaces.HTMLDialogElement.call_requestClose(after, return_value) catch {},
+                .show_modal => unreachable,
+            }
+        }
+        // The dialog owner supplies the lifecycle. Its source-bearing
+        // algorithms are a separate prerequisite: these IDL methods do
+        // not accept the command's source element.
+        return;
+    }
     // Steps 5.7-9. Owner interfaces perform popover validity checks. The
     // owner's show/hide algorithms still lack beforetoggle/toggle/source
     // propagation; this passes source for when the owner implements them.
-    const showing = dom.html_pseudo_classes.popoverShowing(after);
     if (hide or (toggle and showing)) {
         if (showing) interfaces.HTMLElement.call_hidePopover(after) catch {};
     } else if (!showing) {
