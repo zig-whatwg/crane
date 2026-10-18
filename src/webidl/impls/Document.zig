@@ -172,6 +172,14 @@ pub const InternalState = struct {
     /// HTML "destroy" has run: the document's browsing context is null. It
     /// stays readable - script elsewhere may hold it - but has no view.
     destroyed: bool = false,
+    /// HTML "suspension time": the current high resolution time of its
+    /// window when it was last unloaded (unload step 15), 0 before. Its
+    /// reactivation shifts the suspended timers by the time since (the
+    /// back/forward cache's phase B).
+    suspension_time: f64 = 0,
+    /// HTML "suspended timer handles": the keys of its window's map of
+    /// active timers when it was last unloaded (unload step 16). OWNED.
+    suspended_timer_handles: []runtime.TimerId = &.{},
     /// HTML "about base URL": the document base URL of the document that
     /// created it, or of the navigation's source document, for an
     /// about:blank or about:srcdoc document; null otherwise. Owned.
@@ -561,6 +569,8 @@ pub const InternalState = struct {
             self.allocator.free(url);
             self.about_base_url = null;
         }
+        self.allocator.free(self.suspended_timer_handles);
+        self.suspended_timer_handles = &.{};
         // A refresh still waiting must not fire into a freed document.
         if (self.declarative_refresh) |refresh| {
             self.declarative_refresh = null;
@@ -4604,7 +4614,8 @@ fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
 ///
 /// Step 5: Crane keeps no document alive for history traversal, so
 /// intendToKeepInBfcache is false and the document is not salvageable.
-/// Steps 16 and 18-20 (suspended timers, cleanup steps, destroy) are the
+/// Steps 15-16 (suspension time, suspended timer handles) and 20 (destroy)
+/// run here; steps 18-19 (cleanup steps, not restored reasons) are the
 /// navigable's: navigation clears the window's timers once this returns.
 fn lifecycleUnload(document: *runtime.Instance) void {
     engine.runInRealm(document.ctx, unloadSteps, document) catch |err| {
@@ -4642,9 +4653,24 @@ fn unloadSteps(data: ?*anyopaque) void {
     // Step 14.
     termination_nesting.leave();
     terminating = false;
-    // Step 19: "If oldDocument's salvageable state is false, then destroy
+    // Steps 15-16: "Set oldDocument's suspension time to the current high
+    // resolution time given document's relevant global object", and its
+    // "suspended timer handles to the result of getting the keys for the map
+    // of active timers". Read by reactivation (the back/forward cache's
+    // phase B); a document destroyed below never is.
+    recordSuspension(document, internal);
+    // Step 20: "If oldDocument's salvageable state is false, then destroy
     // oldDocument." Its handlers above still saw it fully active.
     if (!internal.salvageable) lifecycleDestroy(document);
+}
+
+/// "Unload a document" steps 15-16 for `document`. Out of memory, the handles
+/// are left empty: a reactivation then shifts no timer, as if none were set.
+fn recordSuspension(document: *runtime.Instance, internal: *InternalState) void {
+    internal.suspension_time = renderBlockingTime(document);
+    const handles: []runtime.TimerId = @import("dom").window_documents.activeTimerHandles(document.ctx, internal.allocator) catch &.{};
+    internal.allocator.free(internal.suspended_timer_handles);
+    internal.suspended_timer_handles = handles;
 }
 
 /// dom.document_lifecycle: HTML "destroy" `document` (§7.5.5), the steps
