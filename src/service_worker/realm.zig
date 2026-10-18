@@ -1324,7 +1324,10 @@ pub fn navigationPreload(manager_object: *runtime.Instance, registration_id: u64
 
 /// setHeaderValue(value) steps 1-2: a value that is no header value is a
 /// promise rejected with a TypeError. Not normalized first, as the spec's
-/// step 1 now says (w3c/ServiceWorker#1474): every browser rejects a value
+/// step 1 now says (w3c/ServiceWorker#1827, merged 2026-06-17): the user's
+/// ruling (2026-10-18) is to keep the browsers' behaviour while no engine has
+/// a bug filed to adopt that change and WPT still expects rejection; revisit
+/// when either moves. Every browser rejects a value
 /// with a CR or LF at either end rather than trimming it - Blink's
 /// NavigationPreloadManager::setHeaderValue (IsValidHTTPHeaderValue), Gecko's
 /// (NS_IsReasonableHTTPHeaderValue) and WebKit's (isValidHTTPHeaderValue) -
