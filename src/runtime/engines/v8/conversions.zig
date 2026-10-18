@@ -1253,6 +1253,11 @@ fn convertBodyInit(
         return bodyInitCopy(allocator, all[info.byte_offset..][0..info.byte_length]);
     }
 
+    // Step 6 for a SharedArrayBuffer: converting it to ArrayBuffer (no
+    // [AllowShared]) is a TypeError (3.2.26 step 2) - not a string for step
+    // 15 to make "[object SharedArrayBuffer]" of.
+    if (v8.v8_Value_IsSharedArrayBuffer(value)) return ConversionError.TypeError;
+
     // Step 15: USVString - ToString, so null is "null" and a URL its href.
     const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.ExceptionPending;
     defer v8.v8_String_Dispose(string);
@@ -1964,7 +1969,10 @@ pub fn fromV8ValueAs(
         // arm's own conversion - a view over a SharedArrayBuffer is its
         // TypeError (3.2.26 step 3), not a reason to try the next arm.
         if (buffer_source_idx) |idx| {
-            if (v8.v8_Value_IsArrayBuffer(value) or v8.v8_Value_IsArrayBufferView(value)) {
+            // A SharedArrayBuffer too: step 6 converts it to ArrayBuffer,
+            // which throws a TypeError for a shared one (3.2.26 step 2) -
+            // it is not left for step 15 to stringify.
+            if (v8.v8_Value_IsArrayBuffer(value) or v8.v8_Value_IsSharedArrayBuffer(value) or v8.v8_Value_IsArrayBufferView(value)) {
                 return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
             }
         } else if (array_buffer_view_idx) |idx| {

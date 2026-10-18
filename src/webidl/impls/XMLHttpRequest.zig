@@ -1760,6 +1760,16 @@ const SendBody = struct {
         if (try engine.getCopyOfBufferSourceBytes(realm, value, allocator)) |bytes| {
             return .{ .allocator = allocator, .kind = .other, .bytes = bytes };
         }
+        // WebIDL 3.2.25 step 6: a SharedArrayBuffer goes to BufferSource's
+        // ArrayBuffer, whose conversion throws a TypeError for a shared one
+        // (3.2.26 step 2; no [AllowShared] here) - never the string step 15
+        // would make of it. BufferSource has no copy of it (a view over one
+        // is that conversion's TypeError already); AllowSharedBufferSource's
+        // does, and nothing else is one of those.
+        if (try engine.getCopyOfAllowSharedBufferSourceBytes(realm, value, allocator)) |shared| {
+            allocator.free(shared);
+            return error.TypeError;
+        }
         // USVString: ToString, then each lone surrogate U+FFFD.
         return try usvString(allocator, try engine.convertToUSVString(realm, value, allocator));
     }
