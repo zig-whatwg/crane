@@ -5,17 +5,19 @@
 //!
 //! Crane used to resolve it against the document's ORIGIN (a thread-local the
 //! test runner set), so `new Worker("support/x.js")` from /workers/y.html
-//! fetched /support/x.js. `Worker.resolveScriptURL` is the parse, given the API
-//! base URL the constructor looked up.
+//! fetched /support/x.js. `dom.encoding_parse.encodingParseAndSerializeUtf8` is
+//! the parse when the outside settings are a worker's, given the API base URL
+//! the constructor looked up (a window's go through its document,
+//! `encodingParseAndSerialize`).
 
 const std = @import("std");
 const testing = std.testing;
-const WorkerImpl = @import("impls").Worker;
+const encoding_parse = @import("dom").encoding_parse;
 
 const document = "http://web-platform.test:8000/workers/constructors/Worker/page.html";
 
 fn expectResolved(expected: []const u8, script_url: []const u8, base: ?[]const u8) !void {
-    const resolved = try WorkerImpl.resolveScriptURL(testing.allocator, script_url, base);
+    const resolved = try encoding_parse.encodingParseAndSerializeUtf8(testing.allocator, script_url, base);
     defer testing.allocator.free(resolved);
     try testing.expectEqualStrings(expected, resolved);
 }
@@ -40,8 +42,8 @@ test "an absolute URL is parsed and serialized, whatever the base" {
 }
 
 test "a URL that does not parse is a SyntaxError" {
-    try testing.expectError(error.SyntaxError, WorkerImpl.resolveScriptURL(testing.allocator, "http://[", document));
-    try testing.expectError(error.SyntaxError, WorkerImpl.resolveScriptURL(testing.allocator, "http://exa mple.com/w.js", document));
+    try testing.expectError(error.SyntaxError, encoding_parse.encodingParseAndSerializeUtf8(testing.allocator, "http://[", document));
+    try testing.expectError(error.SyntaxError, encoding_parse.encodingParseAndSerializeUtf8(testing.allocator, "http://exa mple.com/w.js", document));
     // A relative URL with no base to resolve against.
-    try testing.expectError(error.SyntaxError, WorkerImpl.resolveScriptURL(testing.allocator, "support/x.js", null));
+    try testing.expectError(error.SyntaxError, encoding_parse.encodingParseAndSerializeUtf8(testing.allocator, "support/x.js", null));
 }
