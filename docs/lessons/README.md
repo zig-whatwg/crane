@@ -669,6 +669,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [An out-of-memory sweep needs a control that proves the path ran](testing-an-oom-sweep-needs-a-control-round-that-proves-the-path-ran.md) - Prove the swept operation does something - run it with memory to spare and assert its effect - and check once whether the rounds leave it able to run again: a sweep whose operation never ran passes every invariant.
 - [A loopback server behind the Browser's proxy counts module fetches](testing-a-loopback-server-behind-the-proxy-counts-module-fetches.md) - When the behaviour under test is "how many times was this fetched", give the test a server that counts - a request count is the only observable that tells a cache hit from a refetch.
 - [Count completed paths in rate-limited benchmarks](testing-count-completed-paths-in-rate-limited-benchmarks.md) - A workload counter should validate what completed, not merely what was attempted.
+- [A keepalive timeout can precede the Fetch assertion](testing-a-keepalive-timeout-can-precede-the-fetch-assertion.md) - Prove which setup handshake was lost before editing the feature algorithm.
 
 ### Debugging
 - [A call that can free its argument ends every read of it](debugging-a-call-that-can-free-its-argument-ends-every-read-of-it.md) - A call that can free its argument ends the caller's use of it - including the `defer`s written above the call; read the trace's top frame before believing a deep one.
