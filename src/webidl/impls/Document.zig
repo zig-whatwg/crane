@@ -120,6 +120,11 @@ pub const InternalState = struct {
     /// Stored as owned slice
     base_uri: []const u8,
 
+    /// HTML's first base[href], resolved when a base mutation occurs.
+    /// Owned bytes, independent of later changes to the document's URL.
+    /// Null leaves the live fallback effective (including a rejected base).
+    frozen_base_url: ?[]u8 = null,
+
     /// Document content type (e.g., "text/html", "application/xml")
     /// Stored as DOMString for proper memory management
     content_type: runtime.DOMString,
@@ -556,6 +561,10 @@ pub const InternalState = struct {
         // Free owned strings
         if (self.base_uri.len > 0) {
             self.allocator.free(self.base_uri);
+        }
+        if (self.frozen_base_url) |url| {
+            self.allocator.free(url);
+            self.frozen_base_url = null;
         }
         if (self.about_base_url) |url| {
             self.allocator.free(url);
