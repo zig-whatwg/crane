@@ -741,6 +741,7 @@ pub fn get_destination(instance: *runtime.Instance) anyerror!enums.RequestDestin
         .serviceworker => ._script_, // serviceworker not in WebIDL enum
         .sharedworker => ._sharedworker_,
         .style => ._style_,
+        .text => ._text_,
         .track => ._track_,
         .video => ._video_,
         .webidentity => .__, // webidentity not in WebIDL enum

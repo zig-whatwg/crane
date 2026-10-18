@@ -856,8 +856,8 @@ pub const WorkerHost = struct {
     animation_frames_owner_supported: bool = false,
 
     /// The worker's module map (HTML "module map" of its settings object):
-    /// keys owned, values a `*module_script.ModuleScript` or
-    /// `module_script.fetch_failed`, disposed with the realm.
+    /// keys owned, values a `*module_script.ModuleScript`, disposed with the
+    /// realm.
     modules: std.StringHashMapUnmanaged(*anyopaque) = .empty,
 
     /// The classic scripts run in the realm - the worker's own and each
@@ -870,9 +870,18 @@ pub const WorkerHost = struct {
     /// `classic_scripts`), made on first use (`timerScript`).
     timer_script: ?*module_script.ClassicScript = null,
 
-    /// import()s whose fetch task is queued and has not run: each holds an
-    /// engine request that must be finished while the agent lives.
+    /// A service worker's import()s whose fetch task is queued and has not
+    /// run: each holds an engine request that must be finished while the
+    /// agent lives. (Every other worker's import() is its module loader's.)
     pending_imports: std.ArrayListUnmanaged(*DynamicImportTask) = .empty,
+
+    /// The worker's module loader: its import()s' fetches - the module map's
+    /// callback lists, HTML "fetch a single module script" steps 6-7 - and
+    /// their graphs, on the worker's own event loop. Made by the first
+    /// import(); destroyed at the realm's end while the realm and agent are
+    /// there, before the module map's records (`disposeModules`), as a
+    /// Document disposes its loader before its own. OWNED.
+    module_loader: ?*module_script.AsyncModuleLoader = null,
 
     const Self = @This();
 
@@ -884,6 +893,8 @@ pub const WorkerHost = struct {
     const moduleEnvironment = WorkerModules.moduleEnvironment;
     const disposeModules = WorkerModules.disposeModules;
     const queueDynamicImport = WorkerModules.queueDynamicImport;
+    const startImport = WorkerModules.startImport;
+    const destroyModuleLoader = WorkerModules.destroyModuleLoader;
     const forgetImport = WorkerModules.forgetImport;
     const freeImport = WorkerModules.freeImport;
     const finishPendingImports = WorkerModules.finishPendingImports;
@@ -1223,8 +1234,11 @@ pub const WorkerHost = struct {
         const realm = self.realm orelse return;
         // The import()s still waiting for their fetch task are discarded with
         // the worker's other tasks: their requests are finished now, while
-        // the realm and its agent are there to finish them in.
+        // the realm and its agent are there to finish them in. The module
+        // loader's go the same way - every graph canceled, its import
+        // finished, every fetch detached - before the records they name.
         self.finishPendingImports();
+        self.destroyModuleLoader();
         // The module map goes with the settings object: its records are
         // engine handles of this agent.
         self.disposeModules();
@@ -1269,6 +1283,7 @@ pub const WorkerHost = struct {
         if (self.shared) |*shared| shared.deinit(self.allocator);
         std.debug.assert(self.pending_imports.items.len == 0);
         self.pending_imports.deinit(self.allocator);
+        std.debug.assert(self.module_loader == null);
         std.debug.assert(self.modules.count() == 0);
         self.modules.deinit(self.allocator);
         self.freeClassicScripts();
@@ -2710,25 +2725,79 @@ fn loadImportedModule(
         .script => |host_defined| module_script.classicScriptBaseUrl(host_defined),
         .realm => self.script_url,
     };
+    // Steps 5-6: fetchOptions - the default classic script fetch options,
+    // or the new descendant script fetch options for referencingScript's;
+    // step 14's referrer is referencingScript's base URL, "client" without
+    // one.
+    const referencing: ?struct { options: module_script.FetchOptions, url: []const u8 } = switch (referrer) {
+        .module => |host_defined| if (module_script.scriptOf(host_defined)) |script| .{ .options = script.descendantFetchOptions(), .url = script.base_url } else null,
+        .script => |host_defined| .{ .options = module_script.classicScriptOf(host_defined).descendantFetchOptions(), .url = base_url },
+        .realm => null,
+    };
 
     // Steps 7.1.4-7.1.5 (for the one request an import() makes): module type
     // allowed - "css" only where CSSStyleSheet is exposed, which a worker's
     // global is not - or a TypeError.
     const module_type = module_script.moduleTypeFromAttribute(type_attribute) orelse
         return finishImportWithTypeError(realm, request, "Unsupported module type");
-    if (module_type == .css) return finishImportWithTypeError(realm, request, "Unsupported module type");
+    if (!env.moduleTypeAllowed(module_type)) return finishImportWithTypeError(realm, request, "Unsupported module type");
 
     // Steps 8-9: resolve a module specifier, or reject with its TypeError.
     const url = module_script.resolve(&env, specifier, base_url) orelse
         return finishImportWithTypeError(realm, request, "Failed to resolve module specifier");
     defer realm.allocator.free(url);
 
-    // Step 14: fetch - as a task of the worker's event loop, so the module
-    // is fetched and evaluated after the script that called import() and its
-    // microtasks, as a network fetch completes.
-    self.queueDynamicImport(url, module_type, request) catch
-        return finishImportWithTypeError(realm, request, "Out of memory");
+    // Step 14: fetch a single imported module script. A service worker's
+    // import() keeps the queued synchronous fetch it had (its own rules are
+    // lane sw1's; NOT changed here).
+    if (self.service != null) {
+        self.queueDynamicImport(url, module_type, request) catch
+            return finishImportWithTypeError(realm, request, "Out of memory");
+        return;
+    }
+    // Every other worker's goes through its module loader, as a Window's
+    // does: the request starts now (a blob: URL revoked right after
+    // import() still loads), joins a fetch of the same URL in flight, and a
+    // failure leaves no module map entry. The import finishes from a task
+    // of the worker's loop - or from a microtask, when the whole graph is in
+    // the module map already.
+    var options: module_script.FetchOptions = if (referencing) |r| r.options else .{};
+    options.integrity = env.resolveIntegrity(url);
+    self.startImport(url, module_type, options, if (referencing) |r| r.url else "", request) catch
+        return finishImportWithTypeError(realm, request, "Failed to start module fetch");
 }
+
+/// An import() its worker's module loader is loading: the engine request,
+/// finished by exactly one of `done` and `gone`, which free this.
+const LoaderImport = struct {
+    host: *WorkerHost,
+    request: *engine.ImportRequest,
+
+    /// The graph's onComplete: FinishLoadingImportedModule with its record
+    /// - ContinueDynamicImport (link, evaluate, settle) is the engine's - or
+    /// with its error to rethrow, or a TypeError for a null graph.
+    fn done(context: *anyopaque, result: ?*module_script.ModuleScript) void {
+        const self: *LoaderImport = @ptrCast(@alignCast(context));
+        const host = self.host;
+        const request = self.request;
+        host.allocator.destroy(self);
+        const realm = host.realm orelse return finishImport(request, .{ .failure = runtime.JSValue.jsUndefined });
+        const graph = result orelse return finishImportWithTypeError(realm, request, "Failed to fetch dynamically imported module");
+        if (graph.error_to_rethrow) |reason| return finishImport(request, .{ .failure = reason.value });
+        const record = graph.record orelse return finishImportWithTypeError(realm, request, "Failed to load dynamically imported module");
+        finishImport(request, .{ .module = record });
+    }
+
+    /// The loader canceled the graph - the worker is ending, or its loop
+    /// dropped the graph's task: finishing releases the request's owners
+    /// while the agent lives; nothing observes the rejection.
+    fn gone(context: *anyopaque) void {
+        const self: *LoaderImport = @ptrCast(@alignCast(context));
+        const request = self.request;
+        self.host.allocator.destroy(self);
+        finishImport(request, .{ .failure = runtime.JSValue.jsUndefined });
+    }
+};
 
 /// An import() whose fetch is queued on the worker's event loop.
 const DynamicImportTask = struct {
@@ -2852,6 +2921,46 @@ const WorkerModules = struct {
         }
         self.modules.deinit(self.allocator);
         self.modules = .empty;
+    }
+
+    /// The worker's module loader, made on first use.
+    fn moduleLoader(self: *WorkerHost) ?*module_script.AsyncModuleLoader {
+        if (self.module_loader) |loader| return loader;
+        const env = moduleEnvironment(self) orelse return null;
+        const global_scope = self.global_scope orelse return null;
+        const loader = module_script.AsyncModuleLoader.create(env, global_scope) catch return null;
+        self.module_loader = loader;
+        return loader;
+    }
+
+    /// Start loading the graph of an import() of `url` through the module
+    /// loader; `request` is finished by the graph's end (LoaderImport).
+    /// `referrer` BORROWED for the call.
+    fn startImport(self: *WorkerHost, url: []const u8, module_type: module_script.ModuleType, options: module_script.FetchOptions, referrer: []const u8, request: *engine.ImportRequest) !void {
+        const loader = moduleLoader(self) orelse return error.OutOfMemory;
+        const pending = try self.allocator.create(LoaderImport);
+        pending.* = .{ .host = self, .request = request };
+        // On success the client owns `pending`: done or gone frees it, maybe
+        // before this returns (a task dropped at once by a closing worker).
+        loader.startWithReferrer(url, module_type, null, options, referrer, .{
+            .context = pending,
+            .done = LoaderImport.done,
+            .gone = LoaderImport.gone,
+            .settle_cached_in_microtask = true,
+        }) catch |err| {
+            self.allocator.destroy(pending);
+            return err;
+        };
+    }
+
+    /// The realm's end: every graph of the loader canceled - its import
+    /// finished (`LoaderImport.gone`) - and every fetch detached, then the
+    /// loader freed. Queued payloads stay their tasks' until those run or
+    /// are dropped (AsyncModuleLoader).
+    fn destroyModuleLoader(self: *WorkerHost) void {
+        const loader = self.module_loader orelse return;
+        self.module_loader = null;
+        loader.destroy();
     }
 
     fn queueDynamicImport(self: *WorkerHost, url: []const u8, module_type: module_script.ModuleType, request: *engine.ImportRequest) !void {
