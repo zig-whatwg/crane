@@ -196,6 +196,13 @@ EXCLUDE = [
     # selectedcontent for multiple selects.
     ('html/semantics/forms/the-select-element/customizable-select-multiple-popup/selectedcontent-multiple-restore.optional.html',
      'selectedcontent for select multiple, unspecified'),
+    # Needs Gecko's test preference dom.serviceWorkers.testUpdateOverOneDay
+    # ("treat all registrations as older than 24 hours", the file's opening
+    # comment); there is no WebDriver or testdriver way to set it, and Chrome,
+    # Firefox and Safari all time out on wpt.fyi (2026-10-18). Lane sw1-b8.
+    # Re-include if a testdriver hook for the update clock appears.
+    ('service-workers/service-worker/update-after-oneday.https.html',
+     'needs a Gecko-only test preference'),
 
     # XML-serialised documents: .xhtml, .svg, .xml.
     #
