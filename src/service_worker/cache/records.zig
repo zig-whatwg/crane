@@ -70,6 +70,11 @@ pub const StoredResponse = struct {
     body: ?[]u8 = null,
     range_requested: bool = false,
     request_includes_credentials: bool = true,
+    /// Its timing allow passed flag (Chromium's cache_storage.proto keeps
+    /// it): a service worker answering from the cache hands the client what
+    /// its own fetch of the response found (http_fetch's
+    /// serviceWorkerResponseTimingAllowed).
+    timing_allow_passed: bool = false,
 
     /// Fetch's ResponseType values of the opaque and opaque-redirect
     /// filtered responses (api.zig checks them at compile time).
@@ -197,7 +202,9 @@ fn cloneStrings(allocator: Allocator, strings: []const []u8) Allocator.Error![][
 // Bytes
 // ============================================================================
 
-const format_version: u8 = 1;
+/// 2: the response's timing allow passed flag follows its
+/// request-includes-credentials flag. A version 1 record reads it as unset.
+const format_version: u8 = 2;
 
 pub const DecodeError = error{ OutOfMemory, Corrupt };
 
@@ -232,13 +239,15 @@ pub fn encode(allocator: Allocator, entry: *const Entry) Allocator.Error![]u8 {
     try w.string(s.body orelse "");
     try w.byte(@intFromBool(s.range_requested));
     try w.byte(@intFromBool(s.request_includes_credentials));
+    try w.byte(@intFromBool(s.timing_allow_passed));
     return w.out.toOwnedSlice(allocator);
 }
 
 /// The entry `bytes` hold. OWNED.
 pub fn decode(allocator: Allocator, bytes: []const u8) DecodeError!Entry {
     var r: Reader = .{ .allocator = allocator, .bytes = bytes };
-    if (try r.byte() != format_version) return error.Corrupt;
+    const version = try r.byte();
+    if (version != 1 and version != format_version) return error.Corrupt;
     var request: StoredRequest = .{ .url = &.{}, .method = &.{} };
     errdefer request.deinit(allocator);
     request.url = try r.string();
@@ -268,6 +277,7 @@ pub fn decode(allocator: Allocator, bytes: []const u8) DecodeError!Entry {
     if (has_body) response.body = body else allocator.free(body);
     response.range_requested = try r.byte() != 0;
     response.request_includes_credentials = try r.byte() != 0;
+    if (version >= 2) response.timing_allow_passed = try r.byte() != 0;
     if (r.at != bytes.len) return error.Corrupt;
     return .{ .request = request, .response = response };
 }
