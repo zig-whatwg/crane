@@ -852,8 +852,16 @@ pub fn convertArgReleasingWith(
         defer v8.v8_Value_Dispose(arg);
         return convertArgValue(T, mode, allocator, isolate, context, arg);
     }
+    // A conversion that fails adopted nothing: every converter refuses before
+    // its value would refer to the handle (a callback function is checked
+    // callable, a callback interface's wrapper is made only from an object,
+    // an interface is checked implements, a dictionary reads its members
+    // through Gets of its own) and frees what it made. So the handle goes,
+    // whatever the type - kept, a TypeError left it referred to by nothing:
+    // LockManager.request(name, null) leaked one per call
+    // (web-locks/acquire.https.any.js, under rejectOnThrow).
     const value = convertArgValue(T, mode, allocator, isolate, context, arg) catch |err| {
-        if (comptime argumentHandleIsKeptInValue(T)) v8.v8_Value_Dispose(arg);
+        v8.v8_Value_Dispose(arg);
         return err;
     };
     // A value that refers to nothing - an `any`'s primitive, a null optional
