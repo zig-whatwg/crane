@@ -502,6 +502,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [Check metadata triggers as well as value parsing](spec-compliance-check-metadata-triggers-as-well-as-value-parsing.md) - Check both a metadata algorithm and its update triggers against specification history and engine mechanisms.
 - [Location components need parser state and document encoding](spec-compliance-location-components-need-parser-state-and-document-encoding.md) - Encoding, base URL and parser state are independent inputs; preserve all three specified by the API.
 - [CSP checks belong to the state transition](spec-compliance-csp-checks-belong-to-the-state-transition.md) - Reporting security checks belong to the algorithm that changes state, not a getter.
+- [Named setters need the generated reaction boundary](spec-compliance-named-setters-need-the-generated-reaction-boundary.md) - Assert callback order at the setter's call boundary.
+- [Validate customized built-ins with the interface map](spec-compliance-validate-customized-builtins-with-the-interface-map.md) - Reuse the owning subsystem's classification.
+- [Cloned shadow roots preserve internals access](spec-compliance-cloned-shadow-roots-preserve-internals-access.md) - Preserve state instead of deriving it from a clone's intermediate host.
 
 ### Codegen
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
