@@ -508,6 +508,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Cloned shadow roots preserve internals access](spec-compliance-cloned-shadow-roots-preserve-internals-access.md) - Preserve state instead of deriving it from a clone's intermediate host.
 - [Repeated Console Resets Follow the Browser Majority](spec-compliance-console-reset-counts-follow-browser-majority.md) - Interleaving counts hides the difference between deletion and retained-zero reset.
 - [IndexedDB Shared Buffer Keys Are Not Stored Values](spec-compliance-indexeddb-shared-buffer-keys-are-not-stored-values.md) - Key conversion copies shared bytes; storage serialization rejects them.
+- [An empty link target uses the base target](spec-compliance-an-empty-link-target-uses-the-base-target.md) - Isolate target selection from URL resolution before changing a base-element failure.
+- [Freeze base URLs at mutation time](spec-compliance-freeze-base-urls-at-mutation-time.md) - Store the state the algorithm requires; pin mutation counts without production instrumentation.
 
 ### Codegen
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
@@ -746,6 +748,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Main fetch's isNetworkError reads an opaque filtered response as one](debugging-main-fetch-is-network-error-reads-an-opaque-response-as-one.md) - A response check in main fetch reads the internal response: an opaque filtered one (a service worker's) has status 0 on the outside, which `isNetworkError` takes for a network error.
 - [Check the delivered policy before CSP enforcement](debugging-check-the-delivered-policy-before-csp-enforcement.md) - Verify actual response headers before changing policy enforcement.
 - [Console Label Insertion Must Roll Back on OOM](debugging-console-label-insertion-must-roll-back-on-oom.md) - Failed owned-key allocation must leave the map without the new borrowed entry.
+- [Worker report tests can fail before reporting](debugging-worker-report-tests-can-fail-before-reporting.md) - Trace harness prerequisites to the request producer; supplying a missing input makes inert options observable.
 
 ### Workflow
 - [wpt.fyi's search answers 0/0 for browsers it has no aligned run of - read the runs' raw reports](workflow-wpt-fyi-search-hides-subtests-read-the-runs-raw-report.md) - For a browser-behaviour ruling, read the aligned stable runs' raw report.json - subtest status and message per browser - never the search endpoint's file counts.
