@@ -104,17 +104,5 @@ tests/dom/characterdata_sso_test.zig CharacterData.InternalState 1
 tests/dom/worker_script_url_test.zig Worker.resolveScriptURL 4
 tests/v8/sa_transform_setup_oom_test.zig TransformStream.streams_transform 1
 tests/v8/streams_wrap_test.zig Response.streams_js 1
-tests/v8/union_arm_interface_test.zig Blob.Endings 1
-tests/v8/union_arm_interface_test.zig Blob.call_arrayBuffer 2
-tests/v8/union_arm_interface_test.zig Blob.call_bytes 2
-tests/v8/union_arm_interface_test.zig Blob.call_text 2
-tests/v8/union_arm_interface_test.zig Blob.createFromBytes 3
-tests/v8/union_arm_interface_test.zig Blob.deinit 3
-tests/v8/union_arm_interface_test.zig Blob.processBlobParts 1
-tests/v8/union_arm_interface_test.zig Response.call_arrayBuffer 2
-tests/v8/union_arm_interface_test.zig Response.call_bytes 1
-tests/v8/union_arm_interface_test.zig Response.call_constructor 4
-tests/v8/union_arm_interface_test.zig Response.call_text 1
-tests/v8/union_arm_interface_test.zig Response.deinit 2
 tests/v8/union_arm_interface_test.zig Response.streams_js 1
 tools/interfaces_main.zig impls.@import 1
