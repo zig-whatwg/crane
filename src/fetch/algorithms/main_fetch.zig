@@ -333,8 +333,12 @@ pub fn upgradeRequestToPotentiallyTrustworthyUrl(request: *InternalRequest) !voi
     const is_navigation = isNavigationDestination(request.destination);
     // 1. "If request is a navigation request, append a header named
     // Upgrade-Insecure-Requests with a value of 1 to request's header list"
-    // when its URL is not a potentially trustworthy URL.
-    if (is_navigation and !std.ascii.eqlIgnoreCase(scheme, "https") and !std.ascii.eqlIgnoreCase(scheme, "wss")) {
+    // if ANY of: 1.1 its URL is not a potentially trustworthy URL; 1.2 its
+    // URL's host is not a preloadable HSTS host. Crane knows no preloadable
+    // HSTS host, so 1.2 holds for every navigation request, https ones too
+    // - as Chrome, Firefox and Safari send it on every navigation
+    // (service-workers/.../navigation-preload/request-headers.https.html).
+    if (is_navigation) {
         if (!request.header_list.contains("Upgrade-Insecure-Requests")) {
             try request.header_list.append("Upgrade-Insecure-Requests", "1");
         }
