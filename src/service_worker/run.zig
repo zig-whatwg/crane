@@ -260,6 +260,9 @@ fn managerOf(ctx: *anyopaque) *Manager {
 /// time, when the script's has ever been evaluated flag is unset).
 fn evaluated(manager: *anyopaque, worker_id: u64, ok: bool, global: ?*runtime.Instance) void {
     const handles_fetch = if (global) |g| dom.event_listener_types.hasListenersOfType(g, "fetch") else false;
+    // Before the job thread hears of it - and so before Install or Activate
+    // can change what they show: the global's own objects exist.
+    if (ok) if (global) |g| realm_mod.makeOwnObjects(g);
     managerOf(manager).report(.{ .evaluated = .{ .worker = worker_id, .ok = ok, .handles_fetch = handles_fetch } });
 }
 

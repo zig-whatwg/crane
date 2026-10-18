@@ -1368,6 +1368,30 @@ pub fn registrationOf(global: *runtime.Instance) !*runtime.Instance {
     return environment.registrationObject(&info);
 }
 
+/// A service worker's global's registration and service worker objects,
+/// made once its script has run and before the job thread hears so - so the
+/// tasks that update them (Update Worker State, Update Registration State)
+/// find them, in their order. Made by the getters, when script first read
+/// them, they took the state of that moment: skip-waiting-installed.https
+/// .html's worker first reads registration.active in skipWaiting()'s
+/// reaction, after its activate event had ended on the job thread, and saw
+/// "activated" where the tasks still queued said "activating" (Chrome and
+/// Firefox pass it). Chromium makes both when the global is initialized,
+/// from the registration and version info it starts with
+/// (ServiceWorkerGlobalScope::InitializeGlobalScope). Run in the realm: the
+/// caller is the worker's thread outside any task.
+pub fn makeOwnObjects(global: *runtime.Instance) void {
+    engine.runTaskInRealm(global.ctx, makeOwnObjectsInRealm, global) catch |err| {
+        log.debug("a service worker's own objects: {s}", .{@errorName(err)});
+    };
+}
+
+fn makeOwnObjectsInRealm(data: ?*anyopaque) void {
+    const global: *runtime.Instance = @ptrCast(@alignCast(data.?));
+    _ = registrationOf(global) catch |err| log.debug("a service worker's registration object: {s}", .{@errorName(err)});
+    _ = serviceWorkerOf(global) catch |err| log.debug("a service worker's own object: {s}", .{@errorName(err)});
+}
+
 /// skipWaiting() steps 1-3: the job thread sets the flag and tries to
 /// activate; its resolution comes back.
 pub fn skipWaiting(global: *runtime.Instance) !runtime.JSValue {
