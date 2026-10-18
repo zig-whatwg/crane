@@ -269,6 +269,19 @@ pub fn parseWithStateOverride(
     return parseFull(allocator, input, base, state_override, url_mut, &encoding_mod.encoding.UTF_8);
 }
 
+/// Basic URL parsing with both HTML's character encoding and an API's state
+/// override. Location.search supplies its relevant Document's encoding and
+/// query state (HTML search setter step 5.3); the record is updated in place.
+pub fn parseWithEncodingAndStateOverride(
+    allocator: std.mem.Allocator,
+    input: []const u8,
+    url_mut: *URLRecord,
+    state_override: ParserState,
+    encoding: *const encoding_mod.Encoding,
+) ParseError!URLRecord {
+    return parseFull(allocator, input, null, state_override, url_mut, encoding);
+}
+
 fn parseFull(
     allocator: std.mem.Allocator,
     input: []const u8,
