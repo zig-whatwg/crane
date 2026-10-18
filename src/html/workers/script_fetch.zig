@@ -77,6 +77,9 @@ pub const WorkerScriptFetchOptions = struct {
     /// connections and TLS options the script's fetch uses. Null: the
     /// defaults.
     network: ?*fetch.network.NetworkContext = null,
+    /// The creator's Browser jar, valid for the fetch (BORROWED). Fetch's
+    /// cookie steps use the locking http_integration entry points.
+    cookie_jar: ?*@import("cookiestore").CookieJar = null,
     /// Credentials mode
     credentials: CredentialsMode = .same_origin,
     /// Whether this is for importScripts (stricter rules apply)
@@ -423,6 +426,10 @@ pub fn workerScriptRequest(
     internal_request.csp_violation_reporter = options.csp_violation_reporter;
     // Its client's Browser's network.
     internal_request.network = options.network;
+    // HTML "fetch a classic worker script" step 1: the client is the
+    // outside settings. Its jar supplies Fetch 3.1.1/3.1.2, including
+    // Set-Cookie on the top-level script response before the worker starts.
+    internal_request.cookie_jar = options.cookie_jar;
 
     // Set credentials mode
     internal_request.credentials_mode = switch (options.credentials) {

@@ -342,12 +342,23 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     defer dom.service_worker_clients.release(reserved_client);
     var fetched = workers.fetchWorkerScript(ctx.allocator, worker_url, .{
         .worker_type = worker_type,
+        // HTML classic-worker fetch step 1 always uses same-origin. The
+        // worklet/module-worker graph's steps 1-2 use the credentials
+        // option for the root fetch.
+        .credentials = if (worker_type == .module) switch (credentials) {
+            .omit => .omit,
+            .same_origin => .same_origin,
+            .include => .include,
+        } else .same_origin,
         .requesting_origin = requesting_origin,
         // A blob: script's blob is in the outside settings' Browser's blob
         // URL store.
         .blob_url_store = @ptrCast(dom.browser_state.blobURLStoreOf(ctx)),
         // The outside settings' Browser's network.
         .network = dom.browser_state.networkOf(ctx),
+        // Its cookie jar is needed by the script fetch itself, as well as
+        // by the worker global that receives it after the response.
+        .cookie_jar = creatorCookieJar(ctx),
         // The outside settings' policy container: its CSP decides whether
         // the script may be fetched at all.
         .policy_container = worker_host.creatorPolicyContainer(ctx),
