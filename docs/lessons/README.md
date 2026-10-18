@@ -490,6 +490,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Browser failures can be implementation lag](spec-compliance-browser-failures-can-be-implementation-lag.md) - Check spec history, implementer positions and engine bugs before treating browser failures as an intentional alternative to a newer algorithm.
 - [Group membership is not target familiarity](spec-compliance-group-membership-is-not-target-familiarity.md) - Verify the full eligibility predicate and a negative target inside the same group when broadening named lookup.
 - [Target search phases share one starting context](spec-compliance-target-search-phases-share-one-starting-context.md) - Keep every phase's starting context consistent when later searches exclude previously searched subtrees.
+- [Textarea API and submission values differ](spec-compliance-textarea-api-and-submission-values-differ.md) - Apply the value representation required by the consumer; form-entry wrapping does not change the IDL value.
 
 ### Codegen
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
