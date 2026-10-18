@@ -5030,11 +5030,12 @@ fn completeLoadingWithChild(container: *runtime.Instance) void {
 /// Chrome 155, Firefox 158 and Safari 27, which want [..., readystatecomplete,
 /// onload (the iframe's), onpageshow]; the variants with unload pass in
 /// Firefox and Safari (Chrome fires no unload, and still the iframe's load
-/// before pageshow). So "completely finish loading" steps 2-5 run here,
+/// before pageshow). So "completely finish loading" steps 3-5 run here,
 /// right after the window's load, with the container's load event steps
 /// synchronous, in the container's realm; then pageshow, if the container's
 /// listeners left this document fully active (one that removes the frame
-/// destroys it); then the parent's own completion.
+/// destroys it); then the completely loaded time; then the parent's own
+/// completion.
 fn completeLoading(document: *runtime.Instance) void {
     // Step 9.1: "Update the current document readiness to "complete"."
     updateReadiness(document, ._complete_);
@@ -5050,14 +5051,15 @@ fn completeLoading(document: *runtime.Instance) void {
     // The window's load listeners ran script: a document they took out of
     // its navigable (they removed its frame) finishes nothing more.
     if (!isShownByItsWindow(document)) return;
-    // Step 9.12, moved before steps 9.9-9.11 (above): "completely finish
-    // loading". Its step 2 sets the completely loaded time - before the
-    // container's listeners run, as the spec's order within it has it, so a
-    // navigation of the frame they start is not one of a document that has
-    // not completely loaded. Steps 3-5: the container's load event steps,
-    // now, in its realm (the iframe load event steps, or a load at an object
-    // or embed element).
-    internal.completely_loaded = true;
+    // "Completely finish loading" steps 3-5, moved before steps 9.9-9.11
+    // (above): the container's load event steps, now, in its realm (the
+    // iframe load event steps, or a load at an object or embed element).
+    // The document has not completely loaded yet - step 2 comes after
+    // pageshow, below - so a navigation the container's listeners start is
+    // one of a document that has not completely loaded, a replace, as one
+    // its own load or pageshow listeners start is (Blink fires the owner's
+    // load while its Document's load_event_progress_ is
+    // kLoadEventInProgress, Document::DispatchLoadEventAndFinalize).
     const container = @import("dom").navigable_container.of(window);
     if (container) |element| runContainerLoadEventSteps(element);
     // Steps 9.9-9.11: page showing becomes true and pageshow fires,
@@ -5070,6 +5072,10 @@ fn completeLoading(document: *runtime.Instance) void {
         internal.page_showing = true;
         firePageShow(document, window);
     }
+    // Step 9.12's "completely finish loading" step 2: the completely loaded
+    // time - after pageshow, so a navigation its listeners start is a
+    // replace (replace-before-load/*-during-pageshow.html).
+    internal.completely_loaded = true;
     // This frame no longer delays its container document: the parent's own
     // load completes now if nothing else delays it (completeLoadingWithChild),
     // after this document's pageshow.
