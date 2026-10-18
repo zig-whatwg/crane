@@ -35,10 +35,13 @@ pub fn parseUnsafeIn(target: *runtime.Instance, input: []const u8, scripting_mod
 /// fragment) adopts them into the target's document. `scripting_mode` is
 /// step 5-6's: Inert, or Fragment for setHTMLUnsafe's runScripts (step 6.1
 /// asserts the safe methods never pass it).
-pub fn parseToFilter(target: *runtime.Instance, input: []const u8, scripting_mode: dom_parser.ScriptingMode) !*runtime.Instance {
+/// `parser_sanitizer` is the configuration the parser sanitizes with
+/// while it builds (BORROWED for the call).
+pub fn parseToFilter(target: *runtime.Instance, input: []const u8, scripting_mode: dom_parser.ScriptingMode, parser_sanitizer: ?@import("html_core").parser.ParserSanitizer) !*runtime.Instance {
     return dom_parser.parseFragmentWith(target.ctx.allocator, target.ctx, input, target, .{
         .allow_declarative_shadow_roots = true,
         .scripting_mode = scripting_mode,
         .inert_document = true,
+        .parser_sanitizer = parser_sanitizer,
     });
 }

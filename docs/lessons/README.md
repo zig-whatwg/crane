@@ -312,6 +312,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A promise delivery hold lasts through its callback](architecture-a-promise-delivery-hold-lasts-through-its-callback.md) - The reaction is still using its record while it calls script; release its hold when delivery returns, not when delivery begins.
 - [Serialization can replace the entry being updated](architecture-serialization-can-replace-the-entry-being-updated.md) - A serializer is a script boundary: keep the captured object, then look up its surviving container again.
 - [An object made on first read shows the state of that moment](architecture-an-object-made-on-first-read-shows-the-state-of-that-moment.md) - A getter that builds an object from live state races every task already queued to update it: create the object where the state it should show is still the one the queue starts from.
+- [An embedder override can pin an algorithm to its synchronous path](architecture-an-embedder-override-can-pin-an-algorithm-to-its-synchronous-path.md) - When a capability exists but one path still avoids it, look for an override consulted in the wrong order before building anything new.
 
 ### Spec Compliance
 - [A wait that the page's own load waits on deadlocks](spec-compliance-a-wait-the-page-s-own-load-waits-on-deadlocks.md) - Before implementing a spec wait, check whether what it waits for waits on the caller; if it does, follow the browser majority's break of the cycle and state it, rather than adding a special case per caller.
@@ -699,6 +700,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [V8 gives an API function called with null its OWN realm's global proxy](debugging-v8-gives-an-api-function-called-with-null-the-functions-own-global.md) - Measure how the engine converts a receiver before writing a heuristic to undo it: here the conversion already gave the spec's answer.
 - [A streaming encoder retries from this call's cursor](debugging-a-streaming-encoder-retries-from-this-calls-cursor.md) - Checkpoint input and state together; error position, input consumption, and output capacity are different facts.
 - [Bound intermediate output before consuming input](debugging-bound-intermediate-output-before-consuming-input.md) - Input boundaries, intermediate-unit boundaries and final-byte boundaries are independent; exercise all three, including the empty call that drains pending output.
+- [A token's attribute slice dies with the element's creation](debugging-a-token-attribute-slice-dies-with-the-elements-creation.md) - A slice into a token is valid only until the token's element exists; a path that passes in one driver and fails in the other is the first sign of a dangling borrow.
 
 ### Workflow
 - [leaks --atExit sees only the process it launched - run the WPT runner without --parallel](workflow-leaks-at-exit-sees-only-the-process-it-launched.md) - A leak count of zero means nothing until the same method has found a leak: run a positive control, and make sure the inspected process is the one that ran the code.

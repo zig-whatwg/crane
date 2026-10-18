@@ -58,6 +58,7 @@ const InputStreamManager = html_core.parser.document_write.InputStreamManager;
 // The adapter that builds the DOM as the tree builder builds its tree, and
 // the parser's script end-tag steps.
 const parser_scripts = @import("parser_script_execution.zig");
+const parser_mutation = @import("parser_dom_mutation.zig");
 const DomTreeAdapter = parser_scripts.DomTreeAdapter;
 const ParserScriptContext = parser_scripts.ParserScriptContext;
 
@@ -408,6 +409,13 @@ pub const DocumentParser = struct {
         self.tree_builder.setDomAdapterPoppedCallback(&parser_scripts.domAdapterOnElementPopped);
         self.tree_builder.setDomAdapterFinishedCallback(&parser_scripts.domAdapterOnChildrenFinished);
         self.tree_builder.setDomAdapterDeclarativeShadowCallback(&parser_scripts.domAdapterAttachDeclarativeShadow);
+        // "Insert a character" appends to the LIVE DOM's previous sibling.
+        self.tree_builder.setDomAdapterTextBeforeCallback(&parser_scripts.domAdapterTextBefore);
+        // A <template for> finds its markers in, and patches, the live DOM.
+        self.tree_builder.setDomAdapterContentPatchingCallbacks(
+            &parser_scripts.domAdapterPrepareContentPatching,
+            &parser_scripts.domAdapterFinishContentPatching,
+        );
         // The parser's "allow declarative shadow roots" is its document's:
         // navigation's document and document.open (step 16) create it so.
         self.tree_builder.allow_declarative_shadow_roots = document_internals.allowsDeclarativeShadowRoots(document);
@@ -421,9 +429,17 @@ pub const DocumentParser = struct {
             &self.tree_builder,
             options.scripting_enabled,
         );
-        // Preserve the embedder override before navigation classic fetches.
-        // Persistent state permits stylesheet waits independently of this.
-        self.script_context.can_suspend = script_created;
+        // Every document parser - navigation's, a frame's, a popup's and a
+        // script-created one - is Document-owned and survives a wait, so a
+        // parser-blocking classic script is fetched asynchronously and the
+        // parser waits at its end tag while the event loop spins (HTML "an
+        // end tag whose tag name is script": "spin the event loop until ...
+        // the script's ready to be parser-executed"). The fetch's task marks
+        // the script ready, and that resumes this parser (script_execution
+        // markReadyNow -> input_stream.processInserted -> pump). The
+        // embedder's loader still answers first (script_execution's
+        // prepare, step 33.11).
+        self.script_context.can_suspend = true;
         self.script_context.setBaseUrl(self.base_url);
         if (options.script_loader) |loader| {
             self.owned_loader = loader.acquire();
@@ -604,6 +620,22 @@ pub const DocumentParser = struct {
             const tree_node = pointer orelse continue;
             const base = self.heldBase(tree_node) orelse continue;
             if (holds.isUnderRoot(base, root, null)) return true;
+        }
+        // A patching <template for> on the stack names its insertion target
+        // and markers, which script can detach while the parser still
+        // inserts into the target (Blink keeps Patch::parent_ strongly).
+        for (held.stack) |tree_node| {
+            const patch = tree_node.content_patch orelse continue;
+            const nodes = [_]struct { ?*anyopaque, u64 }{
+                .{ patch.target, patch.target_generation },
+                .{ patch.start, patch.start_generation },
+                .{ patch.end, patch.end_generation },
+            };
+            for (nodes) |entry| {
+                const instance = parser_mutation.liveNode(entry[0], entry[1]) orelse continue;
+                const base = dom.instance_bridge.getNodeBase(instance) orelse continue;
+                if (holds.isUnderRoot(base, root, null)) return true;
+            }
         }
         return false;
     }

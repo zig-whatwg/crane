@@ -30,21 +30,20 @@ const InternalRequest = @import("request.zig").InternalRequest;
 const InternalResponse = @import("response.zig").InternalResponse;
 const platform = @import("platform");
 
-/// How long a blocking fetch (fetch.zig: a synchronous XMLHttpRequest, a
-/// parser-blocking script, importScripts()) waits for a service worker's
-/// answer, and then for the rest of its body. The waiting thread runs
-/// nothing meanwhile, so a fetch handler that needs it - a reply to a
-/// message it posted to the page, which only a task there can send - is
-/// never answered: the wait ends here and the request is a network error,
-/// instead of the page's thread hanging for good
-/// (postmessage-to-client-message-queue.https.html, whose worker answers a
-/// parser-blocking script only after the page replies). A hang guard, not
-/// behaviour to rely on: long enough that a slow handler on a loaded
-/// machine does not trip it. Stated deviation: browsers never block the
-/// page's thread for a parser-blocking script - HTML's parser waits for it
-/// while the event loop spins ("spin the event loop until ... the script is
-/// ready to be parser-executed"), which is the real fix and the parser's to
-/// make - and Chromium bounds a fetch event only at 5 minutes
+/// How long a blocking fetch (fetch.zig: a synchronous XMLHttpRequest,
+/// importScripts(), a parser-blocking script of a temporary - fragment or
+/// XML - parser) waits for a service worker's answer, and then for the rest
+/// of its body. The waiting thread runs nothing meanwhile, so a fetch handler
+/// that needs it - a reply to a message it posted to the page, which only a
+/// task there can send - is never answered: the wait ends here and the
+/// request is a network error, instead of the page's thread hanging for
+/// good. A hang guard, not behaviour to rely on: long enough that a slow
+/// handler on a loaded machine does not trip it. A document parser's
+/// parser-blocking script no longer comes here: it is fetched
+/// asynchronously while the parser waits and the event loop spins (HTML
+/// "spin the event loop until ... the script is ready to be
+/// parser-executed"; the case postmessage-to-client-message-queue.https.html
+/// exercises). Chromium bounds a fetch event only at 5 minutes
 /// (ServiceWorkerVersion's request timeout).
 pub const blocking_wait_limit_ms: u64 = 10_000;
 

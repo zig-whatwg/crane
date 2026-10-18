@@ -10,6 +10,7 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const engine = @import("engine");
 const dom = @import("dom");
+const html_core = @import("html_core");
 const Allocator = std.mem.Allocator;
 const DOMString = runtime.DOMString;
 
@@ -991,10 +992,27 @@ pub fn setHTML(receiver: *runtime.Instance, target: *runtime.Instance, source: [
     }
     std.debug.assert(!safe or filtered);
     const custom_elements = @import("custom_elements.zig");
+    // The configuration, before parsing: the fragment parsing algorithm's
+    // parser sanitizes as it builds (fragment step 9, the parser's sanitizer
+    // configuration; whatwg/html#12756 "Sanitize while parsing", merged
+    // 2026-10-13 with all three engines' interest, and Chrome's streaming
+    // sanitizer ships it - rule 2, the newer spec). Its effective data is
+    // what `sanitize` filters with: safe mode's removeUnsafe applied to a
+    // copy. As far as the parser applies it yet (tree_builder's
+    // ParserSanitizer), the rest is still filtered after the parse.
+    var config: ?Config = if (filtered) try Config.fromConverted(receiver.ctx.allocator, receiver.ctx, converted, !safe) else null;
+    defer if (config) |*held| held.deinit();
+    var safe_config: ?Config = if (config != null and safe) try config.?.clone(receiver.ctx.allocator) else null;
+    defer if (safe_config) |*held| held.deinit();
+    if (safe_config) |*held| _ = try held.removeUnsafe();
+    const filter: ?ParseFilter = if (config) |*held| .{
+        .data = if (safe_config) |*effective| &effective.data else &held.data,
+        .allocator = receiver.ctx.allocator,
+    } else null;
     // A parser failure other than OOM is a NotSupportedError, as
     // setHTMLUnsafe mapped it before the Sanitizer (row 41 review N5).
-    const parsed = if (filtered)
-        custom_elements.parseFragmentToFilter(receiver, source, .inert)
+    const parsed = if (filter) |*parse_filter|
+        custom_elements.parseFragmentToFilter(receiver, source, .inert, parse_filter.parserSanitizer())
     else
         custom_elements.parseFragmentUnsafe(receiver, source);
     const fragment = parsed catch |err| switch (err) {
@@ -1002,13 +1020,9 @@ pub fn setHTML(receiver: *runtime.Instance, target: *runtime.Instance, source: [
         else => return error.NotSupportedError,
     };
     defer dom.node_creation.destroyUninserted(fragment);
-    if (filtered) {
-        var config = try Config.fromConverted(receiver.ctx.allocator, receiver.ctx, converted, !safe);
-        defer config.deinit();
-        // Steps 7–8 parse the complete fragment before filtering. Chrome 154's
-        // streaming sanitizer and Firefox 157 split on adoption-agency cases
-        // 6, 12 and 13; the tie follows the spec's tree, also Firefox's result.
-        try sanitize(fragment, &config, safe);
+    if (config) |*held| {
+        // Steps 7–8's filter, for what the parser does not sanitize yet.
+        try sanitize(fragment, held, safe);
     }
     const parent = dom.instance_bridge.getNodeBase(target) orelse return error.InvalidStateError;
     const contents = dom.instance_bridge.getNodeBase(fragment) orelse return error.InvalidStateError;
@@ -1054,11 +1068,7 @@ fn innerSanitize(node: *dom.NodeBase, config: *const Data) anyerror!void {
                 const instance = dom.instance_bridge.getInstanceTyped(runtime.Instance, current) orelse return error.InvalidStateError;
                 var target = try interfaces.ProcessingInstruction.get_target(instance);
                 defer target.deinit(instance.ctx.allocator);
-                const allowed = if (config.processing_instructions) |list|
-                    hasTarget(list, target.asSlice())
-                else
-                    !hasTarget(config.remove_processing_instructions.?, target.asSlice());
-                if (!allowed) try dom.mutation.remove(current, false);
+                if (!allowsProcessingInstruction(config, target.asSlice())) try dom.mutation.remove(current, false);
             },
             1 => {
                 const instance = dom.instance_bridge.getInstanceTyped(runtime.Instance, current) orelse return error.InvalidStateError;
@@ -1078,7 +1088,7 @@ fn innerSanitize(node: *dom.NodeBase, config: *const Data) anyerror!void {
                 }
                 const local_index = elementIndex(config.elements, name);
                 // Steps 1.5.3–4: the global element allow/remove list.
-                if (if (config.elements != null) local_index == null else contains(config.remove_elements, name)) {
+                if (elementAction(config, name) == .remove) {
                     try dom.mutation.remove(current, false);
                     continue;
                 }
@@ -1089,35 +1099,12 @@ fn innerSanitize(node: *dom.NodeBase, config: *const Data) anyerror!void {
                 if (dom.shadow_hosts.rootForHost(instance)) |shadow| {
                     try innerSanitize(dom.instance_bridge.getNodeBase(shadow) orelse return error.InvalidStateError, config);
                 }
-                const local = if (local_index) |index| config.elements.?[index] else Element{ .name = name };
                 // Steps 1.5.7–9: a removed attribute shifts the next one into
                 // this index. Its borrowed name/value are not used afterwards.
                 var index: usize = 0;
                 while (dom.element_attributes.at(instance, index)) |attribute| {
                     const attribute_name = Name{ .local = attribute.local_name, .namespace = attribute.namespace };
-                    var allowed = !contains(local.remove_attributes, attribute_name);
-                    if (allowed) {
-                        if (config.attributes) |global| {
-                            allowed = contains(global, attribute_name) or contains(local.attributes, attribute_name) or
-                                (config.data_attributes == true and attribute_name.isData());
-                        } else {
-                            allowed = (local.attributes == null or contains(local.attributes, attribute_name)) and
-                                !contains(config.remove_attributes, attribute_name);
-                        }
-                    }
-                    if (allowed and config.javascript_urls != true) {
-                        if (isNavigatingAttribute(name, attribute_name) and try hasJavascriptURL(instance.ctx.allocator, attribute.value)) allowed = false;
-                        // Browser deviation from HTML's literal href/xlink:href:
-                        // Chrome 154 and Firefox 157 strip arbitrary prefixes
-                        // (sanitizer-svg-animate #8/#10/#12/#14/#16). Retain
-                        // xlink:href:x: their #18/#20 split goes to the spec.
-                        // Gecko uses this suffix rule in
-                        // dom/security/sanitizer/Sanitizer.cpp,
-                        // ShouldRemoveJavascriptNavigationURLAttribute, step 3.
-                        if (optionalStringEqual(name.namespace, svg_namespace) and attribute_name.eql(.{ .local = "attributeName" }) and
-                            (std.mem.eql(u8, name.local, "animate") or std.mem.eql(u8, name.local, "animateTransform") or std.mem.eql(u8, name.local, "set")) and
-                            (std.mem.eql(u8, attribute.value, "href") or std.mem.endsWith(u8, attribute.value, ":href"))) allowed = false;
-                    }
+                    const allowed = try allowsAttribute(instance.ctx.allocator, config, name, local_index, attribute_name, attribute.value);
                     if (allowed) index += 1 else dom.element_attributes.remove(instance, attribute.namespace, attribute.local_name);
                 }
                 // Step 1.5.10.
@@ -1126,6 +1113,115 @@ fn innerSanitize(node: *dom.NodeBase, config: *const Data) anyerror!void {
             else => {},
         }
     }
+}
+
+/// What the sanitizer does with an element named `name`: HTML "get the
+/// sanitizer action for an element name" - the inner sanitize steps
+/// 1.5.2-4' decision, also asked by the parser while it sanitizes.
+pub const ElementAction = enum { keep, remove, replace_with_children };
+
+pub fn elementAction(config: *const Data, name: Name) ElementAction {
+    if (contains(config.replace_elements, name)) return .replace_with_children;
+    const local_index = elementIndex(config.elements, name);
+    if (if (config.elements != null) local_index == null else contains(config.remove_elements, name)) return .remove;
+    return .keep;
+}
+
+/// Whether `config` keeps the attribute `attribute`, valued `value`, on an
+/// element named `element` (whose entry in config's element list is
+/// `local_index`, or none): inner sanitize steps 1.5.7-9, "sanitizer config
+/// allows an attribute".
+pub fn allowsAttribute(allocator: Allocator, config: *const Data, element: Name, local_index: ?usize, attribute: Name, value: []const u8) !bool {
+    const local = if (local_index) |index| config.elements.?[index] else Element{ .name = element };
+    var allowed = !contains(local.remove_attributes, attribute);
+    if (allowed) {
+        if (config.attributes) |global| {
+            allowed = contains(global, attribute) or contains(local.attributes, attribute) or
+                (config.data_attributes == true and attribute.isData());
+        } else {
+            allowed = (local.attributes == null or contains(local.attributes, attribute)) and
+                !contains(config.remove_attributes, attribute);
+        }
+    }
+    if (allowed and config.javascript_urls != true) {
+        if (isNavigatingAttribute(element, attribute) and try hasJavascriptURL(allocator, value)) allowed = false;
+        // Browser deviation from HTML's literal href/xlink:href:
+        // Chrome 154 and Firefox 157 strip arbitrary prefixes
+        // (sanitizer-svg-animate #8/#10/#12/#14/#16). Retain
+        // xlink:href:x: their #18/#20 split goes to the spec.
+        // Gecko uses this suffix rule in
+        // dom/security/sanitizer/Sanitizer.cpp,
+        // ShouldRemoveJavascriptNavigationURLAttribute, step 3.
+        if (optionalStringEqual(element.namespace, svg_namespace) and attribute.eql(.{ .local = "attributeName" }) and
+            (std.mem.eql(u8, element.local, "animate") or std.mem.eql(u8, element.local, "animateTransform") or std.mem.eql(u8, element.local, "set")) and
+            (std.mem.eql(u8, value, "href") or std.mem.endsWith(u8, value, ":href"))) allowed = false;
+    }
+    return allowed;
+}
+
+/// The parser's sanitizer configuration (HTML "parser sanitizer
+/// configuration"), as the tree builder asks it while it builds: a
+/// configuration's effective data - safe mode's removeUnsafe applied - and
+/// the allocator its URL checks use.
+pub const ParseFilter = struct {
+    data: *const Data,
+    allocator: Allocator,
+
+    pub fn parserSanitizer(self: *const ParseFilter) html_core.parser.ParserSanitizer {
+        return .{
+            .context = self,
+            .element_action = &parserElementAction,
+            .allows_attribute = &parserAllowsAttribute,
+            .allows_comments = &parserAllowsComments,
+            .allows_processing_instruction = &parserAllowsProcessingInstruction,
+        };
+    }
+
+    fn parserAllowsComments(context: *const anyopaque) bool {
+        const self: *const ParseFilter = @ptrCast(@alignCast(context));
+        return self.data.comments == true;
+    }
+
+    fn parserAllowsProcessingInstruction(context: *const anyopaque, target: []const u8) bool {
+        const self: *const ParseFilter = @ptrCast(@alignCast(context));
+        return allowsProcessingInstruction(self.data, target);
+    }
+
+    fn parserElementAction(context: *const anyopaque, local: []const u8, namespace: html_core.parser.Namespace) html_core.parser.SanitizerAction {
+        const self: *const ParseFilter = @ptrCast(@alignCast(context));
+        return switch (elementAction(self.data, .{ .local = local, .namespace = elementNamespace(namespace) })) {
+            .keep => .keep,
+            .remove => .remove,
+            .replace_with_children => .replace_with_children,
+        };
+    }
+
+    fn parserAllowsAttribute(context: *const anyopaque, element_local: []const u8, element_namespace: html_core.parser.Namespace, attribute: *const html_core.parser.TreeNode.Attribute) bool {
+        const self: *const ParseFilter = @ptrCast(@alignCast(context));
+        const element: Name = .{ .local = element_local, .namespace = elementNamespace(element_namespace) };
+        // Allocation failure in the URL check keeps the attribute: the
+        // filter after parsing decides it again.
+        return allowsAttribute(self.allocator, self.data, element, elementIndex(self.data.elements, element), .{
+            .local = attribute.name,
+            .namespace = if (attribute.namespace) |ns| ns.uri() else null,
+        }, attribute.value) catch true;
+    }
+};
+
+fn elementNamespace(namespace: html_core.parser.Namespace) []const u8 {
+    return switch (namespace) {
+        .html => html_namespace,
+        .svg => svg_namespace,
+        .mathml => math_namespace,
+    };
+}
+
+/// HTML "sanitizer config allows processing instruction target".
+fn allowsProcessingInstruction(config: *const Data, target: []const u8) bool {
+    return if (config.processing_instructions) |list|
+        hasTarget(list, target)
+    else
+        !hasTarget(config.remove_processing_instructions orelse &.{}, target);
 }
 
 fn hasTarget(list: []const []const u8, target: []const u8) bool {
