@@ -1207,13 +1207,15 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // changes ("initialize the navigable").
     _ = browsing_context.ensureHistoryEntries(&history_documents.infoOf) catch {};
 
-    // Steps 12-13: history handling.
+    // Steps 12-13: history handling - a navigation with a POST resource to
+    // the active document's own URL stays a push, as the browsers do
+    // (navigate_steps.resolveHistoryHandlingWithResource).
     const active_url = documentUrlOf(active, allocator) catch return;
     defer allocator.free(active_url);
-    const history_handling = navigate_steps.resolveHistoryHandling(options.history_behavior, url, .{
+    const history_handling = navigate_steps.resolveHistoryHandlingWithResource(options.history_behavior, url, .{
         .url = active_url,
         .is_initial_about_blank = if (active) |doc| document_lifecycle.isInitialAboutBlank(doc) else false,
-    }, initiatorSameOrigin(options.source_document, active_url, allocator));
+    }, initiatorSameOrigin(options.source_document, active_url, allocator), options.post_resource != null);
 
     // Step 14: a fragment navigation commits now, in the same document. (A
     // traversal's navigation repopulates a document, and is never one.)
@@ -1364,6 +1366,20 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     if (navigate_steps.isJavascript(url) or (options.srcdoc == null and navigate_steps.matchesAboutBlank(url))) {
         if (options.source_document) |source| {
             if (dom_module.document_origin.shareable(source) catch null) |origin| record.initiator_origin = origin.retain();
+        } else if (options.traversal_entry != 0) {
+            // A traversal repopulates the entry: "attempt to populate the
+            // history entry's document" takes the initiator origin its
+            // document state recorded, which for about:blank is the
+            // document's origin (the entry's). Not the document the
+            // navigable shows now: a popup its opener sent to about:blank
+            // and that then went to another origin came back to an
+            // about:blank of that other origin
+            // (content-security-policy/inheritance/history.sub.html).
+            if (browsing_context.jointHistory() catch null) |history| {
+                if (history.entryById(options.traversal_entry)) |entry| {
+                    record.initiator_origin = OriginRecord.create(allocator, entry.origin) catch null;
+                }
+            }
         }
     }
     // The same snapshot, serialized, for the navigation's request (its
@@ -1980,6 +1996,14 @@ fn runCommit(context: ?*anyopaque) void {
     // the one it has, and no load event is owed. Decided before anything is
     // unloaded.
     if (!integration.responseMakesDocument(response)) {
+        // For a traversal, HTML "apply the history step" step 12.8's
+        // afterDocumentPopulated step 1: no document, so the change is
+        // update-only - the navigable's active session history entry (and
+        // the navigation API's current entry) stays the one it displays,
+        // though the traversal moved the traversable's step
+        // (navigation-methods/return-value/back-204-205-download.html: 3/3
+        // in Chrome 155, Firefox 158 and Safari 27).
+        if (record.traversal_entry != 0 and record.traversal_entry != record.traversal_from) keepDisplayedEntry(integration, record.traversal_from);
         integration.ongoing_navigation = .none;
         endLoadDelay(integration);
         return;
@@ -2132,7 +2156,7 @@ fn clientForNewDocument(integration: *IFrameIntegration, record: *Navigation, re
     // document is made with: opaque - no client - when the final sandboxing
     // flag set, the new document's active sandboxing flag set from its
     // construction, has the sandboxed origin browsing context flag.
-    const computed: ?[]u8 = if (record.target_origin == null) navigationParamsOrigin(integration, record.final_sandboxing_flags, final_url, integration.allocator) catch return else null;
+    const computed: ?[]u8 = if (record.target_origin == null) navigationParamsOrigin(integration, record.final_sandboxing_flags, final_url, if (record.srcdoc == null) record.initiator_origin else null, integration.allocator) catch return else null;
     defer if (computed) |o| integration.allocator.free(o);
     const origin: []const u8 = if (record.final_sandboxing_flags.origin) "null" else record.target_origin orelse computed.?;
     const reserved = record.reserved_client;
@@ -2573,7 +2597,7 @@ fn pageSwapOf(integration: *IFrameIntegration, record: *Navigation, response: *c
     const history = bc.ensureHistoryEntries(&history_documents.infoOf) catch return null;
     const allocator = history.allocator;
     const final_url = if (response.final_url.len > 0) response.final_url else record.url;
-    const origin = navigationParamsOrigin(integration, record.final_sandboxing_flags, final_url, integration.allocator) catch return null;
+    const origin = navigationParamsOrigin(integration, record.final_sandboxing_flags, final_url, if (record.srcdoc == null) record.initiator_origin else null, integration.allocator) catch return null;
     if (record.target_origin) |old| integration.allocator.free(old);
     record.target_origin = origin;
 
@@ -2636,7 +2660,7 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
     const final_url = if (response.final_url.len > 0) response.final_url else record.url;
     // The origin decided before the displayed document unloaded, as the
     // pageswap event saw it.
-    const computed: ?[]u8 = if (record.target_origin == null) navigationParamsOrigin(integration, record.final_sandboxing_flags, final_url, integration.allocator) catch null else null;
+    const computed: ?[]u8 = if (record.target_origin == null) navigationParamsOrigin(integration, record.final_sandboxing_flags, final_url, if (record.srcdoc == null) record.initiator_origin else null, integration.allocator) catch null else null;
     defer if (computed) |o| integration.allocator.free(o);
     const origin: []const u8 = record.target_origin orelse computed orelse "null";
     const document_state = recordInHistory(integration, record, final_url, origin);
@@ -2789,9 +2813,20 @@ fn attachDocument(integration: *IFrameIntegration, document_state: ?u64) void {
 ///    parseOriginFromURL gives about: URLs the container origin), where the
 ///    spec gives about:blank the initiator's.
 /// 4. Otherwise `url`'s origin, as the URL Standard serializes it.
-fn navigationParamsOrigin(integration: *IFrameIntegration, flags: SandboxingFlagSet, url: []const u8, allocator: std.mem.Allocator) ![]u8 {
+fn navigationParamsOrigin(integration: *IFrameIntegration, flags: SandboxingFlagSet, url: []const u8, initiator: ?*const OriginRecord, allocator: std.mem.Allocator) ![]u8 {
     const bc = integration.browsing_context orelse return allocator.dupe(u8, "null");
     if (flags.origin) return allocator.dupe(u8, "null");
+    // "Determining the origin" step 2: about:blank's origin is the
+    // initiator's, as navigationParamsOriginRecord gives the document - for
+    // a popup navigated to about:blank by its opener, the opener's, not the
+    // origin of the document the popup shows. (The serialization the entry
+    // and the pageswap event record, which a traversal back to the entry
+    // takes again.)
+    if (navigate_steps.matchesAboutBlank(url)) {
+        if (initiator) |origin| {
+            if (origin.serialized) |serialized| return allocator.dupe(u8, serialized);
+        }
+    }
     if (navigate_steps.matchesAboutBlank(url) or navigate_steps.matchesAboutSrcdoc(url)) {
         const container_window: ?*runtime.Instance = blk: {
             const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse break :blk null));
@@ -3060,6 +3095,11 @@ fn navigateToFragment(integration: *IFrameIntegration, url: []const u8, old_url:
     const new_fragment = navigate_steps.fragmentOf(url);
     const same = if (old_fragment) |a| (if (new_fragment) |b| std.mem.eql(u8, a, b) else false) else new_fragment == null;
     if (!same) queueHashChange(integration, old_url, url);
+    // Step 16: "Scroll to the fragment given navigable's active document" -
+    // which sets its target element (:target), now that its URL is the
+    // fragment's. The popstate listeners may have taken the frame away.
+    if (integration.state == .discarded) return;
+    if (activeDocumentOf(integration)) |document| dom_module.fragment_scroll.scrollToTheFragment(document);
 }
 
 /// "Update document for history step application" step 6.4.3 for a
@@ -4236,28 +4276,29 @@ fn createChildNavigable(instance: *runtime.Instance) bool {
 /// container document's, and its realm, Window and initial about:blank
 /// document, with `container` as the navigable's container.
 fn createBrowsingContextAndDocument(container: *runtime.Instance, integration: *IFrameIntegration) bool {
-    const NodeImpl = @import("Node.zig");
-    const DocumentImpl = @import("Document.zig");
-
     // The parent is the window of the element's node document - for a frame
     // nested in another frame's document, that frame's window - and the
     // parent realm is that window's.
-    const owner_doc = NodeImpl.getOwnerDocument(container) orelse return false;
-    const parent_window: *runtime.Instance = (DocumentImpl.get_defaultView(owner_doc) catch null) orelse return false;
-    const WindowImpl = @import("Window.zig");
-    const parent_window_internal = WindowImpl.getInternal(parent_window) orelse return false;
+    const owner_doc = (interfaces.Node.get_ownerDocument(container) catch null) orelse return false;
+    const parent_window: *runtime.Instance = (interfaces.Document.get_defaultView(owner_doc) catch null) orelse return false;
+    const parent_bc = dom_module.browser_state.browsingContextOf(parent_window) orelse return false;
 
-    // The container document's origin, for same-origin checks on
-    // contentDocument. The Window stores its origin as a string (e.g.,
-    // "http://localhost:8000").
-    const parent_origin_str = parent_window_internal.origin;
-    const parent_origin = dom_module.navigables.parseOriginFromString(parent_origin_str);
-    integration.container_origin = parent_origin;
+    // "Create a new browsing context and document" step 2: creatorOrigin,
+    // the creator's - the element's node document's - origin: its origin
+    // record, serialized. Not the origin the container document's Window
+    // was created with, which for a frame that navigated to another origin
+    // is still its first container's: a srcdoc child of a cross-origin frame
+    // was made with the top-level page's origin, and an about:blank child of
+    // a popup's frame with its opener's. The serialization is the record's,
+    // which the container document holds for as long as it lives - as long
+    // as the element's integration, which keeps `container_origin` (for the
+    // same-origin checks on contentDocument) pointing into it.
+    const container_record = (dom_module.document_origin.shareable(owner_doc) catch null) orelse return false;
+    const parent_origin_str = container_record.serialized orelse "null";
+    integration.container_origin = dom_module.navigables.parseOriginFromString(parent_origin_str);
 
     // The browsing context, a child of the container document's.
-    const existing_bc = integration.ensureBrowsingContext(
-        @ptrCast(parent_window_internal.browsing_context),
-    ) orelse return false;
+    const existing_bc = integration.ensureBrowsingContext(@ptrCast(parent_bc)) orelse return false;
     // This element is the new navigable's container.
     existing_bc.container = container;
 
@@ -4286,10 +4327,21 @@ fn createBrowsingContextAndDocument(container: *runtime.Instance, integration: *
         parent_window.ctx,
         existing_bc,
         if (use_opaque_origin) null else parent_origin_str,
-        NodeImpl.getOwnerDocument(container),
+        owner_doc,
         integration.allocator,
     ) orelse return false;
     return true;
+}
+
+/// The traversable's joint history keeps `displayed` as the active entry of
+/// `integration`'s navigable (JointHistory.keepActiveEntry): a traversal's
+/// population of its target entry made no document.
+fn keepDisplayedEntry(integration: *IFrameIntegration, displayed: u64) void {
+    const bc = integration.browsing_context orelse return;
+    const history = bc.getTop().joint_history orelse return;
+    history.keepActiveEntry(bc.id, displayed) catch |err| {
+        log.debug("[navigation] the displayed entry was not kept: {s}", .{@errorName(err)});
+    };
 }
 
 /// A navigable's V8 context, Window and initial about:blank document, wired to

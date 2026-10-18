@@ -53,7 +53,6 @@ src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.setElement 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.setSupportedTokens 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.set_value 1
 src/webidl/impls/HTMLIFrameElement.zig Document.call_createElement 3
-src/webidl/impls/HTMLIFrameElement.zig Document.get_defaultView 1
 src/webidl/impls/HTMLIFrameElement.zig Document.setDefaultView 2
 src/webidl/impls/HTMLIFrameElement.zig Document.setDocumentElement 1
 src/webidl/impls/HTMLIFrameElement.zig Element.call_getAttribute 5
@@ -62,10 +61,10 @@ src/webidl/impls/HTMLIFrameElement.zig Location.setNavigateCallback 1
 src/webidl/impls/HTMLIFrameElement.zig Location.setURLFromString 1
 src/webidl/impls/HTMLIFrameElement.zig Location.setWindow 1
 src/webidl/impls/HTMLIFrameElement.zig Node.call_appendChild 3
-src/webidl/impls/HTMLIFrameElement.zig Node.getOwnerDocument 11
+src/webidl/impls/HTMLIFrameElement.zig Node.getOwnerDocument 9
 src/webidl/impls/HTMLIFrameElement.zig Node.get_isConnected 3
 src/webidl/impls/HTMLIFrameElement.zig Node.setLocalName 1
-src/webidl/impls/HTMLIFrameElement.zig Window.getInternal 2
+src/webidl/impls/HTMLIFrameElement.zig Window.getInternal 1
 src/webidl/impls/HTMLIFrameElement.zig Window.replaceBrowsingContext 1
 src/webidl/impls/HTMLIFrameElement.zig Window.setDocument 2
 src/webidl/impls/HTMLIFrameElement.zig Window.setOrigin 1

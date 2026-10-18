@@ -15,6 +15,20 @@ test "auto is push for a different URL, replace for the same URL from the same o
     try testing.expectEqual(steps.HistoryHandling.push, steps.resolveHistoryHandling(.auto, page, active, false));
 }
 
+test "auto stays a push for a POST to the document's own URL, as the browsers do" {
+    // Stated deviation: "navigate" step 13.1 makes auto a replace whenever
+    // the URL equals the active document's; Chrome, Firefox and Safari keep
+    // a navigation with a POST resource a push
+    // (navigation-api/navigate-event/navigate-form-userInitiated.html).
+    const active: steps.ActiveDocument = .{ .url = page, .is_initial_about_blank = false };
+    try testing.expectEqual(steps.HistoryHandling.push, steps.resolveHistoryHandlingWithResource(.auto, page, active, true, true));
+    try testing.expectEqual(steps.HistoryHandling.replace, steps.resolveHistoryHandlingWithResource(.auto, page, active, true, false));
+    // An explicit replace, and the navigation that must be one, still are.
+    try testing.expectEqual(steps.HistoryHandling.replace, steps.resolveHistoryHandlingWithResource(.replace, page, active, true, true));
+    const initial: steps.ActiveDocument = .{ .url = "about:blank", .is_initial_about_blank = true };
+    try testing.expectEqual(steps.HistoryHandling.replace, steps.resolveHistoryHandlingWithResource(.auto, page, initial, true, true));
+}
+
 test "an explicit behaviour is kept" {
     const active: steps.ActiveDocument = .{ .url = page, .is_initial_about_blank = false };
     try testing.expectEqual(steps.HistoryHandling.push, steps.resolveHistoryHandling(.push, page, active, true));

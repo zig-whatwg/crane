@@ -39,13 +39,19 @@
 //! And a contentWindow read while memory is still out, after each failing
 //! round of a srcdoc re-navigation (`sweepContentWindow`).
 //!
-//! Known, and not this test's to fix (lane leaks5's report): a round that
-//! runs out of memory after the frame's old document has unloaded, and
-//! before the new one commits, leaves the navigable on the unloaded
-//! document, and it never navigates again - the srcdoc frame from failing
-//! allocation 102, the javascript: frame from 91, on lane/int4. The rounds
-//! after that test nothing new, so the control is the navigation before the
-//! sweep, which must show a new document.
+//! Lane leaks5 saw the frames stop navigating partway through these sweeps
+//! - the srcdoc frame from failing allocation 102, the javascript: frame
+//! from 91 - and took it for a navigable wedged by out of memory. Lane nav1
+//! measured both (tests/html/navigable_failed_commit_oom_test.zig): the
+//! srcdoc frame from round 102 is the navigation rate limiter ("allowed to
+//! perform a navigation or history update", 200 per 10 s, which a sweep's
+//! rounds outrun), not a wedge - with the count reset, every round's next
+//! navigation succeeds; and the javascript: frame from 91 is a javascript:
+//! URL running nothing in the destroyed document a round that failed after
+//! the old document unloaded leaves showing (its script needs a fully
+//! active document), which any other navigation replaces. So the rounds
+//! after those test nothing new here, and the control is the navigation
+//! before the sweep, which must show a new document.
 
 const std = @import("std");
 const testing = std.testing;

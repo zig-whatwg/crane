@@ -398,3 +398,49 @@ test "only no-referrer and origin hide a document's URL from the navigation API"
     try testing.expect(!joint.protectsUrl(.unsafe_url));
     try testing.expect(!joint.protectsUrl(.empty));
 }
+
+test "a traversal that populates no document leaves the navigable's active entry, until the step moves again" {
+    // HTML "apply the history step" 12.8, afterDocumentPopulated step 1: a
+    // target entry whose document could not be populated (a 204, a 205, a
+    // download) makes the navigable's change update-only - its active
+    // session history entry stays the one it displayed (the navigation
+    // API's current entry with it), though the traversable's current step
+    // moved.
+    var h = joint.JointHistory.init(testing.allocator);
+    defer h.deinit();
+    try h.addInitialEntry(top, "http://x.test/t", null, "http://x.test");
+    try h.addInitialEntry(frame, "about:blank", null, "http://x.test");
+    try h.commitDocument(frame, "http://x.test/204", null, "http://x.test", .replace);
+    try h.commitDocument(frame, "http://x.test/blank", null, "http://x.test", .push);
+    const displayed = h.currentEntry(frame).?;
+    const displayed_id = displayed.id;
+    var entries: std.ArrayListUnmanaged(*joint.Entry) = .empty;
+    defer entries.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 1), try h.apiEntries(frame, testing.allocator, &entries));
+
+    // Back: the step moves, the frame's population makes no document.
+    h.current_step = h.stepByDelta(-1).?;
+    try testing.expectEqualStrings("http://x.test/204", h.currentEntry(frame).?.url);
+    try h.keepActiveEntry(frame, displayed_id);
+    try testing.expectEqual(displayed_id, h.activeEntry(frame).?.id);
+    try testing.expectEqual(@as(usize, 1), try h.apiEntries(frame, testing.allocator, &entries));
+    // The top's active entry is its current one.
+    try testing.expectEqual(h.currentEntry(top).?, h.activeEntry(top).?);
+
+    // Away and back to that step: the frame still displays that document
+    // until a population of the target entry makes one (it is the active
+    // entry until "activate history entry" runs).
+    h.current_step = h.stepByDelta(1).?;
+    try testing.expectEqual(displayed_id, h.activeEntry(frame).?.id);
+    h.current_step = h.stepByDelta(-1).?;
+    try testing.expectEqual(displayed_id, h.activeEntry(frame).?.id);
+    // A document the frame commits ends it: its entry is the active one.
+    try h.commitDocument(frame, "http://x.test/made", null, "http://x.test", .replace);
+    try testing.expectEqualStrings("http://x.test/made", h.activeEntry(frame).?.url);
+    try testing.expectEqual(h.currentEntry(frame).?, h.activeEntry(frame).?);
+
+    // And a navigable that goes takes its record with it.
+    try h.keepActiveEntry(frame, displayed_id);
+    h.removeNavigable(frame);
+    try testing.expect(h.activeEntry(frame) == null);
+}
