@@ -457,7 +457,9 @@ test "unregister resolves true, and with no client the registration is cleared" 
     });
     try registry.scheduleJob(job);
     try testing.expect((try recorder.runQueuedJobs(&registry)) == null);
-    try recorder.expectLog(&.{ "1: resolve true", "1: worker 4 redundant", "1: active = 0" });
+    // The active slot is cleared before the worker's statechange (registry
+    // clearRegistration says why: all three browsers show it so).
+    try recorder.expectLog(&.{ "1: resolve true", "1: active = 0", "1: worker 4 redundant" });
     try testing.expect(registry.getRegistration("https://example.com", "https://example.com/") == null);
     try registry.workerEnded(worker_id);
     try testing.expect(registry.findWorker(worker_id) == null);

@@ -1826,11 +1826,19 @@ pub const Registry = struct {
             self.updateWorkerState(worker, .redundant);
             self.updateRegistrationState(registration, .waiting, null);
         }
-        // 4. The active worker.
+        // 4. The active worker. Its registration attribute is cleared before
+        // its statechange to "redundant" is posted - the spec's 4.2-4.3 the
+        // other way round: Chrome, Firefox and Safari all show the
+        // registration's active as null to the statechange's reactions
+        // (registration-service-worker-attributes.https.html "active should
+        // be null after redundant", wpt.fyi df642c4142) - golden rule 2, the
+        // browsers.
         if (registration.active) |worker| {
             self.effects.terminate_worker(self.effects.ctx, worker);
-            self.updateWorkerState(worker, .redundant);
+            worker.refs += 1;
+            defer self.releaseWorker(worker);
             self.updateRegistrationState(registration, .active, null);
+            self.updateWorkerState(worker, .redundant);
         }
     }
 
