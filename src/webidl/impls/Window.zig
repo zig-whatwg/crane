@@ -3790,9 +3790,17 @@ fn childNavigableNamed(window: *runtime.Instance, internal: *InternalState, name
         const raw = child.getActiveWindow() orelse return null;
         const child_window: *runtime.Instance = @ptrCast(@alignCast(raw));
         const child_internal = getInternal(child_window) orelse return null;
+        // The records decide only between opaque origins: for a tuple origin
+        // a record shared from an initial about:blank is not yet exact for
+        // the document that replaced it (effectiveOrigin), and two windows
+        // sharing one would read as one origin across a cross-origin
+        // navigation.
+        const parent_origin = effectiveOrigin(window, internal);
+        const child_origin = effectiveOrigin(child_window, child_internal);
+        const both_opaque = std.mem.eql(u8, parent_origin, "null") and std.mem.eql(u8, child_origin, "null");
         const same_origin = @import("dom").origin_record.sameOrigin(
-            .{ .serialized = effectiveOrigin(window, internal), .record = settingsOriginRecord(window) },
-            .{ .serialized = effectiveOrigin(child_window, child_internal), .record = settingsOriginRecord(child_window) },
+            .{ .serialized = parent_origin, .record = if (both_opaque) settingsOriginRecord(window) else null },
+            .{ .serialized = child_origin, .record = if (both_opaque) settingsOriginRecord(child_window) else null },
         );
         return if (same_origin) child_window else null;
     }

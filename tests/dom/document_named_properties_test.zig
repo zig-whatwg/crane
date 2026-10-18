@@ -236,3 +236,20 @@ test "the supported property names are in tree order, an element's ID before its
         try testing.expect(try supported(f.document, wanted));
     }
 }
+
+test "a named element never shadows Document's unforgeable location" {
+    var f: Fixture = undefined;
+    try f.init();
+    defer f.deinit();
+    _ = try f.add(f.body, html_ns, "form", null, "location");
+    _ = try f.add(f.body, html_ns, "form", null, "kept");
+    try testing.expect(!try supported(f.document, "location"));
+    try testing.expect(try supported(f.document, "kept"));
+    const names = try interfaces.Document.getSupportedPropertyNames(f.document, testing.allocator);
+    defer {
+        for (names) |*name| name.deinit(testing.allocator);
+        testing.allocator.free(names);
+    }
+    try testing.expectEqual(@as(usize, 1), names.len);
+    try testing.expectEqualStrings("kept", names[0].asSlice());
+}

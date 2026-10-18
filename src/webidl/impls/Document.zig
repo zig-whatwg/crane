@@ -5860,7 +5860,46 @@ pub fn setStylesheetBlockingResolvedCallback(
 /// order stands; id-before-name per element is also Chrome's and Safari's
 /// (nameditem-supported-property-names-order: Chrome, Safari pass).
 pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
-    return @import("dom").tree_ordered_map.supportedNames(instance, .document, allocator);
+    const list = try @import("dom").tree_ordered_map.supportedNames(instance, .document, allocator);
+    // The unforgeable names are never visible (`unforgeable_names`): the
+    // list holds only names the binding may show.
+    var kept: usize = 0;
+    for (list) |*name| {
+        if (isUnforgeableName(name.asSlice())) {
+            name.deinit(allocator);
+            continue;
+        }
+        list[kept] = name.*;
+        kept += 1;
+    }
+    if (kept == list.len) return list;
+    if (allocator.resize(list, kept)) return list[0..kept];
+    const copy = allocator.dupe(runtime.DOMString, list[0..kept]) catch |err| {
+        for (list[0..kept]) |*name| name.deinit(allocator);
+        allocator.free(list);
+        return err;
+    };
+    allocator.free(list);
+    return copy;
+}
+
+/// Document's [LegacyUnforgeable] members (HTML's partial interface: only
+/// `location`). WebIDL 3.9.7 the named property visibility algorithm, step
+/// 2: "If O has an own property named P, then return false" - and an
+/// unforgeable attribute IS an own property of every Document (3.7.5),
+/// which no named element shadows, [LegacyOverrideBuiltIns] or not
+/// (named-access-on-the-window-object/strict-mode-redefine-readonly-property:
+/// `<form name=location>` leaves document.location the Location, in all
+/// three browsers). Stated deviation, compensated here: Crane's binding
+/// defines Document's unforgeable attributes on Document.prototype, not on
+/// the instance (v8 interface.zig makes only Location's members own), so its
+/// visibility check cannot see them; the per-name query and the list leave
+/// these names out instead, which is what the visibility algorithm answers.
+const unforgeable_names = [_][]const u8{"location"};
+
+fn isUnforgeableName(name: []const u8) bool {
+    for (unforgeable_names) |unforgeable| if (std.mem.eql(u8, name, unforgeable)) return true;
+    return false;
 }
 
 /// WebIDL 3.9.7 step 1 for ONE name - "is P a supported property name?" -
@@ -5871,6 +5910,7 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
 /// Agrees with the list above by construction: both read the maps' rule
 /// (dom.tree_ordered_map keysOf).
 pub fn isSupportedPropertyName(instance: *runtime.Instance, name: runtime.DOMString) anyerror!bool {
+    if (isUnforgeableName(name.asSlice())) return false;
     return @import("dom").tree_ordered_map.isNamed(instance, .document, name.asSlice());
 }
 
