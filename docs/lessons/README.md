@@ -493,6 +493,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Group membership is not target familiarity](spec-compliance-group-membership-is-not-target-familiarity.md) - Verify the full eligibility predicate and a negative target inside the same group when broadening named lookup.
 - [Target search phases share one starting context](spec-compliance-target-search-phases-share-one-starting-context.md) - Keep every phase's starting context consistent when later searches exclude previously searched subtrees.
 - [Textarea API and submission values differ](spec-compliance-textarea-api-and-submission-values-differ.md) - Apply the value representation required by the consumer; form-entry wrapping does not change the IDL value.
+- [User Timing converts legacy epoch values](spec-compliance-user-timing-converts-legacy-epoch-values.md) - Preserve representation and sentinel rules at API conversion boundaries.
+- [Document replacement keeps navigation event times](spec-compliance-document-open-keeps-navigation-event-times.md) - Separate repeated event delivery from the first navigation milestones.
 
 ### Codegen
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
