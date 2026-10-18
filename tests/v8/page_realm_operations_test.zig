@@ -1350,6 +1350,10 @@ test "protocol: a destroyed navigable's realm keeps its Window while script hold
 }
 
 test "protocol: a listener stored on a destroyed navigable's object, closing over the frame, does not keep it" {
+    // The frame's Event and EventTarget reach the owners' hooks; with no
+    // Browser here crane.Process is not started, so install them rather than
+    // rely on a file before this one in the shared process.
+    interfaces.process_hooks.startHooksForTest();
     _ = try realm();
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
