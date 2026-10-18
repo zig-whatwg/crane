@@ -4758,41 +4758,16 @@ fn hasContentNavigable(instance: *runtime.Instance) bool {
 
 /// Getter for name
 pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return runtime.DOMString.initInterned("");
-
-    if (internal.name_attr) |name| {
-        return runtime.DOMString.initInterned(name);
-    }
-    return runtime.DOMString.initInterned("");
+    // HTML 4.8.5 / 2.6.1: ordinary DOMString reflection of the name attribute.
+    return dom_module.reflection.get(runtime.DOMString, instance, .{ .name = "name" });
 }
 
 /// Setter for name
-/// Sets the browsing context name for targeting.
 pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    // Free old value
-    if (internal.name_attr) |old| {
-        internal.allocator.free(old);
-    }
-
-    // Store new value
-    const str = value.asSlice();
-    internal.name_attr = try internal.allocator.dupe(u8, str);
-
-    // Update integration (propagates to iframe's browsing context)
-    internal.integration.setName(str) catch {};
-
-    // Also propagate to the Window's browsing context if contentWindow exists
-    // This ensures iframe.contentWindow.name reflects the updated name
-    if (navigableContext(internal.integration)) |realm| {
-        if (windowOfRealm(realm)) |window_instance| {
-            const WindowImpl = @import("Window.zig");
-            if (WindowImpl.getInternal(window_instance)) |window_internal| {
-                window_internal.browsing_context.setTargetName(str) catch {};
-            }
-        }
-    }
+    // The attribute initializes the navigable target name only at creation
+    // (HTML 7.3.1.3 steps 4-6). Chrome and Safari preserve an existing target
+    // name on mutation; Firefox synchronizes it (name-attribute.window.js).
+    try dom_module.reflection.set(runtime.DOMString, instance, .{ .name = "name" }, value);
 }
 
 // ============================================================================

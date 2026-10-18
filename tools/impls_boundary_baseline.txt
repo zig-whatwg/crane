@@ -86,7 +86,7 @@ src/webidl/impls/HTMLIFrameElement.zig Node.call_appendChild 3
 src/webidl/impls/HTMLIFrameElement.zig Node.getOwnerDocument 11
 src/webidl/impls/HTMLIFrameElement.zig Node.get_isConnected 3
 src/webidl/impls/HTMLIFrameElement.zig Node.setLocalName 1
-src/webidl/impls/HTMLIFrameElement.zig Window.getInternal 3
+src/webidl/impls/HTMLIFrameElement.zig Window.getInternal 2
 src/webidl/impls/HTMLIFrameElement.zig Window.replaceBrowsingContext 1
 src/webidl/impls/HTMLIFrameElement.zig Window.setDocument 2
 src/webidl/impls/HTMLIFrameElement.zig Window.setOrigin 1
