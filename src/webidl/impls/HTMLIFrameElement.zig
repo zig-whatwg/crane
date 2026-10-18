@@ -1580,6 +1580,14 @@ fn startFetch(record: *Navigation) void {
     const allocator = record.allocator;
     const url = record.url;
 
+    // HTML create navigation params by fetching, step 21.3: check the
+    // initiator's navigation policy before the first fetch, including forms
+    // targeting another frame or a popup. javascript: has its separate path.
+    if (navigationBlockedByCSP(record, url, 0)) {
+        record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+        return queueNavigationTask(record.integration, record.id, &runCommit);
+    }
+
     if (record.srcdoc) |html| {
         // At about:srcdoc - or, for a traversal to a fragment entry of one,
         // at that entry's URL (about:srcdoc#yo).
@@ -1795,6 +1803,29 @@ fn startFetch(record: *Navigation) void {
         record.response = navigation_fetch.fetchRequestNow(allocator, url, request, .{}) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
         return queueNavigationTask(record.integration, record.id, &runCommit);
     }
+    // data:/file: bypass main fetch. Run its steps 4 and 7 here:
+    // monitored policies report, then enforced policies can block.
+    if (std.mem.eql(u8, scheme, "data") or std.mem.eql(u8, scheme, "file")) {
+        if (record.initiator_policy_container) |*container| {
+            if (destination != .document and !container.csp_list.isEmpty()) {
+                const request = navigation_fetch.navigationRequest(allocator, url, .{
+                    .destination = destination,
+                    .mode = .navigate,
+                    .policy_container = container,
+                }) catch {
+                    record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+                    return queueNavigationTask(record.integration, record.id, &runCommit);
+                };
+                defer request.deinit();
+                if (record.csp_reporter) |*reporter| request.csp_violation_reporter = reporter.reporter();
+                fetch_mod.algorithms.csp_check.reportViolationsForRequest(request);
+                if (fetch_mod.algorithms.csp_check.shouldRequestBeBlocked(request)) {
+                    record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+                    return queueNavigationTask(record.integration, record.id, &runCommit);
+                }
+            }
+        }
+    }
     record.response = navigation_fetch.fetchNavigationResource(allocator, url, .{
         .destination = destination,
         .mode = .navigate,
@@ -1928,6 +1959,18 @@ fn fetchDone(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch
     queueNavigationTask(record.integration, id, &runCommit);
 }
 
+/// CSP 4.2.4 over the navigation initiator's policy snapshot. The original
+/// request URL is reported; the current hop is matched. No policy: no work.
+fn navigationBlockedByCSP(record: *Navigation, current_url: []const u8, redirect_count: u32) bool {
+    const container = if (record.initiator_policy_container) |*c| c else return false;
+    if (container.csp_list.isEmpty()) return false;
+    const reporter = if (record.csp_reporter) |*r| r.reporter() else null;
+    var request = @import("csp").navigation_check.NavigationRequest.ofSerialized(current_url);
+    request.original_url = record.url;
+    request.redirect_count = redirect_count;
+    return @import("csp").navigation_check.preNavigationChecks(&container.csp_list, request, record.csp_navigation_type, reporter) == .blocked;
+}
+
 /// HTML "create navigation params by fetching" steps 21.14-21.21 for a
 /// redirect response the fetch handed over (redirect mode "manual"), then -
 /// for the next turn of the loop - steps 21.1-21.2 and 21.6: a hop to
@@ -1942,6 +1985,18 @@ fn fetchDone(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch
 fn followManualRedirect(record: *Navigation, f: *fetch_mod.algorithms.AsyncFetch) void {
     // 21.14. locationURL.
     if (f.nextManualRedirectUrl()) |location| {
+        // The next iteration's 21.3 precedes processNextManualRedirect.
+        // CSP source matching distinguishes zero from nonzero redirects;
+        // no additional navigation-owned counter is needed for this check.
+        if (navigationBlockedByCSP(record, location, 1)) {
+            // AsyncFetch's pump expressly permits termination from done;
+            // fetchDone owns the delivered response separately. Do not read
+            // f or location (borrowed from it) after terminate.
+            record.fetch = null;
+            f.terminate();
+            record.response = navigation_fetch.networkErrorResult(record.allocator, record.url) catch return endNavigation(record.id);
+            return queueNavigationTask(record.integration, record.id, &runCommit);
+        }
         const scheme = navigate_steps.schemeOf(location);
         const http = std.mem.eql(u8, scheme, "http") or std.mem.eql(u8, scheme, "https");
         // 21.1. Another origin than the reserved client's creation URL's.
