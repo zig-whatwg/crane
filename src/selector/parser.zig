@@ -351,6 +351,7 @@ pub const SimpleSelector = union(enum) {
     pub fn deinit(self: *SimpleSelector, allocator: Allocator) void {
         switch (self.*) {
             .PseudoClass => |*pseudo| pseudo.deinit(allocator),
+            .PseudoElement => |*pseudo| pseudo.deinit(allocator),
             else => {},
         }
     }
@@ -364,7 +365,8 @@ pub const SimpleSelector = union(enum) {
             .Id => Specificity{ .id = 1 }, // 1,0,0
             .Attribute => Specificity{ .class = 1 }, // 0,1,0
             .PseudoClass => |*pseudo| pseudo.calculateSpecificity(), // varies
-            .PseudoElement => Specificity{ .element = 1 }, // 0,0,1
+            // 0,0,1; ::slotted() adds its argument's (CSS Scoping 3.2.2).
+            .PseudoElement => |*pseudo| pseudo.calculateSpecificity(),
         };
     }
 };
@@ -579,9 +581,35 @@ pub const NthPattern = struct {
 
 /// Pseudo-element selector: its name, ASCII-lowercased (Selectors 4 3.6.1).
 /// A pseudo-element is no element of the tree, so a compound holding one
-/// matches no element.
+/// matches no element - except for the style engine, which matches
+/// ::slotted() against the elements assigned to a slot and ::part() against
+/// the parts of a shadow host (CSS Scoping 3.2.2, CSS Shadow Parts 4.1).
 pub const PseudoElementSelector = struct {
     name: []const u8,
+    /// ::slotted(<compound-selector>): the argument, a one-selector list.
+    /// OWNED by the pseudo-element; null for any other.
+    argument: ?*SelectorList = null,
+    /// ::part(<ident>+): the part names, which an element must all have.
+    /// The array is OWNED; each name, like every name in the AST, is a slice
+    /// of the parsed text or of the outer list's decoded strings.
+    part_names: []const []const u8 = &.{},
+
+    pub fn deinit(self: *PseudoElementSelector, allocator: Allocator) void {
+        if (self.argument) |list| {
+            list.deinit();
+            allocator.destroy(list);
+            self.argument = null;
+        }
+        if (self.part_names.len != 0) allocator.free(self.part_names);
+        self.part_names = &.{};
+    }
+
+    pub fn calculateSpecificity(self: *const PseudoElementSelector) Specificity {
+        const own = Specificity{ .element = 1 };
+        const list = self.argument orelse return own;
+        if (list.selectors.len == 0) return own;
+        return own.add(list.selectors[0].calculateSpecificity());
+    }
 };
 
 // ============================================================================
@@ -939,9 +967,9 @@ pub const Parser = struct {
                         // <pseudo-element-selector> = ':' <pseudo-class-selector>
                         if (ctx.real) return error.InvalidSelector;
                         stream.pos += 2;
-                        const name = try self.parsePseudoElement(stream, pseudo_element);
-                        pseudo_element = name;
-                        break :blk .{ .PseudoElement = .{ .name = name } };
+                        const parsed = try self.parsePseudoElement(stream, pseudo_element);
+                        pseudo_element = parsed.name;
+                        break :blk .{ .PseudoElement = parsed };
                     }
                     stream.advance();
                     const parsed = try self.parsePseudoClass(stream, ctx, pseudo_element);
@@ -1346,12 +1374,15 @@ pub const Parser = struct {
     // Pseudo-elements
     // ========================================================================
 
-    /// After '::': a pseudo-element's name (lowercase), or an error for one
-    /// Crane does not know. `after` is the pseudo-element already in the
-    /// compound: 3.6.4 allows only defined sub-pseudo-elements after one.
-    fn parsePseudoElement(self: *Parser, stream: *Stream, after: ?[]const u8) ParserError![]const u8 {
+    /// After '::': a pseudo-element - its name (lowercase) and the argument
+    /// of ::slotted() or ::part() - or an error for one Crane does not know.
+    /// `after` is the pseudo-element already in the compound: 3.6.4 allows
+    /// only defined sub-pseudo-elements after one.
+    fn parsePseudoElement(self: *Parser, stream: *Stream, after: ?[]const u8) ParserError!PseudoElementSelector {
         const token = stream.peek();
-        const name: []const u8 = switch (token.tag) {
+        var pseudo: PseudoElementSelector = .{ .name = "" };
+        errdefer pseudo.deinit(self.allocator);
+        pseudo.name = switch (token.tag) {
             .ident => blk: {
                 stream.advance();
                 if (knownPseudoElement(token.value, &plain_pseudo_elements)) |known| break :blk known;
@@ -1366,11 +1397,12 @@ pub const Parser = struct {
                 const close = try self.matchingClose(stream.tokens, stream.pos);
                 const args = stream.tokens[stream.pos + 1 .. close];
                 stream.pos = if (close < stream.tokens.len) close + 1 else close;
-                try self.validatePseudoElementArgument(known, args);
+                try self.parsePseudoElementArgument(known, args, &pseudo);
                 break :blk known;
             },
             else => return error.InvalidSelector,
         };
+        const name = pseudo.name;
         if (after) |first| {
             // ::before::marker and ::after::marker; the tree-abiding
             // pseudo-elements of a ::slotted() or ::part() element.
@@ -1382,7 +1414,7 @@ pub const Parser = struct {
                 false;
             if (!ok) return error.InvalidSelector;
         }
-        return name;
+        return pseudo;
     }
 
     const plain_pseudo_elements = [_][]const u8{
@@ -1406,23 +1438,26 @@ pub const Parser = struct {
     }
 
     /// ::slotted(<compound-selector>), ::part(<ident>+), ::highlight(<ident>);
-    /// the others need some argument.
-    fn validatePseudoElementArgument(self: *Parser, name: []const u8, args: []const Token) ParserError!void {
+    /// the others need some argument. ::slotted()'s compound and ::part()'s
+    /// names are kept in `pseudo` for matching.
+    fn parsePseudoElementArgument(self: *Parser, name: []const u8, args: []const Token, pseudo: *PseudoElementSelector) ParserError!void {
         if (std.mem.eql(u8, name, "slotted")) {
-            var list = try self.compoundArgument(args, .{ .real = true });
-            list.deinit();
-            self.allocator.destroy(list);
+            pseudo.argument = try self.compoundArgument(args, .{ .real = true });
             return;
         }
         var stream = Stream{ .tokens = args };
         _ = stream.skipWhitespace();
         if (stream.atEnd()) return error.InvalidSelector;
         if (std.mem.eql(u8, name, "part")) {
+            var names: std.ArrayList([]const u8) = .empty;
+            defer names.deinit(self.scratch);
             while (!stream.atEnd()) {
                 if (stream.peek().tag != .ident) return error.InvalidSelector;
+                try names.append(self.scratch, stream.peek().value);
                 stream.advance();
                 _ = stream.skipWhitespace();
             }
+            pseudo.part_names = try self.allocator.dupe([]const u8, names.items);
         } else if (std.mem.eql(u8, name, "highlight")) {
             _ = try singleToken(args, .ident);
         }

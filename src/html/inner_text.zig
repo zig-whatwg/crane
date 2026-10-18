@@ -11,6 +11,7 @@ const NodeBase = dom.NodeBase;
 const css = dom.style.css;
 const Keyword = css.style_values.Keyword;
 const Display = css.style_values.Display;
+const TextTransform = css.style_values.TextTransform;
 
 /// HTML "get the text steps". The traversal and its scratch storage exist
 /// only during this call; ordinary DOM mutation pays no innerText cost.
@@ -118,7 +119,7 @@ const Style = struct {
     display: Display,
     visible: bool,
     whitespace: Keyword,
-    transform: Keyword,
+    transform: TextTransform,
     position: Keyword,
     floating: Keyword,
 
@@ -128,7 +129,7 @@ const Style = struct {
             .display = style.display(),
             .visible = style.keyword(.visibility) == .visible,
             .whitespace = style.keyword(.white_space_collapse),
-            .transform = style.keyword(.text_transform),
+            .transform = style.textTransform(),
             .position = style.keyword(.position),
             .floating = style.keyword(.float),
         };
@@ -145,7 +146,7 @@ const Token = union(enum) {
     text: struct {
         bytes: []const u8,
         whitespace: Keyword,
-        transform: Keyword = .none,
+        transform: TextTransform = .{},
         language: []const u8 = "",
         visible: bool = true,
         owned: bool = false,
@@ -377,7 +378,7 @@ const Collector = struct {
 
     fn transformText(self: *Collector) !void {
         const needs_transform = for (self.tokens.items) |token| {
-            if (token == .text and token.text.visible and token.text.transform != .none) break true;
+            if (token == .text and token.text.visible and transforms(token.text.transform)) break true;
         } else false;
         if (!needs_transform) return;
         // Capitalize word boundaries span inline nodes. Build the original
@@ -397,17 +398,17 @@ const Collector = struct {
             else => {},
         };
         for (self.tokens.items) |*token| {
-            if (token.* != .text or !token.text.visible or token.text.transform == .none) continue;
+            if (token.* != .text or !token.text.visible or !transforms(token.text.transform)) continue;
             const text = &token.text;
             var mapped: std.ArrayList(u8) = .empty;
             defer mapped.deinit(self.allocator);
             for (text.start..text.end) |index| {
                 const cp = original.items[index];
-                const mode: ?infra.unicode_case.CaseMode = switch (text.transform) {
+                const mode: ?infra.unicode_case.CaseMode = switch (text.transform.case) {
                     .uppercase => .upper,
                     .lowercase => .lower,
                     .capitalize => if (shouldCapitalize(original.items, index, text.language)) .title else null,
-                    else => null,
+                    .none => null,
                 };
                 // Browser majority, no newer spec: Blink LayoutText::
                 // TransformAndSecureText -> ComputedStyle::ApplyTextTransform
@@ -415,7 +416,18 @@ const Collector = struct {
                 // original Text separately. Only capitalize's word boundary
                 // sees preceding inline text (WHATWG/CSS Text, ruling Q8).
                 const mapping = if (mode) |m| infra.unicode_case.map(original.items[text.start..text.end], index - text.start, m, text.language) else infra.unicode_case.Mapping.identity(cp);
-                for (mapping.points[0..mapping.len]) |point| {
+                for (mapping.points[0..mapping.len]) |cased| {
+                    // CSS Text 4 2.1: the case transformation first, then
+                    // full-width, then full-size-kana. Stated: math-auto
+                    // (MathML Core 4.2) maps nothing here.
+                    var point = cased;
+                    // full-width maps the space that survives collapsing
+                    // (css-text text-transform-fullwidth-006), and these
+                    // tokens are not collapsed yet: collapsible white space
+                    // is left as it is. Stated: so the surviving space stays
+                    // U+0020, where Chrome and Safari give U+3000.
+                    if (text.transform.full_width and !((text.whitespace == .collapse or text.whitespace == .preserve_breaks) and isAsciiWhitespace(point))) point = infra.unicode_case.fullWidth(point);
+                    if (text.transform.full_size_kana) point = css.text_transform.fullSizeKana(point);
                     var encoded: [4]u8 = undefined;
                     const length = try std.unicode.wtf8Encode(point, &encoded);
                     try infra.wtf8.appendJoined(self.allocator, &mapped, encoded[0..length]);
@@ -428,6 +440,15 @@ const Collector = struct {
         }
     }
 };
+
+fn isAsciiWhitespace(cp: u21) bool {
+    return cp == ' ' or cp == '\t' or cp == '\n' or cp == '\r' or cp == 0x0C;
+}
+
+/// Whether `transform` changes any code point innerText reads.
+fn transforms(transform: TextTransform) bool {
+    return transform.case != .none or transform.full_width or transform.full_size_kana;
+}
 
 /// CSS Text 4 permits a UA-defined word boundary. Letters, numbers, marks,
 /// connector punctuation and format characters continue a word; other
@@ -683,11 +704,11 @@ test "casing stays within each text node and releases every failed allocation" {
 fn transformAllocationFailures(allocator: Allocator) !void {
     var collector = Collector{ .allocator = allocator };
     defer collector.deinit();
-    try collector.emit(.{ .text = .{ .bytes = "Ο", .whitespace = .collapse, .transform = .lowercase } });
-    try collector.emit(.{ .text = .{ .bytes = "Σ", .whitespace = .collapse, .transform = .lowercase } });
+    try collector.emit(.{ .text = .{ .bytes = "Ο", .whitespace = .collapse, .transform = .{ .case = .lowercase } } });
+    try collector.emit(.{ .text = .{ .bytes = "Σ", .whitespace = .collapse, .transform = .{ .case = .lowercase } } });
     try collector.emit(.{ .literal = '\n' });
-    try collector.emit(.{ .text = .{ .bytes = "I", .whitespace = .collapse, .transform = .lowercase, .language = "lt" } });
-    try collector.emit(.{ .text = .{ .bytes = "\u{301}", .whitespace = .collapse, .transform = .lowercase, .language = "lt" } });
+    try collector.emit(.{ .text = .{ .bytes = "I", .whitespace = .collapse, .transform = .{ .case = .lowercase }, .language = "lt" } });
+    try collector.emit(.{ .text = .{ .bytes = "\u{301}", .whitespace = .collapse, .transform = .{ .case = .lowercase }, .language = "lt" } });
     try collector.transformText();
     try std.testing.expectEqualStrings("ο", collector.tokens.items[0].text.bytes);
     // Blink ApplyTextTransform and WebKit applyTextTransform map the one
@@ -733,9 +754,9 @@ test "hidden inline text affects capitalize but casing context remains per text 
     var collector = Collector{ .allocator = std.testing.allocator };
     defer collector.deinit();
     try collector.emit(.{ .text = .{ .bytes = "x", .whitespace = .collapse, .visible = false } });
-    try collector.emit(.{ .text = .{ .bytes = "abc", .whitespace = .collapse, .transform = .capitalize } });
+    try collector.emit(.{ .text = .{ .bytes = "abc", .whitespace = .collapse, .transform = .{ .case = .capitalize } } });
     try collector.emit(.{ .literal = '\n' });
-    try collector.emit(.{ .text = .{ .bytes = "ΟΣ", .whitespace = .collapse, .transform = .lowercase } });
+    try collector.emit(.{ .text = .{ .bytes = "ΟΣ", .whitespace = .collapse, .transform = .{ .case = .lowercase } } });
     try collector.emit(.{ .text = .{ .bytes = "Α", .whitespace = .collapse, .visible = false } });
     try collector.transformText();
     try std.testing.expectEqualStrings("abc", collector.tokens.items[1].text.bytes);
@@ -751,7 +772,7 @@ test "capitalize chooses the first letter or number unit after nonletter word pr
     try collector.emit(.{ .text = .{
         .bytes = "_foo ⅰord 123abc \u{345}abc",
         .whitespace = .collapse,
-        .transform = .capitalize,
+        .transform = .{ .case = .capitalize },
     } });
     try collector.transformText();
     try std.testing.expectEqualStrings("_Foo Ⅰord 123abc \u{345}Abc", collector.tokens.items[0].text.bytes);
@@ -763,10 +784,10 @@ test "required line breaks and hidden box boundaries have separate capitalize co
     for ([_]bool{ false, true }) |word_boundary| {
         var collector = Collector{ .allocator = std.testing.allocator };
         defer collector.deinit();
-        try collector.emit(.{ .text = .{ .bytes = "p", .whitespace = .collapse, .transform = .capitalize } });
+        try collector.emit(.{ .text = .{ .bytes = "p", .whitespace = .collapse, .transform = .{ .case = .capitalize } } });
         try collector.emit(.{ .required = .{ .count = 1, .word_boundary = word_boundary } });
         try collector.emit(.{ .context_break = word_boundary });
-        try collector.emit(.{ .text = .{ .bytes = "ass", .whitespace = .collapse, .transform = .capitalize } });
+        try collector.emit(.{ .text = .{ .bytes = "ass", .whitespace = .collapse, .transform = .{ .case = .capitalize } } });
         try collector.transformText();
         try std.testing.expectEqualStrings(if (word_boundary) "Ass" else "ass", collector.tokens.items[3].text.bytes);
         var result = TextResult{ .allocator = std.testing.allocator };
@@ -876,4 +897,23 @@ fn mergeWithNextTextNode(node: *NodeBase) !void {
     try interfaces.CharacterData.call_appendData(instance, data);
     // Step 4.
     try dom.mutation.remove(next, false);
+}
+
+test "full-width and full-size-kana map after the case transformation" {
+    // CSS Text 4 2.1: full-width puts a character in its <wide> form (or
+    // from its <narrow> form), full-size-kana maps small Kana (Appendix G);
+    // the case transformation comes first.
+    var collector = Collector{ .allocator = std.testing.allocator };
+    defer collector.deinit();
+    try collector.emit(.{ .text = .{ .bytes = "ab 1!", .whitespace = .collapse, .transform = .{ .case = .uppercase, .full_width = true } } });
+    try collector.emit(.{ .text = .{ .bytes = "ぁゃッｧ", .whitespace = .collapse, .transform = .{ .full_size_kana = true } } });
+    try collector.emit(.{ .text = .{ .bytes = "ｧ", .whitespace = .collapse, .transform = .{ .full_width = true, .full_size_kana = true } } });
+    try collector.emit(.{ .text = .{ .bytes = "x", .whitespace = .collapse, .transform = .{ .math_auto = true } } });
+    try collector.transformText();
+    try std.testing.expectEqualStrings("ＡＢ １！", collector.tokens.items[0].text.bytes);
+    try std.testing.expectEqualStrings("あやツｱ", collector.tokens.items[1].text.bytes);
+    // Half-width small A: full-width gives the full-width small ァ, which
+    // full-size-kana then makes full-size ア.
+    try std.testing.expectEqualStrings("ア", collector.tokens.items[2].text.bytes);
+    try std.testing.expectEqualStrings("x", collector.tokens.items[3].text.bytes);
 }

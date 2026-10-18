@@ -1494,9 +1494,13 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
             // Copied field for field through the list's own hook: going
             // through setAttributeNS would validate and reject names the list
             // legitimately holds, and `attributes` makes an Attr node each.
+            // `by_cloning`: the style attribute's change steps skip their CSP
+            // check for a copied attribute, as all three browsers do (Element).
             var index: usize = 0;
             while (dom_module.element_attributes.at(node, index)) |attribute| : (index += 1) {
-                try dom_module.element_attributes.append(copy, attribute);
+                var copied = attribute;
+                copied.by_cloning = true;
+                try dom_module.element_attributes.append(copy, copied);
             }
 
             try setOwnerDocument(copy, owner);

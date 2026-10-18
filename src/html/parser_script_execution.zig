@@ -328,6 +328,11 @@ pub fn domAdapterOnChildAppended(parent: *TreeNode, child: *TreeNode, context: ?
 
 pub fn domAdapterOnInserted(location: TreeBuilder.InsertionLocation, child: *TreeNode, context: ?*anyopaque) void {
     const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
+    // The element the tree builder pushes next is "on the stack" while its
+    // insertion steps run (DocumentParser.isOnStackOfOpenElements).
+    const outer = adapter.inserting;
+    adapter.inserting = if (child.node_type == .element) child else null;
+    defer adapter.inserting = outer;
     const inserted = parser_mutation.insert(adapter, location, child) catch false;
     if (inserted) adapter.removeOrphan(child) else adapter.keepFailedInsertion(child);
     adapter.endPendingHold(child);
@@ -555,10 +560,23 @@ pub fn domAdapterOnElementPopped(tree_node: *TreeNode, context: ?*anyopaque) voi
 /// dom.finish_parsing_children hears that the element's children are parsed.
 /// Passed to tree_builder.setDomAdapterFinishedCallback().
 pub fn domAdapterOnChildrenFinished(tree_node: *TreeNode, context: ?*anyopaque) void {
-    if (tree_node.node_type != .element or tree_node.namespace != .html) return;
+    if (tree_node.node_type != .element) return;
+    const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
+    // HTML 13.2.4.3: "When the current node is removed from the stack of
+    // open elements, process internal resource links given the current
+    // node's node document" - for an element of any namespace, which an
+    // expect link can indicate by its ID. Nothing to do, at the cost of one
+    // check, while no expect link blocks the parser's document.
+    if (dom.document_rendering.hasExpectLinks(adapter.document)) {
+        if (adapter.getDomNode(tree_node)) |element| {
+            if (interfaces.Node.get_ownerDocument(element) catch null) |document| {
+                dom.document_rendering.processInternalResourceLinks(document, element);
+            }
+        }
+    }
+    if (tree_node.namespace != .html) return;
     const local_name = tree_node.local_name orelse return;
     if (!dom.finish_parsing_children.hasSteps(local_name)) return;
-    const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
     const element = adapter.getDomNode(tree_node) orelse return;
     dom.finish_parsing_children.finishedParsingChildren(element, local_name);
 }
@@ -700,6 +718,11 @@ pub const DomTreeAdapter = struct {
     last_creation: ?Creation = null,
     document_generation: u64,
     had_engine: bool,
+
+    /// The element the tree builder is inserting (`domAdapterOnInserted`),
+    /// which it pushes onto its stack of open elements next; null outside
+    /// an insertion.
+    inserting: ?*TreeNode = null,
 
     /// The tree builder tells this adapter when an element leaves its stack
     /// of open elements (`domAdapterOnChildrenFinished`, wired by the

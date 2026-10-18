@@ -601,6 +601,26 @@ pub const DocumentParser = struct {
         return dom.instance_bridge.getNodeBase(instance);
     }
 
+    /// HTML "is on a stack of open elements of an HTML parser whose
+    /// associated Document is doc" for this parser (Document asks its
+    /// active one; WebKit's HTMLDocumentParser::isOnStackOfOpenElements).
+    /// The element the tree builder is inserting counts as on the stack: it
+    /// pushes it right after the insertion (HTML "insert a foreign element"
+    /// steps 3-4), WebKit pushes before its queued attach runs, and Blink's
+    /// insertion steps skip an element whose children are not parsed yet - a
+    /// parsed expect link's target unblocks when the parser POPS it.
+    /// O(stack depth).
+    pub fn isOnStackOfOpenElements(self: *const DocumentParser, element: *runtime.Instance) bool {
+        if (self.document_destroyed or !self.adapter.isAlive()) return false;
+        if (self.adapter.inserting) |tree_node| {
+            if (self.adapter.getDomNode(tree_node) == element) return true;
+        }
+        for (self.tree_builder.heldNodes().stack) |tree_node| {
+            if (self.adapter.getDomNode(tree_node) == element) return true;
+        }
+        return false;
+    }
+
     /// Whether `root` - left parentless by a removal - is a host-including
     /// inclusive ancestor of a node this parser holds (design 5.3). The
     /// stack is normally a parent chain, so an entry whose parent is the

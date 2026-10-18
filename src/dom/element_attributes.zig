@@ -36,6 +36,10 @@ pub const Attribute = struct {
     prefix: ?[]const u8,
     local_name: []const u8,
     value: []const u8,
+    /// `append` copies it from the node a clone is made of (DOM "clone a
+    /// single node" step 3), which some attribute change steps tell apart -
+    /// the style attribute's CSP check (Element). Never set by a list read.
+    by_cloning: bool = false,
 };
 
 /// What the Element impl supplies.

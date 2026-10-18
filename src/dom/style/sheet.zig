@@ -380,7 +380,8 @@ pub const RuleData = struct {
     /// The innermost @media condition around the rule, an index into
     /// `Contents.conditions`; null for none.
     condition: ?u32,
-    /// The pseudo-element the subject compound names, if any.
+    /// The pseudo-element the rule styles: the one the subject compound
+    /// names - for ::slotted() and ::part(), the one after them - if any.
     pseudo: ?[]const u8,
 };
 
@@ -423,6 +424,12 @@ pub const Contents = struct {
         attribute: std.StringHashMapUnmanaged(std.ArrayList(u32)) = .empty,
         universal: std.ArrayList(u32) = .empty,
         pseudo: std.ArrayList(u32) = .empty,
+        /// Rules whose subject compound has ::slotted() (CSS Scoping 3.2.2),
+        /// matched against the elements assigned to the sheet's slots.
+        slotted: std.ArrayList(u32) = .empty,
+        /// Rules whose subject compound has ::part() (CSS Shadow Parts
+        /// 4.1), matched against the parts of the sheet's tree's hosts.
+        part: std.ArrayList(u32) = .empty,
 
         fn deinit(self: *Buckets, allocator: Allocator) void {
             inline for (.{ &self.id, &self.class, &self.tag, &self.attribute }) |map| {
@@ -432,6 +439,8 @@ pub const Contents = struct {
             }
             self.universal.deinit(allocator);
             self.pseudo.deinit(allocator);
+            self.slotted.deinit(allocator);
+            self.part.deinit(allocator);
         }
     };
 
@@ -620,7 +629,7 @@ const Compiler = struct {
                 .position = position,
                 .layer = layer,
                 .condition = condition,
-                .pseudo = pseudoElementOf(&complex.compound),
+                .pseudo = styledPseudoElementOf(&complex.compound),
             });
             try self.bucket(index, complex);
         }
@@ -631,7 +640,11 @@ const Compiler = struct {
     fn bucket(self: *Compiler, index: u32, complex: *const selector.ComplexSelector) Allocator.Error!void {
         const a = self.contents.allocator;
         const b = &self.contents.buckets;
-        if (pseudoElementOf(&complex.compound) != null) return b.pseudo.append(a, index);
+        if (pseudoElementOf(&complex.compound)) |name| {
+            if (std.mem.eql(u8, name, "slotted")) return b.slotted.append(a, index);
+            if (std.mem.eql(u8, name, "part")) return b.part.append(a, index);
+            return b.pseudo.append(a, index);
+        }
         var id: ?[]const u8 = null;
         var class: ?[]const u8 = null;
         var attribute: ?[]const u8 = null;
@@ -657,6 +670,24 @@ const Compiler = struct {
 fn pseudoElementOf(compound: *const selector.CompoundSelector) ?[]const u8 {
     for (compound.simple_selectors) |*simple| switch (simple.*) {
         .PseudoElement => |p| return p.name,
+        else => {},
+    };
+    return null;
+}
+
+/// The pseudo-element a rule styles: the compound's, or - after ::slotted()
+/// or ::part(), which select elements - the one that follows, if any.
+fn styledPseudoElementOf(compound: *const selector.CompoundSelector) ?[]const u8 {
+    var found: ?[]const u8 = null;
+    for (compound.simple_selectors) |*simple| switch (simple.*) {
+        .PseudoElement => |p| {
+            const selects_element = std.mem.eql(u8, p.name, "slotted") or std.mem.eql(u8, p.name, "part");
+            if (found == null and selects_element) {
+                found = "";
+                continue;
+            }
+            return p.name;
+        },
         else => {},
     };
     return null;
@@ -697,6 +728,25 @@ test "compiling: rules bucketed by their subject, invalid selectors dropped, con
     try testing.expect(span.condition != null);
     try testing.expect(!contents.conditionHolds(span.condition, &.{}));
     try testing.expect(contents.conditionHolds(span.condition, &.{ .media_type = .print }));
+}
+
+test "::slotted() and ::part() rules are filed apart, with the pseudo-element they style" {
+    const contents = try Contents.parse(testing.allocator,
+        \\slot::slotted(span) { color: red }
+        \\::slotted(*)::before { color: red }
+        \\x-a::part(label) { color: red }
+        \\x-a::part(label)::after { color: red }
+        \\p::before { color: red }
+    , .{});
+    defer contents.destroy();
+    try testing.expectEqual(@as(usize, 2), contents.buckets.slotted.items.len);
+    try testing.expectEqual(@as(usize, 2), contents.buckets.part.items.len);
+    try testing.expectEqual(@as(usize, 1), contents.buckets.pseudo.items.len);
+    try testing.expect(contents.rules.items[0].pseudo == null);
+    try testing.expectEqualStrings("before", contents.rules.items[1].pseudo.?);
+    try testing.expect(contents.rules.items[2].pseudo == null);
+    try testing.expectEqualStrings("after", contents.rules.items[3].pseudo.?);
+    try testing.expectEqualStrings("before", contents.rules.items[4].pseudo.?);
 }
 
 test "layers: names declared in order, nested names dotted, statements first" {

@@ -195,6 +195,67 @@ pub const StyleMatcher = struct {
         return self.matcher.matchesComplex(.{ .node = node, .featureless = true }, complex);
     }
 
+    /// Whether `complex`, a rule of the shadow tree `slot` is in (the
+    /// matcher is `init(slot)`), matches `element` - or its `pseudo` - as
+    /// ::slotted() (CSS Scoping 3.2.2): `element` is assigned, after
+    /// flattening, to `slot`. In the subject compound, the simple selectors
+    /// before ::slotted() and the combinators to its left match the slot in
+    /// its tree; its argument and what follows it match `element`.
+    pub fn matchesSlotted(self: *StyleMatcher, element: *runtime.Instance, slot: *runtime.Instance, complex: *const ComplexSelector, pseudo: ?[]const u8) bool {
+        const node = instance_bridge.getNodeBase(element) orelse return false;
+        const slot_node = instance_bridge.getNodeBase(slot) orelse return false;
+        return self.matchesAround(node, slot_node, complex, "slotted", pseudo);
+    }
+
+    /// Whether `complex`, a rule of the tree `host` is in (the matcher is
+    /// `init(host)`), matches `element` - or its `pseudo` - as ::part() (CSS
+    /// Shadow Parts 4.1): `element` is in `host`'s shadow tree and its part
+    /// names include every name ::part() lists. The simple selectors before
+    /// ::part() and the combinators match the host; what follows ::part()
+    /// matches `element`. Stated: names forwarded by exportparts are not.
+    pub fn matchesPart(self: *StyleMatcher, element: *runtime.Instance, host: *runtime.Instance, complex: *const ComplexSelector, pseudo: ?[]const u8) bool {
+        const node = instance_bridge.getNodeBase(element) orelse return false;
+        const host_node = instance_bridge.getNodeBase(host) orelse return false;
+        return self.matchesAround(node, host_node, complex, "part", pseudo);
+    }
+
+    /// ::slotted() and ::part(): the subject compound split at the
+    /// pseudo-element named `name` - its left part matched against `outer`
+    /// (the slot, the host) and its argument, part names and right part
+    /// against `element` - then the combinators from `outer`.
+    fn matchesAround(self: *StyleMatcher, element: *NodeBase, outer: *NodeBase, complex: *const ComplexSelector, name: []const u8, pseudo: ?[]const u8) bool {
+        if (element.node_type != ELEMENT_NODE or outer.node_type != ELEMENT_NODE) return false;
+        const simples = complex.compound.simple_selectors;
+        const at = for (simples, 0..) |*simple, i| {
+            if (simple.* == .PseudoElement and std.mem.eql(u8, simple.PseudoElement.name, name)) break i;
+        } else return false;
+        const outer_data = dataOf(outer) orelse return false;
+        for (simples[0..at]) |*simple| {
+            if (!self.matcher.matchesSimple(outer, outer_data, simple)) return false;
+        }
+        // The pseudo-element's own condition, then the rest of the compound,
+        // matched against `element` in its own tree.
+        const root = rootOf(element);
+        const root_instance = instanceOf(root) orelse return false;
+        var inner = Matcher.init(root, root_instance);
+        inner.state_reads = self.matcher.state_reads;
+        const data = dataOf(element) orelse return false;
+        const own = &simples[at].PseudoElement;
+        if (own.argument) |list| if (!inner.matchesList(.{ .node = element }, list)) return false;
+        if (own.part_names.len != 0 and !hasPartNames(data, own.part_names)) return false;
+        // A sub-pseudo-element (::slotted(x)::before) is what `pseudo` asks
+        // for, exactly when one is asked for.
+        var sub: ?[]const u8 = null;
+        for (simples[at + 1 ..]) |*simple| switch (simple.*) {
+            .PseudoElement => |p| sub = p.name,
+            else => if (!inner.matchesSimple(element, data, simple)) return false,
+        };
+        if ((sub == null) != (pseudo == null)) return false;
+        if (sub) |own_sub| if (!std.ascii.eqlIgnoreCase(own_sub, pseudo.?)) return false;
+        if (complex.combinators.len == 0) return true;
+        return self.matcher.matchCombinators(complex, 0, .{ .node = outer }) == .matched;
+    }
+
     /// Whether `complex` matches `element` - or, with `pseudo`, that
     /// pseudo-element of it: the subject compound must name the
     /// pseudo-element exactly when one is asked for.
@@ -207,6 +268,27 @@ pub const StyleMatcher = struct {
         return self.matcher.matchesComplex(.{ .node = node }, complex);
     }
 };
+
+/// CSS Shadow Parts 4.1: the element's part name list - its `part`
+/// attribute's tokens - holds every name of `names` (case-sensitively).
+fn hasPartNames(data: *const ElementData, names: []const []const u8) bool {
+    const part = data.findAttribute(null, "part") orelse return false;
+    for (names) |wanted| {
+        var tokens = std.mem.tokenizeAny(u8, part.value, " \t\n\r\x0c");
+        const found = while (tokens.next()) |token| {
+            if (std.mem.eql(u8, token, wanted)) break true;
+        } else false;
+        if (!found) return false;
+    }
+    return true;
+}
+
+/// The root of `node`'s tree.
+fn rootOf(node: *NodeBase) *NodeBase {
+    var root = node;
+    while (root.parent_node) |parent| root = parent;
+    return root;
+}
 
 /// Section 5.3's table: whether `kind`, evaluated on an element with
 /// `data`, can change its answer with no tree mutation (for elements where
