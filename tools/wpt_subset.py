@@ -178,6 +178,15 @@ EXCLUDE = [
     # Re-include when the PR merges or a stable browser ships it.
     ('websockets/constructor/option-bag.any.js',           'WebSocketInit, unmerged whatwg/websockets#76'),
     ('websockets/constructor/target-address-space.any.js', 'WebSocketInit, unmerged whatwg/websockets#76'),
+    # The editable combobox (<input list> with appearance:base) exists only in
+    # Open UI's explainer (the file's only rel=help is
+    # open-ui.org/components/combobox.explainer); HTML has no text for it, and
+    # every sibling in customizable-combobox/ is .tentative. No browser passes
+    # it (wpt.fyi 23b0b89b1a, 2026-10-18: Chrome, Firefox and Safari fail
+    # "Datalist should open after focusing input"; Edge 0 of 1). Codex row 72
+    # Q7. Re-include when HTML specifies it or a stable browser ships it.
+    ('html/semantics/forms/customizable-combobox/customizable-combobox-option-attributes.html',
+     'editable combobox, Open UI explainer only'),
 
     # XML-serialised documents: .xhtml, .svg, .xml.
     #
