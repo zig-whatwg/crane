@@ -203,7 +203,15 @@ pub const Implementation = struct {
     select_options: *const fn (*runtime.Instance, *runtime.Instance, bool) void,
     table: *const fn (*runtime.Instance, *runtime.Instance, TableFilter) void,
     root: *const fn (*runtime.Instance) ?*runtime.Instance,
+    /// Make `collection` the named-property collection of `document` for
+    /// `name` (domindex1): a Document's named elements, or the elements
+    /// among its Window's named objects, read from the document's maps
+    /// (dom.tree_ordered_map). Null while HTMLCollection installs none.
+    named_items: ?*const fn (collection: *runtime.Instance, document: *runtime.Instance, kind: NamedKind, name: []const u8) error{OutOfMemory}!void = null,
 };
+
+/// Which named-property collection (dom.tree_ordered_map.NamedKind).
+pub const NamedKind = @import("tree_ordered_map.zig").NamedKind;
 
 /// Process-wide, written once at start-up (process_start.zig).
 var implementation: ?Implementation = null;
@@ -269,6 +277,15 @@ pub fn selectOptions(collection: *runtime.Instance, select: *runtime.Instance, s
 
 pub fn table(collection: *runtime.Instance, root: *runtime.Instance, filter: TableFilter) !void {
     (implementation orelse return error.NotSupported).table(collection, root, filter);
+}
+
+/// HTML 3.1.7 named getter step 4 ("an HTMLCollection rooted at the
+/// Document node, whose filter matches only named elements with the name
+/// name") and 7.2.2.3 step 4 (the same, for a Window's named objects):
+/// make `collection` - just created, empty - that live collection.
+pub fn namedItems(collection: *runtime.Instance, document: *runtime.Instance, kind: NamedKind, name: []const u8) !void {
+    const step = (implementation orelse return error.NotSupported).named_items orelse return error.NotSupported;
+    try step(collection, document, kind, name);
 }
 
 /// The owner-checked live root, or null after its native lifetime ends.

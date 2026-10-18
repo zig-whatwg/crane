@@ -1049,7 +1049,25 @@ fn attributeChangeSteps(
     // id, namespace is null, then set element's ID to value." The class and
     // slot caches follow their attributes the same way.
     if (std.mem.eql(u8, local_name, "id")) {
-        replaceCachedValue(internal, &internal.data.id, value);
+        // domindex1: the element's tree scope's maps follow its ID - out
+        // under the old one before the cache moves, in under the new one
+        // after (Blink Element::UpdateId, WebKit Element::updateId). An
+        // unchanged value changes nothing (and keeps a known order).
+        if (sameAttributeValue(old_value, value)) {
+            replaceCachedValue(internal, &internal.data.id, value);
+        } else {
+            const change = dom.tree_ordered_map.beginChange(instance, &internal.data, .current);
+            replaceCachedValue(internal, &internal.data.id, value);
+            dom.tree_ordered_map.endChange(&internal.data, change);
+        }
+    } else if (std.mem.eql(u8, local_name, "name")) {
+        // domindex1: and its name attribute, which names embed, form,
+        // iframe, img and object elements (Blink Element::UpdateName, WebKit
+        // Element::updateName) - an img's ID too, while the name is
+        // non-empty.
+        if (!sameAttributeValue(old_value, value)) {
+            dom.tree_ordered_map.endChange(&internal.data, dom.tree_ordered_map.beginChange(instance, &internal.data, .{ .was = old_value orelse "" }));
+        }
     } else if (std.mem.eql(u8, local_name, "class")) {
         replaceCachedValue(internal, &internal.data.class_name, value);
     } else if (std.mem.eql(u8, local_name, "slot")) {
@@ -1076,6 +1094,14 @@ fn attributeChangeSteps(
     dom.attribute_change_steps.runForAttribute(instance, element_namespace, local_name, old_value, value, namespace);
     if (!std.mem.eql(u8, element_namespace, "http://www.w3.org/1999/xhtml")) return;
     dom.attribute_change_steps.run(instance, internal.data.local_name.asSlice(), local_name, old_value, value, namespace);
+}
+
+/// Whether an attribute change left its value as it was (both absent, or
+/// equal strings).
+fn sameAttributeValue(old_value: ?[]const u8, value: ?[]const u8) bool {
+    const old = old_value orelse return value == null;
+    const new = value orelse return false;
+    return std.mem.eql(u8, old, new);
 }
 
 fn replaceCachedValue(internal: *InternalState, cache: *runtime.DOMString, value: ?[]const u8) void {

@@ -434,6 +434,12 @@ pub const InternalState = struct {
     custom_element_registry: @import("dom").custom_elements.RegistryAssociation = .{},
     owns_native_global_registry: bool = false,
 
+    /// domindex1: this tree scope's maps from IDs, and from its named
+    /// properties' names, to its elements (dom.tree_ordered_map): what
+    /// getElementById, the named getter and the Window's named properties
+    /// answer from. Kept by the mutation and attribute change hooks.
+    tree_index: @import("dom").tree_ordered_map.Maps,
+
     /// V8 wrapper for this Document, created in the Document's owning context.
     /// Used for cross-context access (e.g., iframe.contentDocument from parent).
     /// When a Document is accessed from a different context than where it was created,
@@ -511,10 +517,14 @@ pub const InternalState = struct {
             .fonts = null,
             // HTMLAllCollection (undetectable legacy object)
             .all_collection = null,
+            .tree_index = @import("dom").tree_ordered_map.Maps.init(allocator, .document),
         };
     }
 
     pub fn deinit(self: *InternalState) void {
+        // domindex1: the maps go first, and keep nothing after: a node the
+        // rest of this teardown releases is in no reader's answer.
+        self.tree_index.deinit();
         self.script_delivery_continuation_suppressed = true;
         // Borrowed membership ends before parsers/module owners release nodes.
         self.render_blocking_elements.clear();
@@ -724,6 +734,13 @@ fn countsOf(document: *runtime.Instance) ?*@import("dom").refcount.DocumentCount
     return &internal.refcounts;
 }
 
+/// dom.tree_ordered_map (domindex1): `document`'s maps, or null for an
+/// instance that is no live Document.
+fn treeIndexOf(document: *runtime.Instance) ?*@import("dom").tree_ordered_map.Maps {
+    const internal = getInternal(document) orelse return null;
+    return &internal.tree_index;
+}
+
 /// dom.policy_containers: `document`'s policy container.
 fn policyContainerOf(document: *runtime.Instance) ?*fetch.internal.PolicyContainer {
     const internal = getInternal(document) orelse return null;
@@ -740,6 +757,8 @@ pub fn installHooks() void {
     @import("dom").style.hooks.install(.{ .engine_of = &styleEngineOf, .media_values = &styleMediaValues, .document_adopted_sheets = &adoptedSheetsOf });
     @import("dom").template_contents.install(.{ .owner_document = &templateOwnerDocument });
     @import("dom").refcount.install(.{ .document_counts = &countsOf });
+    // domindex1: its tree scope's ID and named-property maps.
+    @import("dom").tree_ordered_map.installDocument(&treeIndexOf);
     @import("dom").custom_elements.installDocument(.{
         .set_registry = &setCustomElementRegistry,
         .ensure_global_registry = &ensureGlobalRegistry,
@@ -5828,32 +5847,105 @@ pub fn setStylesheetBlockingResolvedCallback(
 // Named Property Access (HTML Standard § 7.3.3)
 // =============================================================================
 
-/// Get the supported property names for named property access.
-/// Per HTML spec, documents expose named elements (name/id attributes) as properties.
-/// This is used by the named property enumerator for Object.keys(document).
-///
-/// TODO: Implement proper named element collection per HTML spec.
-/// Currently returns empty array to avoid breaking compilation.
+/// HTML 3.1.7: "The supported property names of a Document object document
+/// at any moment consist of the following, for each element element in a
+/// document tree with document as its root, in tree order, ignoring later
+/// duplicates: the value of element's id content attribute, if element is a
+/// named element with that value as its name; and then the value of
+/// element's name content attribute, if element is a named element with
+/// that value as its name." Enumeration only (Object.keys(document)): a
+/// walk, and none at all while the document's maps hold no name
+/// (domindex1). The browsers order these three ways - Blink by insertion,
+/// WebKit sorted, Gecko by hash - and none is a majority, so the spec's
+/// order stands; id-before-name per element is also Chrome's and Safari's
+/// (nameditem-supported-property-names-order: Chrome, Safari pass).
 pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
-    _ = instance;
-    _ = allocator;
-    // TODO: Return names of elements with name/id attributes that are
-    // accessible via document.name syntax per HTML spec § 7.3.3
-    return &.{};
+    const list = try @import("dom").tree_ordered_map.supportedNames(instance, .document, allocator);
+    // The unforgeable names are never visible (`unforgeable_names`): the
+    // list holds only names the binding may show.
+    var kept: usize = 0;
+    for (list) |*name| {
+        if (isUnforgeableName(name.asSlice())) {
+            name.deinit(allocator);
+            continue;
+        }
+        list[kept] = name.*;
+        kept += 1;
+    }
+    if (kept == list.len) return list;
+    if (allocator.resize(list, kept)) return list[0..kept];
+    const copy = allocator.dupe(runtime.DOMString, list[0..kept]) catch |err| {
+        for (list[0..kept]) |*name| name.deinit(allocator);
+        allocator.free(list);
+        return err;
+    };
+    allocator.free(list);
+    return copy;
 }
 
-/// Named property getter for accessing elements by name/id.
-/// Per HTML spec § 7.3.3, documents expose named elements as properties.
-/// For example: document.myForm returns the form with name="myForm" or id="myForm".
+/// Document's [LegacyUnforgeable] members (HTML's partial interface: only
+/// `location`). WebIDL 3.9.7 the named property visibility algorithm, step
+/// 2: "If O has an own property named P, then return false" - and an
+/// unforgeable attribute IS an own property of every Document (3.7.5),
+/// which no named element shadows, [LegacyOverrideBuiltIns] or not
+/// (named-access-on-the-window-object/strict-mode-redefine-readonly-property:
+/// `<form name=location>` leaves document.location the Location, in all
+/// three browsers). Stated deviation, compensated here: Crane's binding
+/// defines Document's unforgeable attributes on Document.prototype, not on
+/// the instance (v8 interface.zig makes only Location's members own), so its
+/// visibility check cannot see them; the per-name query and the list leave
+/// these names out instead, which is what the visibility algorithm answers.
+const unforgeable_names = [_][]const u8{"location"};
+
+fn isUnforgeableName(name: []const u8) bool {
+    for (unforgeable_names) |unforgeable| if (std.mem.eql(u8, name, unforgeable)) return true;
+    return false;
+}
+
+/// WebIDL 3.9.7 step 1 for ONE name - "is P a supported property name?" -
+/// which the [LegacyOverrideBuiltIns] interceptor asks before every
+/// property read of a document (document.body included): one lookup in the
+/// document's maps, and none while they hold no name (domindex1; WebKit
+/// HTMLDocument::isSupportedPropertyName, Blink HTMLDocument::HasNamedItem).
+/// Agrees with the list above by construction: both read the maps' rule
+/// (dom.tree_ordered_map keysOf).
+pub fn isSupportedPropertyName(instance: *runtime.Instance, name: runtime.DOMString) anyerror!bool {
+    if (isUnforgeableName(name.asSlice())) return false;
+    return @import("dom").tree_ordered_map.isNamed(instance, .document, name.asSlice());
+}
+
+/// HTML 3.1.7 "determine the value of a named property" name for a
+/// Document (domindex1):
 ///
-/// TODO: Implement proper named element access per HTML spec.
-/// Currently returns null to indicate property not found.
+/// 1. "Let elements be the list of named elements with the name name that
+///    are in a document tree with the Document as their root." (The maps
+///    count them and know the first.)
+/// 2. "If elements has only one element, and that element is an iframe
+///    element, and that iframe element's content navigable is not null, then
+///    return the active WindowProxy of the element's content navigable."
+/// 3. "Otherwise, if elements has only one element, return that element."
+/// 4. "Otherwise, return an HTMLCollection rooted at the Document node,
+///    whose filter matches only named elements with the name name." The
+///    same collection while its wrapper lives (`document.a === document.a`;
+///    Blink's EnsureCachedCollection(kDocumentNamedItems), WebKit's
+///    documentNamedItems cache): all three browsers keep it
+///    (nameditem-tree-order).
 pub fn call_getter(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = name;
-    // TODO: Implement HTML spec § 7.3.3 named element access
-    // Should return the element with matching name/id, or HTMLCollection if multiple
-    return .null;
+    const tree_ordered_map = @import("dom").tree_ordered_map;
+    // Step 1.
+    const elements = tree_ordered_map.named(instance, .document, name.asSlice());
+    if (elements.count == 0) return .undefined;
+    if (elements.count == 1) {
+        const first = elements.first.?;
+        // Step 2.
+        if (first.stateAs(interfaces.HTMLIFrameElement.State) != null) {
+            if (try interfaces.HTMLIFrameElement.get_contentWindow(first)) |window| return .{ .instance = window };
+        }
+        // Step 3.
+        return .{ .instance = first };
+    }
+    // Step 4.
+    return .{ .instance = try tree_ordered_map.namedCollection(instance, .document, name.asSlice()) };
 }
 
 /// dom.teardown_sweeps: at its Browser's end, every Document state still in

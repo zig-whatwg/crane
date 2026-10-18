@@ -67,6 +67,10 @@ pub const InternalState = struct {
     filter_class: ?runtime.DOMString = null,
     /// getElementsByTagName(NS)'s filter (`NameFilter`); its strings are owned.
     name_filter: NameFilter = .{},
+    /// domindex1: a named-property collection's name (owned) and kind - a
+    /// Document's named elements or its Window's named objects.
+    named_items_name: ?runtime.DOMString = null,
+    named_items_kind: live_collections.NamedKind = .document,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -78,6 +82,7 @@ pub const InternalState = struct {
     pub fn deinit(self: *InternalState) void {
         self.elements.deinit();
         self.name_filter.deinit(self.allocator);
+        if (self.named_items_name) |*name| name.deinit(self.allocator);
         if (self.filter_tag) |*tag| {
             tag.deinit(self.allocator);
         }
@@ -159,6 +164,27 @@ fn matchesDocumentFilter(element: *runtime.Instance, filter: live_collections.Do
     var value = try interfaces.Element.call_getAttributeNS(element, null, runtime.DOMString.initInterned(attribute));
     defer if (value) |*present| present.deinit(element.ctx.allocator);
     return value != null;
+}
+
+/// domindex1: HTML 3.1.7 / 7.2.2.3 step 4's collection, "rooted at the
+/// Document node, whose filter matches only named elements [objects] with the
+/// name name". Live like the rest, over the document's tree version; its
+/// contents come from the document's maps (dom.tree_ordered_map), in tree
+/// order, so a refill after a change is the matches, not a document walk.
+fn makeNamedItems(collection: *runtime.Instance, document: *runtime.Instance, kind: live_collections.NamedKind, name: []const u8) error{OutOfMemory}!void {
+    const internal = getInternal(collection) orelse return;
+    const owned = try runtime.DOMString.initDupe(internal.allocator, name);
+    if (internal.named_items_name) |*old| old.deinit(internal.allocator);
+    internal.named_items_name = owned;
+    internal.named_items_kind = kind;
+    makeLive(collection, document, &refillNamedItems);
+}
+
+fn refillNamedItems(collection: *runtime.Instance, document: *runtime.Instance) bool {
+    const internal = getInternal(collection) orelse return false;
+    const name = internal.named_items_name orelse return false;
+    dom.tree_ordered_map.collectNamed(document, internal.named_items_kind, name.asSlice(), collection, addElement) catch return false;
+    return true;
 }
 
 fn makeFormControls(collection: *runtime.Instance, root: *runtime.Instance, fieldset: bool) void {
@@ -587,7 +613,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // Other impls make a collection live through dom.live_collections.
-    live_collections.install(.{ .element_children = &makeElementChildren, .class_names = &makeClassNames, .qualified_name = &makeQualifiedName, .namespace_local_name = &makeNamespaceLocalName, .document_elements = &makeDocumentElements, .form_controls = &makeFormControls, .select_options = &makeSelectOptions, .table = &makeTable, .root = &liveRoot });
+    live_collections.install(.{ .element_children = &makeElementChildren, .class_names = &makeClassNames, .qualified_name = &makeQualifiedName, .namespace_local_name = &makeNamespaceLocalName, .document_elements = &makeDocumentElements, .form_controls = &makeFormControls, .select_options = &makeSelectOptions, .table = &makeTable, .root = &liveRoot, .named_items = &makeNamedItems });
 }
 
 /// Initialize instance (creates the instance)

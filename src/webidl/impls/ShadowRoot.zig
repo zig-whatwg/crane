@@ -85,6 +85,10 @@ pub const InternalState = struct {
     /// traced value of its wrapper.
     adopted_style_sheets: @import("dom").style.adopted.AdoptedSheets,
 
+    /// domindex1: this tree scope's map from IDs to its elements
+    /// (dom.tree_ordered_map): what getElementById answers from.
+    tree_index: @import("dom").tree_ordered_map.Maps,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -103,6 +107,7 @@ pub const InternalState = struct {
             .pointer_lock_element = null,
             .style_sheets = null,
             .adopted_style_sheets = @import("dom").style.adopted.AdoptedSheets.init(allocator),
+            .tree_index = @import("dom").tree_ordered_map.Maps.init(allocator, .shadow_root),
         };
     }
 
@@ -112,6 +117,8 @@ pub const InternalState = struct {
     /// (`deinitOwn`).
     pub fn deinit(self: *InternalState) void {
         self.adopted_style_sheets.deinit();
+        // Plain memory too, and it keeps nothing after (domindex1).
+        self.tree_index.deinit();
     }
 };
 
@@ -123,6 +130,14 @@ const Registry = runtime.InstanceRegistry(.shadow_root, InternalState);
 /// then answers InvalidStateError rather than read freed state.
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
+}
+
+/// dom.tree_ordered_map (domindex1): `instance`'s maps, or null for a
+/// DocumentFragment that is no ShadowRoot.
+fn treeIndexOf(instance: *runtime.Instance) ?*@import("dom").tree_ordered_map.Maps {
+    if (instance.stateAs(ShadowRoot.State) == null) return null;
+    const internal = getInternal(instance) orelse return null;
+    return &internal.tree_index;
 }
 
 /// dom.shadow_hosts: `instance`'s host is being torn down (Element.deinit).
@@ -150,6 +165,8 @@ pub fn installHooks() void {
     });
     // A host's teardown reaches its shadow root through this hook.
     @import("dom").shadow_hosts.install(.{ .host_destroyed = &hostDestroyed });
+    // domindex1: its tree scope's ID map.
+    @import("dom").tree_ordered_map.installShadowRoot(&treeIndexOf);
     // A host removed from its tree while script held no wrapper of it is an
     // orphan nothing deinits, and so is its shadow root: the states no
     // deinit reached, at their Browser's end (dom.orphan_states).

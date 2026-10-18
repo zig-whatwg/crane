@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [An ID index is kept at the link, not in the removing steps](architecture-an-id-index-is-kept-at-the-link-not-in-the-removing-steps.md) - An index of the tree is part of the tree's state: update it where the tree changes, not in the steps that run after, because some of those steps read it.
 - [A shared append hook needs the reason carried with the attribute](architecture-a-shared-append-hook-needs-the-reason-carried-with-the-attribute.md) - If two callers share a hook and only one may skip a check, the reason must travel with the call (Blink's AttributeModificationReason); state the element "notices" cannot tell them apart.
 - [Failing closed needs an allocation-free state that every fast path reads](architecture-fail-closed-needs-an-allocation-free-state-every-fast-path-reads.md) - Fail-closed state must cost no allocation and must live where every reader already looks; route "is there anything to check?" through the type's own method, never through a length a flag cannot change.
 - [A live set iterator needs only the sequence of the entry it last yielded](architecture-a-live-set-iterator-needs-only-the-sequence-it-last-yielded.md) - When an iterator must survive changes to what it iterates, make its position a value the collection can always answer for (a sequence number), not a place inside the collection (an index) - then the collection never needs to know its iterators exist.
@@ -320,6 +321,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A per-name query can still scan every node](architecture-a-per-name-query-can-still-scan-every-node.md) - Allocation-free named queries must also avoid walking the document before ordinary property reads.
 
 ### Spec Compliance
+- [A [LegacyOverrideBuiltIns] getter shadows the unforgeables Crane puts on the prototype](spec-compliance-a-legacyoverridebuiltins-getter-shadows-unforgeables-on-the-prototype.md) - When a [LegacyOverrideBuiltIns] interface gains a named getter, list its [LegacyUnforgeable] members and test that a named element of each name does not shadow it: Crane's binding cannot see them as own properties yet.
 - [A wait that the page's own load waits on deadlocks](spec-compliance-a-wait-the-page-s-own-load-waits-on-deadlocks.md) - Before implementing a spec wait, check whether what it waits for waits on the caller; if it does, follow the browser majority's break of the cycle and state it, rather than adding a special case per caller.
 - [Parse selectors over CSS tokens, not characters](spec-compliance-parse-selectors-over-css-tokens.md) - A selector is a CSS grammar over CSS tokens: tokenize per CSS Syntax 3 first, and validity questions answer themselves.
 - [:hover and :active follow the engines' observable rules](spec-compliance-user-action-pseudo-classes-follow-the-engines.md) - For user-action state, read each subtest's browser result before applying the prose: the engines' narrower rules are what WPT checks.
@@ -534,6 +536,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A generated import can rest on a typedef an upstream IDL file happens to declare](codegen-a-generated-import-can-rest-on-a-typedef-an-upstream-idl-file-happens-to-declare.md) - When a generated file relies on something being generated, codegen must generate it itself; find out by deleting an upstream file in a test fixture, not by waiting for upstream to delete it.
 
 ### Testing
+- [A hook in a function nothing calls has never compiled](testing-a-hook-in-a-function-nothing-calls-has-never-compiled.md) - A green build says nothing about a function nobody calls: find a caller, or a test that calls it, before you count a change in it as done.
 - [Measure that the blocked thing runs before building what blocks it](testing-measure-that-the-blocked-thing-runs-before-building-the-block.md) - Measure that the thing a mechanism blocks actually runs before you build the block - otherwise the work moves nothing, and a partial version can turn passing files into timeouts.
 - [A handle ledger is kept by handle, not by entry point](testing-a-handle-ledger-is-kept-by-handle-not-by-entry-point.md) - Count a handle by a mark on the handle, read at every delete site - never by the entry point that made it or the type it is released as; a weak handle V8 resets is uncounted when its callback resets it.
 - [A headers file applies only to the path it names](testing-a-headers-file-applies-only-to-the-path-it-names.md) - Before diagnosing a header-driven failure, confirm the header is sent (`curl -sI`): a misnamed headers file fails silently, in your tests and in upstream ones.
