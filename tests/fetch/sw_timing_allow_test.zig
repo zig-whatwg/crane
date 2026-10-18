@@ -93,9 +93,13 @@ test "HTTP fetch 3.5.3: the timing info takes the service worker response's timi
 // allow check failed (Chrome and Firefox; the integrator's ruling B).
 test "a service worker's CORS response without TAO hides its body sizes" {
     const allocator = std.testing.allocator;
-    const Case = struct { type: fetch.internal.ResponseType, passed: bool, from_worker: bool, hidden: bool };
+    const Case = struct { type: fetch.internal.ResponseType, passed: bool, from_worker: bool, hidden: bool, client_cors: bool = false };
     for ([_]Case{
         .{ .type = .cors, .passed = false, .from_worker = true, .hidden = true },
+        // The client's own request was a CORS request for that response
+        // (resource-timing-bodySize.https.html's passthrough, cors): its
+        // sizes stay, as #1556 has them.
+        .{ .type = .cors, .passed = false, .from_worker = true, .hidden = false, .client_cors = true },
         .{ .type = .cors, .passed = true, .from_worker = true, .hidden = false },
         .{ .type = .cors, .passed = false, .from_worker = false, .hidden = false },
         .{ .type = .basic, .passed = false, .from_worker = true, .hidden = false },
@@ -107,6 +111,6 @@ test "a service worker's CORS response without TAO hides its body sizes" {
         response.response_type = case.type;
         response.timing_allow_passed = case.passed;
         if (case.from_worker) response.service_worker_timing_info = .{ .start_time = 1, .fetch_event_dispatch_time = 2 };
-        try std.testing.expectEqual(case.hidden, fetch.algorithms.fetch_job.bodyInfoHidden(response));
+        try std.testing.expectEqual(case.hidden, fetch.algorithms.fetch_job.bodyInfoHidden(response, if (case.client_cors) .cors else .basic));
     }
 }
