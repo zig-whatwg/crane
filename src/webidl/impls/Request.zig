@@ -373,8 +373,23 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
             base_request.mode = .same_origin;
         }
 
-        // Steps 13.2-4, 13.7-8: already the defaults of a request this
-        // constructor built.
+        // Step 13.2: Unset request's reload-navigation flag.
+        base_request.reload_navigation = false;
+
+        // Step 13.3: Unset request's history-navigation flag.
+        base_request.history_navigation = false;
+
+        // Step 13.4: Set request's origin to "client". A Request passed as
+        // `input` brings its own - a fetch event's request, the
+        // navigation's origin - which a new init makes this one's
+        // (navigation-headers.https.html: a service worker's fetch of
+        // new Request(event.request, {...}) is its own request).
+        if (base_request.origin_owned and base_request.origin == .origin) base_request.allocator.free(base_request.origin.origin);
+        base_request.origin = .client;
+        base_request.origin_owned = false;
+
+        // Steps 13.7-8: already the defaults of a request this constructor
+        // built.
 
         // Step 13.5: Set request's referrer to "client". A Request passed as
         // `input` brings its own, which init replaces.
