@@ -35,13 +35,13 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 
 /// Getter for text
 pub fn get_text(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    // HTML 4.2.2: child text content (Text children only, not descendants).
+    return runtime.DOMString.initOwned(try @import("dom").script_elements.childTextContent(instance.ctx.allocator, instance));
 }
 
 /// Setter for text
 pub fn set_text(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    // HTML 4.2.2: string replace all. Node's Element branch runs steps
+    // 1-3, including removal reactions inside this accessor's CEReactions.
+    try interfaces.Node.set_textContent(instance, value);
 }

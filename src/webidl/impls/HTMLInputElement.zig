@@ -2027,8 +2027,9 @@ pub fn get_labels(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 
 /// Getter for capture
 pub fn get_capture(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    // HTML Media Capture 5: ordinary DOMString reflection, not limited to
+    // known facing-mode values (HTML 2.6.1 getter steps 5-6).
+    return reflection.get(runtime.DOMString, instance, .{ .name = "capture" });
 }
 
 /// Getter for webkitdirectory
@@ -2081,9 +2082,9 @@ pub fn set_files(instance: *runtime.Instance, value: ?*runtime.Instance) anyerro
 
 /// Setter for capture
 pub fn set_capture(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    // HTML 2.6.1: set the content attribute; the generated accessor owns
+    // the CEReactions scope around the common attribute-change algorithm.
+    try reflection.set(runtime.DOMString, instance, .{ .name = "capture" }, value);
 }
 
 /// Setter for webkitdirectory
