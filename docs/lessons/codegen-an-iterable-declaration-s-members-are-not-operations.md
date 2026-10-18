@@ -1,6 +1,7 @@
 # Codegen: An iterable declaration's members are not operations
 
 **Date**: 2026-10-09
+**Status** (2026-10-17): setlike declarations follow the same rule - codegen emits `Meta.setlike` and a `setlikeEntries` delegate, the binding defines size, has, forEach, the iterators and the mutation members (lane binding4; [A live set iterator needs only the sequence of the entry it last yielded](architecture-a-live-set-iterator-needs-only-the-sequence-it-last-yielded.md)).
 **Lesson**: Codegen added a synthetic `forEach` operation for every `iterable<>`. Each NodeList and DOMTokenList bound forEach to an impl stub that never called its callback (`classList.forEach` saw 0 of 2 tokens). Meanwhile a value iterator's @@iterator, entries, keys and values were the adapter's own iterator objects instead of the realm's Array.prototype functions.
 
 **Why**: WebIDL 3.7.9 "define the iteration methods" makes the members. With an indexed property getter, @@iterator is %Array.prototype.values%. With a value iterator (one type parameter), entries, keys, values and forEach are %Array.prototype.entries%, %Array.prototype.keys%, %Array.prototype.values% and %Array.prototype.forEach%, the same function objects. A pair iterator gets functions of its own: one F named "entries" serves as both %Symbol.iterator% and entries. None of these members is an operation. An operation the generator invents is a map entry (`call_forEach`) that some impl has to fill in, and a stub fills it with nothing.
