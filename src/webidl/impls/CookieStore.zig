@@ -37,35 +37,10 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-/// Internal state for CookieStore implementation
-///
-/// The cookies are not here: they are the user agent's, in the jar this
-/// store's relevant settings object reaches (`clientOf`), which fetch,
-/// navigations and document.cookie use too.
-pub const InternalState = struct {
-    /// Whether this store is in a secure context
-    is_secure_context: bool,
-    /// Owned jar changes awaiting transfer to their event task. Each
-    /// delivery transfers its records before another delivery can arrive.
-    change_observer: CookieChangeObserver,
-    /// Allocator for internal allocations
-    allocator: std.mem.Allocator,
-
-    pub fn init(allocator: std.mem.Allocator, is_secure_context: bool) !*InternalState {
-        const internal = try allocator.create(InternalState);
-        internal.* = InternalState{
-            .is_secure_context = is_secure_context,
-            .change_observer = CookieChangeObserver.init(allocator),
-            .allocator = allocator,
-        };
-        return internal;
-    }
-
-    pub fn deinit(self: *InternalState) void {
-        self.change_observer.deinit();
-        self.allocator.destroy(self);
-    }
-};
+/// Internal state for CookieStore implementation: its type is the cookiestore
+/// module's (`cookiestore.CookieStoreState`), testable without an engine; the
+/// state is this store's.
+pub const InternalState = cookiestore.CookieStoreState;
 
 /// This store's relevant settings object, as the Cookie Store algorithms
 /// read it: the user agent's cookie jar, its creation URL, and whether its
@@ -307,35 +282,13 @@ fn fireChangeEvent(instance: *runtime.Instance, internal: *InternalState, change
 // Query seam
 //
 // The jar is synchronous; everything asynchronous about this interface is the
-// Promise wrapper. Keeping the query out of the V8 code makes it testable
-// without an isolate - see tests/cookiestore/query_items_test.zig.
+// Promise wrapper. The query is the cookiestore module's
+// (`cookiestore.queryItems`), testable without an isolate - see
+// tests/cookiestore/query_items_test.zig.
 // ============================================================================
 
-/// Cookie Store "query cookies" given `url` (serialized) and `name`:
-/// `jar`'s cookies for the URL as a "non-HTTP" API sees them - no HttpOnly
-/// cookie - those named `name`, or all for null.
-///
-/// https://cookiestore.spec.whatwg.org/#query-cookies
-///
-/// Caller owns the list and each item; pass both to `freeItems`.
-pub fn queryItems(
-    allocator: std.mem.Allocator,
-    jar: *CookieJar,
-    url: []const u8,
-    name: ?[]const u8,
-) !std.ArrayListUnmanaged(CookieListItem) {
-    const parts = cookiestore.RequestUrl.of(url) orelse return .empty;
-    return cookiestore.queryCookies(allocator, jar, parts.host, parts.path, name);
-}
-
-/// Release a list returned by `queryItems`.
-pub fn freeItems(
-    allocator: std.mem.Allocator,
-    items: *std.ArrayListUnmanaged(CookieListItem),
-) void {
-    for (items.items) |*item| item.deinit();
-    items.deinit(allocator);
-}
+const queryItems = cookiestore.queryItems;
+const freeItems = cookiestore.freeItems;
 
 // ============================================================================
 // Promise plumbing
