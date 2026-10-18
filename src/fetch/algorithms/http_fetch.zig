@@ -278,11 +278,20 @@ fn taoCheckPasses(request: *const InternalRequest, response: *const InternalResp
     }
     // 6. A navigation of a nested navigable to another origin than its
     //    request's ORIGINAL origin: failure (not the serialization above).
+    //    Stated: a navigation whose redirect-taint is not "same-origin"
+    //    (SO -> XO -> SO) fails too, whatever its current URL - Chromium's
+    //    CorsURLLoader::PassesTimingAllowOriginCheck fails a navigate-mode
+    //    request that is `tainted_`, and Chrome, Firefox and Safari all mask
+    //    SO-XO-SO-redirect-chain-tao.https.html's partial-TAO iframe (wpt.fyi
+    //    df642c4142), where the spec's step 6 alone passes its last hop.
     const origin: []const u8 = switch (request.origin) {
         .origin => |o| o,
         .client => "null",
     };
-    if (request.mode == .navigate and !sameHttpOrigin(request.currentUrl(), origin)) return false;
+    if (request.mode == .navigate) {
+        if (!sameHttpOrigin(request.currentUrl(), origin)) return false;
+        if (!(request.redirectTaintIsSameOrigin() catch false)) return false;
+    }
     // 7. If request's response tainting is "basic", then return success.
     // 8. Return failure.
     return request.response_tainting == .basic;
