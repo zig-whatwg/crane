@@ -26,12 +26,20 @@ const std = @import("std");
 const testing = std.testing;
 const runtime = @import("runtime");
 const engine = @import("engine");
-const dictionaries = @import("dictionaries");
+const interfaces = @import("interfaces");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 
-const NavigationResult = dictionaries.NavigationResult;
-const ComputedEffectTiming = dictionaries.ComputedEffectTiming;
+/// The dictionary an operation returns (tests/v8 has no dictionaries module).
+fn Returned(comptime operation: anytype) type {
+    const Result = @typeInfo(@TypeOf(operation)).@"fn".return_type.?;
+    return @typeInfo(Result).error_union.payload;
+}
+
+/// Navigation.navigate()'s result.
+const NavigationResult = Returned(interfaces.Navigation.call_navigate);
+/// AnimationEffect.getComputedTiming()'s result: it inherits EffectTiming.
+const ComputedEffectTiming = Returned(interfaces.AnimationEffect.call_getComputedTiming);
 
 const Env = struct {
     isolate: *ffi.Isolate,
