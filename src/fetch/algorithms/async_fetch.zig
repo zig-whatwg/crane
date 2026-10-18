@@ -90,6 +90,18 @@ pub const AsyncFetch = struct {
     /// for a race's network side whose raced fetch collects: nobody reads
     /// that body until it has all arrived.
     pause_body: bool = true,
+    /// For a race's network side: the raced fetch, which hears its body's
+    /// end (`raceBodyEnded`) - the raced fetch's job reports it.
+    race_owner: ?*AsyncFetch = null,
+    /// The body arriving now is the one whose end the job waits for
+    /// (FetchJob.awaitsBodyEnd: its report timing steps run then) - or, for a
+    /// race's network side, the one its raced fetch does.
+    track_body_end: bool = false,
+    /// The bytes of the body arriving now, as its producer gave them.
+    body_bytes: u64 = 0,
+    /// Whether the body's end may still be reported: false once the
+    /// client has gone (`sweep`) - its global hears nothing more.
+    reporting: bool = true,
     /// Fetch's outcome, from the moment the job ends until `pump` hands it to
     /// the client.
     outcome: ?(FetchError!FetchResult) = null,
@@ -155,6 +167,12 @@ pub const AsyncFetch = struct {
         /// The worker fell back before the network side delivered: its
         /// outcome is the answer (case 3).
         fallback: bool = false,
+        /// The network side's response is the answer: its body's end is this
+        /// fetch's job's to report.
+        network_taken: bool = false,
+        /// The network side's body ended before its response was taken: the
+        /// sizes its handover reports.
+        body_sizes: ?fetch_job.BodySizes = null,
     };
 
     /// Start fetching `request`, whose ownership passes to the fetch - even
@@ -232,6 +250,14 @@ pub const AsyncFetch = struct {
     /// `failure`'s reason, if any, is the body's from here - or freed, if
     /// there is no body to fail.
     pub fn terminateWith(self: *AsyncFetch, failure: Failure) void {
+        // The client ended the fetch - an abort, or its element stopped
+        // loading - while the body handed over was still arriving: for
+        // Resource Timing that body ends here, with what arrived of it, as
+        // Chromium reports a load its client cancelled (resource_fetcher.cc
+        // HandleLoaderError; resource-timing/initiator-type/video.html's
+        // <video src>, whose media element stops reading). A fetch whose
+        // client has gone (`sweep`) reports nothing.
+        if (self.reporting) self.endBody() else self.track_body_end = false;
         if (self.transfer) |transfer| self.fetches.scheduler.cancel(transfer);
         self.transfer = null;
         if (self.source) |source| {
@@ -247,6 +273,7 @@ pub const AsyncFetch = struct {
     }
 
     fn destroy(self: *AsyncFetch) void {
+        self.track_body_end = false;
         // The race's network side is this fetch's to end.
         self.endRace();
         const live = &self.fetches.live;
@@ -348,10 +375,14 @@ pub const AsyncFetch = struct {
                         continue;
                     }
                     self.awaiting_body = true;
+                    self.track_body_end = self.source != null or self.relay_source != null;
                     return;
                 },
                 .done => {
                     self.outcome = self.job.takeResult();
+                    // The response handed over: its body's end reports it.
+                    const arriving = self.source != null or self.relay_source != null;
+                    self.track_body_end = arriving and (self.job.awaitsBodyEnd() or self.race_owner != null);
                     return;
                 },
                 .service_worker => |call| {
@@ -398,6 +429,7 @@ pub const AsyncFetch = struct {
         else
             .{ .context = self, .cancel = stopProducing, .pause = pauseTransfer, .unpause = unpauseTransfer };
         self.source = source;
+        self.body_bytes = 0;
         const pipe = source.branch() catch {
             var h = head;
             h.deinit();
@@ -414,7 +446,10 @@ pub const AsyncFetch = struct {
 
     fn networkData(context: ?*anyopaque, bytes: []const u8) void {
         const self: *AsyncFetch = @ptrCast(@alignCast(context.?));
-        if (self.source) |source| source.push(bytes);
+        if (self.source) |source| {
+            self.body_bytes += bytes.len;
+            source.push(bytes);
+        }
     }
 
     fn networkEnd(context: ?*anyopaque, result: NetworkError!void) void {
@@ -429,10 +464,26 @@ pub const AsyncFetch = struct {
         const source = self.source orelse return;
         self.source = null;
         if (result) |_| source.finish() else |_| source.fail(.{ .kind = .network });
+        // Received, or failed: the job's report timing steps run now.
+        self.endBody();
         if (self.awaiting_body) {
             self.awaiting_body = false;
             self.advance(self.job.resumeBody());
         }
+    }
+
+    /// The body arriving now has ended - finished, failed, or no reader left
+    /// - with `body_bytes` of it: the job's report timing steps
+    /// (FetchJob.bodyEnded), or the raced fetch's for a race's network side.
+    fn endBody(self: *AsyncFetch) void {
+        if (!self.track_body_end) return;
+        self.track_body_end = false;
+        const sizes: fetch_job.BodySizes = .{ .encoded = self.body_bytes, .decoded = self.body_bytes };
+        if (self.race_owner) |owner| {
+            if (owner.reporting) owner.raceBodyEnded(sizes);
+            return;
+        }
+        self.job.bodyEnded(sizes);
     }
 
     /// The body's source has no reader left: stop the transfer. The source is
@@ -440,6 +491,9 @@ pub const AsyncFetch = struct {
     fn stopProducing(context: *anyopaque) void {
         const self: *AsyncFetch = @ptrCast(@alignCast(context));
         self.source = null;
+        // Nobody reads it: it ended for Resource Timing too (Chromium's
+        // HandleLoaderError reports a cancelled load).
+        self.endBody();
         self.cancelTransfer();
     }
 
@@ -490,6 +544,7 @@ pub const AsyncFetch = struct {
         }) catch return;
         // Nothing has been heard yet: the client hears only from `pump`.
         network_side.pause_body = !self.collect;
+        network_side.race_owner = self;
         self.race.network = network_side;
     }
 
@@ -507,6 +562,15 @@ pub const AsyncFetch = struct {
             if (result) |*r| r.deinit();
         }
         self.race.fallback = false;
+        self.race.network_taken = false;
+        self.race.body_sizes = null;
+    }
+
+    /// The race's network side's body has ended: this fetch's job reports
+    /// it - now if its response is the answer, at its handover otherwise.
+    fn raceBodyEnded(self: *AsyncFetch, sizes: fetch_job.BodySizes) void {
+        if (self.race.network_taken) return self.job.bodyEnded(sizes);
+        self.race.body_sizes = sizes;
     }
 
     /// The worker's answer while the network races it.
@@ -551,6 +615,12 @@ pub const AsyncFetch = struct {
         // service worker timing info).
         result.timing_info.deinit();
         if (result.referrer) |referrer| result.response.allocator.free(referrer);
+        self.race.network_taken = true;
+        // Its body ended already: the handover reports its sizes.
+        if (self.race.body_sizes) |sizes| {
+            self.race.body_sizes = null;
+            self.job.bodyEnded(sizes);
+        }
         self.advance(self.job.resumeServiceWorker(.{ .response = result.response }));
     }
 
@@ -638,10 +708,13 @@ pub const AsyncFetch = struct {
     fn drainRelay(self: *AsyncFetch) bool {
         const relay = self.relay orelse return false;
         const source = self.relay_source orelse return false;
-        if (relay.drainInto(source) == .open) return true;
+        const end = relay.drainInto(source);
+        self.body_bytes = relay.drained;
+        if (end == .open) return true;
         self.relay_source = null;
         relay.release();
         self.relay = null;
+        self.endBody();
         // Main fetch step 23 waited for the whole body, as networkEnd's.
         if (self.awaiting_body) {
             self.awaiting_body = false;
@@ -655,6 +728,8 @@ pub const AsyncFetch = struct {
     fn stopRelay(context: *anyopaque) void {
         const self: *AsyncFetch = @ptrCast(@alignCast(context));
         self.relay_source = null;
+        if (self.relay) |relay| self.body_bytes = relay.drained;
+        self.endBody();
         self.letRelayGo();
     }
 
@@ -819,6 +894,8 @@ pub const AgentFetches = struct {
                 continue;
             }
             const client = f.client;
+            // Its client is gone: nothing is reported for it.
+            f.reporting = false;
             f.terminateWith(.{ .kind = .network });
             client.gone(client.context);
             terminated = true;

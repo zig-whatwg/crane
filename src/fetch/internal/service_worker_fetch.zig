@@ -264,6 +264,9 @@ pub const BodyRelay = struct {
     cancelled: bool = false,
     /// What the writer asks to hear when the reader goes (`watchCancel`).
     reader_gone: ?ReaderGone = null,
+    /// The reader's count of the bytes it has drained: what Resource Timing
+    /// reports as the relayed body's size. Touched by the reader only.
+    drained: u64 = 0,
     /// Bumped by every write and end: the futex word `collect` sleeps on.
     wake: std.atomic.Value(u32) = .init(0),
 
@@ -361,6 +364,7 @@ pub const BodyRelay = struct {
         const end = self.end;
         unlock(&self.mutex);
         defer taken.deinit(self.allocator);
+        self.drained += taken.items.len;
         if (taken.items.len > 0) source.push(taken.items);
         switch (end) {
             .open => {},

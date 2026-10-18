@@ -128,6 +128,11 @@ pub const FetchJob = struct {
     /// (fetch.zig) does not race - it waits for the fetch event's answer
     /// alone, as for a "fetch-event" source.
     service_worker_race: bool = false,
+    /// Fetch response handover step 4's report timing steps, waiting for the
+    /// end of the body of the response handed over (`handOverTiming`).
+    deferred_timing: ?DeferredTiming = null,
+    /// The body's sizes, when it ended before the handover that reports it.
+    body_sizes: ?BodySizes = null,
     /// The fetch controller's next manual redirect steps (HTTP fetch step 6
     /// "manual", a navigation): HTTP-redirect fetch given fetchParams and
     /// the redirect response handed over - `processNextManualRedirect`.
@@ -216,6 +221,8 @@ pub const FetchJob = struct {
         if (self.response) |response| response.deinit();
         if (self.pending_response) |response| response.deinit();
         self.dropManualRedirect();
+        // A body that never ended: nothing is reported.
+        self.dropDeferredTiming();
         self.params.deinit();
         self.controller.deinit();
         self.timing_info.deinit();
@@ -699,6 +706,7 @@ pub const FetchJob = struct {
         // and process response are the response's that ends it, as for a
         // redirect fetch follows itself.
         if (self.next_manual_redirect != null) {
+            self.body_sizes = null;
             self.response = response;
             return .done;
         }
@@ -717,8 +725,9 @@ pub const FetchJob = struct {
             }
         }
 
-        // Fetch response handover step 4: the report timing steps.
-        self.reportTiming(response);
+        // Fetch response handover step 4: the report timing steps - now, or
+        // at the end of a body still arriving.
+        self.handOverTiming(response);
 
         // Call process response callback if set
         if (self.options.process_response) |callback| {
@@ -729,43 +738,110 @@ pub const FetchJob = struct {
         return .done;
     }
 
-    /// Fetch "fetch response handover" steps 4.2 and 4.3 for `response`: the
-    /// report timing steps, run given the request's client's global - the
-    /// request's timing reporter, which makes its Resource Timing entry - for
-    /// a request with an initiator type. They run here, when fetch hands the
-    /// response over: the end time is now, and a body still streaming in is
-    /// not waited for (its sizes are not known yet).
+    /// Fetch "fetch response handover" step 4 for `response`, the response
+    /// handed over: the report timing steps run from processResponseEndOfBody
+    /// - at the end of the body. A body all there already (collected, or
+    /// none) is reported now; one still arriving keeps what the steps read of
+    /// the response, and the timing info as it is now, until the driver
+    /// reports its end (`bodyEnded`) - Chromium's point in time, the loader's
+    /// end, the body received or failed (resource_fetcher.cc
+    /// HandleLoaderFinish / HandleLoaderError), not the consumer's read of
+    /// its last chunk (stated). A job that goes before then reports nothing.
     ///
     /// Spec: https://fetch.spec.whatwg.org/#fetch-finale
-    fn reportTiming(self: *FetchJob, response: *const InternalResponse) void {
-        const request = self.request;
-        // 4.3. Only a request with an initiator type, whose client's global
-        // hears it.
-        const initiator_type = request.initiator_type orelse return;
-        const reporter = request.timing_reporter orelse return;
-        // 4.2.1. If request's URL's scheme is not an HTTP(S) scheme, return.
-        const url = request.getUrl();
-        if (!std.mem.startsWith(u8, url, "http:") and !std.mem.startsWith(u8, url, "https:")) return;
-        // 4.2.2. The end time (now, set by `finish`) is the reporter's to make
-        // relative to its global.
-        // 4.2.3-4.2.4. cacheState and bodyInfo.
-        var cache_state: []const u8 = switch (response.cache_state) {
-            .empty => "",
-            .local => "local",
-            .validated => "validated",
+    fn handOverTiming(self: *FetchJob, response: *const InternalResponse) void {
+        if (!self.reportsTiming()) return;
+        var facts = self.timingFacts(response);
+        if (self.body_sizes == null and bodyArriving(response)) {
+            const copy = cloneTimingInfo(&self.timing_info) catch {
+                facts.deinit(self.allocator);
+                return;
+            };
+            self.dropDeferredTiming();
+            self.deferred_timing = .{ .facts = facts, .timing_info = copy };
+            return;
+        }
+        defer facts.deinit(self.allocator);
+        if (self.body_sizes) |sizes| facts.setSizes(sizes);
+        self.body_sizes = null;
+        self.reportFacts(&facts, &self.timing_info);
+    }
+
+    /// The driver's word that the body of the response handed over has
+    /// ended - finished, failed, or with no reader left - with `sizes`, what
+    /// arrived of it: the report timing steps run now (handover step 4.1's
+    /// unsafeEndTime is this moment), once. Before the handover that reports
+    /// it (main fetch step 23 waiting for an integrity check's body, a
+    /// race's network body), the sizes wait for it.
+    pub fn bodyEnded(self: *FetchJob, sizes: BodySizes) void {
+        var deferred = self.deferred_timing orelse {
+            self.body_sizes = sizes;
+            return;
         };
-        var body_info = response.body_info;
+        self.deferred_timing = null;
+        defer deferred.deinit(self.allocator);
+        deferred.timing_info.end_time = http_fetch.getCurrentTimeMs();
+        deferred.facts.setSizes(sizes);
+        self.reportFacts(&deferred.facts, &deferred.timing_info);
+    }
+
+    /// Whether the job waits for its body's end: a report deferred to it, or
+    /// main fetch step 23 waiting for the whole body.
+    pub fn awaitsBodyEnd(self: *const FetchJob) bool {
+        return self.deferred_timing != null or self.pending_response != null;
+    }
+
+    fn dropDeferredTiming(self: *FetchJob) void {
+        if (self.deferred_timing) |*deferred| deferred.deinit(self.allocator);
+        self.deferred_timing = null;
+    }
+
+    /// 4.2.1 and 4.3: a request whose report timing steps run - one with an
+    /// initiator type, whose client's global hears it, and an HTTP(S) URL.
+    fn reportsTiming(self: *const FetchJob) bool {
+        const request = self.request;
+        if (request.initiator_type == null or request.timing_reporter == null) return false;
+        const url = request.getUrl();
+        return std.mem.startsWith(u8, url, "http:") or std.mem.startsWith(u8, url, "https:");
+    }
+
+    /// Whether `response`'s body is still arriving through its pipe.
+    fn bodyArriving(response: *const InternalResponse) bool {
+        const internal = response.internal orelse response;
+        const body = internal.body orelse response.body orelse return false;
+        const pipe = body.pipe orelse return false;
+        return pipe.state == .open;
+    }
+
+    /// 4.2.3-4.2.7 for `response`: what the report reads of it.
+    fn timingFacts(self: *FetchJob, response: *const InternalResponse) TimingFacts {
+        const request = self.request;
+        // 4.2.3-4.2.4. cacheState and bodyInfo.
+        var facts: TimingFacts = .{
+            .cache_state = switch (response.cache_state) {
+                .empty => "",
+                .local => "local",
+                .validated => "validated",
+            },
+            .body_info = response.body_info,
+            .timing_allow_passed = response.timing_allow_passed,
+        };
+        // The body info's strings are the response's, which is its client's
+        // once handed over: kept as copies.
+        facts.body_info.content_type = "";
+        facts.body_info.content_encoding = "";
+        if (response.body_info.content_encoding.len > 0) {
+            if (self.allocator.dupe(u8, response.body_info.content_encoding)) |owned| {
+                facts.content_encoding = owned;
+                facts.body_info.content_encoding = owned;
+            } else |_| {}
+        }
         const opaque_response = response.response_type == .@"opaque" or response.response_type == .opaqueredirect;
         // 4.2.5. A response whose timing allow passed flag is not set (a
-        // network error too) is reported with an opaque timing info and no
-        // cache state.
-        var opaque_timing: ?FetchTimingInfo = null;
-        defer if (opaque_timing) |*o| o.deinit();
-        var timing_info: *const FetchTimingInfo = &self.timing_info;
+        // network error too) is reported with an opaque timing info
+        // (`reportFacts`) and no cache state.
         if (!response.timing_allow_passed) {
-            opaque_timing = @import("../internal/fetch_timing.zig").createOpaqueTimingInfo(self.allocator, &self.timing_info);
-            timing_info = &opaque_timing.?;
-            cache_state = "";
+            facts.cache_state = "";
             // Body sizes are CORS-protected, not TAO-protected (whatwg/fetch
             // PR #1556, 2023-01-25): a CORS response's body info stays, and
             // only the opaque filters below hide it. Firefox 157 ships it
@@ -777,38 +853,112 @@ pub const FetchJob = struct {
         // 4.2.4 reads the filtered response's body info. Both opaque and
         // opaque-redirect filters hide it, including a same-origin manual
         // redirect whose request tainting is still basic.
-        if (opaque_response) body_info = .{};
+        if (opaque_response) {
+            facts.body_info = .{};
+            facts.hides_body = true;
+        }
+        // A network error has no body to size.
+        if (response.response_type == .@"error") facts.hides_body = true;
         // 4.2.6-4.2.7. responseStatus and the minimized content type, unless
         // this is a navigation redirected across origins.
-        var response_status: u16 = 0;
-        var content_type: ?[]const u8 = null;
-        defer if (content_type) |c| self.allocator.free(c);
         if (request.mode != .navigate or response.redirect_taint == .same_origin) {
             // 4.2.7.1 reads the filtered response's status, not its
             // internal response. TAO exposes timing, never an opaque
             // response's status (including same-origin manual redirects).
-            response_status = if (opaque_response) 0 else response.status;
+            facts.response_status = if (opaque_response) 0 else response.status;
             if (!opaque_response) {
                 if (@import("../internal/mime.zig").extractMimeType(self.allocator, &response.header_list) catch null) |mime_type| {
                     var parsed = mime_type;
                     defer parsed.deinit();
-                    content_type = @import("mimesniff").minimizeSupportedMimeType(self.allocator, &parsed) catch null;
-                    if (content_type) |c| body_info.content_type = c;
+                    facts.content_type = @import("mimesniff").minimizeSupportedMimeType(self.allocator, &parsed) catch null;
+                    if (facts.content_type) |c| facts.body_info.content_type = c;
                 }
             }
         }
+        return facts;
+    }
+
+    /// 4.2.2, 4.2.5 and 4.2.8: mark resource timing with `facts` and
+    /// `timing_info` (made opaque when the timing allow check failed), given
+    /// the request's client's global - its timing reporter.
+    fn reportFacts(self: *FetchJob, facts: *const TimingFacts, timing_info: *const FetchTimingInfo) void {
+        const request = self.request;
+        const reporter = request.timing_reporter orelse return;
+        const initiator_type = request.initiator_type orelse return;
+        var opaque_timing: ?FetchTimingInfo = null;
+        defer if (opaque_timing) |*o| o.deinit();
+        var reported: *const FetchTimingInfo = timing_info;
+        if (!facts.timing_allow_passed) {
+            opaque_timing = @import("../internal/fetch_timing.zig").createOpaqueTimingInfo(self.allocator, timing_info);
+            reported = &opaque_timing.?;
+        }
         // 4.2.8. Mark resource timing (the reporter's global does).
         reporter.report(reporter.context, &.{
-            .timing_info = timing_info,
-            .url = url,
+            .timing_info = reported,
+            .url = request.getUrl(),
             .initiator_type = initiator_type,
-            .cache_state = cache_state,
-            .body_info = body_info,
-            .response_status = response_status,
-            .timing_allow_passed = response.timing_allow_passed,
+            .cache_state = facts.cache_state,
+            .body_info = facts.body_info,
+            .response_status = facts.response_status,
+            .timing_allow_passed = facts.timing_allow_passed,
         });
     }
 };
+
+/// What the driver measured of a body, at its end (FetchJob.bodyEnded): the
+/// network hands its body over decoded, and a service worker's relay its
+/// bytes as written, so the encoded and decoded sizes are equal there.
+pub const BodySizes = struct {
+    encoded: u64,
+    decoded: u64,
+};
+
+/// What the report timing steps read of a response (Fetch response handover
+/// 4.2.3-4.2.7), taken when it is handed over. OWNED (`deinit`).
+const TimingFacts = struct {
+    cache_state: []const u8,
+    body_info: @import("../internal/fetch_timing.zig").ResponseBodyInfo,
+    response_status: u16 = 0,
+    timing_allow_passed: bool,
+    /// An opaque filter hides the body info: no sizes either.
+    hides_body: bool = false,
+    /// Owned copies of the body info's strings.
+    content_type: ?[]const u8 = null,
+    content_encoding: ?[]const u8 = null,
+
+    fn setSizes(self: *TimingFacts, sizes: BodySizes) void {
+        if (self.hides_body) return;
+        self.body_info.encoded_size = sizes.encoded;
+        self.body_info.decoded_size = sizes.decoded;
+    }
+
+    fn deinit(self: *TimingFacts, allocator: Allocator) void {
+        if (self.content_type) |c| allocator.free(c);
+        if (self.content_encoding) |c| allocator.free(c);
+        self.* = undefined;
+    }
+};
+
+/// A report waiting for its body's end: the facts, and the timing info as it
+/// was handed over (`takeResult` gives the job's own to the client).
+const DeferredTiming = struct {
+    facts: TimingFacts,
+    timing_info: FetchTimingInfo,
+
+    fn deinit(self: *DeferredTiming, allocator: Allocator) void {
+        self.facts.deinit(allocator);
+        self.timing_info.deinit();
+    }
+};
+
+/// A copy of `info` that owns its own Server-Timing headers.
+fn cloneTimingInfo(info: *const FetchTimingInfo) Allocator.Error!FetchTimingInfo {
+    var copy = info.*;
+    copy.server_timing_headers = .empty;
+    errdefer copy.deinit();
+    for (info.server_timing_headers.items) |header| try copy.addServerTimingHeader(header);
+    return copy;
+}
 
 fn networkError(allocator: Allocator) FetchError!*InternalResponse {
     return internal_response.networkError(allocator) catch FetchError.OutOfMemory;
