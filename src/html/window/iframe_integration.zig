@@ -1143,8 +1143,8 @@ pub const IFrameIntegration = struct {
                 .content_type = response.content_type,
                 .parent_same_origin = new_origin.isSameOrigin(self.container_origin),
             }),
-            .text => try self.commitTextDocument(body, response.content_type),
-            .media => try self.commitMediaDocument(final_url, document_type.mediaHostElement(computed)),
+            .text => try self.commitTextDocument(body, response.content_type, computed),
+            .media => try self.commitMediaDocument(final_url, document_type.mediaHostElement(computed), computed),
             .xml => try self.commitXmlDocument(body, .{ .content_type = response.content_type, .type = computed }),
             .multipart, .external => unreachable,
         }
@@ -1285,7 +1285,7 @@ pub const IFrameIntegration = struct {
     /// The bytes are decoded first, by the type's rules: a BOM, the
     /// Content-Type's charset, else the default - the sniffing algorithm
     /// without the prescan, as text is not markup.
-    fn commitTextDocument(self: *IFrameIntegration, bytes: []const u8, content_type: ?[]const u8) IFrameError!void {
+    fn commitTextDocument(self: *IFrameIntegration, bytes: []const u8, content_type: ?[]const u8, computed_type: []const u8) IFrameError!void {
         const sniffed = encoding_sniffing.sniff(bytes, .{
             .transport = if (content_type) |ct| encoding_sniffing.transportEncoding(self.allocator, ct) else null,
             .prescan = false,
@@ -1304,6 +1304,10 @@ pub const IFrameIntegration = struct {
         // the mode flag keeping no-quirks throughout.
         const document = try self.commitHtmlDocument(markup, null);
         if (document) |doc| {
+            // Step 1: create the HTML document with the response's computed
+            // MIME type. The inert synthesized markup cannot observe this
+            // assignment before the load event, just like the mode below.
+            @import("dom").document_internals.setContentType(@ptrCast(@alignCast(doc)), computed_type) catch return IFrameError.OutOfMemory;
             setNoQuirks(doc);
             @import("dom").document_internals.setEncoding(@ptrCast(@alignCast(doc)), encoding_sniffing.canonicalName(sniffed.encoding)) catch {};
         }
@@ -1323,6 +1327,7 @@ pub const IFrameIntegration = struct {
         self: *IFrameIntegration,
         address: []const u8,
         host_element: document_type.MediaHostElement,
+        computed_type: []const u8,
     ) IFrameError!void {
         const markup = document_type.mediaDocumentMarkup(self.allocator, address, host_element) catch {
             return IFrameError.OutOfMemory;
@@ -1332,7 +1337,12 @@ pub const IFrameIntegration = struct {
         // synthesised markup runs script, so setting it after the parse, which
         // (with no DOCTYPE) chose quirks, is the mode ever seen.
         const document = try self.commitHtmlDocument(markup, null);
-        if (document) |doc| setNoQuirks(doc);
+        if (document) |doc| {
+            // Step 1 uses the response's computed MIME type, even though
+            // its body is represented by a synthesized HTML tree.
+            @import("dom").document_internals.setContentType(@ptrCast(@alignCast(doc)), computed_type) catch return IFrameError.OutOfMemory;
+            setNoQuirks(doc);
+        }
     }
 
     /// "Loading an XML document" - HTML Standard §7.5.3: the document the
