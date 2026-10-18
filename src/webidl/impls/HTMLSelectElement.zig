@@ -320,21 +320,7 @@ fn optionList(instance: *runtime.Instance) anyerror!std.ArrayListUnmanaged(*runt
 
 /// Getter for autocomplete
 pub fn get_autocomplete(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    // Enumerated, with "" for BOTH defaults - the same shape HTMLInputElement
-    // uses, and unlike <form>, where both defaults are "on".
-    //
-    // TODO: the full autofill mantle also exposes field names ("email",
-    // "street-address", ...). Only on/off are recognised here, matching
-    // HTMLInputElement; anything else reads back "".
-    const data = element_data.of(instance) orelse return error.InvalidState;
-    const entry = element_data.getAttributeByNamespaceAndLocalName(data, null, "autocomplete") orelse
-        return runtime.DOMString.initEmpty();
-    inline for ([_][]const u8{ "on", "off" }) |candidate| {
-        if (std.ascii.eqlIgnoreCase(entry.value, candidate)) {
-            return runtime.DOMString.initInterned(candidate);
-        }
-    }
-    return runtime.DOMString.initEmpty();
+    return @import("html").autofill.idlValue(instance, .expectation);
 }
 
 /// Getter for form: the element's form owner.
