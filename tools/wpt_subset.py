@@ -187,6 +187,15 @@ EXCLUDE = [
     # Q7. Re-include when HTML specifies it or a stable browser ships it.
     ('html/semantics/forms/customizable-combobox/customizable-combobox-option-attributes.html',
      'editable combobox, Open UI explainer only'),
+    # Restoring a <select multiple>'s selectedcontent after a history
+    # traversal: HTML's "update a select's descendant selectedcontent
+    # elements" step 1 returns when the select has multiple, and the file says
+    # itself that form control restoration is not specified (rel=help
+    # whatwg/html#9799). No browser passes its first assertion (Chrome, Firefox
+    # and Safari, 2026-10-18). Codex row 72 Q8. Re-include when HTML specifies
+    # selectedcontent for multiple selects.
+    ('html/semantics/forms/the-select-element/customizable-select-multiple-popup/selectedcontent-multiple-restore.optional.html',
+     'selectedcontent for select multiple, unspecified'),
 
     # XML-serialised documents: .xhtml, .svg, .xml.
     #
