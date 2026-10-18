@@ -63,7 +63,7 @@ pub fn storeResponseCookies(allocator: Allocator, request: *const InternalReques
     // RFC 6265bis 5.7 step 18.3: a top-level navigation's response may
     // create every SameSite kind even when its request could not send it.
     // Chromium ComputeSameSiteContextForResponse does the same (Q6).
-    const top_level = request.mode == .navigate and request.destination == .document;
+    const top_level = isTopLevelNavigation(request);
     const options: cookiestore.StoreOptions = .{
         .is_secure = url.secure,
         .host = url.host,
@@ -82,6 +82,15 @@ pub fn storeResponseCookies(allocator: Allocator, request: *const InternalReques
     }
 }
 
+/// A top-level navigation request, for SameSite cookies: mode "navigate"
+/// and destination "document" (Fetch "determine the same-site mode" step 3),
+/// or a Request constructor's copy of one - a service worker's
+/// fetch(event.request), destination "" (InternalRequest.main_frame_navigation:
+/// Chrome, Firefox and Safari keep it top-level; whatwg/fetch#1327).
+fn isTopLevelNavigation(request: *const InternalRequest) bool {
+    return request.mode == .navigate and (request.destination == .document or request.main_frame_navigation);
+}
+
 /// Browser-shaped replacement for Fetch's six "determine the same-site
 /// mode" steps, not a literal transcription. The browsers retain Strict
 /// on same-site top-level navigation and permit Lax on cross-site safe
@@ -92,7 +101,7 @@ pub fn storeResponseCookies(allocator: Allocator, request: *const InternalReques
 /// https://github.com/chromium/chromium/blob/main/net/cookies/cookie_util.cc
 /// The missing captured client/ancestor facts are tracked below.
 fn sameSiteMode(allocator: Allocator, request: *const InternalRequest) !cookiestore.SameSiteMode {
-    const top_level = request.mode == .navigate and request.destination == .document;
+    const top_level = isTopLevelNavigation(request);
     // TODO (cookies lane Q3, 2026-10-12): navigation must populate this
     // initiator, mode/destination and method. The settings/navigation lane
     // owns those captured facts; do not infer them from a live Window here.

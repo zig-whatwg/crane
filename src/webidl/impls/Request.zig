@@ -349,6 +349,10 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
     // passthrough service worker sets correct sec-fetch headers", wpt.fyi
     // 23b0b89b1a). event.request itself keeps its destination: the fetch
     // event's request object is made from the worker's copy, not here.
+    // A copy of a top-level navigation stays one for SameSite cookies, as in
+    // every browser (InternalRequest.main_frame_navigation; whatwg/fetch#1327
+    // - no spec concept yet).
+    if (base_request.mode == .navigate and base_request.destination == .document) base_request.main_frame_navigation = true;
     base_request.destination = .empty;
 
     // Step 13: If init is not empty
@@ -415,6 +419,9 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
         }
         base_request.redirect_tainted = false;
         base_request.dropped_urls_site = .same_origin;
+        // The worker's own request now (mode "same-origin"): not a
+        // navigation's copy for SameSite cookies either.
+        base_request.main_frame_navigation = false;
 
         // Step 13.5: Set request's referrer to "client". A Request passed as
         // `input` brings its own, which init replaces.

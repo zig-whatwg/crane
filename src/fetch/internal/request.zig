@@ -554,6 +554,20 @@ pub const InternalRequest = struct {
     /// worker" Sec-Fetch cases). Copied by clone; the Request constructor's
     /// step 13.8 resets it with the URL list.
     dropped_urls_site: SiteRelation = .same_origin,
+    /// This request is a copy, made by the Request constructor with an empty
+    /// init, of a top-level navigation request (mode "navigate", destination
+    /// "document"): a service worker's `fetch(event.request)`. Step 12 gives
+    /// the copy no destination (Sec-Fetch-Dest "empty"), yet Chrome, Firefox
+    /// and Safari keep treating it as a top-level navigation for SameSite
+    /// cookies (cookies.zig) - navigation-sets-cookie.https.html's "Cross-site
+    /// top-level with passthrough service worker POST ..." and
+    /// same-site-cookies.https.html's "cross-site, window.open with
+    /// passthrough" pass in all three at wpt.fyi 23b0b89b1a. The spec has no
+    /// such concept yet (whatwg/fetch#1327, "Request needs to propagate
+    /// concept of 'main frame navigation'"): this stands in for it, as the
+    /// browsers' behaviour. Copied by clone; step 13 (a non-empty init)
+    /// clears it.
+    main_frame_navigation: bool = false,
 
     const Self = @This();
 
@@ -869,6 +883,7 @@ pub const InternalRequest = struct {
             .timing_allow_failed = self.timing_allow_failed,
             .redirect_tainted = self.redirect_tainted,
             .dropped_urls_site = self.dropped_urls_site,
+            .main_frame_navigation = self.main_frame_navigation,
         };
         return new_request;
     }
