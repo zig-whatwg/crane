@@ -17,8 +17,8 @@
 //!     number conversions (§ 4.10.5.1.x) and the date and time microsyntaxes
 //!     (§ 2.3.5)
 //!
-//! Stated deviations: FileList population awaits its owner, and there is no rendering, so an Image Button's
-//! selected coordinate is (0, 0) and width and height read 0.
+//! An Image Button's selected coordinate remains (0, 0). Its dimensions use
+//! the content attributes until its image request and rendered box are available.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -1744,29 +1744,7 @@ pub fn set_valueAsNumber(instance: *runtime.Instance, value: f64) anyerror!void 
 
 /// Getter for autocomplete
 pub fn get_autocomplete(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    // https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#autofill
-    //
-    // Not a two-value enumeration. "on"/"off" are one branch; the other is an
-    // ordered autofill token list, returned verbatim (lowercased) when it forms
-    // a valid expansion and "" when it does not:
-    //
-    //     <input>                                -> ""
-    //     <input autocomplete="on">              -> "on"
-    //     <input autocomplete="shipping country">-> "shipping country"
-    //     <input autocomplete="foobar">          -> ""
-    //     <input autocomplete="home country">    -> ""  (country is not a
-    //                                                    contact field)
-    const value = attribute(instance, "autocomplete") orelse return runtime.DOMString.initEmpty();
-    defer instance.ctx.allocator.free(value);
-    inline for ([_][]const u8{ "on", "off" }) |candidate| {
-        if (std.ascii.eqlIgnoreCase(value, candidate)) {
-            return runtime.DOMString.initInterned(candidate);
-        }
-    }
-    const expansion = autofill.parse(value) orelse return runtime.DOMString.initEmpty();
-    var buf: [256]u8 = undefined;
-    const serialized = autofill.serialize(expansion, &buf) orelse return runtime.DOMString.initEmpty();
-    return runtime.DOMString.initDupe(instance.ctx.allocator, serialized) catch return error.OutOfMemory;
+    return autofill.idlValue(instance, if (typeOf(instance) == .hidden) .anchor else .expectation);
 }
 
 /// Getter for checked: the element's checkedness.
@@ -1879,17 +1857,27 @@ pub fn set_formMethod(instance: *runtime.Instance, value: runtime.DOMString) any
     try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("formmethod"), .{ .domstring = value });
 }
 
-/// Getter for height: the rendered height of an image being rendered, else
-/// its natural height, else 0 - nothing is rendered or decoded here.
+/// HTML 4.10.5.3.10: dimensions of an Image Button, otherwise zero.
 pub fn get_height(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return 0;
+    return imageDimension(instance, "height");
 }
 
 /// Getter for width: as height.
 pub fn get_width(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return 0;
+    return imageDimension(instance, "width");
+}
+
+fn imageDimension(instance: *runtime.Instance, name: []const u8) u32 {
+    if (typeOf(instance) != .image) return 0;
+    // TODO (decision 19b): query the host's rendered content box once input
+    // supplies replaced-element facts. The existing image_sources hook only
+    // has img facts. Input also has no image request/natural dimensions yet.
+    // The non-rendered path follows "determine the dimensions", steps 2–4,
+    // using the same attribute parser and unsigned clamp as HTMLImageElement.
+    const data = dom.element_data.of(instance) orelse return 0;
+    const entry = dom.element_data.getAttributeByNamespaceAndLocalName(data, null, name) orelse return 0;
+    const parsed = reflection.parseNonNegativeInteger(entry.value) orelse return 0;
+    return @intCast(@min(parsed, std.math.maxInt(u32)));
 }
 
 /// Getter for list

@@ -402,20 +402,7 @@ fn currentApiValue(instance: *runtime.Instance) ![]u8 {
 
 /// Getter for autocomplete
 pub fn get_autocomplete(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    // Enumerated with "" for BOTH defaults, matching HTMLInputElement. Unlike
-    // <form>, where both defaults are "on".
-    //
-    // TODO: the autofill mantle also exposes field names; only on/off are
-    // recognised here, so anything else reads back "".
-    const data = dom.element_data.of(instance) orelse return error.InvalidState;
-    const entry = dom.element_data.getAttributeByNamespaceAndLocalName(data, null, "autocomplete") orelse
-        return runtime.DOMString.initEmpty();
-    inline for ([_][]const u8{ "on", "off" }) |candidate| {
-        if (std.ascii.eqlIgnoreCase(entry.value, candidate)) {
-            return runtime.DOMString.initInterned(candidate);
-        }
-    }
-    return runtime.DOMString.initEmpty();
+    return @import("html").autofill.idlValue(instance, .expectation);
 }
 
 /// Getter for form: the element's form owner.
