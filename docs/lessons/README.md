@@ -501,6 +501,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Document replacement keeps navigation event times](spec-compliance-document-open-keeps-navigation-event-times.md) - Separate repeated event delivery from the first navigation milestones.
 - [Check metadata triggers as well as value parsing](spec-compliance-check-metadata-triggers-as-well-as-value-parsing.md) - Check both a metadata algorithm and its update triggers against specification history and engine mechanisms.
 - [Location components need parser state and document encoding](spec-compliance-location-components-need-parser-state-and-document-encoding.md) - Encoding, base URL and parser state are independent inputs; preserve all three specified by the API.
+- [CSP checks belong to the state transition](spec-compliance-csp-checks-belong-to-the-state-transition.md) - Reporting security checks belong to the algorithm that changes state, not a getter.
 
 ### Codegen
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
@@ -735,6 +736,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A @ptrCast between two types that share a name is a type confusion](debugging-a-ptrcast-between-two-types-that-share-a-name-is-a-type-confusion.md) - A @ptrCast between pointers to two different named types is a type confusion until proven otherwise - when two types share a name, grep for the casts between them.
 - [An errdefer beside an explicit cleanup in a catch frees twice](debugging-an-errdefer-beside-an-explicit-cleanup-in-a-catch-frees-twice.md) - Adding an errdefer changes every catch block below it: remove their explicit cleanups of the same value, or each error frees it twice. And give a sweep's fixture the inputs that make each copy allocate.
 - [Main fetch's isNetworkError reads an opaque filtered response as one](debugging-main-fetch-is-network-error-reads-an-opaque-response-as-one.md) - A response check in main fetch reads the internal response: an opaque filtered one (a service worker's) has status 0 on the outside, which `isNetworkError` takes for a network error.
+- [Check the delivered policy before CSP enforcement](debugging-check-the-delivered-policy-before-csp-enforcement.md) - Verify actual response headers before changing policy enforcement.
 
 ### Workflow
 - [leaks --atExit sees only the process it launched - run the WPT runner without --parallel](workflow-leaks-at-exit-sees-only-the-process-it-launched.md) - A leak count of zero means nothing until the same method has found a leak: run a positive control, and make sure the inspected process is the one that ran the code.
