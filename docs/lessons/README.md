@@ -469,6 +469,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [A fetch event shows the hop's URL, not the redirect chain's first](spec-compliance-a-fetch-event-shows-the-hop-not-the-first-url.md) - A request handed to another party (a service worker, a preload) is the hop being fetched: its URL is the current URL - check what "clone" carries before trusting it to mean that.
 - [Import map lookups use normalized URLs](spec-compliance-import-map-lookups-use-normalized-urls.md) - Canonicalize both sides of a lookup, and audit replacement ownership when canonicalization creates collisions.
 - [Script options belong to preparation](spec-compliance-script-options-belong-to-preparation.md) - An attribute at execution time is not the fetch option of the script that was prepared earlier.
+- [A newer spec can make a WPT expectation stale](spec-compliance-a-newer-spec-can-make-a-wpt-expectation-stale.md) - Trace the direction of a standards change before interpreting browser pass counts or changing code to satisfy a test.
+- [Fetch body tee clones only the second branch](spec-compliance-fetch-body-tee-clones-only-the-second-branch.md) - Read the caller's abstract-operation wrapper as well as the public method: an internal flag can change identity, exceptions and cancellation.
+- [XML serialization needs active namespace bindings](spec-compliance-xml-serialization-needs-active-namespace-bindings.md) - A higher WPT pass count is not proof of namespace correctness when the test expects an obsolete draft's output; record browser-majority changes and their intentional WPT losses explicitly.
 
 ### Codegen
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
