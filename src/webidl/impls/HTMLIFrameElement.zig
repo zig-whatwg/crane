@@ -1592,6 +1592,19 @@ fn startFetch(record: *Navigation) void {
         request.prohibits_mixed_security_contexts = record.prohibits_mixed_security_contexts;
         // UIR 4.1 step 2.1: GET and POST form navigations both qualify.
         request.form_submission = record.csp_navigation_type == .form_submission;
+        // "Create navigation params by fetching" step 3: the request's origin
+        // is the document state's initiator origin - not "client", which on
+        // this request reads every URL as same-origin: with it set, a POST
+        // navigation sends Origin, a hop after a cross-origin redirect
+        // serializes it as "null" (its redirect-taint), and a service
+        // worker's copy of the hop keeps both (navigation-headers.https.html).
+        // A navigation with no initiator (the user agent's own) keeps
+        // "client".
+        if (record.initiator_origin) |initiator| request.setOrigin(initiator.serialized orelse "null") catch {
+            request.deinit();
+            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+            return queueNavigationTask(record.integration, record.id, &runCommit);
+        };
         // "Create navigation params by fetching" steps 7-8: a traversal to the
         // entry the navigable is on is a reload - its document state's reload
         // pending - and the request's reload-navigation flag is set; any other
