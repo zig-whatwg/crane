@@ -43,10 +43,6 @@ pub const ObservableArrayState = struct {
     /// Contains the indexed values
     backing_list: std.ArrayList(JSValue),
 
-    /// The V8 target array - string/symbol properties are stored here
-    /// Per spec, non-indexed operations delegate to the target
-    target: *v8.Array,
-
     /// The V8 Proxy object this state is associated with
     /// Used to clear weak callback during cleanup
     proxy: ?*v8.Object = null,
@@ -69,22 +65,27 @@ pub const ObservableArrayState = struct {
     owner: ?*runtime.Instance = null,
     owner_generation: u64 = 0,
 
-    pub fn init(allocator: std.mem.Allocator, target: *v8.Array) ObservableArrayState {
+    /// The target array (string and symbol properties live there) is the
+    /// Proxy's: each trap is given it.
+    pub fn init(allocator: std.mem.Allocator) ObservableArrayState {
         return .{
             .allocator = allocator,
             .backing_list = .empty,
-            .target = target,
         };
     }
 
     /// The backing list's values are the list's own handles: released with
-    /// it.
-    pub fn deinit(self: *ObservableArrayState) void {
+    /// it, and the Proxy's Global (whose disposal ends its weak arm) with
+    /// them. V8 API calls: never from a first-pass weak callback.
+    fn destroyWithHandles(self: *ObservableArrayState) void {
         for (self.backing_list.items) |value| switch (value) {
             .handle => |h| v8.v8_Value_Dispose(@ptrCast(h.ptr)),
             else => {},
         };
         self.backing_list.deinit(self.allocator); // Zig 0.15: pass allocator
+        if (self.proxy) |proxy| v8.v8_Value_Dispose(@ptrCast(proxy));
+        self.proxy = null;
+        self.allocator.destroy(self);
     }
 
     fn liveOwner(self: *const ObservableArrayState) ?*runtime.Instance {
@@ -207,15 +208,10 @@ pub const Registry = struct {
     /// handle disarmed first so that no collection reaches a freed state.
     /// The agent's isolate is entered.
     pub fn destroy(self: *Registry) void {
+        // Disposing each Proxy's Global ends its arm (no finalizer runs for
+        // it later); the backing lists' handles go with their states.
         var states = self.states.keyIterator();
-        while (states.next()) |state| {
-            if (state.*.proxy) |proxy| v8.v8_Global_ClearWeak(@ptrCast(proxy));
-        }
-        states = self.states.keyIterator();
-        while (states.next()) |state| {
-            state.*.deinit();
-            state.*.allocator.destroy(state.*);
-        }
+        while (states.next()) |state| state.*.destroyWithHandles();
         self.states.deinit(self.allocator);
         self.allocator.destroy(self);
     }
@@ -233,13 +229,21 @@ pub fn liveCount(isolate: *v8.Isolate) usize {
     return registry.count();
 }
 
-/// V8 weak callback for GC-driven cleanup of ObservableArrayState
-/// Called when the V8 Proxy object is garbage collected
-fn weakCallback(data: ?*anyopaque, _: usize) callconv(.c) void {
+/// The Proxy was collected - V8's first pass, where no V8 API may run
+/// (ffi.v8_Global_SetWeakFinalizer): only the registry's entry goes, so the
+/// agent's end cannot reach the state as well.
+fn unlinkCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
     const state: *ObservableArrayState = @ptrCast(@alignCast(data orelse return));
     if (state.registry) |registry| _ = registry.states.remove(state);
-    state.deinit();
-    state.allocator.destroy(state);
+    state.registry = null;
+}
+
+/// After that collection (V8's second pass, V8 API allowed): the backing
+/// list's handles - strong roots of its values, which would otherwise keep
+/// them alive for the isolate's life - the Proxy's Global, and the state go.
+fn finalizeCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
+    const state: *ObservableArrayState = @ptrCast(@alignCast(data orelse return));
+    state.destroyWithHandles();
 }
 
 /// Create a new ObservableArray exotic object
@@ -259,13 +263,15 @@ pub fn create(ctx: Context, options: engine.ObservableArrayOptions) !JSValue {
     // Create target array (the actual storage object)
     // Per WebIDL spec: the target MUST be an Array for proper IsArray() checks
     // and to get the correct [[OwnPropertyKeys]] behavior
+    // A Global the wrapper made, released once the Proxy holds the target.
     const target = v8.v8_Array_New(isolate, 0);
-    // Note: Local handles are managed by V8's HandleScope, no explicit release needed
+    var target_held = true;
+    defer if (target_held) v8.v8_Array_Dispose(target);
 
     // Create the internal state
     const state = try allocator.create(ObservableArrayState);
     errdefer allocator.destroy(state);
-    state.* = ObservableArrayState.init(allocator, target);
+    state.* = ObservableArrayState.init(allocator);
     state.element = options.element;
     state.hooks = options.hooks;
     if (options.owner) |owner| {
@@ -273,12 +279,16 @@ pub fn create(ctx: Context, options: engine.ObservableArrayOptions) !JSValue {
         state.owner_generation = runtime.SlabAllocator.generationOf(owner);
     }
 
-    // Create handler object with our trap functions
+    // Create handler object with our trap functions (a Global, released
+    // once the Proxy holds it).
     const handler = try createHandler(ctx, state);
-    // Note: Local handles are managed by V8's HandleScope, no explicit release needed
+    defer v8.v8_Object_Dispose(handler);
 
-    // Create the Proxy - cast Array to Object since Array is a subtype of Object
+    // Create the Proxy - cast Array to Object since Array is a subtype of
+    // Object. The Proxy holds its target and handler.
     const proxy = v8.v8_Proxy_New(v8_ctx, @ptrCast(target), handler) orelse return error.OutOfMemory;
+    v8.v8_Array_Dispose(target);
+    target_held = false;
 
     // Store proxy pointer in state for cleanup
     state.proxy = @ptrCast(proxy);
@@ -291,11 +301,7 @@ pub fn create(ctx: Context, options: engine.ObservableArrayOptions) !JSValue {
 
     // Set up V8 weak callback for GC-driven cleanup
     // When the Proxy is garbage collected, the weak callback will clean up the state
-    v8.v8_Global_SetWeak(
-        @ptrCast(proxy),
-        @ptrCast(state),
-        weakCallback,
-    );
+    v8.v8_Global_SetWeakFinalizer(@ptrCast(proxy), @ptrCast(state), unlinkCollected, finalizeCollected);
 
     // The proxy's Global (v8_Proxy_New makes one), handed over.
     return JSValue{ .handle = .{ .ptr = @ptrCast(proxy) } };
@@ -319,64 +325,42 @@ fn createHandler(ctx: Context, state: *ObservableArrayState) !*v8.Object {
     const isolate = v8.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
 
     const handler = v8.v8_Object_New(isolate) orelse return error.OutOfMemory;
+    errdefer v8.v8_Object_Dispose(handler);
 
-    // Create an External that wraps the state pointer
-    // This will be passed as 'data' to each FunctionTemplate
+    // An External that wraps the state pointer, passed as 'data' to each
+    // trap. Every handle made here is a Global the wrapper allocated, owned
+    // here (AGENTS.md "The C++ seam"): released once the handler holds what
+    // it needs - kept, each array leaked about twenty of them
+    // (leaks --atExit, lane style2).
     const state_external = v8.v8_External_New(isolate, state) orelse return error.OutOfMemory;
+    defer v8.v8_External_Dispose(state_external);
 
-    // Set up trap functions on the handler
-    // Note: Local handles are managed by V8's HandleScope, no explicit release needed.
-
-    // The "get" trap
-    const get_name = v8.v8_String_NewFromUtf8(isolate, "get", 3) orelse return error.OutOfMemory;
-    const get_fn = v8.v8_FunctionTemplate_GetFunction(
-        v8.v8_FunctionTemplate_New(isolate, getTrap, @ptrCast(state_external)) orelse return error.OutOfMemory,
-        v8_ctx,
-    ) orelse return error.OutOfMemory;
-    _ = v8.v8_Object_Set(handler, v8_ctx, @ptrCast(get_name), @ptrCast(get_fn));
-
-    // The "set" trap
-    const set_name = v8.v8_String_NewFromUtf8(isolate, "set", 3) orelse return error.OutOfMemory;
-    const set_fn = v8.v8_FunctionTemplate_GetFunction(
-        v8.v8_FunctionTemplate_New(isolate, setTrap, @ptrCast(state_external)) orelse return error.OutOfMemory,
-        v8_ctx,
-    ) orelse return error.OutOfMemory;
-    _ = v8.v8_Object_Set(handler, v8_ctx, @ptrCast(set_name), @ptrCast(set_fn));
-
-    // The "ownKeys" trap
-    const ownKeys_name = v8.v8_String_NewFromUtf8(isolate, "ownKeys", 7) orelse return error.OutOfMemory;
-    const ownKeys_fn = v8.v8_FunctionTemplate_GetFunction(
-        v8.v8_FunctionTemplate_New(isolate, ownKeysTrap, @ptrCast(state_external)) orelse return error.OutOfMemory,
-        v8_ctx,
-    ) orelse return error.OutOfMemory;
-    _ = v8.v8_Object_Set(handler, v8_ctx, @ptrCast(ownKeys_name), @ptrCast(ownKeys_fn));
-
-    // The "getOwnPropertyDescriptor" trap (required for ownKeys to work)
-    const gopd_name = v8.v8_String_NewFromUtf8(isolate, "getOwnPropertyDescriptor", 24) orelse return error.OutOfMemory;
-    const gopd_fn = v8.v8_FunctionTemplate_GetFunction(
-        v8.v8_FunctionTemplate_New(isolate, getOwnPropertyDescriptorTrap, @ptrCast(state_external)) orelse return error.OutOfMemory,
-        v8_ctx,
-    ) orelse return error.OutOfMemory;
-    _ = v8.v8_Object_Set(handler, v8_ctx, @ptrCast(gopd_name), @ptrCast(gopd_fn));
-
-    // The "deleteProperty" trap
-    const delete_name = v8.v8_String_NewFromUtf8(isolate, "deleteProperty", 14) orelse return error.OutOfMemory;
-    const delete_fn = v8.v8_FunctionTemplate_GetFunction(
-        v8.v8_FunctionTemplate_New(isolate, deletePropertyTrap, @ptrCast(state_external)) orelse return error.OutOfMemory,
-        v8_ctx,
-    ) orelse return error.OutOfMemory;
-    _ = v8.v8_Object_Set(handler, v8_ctx, @ptrCast(delete_name), @ptrCast(delete_fn));
-
-    // The "getPrototypeOf" trap - critical for no-leak test
-    // Must return Array.prototype, NOT the internal target
-    const gpo_name = v8.v8_String_NewFromUtf8(isolate, "getPrototypeOf", 14) orelse return error.OutOfMemory;
-    const gpo_fn = v8.v8_FunctionTemplate_GetFunction(
-        v8.v8_FunctionTemplate_New(isolate, getPrototypeOfTrap, @ptrCast(state_external)) orelse return error.OutOfMemory,
-        v8_ctx,
-    ) orelse return error.OutOfMemory;
-    _ = v8.v8_Object_Set(handler, v8_ctx, @ptrCast(gpo_name), @ptrCast(gpo_fn));
-
+    const traps = .{
+        .{ "get", getTrap },
+        .{ "set", setTrap },
+        .{ "ownKeys", ownKeysTrap },
+        // Required for ownKeys to work.
+        .{ "getOwnPropertyDescriptor", getOwnPropertyDescriptorTrap },
+        .{ "deleteProperty", deletePropertyTrap },
+        // Critical for the no-leak test: Array.prototype, not the target.
+        .{ "getPrototypeOf", getPrototypeOfTrap },
+    };
+    inline for (traps) |trap| {
+        try setHandlerTrap(isolate, v8_ctx, handler, trap[0], trap[1], @ptrCast(state_external));
+    }
     return handler;
+}
+
+/// `handler[name] = <a function calling callback with data>`, releasing
+/// every handle it makes.
+fn setHandlerTrap(isolate: *v8.Isolate, context: *v8.Context, handler: *v8.Object, comptime name: []const u8, callback: v8.FunctionCallback, data: *v8.Value) !void {
+    const key = v8.v8_String_NewFromUtf8(isolate, name.ptr, name.len) orelse return error.OutOfMemory;
+    defer v8.v8_String_Dispose(key);
+    const template = v8.v8_FunctionTemplate_New(isolate, callback, data) orelse return error.OutOfMemory;
+    defer v8.v8_FunctionTemplate_Dispose(template);
+    const function = v8.v8_FunctionTemplate_GetFunction(template, context) orelse return error.OutOfMemory;
+    defer v8.v8_Function_Dispose(function);
+    _ = v8.v8_Object_Set(handler, context, @ptrCast(key), @ptrCast(function));
 }
 
 // ============================================================================
