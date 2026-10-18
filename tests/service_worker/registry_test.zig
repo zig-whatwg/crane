@@ -1008,3 +1008,288 @@ test "a fetch for an activating worker waits until it is activated; one whose wo
     try testing.expectEqual(@as(usize, 3), recorder.answered.items.len);
     try testing.expect(!recorder.answered.items[2].ok);
 }
+
+// ----------------------------------------------------------------------
+// Clear-Site-Data: "storage" unregisters an origin's registrations at once
+// (Registry.clearOrigin; Chrome DeleteForStorageKey and WebKit
+// SWServer::clearInternal - see the registry for the evidence).
+// ----------------------------------------------------------------------
+
+fn dropLog(recorder: *Recorder) void {
+    for (recorder.log.items) |line| testing.allocator.free(line);
+    recorder.log.clearRetainingCapacity();
+}
+
+fn logHas(recorder: *const Recorder, comptime fmt: []const u8, args: anytype) !bool {
+    const wanted = try std.fmt.allocPrint(testing.allocator, fmt, args);
+    defer testing.allocator.free(wanted);
+    for (recorder.log.items) |line| if (std.mem.eql(u8, line, wanted)) return true;
+    return false;
+}
+
+fn terminatedAll(recorder: *const Recorder, ids: []const u64) bool {
+    for (ids) |id| {
+        const found = for (recorder.terminated.items) |t| {
+            if (t == id) break true;
+        } else false;
+        if (!found) return false;
+    }
+    return true;
+}
+
+fn expectNoRegistrations(registry: *Registry, origin: []const u8) !void {
+    const listed = try registry.registrationsOf(testing.allocator, origin);
+    defer testing.allocator.free(listed);
+    try testing.expectEqual(@as(usize, 0), listed.len);
+}
+
+test "Clear-Site-Data: an activated registration with an update waiting and a controlled client is cleared at once" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 40);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    const other = try addClient(&registry, .window, "https://other.com", "https://other.com/page.html", true);
+    const first = try installAndActivate(&recorder, &registry, page, "https://example.com/sw.js", "https://example.com/", "v1");
+    try registry.claim(first);
+    // Another origin's registration is not touched.
+    const other_job = try registry.createJob(.{
+        .job_type = .register,
+        .storage_key = "https://other.com",
+        .scope_url = "https://other.com/",
+        .script_url = "https://other.com/sw.js",
+        .client = .{ .environment = other.id, .promise = 9 },
+        .referrer = other.creation_url,
+    });
+    try registry.scheduleJob(other_job);
+    var other_plan = (try recorder.runQueuedJobs(&registry)).?;
+    try answerFetch(&registry, &other_plan, "o1", true);
+    const kept = recorder.started.items[recorder.started.items.len - 1];
+    try registry.workerEvaluated(kept, true, true);
+    try registry.lifecycleEventDone(recorder.lifecycle.items[recorder.lifecycle.items.len - 1].op, false);
+    try registry.lifecycleEventDone(recorder.lifecycle.items[recorder.lifecycle.items.len - 1].op, false);
+    // An update installs and waits for the controlled page.
+    try registerJob(&registry, page, "https://example.com/sw2.js", "https://example.com/", 2);
+    var plan = (try recorder.runQueuedJobs(&registry)).?;
+    try answerFetch(&registry, &plan, "v2", true);
+    const second = recorder.started.items[recorder.started.items.len - 1];
+    try registry.workerEvaluated(second, true, true);
+    try registry.lifecycleEventDone(recorder.lifecycle.items[recorder.lifecycle.items.len - 1].op, false);
+    const registration = registry.getRegistration("https://example.com", "https://example.com/").?;
+    try testing.expectEqual(second, registration.waiting.?.id);
+    dropLog(&recorder);
+
+    try registry.clearOrigin("https://example.com");
+
+    // Gone from the map, both workers terminated and redundant, the slots
+    // empty, and the page lost its controller (controllerchange to none).
+    try testing.expect(registry.getRegistration("https://example.com", "https://example.com/") == null);
+    try expectNoRegistrations(&registry, "https://example.com");
+    try testing.expect(terminatedAll(&recorder, &.{ first, second }));
+    try testing.expect(try logHas(&recorder, "{d}: worker {d} redundant", .{ page.id, first }));
+    try testing.expect(try logHas(&recorder, "{d}: worker {d} redundant", .{ page.id, second }));
+    try testing.expect(try logHas(&recorder, "{d}: waiting = 0", .{page.id}));
+    try testing.expect(try logHas(&recorder, "{d}: active = 0", .{page.id}));
+    try testing.expect(try logHas(&recorder, "{d}: controllerchange 0 none", .{page.id}));
+    try testing.expect(page.active_worker == null);
+    // The other origin's registration and worker are as they were.
+    try testing.expect(registry.getRegistration("https://other.com", "https://other.com/") != null);
+    try testing.expect(!terminatedAll(&recorder, &.{kept}));
+
+    // The threads' ends free the workers, and with them the registration.
+    try registry.workerEnded(first);
+    try registry.workerEnded(second);
+    try testing.expect(registry.findWorker(first) == null);
+    try testing.expect(registry.findWorker(second) == null);
+    try testing.expectEqual(@as(usize, 0), registry.detached.items.len);
+}
+
+test "Clear-Site-Data: an unregistered registration waiting for its controlled client is cleared at once" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 41);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    const worker = try installAndActivate(&recorder, &registry, page, "https://example.com/sw.js", "https://example.com/", "v1");
+    try registry.claim(worker);
+    const job = try registry.createJob(.{
+        .job_type = .unregister,
+        .storage_key = "https://example.com",
+        .scope_url = "https://example.com/",
+        .client = .{ .environment = page.id, .promise = 2 },
+        .referrer = page.creation_url,
+    });
+    try registry.scheduleJob(job);
+    try testing.expect((try recorder.runQueuedJobs(&registry)) == null);
+    // Unregister waits: the page still uses it.
+    try testing.expectEqual(worker, page.active_worker.?.id);
+    try testing.expect(!terminatedAll(&recorder, &.{worker}));
+    dropLog(&recorder);
+
+    try registry.clearOrigin("https://example.com");
+    try testing.expect(terminatedAll(&recorder, &.{worker}));
+    try testing.expect(try logHas(&recorder, "{d}: worker {d} redundant", .{ page.id, worker }));
+    try testing.expect(try logHas(&recorder, "{d}: controllerchange 0 none", .{page.id}));
+    try testing.expect(page.active_worker == null);
+    try registry.workerEnded(worker);
+    try testing.expect(registry.findWorker(worker) == null);
+    try testing.expectEqual(@as(usize, 0), registry.detached.items.len);
+}
+
+test "Clear-Site-Data: a register job waiting for its fetch is rejected with AbortError and finishes; a queued one is removed" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 42);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    try registerJob(&registry, page, "https://example.com/sw.js", "https://example.com/s/", 1);
+    var plan = (try recorder.runQueuedJobs(&registry)).?;
+    // A second, different job queues behind it.
+    try registerJob(&registry, page, "https://example.com/other.js", "https://example.com/s/", 2);
+    dropLog(&recorder);
+
+    try registry.clearOrigin("https://example.com");
+    try recorder.expectLog(&.{ "1: reject abort_error", "1: reject abort_error" });
+    try expectNoRegistrations(&registry, "https://example.com");
+
+    // The fetch answers: the job finishes, nothing is installed.
+    try answerFetch(&registry, &plan, "x", true);
+    try testing.expectEqual(@as(usize, 0), recorder.started.items.len);
+    try recorder.expectLog(&.{});
+    // The queue is empty: a new job runs at once.
+    try registerJob(&registry, page, "https://example.com/sw.js", "https://example.com/s/", 3);
+    var again = (try recorder.runQueuedJobs(&registry)).?;
+    again.deinit(testing.allocator);
+}
+
+test "Clear-Site-Data: a register job whose worker is still being parsed is aborted, and the worker terminated" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 43);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    try registerJob(&registry, page, "https://example.com/loop.js", "https://example.com/s/", 1);
+    var plan = (try recorder.runQueuedJobs(&registry)).?;
+    try answerFetch(&registry, &plan, "while (true) {}", true);
+    // Update step 15: the worker runs its script (an infinite loop).
+    const worker = recorder.started.items[0];
+    dropLog(&recorder);
+
+    try registry.clearOrigin("https://example.com");
+    try recorder.expectLog(&.{"1: reject abort_error"});
+    try testing.expect(terminatedAll(&recorder, &.{worker}));
+    try expectNoRegistrations(&registry, "https://example.com");
+
+    // Its end answers Run Service Worker with failure: the job finishes.
+    try registry.workerEnded(worker);
+    try testing.expect(registry.findWorker(worker) == null);
+    try recorder.expectLog(&.{});
+    try testing.expectEqual(@as(usize, 0), registry.detached.items.len);
+}
+
+test "Clear-Site-Data: a worker that finishes evaluating after the clear is not installed" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 44);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    try registerJob(&registry, page, "https://example.com/sw.js", "https://example.com/s/", 1);
+    var plan = (try recorder.runQueuedJobs(&registry)).?;
+    try answerFetch(&registry, &plan, "x", true);
+    const worker = recorder.started.items[0];
+    try registry.clearOrigin("https://example.com");
+    dropLog(&recorder);
+
+    // The evaluation's report was already on its way.
+    try registry.workerEvaluated(worker, true, true);
+    try recorder.expectLog(&.{});
+    try testing.expectEqual(@as(usize, 0), recorder.lifecycle.items.len);
+    try expectNoRegistrations(&registry, "https://example.com");
+    try registry.workerEnded(worker);
+    try testing.expect(registry.findWorker(worker) == null);
+}
+
+test "Clear-Site-Data: an installing worker whose install event never settles is made redundant; its job finishes" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 45);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    try registerJob(&registry, page, "https://example.com/sw.js", "https://example.com/s/", 1);
+    var plan = (try recorder.runQueuedJobs(&registry)).?;
+    try answerFetch(&registry, &plan, "x", true);
+    const worker = recorder.started.items[0];
+    try registry.workerEvaluated(worker, true, true);
+    // The install event is dispatched; its waitUntil() never settles.
+    try testing.expectEqual(@as(usize, 1), recorder.lifecycle.items.len);
+    dropLog(&recorder);
+
+    try registry.clearOrigin("https://example.com");
+    // The job promise was resolved at Install step 7: nothing to reject.
+    try testing.expect(!try logHas(&recorder, "1: reject abort_error", .{}));
+    try testing.expect(try logHas(&recorder, "1: installing = 0", .{}));
+    try testing.expect(try logHas(&recorder, "1: worker {d} redundant", .{worker}));
+    try testing.expect(terminatedAll(&recorder, &.{worker}));
+
+    // The worker's end ends the install event: the job finishes.
+    try registry.workerEnded(worker);
+    try testing.expect(registry.findWorker(worker) == null);
+    try testing.expectEqual(@as(usize, 0), registry.installs.items.len);
+    // A new job for the scope runs at once.
+    try registerJob(&registry, page, "https://example.com/sw.js", "https://example.com/s/", 2);
+    var again = (try recorder.runQueuedJobs(&registry)).?;
+    again.deinit(testing.allocator);
+}
+
+test "Clear-Site-Data: an activating worker whose activate event never settles is made redundant" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 46);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    try registerJob(&registry, page, "https://example.com/sw.js", "https://example.com/s/", 1);
+    var plan = (try recorder.runQueuedJobs(&registry)).?;
+    try answerFetch(&registry, &plan, "x", true);
+    const worker = recorder.started.items[0];
+    try registry.workerEvaluated(worker, true, true);
+    try registry.lifecycleEventDone(recorder.lifecycle.items[0].op, false);
+    try testing.expectEqual(reg.WorkerState.activating, registry.findWorker(worker).?.state);
+    dropLog(&recorder);
+
+    try registry.clearOrigin("https://example.com");
+    try testing.expect(try logHas(&recorder, "1: worker {d} redundant", .{worker}));
+    try testing.expect(try logHas(&recorder, "1: active = 0", .{}));
+    try testing.expect(terminatedAll(&recorder, &.{worker}));
+    try registry.workerEnded(worker);
+    try testing.expect(registry.findWorker(worker) == null);
+    try testing.expectEqual(@as(usize, 0), registry.activates.items.len);
+    try expectNoRegistrations(&registry, "https://example.com");
+}
+
+test "Clear-Site-Data: a queued update job that has not started is rejected and does not run" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 47);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    const worker = try installAndActivate(&recorder, &registry, page, "https://example.com/sw.js", "https://example.com/", "v1");
+    const job = try registry.createJob(.{
+        .job_type = .update,
+        .storage_key = "https://example.com",
+        .scope_url = "https://example.com/",
+        .script_url = "https://example.com/sw.js",
+        .client = .{ .environment = page.id, .promise = 5 },
+        .referrer = page.creation_url,
+    });
+    try registry.scheduleJob(job);
+    // Its Run Job task is queued, not yet run.
+    try testing.expectEqual(@as(usize, 1), recorder.run_jobs.items.len);
+    dropLog(&recorder);
+
+    try registry.clearOrigin("https://example.com");
+    try testing.expect(try logHas(&recorder, "1: reject abort_error", .{}));
+    // Its task runs: the job finishes without fetching.
+    try testing.expect((try recorder.runQueuedJobs(&registry)) == null);
+    try registry.workerEnded(worker);
+    try testing.expect(registry.findWorker(worker) == null);
+}

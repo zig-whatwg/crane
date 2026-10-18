@@ -65,7 +65,7 @@ pub const EnvironmentKind = enum {
 pub const FrameType = enum { auxiliary, @"top-level", nested, none };
 
 /// The exceptions an algorithm rejects a job promise with.
-pub const ErrorKind = enum { type_error, security_error, invalid_state_error, invalid_access_error, not_supported_error };
+pub const ErrorKind = enum { type_error, security_error, invalid_state_error, invalid_access_error, not_supported_error, abort_error };
 
 /// One response a service worker keeps in its script resource map: what
 /// importScripts() is answered from once installed, and what the Update
@@ -272,6 +272,13 @@ pub const Job = struct {
     equivalent: std.ArrayListUnmanaged(*Job) = .empty,
     /// Its containing job queue's key (the scope url), when queued.
     queued: bool = false,
+    /// Run Job has run it (it is its queue's first item, and its algorithm
+    /// has begun).
+    started: bool = false,
+    /// Clear-Site-Data aborted it (`clearOrigin`): its promise is rejected
+    /// with an AbortError, and it does nothing more - it finishes when Run
+    /// Job reaches it, or where its algorithm next resumes.
+    aborted: bool = false,
 
     pub const Client = struct {
         environment: u64,
@@ -963,6 +970,12 @@ pub const Registry = struct {
         if (queue.items.len == 0) return null;
         // 2.1. Let job be the first item in jobQueue.
         const job = queue.items[0];
+        // Aborted before it ran (`clearOrigin`): it only finishes.
+        if (job.aborted) {
+            self.finishJob(job);
+            return null;
+        }
+        job.started = true;
         return switch (job.job_type) {
             // 2.2. Register.
             .register => self.register(job),
@@ -1244,6 +1257,8 @@ pub const Registry = struct {
     pub fn updateFetched(self: *Registry, job_id: u64, outcome: *FetchOutcome) Allocator.Error!void {
         defer self.freeOutcome(outcome);
         const job = self.runningJob(job_id) orelse return;
+        // Aborted while it fetched (`clearOrigin`): it only finishes.
+        if (job.aborted) return self.finishJob(job);
         const registration = self.getRegistration(job.storage_key, job.scope_url) orelse {
             self.rejectJob(job, .type_error, "No registration for this scope");
             self.finishJob(job);
@@ -1523,6 +1538,16 @@ pub const Registry = struct {
     /// Update steps 16-17.
     fn updateRan(self: *Registry, job: *Job, worker: *Worker, ok: bool) Allocator.Error!void {
         const registration = worker.registration;
+        // Aborted while its worker started (`clearOrigin`, which terminated
+        // it): an evaluation that ended first installs nothing - the worker
+        // is redundant and goes, and the job finishes.
+        if (job.aborted) {
+            worker.state = .redundant;
+            if (ok) self.effects.terminate_worker(self.effects.ctx, worker);
+            self.finishJob(job);
+            self.maybeFreeWorker(worker);
+            return;
+        }
         if (!ok) {
             // 16.1. Reject with a TypeError.
             self.rejectJob(job, .type_error, "The service worker's script failed to run");
@@ -1848,6 +1873,107 @@ pub const Registry = struct {
             self.updateRegistrationState(registration, .active, null);
             self.updateWorkerState(worker, .redundant);
         }
+    }
+
+    /// Clear Site Data 4.2.5 "clear DOM-accessible storage for origin" step
+    /// 4, for the serialized origin `origin` (the "storage" type of a
+    /// `Clear-Site-Data` header): every registration of that storage key -
+    /// in the registration map, or unregistered and still waiting for its
+    /// clients - is unregistered and cleared at once.
+    ///
+    /// The spec says "execute unregister()", which leaves a registration
+    /// whose clients still use it in place until they unload. Chrome and
+    /// Safari clear immediately: Chrome's
+    /// ServiceWorkerContextCore::DidGetRegistrationsForDeleteForStorageKey
+    /// aborts each registration's scope's jobs (job_coordinator_->Abort),
+    /// clears its "uninstalling" (unregistered) registrations, and
+    /// unregisters the rest with is_immediate=true -
+    /// ServiceWorkerRegistration::DeleteAndClearImmediately, whose Clear()
+    /// dooms every version: redundant, and its controllees lose their
+    /// controller; WebKit's SWServer::clearInternal drops the matching job
+    /// queues and calls SWServerRegistration::clear() on each registration.
+    /// Firefox unregisters (ClearSiteData -> the clear-data service), and
+    /// times out on the unregister-immediately*.https.html files (wpt.fyi:
+    /// unregister-immediately 4/4, 0/4 TIMEOUT, 4/4 for Chrome, Firefox,
+    /// Safari). No newer spec is involved: golden rule 2, the majority.
+    ///
+    /// The scope's jobs, mechanism by mechanism: removed - Chrome and WebKit
+    /// (Firefox leaves them); their promises settled - Chrome (AbortError)
+    /// and Firefox (they run), where WebKit leaves them pending. Together:
+    /// Chrome's, which unregister-immediately-before-installed expects. A job
+    /// not yet begun is rejected and removed; the running one is rejected
+    /// now and finishes through its own steps (`Job.aborted`), so no job is
+    /// freed while a worker's start or an install waits on it.
+    pub fn clearOrigin(self: *Registry, origin: []const u8) Allocator.Error!void {
+        // The registrations, held while they are cleared (clearing one may
+        // release its last other reference).
+        var matched: std.ArrayListUnmanaged(*Registration) = .empty;
+        defer {
+            for (matched.items) |registration| self.releaseRegistration(registration);
+            matched.deinit(self.allocator);
+        }
+        try matched.ensureTotalCapacity(self.allocator, self.registrations.items.len + self.detached.items.len);
+        for ([_][]const *Registration{ self.registrations.items, self.detached.items }) |list| {
+            for (list) |registration| {
+                if (!std.mem.eql(u8, registration.storage_key, origin)) continue;
+                registration.refs += 1;
+                matched.appendAssumeCapacity(registration);
+            }
+        }
+        for (matched.items) |registration| {
+            // Chrome's job_coordinator_->Abort(scope, key).
+            self.abortJobs(registration.storage_key, registration.scope_url);
+            // Unregister step 3: remove it from the registration map.
+            if (registration.in_map) self.removeFromMap(registration);
+            // A worker of it that holds no slot and is not redundant is the
+            // one a job is starting (Update step 15, "parsed" - its script
+            // may never finish: onparse-infiniteloop-worker.js): it goes
+            // with the job.
+            for (self.workers.items) |worker| {
+                if (worker.registration != registration or worker.state == .redundant) continue;
+                if (registration.installing == worker or registration.waiting == worker or registration.active == worker) continue;
+                worker.state = .redundant;
+                self.effects.terminate_worker(self.effects.ctx, worker);
+            }
+            // Clear Registration, without Try Clear Registration's wait.
+            self.clearRegistration(registration);
+            // Each client it controlled has no controller now, and hears
+            // controllerchange (Chrome: ServiceWorkerVersion::Doom tells
+            // each controllee, ServiceWorkerContainerHost::NotifyControllerLost;
+            // unregister-immediately.https.html expects the event and a null
+            // controller). The event is the client's task, on its own
+            // thread (`notify`).
+            for (self.environments.items) |environment| {
+                if (!environment.kind.isClient()) continue;
+                const worker = environment.active_worker orelse continue;
+                if (worker.registration != registration) continue;
+                self.setActiveWorker(environment, null);
+                self.notifyControllerChange(environment);
+            }
+        }
+    }
+
+    /// Abort the jobs of the job queue for `scope_url` whose storage key is
+    /// `storage_key` (`clearOrigin`): each one's promise is rejected with an
+    /// AbortError; those not yet begun leave the queue - the first one only
+    /// when Run Job reaches it, as its Run Job task is already queued.
+    fn abortJobs(self: *Registry, storage_key: []const u8, scope_url: []const u8) void {
+        const queue = self.job_queues.getPtr(scope_url) orelse return;
+        const message = "The registration was cleared (Clear-Site-Data)";
+        var i: usize = queue.items.len;
+        while (i > 1) {
+            i -= 1;
+            const job = queue.items[i];
+            if (!std.mem.eql(u8, job.storage_key, storage_key)) continue;
+            self.rejectJob(job, .abort_error, message);
+            _ = queue.orderedRemove(i);
+            self.destroyJob(job);
+        }
+        if (queue.items.len == 0) return;
+        const first = queue.items[0];
+        if (!std.mem.eql(u8, first.storage_key, storage_key)) return;
+        self.rejectJob(first, .abort_error, message);
+        first.aborted = true;
     }
 
     /// Handle Service Worker Client Unload, for the registration a client

@@ -854,6 +854,23 @@ pub const Manager = struct {
         self.registry.removeEnvironment(environment);
     }
 
+    /// Clear-Site-Data's "storage" type for the serialized origin `origin`
+    /// (Clear Site Data 4.2.5 step 4; the Browser's handler,
+    /// src/browser/clear_site_data.zig): the origin's registrations are
+    /// unregistered and cleared at once (`Registry.clearOrigin`). Runs on
+    /// the fetching thread - any of the Browser's - with the lock held, as a
+    /// realm's atomic steps do: what a client sees (its controller gone,
+    /// controllerchange, statechange, a rejected job promise) is posted to
+    /// its realm's loop, and each worker ends on its own thread
+    /// (`terminateWorker`), reporting back to the job thread.
+    pub fn clearOrigin(self: *Manager, origin: []const u8) void {
+        self.lock();
+        defer self.unlock();
+        self.registry.clearOrigin(origin) catch |err| {
+            log.debug("Clear-Site-Data: {s}'s registrations were not cleared: {s}", .{ origin, @errorName(err) });
+        };
+    }
+
     /// Note the Browser's cookie jar, if none is noted yet.
     pub fn noteCookieJar(self: *Manager, jar: ?*@import("fetch").internal.CookieJar) void {
         self.lock();
