@@ -2810,6 +2810,16 @@ const WorkerModules = struct {
             // A service worker keeps the modules its graph imports in its
             // script resource map (ServiceHooks.module_fetched).
             .fetched = if (self.service != null) .{ .context = self, .run = &serviceModuleFetched } else null,
+            // HTML "fetch a module worker script graph": the graph's
+            // descendants are fetched with the worker's destination. A
+            // service worker's environment serves only its static graph
+            // (its import() rejects, HostLoadImportedModule step 2), so its
+            // modules are "serviceworker" requests (Chrome; Safari at
+            // install - soft-update-fetch-metadata's module case, wpt.fyi
+            // 23b0b89b1a). Not modelled, stated: a dedicated or shared
+            // worker's static imports stay "script" - its environment also
+            // serves import(), whose destination is "script".
+            .script_destination = if (self.service != null) .serviceworker else .script,
         };
     }
 
