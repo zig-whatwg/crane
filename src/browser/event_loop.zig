@@ -450,7 +450,7 @@ pub const EventLoop = struct {
         var budget = self.tasks.items.len;
         // Until this drain is done, any queued task may be runnable.
         self.waiting = 0;
-        const index: usize = 0;
+        var index: usize = 0;
         var progressed = false;
         // Tasks the ones run here queue are appended: the budget never
         // reaches them, and nothing else removes from the queue, so
@@ -458,7 +458,9 @@ pub const EventLoop = struct {
         while (budget > 0 and index < self.tasks.items.len) : (budget -= 1) {
             const task = self.tasks.items[index];
             switch (classify(task)) {
-                .inactive, .gone => {
+                // Left where it is: the next drain asks again.
+                .inactive => index += 1,
+                .gone => {
                     _ = self.tasks.orderedRemove(index);
                     if (task.drop) |drop| drop(task.context);
                     progressed = true;
