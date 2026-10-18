@@ -13,10 +13,14 @@
 //! missing Document container as csp.CSPList.unavailable: an empty,
 //! unenforceable list, against which src/csp's every entry point is Blocked.
 //!
-//! The global whose container cannot be found is a Window with no document
-//! (interfaces.Window.init in the page's realm, never given one); the
+//! The global whose container cannot be found is a Window whose document
+//! has no Document state - what a Document whose registry entry is gone is
+//! to every reader: dom.policy_containers.of answers null for it. It is
+//! made with interfaces.Window.init in the page's realm and given, through
+//! dom.window_globals, an element of the page as its document. The
 //! control is the page's own Window, whose document has an empty policy
-//! container: everything is allowed there. Each pair is one decision host:
+//! container: everything is allowed there. A Window never given a document
+//! keeps none (tests/v8 realms run script in one): pinned too. Each pair is one decision host:
 //! the global's CSP list (eval, Function, wasm and Trusted Types read it),
 //! html.code_generation's eval check, main fetch's request check through
 //! "populate request from client", the target's javascript: URL check, and
@@ -68,9 +72,18 @@ fn exercise() !void {
 
     const window = try pageWindow(page, realm);
     const document = try pageDocument(page, realm);
-    // A Window whose document cannot be found: one never given a document.
+    // A Window never given a document keeps none: nothing to check.
+    const bare = try interfaces.Window.init(allocator, realm);
+    defer interfaces.Window.deinit(bare);
+    try testing.expect(dom.trusted_types.cspListOf(bare) == null);
+    try testing.expect(!try requestBlocked(bare));
+    // A Window whose document's container cannot be found: its document
+    // has no Document state.
     const orphan = try interfaces.Window.init(allocator, realm);
     defer interfaces.Window.deinit(orphan);
+    const stateless = try interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("div"), .notPassed());
+    dom.window_globals.setDocument(orphan, stateless);
+    try testing.expect(dom.policy_containers.of(stateless) == null);
 
     // The global's CSP list - what eval, Function, wasm and the Trusted
     // Types checks read (dom.trusted_types.cspListOf).
@@ -98,9 +111,9 @@ fn exercise() !void {
     try testing.expect(dom.csp_violations.shouldTargetBlockJavascriptUrl(orphan, "javascript:void 0"));
     // A Document's list (dom.csp_violations.documentCspList, which the
     // inline check and the plugin check read): an instance with no
-    // Document state - here a Window - has no container to find.
+    // Document state has no container to find.
     try testing.expect(dom.csp_violations.documentCspList(document).isEmpty());
-    try testing.expect(dom.csp_violations.documentCspList(orphan).blocksEverything());
+    try testing.expect(dom.csp_violations.documentCspList(stateless).blocksEverything());
 
     // The page itself still runs and loads everything: its own checks were
     // not changed by the orphan's.
