@@ -33,6 +33,7 @@
 //! Spec: https://drafts.csswg.org/css-scoping-1/#flattening
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
@@ -125,6 +126,10 @@ pub const StyleEngine = struct {
     /// Moves every time the active sheets are rebuilt: part of each cached
     /// style's key.
     generation: u64 = 1,
+    /// A style read of this document is resolving: nothing it reaches may
+    /// read style again (the active sheets and the lineage's caches are in
+    /// use). Checked in Debug builds (`enterResolution`).
+    resolving: bool = false,
 
     pub fn init(allocator: Allocator) StyleEngine {
         return .{ .allocator = allocator };
@@ -135,6 +140,15 @@ pub const StyleEngine = struct {
         self.active = null;
         self.owners.deinit(self.allocator);
         self.media_query_lists.deinit(self.allocator);
+    }
+
+    /// A style read begins. Re-entering one - matching or a hook reaching
+    /// computedStyle for the same document while it resolves - would rebuild
+    /// the active sheets and replace cached styles under the outer read
+    /// (Codex row 61 Q16): a Debug build stops there.
+    fn enterResolution(self: *StyleEngine) void {
+        if (builtin.mode == .Debug and self.resolving) @panic("dom.style.computedStyle re-entered while it resolves the same document");
+        self.resolving = true;
     }
 
     /// A MediaQueryList whose document this is was made (matchMedia).
@@ -513,6 +527,8 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
     if (node.node_type != NodeBase.ELEMENT_NODE or !node.is_connected) return null;
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return null;
     const engine = hooks.engineOf(document) orelse return null;
+    engine.enterResolution();
+    defer engine.resolving = false;
     const active = try engine.ensureActive(document);
     var res: Resolution = .{
         .allocator = engine.allocator,

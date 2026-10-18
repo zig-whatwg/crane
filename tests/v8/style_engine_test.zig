@@ -209,3 +209,20 @@ test "a cached style is reused until an input moves" {
     const after = (try dom.style.computedStyle(element, null)).?;
     try testing.expect(after != again);
 }
+
+test "a style read marks its document's engine resolving only while it runs (Codex row 61 Q16)" {
+    dom.style.ua_sheet.build();
+    const page = try Page.open();
+    defer page.close();
+    try page.eval(html_page);
+    const element = try page.instance("div");
+    const document = try page.instance("d");
+    const engine = dom.style.engine.engineOf(document) orelse return error.NoEngine;
+    try testing.expect(!engine.resolving);
+    _ = try dom.style.computedStyle(element, null);
+    try testing.expect(!engine.resolving);
+    _ = try dom.style.computedStyle(element, "before");
+    try testing.expect(!engine.resolving);
+    _ = try dom.style.isBeingRendered(element);
+    try testing.expect(!engine.resolving);
+}
