@@ -51,10 +51,6 @@ const NodeList = interfaces.NodeList;
 const Node = interfaces.Node;
 const Document = interfaces.Document;
 
-// The Range impl, for the live-range steps
-const impls = @import("impls");
-const RangeImpl = impls.Range;
-
 /// DOM Exception types as defined in WebIDL
 pub const DOMException = error{
     HierarchyRequestError,
@@ -2070,6 +2066,11 @@ fn nodeDocument(node: anytype) ?*runtime.Instance {
 
 /// Helper: Run live range pre-remove steps
 /// Spec: https://dom.spec.whatwg.org/#concept-node-remove steps 4-7
+///
+/// Each live range's boundary points are read once, through Range's
+/// dom.range_boundaries steps, and kept current here as steps 4 and 5 move
+/// them: Range's setters change nothing else, so steps 6 and 7 read what the
+/// range now holds.
 fn runLiveRangePreRemoveSteps(node: anytype) void {
     // Get the node's document to access the list of live ranges
     const doc_instance = nodeDocument(node) orelse return;
@@ -2080,23 +2081,26 @@ fn runLiveRangePreRemoveSteps(node: anytype) void {
 
     // Access the document's internal state to get the ranges list
     const internal = document_internals.getInternal(doc_instance) orelse return;
+    if (internal.ranges.items.len == 0) return;
+    const live = range_boundaries.liveRange() orelse return;
+    const node_ptr: *const NodeBase = @ptrCast(node);
 
     // Iterate through all live ranges registered with this document
     for (internal.ranges.items) |range| {
-        // Get range boundary points (containers only - offsets read when needed)
-        const start_container = RangeImpl.getStartContainer(range);
-        const end_container = RangeImpl.getEndContainer(range);
+        var points = live.points(range) orelse continue;
 
         // Step 4: For each live range whose start node is an inclusive descendant of node,
         // set its start to (parent, index)
-        if (start_container) |start_node| {
+        if (points.start_container) |start_node| {
             // Get the NodeBase from the start container using instance bridge
             if (instance_bridge.getNodeBase(start_node)) |start_base| {
-                const node_ptr: *const NodeBase = @ptrCast(node);
                 if (tree_helpers.isInclusiveDescendant(node_ptr, start_base)) {
                     // Cast parent to runtime.Instance
                     if (instance_bridge.getInstance(parent)) |parent_instance| {
-                        RangeImpl.setStartBoundary(range, @ptrCast(@alignCast(parent_instance)), @intCast(index));
+                        const container: *runtime.Instance = @ptrCast(@alignCast(parent_instance));
+                        live.set_start(range, container, @intCast(index));
+                        points.start_container = container;
+                        points.start_offset = @intCast(index);
                     }
                 }
             }
@@ -2104,31 +2108,28 @@ fn runLiveRangePreRemoveSteps(node: anytype) void {
 
         // Step 5: For each live range whose end node is an inclusive descendant of node,
         // set its end to (parent, index)
-        if (end_container) |end_node| {
+        if (points.end_container) |end_node| {
             // Get the NodeBase from the end container using instance bridge
             if (instance_bridge.getNodeBase(end_node)) |end_base| {
-                const node_ptr: *const NodeBase = @ptrCast(node);
                 if (tree_helpers.isInclusiveDescendant(node_ptr, end_base)) {
                     // Cast parent to runtime.Instance
                     if (instance_bridge.getInstance(parent)) |parent_instance| {
-                        RangeImpl.setEndBoundary(range, @ptrCast(@alignCast(parent_instance)), @intCast(index));
+                        const container: *runtime.Instance = @ptrCast(@alignCast(parent_instance));
+                        live.set_end(range, container, @intCast(index));
+                        points.end_container = container;
+                        points.end_offset = @intCast(index);
                     }
                 }
             }
         }
 
-        // Re-read boundary points after potential updates
-        const current_start = RangeImpl.getStartContainer(range);
-        const current_end = RangeImpl.getEndContainer(range);
-
         // Step 6: For each live range whose start node is parent and start offset is greater than index,
         // decrease its start offset by 1
-        if (current_start) |start_node| {
+        if (points.start_container) |start_node| {
             if (instance_bridge.getNodeBase(start_node)) |start_base| {
                 if (start_base == parent) {
-                    const current_start_offset = RangeImpl.getStartOffset(range);
-                    if (current_start_offset > index) {
-                        RangeImpl.setStartOffset(range, @intCast(current_start_offset - 1));
+                    if (points.start_offset > index) {
+                        live.set_start_offset(range, @intCast(points.start_offset - 1));
                     }
                 }
             }
@@ -2136,12 +2137,11 @@ fn runLiveRangePreRemoveSteps(node: anytype) void {
 
         // Step 7: For each live range whose end node is parent and end offset is greater than index,
         // decrease its end offset by 1
-        if (current_end) |end_node| {
+        if (points.end_container) |end_node| {
             if (instance_bridge.getNodeBase(end_node)) |end_base| {
                 if (end_base == parent) {
-                    const current_end_offset = RangeImpl.getEndOffset(range);
-                    if (current_end_offset > index) {
-                        RangeImpl.setEndOffset(range, @intCast(current_end_offset - 1));
+                    if (points.end_offset > index) {
+                        live.set_end_offset(range, @intCast(points.end_offset - 1));
                     }
                 }
             }
@@ -2180,39 +2180,43 @@ pub fn runLiveRangeSplitSteps(
     const node_index_usize = tree_helpers.getChildIndex(parent_base_ptr, node_base_ptr) orelse return;
     const node_index: u32 = @intCast(node_index_usize);
 
+    const live = range_boundaries.liveRange() orelse return;
     for (internal.ranges.items) |range| {
+        // Read once, and kept current as 7.2 and 7.3 move the points.
+        var points = live.points(range) orelse continue;
+
         // Step 7.2: start node is node and start offset > offset ->
         // move the boundary to newNode, rebased.
-        if (RangeImpl.getStartContainer(range) == node) {
-            const start_offset = RangeImpl.getStartOffset(range);
-            if (start_offset > offset) {
-                RangeImpl.setStartBoundary(range, new_node, start_offset - offset);
+        if (points.start_container == node) {
+            if (points.start_offset > offset) {
+                live.set_start(range, new_node, points.start_offset - offset);
+                points.start_container = new_node;
+                points.start_offset -= offset;
             }
         }
 
         // Step 7.3: same for the end boundary.
-        if (RangeImpl.getEndContainer(range) == node) {
-            const end_offset = RangeImpl.getEndOffset(range);
-            if (end_offset > offset) {
-                RangeImpl.setEndBoundary(range, new_node, end_offset - offset);
+        if (points.end_container == node) {
+            if (points.end_offset > offset) {
+                live.set_end(range, new_node, points.end_offset - offset);
+                points.end_container = new_node;
+                points.end_offset -= offset;
             }
         }
 
         // Step 7.4: start node is parent and start offset == node's index + 1.
-        // Re-read the container: 7.2 may have just moved it to newNode, and a
-        // boundary on newNode is not on parent, so it cannot match here.
-        if (RangeImpl.getStartContainer(range) == parent) {
-            const start_offset = RangeImpl.getStartOffset(range);
-            if (start_offset == node_index + 1) {
-                RangeImpl.setStartOffset(range, start_offset + 1);
+        // The container as 7.2 left it: a boundary it moved to newNode is not
+        // on parent, so it cannot match here.
+        if (points.start_container == parent) {
+            if (points.start_offset == node_index + 1) {
+                live.set_start_offset(range, points.start_offset + 1);
             }
         }
 
         // Step 7.5: same for the end boundary.
-        if (RangeImpl.getEndContainer(range) == parent) {
-            const end_offset = RangeImpl.getEndOffset(range);
-            if (end_offset == node_index + 1) {
-                RangeImpl.setEndOffset(range, end_offset + 1);
+        if (points.end_container == parent) {
+            if (points.end_offset == node_index + 1) {
+                live.set_end_offset(range, points.end_offset + 1);
             }
         }
     }
@@ -2365,20 +2369,21 @@ fn updateRangesForInsertionWithCount(doc: anytype, parent: anytype, child_index:
     // Get parent as a pointer for comparison
     const parent_base: *const NodeBase = @ptrCast(parent);
 
+    if (internal.ranges.items.len == 0) return;
+    const live = range_boundaries.liveRange() orelse return;
+
     // For each live range, update offsets if necessary
     for (internal.ranges.items) |range| {
-        // Get range boundary points
-        const start_container = RangeImpl.getStartContainer(range);
-        const end_container = RangeImpl.getEndContainer(range);
+        // Get range boundary points (an offset change moves no container)
+        const points = live.points(range) orelse continue;
 
         // For each live range whose start node is parent and start offset is greater than child's index,
         // increase its start offset by count.
-        if (start_container) |start_node| {
+        if (points.start_container) |start_node| {
             if (instance_bridge.getNodeBase(start_node)) |start_base| {
                 if (start_base == parent_base) {
-                    const start_offset = RangeImpl.getStartOffset(range);
-                    if (start_offset > child_index) {
-                        RangeImpl.setStartOffset(range, @intCast(start_offset + count));
+                    if (points.start_offset > child_index) {
+                        live.set_start_offset(range, @intCast(points.start_offset + count));
                     }
                 }
             }
@@ -2386,12 +2391,11 @@ fn updateRangesForInsertionWithCount(doc: anytype, parent: anytype, child_index:
 
         // For each live range whose end node is parent and end offset is greater than child's index,
         // increase its end offset by count.
-        if (end_container) |end_node| {
+        if (points.end_container) |end_node| {
             if (instance_bridge.getNodeBase(end_node)) |end_base| {
                 if (end_base == parent_base) {
-                    const end_offset = RangeImpl.getEndOffset(range);
-                    if (end_offset > child_index) {
-                        RangeImpl.setEndOffset(range, @intCast(end_offset + count));
+                    if (points.end_offset > child_index) {
+                        live.set_end_offset(range, @intCast(points.end_offset + count));
                     }
                 }
             }

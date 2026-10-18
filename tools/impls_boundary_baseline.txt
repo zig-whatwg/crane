@@ -13,14 +13,6 @@ src/dom/document_internals.zig Document.DocType 1
 src/dom/document_internals.zig Document.InternalState 1
 src/dom/document_internals.zig Document.SpeculationEagerness 1
 src/dom/document_internals.zig Document.getInternal 1
-src/dom/mutation.zig Range.getEndContainer 5
-src/dom/mutation.zig Range.getEndOffset 4
-src/dom/mutation.zig Range.getStartContainer 5
-src/dom/mutation.zig Range.getStartOffset 4
-src/dom/mutation.zig Range.setEndBoundary 2
-src/dom/mutation.zig Range.setEndOffset 3
-src/dom/mutation.zig Range.setStartBoundary 2
-src/dom/mutation.zig Range.setStartOffset 3
 src/dom/mutation_observer_algorithms.zig MutationObserver.clearRecordQueue 1
 src/dom/mutation_observer_algorithms.zig MutationObserver.enqueueRecord 1
 src/dom/mutation_observer_algorithms.zig MutationObserver.getRecordQueue 1
