@@ -472,6 +472,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A newer spec can make a WPT expectation stale](spec-compliance-a-newer-spec-can-make-a-wpt-expectation-stale.md) - Trace the direction of a standards change before interpreting browser pass counts or changing code to satisfy a test.
 - [Fetch body tee clones only the second branch](spec-compliance-fetch-body-tee-clones-only-the-second-branch.md) - Read the caller's abstract-operation wrapper as well as the public method: an internal flag can change identity, exceptions and cancellation.
 - [XML serialization needs active namespace bindings](spec-compliance-xml-serialization-needs-active-namespace-bindings.md) - A higher WPT pass count is not proof of namespace correctness when the test expects an obsolete draft's output; record browser-majority changes and their intentional WPT losses explicitly.
+- [Unicode casing context is not a category check](spec-compliance-unicode-casing-context-is-not-a-category-check.md) - Use the full mapping data and exact context properties; do not substitute ASCII, general categories, or already-mapped output.
 
 ### Codegen
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
