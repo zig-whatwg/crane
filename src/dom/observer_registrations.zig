@@ -11,9 +11,15 @@
 //! the MutationObserver impl; the MutationObserver impl installs the
 //! implementation in its installHooks, before any registration can exist.
 //!
+//! It is also where the mutation observer algorithms meet an observer's own
+//! state (src/dom/mutation_observer_algorithms.zig): its record queue, whose
+//! TYPE lives here and whose state the observer keeps, and the invocation of
+//! its callback.
+//!
 //! lint-impls: hook for MutationObserver
 const process_start = @import("process_start.zig");
 
+const std = @import("std");
 const infra = @import("infra");
 const runtime = @import("runtime");
 const handles = @import("handles.zig");
@@ -31,6 +37,39 @@ pub const Implementation = struct {
     /// "Notify mutation observers" step 6.3 for `observer`: remove all its
     /// transient registered observers from the nodes that list them.
     remove_transients: *const fn (observer: *runtime.Instance) void,
+    /// `observer`'s record queue, in its state.
+    record_queue: *const fn (observer: *runtime.Instance) *RecordQueue,
+    /// "Notify mutation observers" step 6.4: invoke `observer`'s callback
+    /// with « `records`, `observer` », and "report" what it throws. The
+    /// records are taken: wrapped, they are the wrapper cache's.
+    invoke_callback: *const fn (observer: *runtime.Instance, records: []const *runtime.Instance) anyerror!void,
+};
+
+/// A MutationObserver's record queue (DOM 4.3.1: "a record queue, which is a
+/// queue of zero or more MutationRecord objects"). The observer keeps it by
+/// value in its state and frees the records still in it when it goes;
+/// "queue a mutation record" enqueues to it (step 4.2) and "notify mutation
+/// observers" empties it (steps 6.1-6.2).
+pub const RecordQueue = struct {
+    allocator: std.mem.Allocator,
+    /// The records, unwrapped and OWNED until delivered or taken.
+    records: std.ArrayListUnmanaged(*runtime.Instance) = .empty,
+
+    /// Enqueue `record`; on failure the caller still owns it.
+    pub fn enqueue(self: *RecordQueue, record: *runtime.Instance) error{OutOfMemory}!void {
+        try self.records.append(self.allocator, record);
+    }
+
+    /// Free the records still queued, and empty the queue.
+    pub fn freeRecords(self: *RecordQueue) void {
+        for (self.records.items) |record| runtime.Instance.deinit(record);
+        self.records.clearRetainingCapacity();
+    }
+
+    pub fn deinit(self: *RecordQueue) void {
+        self.freeRecords();
+        self.records.deinit(self.allocator);
+    }
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -67,4 +106,18 @@ pub fn transientAdded(observer: *runtime.Instance, generation: u64, node: *runti
 pub fn removeTransients(observer: *runtime.Instance) void {
     const impl = implementation orelse return;
     impl.remove_transients(observer);
+}
+
+/// `observer`'s record queue; null before MutationObserver has installed its
+/// steps, when no observer can exist.
+pub fn recordQueueOf(observer: *runtime.Instance) ?*RecordQueue {
+    const impl = implementation orelse return null;
+    return impl.record_queue(observer);
+}
+
+/// "Notify mutation observers" step 6.4 for `observer`: see
+/// `Implementation.invoke_callback`.
+pub fn invokeCallback(observer: *runtime.Instance, records: []const *runtime.Instance) !void {
+    const impl = implementation orelse return error.NotSupported;
+    return impl.invoke_callback(observer, records);
 }

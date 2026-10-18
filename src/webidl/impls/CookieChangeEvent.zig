@@ -32,70 +32,21 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-/// Internal state for CookieChangeEvent implementation
-pub const InternalState = struct {
-    /// Changed cookies (FrozenArray<CookieListItem>)
-    changed: std.ArrayListUnmanaged(CookieListItem),
+/// Internal state for CookieChangeEvent implementation: its type is the
+/// cookiestore module's (`cookiestore.CookieChangeEventState`); the state is
+/// this event's.
+pub const InternalState = cookiestore.CookieChangeEventState;
 
-    /// Deleted cookies (FrozenArray<CookieListItem>)
-    deleted: std.ArrayListUnmanaged(CookieListItem),
-
-    /// The attributes' values: `[SameObject] FrozenArray<CookieListItem>`,
-    /// each made on its first read and returned on every read after - one
-    /// frozen array per attribute for the event's life, kept by an edge from
-    /// the event's wrapper (`changed_slot`, `deleted_slot`; engine.traceValue),
-    /// never a root.
-    has_changed_array: bool = false,
-    has_deleted_array: bool = false,
-
-    /// Allocator for internal allocations
-    allocator: std.mem.Allocator,
-
-    pub fn init(allocator: std.mem.Allocator) !*InternalState {
-        const internal = try allocator.create(InternalState);
-        internal.* = InternalState{
-            .changed = .empty,
-            .deleted = .empty,
-            .allocator = allocator,
-        };
-        return internal;
-    }
-
-    /// The attributes' arrays are let go - where the event ends, its
-    /// instance deinit; the Zig state (`deinit`) holds no engine value. An
-    /// event the collector freed lost them with its wrapper; one freed before
-    /// script saw it lets go of the arrays waiting for its wrapper.
-    fn releaseArrays(self: *InternalState, event: *runtime.Instance) void {
-        if (self.has_changed_array) engine.forgetTracedChild(event, changed_slot);
-        if (self.has_deleted_array) engine.forgetTracedChild(event, deleted_slot);
-        self.has_changed_array = false;
-        self.has_deleted_array = false;
-    }
-
-    pub fn deinit(self: *InternalState) void {
-        for (self.changed.items) |*item| {
-            item.deinit();
-        }
-        self.changed.deinit(self.allocator);
-
-        for (self.deleted.items) |*item| {
-            item.deinit();
-        }
-        self.deleted.deinit(self.allocator);
-
-        self.allocator.destroy(self);
-    }
-
-    /// Add a changed cookie
-    pub fn addChanged(self: *InternalState, item: CookieListItem) !void {
-        try self.changed.append(self.allocator, item);
-    }
-
-    /// Add a deleted cookie
-    pub fn addDeleted(self: *InternalState, item: CookieListItem) !void {
-        try self.deleted.append(self.allocator, item);
-    }
-};
+/// The attributes' arrays are let go - where the event ends, its instance
+/// deinit; the Zig state (`deinit`) holds no engine value. An event the
+/// collector freed lost them with its wrapper; one freed before script saw it
+/// lets go of the arrays waiting for its wrapper.
+fn releaseArrays(internal: *InternalState, event: *runtime.Instance) void {
+    if (internal.has_changed_array) engine.forgetTracedChild(event, changed_slot);
+    if (internal.has_deleted_array) engine.forgetTracedChild(event, deleted_slot);
+    internal.has_changed_array = false;
+    internal.has_deleted_array = false;
+}
 
 /// CookieChangeEvent's own construction steps: the generated chain runs Event's first.
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
@@ -112,7 +63,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
 pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.releaseArrays(instance);
+        releaseArrays(internal, instance);
         internal.deinit();
         state.own._internal = null;
     }

@@ -13,8 +13,11 @@
 //! sheet's critical subresources, and whose load or error event are
 //! `style_sheet_loading`'s.
 //!
-//! Not modelled, stated: the other external resource link types (icon,
-//! manifest, ...) fetch nothing; a preload fills no map of preloaded
+//! Icons are fetched for top-level documents, with no page-load delay,
+//! link load/error event, or image decoding (4.6.8.9).
+//!
+//! Not modelled, stated: other external resource link types (manifest,
+//! ...) fetch nothing; a preload fills no map of preloaded
 //! resources, and a modulepreload no module map, so what they fetched is
 //! fetched again by its consumer; alternative style sheets are fetched as any other;
 //! a stylesheet link the parser made, or one whose blocking attribute says
@@ -207,6 +210,19 @@ fn fetchAndProcess(element: *runtime.Instance) void {
     switch (linkType(element)) {
         .none => {},
         .prefetch => internal.load = style_sheet_loading.startPrefetch(element, options) orelse 0,
+        .icon => {
+            // Browser scope: Chromium LocalFrame::UpdateFaviconURL and
+            // WebKit DocumentLoader::startIconLoading require the main
+            // frame; Gecko's LinkHandler actor ignores child documents.
+            // parent is the Window itself for a top-level traversable,
+            // including a popup. frameElement cannot be used here: it is
+            // null for a cross-origin child as well as a top-level window.
+            const window = (interfaces.Document.get_defaultView(document) catch null) orelse return;
+            const parent = (interfaces.Window.get_parent(window) catch null) orelse return;
+            if (parent != window) return;
+            if (!typeMatches(attribute(element, "type"), .image)) return;
+            internal.load = style_sheet_loading.startIcon(element, options) orelse 0;
+        },
         .stylesheet => {
             // 4.2.4.2: "If the UA does not support the given MIME type for
             // the given link relationship, then the UA should not fetch and
@@ -246,7 +262,7 @@ fn fetchAndProcess(element: *runtime.Instance) void {
 
 /// The external resource link the element's rel creates, of those this
 /// engine fetches: a stylesheet link, else a preload link, else a
-/// modulepreload link, else a prefetch. (Two at once - `rel="preload stylesheet"` - is
+/// modulepreload link, else a prefetch, else an icon. (Two at once - `rel="preload stylesheet"` - is
 /// fetched as the first of those.)
 fn linkType(element: *runtime.Instance) LinkType {
     return relLinkType(attribute(element, "rel"));
@@ -282,7 +298,7 @@ fn isAlternate(element: *runtime.Instance, internal: *const InternalState) bool 
     return title.len != 0 and hasToken(rel, "alternate") and !internal.explicitly_enabled;
 }
 
-const LinkType = enum { none, stylesheet, preload, modulepreload, prefetch };
+const LinkType = enum { none, stylesheet, preload, modulepreload, prefetch, icon };
 
 /// The `as` attribute's state, a potential destination, as a destination;
 /// null when it is in no state. "fetch" is the empty destination, which is
@@ -471,6 +487,7 @@ fn relLinkType(rel: ?[]const u8) LinkType {
     if (hasToken(value, "preload")) return .preload;
     if (hasToken(value, "modulepreload")) return .modulepreload;
     if (hasToken(value, "prefetch")) return .prefetch;
+    if (hasToken(value, "icon")) return .icon;
     return .none;
 }
 
@@ -480,6 +497,7 @@ fn typeAllows(element: *runtime.Instance, type_attr: ?[]const u8) bool {
     return switch (linkType(element)) {
         .none, .modulepreload, .prefetch => true,
         .stylesheet => supportedType(type_attr),
+        .icon => typeMatches(type_attr, .image),
         .preload => typeMatches(type_attr, preloadDestination(attribute(element, "as")) orelse return true),
     };
 }

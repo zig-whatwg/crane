@@ -195,8 +195,12 @@ pub fn call_time(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) any
 
     const gop = ctx.console_state.timer_table.getOrPut(label_str) catch return;
     if (!gop.found_existing) {
-        // Allocate owned copy of label
-        const owned_label = ctx.allocator.dupe(u8, label_str) catch return;
+        // Console 1.4.1 step 2: publish a complete, owned timer entry.
+        // getOrPut already inserted the borrowed label; undo it on OOM.
+        const owned_label = ctx.allocator.dupe(u8, label_str) catch {
+            _ = ctx.console_state.timer_table.remove(label_str);
+            return;
+        };
         gop.key_ptr.* = owned_label;
         gop.value_ptr.* = clock.monotonicMillis();
     } else {
@@ -265,8 +269,12 @@ pub fn call_count(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) an
 
     const gop = ctx.console_state.count_map.getOrPut(label_str) catch return;
     if (!gop.found_existing) {
-        // Allocate owned copy of label
-        const owned_label = ctx.allocator.dupe(u8, label_str) catch return;
+        // Console 1.2.1 step 3: publish a complete, owned counter entry.
+        // getOrPut already inserted the borrowed label; undo it on OOM.
+        const owned_label = ctx.allocator.dupe(u8, label_str) catch {
+            _ = ctx.console_state.count_map.remove(label_str);
+            return;
+        };
         gop.key_ptr.* = owned_label;
         gop.value_ptr.* = 1;
     } else {
@@ -282,6 +290,10 @@ pub fn call_count(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) an
 pub fn call_countReset(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) anyerror!void {
     const label_str = if (label.wasPassed()) label.value.asSlice() else "default";
 
+    // Console 1.2.2 step 2 retains zero, but Chrome and Firefox remove the
+    // entry: V8 v8-console-message.cc:664-670 and Gecko Console.cpp:2440.
+    // WebKit InspectorConsoleAgent.cpp:233 retains zero (2026-10-18).
+    // Golden rule 2 follows the majority; the spec step dates to 2018.
     if (ctx.console_state.count_map.fetchRemove(label_str)) |entry| {
         ctx.allocator.free(entry.key); // Free the owned label string
     } else {

@@ -313,7 +313,15 @@ fn forgetSocket(instance: *runtime.Instance) void {
 /// removed, a page navigated away from), or whose worker ended. Installed
 /// into the unloading document cleanup steps (dom.unloading_cleanup) by the
 /// first socket made.
+///
+/// "If this affected any WebSocket objects, then make document
+/// unsalvageable given document and "websocket"" - a socket still
+/// connecting or open, which make disappear fails or starts closing; one
+/// already closing or closed is not affected (WPT's
+/// websockets/back-forward-cache-with-closed-websocket-connection expects
+/// such a page cacheable). For a worker's realm there is no document.
 pub fn makeDisappearIn(realm: runtime.Context) void {
+    var affected = false;
     // Backwards: nothing here frees a socket, but stay safe if it did.
     var i = live_sockets.items.len;
     while (i > 0) {
@@ -321,8 +329,9 @@ pub fn makeDisappearIn(realm: runtime.Context) void {
         if (i >= live_sockets.items.len) continue;
         const socket = live_sockets.items[i];
         if (socket.ctx != realm) continue;
-        makeDisappear(socket);
+        if (makeDisappear(socket)) affected = true;
     }
+    if (affected) @import("dom").bfcache.makeUnsalvageableIn(realm, .websocket);
 }
 
 /// WebSockets "make disappear" (§ 9): a connection not yet established is
@@ -331,13 +340,17 @@ pub fn makeDisappearIn(realm: runtime.Context) void {
 /// fired for it any more: the pump stops, and with it the socket's pending
 /// activity - the hold that kept its wrapper, and through it its realm, while
 /// the connection lived (Blink: WebSocket::ContextDestroyed closes the
-/// channel and HasPendingActivity turns false).
-fn makeDisappear(instance: *runtime.Instance) void {
-    const internal = getInternal(instance) orelse return;
+/// channel and HasPendingActivity turns false). Whether it affected the
+/// socket: a connection still connecting or open was failed or started
+/// closing.
+fn makeDisappear(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return false;
+    var affected = false;
     if (internal.connection) |connection| {
         // close() runs exactly the first two cases: fail a connection still
         // CONNECTING, else queue the Close frame (1001) and flush it; a
         // CLOSING or CLOSED one does nothing.
+        if (!internal.pump_done and (connection.state == .CONNECTING or connection.state == .OPEN)) affected = true;
         if (!internal.pump_done) connection.close(1001, null) catch connection.fail();
     }
     internal.pump_done = true;
@@ -347,6 +360,7 @@ fn makeDisappear(instance: *runtime.Instance) void {
     }
     syncState(instance);
     releasePendingActivity(instance);
+    return affected;
 }
 
 /// WebSocket's own teardown: the generated chain runs EventTarget's after it.

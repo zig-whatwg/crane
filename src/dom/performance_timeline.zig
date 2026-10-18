@@ -1362,7 +1362,16 @@ pub const NavigationRecord = struct {
     /// timing info (HTML "create and initialize a Document object" step
     /// 16), null when no service worker answered it.
     service_worker_timing: ?fetch.internal.ServiceWorkerTimingInfo = null,
+    /// The document's not restored reasons (HTML "a Document's not restored
+    /// reasons": its top-level traversable's active session history entry's
+    /// document state's), BORROWED for the call: Navigation Timing step 11
+    /// makes the entry's NotRestoredReasons from it. Null for every
+    /// navigation but a back/forward traversal of a top-level traversable
+    /// whose page was not restored from the back/forward cache.
+    not_restored_reasons: ?*const NotRestoredReasons = null,
 };
+
+pub const NotRestoredReasons = @import("html_core").navigation.not_restored_reasons.NotRestoredReasons;
 
 /// A navigation timing entry's service worker timing (Navigation Timing 5
 /// step 8), its times relative to the document's time origin.
@@ -1422,7 +1431,8 @@ pub fn createNavigationTimingEntry(realm: runtime.Context, record: NavigationRec
         .fetch_event_dispatch_time = convert.call(sw.fetch_event_dispatch_time),
     } else null;
     // 1-2, 4-11. A new PerformanceNavigationTiming in global's realm.
-    const entry = try impl.create(realm, &timing, record.redirect_count, record.navigation_type, service_worker_timing);
+    // 11. Its not restored reasons (the hook copies them).
+    const entry = try impl.create(realm, &timing, record.redirect_count, record.navigation_type, service_worker_timing, record.not_restored_reasons);
     const generation = runtime.SlabAllocator.generationOf(entry);
     errdefer entry.releaseIfUnwrapped(generation);
     // 12. Add it to global's performance entry buffer.
@@ -1454,9 +1464,10 @@ pub const NavigationTimings = struct {
     /// "create the navigation timing entry" steps 2-8: a new
     /// PerformanceNavigationTiming in `realm`, initialized (startTime 0,
     /// "navigation", `timing.url`), its resource timing set up from `timing`,
-    /// with its redirect count, navigation type and service worker timing.
-    /// The caller's until the engine wraps it.
-    create: *const fn (realm: runtime.Context, timing: *const ResourceTiming, redirect_count: u16, navigation_type: NavigationType, service_worker_timing: ?NavigationServiceWorkerTiming) anyerror!*Instance,
+    /// with its redirect count, navigation type and service worker timing,
+    /// and step 11's not restored reasons (BORROWED: the entry keeps a
+    /// copy). The caller's until the engine wraps it.
+    create: *const fn (realm: runtime.Context, timing: *const ResourceTiming, redirect_count: u16, navigation_type: NavigationType, service_worker_timing: ?NavigationServiceWorkerTiming, not_restored_reasons: ?*const NotRestoredReasons) anyerror!*Instance,
 };
 
 /// "setup the resource timing entry" for an entry of a

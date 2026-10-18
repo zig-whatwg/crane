@@ -9,11 +9,11 @@
 const std = @import("std");
 const testing = std.testing;
 
-// Import the CharacterData implementation directly for unit testing
-const impls = @import("impls");
-const CharacterDataImpl = impls.CharacterData;
-const InternalState = CharacterDataImpl.InternalState;
-const INLINE_TEXT_CAPACITY = CharacterDataImpl.INLINE_TEXT_CAPACITY;
+// The data's type, which CharacterData keeps in its state
+// (dom.character_data.Data), unit-tested on its own.
+const character_data = @import("dom").character_data;
+const InternalState = character_data.Data;
+const INLINE_TEXT_CAPACITY = character_data.INLINE_TEXT_CAPACITY;
 
 // =============================================================================
 // InternalState Unit Tests - Direct SSO Implementation Testing

@@ -280,17 +280,3 @@ const ZigSource = struct {
 
     const vtable = srd.Source.VTable{ .start = start, .pull = pull, .cancel = cancel, .deinit = deinitSource };
 };
-
-/// CreateReadableStream / CreateReadableByteStream over a Zig source.
-pub fn createFromZigSource(allocator: std.mem.Allocator, ctx: runtime.Context, source: ZigUnderlyingSource) !*runtime.Instance {
-    _ = allocator;
-    const realm = js.Realm.ofContext(ctx) catch return error.NoEventLoop;
-    const state = try ctx.allocator.create(ZigSource);
-    state.* = .{ .source = source };
-    const s = srd.Source{ .ctx = state, .vtable = &ZigSource.vtable };
-    const stream = (if (source.is_byte_stream)
-        srd.createReadableByteStream(realm, ctx, s)
-    else
-        srd.createReadableStream(realm, ctx, s, 1, .one)) catch return error.OutOfMemory;
-    return stream;
-}

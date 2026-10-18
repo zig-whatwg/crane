@@ -137,7 +137,15 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     range_boundaries.install(&boundariesOf);
-    range_boundaries.installLiveRange(.{ .collapse = &collapseLive, .update_owner_document = &updateOwnerDocument });
+    range_boundaries.installLiveRange(.{
+        .collapse = &collapseLive,
+        .update_owner_document = &updateOwnerDocument,
+        .points = &livePoints,
+        .set_start = &setStartBoundary,
+        .set_end = &setEndBoundary,
+        .set_start_offset = &setStartOffset,
+        .set_end_offset = &setEndOffset,
+    });
     dom.selection.install(.{ .associate_range = &associateSelection });
 }
 
@@ -1636,36 +1644,23 @@ pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
 }
 
 // =============================================================================
-// Helper functions for Selection and other impls
+// The live-range steps of the mutation algorithms (dom.range_boundaries)
 // =============================================================================
 
-/// Get start container (nullable, non-throwing helper for Selection)
-pub fn getStartContainer(instance: *runtime.Instance) ?*runtime.Instance {
+/// dom.range_boundaries: this range's boundary points, as they are.
+fn livePoints(instance: *runtime.Instance) ?range_boundaries.LivePoints {
     const internal = getInternal(instance) orelse return null;
-    return internal.start_container;
+    return .{
+        .start_container = internal.start_container,
+        .start_offset = internal.start_offset,
+        .end_container = internal.end_container,
+        .end_offset = internal.end_offset,
+    };
 }
 
-/// Get start offset (non-throwing helper for Selection)
-pub fn getStartOffset(instance: *runtime.Instance) u32 {
-    const internal = getInternal(instance) orelse return 0;
-    return internal.start_offset;
-}
-
-/// Get end container (nullable, non-throwing helper for Selection)
-pub fn getEndContainer(instance: *runtime.Instance) ?*runtime.Instance {
-    const internal = getInternal(instance) orelse return null;
-    return internal.end_container;
-}
-
-/// Get end offset (non-throwing helper for Selection)
-pub fn getEndOffset(instance: *runtime.Instance) u32 {
-    const internal = getInternal(instance) orelse return 0;
-    return internal.end_offset;
-}
-
-/// Set start boundary point (for live range updates during mutations)
+/// dom.range_boundaries: set the start boundary point (a live-range step).
 /// Spec: https://dom.spec.whatwg.org/#concept-range-start
-pub fn setStartBoundary(instance: *runtime.Instance, container: *runtime.Instance, offset: u32) void {
+fn setStartBoundary(instance: *runtime.Instance, container: *runtime.Instance, offset: u32) void {
     const internal = getInternal(instance) orelse return;
     const before = selectedBoundaries(internal);
     defer notifySelection(instance, internal, before);
@@ -1674,9 +1669,9 @@ pub fn setStartBoundary(instance: *runtime.Instance, container: *runtime.Instanc
     keepContainers(instance, internal);
 }
 
-/// Set end boundary point (for live range updates during mutations)
+/// dom.range_boundaries: set the end boundary point (a live-range step).
 /// Spec: https://dom.spec.whatwg.org/#concept-range-end
-pub fn setEndBoundary(instance: *runtime.Instance, container: *runtime.Instance, offset: u32) void {
+fn setEndBoundary(instance: *runtime.Instance, container: *runtime.Instance, offset: u32) void {
     const internal = getInternal(instance) orelse return;
     const before = selectedBoundaries(internal);
     defer notifySelection(instance, internal, before);
@@ -1685,16 +1680,16 @@ pub fn setEndBoundary(instance: *runtime.Instance, container: *runtime.Instance,
     keepContainers(instance, internal);
 }
 
-/// Update start offset (for live range updates during mutations)
-pub fn setStartOffset(instance: *runtime.Instance, offset: u32) void {
+/// dom.range_boundaries: update the start offset (a live-range step).
+fn setStartOffset(instance: *runtime.Instance, offset: u32) void {
     const internal = getInternal(instance) orelse return;
     const before = selectedBoundaries(internal);
     defer notifySelection(instance, internal, before);
     internal.start_offset = offset;
 }
 
-/// Update end offset (for live range updates during mutations)
-pub fn setEndOffset(instance: *runtime.Instance, offset: u32) void {
+/// dom.range_boundaries: update the end offset (a live-range step).
+fn setEndOffset(instance: *runtime.Instance, offset: u32) void {
     const internal = getInternal(instance) orelse return;
     const before = selectedBoundaries(internal);
     defer notifySelection(instance, internal, before);

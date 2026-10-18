@@ -14,6 +14,7 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
+const engine = @import("engine");
 const performance_timeline = @import("dom").performance_timeline;
 const PerformanceNavigationTiming = interfaces.PerformanceNavigationTiming;
 
@@ -23,12 +24,21 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// The entry's redirect count and navigation type.
+/// The entry's redirect count, navigation type and not restored reasons.
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     redirect_count: u16,
     navigation_type: performance_timeline.NavigationType,
+    /// Navigation Timing step 11's backing struct: a copy, OWNED; null for
+    /// a document that was not a back/forward traversal's.
+    not_restored_reasons: ?performance_timeline.NotRestoredReasons = null,
+    /// The NotRestoredReasons object made from it, traced by the entry so
+    /// every read answers the same object; null until the first read.
+    reasons_object: ?*runtime.Instance = null,
+    reasons_object_generation: u64 = 0,
 };
+
+const reasons_object_slot: engine.TracedSlot = .{ .name = "notRestoredReasons" };
 
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
@@ -51,6 +61,8 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        if (internal.reasons_object != null) engine.forgetTracedChild(instance, reasons_object_slot);
+        if (internal.not_restored_reasons) |*reasons| reasons.deinit(internal.allocator);
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
@@ -59,7 +71,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// "create the navigation timing entry" steps 2-8 (Navigation Timing 5).
-fn createEntry(realm: runtime.Context, timing: *const performance_timeline.ResourceTiming, redirect_count: u16, navigation_type: performance_timeline.NavigationType, service_worker_timing: ?performance_timeline.NavigationServiceWorkerTiming) anyerror!*runtime.Instance {
+fn createEntry(realm: runtime.Context, timing: *const performance_timeline.ResourceTiming, redirect_count: u16, navigation_type: performance_timeline.NavigationType, service_worker_timing: ?performance_timeline.NavigationServiceWorkerTiming, not_restored_reasons: ?*const performance_timeline.NotRestoredReasons) anyerror!*runtime.Instance {
     const allocator = realm.allocator;
     // 2. A new PerformanceNavigationTiming in global's realm.
     const instance = try init(allocator, State, &PerformanceNavigationTiming.vtable, realm);
@@ -78,9 +90,17 @@ fn createEntry(realm: runtime.Context, timing: *const performance_timeline.Resou
     var own = timing.*;
     if (service_worker_timing) |sw| own.fetch_start = sw.fetch_event_dispatch_time;
     try performance_timeline.setupResourceTiming(instance, &own);
-    // 6-7. Redirect count and navigation type.
+    // 6-7. Redirect count and navigation type. 11. Its not restored
+    // reasons, a copy (the object is made when first read).
     const internal = try allocator.create(InternalState);
-    internal.* = .{ .allocator = allocator, .redirect_count = redirect_count, .navigation_type = navigation_type };
+    errdefer allocator.destroy(internal);
+    const reasons: ?performance_timeline.NotRestoredReasons = if (not_restored_reasons) |given| try given.clone(allocator) else null;
+    internal.* = .{
+        .allocator = allocator,
+        .redirect_count = redirect_count,
+        .navigation_type = navigation_type,
+        .not_restored_reasons = reasons,
+    };
     instance.getState(State).own._internal = internal;
     return instance;
 }
@@ -159,11 +179,23 @@ pub fn get_criticalCHRestart(instance: *runtime.Instance) anyerror!typedefs.DOMH
     return 0;
 }
 
-/// Getter for notRestoredReasons: null - no back/forward cache, so nothing
-/// was ever not restored from it.
+/// Getter for notRestoredReasons: "this's not restored reasons" - Navigation
+/// Timing step 11's "create a NotRestoredReasons object given document's not
+/// restored reasons and document's relevant realm", null when they are
+/// null. The object is made the first time it is read (nothing tells the
+/// two apart: it holds a copy of the struct, and every read after answers
+/// the same object, which the entry traces).
 pub fn get_notRestoredReasons(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = try internalOf(instance);
-    return null;
+    const internal = try internalOf(instance);
+    const reasons = if (internal.not_restored_reasons) |*value| value else return null;
+    if (internal.reasons_object) |object| {
+        if (runtime.SlabAllocator.generationOf(object) == internal.reasons_object_generation) return object;
+    }
+    const object = try interfaces.NotRestoredReasons.initWith(instance.ctx.allocator, instance.ctx, .{ .backing = @as(*const performance_timeline.NotRestoredReasons, reasons) });
+    engine.traceChild(instance, object, reasons_object_slot);
+    internal.reasons_object = object;
+    internal.reasons_object_generation = runtime.SlabAllocator.generationOf(object);
+    return object;
 }
 
 /// Getter for activationStart (Prerendering Revamped): a document that was
