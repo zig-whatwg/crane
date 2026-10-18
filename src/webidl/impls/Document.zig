@@ -172,6 +172,9 @@ pub const InternalState = struct {
     /// HTML "destroy" has run: the document's browsing context is null. It
     /// stays readable - script elsewhere may hold it - but has no view.
     destroyed: bool = false,
+    /// HTML "bfcache blocking details": the reasons "make document
+    /// unsalvageable" recorded (dom.bfcache), in the order first recorded.
+    bfcache_blocking_details: @import("html_core").navigation.not_restored_reasons.BlockingDetails = .{},
     /// HTML "suspension time": the current high resolution time of its
     /// window when it was last unloaded (unload step 15), 0 before. Its
     /// reactivation shifts the suspended timers by the time since (the
@@ -846,6 +849,12 @@ pub fn installHooks() void {
     // The event loop runs a task only while its document is fully active,
     // keeps it while the document may be again, and drops it once it cannot.
     @import("dom").document_activity.install(.{ .activity = &documentActivity });
+    // "Make document unsalvageable", from the steps that end what a cached
+    // document could not keep (WebSocket, LockManager, the navigation code).
+    @import("dom").bfcache.install(.{
+        .make_unsalvageable = &makeUnsalvageable,
+        .blocking_details = &bfcacheBlockingDetails,
+    });
 }
 
 fn templateOwnerDocument(document: *runtime.Instance) !*runtime.Instance {
@@ -4202,7 +4211,10 @@ fn abortDocument(document: *runtime.Instance, for_navigation: bool) void {
     if (had_engine and !realm.hasEngine()) return;
     if (runtime.SlabAllocator.generationOf(document) != generation) return;
     const internal = getInternal(document) orelse return;
-    if (canceled) internal.salvageable = false;
+    // Step 2: "If this resulted in any instances of the fetch algorithm
+    // being canceled ..., then make document unsalvageable given document
+    // and "fetch"."
+    if (canceled) makeUnsalvageable(document, .fetch);
     internal.parsing_end_waiting_on_scripts = false;
     if (internal.input_stream_manager == null and internal.active_parser == null) return;
     if (internal.active_parser) |failed| if (failed.trace_failure != null) {
@@ -4213,7 +4225,9 @@ fn abortDocument(document: *runtime.Instance, for_navigation: bool) void {
         const cleanup_call = failed.protectForCleanup() catch return;
         defer cleanup_call.deinit();
         internal.active_parser_was_aborted = true;
-        internal.salvageable = false;
+        // Step 4.3: "Make document unsalvageable given document and
+        // "parser-aborted"."
+        makeUnsalvageable(document, .parser_aborted);
         @import("html").script_execution.discardParserScripts(document);
         if (had_engine and !realm.hasEngine()) return;
         if (runtime.SlabAllocator.generationOf(document) != generation) return;
@@ -4230,7 +4244,9 @@ fn abortDocument(document: *runtime.Instance, for_navigation: bool) void {
         null;
     defer if (parser_call) |held| held.deinit();
     internal.active_parser_was_aborted = true;
-    internal.salvageable = false;
+    // Step 4.3: "Make document unsalvageable given document and
+    // "parser-aborted"."
+    makeUnsalvageable(document, .parser_aborted);
     @import("html").script_execution.discardParserScripts(document);
     // "Abort a parser", steps 1-2 discard the input, step 3 announces
     // interactive, step 4 pops the open elements, then step 5 is complete.
@@ -4250,6 +4266,22 @@ fn abortDocument(document: *runtime.Instance, for_navigation: bool) void {
         current.insertion_point = null;
     }
     engine.runInRealm(realm, becomeComplete, document) catch {};
+}
+
+/// dom.bfcache: HTML "make document unsalvageable" given `document` and
+/// `reason`: "1. Let details be a new not restored reason details whose
+/// reason is reason. 2. Append details to document's bfcache blocking
+/// details. 3. Set document's salvageable state to false."
+fn makeUnsalvageable(document: *runtime.Instance, reason: @import("dom").bfcache.Reason) void {
+    const internal = getInternal(document) orelse return;
+    internal.bfcache_blocking_details.append(reason);
+    internal.salvageable = false;
+}
+
+/// dom.bfcache: `document`'s bfcache blocking details, BORROWED.
+fn bfcacheBlockingDetails(document: *runtime.Instance) []const @import("dom").bfcache.Reason {
+    const internal = getInternal(document) orelse return &.{};
+    return internal.bfcache_blocking_details.items();
 }
 
 /// "Abort a document and its descendants", step 3.2.
