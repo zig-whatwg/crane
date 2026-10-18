@@ -234,13 +234,16 @@ test "copies of a Deferred share its cell, and deinitResolverOnly frees it too" 
 // read methods' promises are settled with the whole blob, and each call
 // leaves no engine handle behind.
 
-const Blob = @import("impls").Blob;
+const interfaces = @import("interfaces");
+const blob_bytes = @import("dom").blob_bytes;
 const protocol = @import("engine");
 
 /// The process-wide pools a platform object's Instance comes from, made
-/// once for the file and, like V8 here, never torn down.
+/// once for the file and, like V8 here, never torn down; and the hooks a
+/// Blob installs (dom.blob_bytes), which installing again leaves as they are.
 fn ensurePools() void {
     if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
+    interfaces.process_hooks.startHooksForTest();
 }
 
 /// The value `source` evaluates to in this file's context. OWNED.
@@ -248,10 +251,28 @@ fn evalValue(source: []const u8) !protocol.Owned {
     return .{ .value = runtime.JSValue.fromHandle(@ptrCast(try run(try isolate(), source))) };
 }
 
-fn blobPartsOf(realm: runtime.Context, source: []const u8, endings: Blob.Endings) ![]const u8 {
+/// The Blob constructor's arguments, as its generated interface takes them.
+const blob_constructor = @typeInfo(@TypeOf(interfaces.Blob.call_constructor)).@"fn".params;
+const BlobPartsArgument = blob_constructor[1].type.?;
+const BlobOptionsArgument = blob_constructor[2].type.?;
+const Endings = enum { transparent, native };
+
+/// The bytes of `new Blob(<source>, { endings })` - FileAPI "process blob
+/// parts", which the constructor runs on its parts - copied for the caller
+/// to free with `realm`'s allocator; empty allocates nothing.
+fn blobPartsOf(realm: runtime.Context, source: []const u8, endings: Endings) ![]const u8 {
     const parts = try evalValue(source);
     defer parts.release();
-    return Blob.processBlobParts(realm, parts.value, endings);
+    ensurePools();
+    const options = BlobOptionsArgument.passed(.{ .endings = switch (endings) {
+        .transparent => ._transparent_,
+        .native => ._native_,
+    } });
+    const blob = try interfaces.Blob.call_constructor(realm, BlobPartsArgument.passed(parts.value), options);
+    defer interfaces.Blob.deinit(blob);
+    const bytes = blob_bytes.bytesOf(blob) orelse return error.NotABlob;
+    if (bytes.len == 0) return "";
+    return realm.allocator.dupe(u8, bytes);
 }
 
 test "a BlobPart is a buffer source's bytes, or else the USVString it converts to" {
@@ -305,9 +326,9 @@ test "Blob.text() is the UTF-8 decode of its bytes: the BOM stripped, an invalid
     try initTestingRealm(&data);
     defer data.deinit();
     ensurePools();
-    const blob = try Blob.createFromBytes(std.testing.allocator, &data, "\xef\xbb\xbfa\xffb", "");
-    defer Blob.deinit(blob);
-    const text = try fulfillmentOf(try Blob.call_text(blob));
+    const blob = try blob_bytes.create(&data, "\xef\xbb\xbfa\xffb", "");
+    defer interfaces.Blob.deinit(blob);
+    const text = try fulfillmentOf(try interfaces.Blob.call_text(blob));
     defer ffi.v8_Value_Dispose(text);
     const decoded = try protocol.convertToDOMString(&data, runtime.JSValue.fromHandle(@ptrCast(text)), std.testing.allocator);
     defer std.testing.allocator.free(decoded);
@@ -319,15 +340,15 @@ test "Blob.arrayBuffer() and bytes() are fulfilled with a copy of every byte" {
     try initTestingRealm(&data);
     defer data.deinit();
     ensurePools();
-    const blob = try Blob.createFromBytes(std.testing.allocator, &data, "\x00\x01\xff", "");
-    defer Blob.deinit(blob);
+    const blob = try blob_bytes.create(&data, "\x00\x01\xff", "");
+    defer interfaces.Blob.deinit(blob);
 
-    const buffer = try fulfillmentOf(try Blob.call_arrayBuffer(blob));
+    const buffer = try fulfillmentOf(try interfaces.Blob.call_arrayBuffer(blob));
     defer ffi.v8_Value_Dispose(buffer);
     const buffer_value = runtime.JSValue.fromHandle(@ptrCast(buffer));
     try std.testing.expectEqualSlices(u8, "\x00\x01\xff", protocol.borrowArrayBufferBytes(&data, buffer_value) orelse return error.NotABuffer);
 
-    const view = try fulfillmentOf(try Blob.call_bytes(blob));
+    const view = try fulfillmentOf(try interfaces.Blob.call_bytes(blob));
     defer ffi.v8_Value_Dispose(view);
     const view_value = runtime.JSValue.fromHandle(@ptrCast(view));
     const description = protocol.describeArrayBufferView(&data, view_value) orelse return error.NotAView;
@@ -345,8 +366,8 @@ fn expectNoHandleLeft(comptime method: fn (*runtime.Instance) anyerror!runtime.J
     try initTestingRealm(&data);
     defer data.deinit();
     ensurePools();
-    const blob = try Blob.createFromBytes(std.testing.allocator, &data, "abc", "");
-    defer Blob.deinit(blob);
+    const blob = try blob_bytes.create(&data, "abc", "");
+    defer interfaces.Blob.deinit(blob);
     protocol.releaseValue(.{ .value = try method(blob) });
     const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?);
     for (0..32) |_| protocol.releaseValue(.{ .value = try method(blob) });
@@ -354,15 +375,15 @@ fn expectNoHandleLeft(comptime method: fn (*runtime.Instance) anyerror!runtime.J
 }
 
 test "Blob.text() leaves no engine handle behind" {
-    try expectNoHandleLeft(Blob.call_text);
+    try expectNoHandleLeft(interfaces.Blob.call_text);
 }
 
 test "Blob.arrayBuffer() leaves no engine handle behind" {
-    try expectNoHandleLeft(Blob.call_arrayBuffer);
+    try expectNoHandleLeft(interfaces.Blob.call_arrayBuffer);
 }
 
 test "Blob.bytes() leaves no engine handle behind" {
-    try expectNoHandleLeft(Blob.call_bytes);
+    try expectNoHandleLeft(interfaces.Blob.call_bytes);
 }
 
 // =============================================================================
@@ -374,7 +395,7 @@ test "Blob.bytes() leaves no engine handle behind" {
 // from there. A null body reads as no bytes, so the steps run inside the
 // method call.
 
-const Response = @import("impls").Response;
+const Response = interfaces.Response;
 
 test "Response.arrayBuffer(), bytes() and text() leave no engine handle behind" {
     var data: runtime.ContextData = undefined;

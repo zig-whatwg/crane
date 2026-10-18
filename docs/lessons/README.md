@@ -673,6 +673,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A loopback server behind the Browser's proxy counts module fetches](testing-a-loopback-server-behind-the-proxy-counts-module-fetches.md) - When the behaviour under test is "how many times was this fetched", give the test a server that counts - a request count is the only observable that tells a cache hit from a refetch.
 - [Count completed paths in rate-limited benchmarks](testing-count-completed-paths-in-rate-limited-benchmarks.md) - A workload counter should validate what completed, not merely what was attempted.
 - [A keepalive timeout can precede the Fetch assertion](testing-a-keepalive-timeout-can-precede-the-fetch-assertion.md) - Prove which setup handshake was lost before editing the feature algorithm.
+- [A test file at the top of tests/ is never built](testing-a-test-file-at-the-top-of-tests-is-never-built.md) - A test file nothing builds is not a test: check that build.zig reaches it before trusting, converting or counting it.
+- [A referenced function is checked only to its signature; its address emits its body](testing-a-referenced-function-is-checked-only-to-its-signature.md) - `_ = f` checks a declaration; `_ = &f` checks the body and emits it - choose by what the test must catch, and build it where the body links.
 
 ### Debugging
 - [A call that can free its argument ends every read of it](debugging-a-call-that-can-free-its-argument-ends-every-read-of-it.md) - A call that can free its argument ends the caller's use of it - including the `defer`s written above the call; read the trace's top frame before believing a deep one.

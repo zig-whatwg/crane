@@ -138,6 +138,15 @@ pub const webdriverAssociatedCookies = http_integration.webdriverAssociatedCooki
 pub const webdriverDeleteCookies = http_integration.webdriverDeleteCookies;
 pub const processSetCookieHeaders = http_integration.processSetCookieHeaders;
 
+// The state the API's platform objects keep, and their query
+pub const api_objects = @import("api_objects.zig");
+pub const CookieStoreState = api_objects.CookieStoreState;
+pub const CookieStoreManagerState = api_objects.CookieStoreManagerState;
+pub const CookieSubscription = api_objects.CookieSubscription;
+pub const CookieChangeEventState = api_objects.CookieChangeEventState;
+pub const queryItems = api_objects.queryItems;
+pub const freeItems = api_objects.freeItems;
+
 test {
     _ = cookie;
     _ = validation;
@@ -148,4 +157,5 @@ test {
     _ = change_observer;
     _ = event_dispatch;
     _ = http_integration;
+    _ = api_objects;
 }

@@ -10,9 +10,6 @@
 
 const std = @import("std");
 const cookiestore = @import("cookiestore");
-const impls = @import("impls");
-
-const CookieStoreImpl = impls.CookieStore;
 
 /// The creation URL the queries are for.
 const url = "https://example.com/page";
@@ -30,8 +27,8 @@ test "queryItems returns the named cookie" {
 
     try seed(&jar, "cookie-name", "cookie-value");
 
-    var items = try CookieStoreImpl.queryItems(allocator, &jar, url, "cookie-name");
-    defer CookieStoreImpl.freeItems(allocator, &items);
+    var items = try cookiestore.queryItems(allocator, &jar, url, "cookie-name");
+    defer cookiestore.freeItems(allocator, &items);
 
     try std.testing.expectEqual(@as(usize, 1), items.items.len);
     try std.testing.expectEqualStrings("cookie-name", items.items[0].name);
@@ -46,8 +43,8 @@ test "queryItems returns nothing for a name that was never set" {
 
     try seed(&jar, "cookie-name", "cookie-value");
 
-    var items = try CookieStoreImpl.queryItems(allocator, &jar, url, "absent");
-    defer CookieStoreImpl.freeItems(allocator, &items);
+    var items = try cookiestore.queryItems(allocator, &jar, url, "absent");
+    defer cookiestore.freeItems(allocator, &items);
 
     try std.testing.expectEqual(@as(usize, 0), items.items.len);
 }
@@ -61,8 +58,8 @@ test "queryItems with a null name returns every cookie" {
     try seed(&jar, "one", "1");
     try seed(&jar, "two", "2");
 
-    var items = try CookieStoreImpl.queryItems(allocator, &jar, url, null);
-    defer CookieStoreImpl.freeItems(allocator, &items);
+    var items = try cookiestore.queryItems(allocator, &jar, url, null);
+    defer cookiestore.freeItems(allocator, &items);
 
     try std.testing.expectEqual(@as(usize, 2), items.items.len);
 }
@@ -73,8 +70,8 @@ test "queryItems on an empty jar returns an empty list" {
     var jar = cookiestore.CookieJar.init(allocator);
     defer jar.deinit();
 
-    var items = try CookieStoreImpl.queryItems(allocator, &jar, url, null);
-    defer CookieStoreImpl.freeItems(allocator, &items);
+    var items = try cookiestore.queryItems(allocator, &jar, url, null);
+    defer cookiestore.freeItems(allocator, &items);
 
     try std.testing.expectEqual(@as(usize, 0), items.items.len);
 }
@@ -129,13 +126,13 @@ test "queryItems answers for the URL's host and path, and never with an HttpOnly
     _ = try cookiestore.parseAndStoreCookie(allocator, &jar, "hidden=1; Path=/; HttpOnly", "/", http);
     _ = try cookiestore.parseAndStoreCookie(allocator, &jar, "elsewhere=1; Path=/other", "/", http);
 
-    var items = try CookieStoreImpl.queryItems(allocator, &jar, url, null);
-    defer CookieStoreImpl.freeItems(allocator, &items);
+    var items = try cookiestore.queryItems(allocator, &jar, url, null);
+    defer cookiestore.freeItems(allocator, &items);
     try std.testing.expectEqual(@as(usize, 1), items.items.len);
     try std.testing.expectEqualStrings("visible", items.items[0].name);
 
-    var other_host = try CookieStoreImpl.queryItems(allocator, &jar, "https://other.test/", null);
-    defer CookieStoreImpl.freeItems(allocator, &other_host);
+    var other_host = try cookiestore.queryItems(allocator, &jar, "https://other.test/", null);
+    defer cookiestore.freeItems(allocator, &other_host);
     try std.testing.expectEqual(@as(usize, 0), other_host.items.len);
 }
 
