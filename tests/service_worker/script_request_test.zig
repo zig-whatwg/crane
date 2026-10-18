@@ -77,3 +77,24 @@ test "a main script's request: its referrer is the job's - its client's creation
         try testing.expect(request.referrer == .client);
     }
 }
+
+// Update step 7 for a module worker: its imported modules, compared on
+// update (update_fetch.zig's stated deviation), are fetched as the module
+// graph fetched them - "fetch a single module script" with the graph's
+// destination "serviceworker" and credentials "omit", mode "cors" - not as a
+// classic worker's importScripts() (soft-update-fetch-metadata.https.html's
+// module case: sec-fetch-dest serviceworker, sec-fetch-mode cors, no
+// Service-Worker header).
+test "an imported module's request: serviceworker, cors, omit, no Service-Worker header" {
+    const request = try script_fetch.serviceWorkerScriptRequest(testing.allocator, "https://a.example/dep.js", .{
+        .kind = .imported_module,
+        .origin = "https://a.example",
+    });
+    defer request.deinit();
+    try testing.expect(request.destination == .serviceworker);
+    try testing.expect(request.mode == .cors);
+    try testing.expect(request.credentials_mode == .omit);
+    try testing.expect(request.redirect_mode == .follow);
+    try testing.expect(request.service_workers_mode == .none);
+    try testing.expect(request.header_list.getFirstValue("Service-Worker") == null);
+}

@@ -783,6 +783,13 @@ pub const ServiceWorkerResourceKind = enum {
     /// is "script", parser metadata is "not parser-inserted", and whose
     /// use-URL-credentials flag is set" - a new request's mode, "no-cors".
     imported_script,
+    /// A module worker's imported module, compared on update (the Update
+    /// algorithm's comparison of a module graph is a stated deviation in
+    /// service_worker/update_fetch.zig): the request the graph's "fetch a
+    /// single module script" made - destination "serviceworker", mode
+    /// "cors", credentials "omit" (Update step 7's module graph fetch) - and,
+    /// not top-level, none of the fetch hook's main script steps.
+    imported_module,
 };
 
 /// What a service worker script fetch is made with: its client's (the job's
@@ -875,6 +882,11 @@ pub fn serviceWorkerScriptRequest(allocator: Allocator, url: []const u8, options
             request.destination = .script;
             request.parser_metadata = .not_parser_inserted;
             request.use_url_credentials = true;
+        },
+        .imported_module => {
+            request.destination = .serviceworker;
+            request.mode = .cors;
+            request.credentials_mode = .omit;
         },
     }
     // Step 3 (and 6.3.2 step 7): no service worker sees the request.
