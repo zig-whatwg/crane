@@ -104,7 +104,7 @@ fn fetchForUpdate(manager: *Manager, plan: *const registry_mod.FetchPlan) regist
     // origin - the script url's, which Register checked against the scope's.
     const own_origin = scope_mod.originOf(manager.allocator, plan.script_url) catch return .{ .failure = .network };
     defer manager.allocator.free(own_origin);
-    var fetcher: Fetcher = .{ .client = client, .manager = manager, .fallback_origin = own_origin };
+    var fetcher: Fetcher = .{ .client = client, .manager = manager, .fallback_origin = own_origin, .referrer = plan.referrer };
     return update_fetch.run(manager.allocator, plan, fetcher.interface());
 }
 
@@ -114,6 +114,8 @@ const Fetcher = struct {
     manager: *Manager,
     /// The request's origin when the client has none to give.
     fallback_origin: []const u8,
+    /// The job's referrer (BORROWED from the plan), or null.
+    referrer: ?[]const u8 = null,
 
     fn interface(self: *Fetcher) update_fetch.Fetcher {
         return .{ .ctx = self, .fetch = fetchOne, .wrap_policy = wrapPolicy };
@@ -130,6 +132,7 @@ const Fetcher = struct {
             .cookie_jar = if (client) |c| c.cookie_jar else null,
             .network = if (client) |c| c.network else self.networkOfManager(),
             .blob_url_store = if (client) |c| c.blob_url_store else null,
+            .referrer = self.referrer,
         });
     }
 

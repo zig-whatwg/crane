@@ -57,3 +57,23 @@ test "an imported script's request: no-cors, destination script, the client's or
     try testing.expect(request.cache_mode == .default);
     try testing.expect(request.header_list.getFirstValue("Service-Worker") == null);
 }
+
+test "a main script's request: its referrer is the job's - its client's creation URL; with none, it stays the client's" {
+    const has_referrer = comptime @hasField(script_fetch.ServiceWorkerFetchOptions, "referrer");
+    {
+        var options: script_fetch.ServiceWorkerFetchOptions = .{ .kind = .main_script, .origin = "https://a.example" };
+        if (has_referrer) @field(options, "referrer") = "https://a.example/page.html";
+        const request = try script_fetch.serviceWorkerScriptRequest(testing.allocator, "https://a.example/sw.js", options);
+        defer request.deinit();
+        switch (request.referrer) {
+            .url => |url| try testing.expectEqualStrings("https://a.example/page.html", url),
+            else => return error.TestExpectedReferrerUrl,
+        }
+    }
+    {
+        // A Soft Update's job has no client: no referrer is set, as before.
+        const request = try script_fetch.serviceWorkerScriptRequest(testing.allocator, "https://a.example/sw.js", .{ .kind = .main_script, .origin = "https://a.example" });
+        defer request.deinit();
+        try testing.expect(request.referrer == .client);
+    }
+}

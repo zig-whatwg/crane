@@ -804,6 +804,13 @@ pub const ServiceWorkerFetchOptions = struct {
     cookie_jar: ?*fetch.internal.CookieJar = null,
     network: ?*fetch.network.NetworkContext = null,
     blob_url_store: ?*anyopaque = null,
+    /// The job's referrer - its client's creation URL, serialized (BORROWED
+    /// for the fetch) - the request's referrer, as its client's would be;
+    /// null (a Soft Update's job, which has no client) leaves it "client",
+    /// which main fetch with no client to resolve makes no referrer.
+    /// Chrome and Safari send it (referrer-toplevel-script-fetch.https.html,
+    /// wpt.fyi df642c4142; Firefox fails) - golden rule 2, the majority.
+    referrer: ?[]const u8 = null,
 };
 
 /// What a service worker script fetch got: the facts of the response the
@@ -883,6 +890,7 @@ pub fn serviceWorkerScriptRequest(allocator: Allocator, url: []const u8, options
     request.cookie_jar = options.cookie_jar;
     request.network = options.network;
     request.blob_url_store = options.blob_url_store;
+    if (options.referrer) |referrer| try request.setReferrerUrl(referrer);
     return request;
 }
 

@@ -415,6 +415,9 @@ pub const FetchPlan = struct {
     /// The newest worker's script url and type, and its script resource map,
     /// copied - null when there is none.
     newest: ?Newest,
+    /// The job's referrer (its client's creation URL), serialized - null
+    /// for a job with no client (Soft Update's). OWNED.
+    referrer: ?[]u8 = null,
 
     pub const Newest = struct {
         script_url: []u8,
@@ -426,6 +429,7 @@ pub const FetchPlan = struct {
     pub fn deinit(self: *FetchPlan, allocator: Allocator) void {
         allocator.free(self.script_url);
         allocator.free(self.scope_url);
+        if (self.referrer) |r| allocator.free(r);
         if (self.newest) |*newest| {
             allocator.free(newest.script_url);
             for (newest.resources) |*r| r.deinit(allocator);
@@ -1186,6 +1190,10 @@ pub const Registry = struct {
         errdefer self.allocator.free(plan.script_url);
         plan.scope_url = try self.allocator.dupe(u8, registration.scope_url);
         errdefer self.allocator.free(plan.scope_url);
+        // The request's referrer: the job's (Update step 7 fetches "given
+        // job's client", whose request referrer it is).
+        plan.referrer = if (job.referrer) |r| try self.allocator.dupe(u8, r) else null;
+        errdefer if (plan.referrer) |r| self.allocator.free(r);
         if (newest) |n| {
             const resources = try self.allocator.alloc(Resource, n.resources.items.len);
             var made: usize = 0;
