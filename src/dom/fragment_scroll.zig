@@ -54,8 +54,9 @@ pub fn indicatedPart(document: *runtime.Instance) IndicatedPart {
 }
 
 /// "Select the indicated part" steps 3-11, given the URL's (non-null)
-/// fragment.
-fn selectTheIndicatedPart(document: *runtime.Instance, fragment: []const u8) IndicatedPart {
+/// fragment. Public for the expect link type's "process internal resource
+/// link" step 4 (HTMLLinkElement), whose caller runs step 1.
+pub fn selectTheIndicatedPart(document: *runtime.Instance, fragment: []const u8) IndicatedPart {
     // Step 3: "If fragment is the empty string, then return the special value
     // top of the document."
     if (fragment.len == 0) return .top_of_the_document;

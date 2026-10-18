@@ -55,7 +55,7 @@ const AttributeEntry = struct {
 const max_entries = 32;
 var entries: struct {
     elements: [max_entries]Entry = undefined,
-    attributes: [4]AttributeEntry = undefined,
+    attributes: [8]AttributeEntry = undefined,
 } = .{};
 var count: struct { elements: usize = 0, attributes: usize = 0 } = .{};
 
