@@ -424,20 +424,25 @@ pub fn startPrefetch(element: *runtime.Instance, options: LinkOptions) ?u64 {
 pub fn startModulePreload(element: *runtime.Instance, options: LinkOptions, destination: fetch.internal.Destination) ?u64 {
     if (!destination.isScriptLike()) {
         const load = newLoad(element, .modulepreload) orelse return null;
+        // `complete` can free the load.
+        const id = load.id;
         load.failed = true;
         complete(load);
-        return load.id;
+        return id;
     }
     return startLinkFetch(element, .modulepreload, options, destination);
 }
 
 fn startLinkFetch(element: *runtime.Instance, kind: Kind, options: LinkOptions, destination: fetch.internal.Destination) ?u64 {
     const load = newLoad(element, kind) orelse return null;
+    // `complete` can free the load: what is read after it is taken first.
+    const id = load.id;
+    const document_allocator = load.document.ctx.allocator;
     // Step 2: "Let url be the result of encoding-parsing a URL given
     // options's href, relative to options's base URL." Step 3: failure is
     // no request.
     const base = interfaces.Node.get_baseURI(load.document) catch null;
-    defer if (base) |b| load.document.ctx.allocator.free(b);
+    defer if (base) |b| document_allocator.free(b);
     const url = resolve(element, options.href, base) orelse {
         release(load, .settled);
         return null;
@@ -445,7 +450,7 @@ fn startLinkFetch(element: *runtime.Instance, kind: Kind, options: LinkOptions, 
     defer element.ctx.allocator.free(url);
     startFetch(load, url, null, options, destination);
     if (load.in_flight == 0) complete(load);
-    return load.id;
+    return id;
 }
 
 /// HTML "update a style block" step 6 onwards, for `element`, a style
@@ -454,10 +459,14 @@ fn startLinkFetch(element: *runtime.Instance, kind: Kind, options: LinkOptions, 
 /// could start (no event fires).
 pub fn startStyle(element: *runtime.Instance, text: []const u8, parser_created: bool) ?u64 {
     const load = newLoad(element, .style) orelse return null;
+    // `complete` can free the load (a realm with no event loop releases it
+    // at once): what is read after it is taken first.
+    const id = load.id;
+    const document_allocator = load.document.ctx.allocator;
     // The sheet's location is null: its imports resolve against the node
     // document's base URL (CSSOM "style sheet base URL").
     const base = interfaces.Node.get_baseURI(load.document) catch null;
-    defer if (base) |b| load.document.ctx.allocator.free(b);
+    defer if (base) |b| document_allocator.free(b);
     fetchImports(load, null, text, base);
     // Without critical subresources the rules are immediately available
     // to script (HTML 4.2.7), even though the load event runs in a task.
@@ -465,7 +474,7 @@ pub fn startStyle(element: *runtime.Instance, text: []const u8, parser_created: 
     // "If the style sheet has no critical subresources, once the style sheet
     // has been parsed and processed": now.
     if (load.in_flight == 0) complete(load);
-    return load.id;
+    return id;
 }
 
 /// A style element whose block Content Security Policy blocked ("update a
@@ -483,9 +492,11 @@ pub fn startStyle(element: *runtime.Instance, text: []const u8, parser_created: 
 /// wpt.fyi cc74d2669f. No whatwg/html issue asks for it.
 pub fn startBlockedStyle(element: *runtime.Instance) ?u64 {
     const load = newLoad(element, .style) orelse return null;
+    // `complete` can free the load.
+    const id = load.id;
     load.failed = true;
     complete(load);
-    return load.id;
+    return id;
 }
 
 /// The element fetches again, or no longer has a style sheet: the load `id`
