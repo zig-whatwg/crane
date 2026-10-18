@@ -35,6 +35,18 @@ pub const Control = struct {
     has_range_limitations: ?*const fn (element: *runtime.Instance) bool = null,
     selected_index: ?*const fn (select: *runtime.Instance) anyerror!?usize = null,
     set_selected_index: ?*const fn (select: *runtime.Instance, index: ?usize) anyerror!void = null,
+    has_selected_option: ?*const fn (select: *runtime.Instance) bool = null,
+    set_has_selected_option: ?*const fn (select: *runtime.Instance, value: bool) anyerror!void = null,
+    /// Whether this insertion also inserted the option's owning select.
+    option_owner_unchanged: ?*const fn (select: *runtime.Instance) bool = null,
+    /// Diagnostic seam: native tests call it; production algorithms never do.
+    selection_invariant: ?*const fn (select: *runtime.Instance) bool = null,
+    select_typeahead: ?*const fn (select: *runtime.Instance, text: []const u8) anyerror![]const u8 = null,
+    pick_option: ?*const fn (select: *runtime.Instance, option: *runtime.Instance, toggle: bool) anyerror!void = null,
+    picker_open: ?*const fn (select: *runtime.Instance) bool = null,
+    set_picker_open: ?*const fn (select: *runtime.Instance, open: bool) anyerror!void = null,
+    selectedcontent_interest: ?*const fn (select: *runtime.Instance) bool = null,
+    set_selectedcontent_interest: ?*const fn (select: *runtime.Instance, present: bool) anyerror!void = null,
 };
 
 const max_controls = 16;
@@ -122,6 +134,34 @@ pub fn selectedIndex(select: *runtime.Instance) anyerror!?usize {
 pub fn setSelectedIndex(select: *runtime.Instance, index: ?usize) anyerror!void {
     for (controls[0..count]) |control| {
         if (control.set_selected_index) |set| if (control.is(select)) return set(select, index);
+    }
+    return error.NotSupported;
+}
+
+pub fn pickerOpen(select: *runtime.Instance) bool {
+    for (controls[0..count]) |control| {
+        if (control.picker_open) |read| if (control.is(select)) return read(select);
+    }
+    return false;
+}
+
+pub fn setPickerOpen(select: *runtime.Instance, open: bool) !void {
+    for (controls[0..count]) |control| {
+        if (control.set_picker_open) |set| if (control.is(select)) return set(select, open);
+    }
+    return error.NotSupported;
+}
+
+pub fn selectedcontentInterest(select: *runtime.Instance) bool {
+    for (controls[0..count]) |control| {
+        if (control.selectedcontent_interest) |read| if (control.is(select)) return read(select);
+    }
+    return false;
+}
+
+pub fn setSelectedcontentInterest(select: *runtime.Instance, present: bool) !void {
+    for (controls[0..count]) |control| {
+        if (control.set_selectedcontent_interest) |set| if (control.is(select)) return set(select, present);
     }
     return error.NotSupported;
 }
@@ -239,4 +279,56 @@ test "control dispatch skips matching entries without its callback, in either or
         defer text.deinit(std.testing.allocator);
         try std.testing.expectEqualStrings("editor", text.asSlice());
     }
+}
+
+/// Select-owned summary of the options' stored selectedness, not a node cache.
+pub fn hasSelectedOption(select: *runtime.Instance) bool {
+    for (controls[0..count]) |control| {
+        if (control.has_selected_option) |read| if (control.is(select)) return read(select);
+    }
+    return false;
+}
+
+pub fn setHasSelectedOption(select: *runtime.Instance, value: bool) !void {
+    for (controls[0..count]) |control| {
+        if (control.set_has_selected_option) |write| if (control.is(select)) return write(select, value);
+    }
+    return error.NotSupported;
+}
+
+/// The select owns the scalar insertion stamp; the option owns its bits.
+pub fn optionOwnerUnchanged(select: *runtime.Instance) bool {
+    for (controls[0..count]) |control| {
+        if (control.option_owner_unchanged) |read| if (control.is(select)) return read(select);
+    }
+    return false;
+}
+
+/// Read-only, allocation-free diagnostic. Only native tests call this hook;
+/// putting the scan in a production write path would make insertion quadratic.
+pub fn selectionInvariant(select: *runtime.Instance) bool {
+    var found = false;
+    for (controls[0..count]) |control| {
+        if (control.selection_invariant) |check| if (control.is(select)) {
+            found = true;
+            if (!check(select)) return false;
+        };
+    }
+    return found;
+}
+
+/// Borrowed until the next typeahead call for this select; no script runs
+/// while the caller compares it with option labels.
+pub fn selectTypeahead(select: *runtime.Instance, text: []const u8) ![]const u8 {
+    for (controls[0..count]) |control| {
+        if (control.select_typeahead) |run| if (control.is(select)) return run(select, text);
+    }
+    return error.NotSupported;
+}
+
+pub fn pickOption(select: *runtime.Instance, option: *runtime.Instance, toggle: bool) !void {
+    for (controls[0..count]) |control| {
+        if (control.pick_option) |run| if (control.is(select)) return run(select, option, toggle);
+    }
+    return error.NotSupported;
 }

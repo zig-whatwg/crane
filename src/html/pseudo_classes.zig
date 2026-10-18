@@ -41,7 +41,7 @@ pub fn matches(element: *Instance, which: Kind) bool {
         .read_write => readWrite(element),
         .read_only => !readWrite(element),
         .placeholder_shown => placeholderShown(element),
-        .open => (element.stateAs(interfaces.HTMLDetailsElement.State) != null or element.stateAs(interfaces.HTMLDialogElement.State) != null) and has(element, "open"),
+        .open => dom.form_controls.pickerOpen(element) or (element.stateAs(interfaces.HTMLDetailsElement.State) != null or element.stateAs(interfaces.HTMLDialogElement.State) != null) and has(element, "open"),
         .popover_open => has(element, "popover") and dom.html_pseudo_classes.popoverShowing(element),
         // Crane has no autofill or picker UI and never locks media volume.
         .autofill, .volume_locked => false,

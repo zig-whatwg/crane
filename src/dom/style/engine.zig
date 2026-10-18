@@ -989,13 +989,23 @@ pub fn reparseInline(element: *runtime.Instance, state: *ElementStyle, value: []
 /// none`; an element with `display: contents` has no box of its own (it is
 /// "delegating its rendering to its children").
 pub fn isBeingRendered(element: *runtime.Instance) Error!bool {
+    return renderedInFlatTree(element, false);
+}
+
+/// HTML 6.6.2 also accepts an element delegating rendering to its children.
+/// Accepting its own display:contents does not bypass a hidden ancestor.
+pub fn isBeingRenderedOrDelegating(element: *runtime.Instance) Error!bool {
+    return renderedInFlatTree(element, true);
+}
+
+fn renderedInFlatTree(element: *runtime.Instance, comptime accepts_contents: bool) Error!bool {
     const node = instance_bridge.getNodeBase(element) orelse return false;
     if (node.node_type != NodeBase.ELEMENT_NODE or !node.is_connected) return false;
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
     const view = interfaces.Document.get_defaultView(document) catch null;
     if (view == null) return false;
     const style = (try computedStyle(element, null)) orelse return false;
-    if (style.display().box == .contents) return false;
+    if (!accepts_contents and style.display().box == .contents) return false;
     var current: *NodeBase = node;
     while (true) {
         const e = instanceOf(current) orelse return false;

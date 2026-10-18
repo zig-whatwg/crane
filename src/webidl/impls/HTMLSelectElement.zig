@@ -14,6 +14,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const engine = @import("engine");
+const dom = @import("dom");
 const HTMLSelectElement = interfaces.HTMLSelectElement;
 
 // The element's attributes, read in place (dom.element_data, which Element
@@ -53,14 +54,25 @@ pub const InternalState = struct {
     selected_options: ?*runtime.Instance = null,
     selected_options_generation: u64 = 0,
     selected_options_traced: bool = false,
+    picker_open: bool = false,
+    has_selected_option: bool = false,
+    inserted_stamp: ?InsertionStamp = null,
+    typeahead: std.ArrayListUnmanaged(u8) = .empty,
+    last_typeahead_time: f64 = -std.math.inf(f64),
+    selectedcontent_interest: bool = false,
 
     /// What the state owns, without its element (dom.orphan_states): the
     /// custom validity message. The collections and the validity object are
     /// the element's to release (`deinit`).
     pub fn deinit(self: *InternalState) void {
         self.validation.custom_error.deinit(self.allocator);
+        self.typeahead.deinit(self.allocator);
     }
 };
+
+/// Identity token only, never a node pointer. Adoption can otherwise make
+/// two documents' equal version counters look like the same insertion.
+const InsertionStamp = struct { version: u64, document_key: u64 };
 
 const States = @import("dom").orphan_states.Swept(.html_select_element, InternalState);
 
@@ -104,9 +116,9 @@ fn constraintFlags(instance: *runtime.Instance) forms.ValidityFlags {
         if (multiple) {
             if (!(interfaces.HTMLOptionElement.get_selected(option) catch false)) continue;
         } else if (selected_index == null or selected_index.? != index) continue;
-        // HTML 4.10.7: only the first option directly under the select can
-        // be its placeholder label option. All other selected options count.
-        if (single and index == 0 and form_associated.parentOf(option) == instance) {
+        // HTML 4.10.7: wrappers are permitted; an intervening optgroup
+        // prevents the first empty option from being the placeholder.
+        if (single and index == 0 and !forms.options.hasOptgroupAncestor(option, instance)) {
             var value = interfaces.HTMLOptionElement.get_value(option) catch continue;
             defer value.deinit(instance.ctx.allocator);
             if (value.isEmpty()) continue;
@@ -118,10 +130,118 @@ fn constraintFlags(instance: *runtime.Instance) forms.ValidityFlags {
 }
 
 pub fn installHooks() void {
-    @import("dom").form_controls.install(.{ .is = &isValidationControl, .validity_flags = &constraintFlags });
+    @import("dom").form_controls.install(.{
+        .is = &isValidationControl,
+        .validity_flags = &constraintFlags,
+        .has_selected_option = &hasSelectedOption,
+        .set_has_selected_option = &setHasSelectedOption,
+        .option_owner_unchanged = &optionOwnerUnchanged,
+        .selection_invariant = &selectionInvariant,
+        .select_typeahead = &typeaheadInput,
+        .picker_open = &pickerOpen,
+        .set_picker_open = &setPickerOpen,
+        .selectedcontent_interest = &selectedcontentInterest,
+        .set_selectedcontent_interest = &setSelectedcontentInterest,
+    });
     // The states no deinit reached - orphaned selects' - at their Browser's
     // end.
     States.installSweep();
+    dom.mutation.registerInsertionStepsCallback(&insertionSteps) catch {};
+    dom.mutation.registerRemovingStepsCallback(&removingSteps) catch {};
+}
+
+fn currentInsertionStamp(select: *runtime.Instance) ?InsertionStamp {
+    const document = (interfaces.Node.get_ownerDocument(select) catch return null) orelse return null;
+    return .{
+        .version = collections.treeVersion(document) orelse return null,
+        .document_key = @intFromPtr(document) ^ runtime.SlabAllocator.generationOf(document),
+    };
+}
+
+fn selectInstance(node: *dom.NodeBase) ?*runtime.Instance {
+    if (node.node_type != interfaces.Node.get_ELEMENT_NODE()) return null;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse return null));
+    return if (isValidationControl(instance)) instance else null;
+}
+
+fn insertionSteps(node: *dom.NodeBase) void {
+    const select = selectInstance(node) orelse return;
+    const stamp = currentInsertionStamp(select) orelse return;
+    // DOM insert step 7 runs a select before its descendant options. No
+    // mutation occurs between those callbacks, even for a linked batch.
+    // This implements update-nearest-select step 4 without cached owners.
+    (internalState(select) catch return).inserted_stamp = stamp;
+}
+
+fn removingSteps(node: *dom.NodeBase, _: ?*dom.NodeBase) void {
+    const select = selectInstance(node) orelse return;
+    if (select.getState(State).own._internal) |internal| internal.inserted_stamp = null;
+}
+
+fn optionOwnerUnchanged(select: *runtime.Instance) bool {
+    const internal = select.getState(State).own._internal orelse return false;
+    const inserted = internal.inserted_stamp orelse return false;
+    const current = currentInsertionStamp(select) orelse return false;
+    return std.meta.eql(inserted, current);
+}
+
+/// Native-only diagnostic alongside the option owner's bit checks. A
+/// removal clears the stamp; a version or document change makes it inert.
+fn selectionInvariant(select: *runtime.Instance) bool {
+    const internal = select.getState(State).own._internal orelse return true;
+    _ = internal.inserted_stamp orelse return true;
+    return (interfaces.Node.get_parentNode(select) catch return false) != null;
+}
+
+fn hasSelectedOption(instance: *runtime.Instance) bool {
+    const internal = instance.getState(State).own._internal orelse return false;
+    return internal.has_selected_option;
+}
+
+fn setHasSelectedOption(instance: *runtime.Instance, value: bool) !void {
+    if (!value and instance.getState(State).own._internal == null) return;
+    (try internalState(instance)).has_selected_option = value;
+}
+
+fn typeaheadInput(instance: *runtime.Instance, text: []const u8) ![]const u8 {
+    const internal = try internalState(instance);
+    const now = @import("dom").user_activation_state.sharedCurrentTime();
+    // Blink TypeAhead's one-second session. Repeated identical characters
+    // cycle matches instead of extending the prefix (kCycleFirstChar).
+    if (now - internal.last_typeahead_time > 1000 or now < internal.last_typeahead_time) internal.typeahead.clearRetainingCapacity();
+    internal.last_typeahead_time = now;
+    var repeated = text.len != 0 and internal.typeahead.items.len != 0 and internal.typeahead.items.len % text.len == 0;
+    if (repeated) {
+        var offset: usize = 0;
+        while (offset < internal.typeahead.items.len) : (offset += text.len) {
+            if (!std.ascii.eqlIgnoreCase(internal.typeahead.items[offset..][0..text.len], text)) {
+                repeated = false;
+                break;
+            }
+        }
+    }
+    try internal.typeahead.appendSlice(internal.allocator, text);
+    // Cycling searches one character without discarding the session: after
+    // "cc", a following "a" searches "cca", not "ca" (Blink TypeAhead).
+    return if (repeated) internal.typeahead.items[0..text.len] else internal.typeahead.items;
+}
+
+fn pickerOpen(instance: *runtime.Instance) bool {
+    return if (instance.getState(State).own._internal) |internal| internal.picker_open else false;
+}
+
+fn setPickerOpen(instance: *runtime.Instance, open: bool) !void {
+    if (!open and instance.getState(State).own._internal == null) return;
+    (try internalState(instance)).picker_open = open;
+}
+
+fn selectedcontentInterest(instance: *runtime.Instance) bool {
+    return if (instance.getState(State).own._internal) |internal| internal.selectedcontent_interest else false;
+}
+
+fn setSelectedcontentInterest(instance: *runtime.Instance, present: bool) !void {
+    if (!present and instance.getState(State).own._internal == null) return;
+    (try internalState(instance)).selectedcontent_interest = present;
 }
 
 /// Initialize instance (creates the instance)
@@ -333,12 +453,10 @@ pub fn set_length(instance: *runtime.Instance, value: u32) anyerror!void {
 /// Setter for selectedIndex
 /// Spec: https://html.spec.whatwg.org/multipage/form-elements.html#dom-select-selectedindex
 pub fn set_selectedIndex(instance: *runtime.Instance, value: i32) anyerror!void {
-    var options = try optionList(instance);
-    defer options.deinit(instance.ctx.allocator);
-
     // HTML set the selected index: an out-of-range value clears all options
-    // without asking for a reset; the option owner implements that step.
-    const index: ?usize = if (value >= 0 and @as(usize, @intCast(value)) < options.items.len) @intCast(value) else null;
+    // without asking for a reset. The option owner checks the upper bound
+    // during its one list walk; the interface needs no duplicate list.
+    const index: ?usize = if (value >= 0) @intCast(value) else null;
     try controls.setSelectedIndex(instance, index);
 }
 
@@ -427,8 +545,9 @@ pub fn call_showPicker(instance: *runtime.Instance) anyerror!void {
     const window = try forms.picker.requireActivation(instance);
     if (!(try interfaces.Node.get_isConnected(instance)) or
         !@import("html").embedded_content.isBeingRendered(instance)) return error.NotSupportedError;
-    // Steps 5–6: consume; a headless host has no select-picker operation.
+    // Steps 5–6: consume activation, then show the base-select picker.
     @import("html").user_activation.consume(window);
+    try forms.select_picker.show(instance);
 }
 
 /// Operation: reportValidity

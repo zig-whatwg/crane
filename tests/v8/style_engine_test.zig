@@ -19,7 +19,7 @@ const WindowHost = struct {
     fn createGlobalObject(r: runtime.Context, global_this: runtime.JSValue, host: ?*anyopaque) ?*runtime.Instance {
         _ = global_this;
         _ = host;
-        return interfaces.Window.init(std.heap.c_allocator, r) catch null;
+        return interfaces.Window.init(r.allocator, r) catch null;
     }
 };
 
@@ -52,13 +52,17 @@ const Page = struct {
     realm: runtime.Context,
 
     fn open() !Page {
+        return openWith(std.heap.c_allocator);
+    }
+
+    fn openWith(allocator: std.mem.Allocator) !Page {
         try setup();
         const no_hooks: protocol.HostHooks = .{};
         const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
         errdefer protocol.destroyAgent(agent);
         const realm = try protocol.createWindowRealm(&.{
             .agent = agent,
-            .allocator = std.heap.c_allocator,
+            .allocator = allocator,
             .from_snapshot = false,
             .timer = null,
             .origin = "https://example.test",
@@ -349,4 +353,55 @@ test "an observable array of platform objects: values converted, the owner's ste
     try page.eval("arr.length = 0;");
     try testing.expectEqual(@as(usize, 0), ArraySteps.last_changed);
     try testing.expectEqual(@as(usize, 0), reports.count);
+}
+
+// Rendering and delegated rendering share one ancestor check. Each node
+// remains rooted in script for this synchronous native observation.
+fn renderingAndDelegation() !void {
+    const page = try Page.openWith(testing.allocator);
+    defer page.close();
+    try page.eval(html_page);
+    const document = try page.instance("d");
+    const window = try page.instance("globalThis");
+    dom.document_browsing_context.setWindow(document, window);
+    try page.eval(
+        \\div.innerHTML = '<div id="plain"></div>' +
+        \\  '<div id="none" style="display:none"></div>' +
+        \\  '<div style="display:none"><div id="ancestor"></div></div>' +
+        \\  '<div id="contents" style="display:contents"><span></span></div>' +
+        \\  '<div style="display:none"><div id="hidden-contents" style="display:contents"><span></span></div></div>';
+    );
+    const cases = [_]struct { id: []const u8, rendered: bool, delegating: bool }{
+        .{ .id = "plain", .rendered = true, .delegating = true },
+        .{ .id = "none", .rendered = false, .delegating = false },
+        .{ .id = "ancestor", .rendered = false, .delegating = false },
+        .{ .id = "contents", .rendered = false, .delegating = true },
+        .{ .id = "hidden-contents", .rendered = false, .delegating = false },
+    };
+    for (cases) |case| {
+        const element = (try interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned(case.id))).?;
+        testing.expectEqual(case.rendered, try dom.style.isBeingRendered(element)) catch |err| {
+            std.debug.print("rendered case: {s}\n", .{case.id});
+            return err;
+        };
+        testing.expectEqual(case.delegating, try dom.style.engine.isBeingRenderedOrDelegating(element)) catch |err| {
+            std.debug.print("delegating case: {s}\n", .{case.id});
+            return err;
+        };
+    }
+}
+
+test "rendering and delegated rendering both reject a hidden flat-tree ancestor" {
+    const Run = struct {
+        failure: ?anyerror = null,
+        fn run(self: *@This()) void {
+            renderingAndDelegation() catch |err| {
+                self.failure = err;
+            };
+        }
+    };
+    var run: Run = .{};
+    const thread = try std.Thread.spawn(.{}, Run.run, .{&run});
+    thread.join();
+    if (run.failure) |err| return err;
 }
