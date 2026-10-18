@@ -232,10 +232,13 @@ pub const InternalState = struct {
     creator_is_secure_context: ?bool = null,
 
     /// The origin this window was CREATED with: the page's for a top-level
-    /// window, the container's for an iframe. It is the origin its document
-    /// inherits when that document has none of its own (about:blank, srcdoc,
-    /// javascript:); `effectiveOrigin` is the window's actual origin. Storage
-    /// keys still read this one.
+    /// window, the container document's for an iframe. It is a fallback only:
+    /// the window's origin is its associated Document's (`effectiveOrigin`),
+    /// and this copy answers only before the window has a document whose
+    /// origin is known. A Window made for a later navigation of the same
+    /// navigable is given the navigable's first creation origin, so this goes
+    /// stale the moment the frame navigates to another origin - which is why
+    /// nothing reads it while the document's origin record can answer.
     origin: []const u8 = "null",
 
     /// `effectiveOrigin`'s answer for a document URL with an origin of its
@@ -395,33 +398,39 @@ pub fn setOrigin(instance: *runtime.Instance, origin: []const u8) !void {
 
 /// This window's origin: its associated Document's origin.
 ///
-/// HTML "create and initialize a Document object" gives a document fetched
-/// from a URL that URL's origin, except that about:blank, about:srcdoc and
-/// the result of a javascript: URL inherit their creator's - which is what
-/// `internal.origin` holds. A document whose active sandboxing flag set has
-/// the sandboxed origin browsing context flag was made with a new opaque
-/// origin, which its record says.
+/// HTML "set up a window environment settings object": the settings
+/// object's origin is the associated Document's origin, which "create and
+/// initialize a Document object" decided ("determining the origin"): a
+/// fetched document's URL's origin, a new opaque origin when sandboxed, and
+/// for about:blank, about:srcdoc and a javascript: URL's result the
+/// creator's, the container document's or the initiator's origin itself -
+/// which the document's origin record (dom.origin_record) holds, shared.
+/// The record is the one source: a frame's srcdoc child nested in a
+/// cross-origin document has that document's origin, and an about:blank
+/// child of a frame its creator's, whatever window made them
+/// (webstorage/localstorage-share-data-unrelated-origins.html passes in
+/// Chrome 155, Firefox 158 and Safari 27).
 ///
-/// `internal.origin` alone used to be the answer, and for an iframe that was
-/// its PARENT's origin even after the frame loaded a document from another
-/// origin: a message aimed at the frame's real origin was dropped as a
-/// mismatch, one aimed at the parent's was delivered, and the parent could
-/// read the frame's document.
+/// `internal.origin` - the origin the Window was created with - used to
+/// answer for an about: or javascript: URL, and for an iframe that was its
+/// PARENT's origin, or for a Window a later navigation made, the navigable's
+/// FIRST container's: a srcdoc frame inside a cross-origin frame read the
+/// top-level page's storage, and a popup's frame's about:blank children
+/// were cross-origin to their own parent. It answers now only for a
+/// document whose record has no serialization yet (the top-level page's,
+/// until something shares it), and before the window has a document.
 ///
-/// The slice lives until the document's URL next changes; copy it to keep it.
+/// The slice lives while the document holds its record, or until its URL
+/// next changes; copy it to keep it.
 fn effectiveOrigin(instance: *runtime.Instance, internal: *InternalState) []const u8 {
     const document = internal.document orelse return internal.origin;
-    // A Window's origin is its associated Document's (HTML 7.1.6: the
-    // relevant settings object's origin is the document's). A document made
-    // with a new opaque origin - a network error's document (a frame blocked
-    // by frame-ancestors), one its response's CSP sandboxes - says so in its
-    // origin record, whatever its URL. Only an opaque record decides here: a
-    // tuple origin is still derived as below, because records shared from an
-    // active document or resolved early are not yet exact for every
-    // inheriting document (a popup's about:blank, an object's), and the URL
-    // and creation origin answer those as before.
+    // A Window's origin is its associated Document's: its origin record's,
+    // opaque or not, once the record knows its serialization - a document
+    // made with a new opaque origin (a network error's, one its response's
+    // CSP sandboxes) whatever its URL, and an inheriting document with the
+    // origin it shares.
     if (@import("dom").document_origin.record(document)) |record| {
-        if (record.isOpaque()) return "null";
+        if (record.serialized) |serialized| return serialized;
     }
     const url = interfaces.Document.get_URL(document) catch return internal.origin;
     // The getter clones into the document's context allocator.

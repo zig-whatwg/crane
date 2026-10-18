@@ -4226,28 +4226,29 @@ fn createChildNavigable(instance: *runtime.Instance) bool {
 /// container document's, and its realm, Window and initial about:blank
 /// document, with `container` as the navigable's container.
 fn createBrowsingContextAndDocument(container: *runtime.Instance, integration: *IFrameIntegration) bool {
-    const NodeImpl = @import("Node.zig");
-    const DocumentImpl = @import("Document.zig");
-
     // The parent is the window of the element's node document - for a frame
     // nested in another frame's document, that frame's window - and the
     // parent realm is that window's.
-    const owner_doc = NodeImpl.getOwnerDocument(container) orelse return false;
-    const parent_window: *runtime.Instance = (DocumentImpl.get_defaultView(owner_doc) catch null) orelse return false;
-    const WindowImpl = @import("Window.zig");
-    const parent_window_internal = WindowImpl.getInternal(parent_window) orelse return false;
+    const owner_doc = (interfaces.Node.get_ownerDocument(container) catch null) orelse return false;
+    const parent_window: *runtime.Instance = (interfaces.Document.get_defaultView(owner_doc) catch null) orelse return false;
+    const parent_bc = dom_module.browser_state.browsingContextOf(parent_window) orelse return false;
 
-    // The container document's origin, for same-origin checks on
-    // contentDocument. The Window stores its origin as a string (e.g.,
-    // "http://localhost:8000").
-    const parent_origin_str = parent_window_internal.origin;
-    const parent_origin = dom_module.navigables.parseOriginFromString(parent_origin_str);
-    integration.container_origin = parent_origin;
+    // "Create a new browsing context and document" step 2: creatorOrigin,
+    // the creator's - the element's node document's - origin: its origin
+    // record, serialized. Not the origin the container document's Window
+    // was created with, which for a frame that navigated to another origin
+    // is still its first container's: a srcdoc child of a cross-origin frame
+    // was made with the top-level page's origin, and an about:blank child of
+    // a popup's frame with its opener's. The serialization is the record's,
+    // which the container document holds for as long as it lives - as long
+    // as the element's integration, which keeps `container_origin` (for the
+    // same-origin checks on contentDocument) pointing into it.
+    const container_record = (dom_module.document_origin.shareable(owner_doc) catch null) orelse return false;
+    const parent_origin_str = container_record.serialized orelse "null";
+    integration.container_origin = dom_module.navigables.parseOriginFromString(parent_origin_str);
 
     // The browsing context, a child of the container document's.
-    const existing_bc = integration.ensureBrowsingContext(
-        @ptrCast(parent_window_internal.browsing_context),
-    ) orelse return false;
+    const existing_bc = integration.ensureBrowsingContext(@ptrCast(parent_bc)) orelse return false;
     // This element is the new navigable's container.
     existing_bc.container = container;
 
@@ -4276,7 +4277,7 @@ fn createBrowsingContextAndDocument(container: *runtime.Instance, integration: *
         parent_window.ctx,
         existing_bc,
         if (use_opaque_origin) null else parent_origin_str,
-        NodeImpl.getOwnerDocument(container),
+        owner_doc,
         integration.allocator,
     ) orelse return false;
     return true;
