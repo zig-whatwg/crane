@@ -871,6 +871,13 @@ const Navigation = struct {
     /// document's, and step 8 makes it the String's document's origin. It
     /// outlives the source document. Null with no source document.
     initiator_origin: ?*OriginRecord = null,
+    /// Navigate step 4's initiatorOriginSnapshot for a navigation that is
+    /// fetched: the source document's origin, serialized - the request's
+    /// origin ("create navigation params by fetching" step 3, startFetch).
+    /// Kept apart from `initiator_origin`, which its own readers (a
+    /// javascript: URL's checks, about:blank's document origin) take only for
+    /// the navigations they handle. Null with no source document. OWNED.
+    request_origin: ?[]u8 = null,
     /// The fetch in flight, until it answers.
     fetch: ?*fetch_mod.algorithms.AsyncFetch = null,
     /// What the fetch answered, until the commit takes it.
@@ -915,6 +922,7 @@ const Navigation = struct {
         if (self.post_content_type) |t| self.allocator.free(t);
         if (self.target_origin) |o| self.allocator.free(o);
         if (self.initiator_origin) |record| record.release();
+        if (self.request_origin) |o| self.allocator.free(o);
         if (self.referrer) |r| self.allocator.free(r);
         if (self.initiator_policy_container) |*container| container.deinit();
         if (self.javascript_policy_container) |*container| container.deinit();
@@ -1317,6 +1325,9 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
             if (dom_module.document_origin.shareable(source) catch null) |origin| record.initiator_origin = origin.retain();
         }
     }
+    // The same snapshot, serialized, for the navigation's request (its
+    // origin, startFetch).
+    if (options.source_document) |source| record.request_origin = documentOriginOf(source, allocator);
     navigations.put(std.heap.page_allocator, id, record) catch {
         record.destroy();
         return;
@@ -1600,7 +1611,7 @@ fn startFetch(record: *Navigation) void {
         // worker's copy of the hop keeps both (navigation-headers.https.html).
         // A navigation with no initiator (the user agent's own) keeps
         // "client".
-        if (record.initiator_origin) |initiator| request.setOrigin(initiator.serialized orelse "null") catch {
+        if (record.request_origin) |origin| request.setOrigin(origin) catch {
             request.deinit();
             record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
