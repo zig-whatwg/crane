@@ -888,19 +888,33 @@ pub fn setResourceTimingBufferSize(timeline: *Timeline, max_size: u32) void {
 }
 
 /// "copy secondary buffer".
-fn copySecondaryBuffer(timeline: *Timeline) void {
+pub fn copySecondaryBuffer(timeline: *Timeline) void {
     const state = &timeline.resource;
     const buffer = timeline.buffers.getPtr(.resource);
-    // 1. While the secondary buffer has entries and there is room, the
-    // oldest moves to the end of the buffer (its edge from the owner stays).
-    while (state.secondary_buffer.items.len > 0 and canAddResourceTimingEntry(timeline)) {
-        const entry = state.secondary_buffer.orderedRemove(0);
-        buffer.entries.append(timeline.allocator, entry) catch {
-            releaseEntry(timeline.owner, entry);
-            continue;
-        };
-        state.current_size += 1;
-    }
+    // Resource Timing 3.4, "copy secondary buffer" step 1: move the
+    // oldest entries that fit, keeping their existing edges from the owner.
+    // Reserve the whole prefix and compact the remainder once, rather than
+    // shifting it after every entry. No consumed slot survives into script.
+    const count = @min(state.secondary_buffer.items.len, state.size_limit -| state.current_size);
+    if (count == 0) return;
+    buffer.entries.ensureUnusedCapacity(timeline.allocator, count) catch {
+        // Preserve the per-entry allocation-failure behavior: use capacity
+        // already available and release each entry that cannot be appended.
+        while (state.secondary_buffer.items.len > 0 and canAddResourceTimingEntry(timeline)) {
+            const entry = state.secondary_buffer.orderedRemove(0);
+            buffer.entries.append(timeline.allocator, entry) catch {
+                releaseEntry(timeline.owner, entry);
+                continue;
+            };
+            state.current_size += 1;
+        }
+        return;
+    };
+    buffer.entries.appendSliceAssumeCapacity(state.secondary_buffer.items[0..count]);
+    const remaining = state.secondary_buffer.items.len - count;
+    std.mem.copyForwards(*Instance, state.secondary_buffer.items[0..remaining], state.secondary_buffer.items[count..]);
+    state.secondary_buffer.items.len = remaining;
+    state.current_size += count;
 }
 
 /// "fire a buffer full event", in `timeline`'s realm.
