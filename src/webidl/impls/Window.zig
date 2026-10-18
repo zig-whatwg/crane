@@ -3769,161 +3769,34 @@ pub fn call_getScreenDetails(instance: *runtime.Instance) anyerror!runtime.JSVal
 // Named Property Access Support (for WindowProperties object)
 // ============================================================================
 
-// An element's ID, name attribute and local name, read in place
-// (dom.element_data, which Element installs).
-const element_data = @import("dom").element_data;
-const ElementData = element_data.ElementData;
+// A document's ID and named-property maps (domindex1): its elements' IDs,
+// name attributes and types, kept by insertion, removal and attribute change.
+const tree_ordered_map = @import("dom").tree_ordered_map;
 const clock = @import("clock");
 
-/// HTML "named objects" of a Window (§7.2.2.3) that a name attribute makes:
-/// "embed, form, img, or object elements that have a name content attribute
-/// whose value is name". An iframe's or frame's name is its navigable's target
-/// name instead - a document-tree child navigable, which getNamedProperty
-/// looks at first - and every HTML element is a named object by its id.
-const named_element_types = [_][]const u8{
-    "embed",
-    "form",
-    "img",
-    "object",
-};
-
-/// Whether an element's name attribute makes it a named object.
-fn isNamedElementType(local_name: []const u8) bool {
-    for (named_element_types) |t| {
-        if (std.ascii.eqlIgnoreCase(local_name, t)) return true;
-    }
-    return false;
-}
-
-/// Get the "name" attribute value from an element, if it has one
-fn getElementName(data: *const ElementData) ?[]const u8 {
-    if (element_data.getAttributeByNamespaceAndLocalName(data, null, "name")) |entry| {
-        if (entry.value.len > 0) {
-            return entry.value;
-        }
+/// HTML 7.2.2.3 "the document-tree child navigable target name property
+/// set", asked for one name (domindex1): the window of the FIRST child
+/// navigable whose target name is `name` (step 3, firstNamedChildren) when
+/// that navigable's active document is same origin with `window`'s (step
+/// 5.2), else null - "so that a cross-origin frame's name is not exposed":
+/// a later same-origin child of the same name does not bring the name back
+/// (html/browsers/the-window-object/named-access-on-the-window-object/
+/// cross-origin-named-access.sub.html). A child with no active window
+/// exposes nothing.
+fn childNavigableNamed(window: *runtime.Instance, internal: *InternalState, name: []const u8) ?*runtime.Instance {
+    if (name.len == 0) return null;
+    for (internal.browsing_context.children.items) |child| {
+        if (!std.mem.eql(u8, child.target_name, name)) continue;
+        const raw = child.getActiveWindow() orelse return null;
+        const child_window: *runtime.Instance = @ptrCast(@alignCast(raw));
+        const child_internal = getInternal(child_window) orelse return null;
+        const same_origin = @import("dom").origin_record.sameOrigin(
+            .{ .serialized = effectiveOrigin(window, internal), .record = settingsOriginRecord(window) },
+            .{ .serialized = effectiveOrigin(child_window, child_internal), .record = settingsOriginRecord(child_window) },
+        );
+        return if (same_origin) child_window else null;
     }
     return null;
-}
-
-/// Search the document tree for elements matching the given name.
-/// Returns the first matching element (or its browsing context for iframe/frame).
-fn findNamedElement(document: *runtime.Instance, name: []const u8) ?runtime.JSValue {
-    // Traverse tree in tree order (preorder depth-first)
-    return findNamedElementRecursive(document, name);
-}
-
-fn findNamedElementRecursive(node: *runtime.Instance, target_name: []const u8) ?runtime.JSValue {
-    var child = interfaces.Node.get_firstChild(node) catch null;
-    while (child) |c| {
-        const node_type = interfaces.Node.get_nodeType(c) catch 0;
-        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
-            if (element_data.of(c)) |data| {
-                const local_name = data.local_name.asSlice();
-
-                // An HTML element whose id is the name is a named object -
-                // the element itself, an iframe as much as any other: only a
-                // navigable's target name makes the property a WindowProxy.
-                const elem_id = data.id.asSlice();
-                if (elem_id.len > 0 and std.mem.eql(u8, elem_id, target_name)) {
-                    return runtime.JSValue.fromInstance(c);
-                }
-
-                // So is an embed, form, img or object element whose name
-                // attribute is the name.
-                if (isNamedElementType(local_name)) {
-                    if (getElementName(data)) |element_name| {
-                        if (std.mem.eql(u8, element_name, target_name)) {
-                            return runtime.JSValue.fromInstance(c);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Recursively search descendants
-        if (findNamedElementRecursive(c, target_name)) |found| {
-            return found;
-        }
-
-        child = interfaces.Node.get_nextSibling(c) catch null;
-    }
-    return null;
-}
-
-/// Check if an element matches the target name (by id or name attribute)
-fn elementMatchesName(data: *const ElementData, target_name: []const u8) bool {
-    // Check id attribute
-    const elem_id = data.id.asSlice();
-    if (elem_id.len > 0 and std.mem.eql(u8, elem_id, target_name)) {
-        return true;
-    }
-
-    // Check name attribute for specific element types
-    const local_name = data.local_name.asSlice();
-    if (isNamedElementType(local_name)) {
-        if (getElementName(data)) |element_name| {
-            if (std.mem.eql(u8, element_name, target_name)) {
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
-/// Recursively check if document contains an element matching the name
-fn hasNamedElementRecursive(node: *runtime.Instance, target_name: []const u8) bool {
-    var child = interfaces.Node.get_firstChild(node) catch null;
-    while (child) |c| {
-        const node_type = interfaces.Node.get_nodeType(c) catch 0;
-        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
-            if (element_data.of(c)) |data| {
-                if (elementMatchesName(data, target_name)) {
-                    return true;
-                }
-            }
-        }
-
-        // Recursively search descendants
-        if (hasNamedElementRecursive(c, target_name)) {
-            return true;
-        }
-
-        child = interfaces.Node.get_nextSibling(c) catch null;
-    }
-    return false;
-}
-
-/// Collect all named property names from the document (for enumeration)
-fn collectNamedElementNames(node: *runtime.Instance, names: *std.ArrayList(runtime.DOMString), allocator: std.mem.Allocator) !void {
-    var child = interfaces.Node.get_firstChild(node) catch null;
-    while (child) |c| {
-        const node_type = interfaces.Node.get_nodeType(c) catch 0;
-        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
-            if (element_data.of(c)) |data| {
-                // Add id if present
-                const elem_id = data.id.asSlice();
-                if (elem_id.len > 0) {
-                    const name = try runtime.DOMString.initDupe(allocator, elem_id);
-                    try names.append(allocator, name);
-                }
-
-                // Add name attribute if element type participates
-                const local_name = data.local_name.asSlice();
-                if (isNamedElementType(local_name)) {
-                    if (getElementName(data)) |element_name| {
-                        const name = try runtime.DOMString.initDupe(allocator, element_name);
-                        try names.append(allocator, name);
-                    }
-                }
-            }
-        }
-
-        // Recursively collect from descendants
-        try collectNamedElementNames(c, names, allocator);
-
-        child = interfaces.Node.get_nextSibling(c) catch null;
-    }
 }
 
 /// Get a named property by name.
@@ -3936,17 +3809,8 @@ fn collectNamedElementNames(node: *runtime.Instance, names: *std.ArrayList(runti
 pub fn getNamedProperty(instance: *runtime.Instance, name: []const u8) anyerror!?runtime.JSValue {
     const internal = getInternal(instance) orelse return null;
 
-    log.debug("[getNamedProperty] Looking for name='{s}', children count={d}\n", .{ name, internal.browsing_context.children.items.len });
-
-    // First, check if it's a child browsing context name
-    for (internal.browsing_context.children.items, 0..) |child, i| {
-        log.debug("[getNamedProperty] Child {d}: target_name='{s}'\n", .{ i, child.target_name });
-        if (std.mem.eql(u8, child.target_name, name)) {
-            const child_window = child.getActiveWindow() orelse continue;
-            log.debug("[getNamedProperty] MATCH! Returning child window\n", .{});
-            return runtime.JSValue.fromInstanceAnyopaque(@ptrCast(@alignCast(child_window)));
-        }
-    }
+    // Steps 1-2: a document-tree child navigable named so - its WindowProxy.
+    if (childNavigableNamed(instance, internal, name)) |child_window| return runtime.JSValue.fromInstance(child_window);
 
     // Check document for named elements (elements with matching id or name attributes)
     // The document might be stored in internal.document, OR we might need to get it from the
@@ -3956,10 +3820,18 @@ pub fn getNamedProperty(instance: *runtime.Instance, name: []const u8) anyerror!
         break :blk @ptrCast(@alignCast(active_doc_ptr));
     };
 
+    // domindex1: HTML 7.2.2.3 steps 3-4 for the rest of the named objects -
+    // embed, form, img and object elements by name, every element by ID -
+    // from the document's maps (dom.tree_ordered_map), not a walk: one
+    // element is that element; several are "an HTMLCollection rooted at
+    // window's associated Document, whose filter matches only named objects
+    // of window with the name name", the same one while its wrapper lives
+    // (Blink Document::WindowNamedItems' cached collection).
     if (document) |doc| {
-        if (findNamedElement(doc, name)) |result| {
-            return result;
-        }
+        const objects = tree_ordered_map.named(doc, .window, name);
+        if (objects.count == 0) return null;
+        if (objects.count == 1) return runtime.JSValue.fromInstance(objects.first.?);
+        return .{ .instance = try tree_ordered_map.namedCollection(doc, .window, name) };
     }
 
     return null;
@@ -3970,12 +3842,8 @@ pub fn getNamedProperty(instance: *runtime.Instance, name: []const u8) anyerror!
 pub fn hasNamedProperty(instance: *runtime.Instance, name: []const u8) bool {
     const internal = getInternal(instance) orelse return false;
 
-    // Check if it's a child browsing context name
-    for (internal.browsing_context.children.items) |child| {
-        if (std.mem.eql(u8, child.target_name, name)) {
-            return true;
-        }
-    }
+    // The child navigables' target names this window exposes.
+    if (childNavigableNamed(instance, internal, name) != null) return true;
 
     // Check document for named elements
     // Use internal.document if available, otherwise get from browsing context
@@ -3983,10 +3851,9 @@ pub fn hasNamedProperty(instance: *runtime.Instance, name: []const u8) bool {
         const active_doc_ptr = internal.browsing_context.getActiveDocument() orelse break :blk null;
         break :blk @ptrCast(@alignCast(active_doc_ptr));
     };
+    // domindex1: one lookup in the document's maps, not a walk.
     if (document) |doc| {
-        if (hasNamedElementRecursive(doc, name)) {
-            return true;
-        }
+        if (tree_ordered_map.isNamed(doc, .window, name)) return true;
     }
 
     return false;
@@ -4004,12 +3871,20 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
         names.deinit(allocator);
     }
 
-    // Add child browsing context names
+    // The document-tree child navigable target name property set: each name
+    // once, and only while its first navigable is same origin (domindex1).
     for (internal.browsing_context.children.items) |child| {
-        if (child.target_name.len > 0) {
-            const name = try runtime.DOMString.initDupe(allocator, child.target_name);
-            try names.append(allocator, name);
-        }
+        if (childNavigableNamed(instance, internal, child.target_name) == null) continue;
+        const listed = for (names.items) |existing| {
+            if (std.mem.eql(u8, existing.asSlice(), child.target_name)) break true;
+        } else false;
+        if (listed) continue;
+        const name = try runtime.DOMString.initDupe(allocator, child.target_name);
+        names.append(allocator, name) catch |err| {
+            var dropped = name;
+            dropped.deinit(allocator);
+            return err;
+        };
     }
 
     // Add named elements from document
@@ -4018,8 +3893,23 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
         const active_doc_ptr = internal.browsing_context.getActiveDocument() orelse break :blk null;
         break :blk @ptrCast(@alignCast(active_doc_ptr));
     };
+    // domindex1: the element-contributed names in tree order, ID before
+    // name, from the walk the document's maps' rule makes (HTML 7.2.2.3's
+    // list "ignoring later duplicates").
     if (document) |doc| {
-        try collectNamedElementNames(doc, &names, allocator);
+        const from_elements = try tree_ordered_map.supportedNames(doc, .window, allocator);
+        defer allocator.free(from_elements);
+        // Each name is moved into `names` or freed here, the rest on a failure.
+        var taken: usize = 0;
+        errdefer for (from_elements[taken..]) |*name| name.deinit(allocator);
+        try names.ensureUnusedCapacity(allocator, from_elements.len);
+        for (from_elements) |*name| {
+            taken += 1;
+            const duplicate = for (names.items) |existing| {
+                if (std.mem.eql(u8, existing.asSlice(), name.asSlice())) break true;
+            } else false;
+            if (duplicate) name.deinit(allocator) else names.appendAssumeCapacity(name.*);
+        }
     }
 
     return names.toOwnedSlice(allocator);
