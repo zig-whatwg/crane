@@ -3767,12 +3767,22 @@ fn followHyperlink(subject: *runtime.Instance, user_involvement: dom_module.navi
     const is_anchor = subject.stateAs(interfaces.HTMLAnchorElement.State) != null;
     if (!is_anchor and !(interfaces.Node.get_isConnected(subject) catch false)) return;
 
-    // Steps 2-3: "get an element's target" - its target attribute, else the
-    // document's first base element with one; "if target is not null, and
+    // Steps 2-3: "get an element's target" - its nonempty target attribute,
+    // else the document's first base element with one. DEVIATION from step
+    // 1.1's presence check: an empty a/area target also takes the base target,
+    // as all three browsers do (base_multiple.html: 1/1 each, wpt.fyi
+    // 23b0b89b1a; no newer spec). Blink HTMLAnchorElementBase::GetEffectiveTarget,
+    // WebKit HTMLAnchorElement::effectiveTarget and Gecko
+    // HTMLAnchorElement::GetLinkTargetImpl all test for an empty string:
+    // https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/html/html_anchor_element.cc
+    // https://github.com/WebKit/WebKit/blob/main/Source/WebCore/html/HTMLAnchorElement.cpp
+    // https://github.com/mozilla-firefox/firefox/blob/main/dom/html/HTMLAnchorElement.cpp
+    // Then "if target is not null, and
     // contains an ASCII tab or newline and a U+003C (<), then set target to
     // "_blank"" (dangling markup).
     const target_attr = interfaces.Element.call_getAttribute(subject, runtime.DOMString.initInterned("target")) catch null;
-    const given_target: []const u8 = if (target_attr) |t| t.asSlice() else baseTarget(document);
+    const explicit_target: []const u8 = if (target_attr) |t| t.asSlice() else "";
+    const given_target = if (explicit_target.len != 0) explicit_target else baseTarget(document);
     const dangling = std.mem.indexOfAny(u8, given_target, "\t\n\r") != null and std.mem.indexOfScalar(u8, given_target, '<') != null;
     const target: []const u8 = if (dangling) "_blank" else given_target;
 
