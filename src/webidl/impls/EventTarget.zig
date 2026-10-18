@@ -1590,10 +1590,38 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance, 
     };
     defer return_value.release();
 
-    // Step 5: process the return value. Only an exact true (special error
-    // handling) or an exact false (everything else) cancels - through
-    // preventDefault's "set the canceled flag", which respects cancelable and
-    // the passive listener flag, as Blink's and WebKit's handlers do.
+    // Step 5: process the return value.
+    //
+    // "If event is a BeforeUnloadEvent object and event's type is
+    // beforeunload": the attribute is an OnBeforeUnloadEventHandler, whose
+    // callback returns DOMString?, so the return value is converted - script
+    // (a toString) runs here, with window.event still set - to null or a
+    // string. "If return value is not null, then: set event's canceled flag;
+    // if event's returnValue attribute's value is the empty string, then set
+    // it to return value."
+    if (std.mem.eql(u8, event_type_str.asSlice(), "beforeunload") and event.stateAs(interfaces.BeforeUnloadEvent.State) != null) {
+        switch (engine.typeOf(realm, return_value.value)) {
+            .undefined, .null => return,
+            else => {},
+        }
+        const allocator = event.ctx.allocator;
+        const string = engine.convertToDOMString(realm, return_value.value, allocator) catch |err| {
+            log.debug("beforeunload return value not converted: {}", .{err});
+            return;
+        };
+        defer allocator.free(string);
+        dom_module.event_construction.forceCanceledFlag(event);
+        const current = interfaces.BeforeUnloadEvent.get_returnValue(event) catch return;
+        if (current.asSlice().len == 0) {
+            interfaces.BeforeUnloadEvent.set_returnValue(event, runtime.DOMString.initInterned(string)) catch {};
+        }
+        return;
+    }
+
+    // Otherwise only an exact true (special error handling) or an exact
+    // false (everything else) cancels - through preventDefault's "set the
+    // canceled flag", which respects cancelable and the passive listener
+    // flag, as Blink's and WebKit's handlers do.
     if (engine.typeOf(realm, return_value.value) != .boolean) return;
     if (engine.toBoolean(realm, return_value.value) == special_error_event_handling) {
         interfaces.Event.call_preventDefault(event) catch {};
