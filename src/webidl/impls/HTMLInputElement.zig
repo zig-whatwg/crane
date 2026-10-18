@@ -1744,29 +1744,7 @@ pub fn set_valueAsNumber(instance: *runtime.Instance, value: f64) anyerror!void 
 
 /// Getter for autocomplete
 pub fn get_autocomplete(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    // https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#autofill
-    //
-    // Not a two-value enumeration. "on"/"off" are one branch; the other is an
-    // ordered autofill token list, returned verbatim (lowercased) when it forms
-    // a valid expansion and "" when it does not:
-    //
-    //     <input>                                -> ""
-    //     <input autocomplete="on">              -> "on"
-    //     <input autocomplete="shipping country">-> "shipping country"
-    //     <input autocomplete="foobar">          -> ""
-    //     <input autocomplete="home country">    -> ""  (country is not a
-    //                                                    contact field)
-    const value = attribute(instance, "autocomplete") orelse return runtime.DOMString.initEmpty();
-    defer instance.ctx.allocator.free(value);
-    inline for ([_][]const u8{ "on", "off" }) |candidate| {
-        if (std.ascii.eqlIgnoreCase(value, candidate)) {
-            return runtime.DOMString.initInterned(candidate);
-        }
-    }
-    const expansion = autofill.parse(value) orelse return runtime.DOMString.initEmpty();
-    var buf: [256]u8 = undefined;
-    const serialized = autofill.serialize(expansion, &buf) orelse return runtime.DOMString.initEmpty();
-    return runtime.DOMString.initDupe(instance.ctx.allocator, serialized) catch return error.OutOfMemory;
+    return autofill.idlValue(instance, if (typeOf(instance) == .hidden) .anchor else .expectation);
 }
 
 /// Getter for checked: the element's checkedness.
