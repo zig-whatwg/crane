@@ -668,21 +668,36 @@ fn inRealm(realm: runtime.Context, comptime steps: anytype, args: anytype) bool 
 /// fetch a relative URL, and the navigation failed silently - so an iframe
 /// with `src="resources/x.html"` simply never loaded. That is most of WPT:
 /// the 52 moving-between-documents files all waited on such a frame.
-fn resolveSrc(instance: *runtime.Instance, src: []const u8) []const u8 {
+///
+/// error.OutOfMemory when the URL cannot be made: the caller starts no
+/// navigation. Every step here used to `catch unreachable` an allocation
+/// failure, so an iframe src navigation (an attribute set, srcdoc removed)
+/// out of memory was a panic (lane leaks4's iframe sweep); and the parse and
+/// the serialization read out of memory as "does not parse", which
+/// navigated to about:blank instead.
+fn resolveSrc(instance: *runtime.Instance, src: []const u8) error{OutOfMemory}![]const u8 {
     const allocator = instance.ctx.allocator;
     const blank = "about:blank";
-    if (src.len == 0) return allocator.dupe(u8, blank) catch unreachable;
-    const base = interfaces.Node.get_baseURI(instance) catch
-        return allocator.dupe(u8, src) catch unreachable;
+    if (src.len == 0) return allocator.dupe(u8, blank);
+    const base = interfaces.Node.get_baseURI(instance) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return allocator.dupe(u8, src),
+    };
     defer allocator.free(base);
     const base_arg = if (base.len > 0)
         webidl.Opt(runtime.USVString).passed(base)
     else
         webidl.Opt(runtime.USVString).notPassed();
-    const url = (interfaces.URL.call_static_parse(instance, src, base_arg) catch null) orelse
-        return allocator.dupe(u8, blank) catch unreachable;
+    const parsed = interfaces.URL.call_static_parse(instance, src, base_arg) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => null,
+    };
+    const url = parsed orelse return allocator.dupe(u8, blank);
     defer runtime.Instance.deinit(url);
-    return interfaces.URL.get_href(url) catch allocator.dupe(u8, blank) catch unreachable;
+    return interfaces.URL.get_href(url) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return allocator.dupe(u8, blank),
+    };
 }
 
 /// Location URL update callback for iframes
@@ -3870,8 +3885,12 @@ fn processIframeAttributes(element: *runtime.Instance, initial_insertion: bool) 
         navigateIframeOrFrame(element, "about:srcdoc", markup, initial_insertion);
         return;
     }
-    // Step 2.1: the shared attribute processing steps.
-    const url = sharedAttributeProcessingSteps(element) orelse return;
+    // Step 2.1: the shared attribute processing steps. Out of memory starts
+    // no navigation: the frame keeps the document it has.
+    const url = (sharedAttributeProcessingSteps(element) catch |err| {
+        log.warn("[navigation] an iframe's src could not be processed: {s}", .{@errorName(err)});
+        return;
+    }) orelse return;
     defer element.ctx.allocator.free(url);
     // Step 2.3: a URL that matches about:blank, on initial insertion, is not
     // navigated to: the frame keeps its initial about:blank document - whose
@@ -3891,12 +3910,12 @@ fn processIframeAttributes(element: *runtime.Instance, initial_insertion: bool) 
 /// ancestor navigables already show it (step 3: no infinite nesting - see
 /// ancestorShows for the one level engines allow).
 /// Step 4 (URL and history update steps for about:blank?query) is not
-/// modelled.
-fn sharedAttributeProcessingSteps(element: *runtime.Instance) ?[]const u8 {
+/// modelled. error.OutOfMemory when the URL cannot be made (`resolveSrc`).
+fn sharedAttributeProcessingSteps(element: *runtime.Instance) error{OutOfMemory}!?[]const u8 {
     const ElementImpl = @import("Element.zig");
     const src = ElementImpl.call_getAttribute(element, runtime.DOMString.initInterned("src")) catch null;
     const value: []const u8 = if (src) |s| s.asSlice() else "";
-    const url = resolveSrc(element, value);
+    const url = try resolveSrc(element, value);
     if (ancestorShows(element, url)) {
         element.ctx.allocator.free(url);
         return null;
@@ -3934,7 +3953,9 @@ fn ancestorShows(element: *runtime.Instance, url: []const u8) bool {
     var found_one_self_reference = false;
     while (document) |doc| : (depth += 1) {
         if (depth > 32) return false;
-        const doc_url = documentUrlOf(doc, element.ctx.allocator) catch return false;
+        // Out of memory reads as a match: the navigation does not start,
+        // rather than nest without the check.
+        const doc_url = documentUrlOf(doc, element.ctx.allocator) catch return true;
         defer element.ctx.allocator.free(doc_url);
         if (navigate_steps.equalsExcludingFragments(doc_url, url)) {
             if (found_one_self_reference) return true;
@@ -3959,8 +3980,12 @@ fn processFrameAttributes(element: *runtime.Instance, integration: *IFrameIntegr
     if (integration.state == .discarded or integration.browsing_context == null) return;
     // Step 1: "Let url be the result of running the shared attribute
     // processing steps for iframe and frame elements given element and
-    // initialInsertion." Step 2: "If url is null, then return."
-    const url = sharedAttributeProcessingSteps(element) orelse return;
+    // initialInsertion." Step 2: "If url is null, then return." Out of
+    // memory starts no navigation either.
+    const url = (sharedAttributeProcessingSteps(element) catch |err| {
+        log.warn("[navigation] a frame's src could not be processed: {s}", .{@errorName(err)});
+        return;
+    }) orelse return;
     defer element.ctx.allocator.free(url);
     // Step 3: "If url matches about:blank and initialInsertion is true: fire
     // an event named load at element" - the frame keeps its initial
