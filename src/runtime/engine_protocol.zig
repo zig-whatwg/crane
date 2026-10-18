@@ -1677,10 +1677,62 @@ pub inline fn createDictionaryObject(realm: Context, members: []const Dictionary
     return impl.createDictionaryObject(realm, members);
 }
 
+/// What an observable array's indexed values are - its `T` (WebIDL
+/// ObservableArray<T>): the conversion each value goes through before the
+/// owner's set-an-indexed-value steps see it.
+pub const ObservableArrayElement = union(enum) {
+    /// ObservableArray<any>: no conversion, no owner steps.
+    any,
+    /// ObservableArray<I> for an interface I: a platform object `brand`
+    /// accepts (an object implementing I); anything else is a TypeError.
+    platform_object: *const fn (instance: *Instance) bool,
+};
+
+/// The owner's algorithms for an ObservableArray<I> (WebIDL "the algorithm
+/// steps for setting an indexed value" and "for deleting an indexed
+/// value"), given the owner, the index and the converted value, run in
+/// WebIDL's order: a replaced value's delete steps, then the new value's set
+/// steps. An error a set step returns throws in the realm - a DOMException
+/// of its name (error.NotAllowedError is a NotAllowedError) - and stores
+/// nothing. `changed` runs after every change of the backing list, given
+/// its values now (BORROWED for the call): what a host that keeps its own
+/// view of the list reads.
+pub const ObservableArrayHooks = struct {
+    set_indexed_value: ?*const fn (owner: *Instance, index: usize, value: *Instance) anyerror!void = null,
+    delete_indexed_value: ?*const fn (owner: *Instance, index: usize, value: *Instance) void = null,
+    changed: ?*const fn (owner: *Instance, values: []const *Instance) void = null,
+};
+
+pub const ObservableArrayOptions = struct {
+    element: ObservableArrayElement = .any,
+    hooks: ?*const ObservableArrayHooks = null,
+    /// The platform object whose attribute the array is - the hooks'
+    /// `owner`. A link, not a hold: once the owner is freed (its slab
+    /// generation moved) no hook runs.
+    owner: ?*Instance = null,
+};
+
 /// WebIDL "create an observable array exotic object" with an empty backing
-/// list. ENGINE-OWNED: never released by the caller.
-pub inline fn createObservableArray(realm: Context) Error!JSValue {
-    return impl.createObservableArray(realm);
+/// list, its values converted per `options.element` and given to the
+/// owner's hooks. ENGINE-OWNED: never released by the caller.
+pub inline fn createObservableArray(realm: Context, options: ObservableArrayOptions) Error!JSValue {
+    return impl.createObservableArray(realm, options);
+}
+
+/// The backing list of an ObservableArray<I> `array` (a handle
+/// createObservableArray returned), as its platform objects, in order,
+/// appended to `out`. BORROWED: valid until script next runs.
+pub inline fn observableArrayItems(array: JSValue, allocator: std.mem.Allocator, out: *std.ArrayList(*Instance)) Error!void {
+    return impl.observableArrayItems(array, allocator, out);
+}
+
+/// WebIDL's setter steps for an attribute of observable array type, after
+/// the conversion of the value to sequence<T> (`values`, BORROWED): "set the
+/// length of the backing list to 0" - each value deleted, last first - then
+/// "set the indexed value" for each new value in order. A set step's error
+/// stops there and throws, as in WebIDL.
+pub inline fn replaceObservableArrayItems(array: JSValue, values: []const JSValue) Error!void {
+    return impl.replaceObservableArrayItems(array, values);
 }
 
 /// WebIDL "create a frozen array". OWNED.

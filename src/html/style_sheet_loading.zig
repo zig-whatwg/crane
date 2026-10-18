@@ -70,6 +70,9 @@ pub const CorsSetting = enum {
 
 /// What a link element's request takes from its link processing options.
 pub const LinkOptions = struct {
+    /// The element was created by its node document's parser (implicitly
+    /// potentially render-blocking, for a stylesheet link).
+    parser_created: bool = false,
     /// The href attribute's value.
     href: []const u8,
     cors: CorsSetting = .no_cors,
@@ -125,6 +128,10 @@ const Load = struct {
     /// href changed), or is gone. The queued task only ends the load.
     superseded: bool = false,
     document_abort_pending: bool = false,
+    /// The load put its element in its node document's render-blocking
+    /// element set (HTML 4.2.6 step 6 for a style element, 4.6.7.23 for a
+    /// stylesheet link): it takes the element out when it ends.
+    render_blocking: bool = false,
     /// Static eligibility for the node document's script-blocking style
     /// sheet set: enabled at parser creation. Root and media are current
     /// conditions, checked by blocksScripts. Completion, cancellation and
@@ -154,6 +161,11 @@ const Sheet = struct {
     /// For an @import's sheet: the rule's index among its sheet's @import
     /// rules (`css.import_rules` order, which the style engine counts too).
     import_index: u16 = 0,
+    /// Once fetched: the sheet's location (its response's URL, OWNED) and the
+    /// referrer policy its response's Referrer-Policy header gave - the
+    /// referrer and policy its own @imports are fetched with.
+    location: ?[]u8 = null,
+    referrer_policy: fetch.internal.ReferrerPolicy = .empty,
     /// While the fetch runs.
     fetch: ?*AsyncFetch = null,
 
@@ -386,7 +398,37 @@ pub fn startLink(element: *runtime.Instance, options: LinkOptions, parser_sheet_
     const id = startLinkFetch(element, .stylesheet, options, .style) orelse return null;
     const load = find(id) orelse return null;
     load.blocks_scripts = parser_sheet_enabled;
+    // The stylesheet link type's linked resource fetch setup steps, step 4:
+    // "If el is potentially render-blocking, then block rendering on el" -
+    // a link the parser made is implicitly so (4.6.7.23).
+    blockRenderingFor(load, options.parser_created);
     return id;
+}
+
+/// HTML "block rendering" on the load's element when it is potentially
+/// render-blocking - its blocking attribute has `render`, or it is
+/// implicitly so (`parser_created`) - and its media matches the
+/// environment (4.2.6 step 6's condition, the same for a link).
+fn blockRenderingFor(load: *Load, parser_created: bool) void {
+    if (!potentiallyRenderBlocking(load.element, parser_created)) return;
+    if (!mediaMatches(load.element)) return;
+    dom.document_rendering.block(load.element) catch return;
+    load.render_blocking = dom.document_rendering.contains(load.document, load.element);
+}
+
+/// HTML 2.5.8 "potentially render-blocking": the blocking tokens set holds
+/// "render", or the element is implicitly potentially render-blocking.
+pub fn potentiallyRenderBlocking(element: *runtime.Instance, implicitly: bool) bool {
+    if (implicitly) return true;
+    const blocking = interfaces.Element.call_getAttributeNS(element, null, runtime.DOMString.initInterned("blocking")) catch null;
+    return dom.document_rendering.hasRenderToken(if (blocking) |b| b.asSlice() else "");
+}
+
+/// "Unblock rendering" on the load's element, if it blocked it.
+fn unblockRenderingFor(load: *Load) void {
+    if (!load.render_blocking) return;
+    load.render_blocking = false;
+    if (load.elementIsLive() and load.documentIsLive()) dom.document_rendering.remove(load.document, load.element);
 }
 
 /// HTML "fetch and process the linked resource" for `element`, a link
@@ -424,20 +466,25 @@ pub fn startPrefetch(element: *runtime.Instance, options: LinkOptions) ?u64 {
 pub fn startModulePreload(element: *runtime.Instance, options: LinkOptions, destination: fetch.internal.Destination) ?u64 {
     if (!destination.isScriptLike()) {
         const load = newLoad(element, .modulepreload) orelse return null;
+        // `complete` can free the load.
+        const id = load.id;
         load.failed = true;
         complete(load);
-        return load.id;
+        return id;
     }
     return startLinkFetch(element, .modulepreload, options, destination);
 }
 
 fn startLinkFetch(element: *runtime.Instance, kind: Kind, options: LinkOptions, destination: fetch.internal.Destination) ?u64 {
     const load = newLoad(element, kind) orelse return null;
+    // `complete` can free the load: what is read after it is taken first.
+    const id = load.id;
+    const document_allocator = load.document.ctx.allocator;
     // Step 2: "Let url be the result of encoding-parsing a URL given
     // options's href, relative to options's base URL." Step 3: failure is
     // no request.
     const base = interfaces.Node.get_baseURI(load.document) catch null;
-    defer if (base) |b| load.document.ctx.allocator.free(b);
+    defer if (base) |b| document_allocator.free(b);
     const url = resolve(element, options.href, base) orelse {
         release(load, .settled);
         return null;
@@ -445,7 +492,7 @@ fn startLinkFetch(element: *runtime.Instance, kind: Kind, options: LinkOptions, 
     defer element.ctx.allocator.free(url);
     startFetch(load, url, null, options, destination);
     if (load.in_flight == 0) complete(load);
-    return load.id;
+    return id;
 }
 
 /// HTML "update a style block" step 6 onwards, for `element`, a style
@@ -454,18 +501,27 @@ fn startLinkFetch(element: *runtime.Instance, kind: Kind, options: LinkOptions, 
 /// could start (no event fires).
 pub fn startStyle(element: *runtime.Instance, text: []const u8, parser_created: bool) ?u64 {
     const load = newLoad(element, .style) orelse return null;
+    // `complete` can free the load (a realm with no event loop releases it
+    // at once): what is read after it is taken first.
+    const id = load.id;
+    const document_allocator = load.document.ctx.allocator;
     // The sheet's location is null: its imports resolve against the node
     // document's base URL (CSSOM "style sheet base URL").
     const base = interfaces.Node.get_baseURI(load.document) catch null;
-    defer if (base) |b| load.document.ctx.allocator.free(b);
+    defer if (base) |b| document_allocator.free(b);
     fetchImports(load, null, text, base);
     // Without critical subresources the rules are immediately available
     // to script (HTML 4.2.7), even though the load event runs in a task.
     load.blocks_scripts = parser_created and load.in_flight > 0;
+    // 4.2.6 step 6: "If element's media attribute's value matches the
+    // environment and element is potentially render-blocking, then block
+    // rendering on element" - a style element the parser made is implicitly
+    // so.
+    blockRenderingFor(load, parser_created);
     // "If the style sheet has no critical subresources, once the style sheet
     // has been parsed and processed": now.
     if (load.in_flight == 0) complete(load);
-    return load.id;
+    return id;
 }
 
 /// A style element whose block Content Security Policy blocked ("update a
@@ -483,9 +539,11 @@ pub fn startStyle(element: *runtime.Instance, text: []const u8, parser_created: 
 /// wpt.fyi cc74d2669f. No whatwg/html issue asks for it.
 pub fn startBlockedStyle(element: *runtime.Instance) ?u64 {
     const load = newLoad(element, .style) orelse return null;
+    // `complete` can free the load.
+    const id = load.id;
     load.failed = true;
     complete(load);
-    return load.id;
+    return id;
 }
 
 /// The element fetches again, or no longer has a style sheet: the load `id`
@@ -601,6 +659,7 @@ const Ending = enum {
 /// `load` is over: it leaves the list, and - unless it ends in teardown -
 /// its document is told.
 fn release(load: *Load, ending: Ending) void {
+    unblockRenderingFor(load);
     for (loads.items, 0..) |l, i| {
         if (l == load) {
             _ = loads.swapRemove(i);
@@ -610,6 +669,7 @@ fn release(load: *Load, ending: Ending) void {
     terminateFetches(load);
     for (load.sheets.items) |sheet| {
         load.allocator.free(sheet.url);
+        if (sheet.location) |l| load.allocator.free(l);
         load.allocator.destroy(sheet);
     }
     load.sheets.deinit(load.allocator);
@@ -625,6 +685,10 @@ fn release(load: *Load, ending: Ending) void {
 
 /// Every fetch has ended: queue the task that fires the event.
 fn complete(load: *Load) void {
+    // The style element's steps once its critical subresources are
+    // obtained, and the link's "process the linked resource": "unblock
+    // rendering on el".
+    unblockRenderingFor(load);
     if (!load.elementIsLive() or load.realm.engine_ctx == null) return release(load, .teardown);
     const loop = load.element.ctx.getOptionalEventLoop() orelse {
         log.warn("style sheet load event not queued: the element's realm has no event loop", .{});
@@ -776,6 +840,20 @@ fn startFetchOrFail(load: *Load, url: []const u8, parent: ?*Sheet, import_index:
         try fetch.internal.populateRequestFromClient(request, client.request);
     }
 
+    // An @import of a fetched sheet: the sheet's URL is the referrer, and
+    // its own Referrer-Policy header, if it had one, the policy. Golden rule
+    // 2: CSS Values 4 "fetch a style resource" sets the referrer to
+    // "client" for a no-cors request; Chrome and Firefox send the style
+    // sheet's URL under the style sheet's policy (referrer-policy/
+    // css-integration/child-css/external-import-stylesheet.html and
+    // internal-import-stylesheet.html: Chrome 1/1, Firefox 1/1, Safari 0/1 at
+    // wpt.fyi stable, df642c4142). A style element's own imports stay the
+    // document's: the sheet has no location.
+    if (parent) |p| {
+        if (p.location) |location| try request.setReferrerUrl(location);
+        if (p.referrer_policy != .empty) request.referrer_policy = p.referrer_policy;
+    }
+
     // The fetch owns the request from here, even when it fails to start.
     request_owned = false;
     const started = try AsyncFetch.start(allocator, request, .{}, dom.agent_fetches.of(load.realm), sheet.client());
@@ -881,6 +959,10 @@ fn processResponse(sheet: *Sheet, outcome: fetch.algorithms.FetchError!fetch.alg
     // CORS-same-origin response, independently of its URL or TAO headers.
     sheet.origin_clean = cors_same_origin;
     const location = response.url() orelse sheet.url;
+    sheet.location = load.allocator.dupe(u8, location) catch null;
+    const policy_header = response.header_list.get(load.allocator, "Referrer-Policy") catch null;
+    defer if (policy_header) |h| load.allocator.free(h);
+    sheet.referrer_policy = fetch.internal.policy_container.parseReferrerPolicyHeader(policy_header);
     deliver(load, sheet, body.getBytes(), location);
     fetchImports(load, sheet, body.getBytes(), location);
 }

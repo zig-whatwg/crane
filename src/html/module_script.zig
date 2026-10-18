@@ -23,8 +23,8 @@
 //! .unsupported`, JavaScriptCore's public API) no graph is ever made: a
 //! <script type=module> has a null result, so it fires `error`.
 //!
-//! CSS module scripts export a constructed CSSStyleSheet (the CSSOM's model
-//! is src/dom/cssom.zig) through the engine's
+//! CSS module scripts export a constructed CSSStyleSheet (its model is
+//! dom.style.SheetRecord) through the engine's
 //! CreateDefaultExportSyntheticModule; import.meta.resolve is the engine's
 //! builtin over `resolve` (the hosts' HostHooks.importMetaResolve).
 
@@ -443,8 +443,13 @@ fn createJsonModuleScript(env: *const Environment, source: []const u8, url: []co
 ///  the result of CreateDefaultExportSyntheticModule(sheet)." The sheet is
 /// made in the settings object's realm, through its interface.
 ///
-/// Its base URL is null in the spec; Crane keeps the response URL, which
-/// nothing reads for a CSS module (it has no import.meta and no imports).
+/// The sheet's base URL is the module's URL (its response's, after any
+/// redirect), passed as the constructor's baseURL: its url()s resolve
+/// against the CSS file, not the importing document. Golden rule 2: HTML's
+/// steps give the sheet no base URL; Chrome and Firefox resolve against the
+/// module (css-module/relative-urls.html and redirect-relative-urls.html:
+/// Chrome 1/1 and 2/2, Firefox 1/1 and 2/2, Safari ERROR - it has no CSS
+/// module scripts - at wpt.fyi stable, df642c4142).
 fn createCssModuleScript(env: *const Environment, source: []const u8, url: []const u8) !*ModuleScript {
     if (!supported) return error.NotSupported;
     const script = try ModuleScript.create(env.allocator, url, env.fetch_options);
@@ -452,7 +457,7 @@ fn createCssModuleScript(env: *const Environment, source: []const u8, url: []con
     const realm = env.realm();
 
     // Step 5.
-    const sheet = try interfaces.CSSStyleSheet.call_constructor(realm, webidl.Opt(dictionaries.CSSStyleSheetInit).notPassed());
+    const sheet = try interfaces.CSSStyleSheet.call_constructor(realm, webidl.Opt(dictionaries.CSSStyleSheetInit).passed(.{ .baseURL = runtime.DOMString.initInterned(url) }));
     // Until the record holds it, the sheet has no wrapper to be collected
     // with.
     var sheet_held = false;

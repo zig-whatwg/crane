@@ -180,7 +180,7 @@ test "a queued microtask runs at the next checkpoint, once, after those queued b
 
 test "an observable array is an Array to script, and the engine's to keep" {
     const ctx = try realm();
-    const array = try v8.observable_array.createObservableArray(ctx);
+    const array = try v8.observable_array.createObservableArray(ctx, .{});
     // ENGINE-OWNED: never released here.
     try expose("observed", array);
     try std.testing.expectEqual(@as(i32, 1), try eval("Array.isArray(observed) && observed.length === 0 ? 1 : 0"));
@@ -197,7 +197,7 @@ test "an observable array is an Array to script, and the engine's to keep" {
 test "a realm without an engine reports it rather than making nothing" {
     var bare = try runtime.ContextData.init(std.testing.allocator, .{});
     defer bare.deinit();
-    try std.testing.expectError(error.OperationFailed, v8.observable_array.createObservableArray(&bare));
+    try std.testing.expectError(error.OperationFailed, v8.observable_array.createObservableArray(&bare, .{}));
 }
 
 test "the current realm is the one the context manager hosts for the entered context" {

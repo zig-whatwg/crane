@@ -1,12 +1,14 @@
-//! Implementation for CSSNamespaceRule interface
+//! Implementation for CSSNamespaceRule interface (CSSOM 6.4.9)
+//!
+//! Spec: https://drafts.csswg.org/cssom-1/#the-cssnamespacerule-interface
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
+const webidl = @import("webidl");
+const dom = @import("dom");
 const CSSNamespaceRule = interfaces.CSSNamespaceRule;
 
 pub const State = CSSNamespaceRule.State;
@@ -15,38 +17,28 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+/// The rule this object is a view of: its CSSRule part's.
+fn ruleOf(instance: *runtime.Instance) ?*dom.style.Rule {
+    return dom.style.hooks.cssRuleOf(instance);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Getter for namespaceURI
+/// Getter for namespaceURI: "the namespace of the @namespace at-rule".
 pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const rule = ruleOf(instance) orelse return runtime.DOMString.initEmpty();
+    return switch (rule.data) {
+        .namespace => |n| runtime.DOMString.initDupe(instance.ctx.allocator, n.uri),
+        else => runtime.DOMString.initEmpty(),
+    };
 }
 
-/// Getter for prefix
+/// Getter for prefix: "the prefix of the @namespace at-rule or the empty
+/// string if there is no prefix".
 pub fn get_prefix(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const rule = ruleOf(instance) orelse return runtime.DOMString.initEmpty();
+    return switch (rule.data) {
+        .namespace => |n| runtime.DOMString.initDupe(instance.ctx.allocator, n.prefix),
+        else => runtime.DOMString.initEmpty(),
+    };
 }

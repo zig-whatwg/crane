@@ -78,7 +78,7 @@ pub fn destroySheets(s: Sheets) void {
 /// Every text value is uncounted from now on; `destroyContents` frees them.
 fn makeImmortal(c: *Contents) void {
     for (c.style_rules.items) |rule| {
-        var it = rule.block.typed();
+        var it = rule.data.style.block.typed();
         while (it.next()) |d| switch (d.value) {
             .value => |v| if (v.sharedText()) |t| t.makeImmortal(),
             .css_wide => {},
@@ -93,7 +93,7 @@ fn destroyContents(c: *Contents) void {
     var seen: std.AutoHashMapUnmanaged(*css.style_values.SharedText, void) = .empty;
     defer seen.deinit(std.heap.c_allocator);
     for (c.style_rules.items) |rule| {
-        for (rule.block.entries.items) |*e| switch (e.*) {
+        for (rule.data.style.block.entries.items) |*e| switch (e.*) {
             .typed => |*d| switch (d.value) {
                 .value => |v| if (v.sharedText()) |t| {
                     d.value = .{ .value = css.style_values.Value.kw(.none) };

@@ -4,7 +4,7 @@
 //! start, from its installHooks (docs/instances.md); none of them is named
 //! here (AGENTS.md "The impls boundary").
 //!
-//! lint-impls: hook for Document, Element, HTMLStyleElement, HTMLLinkElement
+//! lint-impls: hook for Document, ShadowRoot, Element, HTMLStyleElement, HTMLLinkElement, MediaQueryList, StyleSheet, CSSRule
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -13,6 +13,7 @@ const process_start = @import("../process_start.zig");
 const engine_mod = @import("engine.zig");
 const element_style = @import("element_style.zig");
 const sheet = @import("sheet.zig");
+const adopted = @import("adopted.zig");
 
 pub const Hooks = struct {
     /// Document: its engine (its state embeds it).
@@ -30,6 +31,16 @@ pub const Hooks = struct {
     /// the linked resource" for the stylesheet link type), `text` decoded,
     /// at `url`: it creates its CSS style sheet.
     link_sheet_arrived: ?*const fn (element: *runtime.Instance, text: []const u8, url: []const u8, origin_clean: bool) void = null,
+    /// MediaQueryList: CSSOM View 4.2's substep for one list - fire
+    /// `change` at it if its matches state changed since the last report.
+    report_media_query_list: ?*const fn (list: *runtime.Instance) void = null,
+    /// StyleSheet: the CSS style sheet a StyleSheet object is over.
+    sheet_record_of: ?*const fn (object: *runtime.Instance) ?*sheet.SheetRecord = null,
+    /// CSSRule: the CSS rule a CSSRule object is over.
+    css_rule_of: ?*const fn (object: *runtime.Instance) ?*sheet.Rule = null,
+    /// Document, ShadowRoot: the view of its adoptedStyleSheets each keeps.
+    document_adopted_sheets: ?*const fn (scope: *runtime.Instance) ?*adopted.AdoptedSheets = null,
+    shadow_root_adopted_sheets: ?*const fn (scope: *runtime.Instance) ?*adopted.AdoptedSheets = null,
 };
 
 // process-wide: immutable function pointers that Document, Element, HTMLStyleElement and HTMLLinkElement install once at process start (crane.Process); each reads only the object it is given, so one serves every Browser and thread
@@ -70,4 +81,29 @@ pub fn sheetOf(owner: *runtime.Instance) ?*sheet.SheetRecord {
 pub fn linkSheetArrived(element: *runtime.Instance, text: []const u8, url: []const u8, origin_clean: bool) void {
     const f = hooks.link_sheet_arrived orelse return;
     f(element, text, url, origin_clean);
+}
+
+/// The CSS style sheet the StyleSheet object `object` is over; null for an
+/// object that is not one.
+pub fn sheetRecordOf(object: *runtime.Instance) ?*sheet.SheetRecord {
+    const f = hooks.sheet_record_of orelse return null;
+    return f(object);
+}
+
+/// The CSS rule the CSSRule object `object` is over.
+pub fn cssRuleOf(object: *runtime.Instance) ?*sheet.Rule {
+    const f = hooks.css_rule_of orelse return null;
+    return f(object);
+}
+
+/// The adopted style sheets of `scope`, a Document or a ShadowRoot.
+pub fn adoptedSheetsOf(scope: *runtime.Instance) ?*adopted.AdoptedSheets {
+    if (hooks.document_adopted_sheets) |f| if (f(scope)) |a| return a;
+    if (hooks.shadow_root_adopted_sheets) |f| if (f(scope)) |a| return a;
+    return null;
+}
+
+pub fn reportMediaQueryList(list: *runtime.Instance) void {
+    const f = hooks.report_media_query_list orelse return;
+    f(list);
 }

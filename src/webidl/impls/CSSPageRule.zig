@@ -1,12 +1,18 @@
-//! Implementation for CSSPageRule interface
+//! Implementation for CSSPageRule interface (CSSOM 6.4.7)
+//!
+//! The rule's selector (its prelude) and descriptors are kept (cssText
+//! reads them back); `style`, a CSSPageDescriptors object, is not
+//! implemented, and selectorText is read-only here (stated).
+//!
+//! Spec: https://drafts.csswg.org/cssom-1/#the-csspagerule-interface
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
+const webidl = @import("webidl");
+const dom = @import("dom");
 const CSSPageRule = interfaces.CSSPageRule;
 
 pub const State = CSSPageRule.State;
@@ -15,45 +21,27 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+/// The rule this object is a view of: its CSSRule part's.
+fn ruleOf(instance: *runtime.Instance) ?*dom.style.Rule {
+    return dom.style.hooks.cssRuleOf(instance);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Getter for selectorText
+/// Getter for selectorText: the page selector list, as written.
 pub fn get_selectorText(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const rule = ruleOf(instance) orelse return runtime.DOMString.initEmpty();
+    return runtime.DOMString.initDupe(instance.ctx.allocator, rule.prelude);
 }
 
-/// Getter for style
+/// Getter for style (CSSPageDescriptors): not implemented.
 pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
-/// Setter for selectorText
+/// Setter for selectorText: not modelled (stated).
 pub fn set_selectorText(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
     _ = instance;
     _ = value;
-    return error.NotImplemented;
 }

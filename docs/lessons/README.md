@@ -520,6 +520,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A generated import can rest on a typedef an upstream IDL file happens to declare](codegen-a-generated-import-can-rest-on-a-typedef-an-upstream-idl-file-happens-to-declare.md) - When a generated file relies on something being generated, codegen must generate it itself; find out by deleting an upstream file in a test fixture, not by waiting for upstream to delete it.
 
 ### Testing
+- [Measure that the blocked thing runs before building what blocks it](testing-measure-that-the-blocked-thing-runs-before-building-the-block.md) - Measure that the thing a mechanism blocks actually runs before you build the block - otherwise the work moves nothing, and a partial version can turn passing files into timeouts.
 - [A handle ledger is kept by handle, not by entry point](testing-a-handle-ledger-is-kept-by-handle-not-by-entry-point.md) - Count a handle by a mark on the handle, read at every delete site - never by the entry point that made it or the type it is released as; a weak handle V8 resets is uncounted when its callback resets it.
 - [A headers file applies only to the path it names](testing-a-headers-file-applies-only-to-the-path-it-names.md) - Before diagnosing a header-driven failure, confirm the header is sent (`curl -sI`): a misnamed headers file fails silently, in your tests and in upstream ones.
 - [Only state made natively can be orphaned - a wrap reaches up to the root](testing-only-state-made-natively-can-be-orphaned.md) - An orphan is a subtree script never touched: reproduce an orphan leak with state the engine makes on its own, first with state made at parse time; reading the node from script wraps it and every ancestor.
@@ -644,6 +645,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [WPT sweep chunks may use different stream layouts](testing-wpt-sweep-chunks-may-use-different-stream-layouts.md) - Complete source counts do not prove complete subtest evidence; account for every chunk's actual stream layout.
 
 ### Debugging
+- [A call that can free its argument ends every read of it](debugging-a-call-that-can-free-its-argument-ends-every-read-of-it.md) - A call that can free its argument ends the caller's use of it - including the `defer`s written above the call; read the trace's top frame before believing a deep one.
 - [A parsed selector borrows its source text](debugging-a-parsed-selector-borrows-its-source-text.md) - Before keeping a parse result, find out what it borrows: an AST of slices lives no longer than its source.
 - [A per-call allocation in a lonely size class maps a page every call](debugging-a-per-call-allocation-in-a-lonely-size-class-maps-a-page.md) - Count allocations AND look at where they land: a per-call allocation that empties a DebugAllocator page costs a syscall pair; put call-lifetime data on the stack.
 

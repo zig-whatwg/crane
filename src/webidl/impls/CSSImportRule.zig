@@ -1,12 +1,14 @@
-//! Implementation for CSSImportRule interface
+//! Implementation for CSSImportRule interface (CSSOM 6.4.4)
+//!
+//! Spec: https://drafts.csswg.org/cssom-1/#the-cssimportrule-interface
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
+const webidl = @import("webidl");
+const dom = @import("dom");
 const CSSImportRule = interfaces.CSSImportRule;
 
 pub const State = CSSImportRule.State;
@@ -15,56 +17,59 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+/// The rule this object is a view of: its CSSRule part's.
+fn ruleOf(instance: *runtime.Instance) ?*dom.style.Rule {
+    return dom.style.hooks.cssRuleOf(instance);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+fn importOf(instance: *runtime.Instance) ?*dom.style.rules.Import {
+    const rule = ruleOf(instance) orelse return null;
+    return switch (rule.data) {
+        .import => |*i| i,
+        else => null,
+    };
 }
 
-/// Getter for href
+/// Getter for href: "the URL of the urlString of the @import rule".
 pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const import = importOf(instance) orelse return "";
+    return instance.ctx.allocator.dupe(u8, import.href);
 }
 
-/// Getter for media
+/// Getter for media ([SameObject, PutForwards=mediaText]): "the value of
+/// the media attribute of the associated CSS style sheet" - the rule's own
+/// media list here, which the imported sheet's media mirrors.
 pub fn get_media(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const rule = ruleOf(instance) orelse return error.InvalidStateError;
+    return interfaces.MediaList.initWith(instance.ctx.allocator, instance.ctx, .{ .media_of = dom.style.MediaOf{ .rule = rule } });
 }
 
-/// Getter for styleSheet
+/// Getter for styleSheet: "the associated CSS style sheet, if any, or null
+/// otherwise" - the sheet the loader fetched for the rule, which this rule's
+/// object keeps.
 pub fn get_styleSheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
+    const import = importOf(instance) orelse return null;
+    const child = import.child orelse return null;
+    const sheet = try dom.style.objects.sheetObject(child, instance.ctx);
+    engine.traceChild(instance, sheet, dom.style.objects.slots.style_sheet);
+    return sheet;
 }
 
-/// Getter for layerName
+/// Getter for layerName: "the layer name declared in the at-rule itself,
+/// or an empty string if the layer is anonymous, or null if the at-rule
+/// does not declare a layer".
 pub fn get_layerName(instance: *runtime.Instance) anyerror!?typedefs.CSSOMString {
-    _ = instance;
-    return null;
+    const import = importOf(instance) orelse return null;
+    const layer = import.layer orelse return null;
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, layer);
 }
 
-/// Getter for supportsText
+/// Getter for supportsText: "the supports() condition specified in the
+/// at-rule itself, or null if the at-rule does not specify one".
 pub fn get_supportsText(instance: *runtime.Instance) anyerror!?typedefs.CSSOMString {
-    _ = instance;
-    return null;
+    const import = importOf(instance) orelse return null;
+    const text = import.supports orelse return null;
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, text);
 }

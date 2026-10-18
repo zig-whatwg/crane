@@ -22,17 +22,21 @@
 //! state (5.3), which makes it volatile. All of it is pulled when a style
 //! is read: no mutation path runs any of this code.
 //!
-//! Stated for batch 1: an element in a shadow tree is styled by the UA
-//! sheet, its style attribute and inheritance only - shadow trees' own
-//! sheets, :host and ::slotted are batch 2; the document's sheets do not
-//! apply in a shadow tree, as CSS Scoping says. A slotted element's style is
-//! volatile, since slot assignment can change with no mutation.
+//! Shadow trees (CSS Scoping 3): each connected shadow tree's sheets are a
+//! scope of their own - matched against the tree's elements, their :host
+//! rules against the host - ordered by tree context (Cascade 5 6.1: for
+//! normal declarations the outer context wins, for important ones the
+//! inner); the document's sheets do not apply in a shadow tree. Slot
+//! assignment, which can change with no mutation, moves `slot_version`,
+//! part of every cached style's key. Stated: ::slotted() and ::part() rules
+//! wait on their selectors' arguments (src/selector keeps none yet).
 //!
 //! Spec: https://drafts.csswg.org/cssom-1/#css-style-sheet-collections
 //! Spec: https://drafts.csswg.org/css-cascade-5/#value-stages
 //! Spec: https://drafts.csswg.org/css-scoping-1/#flattening
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
@@ -46,6 +50,7 @@ const focused_area = @import("../focused_area.zig");
 const pointer_states = @import("../pointer_states.zig");
 const target_element = @import("../target_element.zig");
 const slot_helpers = @import("../slot_helpers.zig");
+const custom_elements = @import("../custom_elements.zig");
 const navigable_container = @import("../navigable_container.zig");
 const selector_matching = @import("../selector_matching.zig");
 const hooks = @import("hooks.zig");
@@ -79,6 +84,8 @@ const Owner = struct {
 
 /// One sheet in the cascade, in final order.
 const ActiveSheet = struct {
+    /// Held while the active sheets are: a sheet removed since they were
+    /// built is still here, and freed, when they are next rebuilt.
     record: *SheetRecord,
     contents: *Contents,
     contents_version: u64,
@@ -92,20 +99,70 @@ const ActiveSheet = struct {
     import_layer: ?u16,
 };
 
+/// A shadow tree's sheets in the cascade (CSS Scoping 3: a shadow root's
+/// style sheets apply to its tree, :host rules to its host, ::slotted rules
+/// to what its slots are assigned).
+const Scope = struct {
+    /// The shadow root, as a tree node.
+    root: *NodeBase,
+    /// Its shadow-including depth: 1 for a shadow tree in the document, 2
+    /// for one inside it (Cascade 5 6.1 "Context").
+    depth: u16,
+    sheets: std.ArrayList(ActiveSheet) = .empty,
+
+    fn deinit(self: *Scope, allocator: Allocator) void {
+        freeSheets(allocator, &self.sheets);
+    }
+};
+
+fn freeSheets(allocator: Allocator, sheets: *std.ArrayList(ActiveSheet)) void {
+    for (sheets.items) |s| {
+        allocator.free(s.layer_order);
+        s.record.unref();
+    }
+    sheets.deinit(allocator);
+}
+
 const Active = struct {
     sheets_version: u64,
     media: MediaValues,
     quirks: bool,
+    /// The document tree's sheets.
     sheets: std.ArrayList(ActiveSheet) = .empty,
+    /// Each connected shadow tree's that has any.
+    scopes: std.ArrayList(Scope) = .empty,
+    /// Every top-level sheet the build looked at - the disabled ones and
+    /// those whose media did not match too - with the version it saw, held:
+    /// a sheet enabled again or edited moves its version.
+    watched: std.ArrayList(Watched) = .empty,
+
+    const Watched = struct { record: *SheetRecord, version: u64 };
 
     fn deinit(self: *Active, allocator: Allocator) void {
-        for (self.sheets.items) |s| allocator.free(s.layer_order);
-        self.sheets.deinit(allocator);
+        freeSheets(allocator, &self.sheets);
+        for (self.scopes.items) |*scope| scope.deinit(allocator);
+        self.scopes.deinit(allocator);
+        for (self.watched.items) |w| w.record.unref();
+        self.watched.deinit(allocator);
     }
 
-    /// Whether every sheet's rules are the ones it was built from.
+    /// The sheets of the shadow tree whose root is `root`, if it has any.
+    fn scopeOf(self: *Active, root: *NodeBase) ?*Scope {
+        for (self.scopes.items) |*scope| if (scope.root == root) return scope;
+        return null;
+    }
+
+    /// `record` was looked at.
+    fn watch(self: *Active, allocator: Allocator, record: *SheetRecord) Error!void {
+        try self.watched.append(allocator, .{ .record = record, .version = record.contents_version });
+        record.ref();
+    }
+
+    /// Whether every sheet's rules and flags are the ones it was built from.
     fn contentsCurrent(self: *const Active) bool {
         for (self.sheets.items) |s| if (s.record.contents_version != s.contents_version) return false;
+        for (self.scopes.items) |scope| for (scope.sheets.items) |s| if (s.record.contents_version != s.contents_version) return false;
+        for (self.watched.items) |w| if (w.record.contents_version != w.version) return false;
         return true;
     }
 };
@@ -113,6 +170,19 @@ const Active = struct {
 pub const StyleEngine = struct {
     allocator: Allocator,
     owners: std.ArrayList(Owner) = .empty,
+    /// CSSOM View 4.2: the MediaQueryList objects whose document this is,
+    /// in the order they were created - raw back links each list removes in
+    /// its own teardown, the generation a teardown net. The engine never
+    /// keeps a list alive.
+    media_query_lists: std.ArrayList(Owner) = .empty,
+    /// Shadow roots whose adoptedStyleSheets were set (a shadow tree with no
+    /// style element is a scope only through them): raw back links with
+    /// their generation, never holds.
+    adopting_roots: std.ArrayList(Owner) = .empty,
+    /// Moves whenever a slot's assigned nodes change (DOM "assign
+    /// slottables"): part of each cached style's key, since a slotted
+    /// element inherits from its slot.
+    slot_version: u64 = 1,
     /// Moves on every change to the set of sheets or one of their flags
     /// (owners connecting and disconnecting, media, disabled, title).
     sheets_version: u64 = 1,
@@ -120,6 +190,10 @@ pub const StyleEngine = struct {
     /// Moves every time the active sheets are rebuilt: part of each cached
     /// style's key.
     generation: u64 = 1,
+    /// A style read of this document is resolving: nothing it reaches may
+    /// read style again (the active sheets and the lineage's caches are in
+    /// use). Checked in Debug builds (`enterResolution`).
+    resolving: bool = false,
 
     pub fn init(allocator: Allocator) StyleEngine {
         return .{ .allocator = allocator };
@@ -129,6 +203,41 @@ pub const StyleEngine = struct {
         if (self.active) |*a| a.deinit(self.allocator);
         self.active = null;
         self.owners.deinit(self.allocator);
+        self.media_query_lists.deinit(self.allocator);
+        self.adopting_roots.deinit(self.allocator);
+    }
+
+    /// The shadow root `root` adopted style sheets.
+    pub fn addAdoptingRoot(self: *StyleEngine, root: *runtime.Instance) Error!void {
+        for (self.adopting_roots.items) |o| if (o.element == root and o.live()) return;
+        try self.adopting_roots.append(self.allocator, .{ .element = root, .generation = runtime.SlabAllocator.generationOf(root) });
+    }
+
+    /// A style read begins. Re-entering one - matching or a hook reaching
+    /// computedStyle for the same document while it resolves - would rebuild
+    /// the active sheets and replace cached styles under the outer read
+    /// (Codex row 61 Q16): a Debug build stops there.
+    fn enterResolution(self: *StyleEngine) void {
+        if (builtin.mode == .Debug and self.resolving) @panic("dom.style.computedStyle re-entered while it resolves the same document");
+        self.resolving = true;
+    }
+
+    /// A MediaQueryList whose document this is was made (matchMedia).
+    pub fn addMediaQueryList(self: *StyleEngine, list: *runtime.Instance) Error!void {
+        try self.media_query_lists.append(self.allocator, .{ .element = list, .generation = runtime.SlabAllocator.generationOf(list) });
+    }
+
+    /// The MediaQueryList `list` is going.
+    pub fn removeMediaQueryList(self: *StyleEngine, list: *runtime.Instance) void {
+        var i: usize = 0;
+        while (i < self.media_query_lists.items.len) {
+            const entry = self.media_query_lists.items[i];
+            if (entry.element == list or !entry.live()) {
+                _ = self.media_query_lists.orderedRemove(i);
+                continue;
+            }
+            i += 1;
+        }
     }
 
     /// `element` (a style or link element of this document) may own a
@@ -185,24 +294,24 @@ pub const StyleEngine = struct {
         // Owners in tree order (registration order is not tree order).
         var owners: std.ArrayList(*runtime.Instance) = .empty;
         defer owners.deinit(self.allocator);
+        // A sheet in a shadow tree is that tree's, not the document's.
+        var shadow_owners: std.ArrayList(*runtime.Instance) = .empty;
+        defer shadow_owners.deinit(self.allocator);
         for (self.owners.items) |o| {
             if (!o.live()) continue;
             const node = instance_bridge.getNodeBase(o.element) orelse continue;
             if (!node.is_connected) continue;
-            // A sheet in a shadow tree is that tree's (batch 2), not the
-            // document's.
             var root = node;
             while (root.parent_node) |p| root = p;
-            if (root.node_type != NodeBase.DOCUMENT_NODE) continue;
+            if (root.node_type != NodeBase.DOCUMENT_NODE) {
+                if (isShadowRoot(root)) try shadow_owners.append(self.allocator, o.element);
+                continue;
+            }
             try owners.append(self.allocator, o.element);
         }
-        std.mem.sort(*runtime.Instance, owners.items, {}, struct {
-            fn lessThan(_: void, a: *runtime.Instance, b: *runtime.Instance) bool {
-                const na = instance_bridge.getNodeBase(a) orelse return false;
-                const nb = instance_bridge.getNodeBase(b) orelse return false;
-                return precedes(na, nb);
-            }
-        }.lessThan);
+        sortTreeOrder(owners.items);
+        sortTreeOrder(shadow_owners.items);
+        try self.buildScopes(document, active, shadow_owners.items);
 
         // CSSOM "add a CSS style sheet" steps 4-6: the preferred CSS style
         // sheet set name is the first titled, non-alternate sheet's title;
@@ -221,6 +330,7 @@ pub const StyleEngine = struct {
         defer pending.deinit(self.allocator);
         for (owners.items) |owner| {
             const record = hooks.sheetOf(owner) orelse continue;
+            try active.watch(self.allocator, record);
             if (record.disabled) continue;
             if (record.title.len != 0) {
                 const p = preferred orelse continue;
@@ -229,14 +339,28 @@ pub const StyleEngine = struct {
             if (!record.mediaMatches(&active.media)) continue;
             try self.addSheet(document, record, null, &active.media, &layers, &pending, 0);
         }
-        // Order the layers, then make each sheet's map.
+        // CSSOM 6.2 "final CSS style sheets" 2: "The contents of
+        // DocumentOrShadowRoot's adoptedStyleSheets' backing list, in array
+        // order" - each enabled one whose media matches.
+        if (hooks.adoptedSheetsOf(document)) |adopted| for (adopted.records.items) |record| {
+            try active.watch(self.allocator, record);
+            if (record.disabled or !record.mediaMatches(&active.media)) continue;
+            try self.addSheet(document, record, null, &active.media, &layers, &pending, 0);
+        };
+        try self.finishSheets(&layers, &pending, &active.sheets);
+    }
+
+    /// Order the layers of one tree's sheets, then make each sheet's map.
+    fn finishSheets(self: *StyleEngine, layers: *LayerTree, pending: *std.ArrayList(Pending), out: *std.ArrayList(ActiveSheet)) Error!void {
         try layers.order();
         for (pending.items, 0..) |p, index| {
             const map = try self.allocator.alloc(u16, p.contents.layers.items.len);
             errdefer self.allocator.free(map);
             for (p.layer_nodes, 0..) |node, i| map[i] = layers.nodes.items[node].rank;
             self.allocator.free(p.layer_nodes);
-            try active.sheets.append(self.allocator, .{
+            p.record.ref();
+            errdefer p.record.unref();
+            try out.append(self.allocator, .{
                 .record = p.record,
                 .contents = p.contents,
                 .contents_version = p.record.contents_version,
@@ -246,6 +370,57 @@ pub const StyleEngine = struct {
             });
         }
         pending.clearRetainingCapacity();
+    }
+
+    /// Each connected shadow tree's sheets: its style and link elements'
+    /// (`owners`, in tree order) - enabled, media matching; a shadow tree has
+    /// no style sheet sets (HTML gives a sheet a title only in a document
+    /// tree) - then its adoptedStyleSheets. Each tree has its own layer
+    /// order (Cascade 5 6.4.3: layers are per tree context).
+    fn buildScopes(self: *StyleEngine, document: *runtime.Instance, active: *Active, owners: []const *runtime.Instance) Error!void {
+        var roots: std.ArrayList(*NodeBase) = .empty;
+        defer roots.deinit(self.allocator);
+        for (owners) |owner| {
+            var root = instance_bridge.getNodeBase(owner).?;
+            while (root.parent_node) |p| root = p;
+            if (std.mem.indexOfScalar(*NodeBase, roots.items, root) == null) try roots.append(self.allocator, root);
+        }
+        var i: usize = 0;
+        while (i < self.adopting_roots.items.len) {
+            const o = self.adopting_roots.items[i];
+            if (!o.live()) {
+                _ = self.adopting_roots.swapRemove(i);
+                continue;
+            }
+            i += 1;
+            const root = instance_bridge.getNodeBase(o.element) orelse continue;
+            if (!root.is_connected and !hostConnected(root)) continue;
+            if (root.node_type == NodeBase.DOCUMENT_NODE) continue;
+            if (std.mem.indexOfScalar(*NodeBase, roots.items, root) == null) try roots.append(self.allocator, root);
+        }
+        for (roots.items) |root| {
+            var layers = LayerTree.init(self.allocator);
+            defer layers.deinit();
+            var pending: std.ArrayList(Pending) = .empty;
+            defer pending.deinit(self.allocator);
+            for (owners) |owner| {
+                var owner_root = instance_bridge.getNodeBase(owner).?;
+                while (owner_root.parent_node) |p| owner_root = p;
+                if (owner_root != root) continue;
+                const record = hooks.sheetOf(owner) orelse continue;
+                try active.watch(self.allocator, record);
+                if (record.disabled or !record.mediaMatches(&active.media)) continue;
+                try self.addSheet(document, record, null, &active.media, &layers, &pending, 0);
+            }
+            if (instanceOf(root)) |root_instance| if (hooks.adoptedSheetsOf(root_instance)) |adopted| for (adopted.records.items) |record| {
+                try active.watch(self.allocator, record);
+                if (record.disabled or !record.mediaMatches(&active.media)) continue;
+                try self.addSheet(document, record, null, &active.media, &layers, &pending, 0);
+            };
+            if (pending.items.len == 0) continue;
+            try active.scopes.append(self.allocator, .{ .root = root, .depth = shadowDepth(root) });
+            try self.finishSheets(&layers, &pending, &active.scopes.items[active.scopes.items.len - 1].sheets);
+        }
     }
 
     const Pending = struct {
@@ -260,17 +435,16 @@ pub const StyleEngine = struct {
     /// rule").
     fn addSheet(self: *StyleEngine, document: *runtime.Instance, record: *SheetRecord, parent_layer: ?usize, media: *const MediaValues, layers: *LayerTree, pending: *std.ArrayList(Pending), depth: usize) Error!void {
         if (depth > 16) return;
-        var resolver_context: UrlContext = .{ .document = document, .base = record.base_url };
-        const contents = try record.contentsOf(.{ .context = &resolver_context, .resolve = &resolveUrl });
+        var url_context = record.urlContext(document);
+        const contents = try record.contentsOf(record.parseOptions(&url_context));
         // The sheet's layer declarations, in order, under `parent_layer`.
         const layer_nodes = try self.allocator.alloc(usize, contents.layers.items.len);
         var layer_nodes_owned = true;
         defer if (layer_nodes_owned) self.allocator.free(layer_nodes);
         for (contents.layers.items, 0..) |name, i| layer_nodes[i] = try layers.declare(parent_layer, name);
-        for (contents.imports.items, 0..) |import_rule, i| {
-            if (i >= record.imports.items.len) break;
-            const child = record.imports.items[i] orelse continue;
-            if (import_rule.media) |m| if (!m.matches(media)) continue;
+        for (contents.imports.items) |import_rule| {
+            const child = import_rule.child orelse continue;
+            if (!import_rule.media.matches(media)) continue;
             const child_layer: ?usize = if (import_rule.layer) |l| layer_nodes[l] else parent_layer;
             try self.addSheet(document, child, child_layer, media, layers, pending, depth + 1);
         }
@@ -346,24 +520,6 @@ const LayerTree = struct {
         rank.* +|= 1;
     }
 };
-
-const UrlContext = struct {
-    document: *runtime.Instance,
-    base: []const u8,
-};
-
-/// A url() in a sheet, parsed against the sheet's base URL (CSS Values 4
-/// 4.5.1); null when it does not parse (it stays as written).
-fn resolveUrl(context: *const anyopaque, allocator: Allocator, url: []const u8) ?[]u8 {
-    const ctx: *const UrlContext = @ptrCast(@alignCast(context));
-    const webidl = @import("webidl");
-    const base_arg = if (ctx.base.len > 0) webidl.Opt(runtime.USVString).passed(ctx.base) else webidl.Opt(runtime.USVString).notPassed();
-    const parsed = (interfaces.URL.call_static_parse(ctx.document, url, base_arg) catch null) orelse return null;
-    defer runtime.Instance.deinit(parsed);
-    const href = interfaces.URL.get_href(parsed) catch return null;
-    defer ctx.document.ctx.allocator.free(href);
-    return allocator.dupe(u8, href) catch null;
-}
 
 fn isQuirks(document: *runtime.Instance) bool {
     return document_internals.getMode(document) == .quirks;
@@ -448,6 +604,29 @@ fn flatParent(node: *NodeBase, slotted: *bool) FlatParent {
     }
 }
 
+/// Whether the shadow root `root`'s host is connected.
+fn hostConnected(root: *NodeBase) bool {
+    if (!isShadowRoot(root)) return false;
+    const host = interfaces.ShadowRoot.get_host(instanceOf(root) orelse return false) catch return false;
+    const node = instance_bridge.getNodeBase(host) orelse return false;
+    return node.is_connected;
+}
+
+/// The number of shadow roots on `root`'s shadow-including ancestor chain,
+/// itself included: 0 for the document.
+fn shadowDepth(root: *NodeBase) u16 {
+    var depth: u16 = 0;
+    var current: *NodeBase = root;
+    while (isShadowRoot(current)) {
+        depth +|= 1;
+        const host = interfaces.ShadowRoot.get_host(instanceOf(current) orelse break) catch break;
+        var next = instance_bridge.getNodeBase(host) orelse break;
+        while (next.parent_node) |p| next = p;
+        current = next;
+    }
+    return depth;
+}
+
 /// The document's singleton states, by address and generation.
 fn singletonKey(document: *runtime.Instance) [5]u64 {
     var key: [5]u64 = .{0} ** 5;
@@ -489,13 +668,15 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
     if (node.node_type != NodeBase.ELEMENT_NODE or !node.is_connected) return null;
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return null;
     const engine = hooks.engineOf(document) orelse return null;
+    engine.enterResolution();
+    defer engine.resolving = false;
     const active = try engine.ensureActive(document);
     var res: Resolution = .{
         .allocator = engine.allocator,
         .document = document,
         .engine = engine,
         .active = active,
-        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .singletons = singletonKey(document) },
+        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slot_version, .singletons = singletonKey(document) },
     };
     defer res.deinit();
 
@@ -523,14 +704,14 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
         const entry = lineage.items[i];
         const e = instanceOf(entry.node) orelse return null;
         const state = element_style.of(e) orelse return null;
-        const must_resolve = parent_volatile or entry.slotted or blk: {
+        const must_resolve = parent_volatile or blk: {
             const cached = state.cached orelse break :blk true;
             break :blk cached.@"volatile" or !cached.key.eql(res.key);
         };
         if (must_resolve) {
             var reads: selector_matching.StateReads = .{};
             const style = try resolveOne(&res, e, entry.node, state, null, parent_style, i == lineage.items.len - 1, &reads);
-            state.setCached(.{ .style = style, .key = res.key, .@"volatile" = reads.@"volatile" or parent_volatile or entry.slotted });
+            state.setCached(.{ .style = style, .key = res.key, .@"volatile" = reads.@"volatile" or parent_volatile });
         }
         const cached = state.cached.?;
         if (i == lineage.items.len - 1) res.root_font_size = cached.style.get(.font_size).length.value;
@@ -629,15 +810,31 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
         try matchContents(res, &matcher, element, keys, ua.hints, pseudo, is_html, quirks, .{ .origin = .presentational_hint }, null, .zero);
     }
 
-    // The author origin: the document's sheets, for an element in the
-    // document tree (a shadow tree's own sheets are batch 2).
+    // The author origin (CSS Scoping 3): the sheets of the element's own
+    // tree - the document's, or its shadow tree's - in that tree's context.
     var root = node;
     while (root.parent_node) |p| root = p;
+    var own_depth: u16 = 0;
     if (root.node_type == NodeBase.DOCUMENT_NODE) {
         for (res.active.sheets.items) |*s| {
             try matchContents(res, &matcher, element, keys, s.contents, pseudo, is_html, quirks, .{ .origin = .author, .order = s.order_base }, s, null);
         }
-    }
+    } else if (res.active.scopeOf(root)) |scope| {
+        own_depth = scope.depth;
+        for (scope.sheets.items) |*s| {
+            try matchContents(res, &matcher, element, keys, s.contents, pseudo, is_html, quirks, .{ .origin = .author, .order = s.order_base, .tree_depth = scope.depth }, s, null);
+        }
+    } else if (isShadowRoot(root)) own_depth = shadowDepth(root);
+    // A shadow host: its shadow tree's :host rules, the host featureless
+    // there (3.1.1), in the shadow tree's - inner - context.
+    if (node.is_shadow_host) if (custom_elements.shadowRootOf(element)) |shadow| if (instance_bridge.getNodeBase(shadow)) |shadow_node| {
+        if (res.active.scopeOf(shadow_node)) |scope| if (selector_matching.StyleMatcher.initForHost(element, shadow, reads)) |host_matcher| {
+            var m = host_matcher;
+            for (scope.sheets.items) |*s| {
+                try matchHostRules(res, &m, element, s.contents, pseudo, quirks, .{ .origin = .author, .order = s.order_base, .tree_depth = scope.depth }, s);
+            }
+        };
+    };
 
     // Element-attached declarations: the style attribute (CSS Style
     // Attributes, Cascade 5 6.1 "Element-Attached Styles").
@@ -645,13 +842,30 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
         const n = ns.?;
         if (std.mem.eql(u8, n, html_namespace) or std.mem.eql(u8, n, svg_namespace) or std.mem.eql(u8, n, mathml_namespace)) {
             if (try inlineBlock(element, state, quirks)) |block| {
-                try res.matched.append(res.allocator, .{ .block = block, .source = .{ .origin = .author, .element_attached = true } });
+                try res.matched.append(res.allocator, .{ .block = block, .source = .{ .origin = .author, .element_attached = true, .tree_depth = own_depth } });
             }
         }
     }
 }
 
 const SpecificityOverride = enum { zero };
+
+/// A shadow tree's rules that can match its host: those filed with no key
+/// (a featureless host has no id, class or type to file them under).
+fn matchHostRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, host: *runtime.Instance, contents: *const Contents, pseudo: ?[]const u8, quirks: bool, base: css.cascade.Source, active_sheet: *const ActiveSheet) Error!void {
+    _ = quirks;
+    const candidates = if (pseudo != null) contents.buckets.pseudo.items else contents.buckets.universal.items;
+    for (candidates) |index| {
+        const rule = &contents.rules.items[index];
+        if (!contents.conditionHolds(rule.condition, &res.active.media)) continue;
+        if (!matcher.matchesHost(host, rule.complex, pseudo)) continue;
+        var source = base;
+        source.order = base.order + rule.position;
+        source.specificity = rule.specificity;
+        if (rule.layer) |l| source.layer = active_sheet.layer_order[l] else if (active_sheet.import_layer) |l| source.layer = l;
+        try res.matched.append(res.allocator, .{ .block = rule.block, .source = source });
+    }
+}
 
 fn matchContents(res: *Resolution, matcher: *selector_matching.StyleMatcher, element: *runtime.Instance, keys: sheet_mod.ElementKeys, contents: *const Contents, pseudo: ?[]const u8, is_html: bool, quirks: bool, base: css.cascade.Source, active_sheet: ?*const ActiveSheet, specificity: ?SpecificityOverride) Error!void {
     if (contents.html_only and !is_html) return;
@@ -692,8 +906,8 @@ fn inlineBlock(element: *runtime.Instance, state: *ElementStyle, quirks: bool) E
 /// Parse `value` into the element's inline declaration block.
 pub fn reparseInline(element: *runtime.Instance, state: *ElementStyle, value: []const u8, quirks: bool) Error!void {
     const document = interfaces.Node.get_ownerDocument(element) catch null;
-    var url_context: UrlContext = .{ .document = document orelse element, .base = "" };
-    const options: css.properties.ParseOptions = .{ .allocator = state.allocator, .quirks = quirks, .url_resolver = if (document != null) .{ .context = &url_context, .resolve = &resolveUrl } else null };
+    var url_context: sheet_mod.UrlContext = .{ .instance = document orelse element, .base = "" };
+    const options: css.properties.ParseOptions = .{ .allocator = state.allocator, .quirks = quirks, .url_resolver = if (document != null) url_context.resolver() else null };
     if (state.inline_block) |*b| {
         try b.setCssText(options, value);
     } else {
@@ -745,9 +959,74 @@ pub fn hasComputedStyle(element: *runtime.Instance) Error!bool {
     return true;
 }
 
+/// DOM "assign slottables" changed `slot`'s assigned nodes: every cached
+/// style of its document is resolved again (a slotted element inherits
+/// from its slot).
+pub fn slotAssignmentChanged(slot: *NodeBase) void {
+    const instance = instanceOf(slot) orelse return;
+    const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return;
+    const engine = hooks.engineOf(document) orelse return;
+    engine.slot_version +%= 1;
+}
+
 /// The engine of `document`, for the owners' registration.
 pub fn engineOf(document: *runtime.Instance) ?*StyleEngine {
     return hooks.engineOf(document);
+}
+
+/// CSSOM 6.2 "document or shadow root CSS style sheets" of `scope` - a
+/// Document or a ShadowRoot - appended to `out`: the CSS style sheets
+/// associated with it, in tree order (style and link elements whose root is
+/// `scope` and that have a sheet - disabled ones and ones whose media does
+/// not match included). Borrowed: valid until the sheets next change.
+/// (Crane has no style sheets from HTTP Link headers.)
+pub fn scopeSheets(scope: *runtime.Instance, out: *std.ArrayList(*SheetRecord), allocator: Allocator) Error!void {
+    const scope_node = instance_bridge.getNodeBase(scope) orelse return;
+    const document = if (scope_node.node_type == NodeBase.DOCUMENT_NODE) scope else ((interfaces.Node.get_ownerDocument(scope) catch null) orelse return);
+    const engine = hooks.engineOf(document) orelse return;
+    var owners: std.ArrayList(*runtime.Instance) = .empty;
+    defer owners.deinit(allocator);
+    for (engine.owners.items) |o| {
+        if (!o.live()) continue;
+        const node = instance_bridge.getNodeBase(o.element) orelse continue;
+        if (!node.is_connected) continue;
+        var root = node;
+        while (root.parent_node) |p| root = p;
+        if (root != scope_node) continue;
+        if (hooks.sheetOf(o.element) == null) continue;
+        try owners.append(allocator, o.element);
+    }
+    sortTreeOrder(owners.items);
+    for (owners.items) |owner| try out.append(allocator, hooks.sheetOf(owner).?);
+}
+
+fn sortTreeOrder(items: []*runtime.Instance) void {
+    std.mem.sort(*runtime.Instance, items, {}, struct {
+        fn lessThan(_: void, a: *runtime.Instance, b: *runtime.Instance) bool {
+            const na = instance_bridge.getNodeBase(a) orelse return false;
+            const nb = instance_bridge.getNodeBase(b) orelse return false;
+            return precedes(na, nb);
+        }
+    }.lessThan);
+}
+
+/// CSSOM View 4.2 "evaluate media queries and report changes" for
+/// `document` (HTML update the rendering, step "for each doc of docs,
+/// evaluate media queries and report changes for doc"): "For each
+/// MediaQueryList object target that has doc as its document, in the order
+/// they were created, oldest first", the list reports its own change
+/// (`hooks.reportMediaQueryList`: it fires `change` if its matches state
+/// changed since the last time). A listener can make or drop lists, so the
+/// lists are taken first, and each is checked to be live before it runs.
+pub fn reportMediaQueryChanges(document: *runtime.Instance) void {
+    const engine = hooks.engineOf(document) orelse return;
+    if (engine.media_query_lists.items.len == 0) return;
+    const lists = engine.allocator.dupe(Owner, engine.media_query_lists.items) catch return;
+    defer engine.allocator.free(lists);
+    for (lists) |entry| {
+        if (!entry.live()) continue;
+        hooks.reportMediaQueryList(entry.element);
+    }
 }
 
 test "layer order: first declaration, nested within the parent, children before the parent's own" {

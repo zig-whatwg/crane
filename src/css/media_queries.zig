@@ -1194,6 +1194,11 @@ pub const MediaQueryList = struct {
             try serializeQuery(query, w);
         }
     }
+
+    /// CSSOM 4.2 "serialize a media query" for the query at `index`.
+    pub fn serializeAt(self: *const MediaQueryList, index: usize, w: *std.Io.Writer) std.Io.Writer.Error!void {
+        try serializeQuery(&self.queries[index], w);
+    }
 };
 
 fn serializeQuery(q: *const MediaQuery, w: *std.Io.Writer) std.Io.Writer.Error!void {

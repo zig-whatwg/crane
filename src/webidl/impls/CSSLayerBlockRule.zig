@@ -1,12 +1,14 @@
-//! Implementation for CSSLayerBlockRule interface
+//! Implementation for CSSLayerBlockRule interface (CSS Cascade 5 7.1)
+//!
+//! Spec: https://drafts.csswg.org/css-cascade-5/#the-csslayerblockrule-interface
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
+const webidl = @import("webidl");
+const dom = @import("dom");
 const CSSLayerBlockRule = interfaces.CSSLayerBlockRule;
 
 pub const State = CSSLayerBlockRule.State;
@@ -15,32 +17,19 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+/// The rule this object is a view of: its CSSRule part's.
+fn ruleOf(instance: *runtime.Instance) ?*dom.style.Rule {
+    return dom.style.hooks.cssRuleOf(instance);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Getter for name
+/// Getter for name: "the name of the associated cascade layer" - "" for an
+/// anonymous one.
 pub fn get_name(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const rule = ruleOf(instance) orelse return runtime.DOMString.initEmpty();
+    return switch (rule.data) {
+        .layer_block => |l| if (l.name) |n| runtime.DOMString.initDupe(instance.ctx.allocator, n) else runtime.DOMString.initEmpty(),
+        else => runtime.DOMString.initEmpty(),
+    };
 }

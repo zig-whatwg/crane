@@ -1,5 +1,5 @@
 //! A style sheet's rules, as CSS Syntax parses them: "parse a stylesheet's
-//! contents", for the CSSOM objects that wrap them (src/dom/cssom.zig) -
+//! contents", for the rule tree the CSSOM objects wrap (src/dom/style/rules.zig) -
 //! CSSStyleSheet's replaceSync() and replace(), and so HTML's CSS module
 //! scripts.
 //!
@@ -58,6 +58,11 @@ pub const Rule = struct {
 
     pub const Kind = enum { qualified, at_rule };
 
+    /// Free a rule `parseRule` returned.
+    pub fn deinitOwned(self: *Rule, allocator: Allocator) void {
+        self.deinit(allocator);
+    }
+
     fn deinit(self: *Rule, allocator: Allocator) void {
         allocator.free(self.name);
         allocator.free(self.prelude);
@@ -70,6 +75,16 @@ pub const Rule = struct {
         allocator.free(self.children);
     }
 };
+
+/// The at-rules whose block is a list of declarations (descriptors), kept
+/// as a qualified rule's are: @font-face, @page, @counter-style,
+/// @property, @font-palette-values, @view-transition, @position-try.
+fn isDeclarationBlockRule(name: []const u8) bool {
+    for ([_][]const u8{ "font-face", "page", "counter-style", "property", "font-palette-values", "view-transition", "position-try" }) |kind| {
+        if (std.mem.eql(u8, name, kind)) return true;
+    }
+    return false;
+}
 
 /// The at-rules whose block is a list of rules.
 fn isGroupRule(name: []const u8) bool {
@@ -141,6 +156,34 @@ pub fn parseStyleSheetContents(allocator: Allocator, text: []const u8) Allocator
     return .{ .allocator = allocator, .items = try rules.toOwnedSlice(allocator) };
 }
 
+/// CSS Syntax "parse a rule" from `text`: exactly one rule, with only
+/// whitespace around it - null is the syntax error (nothing, or more than
+/// one rule, or a qualified rule EOF cut off). CSSOM's insertRule() parses
+/// with it. Owned: `Rule.deinitOwned`.
+pub fn parseRule(allocator: Allocator, text: []const u8) Allocator.Error!?Rule {
+    var parser: Parser = .{ .allocator = allocator, .tokens = Tokenizer.init(text) };
+    // 2. Discard whitespace from input.
+    while (parser.peek().token_type == .whitespace) _ = parser.next();
+    // 3. If the next token from input is an <EOF-token>, return a syntax
+    // error. Otherwise, if it is an <at-keyword-token>, consume an at-rule;
+    // otherwise consume a qualified rule - if nothing was returned, return
+    // a syntax error.
+    var rule: Rule = switch (parser.peek().token_type) {
+        .eof => return null,
+        .at_keyword => try parser.consumeAtRule(false),
+        else => (try parser.consumeQualifiedRule()) orelse return null,
+    };
+    errdefer rule.deinit(allocator);
+    // 4. Discard whitespace from input. 5. If the next token is an
+    // <EOF-token>, return rule. Otherwise, return a syntax error.
+    while (parser.peek().token_type == .whitespace) _ = parser.next();
+    if (parser.peek().token_type != .eof) {
+        rule.deinit(allocator);
+        return null;
+    }
+    return rule;
+}
+
 const Parser = struct {
     allocator: Allocator,
     tokens: Tokenizer,
@@ -173,6 +216,8 @@ const Parser = struct {
         errdefer prelude.deinit();
         var has_block = false;
         var children: []Rule = &.{};
+        var declarations: []Declaration = &.{};
+        errdefer freeDeclarations(self.allocator, declarations);
         while (true) {
             const token = self.peek();
             switch (token.token_type) {
@@ -188,6 +233,8 @@ const Parser = struct {
                     _ = self.next();
                     if (isGroupRule(name)) {
                         children = try self.consumeRuleList();
+                    } else if (isDeclarationBlockRule(name)) {
+                        declarations = try self.consumeDeclarationList();
                     } else {
                         try self.skipBlock(.right_brace);
                     }
@@ -206,7 +253,7 @@ const Parser = struct {
             .kind = .at_rule,
             .name = name,
             .prelude = try prelude.finish(),
-            .declarations = &.{},
+            .declarations = declarations,
             .has_block = has_block,
             .children = children,
         };
