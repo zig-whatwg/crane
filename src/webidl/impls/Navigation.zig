@@ -371,12 +371,15 @@ fn entryList(scope: ?navigation_entries.Scope, allocator: Allocator, out: *std.A
     return s.history.apiEntries(s.navigable.id, allocator, out) catch null;
 }
 
-/// "The current entry": null when entries and events are disabled.
+/// "The current entry": null when entries and events are disabled. It is
+/// the navigable's active session history entry - the one it displays -
+/// which a traversal whose target made no document (a 204) leaves in place
+/// (JointHistory.activeEntry).
 fn currentEntryObject(instance: *runtime.Instance, internal: *InternalState) !?*runtime.Instance {
     const scope = scopeOf(instance, internal);
     if (navigation_entries.disabled(scope)) return null;
     const s = scope.?;
-    const entry = s.history.currentEntry(s.navigable.id) orelse return null;
+    const entry = s.history.activeEntry(s.navigable.id) orelse return null;
     if (internal.current_entry_id == 0) internal.current_entry_id = entry.id;
     return try entryObject(internal, s.window, entry);
 }

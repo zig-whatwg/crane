@@ -222,6 +222,13 @@ pub const JointHistory = struct {
     next_document_state: u64 = 1,
     /// For the navigation API's keys and IDs.
     prng: std.Random.DefaultPrng,
+    /// The navigables whose active session history entry is not the one at
+    /// the current step (`keepActiveEntry`): a traversal moved the step, and
+    /// their target entry's document could not be populated.
+    update_only: std.AutoHashMapUnmanaged(u64, UpdateOnly) = .empty,
+
+    /// A navigable's kept active entry, and the step it was kept at.
+    const UpdateOnly = struct { entry: u64, step: u32 };
 
     pub fn init(allocator: Allocator) JointHistory {
         var seed: u64 = 0;
@@ -253,6 +260,7 @@ pub const JointHistory = struct {
     pub fn deinit(self: *JointHistory) void {
         for (self.entries.items) |*entry| entry.deinit(self.allocator);
         self.entries.deinit(self.allocator);
+        self.update_only.deinit(self.allocator);
     }
 
     /// `navigable`'s entry at `step`: "get the target history entry" - the
@@ -272,12 +280,42 @@ pub const JointHistory = struct {
         return self.entryAt(navigable, self.current_step);
     }
 
+    /// `navigable`'s active session history entry: its current one, unless
+    /// a traversal to this step could not populate its target entry's
+    /// document (`keepActiveEntry`) - then the entry it still displays. The
+    /// navigation API's current entry is this one.
+    pub fn activeEntry(self: *JointHistory, navigable: u64) ?*Entry {
+        if (self.update_only.get(navigable)) |kept| {
+            if (kept.step == self.current_step) {
+                if (self.entryById(kept.entry)) |entry| return entry;
+            }
+        }
+        return self.currentEntry(navigable);
+    }
+
+    /// HTML "apply the history step" step 12.8, afterDocumentPopulated
+    /// step 1: "If targetEntry's document is null, then set
+    /// changingNavigableContinuation's update-only to true" - a traversal's
+    /// population of `navigable`'s target entry made no document (a 204, a
+    /// 205, a download), so "activate history entry" never runs for it
+    /// (step 14.12.2), and its active session history entry stays
+    /// `displayed`, the entry it was on, though the traversable's current
+    /// step moved (step 20). Kept for this step, until a document is
+    /// committed to the navigable or it goes. Crane's traversal moves the
+    /// step before it fetches, so the result arrives here afterwards.
+    pub fn keepActiveEntry(self: *JointHistory, navigable: u64, displayed: u64) !void {
+        try self.update_only.put(self.allocator, navigable, .{ .entry = displayed, .step = self.current_step });
+    }
+
     /// Give `document` to every entry of `document_state` - a document the
     /// engine committed to the history before its parser ran, whose
     /// pushState and fragment entries made meanwhile share its state.
     pub fn setDocumentOfState(self: *JointHistory, document_state: u64, document: ?*anyopaque) void {
         for (self.entries.items) |*entry| {
-            if (entry.document_state == document_state) entry.document = document;
+            if (entry.document_state != document_state) continue;
+            entry.document = document;
+            // A document made for the state: its navigable displays it.
+            if (document != null) _ = self.update_only.remove(entry.navigable);
         }
     }
 
@@ -558,7 +596,7 @@ pub const JointHistory = struct {
                 return a.step < b.step;
             }
         }.lessThan);
-        const current = self.currentEntry(navigable) orelse return 0;
+        const current = self.activeEntry(navigable) orelse return 0;
         const start = std.mem.indexOfScalar(*Entry, raw.items, current) orelse return 0;
         var first = start;
         while (first > 0 and std.mem.eql(u8, raw.items[first - 1].origin, current.origin)) first -= 1;
@@ -590,6 +628,8 @@ pub const JointHistory = struct {
         keep_key_on_replace: bool,
         prepared: ?Prepared,
     ) !void {
+        // A document committed to the navigable is the one it displays.
+        _ = self.update_only.remove(navigable);
         switch (handling) {
             .push => {
                 self.clearForward();
@@ -700,6 +740,7 @@ pub const JointHistory = struct {
     /// creation/destruction"), and the current step becomes the used step at
     /// or before it ("get the used step").
     pub fn removeNavigable(self: *JointHistory, navigable: u64) void {
+        _ = self.update_only.remove(navigable);
         var i: usize = 0;
         while (i < self.entries.items.len) {
             if (self.entries.items[i].navigable == navigable) {

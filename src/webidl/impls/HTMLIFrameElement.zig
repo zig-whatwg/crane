@@ -1982,6 +1982,14 @@ fn runCommit(context: ?*anyopaque) void {
     // the one it has, and no load event is owed. Decided before anything is
     // unloaded.
     if (!integration.responseMakesDocument(response)) {
+        // For a traversal, HTML "apply the history step" step 12.8's
+        // afterDocumentPopulated step 1: no document, so the change is
+        // update-only - the navigable's active session history entry (and
+        // the navigation API's current entry) stays the one it displays,
+        // though the traversal moved the traversable's step
+        // (navigation-methods/return-value/back-204-205-download.html: 3/3
+        // in Chrome 155, Firefox 158 and Safari 27).
+        if (record.traversal_entry != 0 and record.traversal_entry != record.traversal_from) keepDisplayedEntry(integration, record.traversal_from);
         integration.ongoing_navigation = .none;
         endLoadDelay(integration);
         return;
@@ -4288,6 +4296,17 @@ fn createBrowsingContextAndDocument(container: *runtime.Instance, integration: *
         integration.allocator,
     ) orelse return false;
     return true;
+}
+
+/// The traversable's joint history keeps `displayed` as the active entry of
+/// `integration`'s navigable (JointHistory.keepActiveEntry): a traversal's
+/// population of its target entry made no document.
+fn keepDisplayedEntry(integration: *IFrameIntegration, displayed: u64) void {
+    const bc = integration.browsing_context orelse return;
+    const history = bc.getTop().joint_history orelse return;
+    history.keepActiveEntry(bc.id, displayed) catch |err| {
+        log.debug("[navigation] the displayed entry was not kept: {s}", .{@errorName(err)});
+    };
 }
 
 /// A navigable's V8 context, Window and initial about:blank document, wired to
