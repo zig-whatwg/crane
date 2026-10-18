@@ -665,6 +665,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [WPT sweep chunks may use different stream layouts](testing-wpt-sweep-chunks-may-use-different-stream-layouts.md) - Complete source counts do not prove complete subtest evidence; account for every chunk's actual stream layout.
 - [An out-of-memory sweep needs a control that proves the path ran](testing-an-oom-sweep-needs-a-control-round-that-proves-the-path-ran.md) - Prove the swept operation does something - run it with memory to spare and assert its effect - and check once whether the rounds leave it able to run again: a sweep whose operation never ran passes every invariant.
 - [A loopback server behind the Browser's proxy counts module fetches](testing-a-loopback-server-behind-the-proxy-counts-module-fetches.md) - When the behaviour under test is "how many times was this fetched", give the test a server that counts - a request count is the only observable that tells a cache hit from a refetch.
+- [A test file at the top of tests/ is never built](testing-a-test-file-at-the-top-of-tests-is-never-built.md) - A test file nothing builds is not a test: check that build.zig reaches it before trusting, converting or counting it.
 
 ### Debugging
 - [A call that can free its argument ends every read of it](debugging-a-call-that-can-free-its-argument-ends-every-read-of-it.md) - A call that can free its argument ends the caller's use of it - including the `defer`s written above the call; read the trace's top frame before believing a deep one.
