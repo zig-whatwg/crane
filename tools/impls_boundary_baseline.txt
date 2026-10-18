@@ -69,7 +69,6 @@ src/webidl/impls/File.zig Blob.setBlobData 2
 src/webidl/impls/HTMLAnchorElement.zig DOMTokenList.setElement 1
 src/webidl/impls/HTMLAreaElement.zig DOMTokenList.setElement 1
 src/webidl/impls/HTMLElement.zig DOMStringMap.create 1
-src/webidl/impls/HTMLElement.zig Node.set_textContent 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.setElement 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.setSupportedTokens 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.set_value 1
