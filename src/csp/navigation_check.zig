@@ -28,9 +28,12 @@ pub const NavigationType = enum { form_submission, other };
 pub const NavigationRequest = struct {
     /// Its current URL, as source matching reads it.
     url: request_check.Url,
-    /// Its current URL, serialized: the javascript: check's source, and a
-    /// pre-navigation violation's resource.
+    /// Its current URL, serialized: the javascript: check's source.
     serialized_url: []const u8,
+    /// The request's original URL (the first URL in its URL list), which
+    /// §4.2.4 step 3.1.3 reports. Null for a request not redirected yet,
+    /// when serialized_url is also the original URL. Borrowed.
+    original_url: ?[]const u8 = null,
     redirect_count: u32 = 0,
 
     /// The request for the serialized URL `serialized` (BORROWED: the
@@ -67,6 +70,16 @@ pub fn shouldNavigationRequestBeBlocked(
 /// 4.2.4 steps 1-3 with form-action's pre-navigation check (6.4.1.1), the
 /// one directive here that has one: "Blocked" when an enforced policy's
 /// check fails, each failing policy reported.
+///
+/// The caller runs this for every navigation hop (HTML create navigation
+/// params by fetching, step 21.3). Chromium checks redirects (issue
+/// 40085903); WebKit DocumentLoader::willSendRequest calls FrameLoader's
+/// checkIfFormActionAllowedByCSP on them too. Firefox's gap is bug 1417822
+/// (2050879 is its duplicate); w3c/webappsec-csp#8 tracks the interop issue.
+/// At wpt.fyi 23b0b89b1a the targeted-frame redirect test is C 1/1, F 0/2,
+/// S 0/2: WebKit's source checks its target frame's document, so that result
+/// does not imply it lacks all redirect checks. The mechanism majority and
+/// the spec require checking the current URL while reporting the original.
 pub fn preNavigationChecks(
     csp_list: *const types.CSPList,
     request: NavigationRequest,
@@ -99,7 +112,7 @@ pub fn preNavigationChecks(
         if (reporter) |r| r.reportViolation(&.{
             .policy = policy,
             .effective_directive = directive.name,
-            .resource = .{ .url = request.serialized_url },
+            .resource = .{ .url = request.original_url orelse request.serialized_url },
         });
         // 3.1.5.
         if (policy.disposition == .enforce) result = .blocked;

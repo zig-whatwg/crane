@@ -40,6 +40,20 @@ const log = std.log.scoped(.csp_violations);
 pub const Reporter = csp.violation_events.Reporter;
 pub const Violation = csp.violation_events.Violation;
 
+/// CSP §6.3.1.1, called by HTML "set the frozen base URL" after parsing
+/// `base` against the document's fallback base URL. The base-freezing owner
+/// handles a blocked result. Reading baseURI must not call it:
+/// reports belong to insertion/href changes, and a later policy must not
+/// retroactively change an already frozen URL.
+/// A document without a Window still checks its policies, but cannot report.
+pub fn isBaseAllowedForDocument(document: *runtime.Instance, base: []const u8) bool {
+    // Step 1: the associated Document's policy container (CSP §4.2.2).
+    const list = documentCspList(document);
+    if (list.isEmpty()) return true;
+    const window = interfaces.Document.get_defaultView(document) catch null;
+    return csp.directives.base_uri.isBaseAllowed(list, base, if (window) |global| reporterFor(global) else null);
+}
+
 /// CSP §4.2.3 "Should element's inline type behavior be blocked by Content
 /// Security Policy?" for `element`'s inline `inline_type` behaviour with
 /// `source`: true for "Blocked". `matching` is what §6.7.3 reads of the
