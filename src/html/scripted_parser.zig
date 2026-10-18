@@ -421,9 +421,17 @@ pub const DocumentParser = struct {
             &self.tree_builder,
             options.scripting_enabled,
         );
-        // Preserve the embedder override before navigation classic fetches.
-        // Persistent state permits stylesheet waits independently of this.
-        self.script_context.can_suspend = script_created;
+        // Every document parser - navigation's, a frame's, a popup's and a
+        // script-created one - is Document-owned and survives a wait, so a
+        // parser-blocking classic script is fetched asynchronously and the
+        // parser waits at its end tag while the event loop spins (HTML "an
+        // end tag whose tag name is script": "spin the event loop until ...
+        // the script's ready to be parser-executed"). The fetch's task marks
+        // the script ready, and that resumes this parser (script_execution
+        // markReadyNow -> input_stream.processInserted -> pump). The
+        // embedder's loader still answers first (script_execution's
+        // prepare, step 33.11).
+        self.script_context.can_suspend = true;
         self.script_context.setBaseUrl(self.base_url);
         if (options.script_loader) |loader| {
             self.owned_loader = loader.acquire();

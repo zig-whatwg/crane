@@ -157,9 +157,21 @@ const FetchedSource = struct {
 };
 
 fn fetchClassicScriptSource(allocator: std.mem.Allocator, script_element: *runtime.Instance, document: ?*runtime.Instance, src: []const u8, url: []const u8) FetchedSource {
-    if (parserScriptLoaderFor(script_element)) |loader| {
-        if (loader.load(loader.context, src)) |body| return .{ .body = body, .allocator = loader.allocator };
-    }
+    if (embedderScriptSource(script_element, src)) |answered| return answered;
+    return networkClassicScriptSource(allocator, script_element, document, url);
+}
+
+/// The embedder's loader's answer for `src`, if the parser preparing
+/// `script_element` has one and it answers.
+fn embedderScriptSource(script_element: *runtime.Instance, src: []const u8) ?FetchedSource {
+    const loader = parserScriptLoaderFor(script_element) orelse return null;
+    const body = loader.load(loader.context, src) orelse return null;
+    return .{ .body = body, .allocator = loader.allocator };
+}
+
+/// "Fetch a classic script" for `url`, synchronously, without asking the
+/// embedder's loader.
+fn networkClassicScriptSource(allocator: std.mem.Allocator, script_element: *runtime.Instance, document: ?*runtime.Instance, url: []const u8) FetchedSource {
     var fetch_result = fetchClassicScript(allocator, script_element, document, url);
     const body = fetch_result.body;
     const final_url = fetch_result.final_url;
@@ -436,20 +448,41 @@ pub fn prepareScriptElement(
         // no JavaScript MIME type, nomodule) is never fetched.
         const cached = state.cached_source_text;
         if (cached == null) {
-            // onComplete - "mark as ready" - runs from
-            // the networking task that hands over the response
-            // (`ClassicScriptFetch`), so script, timers and the element's
-            // moves run meanwhile. A temporary parser cannot yet survive a
-            // suspension, so only its blocking scripts use the loader below.
-            const can_suspend = if (parserScriptLoaderFor(script_element)) |loader| loader.can_suspend else false;
-            if (parser_document == null or hasAsyncAttribute(script_element) or hasDeferAttribute(script_element) or can_suspend) {
-                if (node_document) |doc| {
-                    if (startClassicScriptFetch(script_element, doc, script_url, credentials_mode)) {
-                        return handleScriptSchedulingOf(allocator, script_element, parser_document, script_type, .fetching);
+            // Step 35's parser-blocking case: a parser-inserted classic
+            // script with neither async nor defer.
+            const parser_blocking = parser_document != null and !hasAsyncAttribute(script_element) and !hasDeferAttribute(script_element);
+            // The embedder's answer comes first for a parser-blocking script:
+            // a result in hand, as cached source text is. Only the WPT runner
+            // has an embedder loader, and this order exists only because it
+            // runs testharness.js and testharnessreport.js before the page is
+            // parsed - fetching them again would make a second Tests object
+            // and lose the runner's completion callback. Without a loader (a
+            // production embedder) or when it declines, a parser that can
+            // suspend fetches asynchronously below.
+            const answered: ?FetchedSource = if (parser_blocking) embedderScriptSource(script_element, src) else null;
+            if (answered == null) {
+                // onComplete - "mark as ready" - runs from the networking
+                // task that hands over the response (`ClassicScriptFetch`),
+                // so script, timers and the element's moves run meanwhile:
+                // for a parser-blocking script the parser waits at the
+                // script end tag while the event loop spins, and resumes
+                // from that task (parser_script_execution's
+                // resumeAfterBlockingScript). A temporary parser (fragment,
+                // XML) cannot survive a suspension, so its blocking scripts
+                // are still fetched here, synchronously.
+                const can_suspend = if (parserScriptLoaderFor(script_element)) |loader| loader.can_suspend else false;
+                if (!parser_blocking or can_suspend) {
+                    if (node_document) |doc| {
+                        if (startClassicScriptFetch(script_element, doc, script_url, credentials_mode)) {
+                            return handleScriptSchedulingOf(allocator, script_element, parser_document, script_type, .fetching);
+                        }
                     }
                 }
             }
-            var fetched = fetchClassicScriptSource(allocator, script_element, node_document, src, script_url);
+            var fetched = answered orelse if (parser_blocking)
+                networkClassicScriptSource(allocator, script_element, node_document, script_url)
+            else
+                fetchClassicScriptSource(allocator, script_element, node_document, src, script_url);
             defer fetched.deinit();
             // Fetch-classic step 5.6 uses the response URL after redirects.
             // Keep it through the element's existing owned URL, which is also
