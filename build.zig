@@ -3776,6 +3776,20 @@ pub fn build(b: *std.Build) void {
     b.step("idna-tables", "Regenerate the pinned Unicode IDNA tables from local inputs").dependOn(&idna_tables_run.step);
     test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = idna_tables_module })).step);
 
+    // Explicit, hash-pinned Unicode casing generation; tests use local fixtures.
+    const case_tables_module = b.createModule(.{
+        .root_source_file = b.path("tools/unicode/generate_case_tables.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const case_tables_exe = b.addExecutable(.{ .name = "case_tables", .root_module = case_tables_module });
+    const case_tables_run = b.addRunArtifact(case_tables_exe);
+    case_tables_run.setCwd(b.path("."));
+    case_tables_run.has_side_effects = true;
+    if (b.args) |args| case_tables_run.addArgs(args);
+    b.step("case-tables", "Regenerate pinned Unicode full case mappings from local inputs").dependOn(&case_tables_run.step);
+    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = case_tables_module })).step);
+
     const unicode_identifier_module = b.createModule(.{
         .root_source_file = b.path("tools/unicode/generate_identifier_tables.zig"),
         .target = b.graph.host,
