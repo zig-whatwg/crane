@@ -376,3 +376,21 @@ test "webassembly streaming: the host's end after its realm ended only frees the
     protocol.finishWebAssemblyResponse(host.compilation.?, "");
     try std.testing.expectEqual(@as(usize, 1), compilationsOf(agent).count);
 }
+
+// ============================================================================
+// WebAssembly JavaScript Promise Integration (--experimental-wasm-jspi,
+// snapshot_loader.RUNTIME_V8_FLAGS): not streaming, but WebAssembly's other
+// engine-defined surface this lane switched on.
+// ============================================================================
+
+test "JSPI: a realm has WebAssembly.Suspending and WebAssembly.promising" {
+    if (comptime !api) return error.WebAssemblyStreamingIsNotInTheProtocol;
+    try setup();
+    const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &unhooked });
+    defer protocol.destroyAgent(agent);
+    const realm = try windowRealm(agent);
+    defer protocol.destroyWindowRealm(realm, .global_detached);
+    if (std.mem.indexOf(u8, v8.snapshot_loader.RUNTIME_V8_FLAGS, "--jitless") != null) return error.SkipZigTest;
+    try expectEval(realm, "typeof WebAssembly.Suspending + ' ' + typeof WebAssembly.promising", "function function");
+    try expectEval(realm, "try { WebAssembly.promising(() => {}); 'accepted' } catch (e) { e instanceof TypeError }", "true");
+}
