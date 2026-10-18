@@ -1004,7 +1004,19 @@ fn processResponse(sheet: *Sheet, outcome: fetch.algorithms.FetchError!fetch.alg
     // Prefetch step 6: any non-network-error response fires load, including
     // a null body (204) and an opaque filtered response.
     if (load.kind == .prefetch) return;
-    const body = response.body orelse return fail(load);
+    // Deviation from step 7.2's "bodyBytes is null", as all three browsers
+    // do (golden rule 2, no newer spec: the text is the
+    // processResponseConsumeBody refactor's, whatwg/html#9066): a null body
+    // - a service worker's `new Response(null)`, a null body status - is an
+    // empty style sheet, and load fires. Chrome, Firefox and Safari fire
+    // load for a stylesheet a worker's fetch handler answers with
+    // `new Response(null)` (static-router-request-destination's "Subreosurce
+    // load not matched ..." waits on the link's load: PASS in all three at
+    // wpt.fyi 23b0b89b1a; Chrome and Safari pass -mutiple-conditions' two
+    // too, which Firefox fails for want of static routing). In Gecko,
+    // StreamLoader::OnStopRequest parses zero bytes as an empty sheet, with
+    // no case for an empty or null body. Only a network error fails.
+    const body_bytes: []const u8 = if (response.body) |body| body.getBytes() else "";
     // A preload: "If response is a network error, fire an event named error
     // at el. Otherwise, fire an event named load at el" - whatever its
     // status or type.
@@ -1037,8 +1049,8 @@ fn processResponse(sheet: *Sheet, outcome: fetch.algorithms.FetchError!fetch.alg
     const policy_header = response.header_list.get(load.allocator, "Referrer-Policy") catch null;
     defer if (policy_header) |h| load.allocator.free(h);
     sheet.referrer_policy = fetch.internal.policy_container.parseReferrerPolicyHeader(policy_header);
-    deliver(load, sheet, body.getBytes(), location);
-    fetchImports(load, sheet, body.getBytes(), location);
+    deliver(load, sheet, body_bytes, location);
+    fetchImports(load, sheet, body_bytes, location);
 }
 
 /// Hand a fetched sheet to the style engine: the link's own (the
