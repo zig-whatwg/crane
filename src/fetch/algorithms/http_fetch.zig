@@ -213,8 +213,9 @@ pub fn serviceWorkerResponse(allocator: Allocator, params: *FetchParams, respons
     const request = params.request;
     // 3.5.2. The fetch timing info's final service worker start time.
     params.timing_info.final_service_worker_start_time = start_time;
-    // 3.5.3. Its service worker timing info: Crane has no static routing,
-    // so there is none to set (Service Workers 2.2's router fields).
+    // 3.5.3. The fetch timing info's service worker timing info: the
+    // response's (Create Fetch Event and Dispatch step 18 set it).
+    params.timing_info.service_worker_timing_info = response.service_worker_timing_info;
     // 3.5.4. A request body goes no further: a byte body is borrowed and
     // needs no cancel; a stream body was never handed to the service worker
     // (its route sends such a request to the network).

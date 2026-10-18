@@ -450,6 +450,9 @@ pub const FetchDispatch = struct {
     /// value, when its navigation preload is to be fetched for this request
     /// (a GET navigation of a registration whose flag is set). OWNED.
     preload_header: ?[]u8 = null,
+    /// Handle Fetch step 14: timingInfo's start time - taken before step
+    /// 15 waits for an activating worker (fetch's clock, ms).
+    timing_start: f64 = 0,
 
     pub fn destroy(self: *FetchDispatch) void {
         self.request.deinit();
@@ -1649,6 +1652,9 @@ pub const Manager = struct {
             .registration_id = registration_id,
             .soft_update = soft_update,
             .preload_header = preload_header,
+            // 14. timingInfo's start time: the coarsened shared current time
+            // (fetch's clock; Resource Timing coarsens on conversion).
+            .timing_start = fetch.algorithms.http_fetch.getCurrentTimeMs(),
         };
         preload_header = null;
         // A fetch that blocks its thread leaves that thread's window data

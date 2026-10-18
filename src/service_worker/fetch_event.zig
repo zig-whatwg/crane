@@ -70,6 +70,9 @@ pub const Responder = struct {
     respond_with_entered: bool = false,
     /// The event's wait to respond flag.
     wait_to_respond: bool = false,
+    /// timingInfo (Handle Fetch step 14, Create Fetch Event and Dispatch
+    /// step 17.4.12): set on the response it answers with (step 18).
+    timing: fetch.internal.ServiceWorkerTimingInfo = .{},
 
     pub fn retain(self: *Responder) *Responder {
         self.refs += 1;
@@ -196,6 +199,9 @@ pub const Responder = struct {
         const allocator = self.manager.allocator;
         const copy = try potentialResponse(allocator, inner);
         errdefer copy.deinit();
+        // Create Fetch Event and Dispatch step 18: the response's service
+        // worker timing info is timingInfo.
+        copy.service_worker_timing_info = self.timing;
         // An opaque response's body is its internal response's, which script
         // cannot read (the Response's body is null): it is copied as the
         // associated response is, from Zig.
@@ -640,6 +646,12 @@ fn fireEvent(manager: *Manager, realm: runtime.Context, global_scope: *runtime.I
         return;
     };
     lifetime.dispatching = true;
+    // 17.4.12. timingInfo's fetch event dispatch time: the coarsened shared
+    // current time (fetch's clock), with Handle Fetch step 14's start time.
+    responder.timing = .{
+        .start_time = dispatch.timing_start,
+        .fetch_event_dispatch_time = fetch.algorithms.http_fetch.getCurrentTimeMs(),
+    };
     // 17.4.13. Dispatch e at activeWorker's global object.
     _ = dom.fire_event.dispatchTrusted(global_scope, instance) catch {};
     // 17.4.14. Update Service Worker Extended Events Set.

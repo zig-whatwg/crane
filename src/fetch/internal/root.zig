@@ -59,6 +59,7 @@ pub const isNullBody = body.isNullBody;
 
 pub const fetch_timing = @import("fetch_timing.zig");
 pub const FetchTimingInfo = fetch_timing.FetchTimingInfo;
+pub const ServiceWorkerTimingInfo = fetch_timing.ServiceWorkerTimingInfo;
 pub const ConnectionTimingInfo = fetch_timing.ConnectionTimingInfo;
 pub const ResponseBodyInfo = fetch_timing.ResponseBodyInfo;
 pub const DOMHighResTimeStamp = fetch_timing.DOMHighResTimeStamp;

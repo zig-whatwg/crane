@@ -1330,6 +1330,17 @@ pub const NavigationRecord = struct {
     /// when there was none, or it was not same origin.
     unload_event_start: f64 = 0,
     unload_event_end: f64 = 0,
+    /// serviceWorkerTiming: the navigation's response's service worker
+    /// timing info (HTML "create and initialize a Document object" step
+    /// 16), null when no service worker answered it.
+    service_worker_timing: ?fetch.internal.ServiceWorkerTimingInfo = null,
+};
+
+/// A navigation timing entry's service worker timing (Navigation Timing 5
+/// step 8), its times relative to the document's time origin.
+pub const NavigationServiceWorkerTiming = struct {
+    start_time: f64,
+    fetch_event_dispatch_time: f64,
 };
 
 /// Navigation Timing 5 "create the navigation timing entry" for the
@@ -1377,8 +1388,13 @@ pub fn createNavigationTimingEntry(realm: runtime.Context, record: NavigationRec
     // 3.1: startTime is 0, and the end time follows loadEventEnd.
     timing.start_time = 0;
     timing.end_time = 0;
+    // 8. Its service worker timing, relative to the time origin.
+    const service_worker_timing: ?NavigationServiceWorkerTiming = if (record.service_worker_timing) |sw| .{
+        .start_time = convert.call(sw.start_time),
+        .fetch_event_dispatch_time = convert.call(sw.fetch_event_dispatch_time),
+    } else null;
     // 1-2, 4-11. A new PerformanceNavigationTiming in global's realm.
-    const entry = try impl.create(realm, &timing, record.redirect_count, record.navigation_type);
+    const entry = try impl.create(realm, &timing, record.redirect_count, record.navigation_type, service_worker_timing);
     const generation = runtime.SlabAllocator.generationOf(entry);
     errdefer entry.releaseIfUnwrapped(generation);
     // 12. Add it to global's performance entry buffer.
@@ -1410,9 +1426,9 @@ pub const NavigationTimings = struct {
     /// "create the navigation timing entry" steps 2-8: a new
     /// PerformanceNavigationTiming in `realm`, initialized (startTime 0,
     /// "navigation", `timing.url`), its resource timing set up from `timing`,
-    /// with its redirect count and navigation type. The caller's until the
-    /// engine wraps it.
-    create: *const fn (realm: runtime.Context, timing: *const ResourceTiming, redirect_count: u16, navigation_type: NavigationType) anyerror!*Instance,
+    /// with its redirect count, navigation type and service worker timing.
+    /// The caller's until the engine wraps it.
+    create: *const fn (realm: runtime.Context, timing: *const ResourceTiming, redirect_count: u16, navigation_type: NavigationType, service_worker_timing: ?NavigationServiceWorkerTiming) anyerror!*Instance,
 };
 
 /// "setup the resource timing entry" for an entry of a

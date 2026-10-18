@@ -55,3 +55,26 @@ test "a service worker's filtered response passes TAO only as its own fetch did,
         try std.testing.expectEqual(case.failed, request.timing_allow_failed);
     }
 }
+
+test "HTTP fetch 3.5.3: the timing info takes the service worker response's timing info" {
+    const allocator = std.testing.allocator;
+    const request = try fetch.internal.InternalRequest.init(allocator, "https://a.test/page");
+    defer request.deinit();
+    try request.setOrigin("https://a.test");
+    request.mode = .navigate;
+    const controller = try fetch.internal.FetchController.init(allocator);
+    defer controller.deinit();
+    var timing = fetch.internal.FetchTimingInfo.init(allocator);
+    defer timing.deinit();
+    const params = try fetch.internal.FetchParams.init(allocator, request, controller, &timing);
+    defer params.deinit();
+    const response = try fetch.internal.InternalResponse.init(allocator);
+    response.status = 200;
+    response.service_worker_timing_info = .{ .start_time = 5.0, .fetch_event_dispatch_time = 9.5 };
+    const next = try fetch.algorithms.http_fetch.serviceWorkerResponse(allocator, params, response, 4.0);
+    defer next.response.deinit();
+    try std.testing.expectEqual(@as(f64, 4.0), timing.final_service_worker_start_time);
+    const sw = timing.service_worker_timing_info orelse return error.TestExpectedServiceWorkerTiming;
+    try std.testing.expectEqual(@as(f64, 5.0), sw.start_time);
+    try std.testing.expectEqual(@as(f64, 9.5), sw.fetch_event_dispatch_time);
+}

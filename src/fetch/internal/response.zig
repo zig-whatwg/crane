@@ -106,8 +106,9 @@ pub const InternalResponse = struct {
     /// Body info for Resource Timing
     body_info: ResponseBodyInfo,
 
-    /// Service worker timing info (opaque for now)
-    service_worker_timing_info: ?*anyopaque = null,
+    /// Its service worker timing info: set on a service worker's response
+    /// (Create Fetch Event and Dispatch step 18), null otherwise.
+    service_worker_timing_info: ?fetch_timing.ServiceWorkerTimingInfo = null,
 
     /// Redirect taint
     redirect_taint: RedirectTaint = .same_origin,
