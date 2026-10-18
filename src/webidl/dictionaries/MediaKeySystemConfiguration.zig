@@ -14,4 +14,15 @@ pub const MediaKeySystemConfiguration = struct {
     distinctiveIdentifier: ?enums.MediaKeysRequirement = null,
     persistentState: ?enums.MediaKeysRequirement = null,
     sessionTypes: ?[]const runtime.DOMString = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "label", .{ .string = "" } },
+        .{ "initDataTypes", .empty_sequence },
+        .{ "audioCapabilities", .empty_sequence },
+        .{ "videoCapabilities", .empty_sequence },
+        .{ "distinctiveIdentifier", .{ .string = "optional" } },
+        .{ "persistentState", .{ .string = "optional" } },
+    };
 };

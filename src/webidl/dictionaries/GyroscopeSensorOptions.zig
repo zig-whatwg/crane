@@ -11,4 +11,10 @@ pub const GyroscopeSensorOptions = struct {
     base: SensorOptions,
 
     referenceFrame: ?enums.GyroscopeLocalCoordinateSystem = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "referenceFrame", .{ .string = "device" } },
+    };
 };

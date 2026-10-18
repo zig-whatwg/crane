@@ -12,4 +12,11 @@ pub const AutofillEventInit = struct {
 
     autofillValues: ?[]const typedefs.AutofillValueEntry = null,
     allowRefill: ?bool = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "autofillValues", .empty_sequence },
+        .{ "allowRefill", .{ .boolean = true } },
+    };
 };

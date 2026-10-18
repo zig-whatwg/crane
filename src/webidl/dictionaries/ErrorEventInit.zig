@@ -18,4 +18,13 @@ pub const ErrorEventInit = struct {
     /// `any` members: one present with the value null converts to `.null`,
     /// not to "not present".
     pub const any_members = .{"error"};
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "message", .{ .string = "" } },
+        .{ "filename", .{ .string = "" } },
+        .{ "lineno", .{ .number = 0 } },
+        .{ "colno", .{ .number = 0 } },
+    };
 };

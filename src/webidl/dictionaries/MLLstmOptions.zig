@@ -20,6 +20,14 @@ pub const MLLstmOptions = struct {
     layout: ?enums.MLLstmWeightLayout = null,
     activations: ?[]const enums.MLRecurrentNetworkActivation = null,
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "returnSequence", .{ .boolean = false } },
+        .{ "direction", .{ .string = "forward" } },
+        .{ "layout", .{ .string = "iofg" } },
+    };
+
     /// WebIDL interface types: the interface each interface-typed member
     /// converts to - a TypeError unless the value implements it.
     pub const interface_members = .{

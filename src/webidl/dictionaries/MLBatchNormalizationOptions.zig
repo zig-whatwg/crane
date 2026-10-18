@@ -18,6 +18,13 @@ pub const MLBatchNormalizationOptions = struct {
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{"epsilon"};
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "axis", .{ .number = 1 } },
+        .{ "epsilon", .{ .number = 0.00001 } },
+    };
+
     /// [EnforceRange] members: converted with that branch of ConvertToInt.
     pub const enforce_range_members = .{"axis"};
 

@@ -15,4 +15,19 @@ pub const AddressInit = struct {
     organization: ?runtime.DOMString = null,
     recipient: ?runtime.DOMString = null,
     phone: ?runtime.DOMString = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "country", .{ .string = "" } },
+        .{ "addressLine", .empty_sequence },
+        .{ "region", .{ .string = "" } },
+        .{ "city", .{ .string = "" } },
+        .{ "dependentLocality", .{ .string = "" } },
+        .{ "postalCode", .{ .string = "" } },
+        .{ "sortingCode", .{ .string = "" } },
+        .{ "organization", .{ .string = "" } },
+        .{ "recipient", .{ .string = "" } },
+        .{ "phone", .{ .string = "" } },
+    };
 };

@@ -22,4 +22,21 @@ pub const SecurityPolicyViolationEventInit = struct {
     statusCode: ?u16 = null,
     lineNumber: ?u32 = null,
     columnNumber: ?u32 = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "documentURI", .{ .string = "" } },
+        .{ "referrer", .{ .string = "" } },
+        .{ "blockedURI", .{ .string = "" } },
+        .{ "violatedDirective", .{ .string = "" } },
+        .{ "effectiveDirective", .{ .string = "" } },
+        .{ "originalPolicy", .{ .string = "" } },
+        .{ "sourceFile", .{ .string = "" } },
+        .{ "sample", .{ .string = "" } },
+        .{ "disposition", .{ .string = "enforce" } },
+        .{ "statusCode", .{ .number = 0 } },
+        .{ "lineNumber", .{ .number = 0 } },
+        .{ "columnNumber", .{ .number = 0 } },
+    };
 };

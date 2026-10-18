@@ -12,4 +12,10 @@ pub const SharedWorkerOptions = struct {
 
     extendedLifetime: ?bool = null,
     sameSiteCookies: ?enums.SameSiteCookiesType = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "extendedLifetime", .{ .boolean = false } },
+    };
 };

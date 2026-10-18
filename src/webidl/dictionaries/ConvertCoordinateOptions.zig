@@ -8,4 +8,11 @@ const enums = @import("enums");
 pub const ConvertCoordinateOptions = struct {
     fromBox: ?enums.CSSBoxType = null,
     toBox: ?enums.CSSBoxType = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "fromBox", .{ .string = "border" } },
+        .{ "toBox", .{ .string = "border" } },
+    };
 };

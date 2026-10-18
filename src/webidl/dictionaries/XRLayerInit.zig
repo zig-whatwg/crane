@@ -18,6 +18,17 @@ pub const XRLayerInit = struct {
     isStatic: ?bool = null,
     clearOnAccess: ?bool = null,
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "textureType", .{ .string = "texture" } },
+        .{ "colorFormat", .{ .number = 6408 } },
+        .{ "mipLevels", .{ .number = 1 } },
+        .{ "layout", .{ .string = "mono" } },
+        .{ "isStatic", .{ .boolean = false } },
+        .{ "clearOnAccess", .{ .boolean = true } },
+    };
+
     /// Optional members whose IDL type is nullable: a present null is the
     /// value null. Any other member's present null converts by its type.
     pub const nullable_members = .{"depthFormat"};

@@ -11,4 +11,10 @@ pub const SyncEventInit = struct {
 
     tag: runtime.DOMString,
     lastChance: ?bool = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "lastChance", .{ .boolean = false } },
+    };
 };

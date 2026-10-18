@@ -23,4 +23,13 @@ pub const PublicKeyCredentialCreationOptionsJSON = struct {
     attestation: ?runtime.DOMString = null,
     attestationFormats: ?[]const runtime.DOMString = null,
     extensions: ?AuthenticationExtensionsClientInputsJSON = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "excludeCredentials", .empty_sequence },
+        .{ "hints", .empty_sequence },
+        .{ "attestation", .{ .string = "none" } },
+        .{ "attestationFormats", .empty_sequence },
+    };
 };

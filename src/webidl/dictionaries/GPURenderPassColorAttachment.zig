@@ -13,4 +13,8 @@ pub const GPURenderPassColorAttachment = struct {
     clearValue: ?typedefs.GPUColor = null,
     loadOp: enums.GPULoadOp,
     storeOp: enums.GPUStoreOp,
+
+    /// Inline union members typed runtime.JSValue: one present with the
+    /// value null converts to `.null`, for the impl to convert by the union.
+    pub const jsvalue_union_members = .{"resolveTarget"};
 };

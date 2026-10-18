@@ -13,4 +13,11 @@ pub const BluetoothLEScanPermissionDescriptor = struct {
     filters: ?[]const BluetoothLEScanFilterInit = null,
     keepRepeatedDevices: ?bool = null,
     acceptAllAdvertisements: ?bool = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "keepRepeatedDevices", .{ .boolean = false } },
+        .{ "acceptAllAdvertisements", .{ .boolean = false } },
+    };
 };

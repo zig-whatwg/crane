@@ -12,4 +12,11 @@ pub const FenceEvent = struct {
     crossOriginExposed: ?bool = null,
     once: ?bool = null,
     destinationURL: ?runtime.USVString = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "crossOriginExposed", .{ .boolean = false } },
+        .{ "once", .{ .boolean = false } },
+    };
 };

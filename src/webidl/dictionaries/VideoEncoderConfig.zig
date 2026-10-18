@@ -28,6 +28,15 @@ pub const VideoEncoderConfig = struct {
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{"framerate"};
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "hardwareAcceleration", .{ .string = "no-preference" } },
+        .{ "alpha", .{ .string = "discard" } },
+        .{ "bitrateMode", .{ .string = "variable" } },
+        .{ "latencyMode", .{ .string = "quality" } },
+    };
+
     /// [EnforceRange] members: converted with that branch of ConvertToInt.
     pub const enforce_range_members = .{ "width", "height", "displayWidth", "displayHeight", "bitrate" };
 };

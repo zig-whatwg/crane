@@ -14,6 +14,13 @@ pub const IDBGetAllOptions = struct {
     /// not to "not present".
     pub const any_members = .{"query"};
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "query", .null },
+        .{ "direction", .{ .string = "next" } },
+    };
+
     /// [EnforceRange] members: converted with that branch of ConvertToInt.
     pub const enforce_range_members = .{"count"};
 };

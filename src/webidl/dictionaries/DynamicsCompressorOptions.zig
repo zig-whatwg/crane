@@ -18,4 +18,14 @@ pub const DynamicsCompressorOptions = struct {
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{ "attack", "knee", "ratio", "release", "threshold" };
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "attack", .{ .number = 0.003 } },
+        .{ "knee", .{ .number = 30 } },
+        .{ "ratio", .{ .number = 12 } },
+        .{ "release", .{ .number = 0.25 } },
+        .{ "threshold", .{ .number = -24 } },
+    };
 };

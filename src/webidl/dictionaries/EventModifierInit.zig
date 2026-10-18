@@ -23,4 +23,23 @@ pub const EventModifierInit = struct {
     modifierSuper: ?bool = null,
     modifierSymbol: ?bool = null,
     modifierSymbolLock: ?bool = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "ctrlKey", .{ .boolean = false } },
+        .{ "shiftKey", .{ .boolean = false } },
+        .{ "altKey", .{ .boolean = false } },
+        .{ "metaKey", .{ .boolean = false } },
+        .{ "modifierAltGraph", .{ .boolean = false } },
+        .{ "modifierCapsLock", .{ .boolean = false } },
+        .{ "modifierFn", .{ .boolean = false } },
+        .{ "modifierFnLock", .{ .boolean = false } },
+        .{ "modifierHyper", .{ .boolean = false } },
+        .{ "modifierNumLock", .{ .boolean = false } },
+        .{ "modifierScrollLock", .{ .boolean = false } },
+        .{ "modifierSuper", .{ .boolean = false } },
+        .{ "modifierSymbol", .{ .boolean = false } },
+        .{ "modifierSymbolLock", .{ .boolean = false } },
+    };
 };

@@ -10,4 +10,11 @@ pub const IdentityCredentialRequestOptions = struct {
     providers: []const IdentityProviderRequestOptions,
     context: ?enums.IdentityCredentialRequestOptionsContext = null,
     mode: ?enums.IdentityCredentialRequestOptionsMode = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "context", .{ .string = "signin" } },
+        .{ "mode", .{ .string = "passive" } },
+    };
 };

@@ -26,6 +26,24 @@ pub const TouchInit = struct {
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{ "clientX", "clientY", "screenX", "screenY", "pageX", "pageY", "radiusX", "radiusY", "rotationAngle", "force", "altitudeAngle", "azimuthAngle" };
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "clientX", .{ .number = 0 } },
+        .{ "clientY", .{ .number = 0 } },
+        .{ "screenX", .{ .number = 0 } },
+        .{ "screenY", .{ .number = 0 } },
+        .{ "pageX", .{ .number = 0 } },
+        .{ "pageY", .{ .number = 0 } },
+        .{ "radiusX", .{ .number = 0 } },
+        .{ "radiusY", .{ .number = 0 } },
+        .{ "rotationAngle", .{ .number = 0 } },
+        .{ "force", .{ .number = 0 } },
+        .{ "altitudeAngle", .{ .number = 0 } },
+        .{ "azimuthAngle", .{ .number = 0 } },
+        .{ "touchType", .{ .string = "direct" } },
+    };
+
     /// WebIDL interface types: the interface each interface-typed member
     /// converts to - a TypeError unless the value implements it.
     pub const interface_members = .{

@@ -25,6 +25,20 @@ pub const GPUSamplerDescriptor = struct {
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{ "lodMinClamp", "lodMaxClamp" };
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "addressModeU", .{ .string = "clamp-to-edge" } },
+        .{ "addressModeV", .{ .string = "clamp-to-edge" } },
+        .{ "addressModeW", .{ .string = "clamp-to-edge" } },
+        .{ "magFilter", .{ .string = "nearest" } },
+        .{ "minFilter", .{ .string = "nearest" } },
+        .{ "mipmapFilter", .{ .string = "nearest" } },
+        .{ "lodMinClamp", .{ .number = 0 } },
+        .{ "lodMaxClamp", .{ .number = 32 } },
+        .{ "maxAnisotropy", .{ .number = 1 } },
+    };
+
     /// [Clamp] members: converted with that branch of ConvertToInt.
     pub const clamp_members = .{"maxAnisotropy"};
 };

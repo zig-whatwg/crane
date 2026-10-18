@@ -1393,15 +1393,17 @@ pub const Parser = struct {
             try self.advance();
             return types.Value{ .string = str };
         } else if (self.current_token.type == .left_brace) {
-            // Empty object literal {}
+            // `{}`: an empty dictionary (WebIDL 2.5.4, DefaultValue) - a
+            // value of its own, not null: a union member's `= {}` is its
+            // dictionary arm with no member set.
             try self.expect(.left_brace);
             try self.expect(.right_brace);
-            return types.Value.null;
+            return types.Value.emptyDictionary;
         } else if (self.current_token.type == .left_bracket) {
-            // Empty array literal []
+            // `[]`: an empty sequence, likewise.
             try self.expect(.left_bracket);
             try self.expect(.right_bracket);
-            return types.Value.null;
+            return types.Value.emptySequence;
         } else {
             return error.UnexpectedToken;
         }

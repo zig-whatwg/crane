@@ -11,4 +11,14 @@ pub const CanvasRenderingContext2DSettings = struct {
     colorSpace: ?enums.PredefinedColorSpace = null,
     colorType: ?enums.CanvasColorType = null,
     willReadFrequently: ?bool = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "alpha", .{ .boolean = true } },
+        .{ "desynchronized", .{ .boolean = false } },
+        .{ "colorSpace", .{ .string = "srgb" } },
+        .{ "colorType", .{ .string = "unorm8" } },
+        .{ "willReadFrequently", .{ .boolean = false } },
+    };
 };

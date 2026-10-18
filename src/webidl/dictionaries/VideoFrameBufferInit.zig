@@ -29,6 +29,14 @@ pub const VideoFrameBufferInit = struct {
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{"rotation"};
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "rotation", .{ .number = 0 } },
+        .{ "flip", .{ .boolean = false } },
+        .{ "transfer", .empty_sequence },
+    };
+
     /// [EnforceRange] members: converted with that branch of ConvertToInt.
     pub const enforce_range_members = .{ "codedWidth", "codedHeight", "timestamp", "duration", "displayWidth", "displayHeight" };
 };

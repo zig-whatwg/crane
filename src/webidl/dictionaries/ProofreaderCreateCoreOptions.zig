@@ -9,4 +9,11 @@ pub const ProofreaderCreateCoreOptions = struct {
     includeCorrectionExplanations: ?bool = null,
     expectedInputLanguages: ?[]const runtime.DOMString = null,
     correctionExplanationLanguage: ?runtime.DOMString = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "includeCorrectionTypes", .{ .boolean = false } },
+        .{ "includeCorrectionExplanations", .{ .boolean = false } },
+    };
 };

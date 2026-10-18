@@ -18,4 +18,22 @@ pub const StorageAccessTypes = struct {
     revokeObjectURL: ?bool = null,
     BroadcastChannel: ?bool = null,
     SharedWorker: ?bool = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "all", .{ .boolean = false } },
+        .{ "cookies", .{ .boolean = false } },
+        .{ "sessionStorage", .{ .boolean = false } },
+        .{ "localStorage", .{ .boolean = false } },
+        .{ "indexedDB", .{ .boolean = false } },
+        .{ "locks", .{ .boolean = false } },
+        .{ "caches", .{ .boolean = false } },
+        .{ "getDirectory", .{ .boolean = false } },
+        .{ "estimate", .{ .boolean = false } },
+        .{ "createObjectURL", .{ .boolean = false } },
+        .{ "revokeObjectURL", .{ .boolean = false } },
+        .{ "BroadcastChannel", .{ .boolean = false } },
+        .{ "SharedWorker", .{ .boolean = false } },
+    };
 };

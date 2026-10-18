@@ -15,6 +15,17 @@ pub const RTCConfiguration = struct {
     iceCandidatePoolSize: ?u8 = null,
     peerIdentity: ?runtime.DOMString = null,
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "iceServers", .empty_sequence },
+        .{ "iceTransportPolicy", .{ .string = "all" } },
+        .{ "bundlePolicy", .{ .string = "balanced" } },
+        .{ "rtcpMuxPolicy", .{ .string = "require" } },
+        .{ "certificates", .empty_sequence },
+        .{ "iceCandidatePoolSize", .{ .number = 0 } },
+    };
+
     /// [EnforceRange] members: converted with that branch of ConvertToInt.
     pub const enforce_range_members = .{"iceCandidatePoolSize"};
 

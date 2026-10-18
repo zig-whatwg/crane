@@ -14,4 +14,10 @@ pub const VideoEncoderEncodeOptions = struct {
     avc: ?VideoEncoderEncodeOptionsForAvc = null,
     hevc: ?VideoEncoderEncodeOptionsForHevc = null,
     vp9: ?VideoEncoderEncodeOptionsForVp9 = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "keyFrame", .{ .boolean = false } },
+    };
 };

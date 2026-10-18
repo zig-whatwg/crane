@@ -29,6 +29,22 @@ pub const PointerEventInit = struct {
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{ "width", "height", "pressure", "tangentialPressure", "altitudeAngle", "azimuthAngle" };
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "pointerId", .{ .number = 0 } },
+        .{ "width", .{ .number = 1 } },
+        .{ "height", .{ .number = 1 } },
+        .{ "pressure", .{ .number = 0 } },
+        .{ "tangentialPressure", .{ .number = 0 } },
+        .{ "twist", .{ .number = 0 } },
+        .{ "pointerType", .{ .string = "" } },
+        .{ "isPrimary", .{ .boolean = false } },
+        .{ "persistentDeviceId", .{ .number = 0 } },
+        .{ "coalescedEvents", .empty_sequence },
+        .{ "predictedEvents", .empty_sequence },
+    };
+
     /// WebIDL interface types: the interface each interface-typed member
     /// converts to - a TypeError unless the value implements it.
     pub const interface_members = .{

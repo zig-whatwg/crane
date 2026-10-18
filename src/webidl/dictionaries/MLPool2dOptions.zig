@@ -17,4 +17,11 @@ pub const MLPool2dOptions = struct {
     layout: ?enums.MLInputOperandLayout = null,
     outputShapeRounding: ?enums.MLRoundingType = null,
     outputSizes: ?[]const runtime.JSValue = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "layout", .{ .string = "nchw" } },
+        .{ "outputShapeRounding", .{ .string = "floor" } },
+    };
 };

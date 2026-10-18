@@ -18,6 +18,14 @@ pub const MLConv2dOptions = struct {
     filterLayout: ?enums.MLConv2dFilterOperandLayout = null,
     bias: ?*runtime.Instance = null,
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "groups", .{ .number = 1 } },
+        .{ "inputLayout", .{ .string = "nchw" } },
+        .{ "filterLayout", .{ .string = "oihw" } },
+    };
+
     /// [EnforceRange] members: converted with that branch of ConvertToInt.
     pub const enforce_range_members = .{"groups"};
 

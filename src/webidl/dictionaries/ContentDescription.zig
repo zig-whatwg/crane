@@ -13,4 +13,11 @@ pub const ContentDescription = struct {
     category: ?enums.ContentCategory = null,
     icons: ?[]const ImageResource = null,
     url: runtime.USVString,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "category", .{ .string = "" } },
+        .{ "icons", .empty_sequence },
+    };
 };

@@ -10,4 +10,10 @@ pub const ClipboardPermissionDescriptor = struct {
     base: PermissionDescriptor,
 
     allowWithoutGesture: ?bool = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "allowWithoutGesture", .{ .boolean = false } },
+    };
 };

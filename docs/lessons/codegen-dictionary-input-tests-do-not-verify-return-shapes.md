@@ -1,6 +1,7 @@
 # Codegen: Dictionary Input Tests Do Not Verify Return Shapes
 
 **Date**: 2026-10-16
+**Status** (2026-10-17): the bindings owner's part is done - the output converter writes a defaulted or present-null member and flattens an inherited dictionary in WebIDL order (lane binding4; [A dictionary member with a default always exists](codegen-a-dictionary-member-with-a-default-always-exists.md)).
 **Lesson**: A dictionary's native representation can convert correctly from JavaScript while its return conversion loses nullable members or exposes inheritance storage.
 
 **Why**: Optional Zig fields commonly encode absence with null. A nullable IDL member also needs null as a present value. Derived dictionaries store inherited members in `base`, although JavaScript dictionaries expose those members directly. Input and output converters must both understand these distinctions.

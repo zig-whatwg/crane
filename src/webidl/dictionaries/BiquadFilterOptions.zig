@@ -19,4 +19,14 @@ pub const BiquadFilterOptions = struct {
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{ "Q", "detune", "frequency", "gain" };
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "type", .{ .string = "lowpass" } },
+        .{ "Q", .{ .number = 1 } },
+        .{ "detune", .{ .number = 0 } },
+        .{ "frequency", .{ .number = 350 } },
+        .{ "gain", .{ .number = 0 } },
+    };
 };

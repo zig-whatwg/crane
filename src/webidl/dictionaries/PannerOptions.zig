@@ -28,4 +28,23 @@ pub const PannerOptions = struct {
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{ "positionX", "positionY", "positionZ", "orientationX", "orientationY", "orientationZ", "refDistance", "maxDistance", "rolloffFactor", "coneInnerAngle", "coneOuterAngle", "coneOuterGain" };
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "panningModel", .{ .string = "equalpower" } },
+        .{ "distanceModel", .{ .string = "inverse" } },
+        .{ "positionX", .{ .number = 0 } },
+        .{ "positionY", .{ .number = 0 } },
+        .{ "positionZ", .{ .number = 0 } },
+        .{ "orientationX", .{ .number = 1 } },
+        .{ "orientationY", .{ .number = 0 } },
+        .{ "orientationZ", .{ .number = 0 } },
+        .{ "refDistance", .{ .number = 1 } },
+        .{ "maxDistance", .{ .number = 10000 } },
+        .{ "rolloffFactor", .{ .number = 1 } },
+        .{ "coneInnerAngle", .{ .number = 360 } },
+        .{ "coneOuterAngle", .{ .number = 360 } },
+        .{ "coneOuterGain", .{ .number = 0 } },
+    };
 };

@@ -12,4 +12,10 @@ pub const RTCOfferOptions = struct {
     iceRestart: ?bool = null,
     offerToReceiveAudio: ?bool = null,
     offerToReceiveVideo: ?bool = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "iceRestart", .{ .boolean = false } },
+    };
 };

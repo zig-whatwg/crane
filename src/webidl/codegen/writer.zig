@@ -4128,6 +4128,108 @@ fn isAnyMember(member: types.DictionaryMember) bool {
     return !member.required and t.unionTypes == null and t.generic == null and t.sequence == null and t.record == null and std.mem.eql(u8, t.type, "any");
 }
 
+/// A dictionary's inline union members that the dictionary types
+/// `runtime.JSValue` (writeTypeSimple's fallback for an inline union), for
+/// the dictionary converter:
+///
+///     pub const jsvalue_union_members = .{ "sanitizer" };
+///
+/// WebIDL 3.2.18: a member is present unless its value is undefined, and a
+/// present member converts by its type - for a union, 3.2.25: null is the
+/// dictionary arm's defaults, "null" for a string arm, and so on. The impl
+/// converts these JSValues itself, so the converter must hand it a present
+/// null as `.null`; as an optional (`?runtime.JSValue`) null read as "not
+/// present" and the member's default applied (SetHTMLOptions
+/// `{sanitizer: null}` took the default preset). A union that includes a
+/// nullable type is not listed: its present null is the value null, which
+/// Zig's null already says (it is in `nullable_members`). Written inside the
+/// dictionary's struct; nothing when it has none.
+pub fn writeJsvalueUnionMembers(w: anytype, members: []const types.DictionaryMember, model: ?*const ir.IR) !void {
+    var any = false;
+    for (members) |member| {
+        if (isJsvalueUnionMember(member, model)) any = true;
+    }
+    if (!any) return;
+    try w.writeAll("\n    /// Inline union members typed runtime.JSValue: one present with the\n");
+    try w.writeAll("    /// value null converts to `.null`, for the impl to convert by the union.\n");
+    try w.writeAll("    pub const jsvalue_union_members = .{");
+    var first = true;
+    for (members) |member| {
+        if (!isJsvalueUnionMember(member, model)) continue;
+        try w.print("{s}\"{s}\"", .{ if (first) " " else ", ", member.name });
+        first = false;
+    }
+    try w.writeAll(" };\n");
+}
+
+/// Whether an optional dictionary member is an inline union (the dictionary
+/// types it runtime.JSValue) that includes no nullable type.
+pub fn isJsvalueUnionMember(member: types.DictionaryMember, model: ?*const ir.IR) bool {
+    if (member.required) return false;
+    if (member.idlType.unionTypes == null) return false;
+    return !isNullableIDLType(member.idlType, model, 0);
+}
+
+/// A dictionary's optional members that have an IDL default value, each with
+/// its default, for converting the dictionary to an ECMAScript value:
+///
+///     pub const member_defaults = .{
+///         .{ "bubbles", .{ .boolean = false } },
+///         .{ "namespace", .null },
+///     };
+///
+/// WebIDL 2.7: a default is "the value used by default when author code or
+/// specification text does not provide a value for that member", so a member
+/// with one always exists, and 3.2.18 writes every member that exists. Every
+/// optional member is `?T = null` (or a webidl.Opt) and keeps no default, so
+/// a member an impl leaves unset - or sets to null, for a nullable member
+/// whose default is null - would be written as nothing. Each default is a
+/// tag literal the converter reads at comptime: `.null`, `.{ .boolean = b }`,
+/// `.{ .number = n }`, `.{ .string = "s" }` (an enumeration's value too),
+/// `.positive_infinity`, `.negative_infinity`, `.nan`, `.empty_sequence`,
+/// `.empty_dictionary`. Members in declaration order; the inherited
+/// dictionary's are its own. Nothing when the dictionary has none.
+pub fn writeMemberDefaults(w: anytype, members: []const types.DictionaryMember, model: ?*const ir.IR) !void {
+    _ = model;
+    var any = false;
+    for (members) |member| {
+        if (!member.required and member.default != null) any = true;
+    }
+    if (!any) return;
+    try w.writeAll("\n    /// Optional members' IDL default values: a member the value leaves\n");
+    try w.writeAll("    /// unset is written with its default when converted to script.\n");
+    try w.writeAll("    pub const member_defaults = .{\n");
+    for (members) |member| {
+        if (member.required) continue;
+        const default = member.default orelse continue;
+        try w.print("        .{{ \"{s}\", ", .{member.name});
+        switch (default) {
+            .null => try w.writeAll(".null"),
+            .boolean => |b| try w.print(".{{ .boolean = {} }}", .{b}),
+            .integer => |i| try w.print(".{{ .number = {d} }}", .{i}),
+            .float => |f| try w.print(".{{ .number = {d} }}", .{f}),
+            .string => |token| {
+                // The token's text, without its quotes (the lexeme keeps them).
+                const s = if (token.len >= 2 and token[0] == '"' and token[token.len - 1] == '"') token[1 .. token.len - 1] else token;
+                try w.writeAll(".{ .string = \"");
+                for (s) |c| switch (c) {
+                    '"' => try w.writeAll("\\\""),
+                    '\\' => try w.writeAll("\\\\"),
+                    '\n' => try w.writeAll("\\n"),
+                    else => try w.writeByte(c),
+                };
+                try w.writeAll("\" }");
+            },
+            .infinity => |sign| try w.writeAll(if (sign == .positive) ".positive_infinity" else ".negative_infinity"),
+            .nan => try w.writeAll(".nan"),
+            .emptySequence => try w.writeAll(".empty_sequence"),
+            .emptyDictionary => try w.writeAll(".empty_dictionary"),
+        }
+        try w.writeAll(" },\n");
+    }
+    try w.writeAll("    };\n");
+}
+
 /// WebIDL (3.7.6, "create an operation function"): an operation whose return
 /// type is a promise runs its steps - the brand check, argument conversion and
 /// the operation - with an exception handler, and an exception becomes a

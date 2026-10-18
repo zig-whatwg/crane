@@ -13,4 +13,13 @@ pub const SummarizerCreateCoreOptions = struct {
     expectedInputLanguages: ?[]const runtime.DOMString = null,
     expectedContextLanguages: ?[]const runtime.DOMString = null,
     outputLanguage: ?runtime.DOMString = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "type", .{ .string = "key-points" } },
+        .{ "format", .{ .string = "markdown" } },
+        .{ "length", .{ .string = "short" } },
+        .{ "preference", .{ .string = "auto" } },
+    };
 };

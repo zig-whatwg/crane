@@ -9,6 +9,14 @@ pub const MediaKeySystemMediaCapability = struct {
     encryptionScheme: ?runtime.DOMString = null,
     robustness: ?runtime.DOMString = null,
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "contentType", .{ .string = "" } },
+        .{ "encryptionScheme", .null },
+        .{ "robustness", .{ .string = "" } },
+    };
+
     /// Optional members whose IDL type is nullable: a present null is the
     /// value null. Any other member's present null converts by its type.
     pub const nullable_members = .{"encryptionScheme"};

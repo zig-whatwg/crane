@@ -11,4 +11,10 @@ pub const GPUVertexBufferLayout = struct {
     arrayStride: typedefs.GPUSize64,
     stepMode: ?enums.GPUVertexStepMode = null,
     attributes: []const GPUVertexAttribute,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "stepMode", .{ .string = "vertex" } },
+    };
 };

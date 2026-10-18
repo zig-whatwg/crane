@@ -23,6 +23,20 @@ pub const MouseEventInit = struct {
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{ "movementX", "movementY" };
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "screenX", .{ .number = 0 } },
+        .{ "screenY", .{ .number = 0 } },
+        .{ "clientX", .{ .number = 0 } },
+        .{ "clientY", .{ .number = 0 } },
+        .{ "button", .{ .number = 0 } },
+        .{ "buttons", .{ .number = 0 } },
+        .{ "relatedTarget", .null },
+        .{ "movementX", .{ .number = 0 } },
+        .{ "movementY", .{ .number = 0 } },
+    };
+
     /// Optional members whose IDL type is nullable: a present null is the
     /// value null. Any other member's present null converts by its type.
     pub const nullable_members = .{"relatedTarget"};

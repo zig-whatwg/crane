@@ -50,4 +50,8 @@ pub const MediaTrackConstraintSet = struct {
     cursor: ?typedefs.ConstrainDOMString = null,
     restrictOwnAudio: ?typedefs.ConstrainBoolean = null,
     suppressLocalAudioPlayback: ?typedefs.ConstrainBoolean = null,
+
+    /// Inline union members typed runtime.JSValue: one present with the
+    /// value null converts to `.null`, for the impl to convert by the union.
+    pub const jsvalue_union_members = .{ "pan", "tilt", "zoom" };
 };

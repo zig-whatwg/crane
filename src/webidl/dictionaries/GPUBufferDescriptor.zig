@@ -13,4 +13,10 @@ pub const GPUBufferDescriptor = struct {
     size: typedefs.GPUSize64,
     usage: typedefs.GPUBufferUsageFlags,
     mappedAtCreation: ?bool = null,
+
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "mappedAtCreation", .{ .boolean = false } },
+    };
 };

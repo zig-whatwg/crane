@@ -11,6 +11,12 @@ pub const MLSplitOptions = struct {
 
     axis: ?u32 = null,
 
+    /// Optional members' IDL default values: a member the value leaves
+    /// unset is written with its default when converted to script.
+    pub const member_defaults = .{
+        .{ "axis", .{ .number = 0 } },
+    };
+
     /// [EnforceRange] members: converted with that branch of ConvertToInt.
     pub const enforce_range_members = .{"axis"};
 };
