@@ -58,14 +58,14 @@ pub const StorageKey = @import("../standard.zig").StorageKey;
 /// A key owning a copy of `key`'s parts (server allocator): the one place
 /// the server copies a StorageKey - it keeps every part `equals` compares.
 fn copyKey(allocator: Allocator, key: StorageKey) Allocator.Error!StorageKey {
-    return StorageKey.init(allocator, key.origin);
+    return key.clone(allocator);
 }
 
 /// The key of a top-level document of `origin` (BORROWED): what a native
 /// caller with no environment - a test, the backend IDBFactory view - names
 /// a database by.
 pub fn firstPartyKey(origin: []const u8) StorageKey {
-    return StorageKey.initBorrowed(origin);
+    return StorageKey.initBorrowed(origin, origin, false);
 }
 const database_mod = @import("database.zig");
 const IDBDatabase = database_mod.IDBDatabase;

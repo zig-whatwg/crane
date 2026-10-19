@@ -302,16 +302,17 @@ fn wakeTransactions(instance: *runtime.Instance) void {
 
 /// Storage "obtain a storage key" for the factory's relevant settings
 /// object (IndexedDB 4.3 open() step 2, deleteDatabase() step 2, databases()
-/// step 2): the ONE place IndexedDB obtains its key - lane partition1
-/// extends StorageKey and this obtaining, and IndexedDB partitions with it.
-/// An opaque origin is failure: SecurityError. OWNED by the caller.
+/// step 2): the ONE place IndexedDB obtains its key -
+/// dom.global_settings.storageKeyOf, (origin, top-level site, has
+/// cross-site ancestor), so IndexedDB is partitioned as Web Storage is.
+/// Failure (an opaque origin or top-level site) is SecurityError. OWNED by
+/// the caller.
 fn storageKey(instance: *runtime.Instance) !StorageKey {
     const realm = instance.ctx.getRealm() orelse return error.SecurityError;
     const global: *runtime.Instance = @ptrCast(@alignCast(realm.global_object orelse return error.SecurityError));
-    const settings = dom.global_settings.of(global) orelse return error.SecurityError;
-    const origin = try settings.origin(global);
-    defer global.ctx.allocator.free(origin);
-    return (try storage.standard.obtainStorageKey(instance.ctx.allocator, origin)) orelse error.SecurityError;
+    // Borrowed from the global (a worker's cached key): copied to keep.
+    const key = (try dom.global_settings.storageKeyOf(global)) orelse return error.SecurityError;
+    return key.clone(instance.ctx.allocator);
 }
 
 fn enqueueConnection(factory: *runtime.Instance, storage_key: StorageKey, name: []const u8, version: ?u64, deletion: bool) !*runtime.Instance {
