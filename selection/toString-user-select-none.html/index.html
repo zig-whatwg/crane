@@ -26,7 +26,7 @@
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-880b839eb4</code>, <span class="nowrap">19 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/880b839eb4"><code>880b839eb4</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-24c6f85114</code>, <span class="nowrap">19 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/24c6f85114"><code>24c6f85114</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/selection/toString-user-select-none.html"><code>selection/<wbr>toString-<wbr>user-<wbr>select-<wbr>none.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,9 +35,9 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-f5039260"><details><summary><span class="mark">FAIL</span><span class="sub-name">Selection.toString() excludes basic user-select: none content</span></summary><pre class="msg">assert_equals: Basic user-select: none content should be excluded expected &quot;ac&quot; but got &quot;\n    abc\n  &quot;</pre></details><a class="self" href="#s-f5039260" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-4818fcff"><details><summary><span class="mark">FAIL</span><span class="sub-name">Selection.toString() excludes nested user-select: none content</span></summary><pre class="msg">assert_equals: Nested user-select: none content should be excluded expected &quot;start  end&quot; but got &quot;\n    start unselectable nested\n    text end\n  &quot;</pre></details><a class="self" href="#s-4818fcff" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-29c6fa7a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Selection.toString() includes selectable children in unselectable container</span></summary><pre class="msg">assert_equals: Selectable children should be included even in unselectable container expected &quot;selectabletext&quot; but got &quot;\n    selectable unselectable\n    text\n  &quot;</pre></details><a class="self" href="#s-29c6fa7a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f5039260"><details><summary><span class="mark">FAIL</span><span class="sub-name">Selection.toString() excludes basic user-select: none content</span></summary><pre class="msg">assert_equals: Basic user-select: none content should be excluded expected &quot;ac&quot; but got &quot;abc&quot;</pre></details><a class="self" href="#s-f5039260" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4818fcff"><details><summary><span class="mark">FAIL</span><span class="sub-name">Selection.toString() excludes nested user-select: none content</span></summary><pre class="msg">assert_equals: Nested user-select: none content should be excluded expected &quot;start  end&quot; but got &quot;start unselectable nested text end&quot;</pre></details><a class="self" href="#s-4818fcff" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-29c6fa7a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Selection.toString() includes selectable children in unselectable container</span></summary><pre class="msg">assert_equals: Selectable children should be included even in unselectable container expected &quot;selectabletext&quot; but got &quot;selectable unselectable text&quot;</pre></details><a class="self" href="#s-29c6fa7a" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
