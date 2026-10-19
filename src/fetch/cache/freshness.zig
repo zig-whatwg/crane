@@ -1,194 +1,185 @@
-//! Freshness Calculation - HTTP Caching (RFC 7234)
+//! Freshness - RFC 9111 4.2, and the HTTP-date parser the cache and
+//! document.lastModified share.
 //!
-//! This module implements HTTP cache freshness calculations per RFC 7234.
+//! A stored response's freshness inputs are read from its header list once,
+//! when it is stored or freshened (`Facts.fromHeaders`); a lookup then needs
+//! only arithmetic: fresh while `lifetime > currentAge` (4.2).
 //!
-//! Spec: https://httpwg.org/specs/rfc7234.html#calculating.freshness.lifetime
-//!       https://httpwg.org/specs/rfc7234.html#age.calculations
+//! RFC 9111 (June 2022) obsoletes RFC 7234, which the earlier code here
+//! followed: it fell through to the Last-Modified heuristic on an invalid
+//! Expires (9111 5.3: "already expired"), gave every status a heuristic
+//! lifetime capped at a day, and took the last of duplicate directives.
 //!
-//! Key concepts:
-//! - Freshness lifetime: How long a response can be considered "fresh"
-//! - Current age: How old the response currently is
-//! - Fresh if: current_age < freshness_lifetime
+//! Spec: https://www.rfc-editor.org/rfc/rfc9111#section-4.2
 
 const std = @import("std");
 const cache_control = @import("cache_control.zig");
-const clock = @import("clock");
-const CacheControl = cache_control.CacheControl;
+const Directives = cache_control.Directives;
 
-/// Represents timestamps for cache entry freshness calculations.
-/// All times are in seconds since Unix epoch.
-pub const CacheTiming = struct {
-    /// When the request was sent (request_time in RFC 7234)
-    request_time: i64,
-    /// When the response was received (response_time in RFC 7234)
-    response_time: i64,
-    /// Date header value from response (or response_time if missing)
-    date_value: i64,
-    /// Age header value from response (0 if missing)
-    age_value: u64 = 0,
-    /// Last-Modified header value (optional, for heuristic freshness)
+/// What a stored response's header list says about its freshness. Times are
+/// seconds since the Unix epoch.
+pub const Facts = struct {
+    status: u16,
+    /// The Date header (first line), if it parses.
+    date: ?i64 = null,
+    expires: Expires = .absent,
+    /// The Last-Modified header (first line), if it parses.
     last_modified: ?i64 = null,
-    /// Expires header value (optional)
-    expires: ?i64 = null,
-    /// Parsed Cache-Control directives
-    cache_control: CacheControl = .{},
+    /// age_value (4.2.3): the Age header's first member, 0 when absent or
+    /// invalid (5.1: "a cache SHOULD ignore the field").
+    age: u64 = 0,
+    /// Every Cache-Control line, the first occurrence of each directive.
+    directives: Directives = .{},
 
-    /// Current time for age calculations
-    pub fn now() i64 {
-        return clock.wallSeconds();
+    pub const Expires = union(enum) {
+        absent,
+        /// 5.3: "A cache recipient MUST interpret invalid date formats,
+        /// especially the value "0", as representing a time in the past".
+        invalid,
+        at: i64,
+    };
+
+    /// The facts of a response with `status` and `headers` - any slice of
+    /// structs with `name` and `value`.
+    pub fn fromHeaders(status: u16, headers: anytype) Facts {
+        var facts: Facts = .{ .status = status };
+        var seen_date = false;
+        var seen_last_modified = false;
+        var seen_age = false;
+        var pragma_no_cache = false;
+        for (headers) |header| {
+            const name = header.name;
+            const value = header.value;
+            if (std.ascii.eqlIgnoreCase(name, "Cache-Control")) {
+                facts.directives.add(value);
+            } else if (std.ascii.eqlIgnoreCase(name, "Expires")) {
+                // 4.2.1: of two Expires lines, the first.
+                if (facts.expires == .absent) facts.expires = if (parseHttpDate(value)) |t| .{ .at = t } else .invalid;
+            } else if (std.ascii.eqlIgnoreCase(name, "Date")) {
+                if (!seen_date) facts.date = parseHttpDate(value);
+                seen_date = true;
+            } else if (std.ascii.eqlIgnoreCase(name, "Last-Modified")) {
+                if (!seen_last_modified) facts.last_modified = parseHttpDate(value);
+                seen_last_modified = true;
+            } else if (std.ascii.eqlIgnoreCase(name, "Age")) {
+                // 5.1: a list-based value's first member; an invalid one is
+                // ignored.
+                if (!seen_age) {
+                    const first = std.mem.trim(u8, value[0 .. std.mem.indexOfScalar(u8, value, ',') orelse value.len], " \t");
+                    facts.age = switch (cache_control.deltaSeconds(first)) {
+                        .value => |seconds| seconds,
+                        else => 0,
+                    };
+                }
+                seen_age = true;
+            } else if (std.ascii.eqlIgnoreCase(name, "Pragma")) {
+                var tokens = std.mem.splitScalar(u8, value, ',');
+                while (tokens.next()) |token| {
+                    if (std.ascii.eqlIgnoreCase(std.mem.trim(u8, token, " \t"), "no-cache")) pragma_no_cache = true;
+                }
+            }
+        }
+        // RFC 9111 5.4 gives a response's Pragma no meaning ("does not
+        // provide a reliable replacement for Cache-Control: no-cache"), but
+        // Chrome 155, Firefox 158 and Safari 27 all refuse to reuse a
+        // `Pragma: no-cache` response without the network, Cache-Control
+        // max-age and public notwithstanding; Chrome and Safari even with
+        // immutable, where Firefox reuses it (fetch/http-cache/
+        // pragma-no-cache-with-cache-control.html, wpt.fyi 23b0b89b1a;
+        // Mozilla bug 1937766, Chromium issue 447171250). Golden rule 2, no
+        // newer spec: the majority - it is no-cache.
+        if (pragma_no_cache) facts.directives.no_cache = true;
+        return facts;
+    }
+
+    /// Whether the response carries explicit freshness (RFC 9111 3's
+    /// storage condition: an Expires field or a max-age directive, valid
+    /// or not).
+    pub fn hasExplicitFreshness(self: Facts) bool {
+        return self.directives.max_age != .absent or self.expires != .absent;
     }
 };
 
-/// Calculate the current age of a cached response per RFC 7234 § 4.2.3.
-///
-/// The algorithm accounts for:
-/// - Age header from origin or intermediate caches
-/// - Network delay (response_time - request_time)
-/// - Time since response was stored (resident_time)
-///
-/// age_value          = Age header value (0 if absent)
-/// date_value         = Date header value
-/// request_time       = when request was sent
-/// response_time      = when response was received
-/// now                = current time
-///
-/// apparent_age       = max(0, response_time - date_value)
-/// response_delay     = response_time - request_time
-/// corrected_age_value = age_value + response_delay
-/// corrected_initial_age = max(apparent_age, corrected_age_value)
-/// resident_time      = now - response_time
-/// current_age        = corrected_initial_age + resident_time
-pub fn calculateCurrentAge(timing: CacheTiming, current_time: i64) u64 {
-    // Step 1: Apparent age (clock skew correction)
-    const apparent_age: i64 = @max(0, timing.response_time - timing.date_value);
+/// A lifetime longer than any age: RFC 9111 1.2.2's "infinity" (2^31 s).
+pub const unlimited: u64 = Directives.delta_seconds_overflow;
 
-    // Step 2: Response delay
-    const response_delay: i64 = timing.response_time - timing.request_time;
-
-    // Step 3: Corrected age value (accounts for intermediate cache age)
-    const corrected_age_value: i64 = @as(i64, @intCast(timing.age_value)) + response_delay;
-
-    // Step 4: Corrected initial age (take maximum for safety)
-    const corrected_initial_age: i64 = @max(apparent_age, corrected_age_value);
-
-    // Step 5: Resident time (time in our cache)
-    const resident_time: i64 = current_time - timing.response_time;
-
-    // Step 6: Current age
-    const current_age: i64 = corrected_initial_age + resident_time;
-
-    // Return as unsigned (age can't be negative)
-    return if (current_age > 0) @intCast(current_age) else 0;
+/// RFC 9111 4.2.1's freshness_lifetime, in seconds, of a response with
+/// `facts` received at `response_time` (the Date stand-in when it has none,
+/// RFC 9110 6.6.1). This cache is private: s-maxage is not read.
+pub fn lifetime(facts: Facts, response_time: i64) u64 {
+    // "If the max-age response directive is present, use its value" - and an
+    // invalid one is stale (4.2.1's last paragraph).
+    switch (facts.directives.max_age) {
+        .value => |seconds| return seconds,
+        .invalid => return 0,
+        .absent => {},
+    }
+    // "If the Expires response header field is present, use its value minus
+    // the value of the Date response header field".
+    const date = facts.date orelse response_time;
+    switch (facts.expires) {
+        .at => |expires| return if (expires > date) @intCast(expires - date) else 0,
+        .invalid => return 0,
+        .absent => {},
+    }
+    // 4.2.2: a heuristic, for the statuses the browsers' majority gives one.
+    // 410 Gone is fresh without limit: Chromium's
+    // HttpResponseHeaders::GetFreshnessLifetimes ("These responses are
+    // implicitly fresh") and Gecko's
+    // nsHttpResponseHead::ComputeFreshnessLifetime ("These responses can be
+    // cached indefinitely") both.
+    if (facts.status == 410) return unlimited;
+    if (!heuristicFreshnessStatus(facts.status)) return 0;
+    const last_modified = facts.last_modified orelse return 0;
+    if (last_modified > date) return 0;
+    // "no more than some fraction of the interval since that time. A typical
+    // setting of this fraction might be 10%." No cap: Chromium has none,
+    // Gecko a week, the RFC none - no majority, so the spec (golden rule 2).
+    return @intCast(@divTrunc(date - last_modified, 10));
 }
 
-/// Calculate the freshness lifetime of a cached response per RFC 7234 § 4.2.1.
-///
-/// Priority order:
-/// 1. s-maxage (for shared caches)
-/// 2. max-age
-/// 3. Expires - Date
-/// 4. Heuristic (10% of time since Last-Modified)
-///
-/// Returns null if response should not be cached.
-pub fn calculateFreshnessLifetime(timing: CacheTiming, is_shared_cache: bool) ?u64 {
-    const cc = timing.cache_control;
-
-    // no-store means don't cache at all
-    if (cc.no_store) {
-        return null;
-    }
-
-    // 1. For shared caches, s-maxage takes precedence
-    if (is_shared_cache) {
-        if (cc.s_maxage) |s_max| {
-            return s_max;
-        }
-    }
-
-    // 2. max-age directive
-    if (cc.max_age) |max| {
-        return max;
-    }
-
-    // 3. Expires header (if no max-age)
-    if (timing.expires) |exp| {
-        const delta = exp - timing.date_value;
-        return if (delta > 0) @intCast(delta) else 0;
-    }
-
-    // 4. Heuristic freshness (10% of age since Last-Modified)
-    // Only use heuristic if response is cacheable
-    if (timing.last_modified) |lm| {
-        const age_since_modified = timing.date_value - lm;
-        if (age_since_modified > 0) {
-            // Use 10% as heuristic, with a reasonable cap
-            const heuristic: u64 = @intCast(@divTrunc(age_since_modified, 10));
-            // Cap at 1 day for heuristic freshness
-            return @min(heuristic, 86400);
-        }
-    }
-
-    // No freshness information available - treat as stale
-    return 0;
+/// The statuses that get a Last-Modified heuristic lifetime. RFC 9110 15.1
+/// makes 404, 405, 414 and 501 heuristically cacheable too, and a `public`
+/// response of any status (RFC 9111 4.2.2), but Chrome 155 and Firefox 158
+/// give them none (fetch/http-cache/heuristic.any.html at wpt.fyi
+/// 23b0b89b1a: both fail those cases, Safari 27 passes them; 204: Firefox
+/// and Safari pass, Chrome fails) - the browsers' majority, case by case
+/// (golden rule 2; no newer spec: RFC 7231 6.1 had the same list).
+/// Chromium: 200, 203, 206 (http_response_headers.cc); Gecko: below 400 but
+/// 302, 303, 304, 307 (nsHttpResponseHead.cpp).
+fn heuristicFreshnessStatus(status: u16) bool {
+    return switch (status) {
+        200, 203, 204, 206, 300, 301, 308 => true,
+        else => false,
+    };
 }
 
-/// Check if a cached response is fresh.
-///
-/// A response is fresh if: current_age < freshness_lifetime
-pub fn isFresh(timing: CacheTiming, is_shared_cache: bool, current_time: i64) bool {
-    const freshness = calculateFreshnessLifetime(timing, is_shared_cache) orelse return false;
-    const age = calculateCurrentAge(timing, current_time);
-    return age < freshness;
+/// RFC 9110 15.1's heuristically cacheable statuses: what RFC 9111 3 lets a
+/// cache store without explicit freshness or `public`/`private`.
+pub fn heuristicallyCacheable(status: u16) bool {
+    return switch (status) {
+        200, 203, 204, 206, 300, 301, 308, 404, 405, 410, 414, 501 => true,
+        else => false,
+    };
 }
 
-/// Check if a stale response can be served while revalidating.
-///
-/// Per stale-while-revalidate extension (RFC 5861).
-/// Response can be served stale if:
-///   current_age < freshness_lifetime + stale_while_revalidate
-pub fn canServeStaleWhileRevalidate(timing: CacheTiming, is_shared_cache: bool, current_time: i64) bool {
-    const cc = timing.cache_control;
-
-    // Check if stale-while-revalidate is specified
-    const swr = cc.stale_while_revalidate orelse return false;
-
-    // Get freshness lifetime
-    const freshness = calculateFreshnessLifetime(timing, is_shared_cache) orelse return false;
-    const age = calculateCurrentAge(timing, current_time);
-
-    // Can serve stale if within the stale-while-revalidate window
-    return age < freshness + swr;
-}
-
-/// Check if a stale response can be served when origin returns an error.
-///
-/// Per stale-if-error extension (RFC 5861).
-/// Response can be served stale on error if:
-///   current_age < freshness_lifetime + stale_if_error
-pub fn canServeStaleIfError(timing: CacheTiming, is_shared_cache: bool, current_time: i64) bool {
-    const cc = timing.cache_control;
-
-    // Check if stale-if-error is specified
-    const sie = cc.stale_if_error orelse return false;
-
-    // Get freshness lifetime
-    const freshness = calculateFreshnessLifetime(timing, is_shared_cache) orelse return false;
-    const age = calculateCurrentAge(timing, current_time);
-
-    // Can serve stale on error if within the stale-if-error window
-    return age < freshness + sie;
-}
-
-/// Calculate time remaining until response becomes stale.
-/// Returns 0 if already stale.
-pub fn timeUntilStale(timing: CacheTiming, is_shared_cache: bool, current_time: i64) u64 {
-    const freshness = calculateFreshnessLifetime(timing, is_shared_cache) orelse return 0;
-    const age = calculateCurrentAge(timing, current_time);
-
-    if (age >= freshness) {
-        return 0;
-    }
-    return freshness - age;
+/// RFC 9111 4.2.3's current_age at `now` of a response with `facts`, whose
+/// request went at `request_time` and whose answer came at `response_time`.
+/// Never negative; saturating.
+pub fn currentAge(facts: Facts, request_time: i64, response_time: i64, now: i64) u64 {
+    const date = facts.date orelse response_time;
+    // apparent_age = max(0, response_time - date_value)
+    const apparent_age: u64 = if (response_time > date) @intCast(response_time - date) else 0;
+    // response_delay = response_time - request_time
+    const response_delay: u64 = if (response_time > request_time) @intCast(response_time - request_time) else 0;
+    // corrected_age_value = age_value + response_delay
+    const corrected_age_value = facts.age +| response_delay;
+    // corrected_initial_age = max(apparent_age, corrected_age_value)
+    const corrected_initial_age = @max(apparent_age, corrected_age_value);
+    // resident_time = now - response_time
+    const resident_time: u64 = if (now > response_time) @intCast(now - response_time) else 0;
+    // current_age = corrected_initial_age + resident_time
+    return corrected_initial_age +| resident_time;
 }
 
 /// RFC 9110 section 5.6.7: parse any of the three HTTP-date wire formats.
@@ -356,190 +347,6 @@ fn isLeapYear(year: u16) bool {
 // =============================================================================
 // Tests
 // =============================================================================
-
-test "calculateCurrentAge - basic" {
-    const timing = CacheTiming{
-        .request_time = 1000,
-        .response_time = 1001,
-        .date_value = 1001,
-        .age_value = 0,
-    };
-
-    // At response_time, age should be ~1 (response delay)
-    try std.testing.expectEqual(@as(u64, 1), calculateCurrentAge(timing, 1001));
-
-    // 100 seconds later
-    try std.testing.expectEqual(@as(u64, 101), calculateCurrentAge(timing, 1101));
-}
-
-test "calculateCurrentAge - with Age header" {
-    const timing = CacheTiming{
-        .request_time = 1000,
-        .response_time = 1001,
-        .date_value = 1001,
-        .age_value = 50, // Response was already 50s old at intermediate cache
-    };
-
-    // Age should include the 50s from Age header
-    try std.testing.expectEqual(@as(u64, 51), calculateCurrentAge(timing, 1001));
-}
-
-test "calculateCurrentAge - clock skew" {
-    // Server clock is ahead by 10 seconds
-    const timing = CacheTiming{
-        .request_time = 1000,
-        .response_time = 1001,
-        .date_value = 1011, // Server says it's 10s in the future
-        .age_value = 0,
-    };
-
-    // apparent_age = max(0, 1001 - 1011) = 0
-    // corrected_age = 0 + (1001 - 1000) = 1
-    // current_age at 1001 = max(0, 1) + 0 = 1
-    try std.testing.expectEqual(@as(u64, 1), calculateCurrentAge(timing, 1001));
-}
-
-test "calculateFreshnessLifetime - max-age" {
-    var timing = CacheTiming{
-        .request_time = 1000,
-        .response_time = 1001,
-        .date_value = 1001,
-    };
-    timing.cache_control = CacheControl.parse("max-age=3600");
-
-    try std.testing.expectEqual(@as(?u64, 3600), calculateFreshnessLifetime(timing, false));
-}
-
-test "calculateFreshnessLifetime - s-maxage for shared cache" {
-    var timing = CacheTiming{
-        .request_time = 1000,
-        .response_time = 1001,
-        .date_value = 1001,
-    };
-    timing.cache_control = CacheControl.parse("max-age=3600, s-maxage=600");
-
-    // Shared cache uses s-maxage
-    try std.testing.expectEqual(@as(?u64, 600), calculateFreshnessLifetime(timing, true));
-
-    // Private cache uses max-age
-    try std.testing.expectEqual(@as(?u64, 3600), calculateFreshnessLifetime(timing, false));
-}
-
-test "calculateFreshnessLifetime - Expires header" {
-    const timing = CacheTiming{
-        .request_time = 1000,
-        .response_time = 1001,
-        .date_value = 1001,
-        .expires = 4601, // Expires in 3600 seconds
-    };
-
-    try std.testing.expectEqual(@as(?u64, 3600), calculateFreshnessLifetime(timing, false));
-}
-
-test "calculateFreshnessLifetime - heuristic" {
-    const timing = CacheTiming{
-        .request_time = 1000,
-        .response_time = 1001,
-        .date_value = 1001,
-        .last_modified = 1001 - 36000, // Modified 10 hours ago
-    };
-
-    // Heuristic: 10% of 36000 = 3600
-    try std.testing.expectEqual(@as(?u64, 3600), calculateFreshnessLifetime(timing, false));
-}
-
-test "calculateFreshnessLifetime - heuristic cap" {
-    const timing = CacheTiming{
-        .request_time = 1000,
-        .response_time = 1001,
-        .date_value = 1001,
-        .last_modified = 1001 - 864000, // Modified 10 days ago
-    };
-
-    // Heuristic would be 86400, capped at 1 day
-    try std.testing.expectEqual(@as(?u64, 86400), calculateFreshnessLifetime(timing, false));
-}
-
-test "calculateFreshnessLifetime - no-store" {
-    var timing = CacheTiming{
-        .request_time = 1000,
-        .response_time = 1001,
-        .date_value = 1001,
-    };
-    timing.cache_control = CacheControl.parse("no-store");
-
-    try std.testing.expectEqual(@as(?u64, null), calculateFreshnessLifetime(timing, false));
-}
-
-test "isFresh - fresh response" {
-    var timing = CacheTiming{
-        .request_time = 1000,
-        .response_time = 1001,
-        .date_value = 1001,
-    };
-    timing.cache_control = CacheControl.parse("max-age=3600");
-
-    // 1000 seconds after response (age ~1001)
-    try std.testing.expect(isFresh(timing, false, 2001));
-}
-
-test "isFresh - stale response" {
-    var timing = CacheTiming{
-        .request_time = 1000,
-        .response_time = 1001,
-        .date_value = 1001,
-    };
-    timing.cache_control = CacheControl.parse("max-age=3600");
-
-    // 4000 seconds after response (age ~4001)
-    try std.testing.expect(!isFresh(timing, false, 5001));
-}
-
-test "canServeStaleWhileRevalidate" {
-    var timing = CacheTiming{
-        .request_time = 1000,
-        .response_time = 1001,
-        .date_value = 1001,
-    };
-    timing.cache_control = CacheControl.parse("max-age=3600, stale-while-revalidate=60");
-
-    // Fresh (age ~3599 < 3600)
-    try std.testing.expect(canServeStaleWhileRevalidate(timing, false, 4599));
-
-    // Stale but within SWR window (age ~3650 < 3660)
-    try std.testing.expect(canServeStaleWhileRevalidate(timing, false, 4650));
-
-    // Beyond SWR window (age ~3670 >= 3660)
-    try std.testing.expect(!canServeStaleWhileRevalidate(timing, false, 4670));
-}
-
-test "canServeStaleIfError" {
-    var timing = CacheTiming{
-        .request_time = 1000,
-        .response_time = 1001,
-        .date_value = 1001,
-    };
-    timing.cache_control = CacheControl.parse("max-age=3600, stale-if-error=300");
-
-    // Within stale-if-error window
-    try std.testing.expect(canServeStaleIfError(timing, false, 4800));
-
-    // Beyond stale-if-error window
-    try std.testing.expect(!canServeStaleIfError(timing, false, 5000));
-}
-
-test "timeUntilStale" {
-    var timing = CacheTiming{
-        .request_time = 1000,
-        .response_time = 1001,
-        .date_value = 1001,
-    };
-    timing.cache_control = CacheControl.parse("max-age=3600");
-
-    // At response time, ~3599 seconds until stale
-    const remaining = timeUntilStale(timing, false, 1001);
-    try std.testing.expect(remaining >= 3598 and remaining <= 3600);
-}
 
 test "parseHttpDate - IMF-fixdate" {
     const date = "Sun, 06 Nov 1994 08:49:37 GMT";

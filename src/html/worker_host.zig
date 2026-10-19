@@ -1026,6 +1026,19 @@ pub const WorkerHost = struct {
             // its own URL through secure_context.ofWorker.
             .owner_is_secure_context = true,
             .service = start.service,
+            // Service Workers "Run Service Worker" leaves the environment's
+            // top-level origin implementation-defined. Crane's storage key is
+            // the origin (unpartitioned), so it is the service worker's own:
+            // its top-level site keys every request its global makes - the
+            // HTTP cache's partition (Fetch 2.7-2.8), the preflight cache's
+            // and authentication entries' - as Chromium keys a service worker
+            // by its storage key's top-level site. Null for an origin with no
+            // site, or no memory: its requests then share nothing.
+            .top_level_site = site: {
+                const origin = fetch_mod.internal.origins.serializedOriginOf(allocator, start.script_url) catch break :site null;
+                defer allocator.free(origin);
+                break :site agent_clusters.siteOf(allocator, origin) catch null;
+            },
         };
         thread_host.host = self;
         hosts.append(std.heap.page_allocator, self) catch {};

@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A response stored at its body's end misses the bodies Fetch drops](architecture-a-response-stored-at-its-body-end-misses-the-bodies-fetch-drops.md) - Before waiting for a body's end, list who reads the body: a body nobody will read never "finishes" - it is cancelled - so store it at its head.
 - [Count tree scopes from the walk's moves, and prove the count against the literal steps](architecture-count-tree-scopes-from-the-walks-moves.md) - When the engine lacks a per-node pointer the algorithm keeps asking about, derive the answer from the walk's own moves - and make a randomized differential test against the literal steps the proof, not the argument.
 - [A weak list walked across an engine call loses entries mid-walk - walk it through a cursor its removals move](architecture-a-weak-list-walked-across-an-engine-call-loses-entries-mid-walk.md) - Any engine call that can allocate can run teardowns: a list of objects the collector frees must survive a removal at every engine call in its walk - walk it through a cursor the list moves, never through a slice or a copy of raw pointers - and hold the agent's teardowns for the walk, so the entry being stepped is not freed under its own step.
 - [A task that may wait needs a third answer, and every "is there work" check must ask it](architecture-a-task-that-may-wait-needs-a-third-answer.md) - When a queue gains items that may not run yet, grep every "queue is non-empty" check: each one is a busy-wait or a hang unless it counts only what may run.
@@ -714,6 +715,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Pre-existing allocations distort failure-injection accounting](testing-preexisting-allocations-distort-failure-injection-accounting.md) - Align accounting with ownership and cover destination growth separately.
 
 ### Debugging
+- [An LRU list inside a hash map dangles after a rehash](debugging-an-lru-list-inside-a-hash-map-dangles-after-a-rehash.md) - Never keep a pointer to a hash map's value across a `put`: a list threaded through the values dangles at the first rehash. Heap-allocate the nodes and store pointers in the map.
 - [A call that can free its argument ends every read of it](debugging-a-call-that-can-free-its-argument-ends-every-read-of-it.md) - A call that can free its argument ends the caller's use of it - including the `defer`s written above the call; read the trace's top frame before believing a deep one.
 - [A parsed selector borrows its source text](debugging-a-parsed-selector-borrows-its-source-text.md) - Before keeping a parse result, find out what it borrows: an AST of slices lives no longer than its source.
 - [A per-call allocation in a lonely size class maps a page every call](debugging-a-per-call-allocation-in-a-lonely-size-class-maps-a-page.md) - Count allocations AND look at where they land: a per-call allocation that empties a DebugAllocator page costs a syscall pair; put call-lifetime data on the stack.
