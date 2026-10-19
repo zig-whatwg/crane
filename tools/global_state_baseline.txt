@@ -37,6 +37,7 @@ src/dom/child_navigables.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/client_message_queues.zig enable_step 1 G P-res decl:8cb618e18fc22ffa
 src/dom/cloning_steps.zig installed 1 G H decl:58f95f076a85d7c6
 src/dom/cloning_steps.zig installed_count 1 G H decl:3796f88280404836
+src/dom/close_watcher_manager.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/content_navigables.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/crypto_keys.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/custom_elements.zig implementation 1 G P-res decl:89dd82c5fbd26c9f
