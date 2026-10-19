@@ -3334,6 +3334,16 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
         allocator.destroy(integration);
         return error.OutOfMemory;
     };
+    // HTML "create a new top-level traversable", step 10: only an opener
+    // supplies a session-storage snapshot. An iframe opener uses its TOP's
+    // whole shed; a named target reused by window.open never reaches here.
+    // The owner list holds the integration before storage is published, so
+    // an append failure cannot leave an unreachable tab's copied shelves.
+    if (!noopener) if (integration.browsing_context) |created_bc| {
+        if (@import("dom").browser_state.userAgentStorageOf(window.ctx)) |browser_storage| {
+            web_storage.web_storage.cloneSessionStorage(browser_storage, internal.browsing_context.getTop().id, created_bc.getTop().id) catch {};
+        }
+    };
     // Steps 8.5-8.6: a named target names the new navigable.
     if (!std.ascii.eqlIgnoreCase(target, "_blank")) {
         if (integration.browsing_context) |bc| bc.setTargetName(target) catch {};
