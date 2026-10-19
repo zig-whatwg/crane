@@ -526,6 +526,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Raw event handlers own their source](spec-compliance-raw-event-handlers-own-their-source.md) - Retain the stored source; the current attribute can differ after CSP rejection or body replacement.
 - [Child removal does not prepare a script](spec-compliance-child-removal-does-not-prepare-a-script.md) - Carry the mutation reason so removal differs from insertion without changing style updates.
 - [A failed stylesheet can still have a sheet](spec-compliance-a-failed-stylesheet-can-still-have-a-sheet.md) - Rejecting CSS bytes does not necessarily remove the CSSOM sheet.
+- [Find where the browsers check before carrying a report across threads](spec-compliance-find-where-the-browsers-check-before-carrying-a-report-across-threads.md) - When a spec step puts a check on a thread that cannot report it, read where the three engines make that check before designing a delivery. Often they make it earlier, on the caller's thread, and the cross-thread mechanism is never needed.
 
 ### Codegen
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
