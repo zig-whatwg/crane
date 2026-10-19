@@ -20,7 +20,7 @@ fn sendHeaders(allocator: std.mem.Allocator, first: []const u8, second: []const 
     // Retries must not combine values back into the script-visible list.
     for (0..2) |_| {
         const started = try http.httpNetworkOrCacheFetchStart(allocator, params, .{});
-        const network = started.network;
+        const network = started.network.request;
         defer http.freeNetworkRequest(allocator, network);
         var matches: usize = 0;
         for (network.headers) |header| {

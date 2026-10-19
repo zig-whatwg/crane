@@ -829,6 +829,11 @@ pub const ServiceWorkerFetchOptions = struct {
     cookie_jar: ?*fetch.internal.CookieJar = null,
     network: ?*fetch.network.NetworkContext = null,
     blob_url_store: ?*anyopaque = null,
+    /// Fetch "determine the network partition key" for the request: its
+    /// service worker's top-level site, serialized (BORROWED; copied into
+    /// the request). It selects the HTTP cache partition the script is
+    /// stored in and looked up from (Fetch 2.8); null bypasses the cache.
+    network_partition_key: ?[]const u8 = null,
     /// The job's referrer - its client's creation URL, serialized (BORROWED
     /// for the fetch) - the request's referrer, as its client's would be;
     /// null (a Soft Update's job, which has no client) leaves it "client",
@@ -926,6 +931,7 @@ pub fn serviceWorkerScriptRequest(allocator: Allocator, url: []const u8, options
     request.cookie_jar = options.cookie_jar;
     request.network = options.network;
     request.blob_url_store = options.blob_url_store;
+    if (options.network_partition_key) |key| request.network_partition_key = try allocator.dupe(u8, key);
     if (options.referrer) |referrer| try request.setReferrerUrl(referrer);
     request.csp_violation_reporter = options.csp_violation_reporter;
     return request;

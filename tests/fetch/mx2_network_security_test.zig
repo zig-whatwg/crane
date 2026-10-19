@@ -21,7 +21,7 @@ test "network headers add Connection once without exposing it to script or repla
         // request. The user agent's addition must not accumulate there.
         for (0..2) |_| {
             const started = try http.httpNetworkOrCacheFetchStart(allocator, params, .{});
-            const network = started.network;
+            const network = started.network.request;
             defer http.freeNetworkRequest(allocator, network);
             var count: usize = 0;
             for (network.headers) |header| {

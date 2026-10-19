@@ -128,8 +128,25 @@ fn fetchForUpdate(manager: *Manager, plan: *const registry_mod.FetchPlan) regist
     // origin - the script url's, which Register checked against the scope's.
     const own_origin = scope_mod.originOf(manager.allocator, plan.script_url) catch return .{ .failure = .network };
     defer manager.allocator.free(own_origin);
-    var fetcher: Fetcher = .{ .client = client, .manager = manager, .fallback_origin = own_origin, .referrer = plan.referrer };
+    const partition = partitionKeyOf(manager.allocator, own_origin) catch return .{ .failure = .network };
+    defer if (partition) |p| manager.allocator.free(p);
+    var fetcher: Fetcher = .{ .client = client, .manager = manager, .fallback_origin = own_origin, .referrer = plan.referrer, .partition_key = partition };
     return update_fetch.run(manager.allocator, plan, fetcher.interface());
+}
+
+/// Fetch "determine the network partition key" for a service worker's
+/// script requests: the top-level site of the service worker's environment.
+/// Crane's storage key is the origin (unpartitioned, realm.zig Register), so
+/// that is the site of the service worker's own origin - the registration's
+/// - for the update's fetches and the worker's imports alike, which then
+/// share one HTTP cache partition (Chromium keys a service worker's script
+/// fetches by its storage key's top-level site the same way). Null - no
+/// cache - for an origin with no site. OWNED.
+fn partitionKeyOf(allocator: Allocator, origin: []const u8) Allocator.Error!?[]u8 {
+    return html.agent_clusters.siteOf(allocator, origin) catch |err| switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        else => null,
+    };
 }
 
 /// The real fetch, over Fetch (html_core's service worker script fetch).
@@ -140,6 +157,8 @@ const Fetcher = struct {
     fallback_origin: []const u8,
     /// The job's referrer (BORROWED from the plan), or null.
     referrer: ?[]const u8 = null,
+    /// The requests' network partition key (`partitionKeyOf`; BORROWED).
+    partition_key: ?[]const u8 = null,
 
     fn interface(self: *Fetcher) update_fetch.Fetcher {
         return .{ .ctx = self, .fetch = fetchOne, .wrap_policy = wrapPolicy };
@@ -156,6 +175,7 @@ const Fetcher = struct {
             .cookie_jar = if (client) |c| c.cookie_jar else null,
             .network = if (client) |c| c.network else self.networkOfManager(),
             .blob_url_store = if (client) |c| c.blob_url_store else null,
+            .network_partition_key = self.partition_key,
             .referrer = self.referrer,
         });
     }
@@ -308,6 +328,10 @@ fn importScript(manager_ptr: *anyopaque, worker_id: u64, ctx: runtime.Context, u
             const global = globalOf(ctx);
             var client = if (global) |g| try dom.global_settings.requestClient(g) else dom.global_settings.Client{ .allocator = allocator };
             defer client.deinit();
+            // The partition the update's fetches use: the worker's own
+            // origin's site (`partitionKeyOf`).
+            const partition = if (client.request.origin) |origin| try partitionKeyOf(allocator, origin) else null;
+            defer if (partition) |p| allocator.free(p);
             var response = script_fetch.fetchServiceWorkerResource(allocator, url, .{
                 .kind = .imported_script,
                 .bypass_http_cache = plan.bypass_http_cache,
@@ -319,6 +343,7 @@ fn importScript(manager_ptr: *anyopaque, worker_id: u64, ctx: runtime.Context, u
                 .cookie_jar = client.request.cookie_jar,
                 .network = client.request.network,
                 .blob_url_store = client.request.blob_url_store,
+                .network_partition_key = partition,
             }) catch |err| return err;
             defer response.deinit();
             // 11. A bad import script response is a network error.

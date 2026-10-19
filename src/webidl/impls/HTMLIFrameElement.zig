@@ -1641,6 +1641,28 @@ fn startFetch(record: *Navigation) void {
             dom_module.navigables.containerKind(@ptrCast(@alignCast(element_ptr))) orelse .iframe
         else
             null;
+        // Fetch "determine the network partition key" given the request's
+        // reserved client: a child navigable's has its parent environment's
+        // top-level origin ("create navigation params by fetching"), so the
+        // container document's top-level site. A top-level navigation's
+        // stays null (its key would follow each hop's URL): it bypasses the
+        // partitioned stores, the HTTP cache among them.
+        // A top-level traversable's (a popup's) reserved client is the
+        // environment being created, whose top-level creation URL is the
+        // URL navigated to and whose top-level origin is null: Fetch 2.7
+        // step 2 takes that URL's origin, so the key is its site - redone at
+        // each redirect to another origin, where step 21.2 makes a new
+        // reserved client (`followManualRedirect`). Out of memory leaves it
+        // null: the request then shares nothing.
+        var partition_allocator: std.mem.Allocator = allocator;
+        const partition_key: ?[]u8 = key: {
+            const container_document = containerDocumentOf(record.integration) orelse
+                break :key topLevelPartitionKey(allocator, url);
+            const container_window = windowOfRealm(container_document.ctx) orelse break :key null;
+            partition_allocator = container_window.ctx.allocator;
+            break :key dom_module.global_settings.topLevelSiteOf(container_window) catch null;
+        };
+        defer if (partition_key) |key| partition_allocator.free(key);
         const request = navigation_fetch.navigationRequest(allocator, url, .{
             .destination = if (container_kind) |kind| switch (kind) {
                 .iframe => .iframe,
@@ -1648,6 +1670,7 @@ fn startFetch(record: *Navigation) void {
                 .object => .object,
                 .embed => .embed,
             } else .document,
+            .network_partition_key = partition_key,
             .mode = .navigate,
             // Step 3: redirect mode "manual" - the navigation follows each
             // redirect itself (step 21, `followManualRedirect`), so every
@@ -2015,6 +2038,15 @@ fn followManualRedirect(record: *Navigation, f: *fetch_mod.algorithms.AsyncFetch
         }
         const scheme = navigate_steps.schemeOf(location);
         const http = std.mem.eql(u8, scheme, "http") or std.mem.eql(u8, scheme, "https");
+        // A top-level traversable's next hop is fetched for the reserved
+        // client its URL gets (21.2): its network partition key is that
+        // URL's site (Fetch 2.7 step 2, as at the first request). A child
+        // navigable's stays its container's top-level site.
+        if (http and record.integration.iframe_element == null) {
+            const request = f.job.request;
+            if (request.network_partition_key) |old| request.allocator.free(old);
+            request.network_partition_key = topLevelPartitionKey(request.allocator, location);
+        }
         // 21.1. Another origin than the reserved client's creation URL's.
         if (http) if (record.reserved_url) |reserved_url| {
             const same = fetch_mod.internal.origins.sameOrigin(record.allocator, reserved_url, location) catch false;
@@ -2576,6 +2608,19 @@ fn ancestorOriginOf(origin: []const u8) @import("csp").directives.frame_ancestor
     else
         null;
     return .{ .scheme = origin[0..sep], .host = authority[0..host_end], .port = port };
+}
+
+/// Fetch "determine the network partition key" for a top-level
+/// traversable's navigation request to `url`: its reserved client's top-level
+/// origin is null, so step 2 takes the top-level creation URL's - `url`'s -
+/// origin, and step 4 obtains its site (HTML "obtain a site"). OWNED by
+/// `allocator`; null for an opaque origin or no memory - the request then
+/// bypasses the partitioned stores.
+fn topLevelPartitionKey(allocator: std.mem.Allocator, url: []const u8) ?[]u8 {
+    const origin = fetch_mod.internal.origins.serializedOriginOf(allocator, url) catch return null;
+    defer allocator.free(origin);
+    if (std.mem.eql(u8, origin, "null")) return null;
+    return html_module.agent_clusters.siteOf(allocator, origin) catch null;
 }
 
 /// The document `integration`'s iframe element is in - its navigable's

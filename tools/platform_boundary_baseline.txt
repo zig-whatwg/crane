@@ -42,12 +42,6 @@ src/fetch/algorithms/async_fetch.zig curl.CURLINFO_HEADER_SIZE 1
 src/fetch/algorithms/http_fetch.zig clock.@import 1
 src/fetch/algorithms/http_fetch.zig clock.monotonicNanos 1
 src/fetch/algorithms/main_fetch.zig clock.@import 1
-src/fetch/cache/backend.zig clock.@import 1
-src/fetch/cache/freshness.zig clock.@import 1
-src/fetch/cache/freshness.zig clock.wallSeconds 1
-src/fetch/cache/memory_backend.zig clock.@import 1
-src/fetch/cache/memory_backend.zig clock.wallSeconds 2
-src/fetch/cache/root.zig clock.@import 1
 src/fetch/cors/preflight.zig clock.@import 1
 src/fetch/cors/preflight.zig clock.wallSeconds 1
 src/fetch/internal/body_extraction.zig clock.@import 1

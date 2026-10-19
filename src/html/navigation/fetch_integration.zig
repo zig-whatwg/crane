@@ -178,6 +178,17 @@ pub const NavigationFetchOptions = struct {
     /// connections and TLS options its fetch uses. Null: the defaults.
     network: ?*fetch.network.NetworkContext = null,
 
+    /// Fetch "determine the network partition key" for the request: the
+    /// top-level site of its reserved client, serialized (BORROWED; the
+    /// request takes a copy). "Create navigation params by fetching" gives a
+    /// child navigable's reserved client its parent environment's top-level
+    /// origin, so this is the container document's top-level site, the same
+    /// for every hop. It selects the HTTP cache partition (Fetch 2.8). Null:
+    /// none - the request bypasses the cache and the other partitioned
+    /// stores (a top-level navigation's key follows each hop's URL, which
+    /// this request does not track yet).
+    network_partition_key: ?[]const u8 = null,
+
     /// "Create navigation params by fetching" step 3's referrer policy:
     /// navigate's referrerPolicy - a hyperlink's referrerpolicy attribute, or
     /// an iframe's for "navigate an iframe or frame". The empty string defers
@@ -390,6 +401,10 @@ pub fn navigationRequest(
     internal_request.blob_url_store = options.blob_url_store;
     // The Browser's network it goes out on.
     internal_request.network = options.network;
+    // Its network partition key (Fetch 2.7), its reserved client's.
+    if (options.network_partition_key) |key| {
+        internal_request.network_partition_key = allocator.dupe(u8, key) catch return NavigationFetchError.OutOfMemory;
+    }
 
     // Its referrer policy, and the initiator's policy container main fetch
     // step 8 falls back to.
