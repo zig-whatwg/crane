@@ -1,4 +1,4 @@
-//! Lane engine1, two adapter paths that reach a frame's realm:
+//! Lane engine1: an adapter path that reaches a frame's realm.
 //!
 //! - A callback whose realm's Window has had its Document destroyed does not
 //!   run, though the realm is not detached yet: removing an iframe destroys
@@ -7,9 +7,12 @@
 //!   called in between (dom/traversal/TreeWalker-acceptNode-filter-cross-
 //!   realm-null-browsing-context.html; Chrome and Firefox pass). The
 //!   traversal throws instead.
-//! - window[i] answers the i-th of the Window's document-tree child
-//!   navigables - a shadow tree's iframe is not one - also when the child's
-//!   Window is made by the access (Codex row 81 Q8).
+//!
+//! (window[i]'s document-tree fallback, the adapter's other frame path, is
+//! pinned by crane/e1-window-index-shadow-iframe.html and Codex row 81's
+//! fixture: Window.call_item answers first, and the fallback runs only for a
+//! child whose Window is not made yet - so the case is green once row 81's
+//! call_item walks the same list.)
 //!
 //! Each case runs on a thread of its own: a Browser's per-thread state.
 const std = @import("std");
@@ -90,26 +93,4 @@ fn liveFrameFilter() !void {
 
 test "a NodeFilter of a frame still in its document is called" {
     try onFreshThread(liveFrameFilter);
-}
-
-fn indexedShadowFrame() !void {
-    const browser = try open(
-        \\<!doctype html><body><iframe name="first"></iframe><div id="host"><template shadowrootmode="open"><iframe name="shadowed"></iframe></template></div><iframe name="second"></iframe></body>
-    );
-    defer browser.deinit();
-    // window[1] before any contentWindow: the second DOCUMENT-TREE iframe's
-    // Window, made by the access - not the shadow tree's iframe, which the
-    // parser made between them, so it sits between them among the browsing
-    // context's raw children.
-    try expectText(browser,
-        \\(() => {
-        \\  const at1 = window[1];
-        \\  const iframes = document.querySelectorAll('iframe');
-        \\  return String(at1 === iframes[1].contentWindow);
-        \\})()
-    , "true");
-}
-
-test "window[i] indexes the document-tree child navigables, making the child's Window" {
-    try onFreshThread(indexedShadowFrame);
 }
