@@ -172,15 +172,10 @@ const Active = struct {
 pub const StyleEngine = struct {
     allocator: Allocator,
     owners: std.ArrayList(Owner) = .empty,
-    /// CSSOM View 4.2: the MediaQueryList objects whose document this is,
-    /// in the order they were created - raw back links each list removes in
-    /// its own teardown, the generation a teardown net. The engine never
-    /// keeps a list alive.
-    media_query_lists: std.ArrayList(Owner) = .empty,
-    /// Shadow roots whose adoptedStyleSheets were set (a shadow tree with no
-    /// style element is a scope only through them): raw back links with
-    /// their generation, never holds.
-    adopting_roots: std.ArrayList(Owner) = .empty,
+    /// The state few documents use, made on first use (WebKit's
+    /// DocumentRareData pattern): the engine is embedded in Document's state,
+    /// which sits just under its allocation size class.
+    rare: ?*Rare = null,
     /// Moves whenever a slot's assigned nodes change (DOM "assign
     /// slottables"): part of each cached style's key, since a slotted
     /// element inherits from its slot.
@@ -212,6 +207,31 @@ pub const StyleEngine = struct {
     /// nothing has run it for this document.
     page_color_schemes_dirty: bool = true,
 
+    /// What `rare` holds.
+    pub const Rare = struct {
+        /// CSSOM View 4.2: the MediaQueryList objects whose document this
+        /// is, in the order they were created - raw back links each list
+        /// removes in its own teardown, the generation a teardown net. The
+        /// engine never keeps a list alive.
+        media_query_lists: std.ArrayList(Owner) = .empty,
+        /// Shadow roots whose adoptedStyleSheets were set (a shadow tree with
+        /// no style element is a scope only through them): raw back links
+        /// with their generation, never holds.
+        adopting_roots: std.ArrayList(Owner) = .empty,
+        /// CSSOM 6.2's preferred CSS style sheet set name once something
+        /// changed it - HTML's default-style pragma - owned. Null until then:
+        /// it is the first titled persistent sheet's title (buildActive).
+        /// CSSOM's "last CSS style sheet set name" has no field: nothing
+        /// selects a set (selectedStyleSheetSet left CSSOM), so it stays null.
+        preferred_set_name: ?[]u8 = null,
+
+        fn deinit(self: *Rare, allocator: Allocator) void {
+            self.media_query_lists.deinit(allocator);
+            self.adopting_roots.deinit(allocator);
+            if (self.preferred_set_name) |name| allocator.free(name);
+        }
+    };
+
     pub fn init(allocator: Allocator) StyleEngine {
         return .{ .allocator = allocator };
     }
@@ -220,14 +240,44 @@ pub const StyleEngine = struct {
         if (self.active) |*a| a.deinit(self.allocator);
         self.active = null;
         self.owners.deinit(self.allocator);
-        self.media_query_lists.deinit(self.allocator);
-        self.adopting_roots.deinit(self.allocator);
+        if (self.rare) |rare| {
+            rare.deinit(self.allocator);
+            self.allocator.destroy(rare);
+            self.rare = null;
+        }
+    }
+
+    fn ensureRare(self: *StyleEngine) Error!*Rare {
+        if (self.rare) |rare| return rare;
+        const rare = try self.allocator.create(Rare);
+        rare.* = .{};
+        self.rare = rare;
+        return rare;
     }
 
     /// The shadow root `root` adopted style sheets.
     pub fn addAdoptingRoot(self: *StyleEngine, root: *runtime.Instance) Error!void {
-        for (self.adopting_roots.items) |o| if (o.element == root and o.live()) return;
-        try self.adopting_roots.append(self.allocator, .{ .element = root, .generation = runtime.SlabAllocator.generationOf(root) });
+        const rare = try self.ensureRare();
+        for (rare.adopting_roots.items) |o| if (o.element == root and o.live()) return;
+        try rare.adopting_roots.append(self.allocator, .{ .element = root, .generation = runtime.SlabAllocator.generationOf(root) });
+    }
+
+    /// CSSOM 6.2 "change the preferred CSS style sheet set name" with
+    /// `name` (HTML 4.2.5.3, the default style state). "1. Let current be
+    /// the preferred CSS style sheet set name. 2. Set [it] to name. 3. If
+    /// name is not a case-sensitive match for current and last CSS style
+    /// sheet set name is null enable a CSS style sheet set with name name":
+    /// the active sheets are rebuilt with that set enabled and every other
+    /// set disabled, synchronously for the next style read.
+    pub fn changePreferredStyleSheetSetName(self: *StyleEngine, name: []const u8) Error!void {
+        const rare = try self.ensureRare();
+        if (rare.preferred_set_name) |current| {
+            if (std.mem.eql(u8, current, name)) return;
+        }
+        const owned = try self.allocator.dupe(u8, name);
+        if (rare.preferred_set_name) |current| self.allocator.free(current);
+        rare.preferred_set_name = owned;
+        self.sheetsChanged();
     }
 
     /// A style read begins. Re-entering one - matching or a hook reaching
@@ -241,16 +291,18 @@ pub const StyleEngine = struct {
 
     /// A MediaQueryList whose document this is was made (matchMedia).
     pub fn addMediaQueryList(self: *StyleEngine, list: *runtime.Instance) Error!void {
-        try self.media_query_lists.append(self.allocator, .{ .element = list, .generation = runtime.SlabAllocator.generationOf(list) });
+        const rare = try self.ensureRare();
+        try rare.media_query_lists.append(self.allocator, .{ .element = list, .generation = runtime.SlabAllocator.generationOf(list) });
     }
 
     /// The MediaQueryList `list` is going.
     pub fn removeMediaQueryList(self: *StyleEngine, list: *runtime.Instance) void {
+        const rare = self.rare orelse return;
         var i: usize = 0;
-        while (i < self.media_query_lists.items.len) {
-            const entry = self.media_query_lists.items[i];
+        while (i < rare.media_query_lists.items.len) {
+            const entry = rare.media_query_lists.items[i];
             if (entry.element == list or !entry.live()) {
-                _ = self.media_query_lists.orderedRemove(i);
+                _ = rare.media_query_lists.orderedRemove(i);
                 continue;
             }
             i += 1;
@@ -341,12 +393,18 @@ pub const StyleEngine = struct {
         // sheet set name is the first titled, non-alternate sheet's title;
         // a titled sheet is enabled only when its title is that name. (The
         // spec sets it as sheets are added; tree order stands in, stated.)
-        var preferred: ?[]const u8 = null;
-        for (owners.items) |owner| {
+        // Once "change the preferred CSS style sheet set name" has run (the
+        // default-style pragma), the name it set holds: step 4 changes it
+        // only while it is the empty string, and the change enabled that
+        // set and disabled every other (CSSOM "enable a CSS style sheet
+        // set"). Stated: the set enabling is derived here, apart from each
+        // sheet's own disabled flag, which it never touches.
+        var preferred: ?[]const u8 = if (self.rare) |rare| rare.preferred_set_name else null;
+        if (preferred == null) for (owners.items) |owner| {
             const record = hooks.sheetOf(owner) orelse continue;
             if (record.disabled) continue;
             if (record.title.len != 0 and !record.alternate and preferred == null) preferred = record.title;
-        }
+        };
 
         var layers = LayerTree.init(self.allocator);
         defer layers.deinit();
@@ -409,18 +467,20 @@ pub const StyleEngine = struct {
             while (root.parent_node) |p| root = p;
             if (std.mem.indexOfScalar(*NodeBase, roots.items, root) == null) try roots.append(self.allocator, root);
         }
-        var i: usize = 0;
-        while (i < self.adopting_roots.items.len) {
-            const o = self.adopting_roots.items[i];
-            if (!o.live()) {
-                _ = self.adopting_roots.swapRemove(i);
-                continue;
+        if (self.rare) |rare| {
+            var i: usize = 0;
+            while (i < rare.adopting_roots.items.len) {
+                const o = rare.adopting_roots.items[i];
+                if (!o.live()) {
+                    _ = rare.adopting_roots.swapRemove(i);
+                    continue;
+                }
+                i += 1;
+                const root = instance_bridge.getNodeBase(o.element) orelse continue;
+                if (!root.is_connected and !hostConnected(root)) continue;
+                if (root.node_type == NodeBase.DOCUMENT_NODE) continue;
+                if (std.mem.indexOfScalar(*NodeBase, roots.items, root) == null) try roots.append(self.allocator, root);
             }
-            i += 1;
-            const root = instance_bridge.getNodeBase(o.element) orelse continue;
-            if (!root.is_connected and !hostConnected(root)) continue;
-            if (root.node_type == NodeBase.DOCUMENT_NODE) continue;
-            if (std.mem.indexOfScalar(*NodeBase, roots.items, root) == null) try roots.append(self.allocator, root);
         }
         for (roots.items) |root| {
             var layers = LayerTree.init(self.allocator);
@@ -1182,8 +1242,9 @@ fn sortTreeOrder(items: []*runtime.Instance) void {
 /// lists are taken first, and each is checked to be live before it runs.
 pub fn reportMediaQueryChanges(document: *runtime.Instance) void {
     const engine = hooks.engineOf(document) orelse return;
-    if (engine.media_query_lists.items.len == 0) return;
-    const lists = engine.allocator.dupe(Owner, engine.media_query_lists.items) catch return;
+    const rare = engine.rare orelse return;
+    if (rare.media_query_lists.items.len == 0) return;
+    const lists = engine.allocator.dupe(Owner, rare.media_query_lists.items) catch return;
     defer engine.allocator.free(lists);
     for (lists) |entry| {
         if (!entry.live()) continue;

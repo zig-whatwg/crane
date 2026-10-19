@@ -71,6 +71,36 @@ fn postConnectionSteps(node: *NodeBase) void {
     const meta = metaOf(node) orelse return;
     if (!inDocumentTree(node)) return;
     if (namedColorScheme(meta)) colorSchemesChanged(meta);
+    defaultStyleState(meta);
+}
+
+/// HTML 4.2.5.3, the default style state (`http-equiv="default-style"`):
+/// "1. If the meta element has no content attribute, or if that attribute's
+/// value is the empty string, then return. 2. Change the preferred CSS style
+/// sheet set name with the name being the value of the element's content
+/// attribute."
+///
+/// Phase: HTML runs pragmas when a meta "is inserted into the document" (the
+/// insertion steps); this one runs in the post-connection steps, as Chrome
+/// and WebKit do - Blink's HTMLMetaElement::DidNotifySubtreeInsertionsToDocument,
+/// WebKit's HTMLMetaElement::postConnectionSteps - so a script inserted before
+/// the meta in one fragment sees the old style and one after it the new
+/// (Chrome 151 and Safari 27.0.1 once the sheets have loaded; Firefox 144
+/// shows the new style to both). whatwg/html#10241 (open) proposes the
+/// post-insertion steps for that reason, and
+/// dom/nodes/insertion-removing-steps/Node-appendChild-script-and-default-style-meta-from-fragment.html
+/// expects them.
+fn defaultStyleState(meta: *runtime.Instance) void {
+    const data = dom_module.element_data.of(meta) orelse return;
+    const http_equiv = data.findAttribute(null, "http-equiv") orelse return;
+    if (!std.ascii.eqlIgnoreCase(http_equiv.value, "default-style")) return;
+    const content = data.findAttribute(null, "content") orelse return;
+    if (content.value.len == 0) return;
+    const document = (interfaces.Node.get_ownerDocument(meta) catch null) orelse return;
+    const engine = dom_module.style.engine.engineOf(document) orelse return;
+    engine.changePreferredStyleSheetSetName(content.value) catch |err| {
+        log.warn("the default-style pragma could not change the preferred style sheet set ({s})", .{@errorName(err)});
+    };
 }
 
 /// The meta element's removing steps: "removed from the document" re-runs
@@ -132,9 +162,10 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 /// attribute is present and represents one of the above states, then the
 /// user agent must run the algorithm appropriate for that state."
 ///
-/// Content Language, Refresh and Content Security Policy are modelled; the
-/// other states (encoding declaration, default style,
-/// set-cookie, X-UA-Compatible) do nothing here.
+/// Content Language, Refresh and Content Security Policy are modelled here;
+/// the default style state runs in the post-connection steps
+/// (`defaultStyleState`); the other states (encoding declaration,
+/// set-cookie, X-UA-Compatible) do nothing.
 fn insertionSteps(node: *NodeBase) void {
     if (node.node_type != 1) return;
     // Brand-checked by the instance's state, not by `node.node_name`: an
@@ -274,6 +305,9 @@ fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, old_
     var http_equiv = (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("http-equiv")) catch return) orelse return;
     defer http_equiv.deinit(element.ctx.allocator);
     if (std.ascii.eqlIgnoreCase(http_equiv.asSlice(), "content-language")) contentLanguageState(element);
+    // The same majority for the default style state: Blink's
+    // HttpEquiv::Process and WebKit's processMetaHttpEquiv run it again.
+    if (std.ascii.eqlIgnoreCase(http_equiv.asSlice(), "default-style")) defaultStyleState(element);
 }
 
 /// HTML 4.2.5.1, the color-scheme metadata name: existing meta elements

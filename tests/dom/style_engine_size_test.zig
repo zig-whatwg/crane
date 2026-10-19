@@ -17,5 +17,5 @@ const std = @import("std");
 const dom = @import("dom");
 
 test "StyleEngine's size is pinned: it is embedded in Document's state" {
-    try std.testing.expectEqual(@as(usize, 288), @sizeOf(dom.style.StyleEngine));
+    try std.testing.expectEqual(@as(usize, 248), @sizeOf(dom.style.StyleEngine));
 }
