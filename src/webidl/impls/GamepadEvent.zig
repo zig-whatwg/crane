@@ -1,13 +1,12 @@
-//! Implementation for GamepadEvent interface
+//! GamepadEvent's inherited Event construction.
+//! Spec: https://w3c.github.io/gamepad/#gamepadevent-interface
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
+const event_construction = @import("dom").event_construction;
 const GamepadEvent = interfaces.GamepadEvent;
 
 pub const State = GamepadEvent.State;
@@ -16,47 +15,47 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+/// No Gamepad-specific owned state until the GAMEPAD holder is implemented.
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
+/// Borrowed constructor inputs carried through the generated chain.
+pub const construction_args = .{ "gamepad_event_type", "gamepad_event_init" };
+
+/// DOM constructor steps 1-2: initialize Event through its owner's hook.
+/// The generated parent chain creates Event's part and owns its teardown.
+pub fn initOwn(
+    instance: *runtime.Instance,
     allocator: std.mem.Allocator,
     comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+    args: anytype,
+) !void {
+    _ = allocator;
+    _ = StateType;
+    if (@hasField(@TypeOf(args), "gamepad_event_type")) {
+        const dictionary: dictionaries.GamepadEventInit = if (@hasField(@TypeOf(args), "gamepad_event_init")) args.gamepad_event_init else .{ .base = .{} };
+        // Inner event creation steps 2-4: initialized flag, relative high
+        // resolution timestamp, and EventInit members. Constructor step 2
+        // copies the type. WebKit's GamepadEvent constructors likewise
+        // delegate inherited state to Event.
+        try event_construction.innerEventCreationSteps(instance, args.gamepad_event_type, event_construction.eventInitFrom(dictionary.base));
+        // Step 4 TODO(gamepad holder): retain dictionary.gamepad when the
+        // GAMEPAD API and its approved holder are implemented. Never keep
+        // the dictionary's borrowed instance pointer without that holder.
+    }
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
-/// Note: Use ctx.allocator for all allocations to ensure consistency with deinit
+/// DOM Event constructor steps 1-3, using GamepadEvent as the interface.
 pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.GamepadEventInit)) !*runtime.Instance {
-    // Create instance through init() - use ctx.allocator for consistency with deinit
-    const instance = try init(ctx.allocator, State, &GamepadEvent.vtable, ctx);
-    errdefer deinit(instance);
-
-    _ = @"type";
-    _ = eventInitDict;
-    // TODO: Implement constructor logic with parameters
-
-    return instance;
+    return GamepadEvent.initWith(ctx.allocator, ctx, .{
+        .gamepad_event_type = @"type",
+        .gamepad_event_init = eventInitDict.getOrDefault(.{ .base = .{} }),
+    });
 }
 
 /// Getter for gamepad
 pub fn get_gamepad(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    // Step 4 TODO(gamepad holder): expose the initialized Gamepad after
+    // the GAMEPAD API supplies its lifetime-safe holder.
     _ = instance;
     return error.NotImplemented;
 }
