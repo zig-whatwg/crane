@@ -51,6 +51,6 @@ test "IndexedDB databases excludes uncommitted version zero databases" {
     defer allocator.destroy(connection);
     defer connection.deinit();
     const databases = try factory.databases();
-    defer allocator.free(databases);
+    defer idb.server.freeInfos(allocator, databases);
     try std.testing.expectEqual(@as(usize, 0), databases.len);
 }

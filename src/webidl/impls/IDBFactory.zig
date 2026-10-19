@@ -21,10 +21,9 @@ const IDBFactoryInterface = interfaces.IDBFactory;
 
 // Backend imports
 const storage = @import("storage");
-const BackendFactory = storage.indexeddb.IDBFactory;
-const BackendOpenDBRequest = storage.indexeddb.IDBOpenDBRequest;
-const BackendKey = storage.indexeddb.IDBKey;
-const BackendKeyRange = storage.indexeddb.IDBKeyRange;
+const IDBServer = storage.indexeddb.IDBServer;
+const server_mod = storage.indexeddb.server;
+const StorageKey = storage.StorageKey;
 
 pub const State = IDBFactoryInterface.State;
 
@@ -38,28 +37,30 @@ pub const ImplError = error{
 
 /// Internal state for IDBFactory
 ///
-/// Stores the backend IDBFactory instance that manages all database operations.
+/// IndexedDB storage is the Browser's: its IDBServer (a BrowserScope
+/// supplement, src/storage/indexeddb/server.zig) holds every database, its
+/// connection queue, connection set and transaction scheduler, shared by
+/// every agent and thread of the Browser. A factory keeps only its own
+/// requests' tasks.
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
-    /// Backend factory instance
-    factory: *BackendFactory,
+    /// The Browser's IndexedDB server.
+    server: *IDBServer,
     pending: std.ArrayList(*ConnectionTask) = .empty,
-    connections: std.ArrayList(Connection) = .empty,
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        // Realm teardown can destroy the factory while requests await close.
-        // Cancel owned pending activity without enqueueing into the dying realm.
+        // Realm teardown (a window's unload, a worker's end) can destroy the
+        // factory while requests await their turn or a close. Cancel owned
+        // pending activity without enqueueing into the dying realm; each
+        // request leaves the server's queue (one mid-upgrade keeps the head
+        // until its upgrade transaction is rolled back).
         while (self.pending.items.len != 0) {
             const task = self.pending.pop().?;
             task.registered = false;
             task.cancel();
         }
         self.pending.deinit(allocator);
-        for (self.connections.items) |connection| connection.deinit(allocator);
-        self.connections.deinit(allocator);
-        self.factory.deinit();
-        allocator.destroy(self.factory);
         allocator.destroy(self);
     }
 };
@@ -80,14 +81,13 @@ pub fn init(
     // the state below crashed in deinit).
     state.own._internal = null;
 
+    // The Browser's server, made on first use (a realm with no Browser
+    // scope makes no platform object at all).
+    const server = dom.indexeddb.serverOf(ctx) orelse return error.InvalidStateError;
+
     // Create internal state - this call's until it is complete, then deinit's.
     const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
-    internal.* = .{ .allocator = allocator, .factory = undefined };
-
-    // Create backend factory
-    internal.factory = try allocator.create(BackendFactory);
-    internal.factory.* = BackendFactory.init(allocator);
+    internal.* = .{ .allocator = allocator, .server = server };
 
     state.own._internal = internal;
     return instance;
@@ -137,9 +137,10 @@ pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, version: 
     }
 
     // Steps 2-6: obtain the relevant storage key, enqueue, return pending request.
-    const origin = try storageKey(instance);
-    defer internal.allocator.free(origin);
-    return enqueueConnection(instance, origin, name.asSlice(), version_val, false);
+    _ = internal;
+    var storage_key = try storageKey(instance);
+    defer storage_key.deinit();
+    return enqueueConnection(instance, storage_key, name.asSlice(), version_val, false);
 }
 
 /// Operation: databases
@@ -154,17 +155,17 @@ pub fn call_databases(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
     const realm = instance.ctx;
     // Steps 1-2: opaque settings origins reject a new promise, never throw synchronously.
-    const origin = storageKey(instance) catch |err| {
+    var storage_key = storageKey(instance) catch |err| {
         if (err != error.SecurityError) return err;
         const reason = try engine.createDOMException(realm, "SecurityError", "The storage origin is opaque");
         defer reason.release();
         return (try engine.createRejectedPromise(realm, reason.value)).take();
     };
-    defer internal.allocator.free(origin);
-    internal.factory.setStorageKey(origin);
-    defer internal.factory.storage_key = null;
-    const db_list = try internal.factory.databases();
-    defer internal.allocator.free(db_list);
+    defer storage_key.deinit();
+    // Step 4.2: the names and versions of the storage key's databases, read
+    // under the server's lock and copied out.
+    const db_list = try internal.server.databaseInfos(storage_key, internal.allocator);
+    defer server_mod.freeInfos(internal.allocator, db_list);
 
     // Step 4.2-3: take a snapshot as IDBDatabaseInfo dictionaries. Each
     // dictionary is held until the array has taken its references.
@@ -250,9 +251,10 @@ pub fn call_deleteDatabase(instance: *runtime.Instance, name: runtime.DOMString)
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Steps 1-5: the queue performs deletion only after existing connections close.
-    const origin = try storageKey(instance);
-    defer internal.allocator.free(origin);
-    return enqueueConnection(instance, origin, name.asSlice(), null, true);
+    _ = internal;
+    var storage_key = try storageKey(instance);
+    defer storage_key.deinit();
+    return enqueueConnection(instance, storage_key, name.asSlice(), null, true);
 }
 
 /// Operation: cmp
@@ -279,14 +281,16 @@ pub fn call_cmp(instance: *runtime.Instance, first: runtime.JSValue, second: run
 }
 
 pub fn installHooks() void {
-    dom.indexeddb.installFactories(.{ .register = registerConnection, .unregister = unregisterConnection, .advance = advanceQueue, .wake_transactions = wakeTransactions });
+    dom.indexeddb.installFactories(.{ .wake_transactions = wakeTransactions });
+    // A document's unload or destruction, or a worker's end, closes the
+    // connections made in it (IndexedDB 2.? connection).
+    dom.unloading_cleanup.install(dom.indexeddb.environmentEnded);
 }
 
+/// An upgrade transaction of this factory's agent finished: its open
+/// request's final task may run (ED 5.7 step 11's wait ends).
 fn wakeTransactions(instance: *runtime.Instance) void {
     const internal = instance.getState(State).own._internal orelse return;
-    for (internal.connections.items) |connection| {
-        if (connection.realm.hasEngine()) dom.indexeddb.wakeDatabaseTransactions(connection.instance);
-    }
     var index: usize = 0;
     while (index < internal.pending.items.len) {
         const task = internal.pending.items[index];
@@ -295,94 +299,47 @@ fn wakeTransactions(instance: *runtime.Instance) void {
         if (index < internal.pending.items.len and internal.pending.items[index] == task) index += 1;
     }
 }
-fn storageKey(instance: *runtime.Instance) ![]u8 {
-    // Storage 4.2: the relevant settings object's origin; opaque is failure.
+
+/// Storage "obtain a storage key" for the factory's relevant settings
+/// object (IndexedDB 4.3 open() step 2, deleteDatabase() step 2, databases()
+/// step 2): the ONE place IndexedDB obtains its key -
+/// dom.global_settings.storageKeyOf, (origin, top-level site, has
+/// cross-site ancestor), so IndexedDB is partitioned as Web Storage is.
+/// Failure (an opaque origin or top-level site) is SecurityError. OWNED by
+/// the caller.
+fn storageKey(instance: *runtime.Instance) !StorageKey {
     const realm = instance.ctx.getRealm() orelse return error.SecurityError;
     const global: *runtime.Instance = @ptrCast(@alignCast(realm.global_object orelse return error.SecurityError));
-    const settings = dom.global_settings.of(global) orelse return error.SecurityError;
-    const origin = try settings.origin(global);
-    defer global.ctx.allocator.free(origin);
-    if (std.mem.eql(u8, origin, "null")) return error.SecurityError;
-    return instance.ctx.allocator.dupe(u8, origin);
-}
-const Connection = struct {
-    instance: *runtime.Instance,
-    realm: runtime.Context,
-    origin: []u8,
-    name: []u8,
-    fn deinit(self: Connection, allocator: std.mem.Allocator) void {
-        allocator.free(self.origin);
-        allocator.free(self.name);
-    }
-};
-fn matches(origin: []const u8, name: []const u8, other_origin: []const u8, other_name: []const u8) bool {
-    return std.mem.eql(u8, origin, other_origin) and std.mem.eql(u8, name, other_name);
-}
-fn registerConnection(factory: *runtime.Instance, connection: *runtime.Instance, origin: []const u8, name: []const u8) !void {
-    const internal = factory.getState(State).own._internal orelse return error.InvalidStateError;
-    const origin_copy = try internal.allocator.dupe(u8, origin);
-    errdefer internal.allocator.free(origin_copy);
-    const name_copy = try internal.allocator.dupe(u8, name);
-    errdefer internal.allocator.free(name_copy);
-    try internal.connections.append(internal.allocator, .{ .instance = connection, .realm = connection.ctx, .origin = origin_copy, .name = name_copy });
-    dom.indexeddb.setDatabaseFactory(connection, factory);
-}
-/// The Window of `realm` when it belongs to a page the back/forward cache
-/// keeps. Only a Window's realm of `current`'s agent is asked: a worker's is
-/// never cached, and the cache is read only on its window thread.
-fn cachedWindowOf(realm: runtime.Context, current: runtime.Context) ?*runtime.Instance {
-    if (!realm.hasEngine()) return null;
-    if (realm.agent != current.agent) return null;
-    const record = realm.getRealm() orelse return null;
-    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
-    if (global.stateAs(interfaces.Window.State) == null) return null;
-    return if (dom.bfcache.holds(global)) global else null;
+    // Borrowed from the global (a worker's cached key): copied to keep.
+    const key = (try dom.global_settings.storageKeyOf(global)) orelse return error.SecurityError;
+    return key.clone(instance.ctx.allocator);
 }
 
-fn unregisterConnection(factory: *runtime.Instance, connection: *runtime.Instance) void {
-    const internal = factory.getState(State).own._internal orelse return;
-    for (internal.connections.items, 0..) |entry, index| {
-        if (entry.instance != connection) continue;
-        const removed = internal.connections.orderedRemove(index);
-        defer removed.deinit(internal.allocator);
-        advanceQueue(factory, removed.origin, removed.name);
-        return;
-    }
-}
-fn advanceQueue(factory: *runtime.Instance, origin: []const u8, name: []const u8) void {
-    const internal = factory.getState(State).own._internal orelse return;
-    for (internal.pending.items) |task| {
-        if (matches(origin, name, task.origin, task.name)) {
-            task.schedule() catch task.failScheduling();
-            return;
-        }
-    }
-}
-fn enqueueConnection(factory: *runtime.Instance, origin: []const u8, name: []const u8, version: ?u64, deletion: bool) !*runtime.Instance {
+fn enqueueConnection(factory: *runtime.Instance, storage_key: StorageKey, name: []const u8, version: ?u64, deletion: bool) !*runtime.Instance {
     const internal = factory.getState(State).own._internal orelse return error.InvalidStateError;
+    const server = internal.server;
     const request = try interfaces.IDBOpenDBRequest.init(internal.allocator, factory.ctx);
     errdefer if (!engine.hasWrapper(request)) runtime.Instance.deinit(request);
-    const origin_copy = try internal.allocator.dupe(u8, origin);
-    errdefer internal.allocator.free(origin_copy);
-    const name_copy = try internal.allocator.dupe(u8, name);
-    errdefer internal.allocator.free(name_copy);
     const factory_root = try engine.retainValue(factory.ctx, .{ .instance = factory });
     errdefer factory_root.release();
     const request_root = try engine.retainValue(factory.ctx, .{ .instance = request });
     errdefer request_root.release();
+    // ED 2.8.2: the queue of (storage key, name) - the Browser's, shared
+    // with every other agent and thread.
+    const database = try server.uniqueDatabase(storage_key, name);
+    errdefer server.release(database);
     const task = try internal.allocator.create(ConnectionTask);
     errdefer internal.allocator.destroy(task);
-    task.* = .{ .allocator = internal.allocator, .factory = factory, .realm = factory.ctx, .request = request, .factory_root = factory_root, .request_root = request_root, .origin = origin_copy, .name = name_copy, .version = version, .deletion = deletion };
-    var first = true;
-    for (internal.pending.items) |existing| if (matches(origin, name, existing.origin, existing.name)) {
-        first = false;
-        break;
-    };
-    try internal.pending.append(internal.allocator, task);
+    task.* = .{ .allocator = internal.allocator, .factory = factory, .realm = factory.ctx, .request = request, .factory_root = factory_root, .request_root = request_root, .server = server, .database = database, .version = version, .deletion = deletion };
+    try internal.pending.ensureUnusedCapacity(internal.allocator, 1);
+    const queued = try server.enqueue(database, dom.indexeddb.endpointOf(factory.ctx), .{ .context = task, .call = ConnectionTask.serverNote });
+    task.entry = queued.id;
+    internal.pending.appendAssumeCapacity(task);
     task.registered = true;
-    if (first) task.schedule() catch |err| {
+    if (queued.head) task.schedule() catch |err| {
         _ = internal.pending.pop();
         task.registered = false;
+        server.withdraw(database, queued.id);
         return err;
     };
     return request;
@@ -391,6 +348,13 @@ fn enqueueConnection(factory: *runtime.Instance, origin: []const u8, name: []con
 /// ED 2.8.2 connection queue, 5.1 opening, 5.3 deleting, and 5.7 upgrading.
 /// Pending activity roots belong to this operation, and end after its script
 /// and microtasks, or when realm teardown drops the queued task.
+///
+/// The queue, the connections it waits on and the version are the Browser's
+/// server's (server.zig); this task holds its request's entry there by id
+/// and runs the request's steps as database tasks of its own realm. The
+/// server tells it `advance` - on this thread, directly or by a task of this
+/// agent's sink - when it reaches the head, when its versionchange events
+/// have been acknowledged, and when the last connection it waits on closes.
 const ConnectionTask = struct {
     allocator: std.mem.Allocator,
     cancelled: bool = false,
@@ -402,16 +366,26 @@ const ConnectionTask = struct {
     request: *runtime.Instance,
     factory_root: engine.Owned,
     request_root: engine.Owned,
-    origin: []u8,
-    name: []u8,
+    server: *IDBServer,
+    /// Held (`server.release` at destroy).
+    database: *server_mod.UniqueIDBDatabase,
+    /// The request's queue entry; 0 once it left the queue.
+    entry: server_mod.Id = 0,
     version: ?u64,
     deletion: bool,
     old_version: u64 = 0,
+    /// The version rises (or this is a deletion): connections are told and
+    /// waited on (5.1 step 10 / 5.3 steps 5-7).
+    change: bool = false,
     phase: enum { start, notify, blocked, wait, upgrade, commit, success, failed, error_event, finished } = .start,
-    notifications: std.ArrayList(struct { instance: *runtime.Instance, realm: runtime.Context, root: engine.Owned }) = .empty,
-    waiting: bool = false,
+    /// Connections on this thread to tell versionchange, by id, one per
+    /// task (5.1 step 10.2); those of other threads were told by the server.
+    local_notifications: []server_mod.Id = &.{},
     next_notification: usize = 0,
-    database: ?*runtime.Instance = null,
+    /// Waiting for the server's `advance` (acknowledgements, or closes): no
+    /// task until it comes.
+    parked: bool = false,
+    database_instance: ?*runtime.Instance = null,
     database_root: ?engine.Owned = null,
     transaction: ?*runtime.Instance = null,
     transaction_root: ?engine.Owned = null,
@@ -423,6 +397,13 @@ const ConnectionTask = struct {
 
     fn internal(self: *ConnectionTask) *InternalState {
         return self.factory.getState(State).own._internal.?;
+    }
+    /// The server's note for this request's entry, on this thread.
+    fn serverNote(context: *anyopaque, note: server_mod.Note) void {
+        const self: *ConnectionTask = @ptrCast(@alignCast(context));
+        if (note != .advance) return;
+        self.parked = false;
+        self.schedule() catch self.failScheduling();
     }
     fn schedule(self: *ConnectionTask) !void {
         if (self.queued or self.running or self.cancelled or self.phase == .finished) return;
@@ -447,18 +428,25 @@ const ConnectionTask = struct {
         }
         if (!self.realm.hasEngine()) return self.finish(false);
         self.running = true;
-        engine.runTaskInRealm(self.realm, steps, self) catch {};
+        var ran = true;
+        engine.runTaskInRealm(self.realm, steps, self) catch {
+            // The realm runs no task again - a destroyed document's (HTML
+            // "destroy a document" step 7: its tasks are removed without
+            // running): the request can never go on. It leaves the queue
+            // rather than be queued again for ever.
+            ran = false;
+        };
         self.running = false;
         // Task ownership extends through runTaskInRealm's checkpoint.
         // Teardown cancels the task before freeing its owning factory. Do not
         // inspect any wrapper after script or its microtasks cancelled it.
         if (self.cancelled) return self.destroy();
-        if (!self.realm.hasEngine()) return self.finish(false);
+        if (!ran or !self.realm.hasEngine()) return self.finish(false);
         if (self.phase == .finished) self.finish(true) else if (self.phase == .commit or self.phase == .failed) {
             if (self.transaction) |transaction| {
                 if (dom.indexeddb.transactionOutcome(transaction) != null) self.schedule() catch self.failScheduling();
             }
-        } else if (self.phase != .wait or !self.waiting or !self.hasConnections()) self.schedule() catch self.failScheduling();
+        } else if (!self.parked) self.schedule() catch self.failScheduling();
     }
     fn failScheduling(self: *ConnectionTask) void {
         // No task source remains to deliver an event. Finish the failed
@@ -468,7 +456,7 @@ const ConnectionTask = struct {
             const exception = interfaces.DOMException.call_constructor(self.realm, webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned("The database task could not be queued")), webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned("UnknownError"))) catch null;
             dom.indexeddb.completeRequest(self.request, .jsUndefined, exception) catch {};
             if (self.transaction) |transaction| interfaces.IDBTransaction.call_abort(transaction) catch {};
-            if (self.database) |database| interfaces.IDBDatabase.call_close(database) catch {};
+            if (self.database_instance) |database| interfaces.IDBDatabase.call_close(database) catch {};
         }
         self.finish(true);
     }
@@ -481,110 +469,91 @@ const ConnectionTask = struct {
     fn perform(self: *ConnectionTask) !void {
         switch (self.phase) {
             .start => {
-                // Opening steps 2-6 / deletion steps 2-4: inspect version first.
-                const backend = self.internal().factory;
-                backend.setStorageKey(self.origin);
-                defer backend.storage_key = null;
-                const databases = try backend.databases();
-                defer self.allocator.free(databases);
-                for (databases) |database| if (std.mem.eql(u8, database.name, self.name)) {
-                    self.old_version = database.version;
-                    break;
+                // Opening steps 5-10.2 / deletion steps 3-5, at the head of
+                // the queue: the version decision, and versionchange posted
+                // to every other thread's open connection.
+                const started = try self.server.start(self.database, self.entry, self.version, self.deletion, self.allocator);
+                const proceed = switch (started) {
+                    .version_error => return error.VersionError,
+                    .proceed => |proceed| proceed,
                 };
-                if (!self.deletion) {
-                    self.version = self.version orelse if (self.old_version == 0) @as(u64, 1) else self.old_version;
-                    if (self.version.? < self.old_version) return error.VersionError;
-                }
-                if (self.deletion or self.version.? > self.old_version) {
-                    // Snapshot before dispatch: a listener may close/remove a connection.
-                    for (self.internal().connections.items) |connection| {
-                        if (!connection.realm.hasEngine()) continue;
-                        if (!matches(self.origin, self.name, connection.origin, connection.name)) continue;
-                        const root = try engine.retainValue(self.realm, .{ .instance = connection.instance });
-                        errdefer root.release();
-                        try self.notifications.append(self.internal().allocator, .{ .instance = connection.instance, .realm = connection.realm, .root = root });
-                    }
-                    self.phase = .notify;
-                } else self.phase = .wait;
+                self.old_version = proceed.old_version;
+                self.version = proceed.new_version;
+                self.change = proceed.change;
+                self.local_notifications = proceed.local;
+                self.phase = if (self.change) .notify else .wait;
             },
             .notify => {
-                if (self.next_notification < self.notifications.items.len) {
-                    const notification = self.notifications.items[self.next_notification];
+                if (self.next_notification < self.local_notifications.len) {
+                    // Step 10.2, a connection on this thread: one database
+                    // task each. A connection closed meanwhile is skipped.
+                    const id = self.local_notifications[self.next_notification];
                     self.next_notification += 1;
-                    const connection = notification.instance;
-                    if (cachedWindowOf(notification.realm, self.realm)) |window| {
-                        // A connection of a page the back/forward cache
-                        // keeps cannot answer versionchange: the page is
-                        // evicted instead, and its end closes the
-                        // connection, so the upgrade goes on (Blink's
-                        // kIgnoreEventAndEvict for IndexedDB versionchange;
-                        // IndexedDB/back-forward-cache-open-connection.window.js
-                        // passes in Chrome 155, Firefox 158 and Safari 27).
-                        dom.bfcache.evict(window, null);
-                    } else if (notification.realm.hasEngine() and self.connectionRegistered(connection) and !dom.indexeddb.connectionIsClosing(connection)) try self.versionEvent(connection, "versionchange", self.versionForEvent());
+                    if (self.server.versionChangeWanted(self.database, id)) |client| {
+                        client.call(client.context, .{ .versionchange = .{ .old_version = self.old_version, .new_version = self.versionForEvent(), .posted = false } });
+                    }
                     if (self.cancelled or !self.realm.hasEngine()) return;
                 }
-                if (self.next_notification == self.notifications.items.len) {
-                    // ED 5.1 step 10.4 / 5.3 step 8: decide after the last
-                    // notification returns. A later close cannot retract
-                    // the blocked event that this decision queues.
-                    self.phase = if (self.hasConnections()) .blocked else .wait;
+                if (self.next_notification == self.local_notifications.len) {
+                    // Step 10.3: every other thread's event fired, or wait for
+                    // the last acknowledgement to advance this request.
+                    if (!self.server.awaitAcknowledgements(self.database, self.entry)) {
+                        self.parked = true;
+                        return;
+                    }
+                    // ED 5.1 step 10.4 / 5.3 step 6: decide after the last
+                    // notification. A later close cannot retract the blocked
+                    // event that this decision queues.
+                    self.phase = if (self.server.hasConnections(self.database)) .blocked else .wait;
                 }
             },
             .blocked => {
                 self.blocked_fired = true;
-                self.waiting = true;
                 self.phase = .wait;
                 try self.versionEvent(self.request, "blocked", self.versionForEvent());
             },
             .wait => {
-                if (self.hasConnections() and (self.deletion or self.version.? > self.old_version)) {
-                    self.waiting = true;
+                // Step 10.5 / 5.3 step 7: wait until every connection closed.
+                if (self.change and !self.server.awaitCloses(self.database, self.entry)) {
                     if (!self.blocked_fired) {
                         self.blocked_fired = true;
                         try self.versionEvent(self.request, "blocked", self.versionForEvent());
                     }
+                    self.parked = true;
                     return;
                 }
                 if (self.deletion) {
-                    const request = blk: {
-                        // Finish the native borrow before script can retire
-                        // the factory and destroy its backend during dispatch.
-                        const backend = self.internal().factory;
-                        backend.setStorageKey(self.origin);
-                        defer backend.storage_key = null;
-                        break :blk try backend.deleteDatabase(self.name);
-                    };
-                    dom.indexeddb.attachOpenRequest(self.request, request);
+                    // 5.3 steps 8-11: the database goes; success reports its
+                    // old version.
+                    self.old_version = self.server.deleteDatabase(self.database);
                     try dom.indexeddb.completeRequest(self.request, .jsUndefined, null);
                     try self.versionEvent(self.request, "success", null);
                     self.phase = .finished;
                     return;
                 }
-                const request = blk: {
-                    const backend = self.internal().factory;
-                    backend.setStorageKey(self.origin);
-                    defer backend.storage_key = null;
-                    break :blk try backend.openPending(self.name, self.version);
+                // 5.1 steps 4 and 11: the connection, in this agent; its
+                // record in the server names this thread and its sink.
+                const opened = self.server.openConnection(self.database, self.version.?, true, self.allocator, dom.indexeddb.endpointOf(self.realm)) catch |err| return self.fail(@errorName(err));
+                const database = interfaces.IDBDatabase.init(self.internal().allocator, self.realm) catch |err| {
+                    opened.connection.releaseHeapOwnership();
+                    return err;
                 };
-                dom.indexeddb.attachOpenRequest(self.request, request);
-                if (request.base.err) |err| return self.fail(@errorName(err));
-                const database = try interfaces.IDBDatabase.init(self.internal().allocator, self.realm);
                 errdefer if (!engine.hasWrapper(database)) runtime.Instance.deinit(database);
-                const connection = request.base.result.?.database;
-                try dom.indexeddb.attachDatabase(database, connection);
-                request.base.result = null; // Ownership transferred; the request no longer frees it.
-                try dom.indexeddb.registerConnection(self.factory, database, self.origin, self.name);
+                dom.indexeddb.attachDatabase(database, opened.connection) catch |err| {
+                    opened.connection.releaseHeapOwnership();
+                    return err;
+                };
+                dom.indexeddb.setDatabaseFactory(database, self.factory);
                 self.database_root = try engine.retainValue(self.realm, .{ .instance = database });
-                self.database = database;
-                self.phase = if (self.version.? > self.old_version) .upgrade else .success;
+                self.database_instance = database;
+                self.phase = if (self.version.? > opened.old_version) .upgrade else .success;
             },
             .upgrade => {
                 // 5.7: expose the upgrade transaction and done result before dispatch.
-                const transaction = try dom.indexeddb.beginUpgrade(self.database.?);
+                const transaction = try dom.indexeddb.beginUpgrade(self.database_instance.?);
                 errdefer {
                     interfaces.IDBTransaction.call_abort(transaction) catch {};
-                    interfaces.IDBDatabase.call_close(self.database.?) catch {};
+                    interfaces.IDBDatabase.call_close(self.database_instance.?) catch {};
                 }
                 // ED 5.4/5.5: hiding request.transaction after complete/abort
                 // does not end the opening algorithm's use of this transaction.
@@ -594,7 +563,7 @@ const ConnectionTask = struct {
                 self.transaction_root = try engine.retainValue(self.realm, .{ .instance = transaction });
                 self.transaction = transaction;
                 dom.indexeddb.associateUpgradeRequest(transaction, self.request);
-                try dom.indexeddb.completeRequest(self.request, .{ .instance = self.database.? }, null);
+                try dom.indexeddb.completeRequest(self.request, .{ .instance = self.database_instance.? }, null);
                 dom.indexeddb.setRequestTransaction(self.request, transaction);
                 var did_throw = false;
                 const event = try self.newVersionEvent("upgradeneeded", self.version);
@@ -609,8 +578,8 @@ const ConnectionTask = struct {
                     if (dom.indexeddb.transactionOutcome(transaction) == null) return;
                 }
                 // ED 5.5 step 7.3 already reset the request after abort dispatch.
-                dom.indexeddb.endUpgrade(self.database.?);
-                try interfaces.IDBDatabase.call_close(self.database.?);
+                dom.indexeddb.endUpgrade(self.database_instance.?);
+                try interfaces.IDBDatabase.call_close(self.database_instance.?);
                 self.phase = .error_event;
             },
             .error_event => try self.fail("AbortError"),
@@ -618,14 +587,14 @@ const ConnectionTask = struct {
                 if (self.transaction) |transaction| {
                     const committed = dom.indexeddb.transactionOutcome(transaction) orelse return;
                     // ED 5.4/5.5 already cleared the association after dispatch.
-                    dom.indexeddb.endUpgrade(self.database.?);
+                    dom.indexeddb.endUpgrade(self.database_instance.?);
                     if (!committed) {
-                        try interfaces.IDBDatabase.call_close(self.database.?);
+                        try interfaces.IDBDatabase.call_close(self.database_instance.?);
                         self.phase = .error_event;
                         return;
                     }
                 }
-                if (dom.indexeddb.connectionIsClosing(self.database.?)) {
+                if (dom.indexeddb.connectionIsClosing(self.database_instance.?)) {
                     self.phase = .error_event;
                 } else try self.succeed();
             },
@@ -640,17 +609,9 @@ const ConnectionTask = struct {
         // ED 4.3 open() step 5.3.2 is one database task: set the result and
         // done flag, then fire success. Internal phase bookkeeping must not
         // insert another task between those steps and upgrade completion.
-        try dom.indexeddb.completeRequest(self.request, .{ .instance = self.database.? }, null);
+        try dom.indexeddb.completeRequest(self.request, .{ .instance = self.database_instance.? }, null);
         try self.simpleEvent(self.request, "success", false, false);
         self.phase = .finished;
-    }
-    fn hasConnections(self: *ConnectionTask) bool {
-        for (self.internal().connections.items) |connection| if (connection.realm.hasEngine() and matches(self.origin, self.name, connection.origin, connection.name)) return true;
-        return false;
-    }
-    fn connectionRegistered(self: *ConnectionTask, instance: *runtime.Instance) bool {
-        for (self.internal().connections.items) |connection| if (connection.instance == instance) return true;
-        return false;
     }
     fn newVersionEvent(self: *ConnectionTask, event_type: []const u8, version: ?u64) !*runtime.Instance {
         return interfaces.IDBVersionChangeEvent.call_constructor(self.realm, runtime.DOMString.initInterned(event_type), webidl.Opt(dictionaries.IDBVersionChangeEventInit).passed(.{ .base = .{}, .oldVersion = self.old_version, .newVersion = version }));
@@ -681,6 +642,15 @@ const ConnectionTask = struct {
         self.queued = false;
         if (self.cancelled) self.destroy() else self.finish(false);
     }
+    /// Leave the server's queue: `done` when the request completed (the next
+    /// one runs), otherwise withdrawn - its agent ended, or no task source
+    /// remains (one mid-upgrade keeps the head until the rollback).
+    fn leaveQueue(self: *ConnectionTask, done: bool) void {
+        const entry = self.entry;
+        if (entry == 0) return;
+        self.entry = 0;
+        if (done) self.server.dequeue(self.database, entry) else self.server.withdraw(self.database, entry);
+    }
     fn finish(self: *ConnectionTask, advance: bool) void {
         // A task dropped after realm retirement still belongs to the
         // factory's pending queue. Unlink it before releasing its roots so
@@ -694,13 +664,12 @@ const ConnectionTask = struct {
                 break;
             }
         }
-        if (advance and self.realm.hasEngine()) advanceQueue(self.factory, self.origin, self.name);
+        self.leaveQueue(advance and self.realm.hasEngine());
         self.destroy();
     }
     fn releaseRoots(self: *ConnectionTask) void {
         if (self.roots_released) return;
         self.roots_released = true;
-        for (self.notifications.items) |notification| notification.root.release();
         if (self.transaction_root) |root| root.release();
         if (self.database_root) |root| root.release();
         self.request_root.release();
@@ -712,6 +681,9 @@ const ConnectionTask = struct {
         const was_running = self.running;
         self.running = true;
         self.cancelled = true;
+        // The agent ends: the request leaves the Browser's queue now (the
+        // server is never told to call back into this task again).
+        self.leaveQueue(false);
         if (self.queued and dom.indexeddb.cancelDatabaseTask(&self.queued_task)) self.queued = false;
         self.releaseRoots();
         self.running = was_running;
@@ -721,10 +693,12 @@ const ConnectionTask = struct {
     fn destroy(self: *ConnectionTask) void {
         const allocator = self.allocator;
         self.running = true;
+        // Every path leaves the queue before the task goes: the server's
+        // entry names this task as its client.
+        self.leaveQueue(false);
         self.releaseRoots();
-        self.notifications.deinit(allocator);
-        allocator.free(self.origin);
-        allocator.free(self.name);
+        allocator.free(self.local_notifications);
+        self.server.release(self.database);
         allocator.destroy(self);
     }
 };
