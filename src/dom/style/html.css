@@ -126,9 +126,16 @@ sub, sup { line-height: normal; font-size: smaller; }
 ruby { display: ruby; }
 rt { display: ruby-text; }
 
-:link { color: #0000EE; }
-:visited { color: #551A8B; }
-:link:active, :visited:active { color: #FF0000; }
+/* Crane: the link colors as system colors, so that they follow the element
+   color scheme. HTML gives #0000EE, #551A8B and #FF0000 - LinkText's,
+   VisitedText's and ActiveText's light values - but in all three browsers an
+   anchor's color is LinkText's in both schemes (Gecko's ua.css uses LinkText,
+   VisitedText and ActiveText; Blink's html.css -webkit-link and
+   -webkit-activelink; css/css-color/system-color-consistency.html passes in
+   Chrome, Firefox and Safari). whatwg/html#12761 (open) proposes this text. */
+:link { color: LinkText; }
+:visited { color: VisitedText; }
+:link:active, :visited:active { color: ActiveText; }
 :link, :visited { text-decoration: underline; cursor: pointer; }
 
 :focus-visible { outline: auto; }

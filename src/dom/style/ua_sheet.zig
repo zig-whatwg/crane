@@ -14,6 +14,9 @@
 //! depends on the document's encoding), the select element's base
 //! appearance blocks (a rendering mode Crane does not model), and 15.7.4's
 //! examples. A select is styled as a drop-down box with native appearance.
+//! Changed, stated in html.css: the link colors are LinkText, VisitedText and
+//! ActiveText rather than their light hex values, as in all three browsers
+//! (an anchor's color follows the element color scheme; whatwg/html#12761).
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/rendering.html#the-css-user-agent-style-sheet-and-presentational-hints
 
