@@ -80,7 +80,17 @@ pub const Settings = struct {
     /// bypasses the partitioned stores (Codex row 44, ANSWER Q4). Null where
     /// this kind of global keeps none.
     top_level_site: ?*const fn (global: *runtime.Instance) error{OutOfMemory}!?[]u8 = null,
+    /// Permissions 5.1's key input: the settings object's top-level origin,
+    /// serialized and OWNED by the caller (global.ctx.allocator). Null when
+    /// absent or opaque. A site or the requesting origin cannot replace it.
+    top_level_origin: ?*const fn (global: *runtime.Instance) error{OutOfMemory}!?[]u8 = null,
 };
+
+pub fn topLevelOriginOf(global: *runtime.Instance) error{OutOfMemory}!?[]u8 {
+    const settings = of(global) orelse return null;
+    const origin_of = settings.top_level_origin orelse return null;
+    return origin_of(global);
+}
 
 /// `global`'s settings object's top-level site, serialized and OWNED
 /// (`global.ctx.allocator`); null where none is known or it is opaque.
