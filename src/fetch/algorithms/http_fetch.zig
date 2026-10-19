@@ -36,6 +36,7 @@ const service_worker_fetch = @import("../internal/service_worker_fetch.zig");
 const cookies = @import("cookies.zig");
 const clear_site_data = @import("clear_site_data.zig");
 const fetch_metadata = @import("fetch_metadata.zig");
+const http_cache = @import("../cache/transaction.zig");
 
 // URL Standard, for a redirect's location URL. The same three modules `xhr`
 // takes for `open()` - `url`'s root re-exports neither the serializer nor a
@@ -631,34 +632,36 @@ pub fn locationUrl(allocator: Allocator, response: *InternalResponse, request_ur
 
 /// Where HTTP-network-or-cache fetch's steps before the network leave it.
 pub const HttpNetworkStart = union(enum) {
-    /// Its response is already decided, with no request sent.
+    /// Its response is already decided, with no request sent - a stored
+    /// response (step 26.2.2.3), or a network error.
     response: *InternalResponse,
     /// HTTP-network fetch has built this request; it is the network's to
-    /// answer. Its header list is owned - `freeNetworkRequest` releases it.
-    network: NetworkRequest,
+    /// answer.
+    network: Network,
+
+    pub const Network = struct {
+        /// Its header list is owned - `freeNetworkRequest` releases it - and
+        /// is httpRequest's as sent, which the cache's Vary data is taken
+        /// from.
+        request: NetworkRequest,
+        /// The cache's part of the fetch (steps 11.3-11.5), for after the
+        /// network's answer: `cache.Transaction.afterNetwork`. OWNED
+        /// (`deinit`).
+        cache: ?http_cache.Transaction = null,
+    };
 };
 
-/// HTTP-network-or-cache fetch, up to the request HTTP-network fetch sends.
+/// HTTP-network-or-cache fetch, up to the request HTTP-network fetch sends:
+/// steps 8.1-8.26 - httpRequest's headers, then the HTTP cache (24-26,
+/// fetch/cache/transaction.zig) - and 11.1, or the response the cache gives.
 ///
-/// Per Fetch spec §4.8:
-/// This algorithm handles both cached and network responses.
-/// For now, we skip caching and go directly to network fetch.
+/// Spec: https://fetch.spec.whatwg.org/#http-network-or-cache-fetch
 pub fn httpNetworkOrCacheFetchStart(
     allocator: Allocator,
     params: *FetchParams,
     options: HttpFetchOptions,
 ) HttpFetchError!HttpNetworkStart {
     const request = params.request;
-
-    // TODO: Implement full cache lookup logic per spec
-    // For now, skip cache and go directly to network
-
-    // Check cache mode
-    if (request.cache_mode == .only_if_cached) {
-        // Only-if-cached requires a cached response
-        // Since we don't have cache yet, return network error
-        return .{ .response = try internal_response.networkError(allocator) };
-    }
 
     // HTTP-network fetch, step 8.3: "If connection is an HTTP/1.x
     // connection, request's body is non-null, and request's body's source is
@@ -686,12 +689,44 @@ pub fn httpNetworkOrCacheFetchStart(
     httpRequestHeaders(allocator, request, &added) catch return HttpFetchError.OutOfMemory;
     try appendAuthorization(allocator, request, options.is_authentication_fetch, &added);
 
+    // 24-26: the HTTP cache partition, and in it a stored response - the
+    // response, or the validators the request carries to the network.
+    const begun = try http_cache.Transaction.begin(allocator, request, .{
+        .author = request.header_list.iterator(),
+        .added = added.items,
+    }, http_cache.clockNow());
+    var validators: struct { etag: ?[]const u8 = null, date: ?[]const u8 = null } = .{};
+    var transaction: ?http_cache.Transaction = switch (begun) {
+        .bypass => null,
+        .response => |stored| {
+            // 26.2.2.3: no request is sent.
+            for (added.items) |header| allocator.free(header.value);
+            return .{ .response = stored };
+        },
+        // 11.1: "If httpRequest's cache mode is "only-if-cached", then
+        // return a network error."
+        .network_error => {
+            const failed = try internal_response.networkError(allocator);
+            for (added.items) |header| allocator.free(header.value);
+            return .{ .response = failed };
+        },
+        .network => |n| blk: {
+            validators = .{ .etag = n.if_none_match, .date = n.if_modified_since };
+            break :blk n.transaction;
+        },
+    };
+    errdefer if (transaction) |*t| t.deinit();
+    // 26.2.2.2.1-2: the stored response's validators (borrowed from it, which
+    // the transaction holds).
+    if (validators.etag) |etag| try addHeader(allocator, &added, "If-None-Match", etag);
+    if (validators.date) |date| try addHeader(allocator, &added, "If-Modified-Since", date);
+
     // HTTP-network fetch, step 1: Build NetworkRequest from InternalRequest
     var network_request = buildNetworkRequest(allocator, request, added.items) catch {
         return HttpFetchError.OutOfMemory;
     };
     network_request.require_http2 = require_http2;
-    return .{ .network = network_request };
+    return .{ .network = .{ .request = network_request, .cache = transaction } };
 }
 
 pub const HttpNetworkFinish = union(enum) {
@@ -1994,7 +2029,7 @@ test "HTTP-network-or-cache fetch sends the Origin header without adding it to t
     defer params.deinit();
 
     const started = try httpNetworkOrCacheFetchStart(allocator, params, .{});
-    const network_request = started.network;
+    const network_request = started.network.request;
     defer freeNetworkRequest(allocator, network_request);
     var origin: ?[]const u8 = null;
     for (network_request.headers) |header| {
@@ -2211,7 +2246,7 @@ test "HTTP-network-or-cache fetch step 8.11: a URL referrer is sent as Referer, 
     defer params.deinit();
 
     const started = try httpNetworkOrCacheFetchStart(allocator, params, .{});
-    const network_request = started.network;
+    const network_request = started.network.request;
     defer freeNetworkRequest(allocator, network_request);
     var referer_at: ?usize = null;
     var origin_at: ?usize = null;

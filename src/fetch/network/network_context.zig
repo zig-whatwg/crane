@@ -17,7 +17,10 @@
 //!   (accept_insecure_certs, a CA bundle it trusts);
 //! - WebSocket's CONNECTING gate (RFC 6455 4.1 step 2: "no more than one
 //!   connection in a CONNECTING state" to a host and port - per client, and a
-//!   Browser is the client, its workers included).
+//!   Browser is the client, its workers included);
+//! - the HTTP cache (`http_cache`, fetch/cache/http_cache.zig): every
+//!   partition's stored responses, in memory, locked by itself - Chromium's
+//!   NetworkContext owns its net::HttpCache the same way.
 //!
 //! A BrowserScope supplement (runtime.BrowserScope; `init(allocator)`,
 //! `deinit`), made and `configure`d by Browser.init before any realm exists,
@@ -69,6 +72,11 @@ pub const NetworkContext = struct {
     proxy: Proxy = .system,
     /// Browser-owned Fetch permission entries, independently locked.
     preflight_cache: @import("../cors/preflight_cache.zig").PreflightCache,
+    /// The Browser's HTTP cache: made by `configure` (BrowserConfig
+    /// .http_cache), fixed after, so read on any thread without a lock; the
+    /// cache locks itself. Null: none (a context a test makes, or a cap of
+    /// 0) - every request bypasses it.
+    http_cache: ?*HttpCache = null,
     auth_entries: @import("auth_entries.zig").AuthEntries,
     /// What clears the Browser's site data for a response's
     /// `Clear-Site-Data` header (Clear Site Data 4.2; Chromium's
@@ -93,7 +101,12 @@ pub const NetworkContext = struct {
         /// WebDriver's acceptInsecureCerts: certificates are not verified
         /// (neither the chain nor the host name).
         accept_insecure_certs: bool = false,
+        /// The HTTP cache's caps; a max_bytes of 0 makes none.
+        http_cache: HttpCacheConfig = .{},
     };
+
+    pub const HttpCache = @import("../cache/http_cache.zig").HttpCache;
+    pub const HttpCacheConfig = @import("../cache/http_cache.zig").Config;
 
     /// An explicit proxy configuration (docs/instances.md: explicit
     /// proxies only for 0.1; a PAC file and auto-detection are refused by
@@ -128,6 +141,10 @@ pub const NetworkContext = struct {
     /// connection closed only by the process exiting ends with a bare FIN,
     /// and WPT's h2 server (:9000) spins a thread forever on each of those.
     pub fn deinit(self: *NetworkContext) void {
+        // The stored responses go now; a body writer still collecting keeps
+        // the cache's core until it ends, and stores nothing.
+        if (self.http_cache) |cache| cache.close();
+        self.http_cache = null;
         self.preflight_cache.deinit();
         self.auth_entries.deinit();
         if (self.share) |share| share.destroy();
@@ -186,6 +203,10 @@ pub const NetworkContext = struct {
         if (options.accept_insecure_certs) {
             self.tls.verify_peer = false;
             self.tls.verify_host = false;
+        }
+        // The HTTP cache, once, before any request.
+        if (self.http_cache == null and options.http_cache.max_bytes > 0) {
+            self.http_cache = try HttpCache.create(self.allocator, options.http_cache);
         }
     }
 
