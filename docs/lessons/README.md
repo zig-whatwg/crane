@@ -523,6 +523,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Selected text keeps its rendering context](spec-compliance-selected-text-keeps-its-rendering-context.md) - Preserve surrounding whitespace/casing context and map source offsets through transformation.
 - [Normalize XML input after Trusted Types](spec-compliance-domparser-normalizes-xml-input-after-trusted-types.md) - Put scalar conversion at the parser input boundary, preserving DOMString elsewhere.
 - [Share HTTP date parsing with source metadata](spec-compliance-share-http-date-parsing-with-source-metadata.md) - Reuse the protocol parser, test existing callers and check narrower timestamp conversions.
+- [Raw event handlers own their source](spec-compliance-raw-event-handlers-own-their-source.md) - Retain the stored source; the current attribute can differ after CSP rejection or body replacement.
+- [Child removal does not prepare a script](spec-compliance-child-removal-does-not-prepare-a-script.md) - Carry the mutation reason so removal differs from insertion without changing style updates.
 
 ### Codegen
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
