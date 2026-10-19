@@ -48,23 +48,22 @@ fn setRelatedTarget(instance: *runtime.Instance, target: ?*runtime.Instance) err
     state.setRelatedTarget(instance, target);
 }
 
-/// Initialize instance (creates the instance)
-pub fn init(
+/// Borrowed constructor facts, also passed by DragEvent through the generated
+/// chain. UIEvent/Event create their part before MouseEvent fills its own.
+pub const construction_args = .{ "mouse_type", "mouse_init" };
+
+pub fn initOwn(
+    instance: *runtime.Instance,
     allocator: std.mem.Allocator,
     comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Through UIEvent's init, which installs its constructing steps
-    // (dom.event_construction) and chains to Event's.
-    return interfaces.UIEvent.initWithState(allocator, StateType, vtable, ctx);
-}
-
-/// Deinitialize instance: the relatedTarget's edge ends with the event's
-/// state, in Event's teardown.
-pub fn deinit(instance: *runtime.Instance) void {
-    // Clean up inherited Event state (frees the type DOMString)
-    interfaces.Event.deinit(instance);
+    args: anytype,
+) !void {
+    _ = allocator;
+    _ = StateType;
+    if (@hasField(@TypeOf(args), "mouse_type")) {
+        const dictionary: dictionaries.MouseEventInit = if (@hasField(@TypeOf(args), "mouse_init")) args.mouse_init else .{ .base = .{ .base = .{ .base = .{} } } };
+        try initialize(instance, args.mouse_type, dictionary);
+    }
 }
 
 /// Constructor implementation
@@ -75,21 +74,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 2. Initialize this with type, bubbles, and cancelable.
 /// 3. Initialize mouse event properties from eventInitDict.
 pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.MouseEventInit)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &MouseEvent.vtable, ctx);
-    errdefer deinit(instance);
+    const dictionary: dictionaries.MouseEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{ .base = .{ .base = .{} } } };
+    return MouseEvent.initWith(ctx.allocator, ctx, .{
+        .mouse_type = @"type",
+        .mouse_init = dictionary,
+    });
+}
 
-    // Its state: the UIEvent, MouseEvent and own attributes are set below
+/// DOM event constructor steps 1–2 and inner event creation step 4: fill
+/// the inherited dictionary members once for MouseEvent and its descendants.
+/// WebKit's DragEvent constructor likewise delegates its MouseEventInit to
+/// MouseEvent. Event's generated teardown releases the type and relatedTarget.
+fn initialize(instance: *runtime.Instance, event_type: runtime.DOMString, event_init: dictionaries.MouseEventInit) !void {
     const state = instance.getState(State);
-
-    // Build default dictionary chain
-    // MouseEventInit extends EventModifierInit extends UIEventInit extends EventInit
-    const default_event_init = dictionaries.EventInit{};
-    const default_ui_init = dictionaries.UIEventInit{ .base = default_event_init };
-    const default_modifier_init = dictionaries.EventModifierInit{ .base = default_ui_init };
-    const default_mouse_init = dictionaries.MouseEventInit{ .base = default_modifier_init };
-
-    const event_init = if (eventInitDict.was_passed) eventInitDict.value else default_mouse_init;
 
     // Access nested base fields for inherited dictionary properties
     const modifier_init = event_init.base;
@@ -100,7 +97,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // part: its internal state, the initialized flag, the timeStamp,
     // EventInit's members and the type - through Event's own steps
     // (dom.event_construction), never its state's type.
-    try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(base_init));
+    try event_construction.innerEventCreationSteps(instance, event_type, event_construction.eventInitFrom(base_init));
 
     // Initialize UIEvent attributes (in state.base.own): view, detail and the
     // legacy which.
@@ -138,8 +135,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.own.offsetY = @floatFromInt(clientY);
     state.own.layerX = clientX;
     state.own.layerY = clientY;
-
-    return instance;
 }
 
 /// Getter for screenX

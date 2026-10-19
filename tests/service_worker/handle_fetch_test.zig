@@ -314,7 +314,7 @@ test "a navigation's reserved client is made and controlled by Handle Fetch, the
     const manager = &fixture.harness.manager;
     const a = fixture.allocator();
 
-    const reserved = manager.reserveClient(.window, fixture.page_environment, 0).?;
+    const reserved = manager.reserveClient(.window, fixture.page_environment, 0, .{ .nested = "https://example.com", .top_level = "https://example.com" }).?;
     const request = try InternalRequest.init(a, "https://example.com/frame.html");
     defer request.deinit();
     request.destination = .iframe;
@@ -386,7 +386,7 @@ test "a reserved client the document is not of its origin, or that no document c
     const route = manager.routeOfReserved();
 
     for ([_]bool{ true, false }) |document_comes| {
-        const reserved = manager.reserveClient(.window, fixture.page_environment, 0).?;
+        const reserved = manager.reserveClient(.window, fixture.page_environment, 0, .{ .nested = "https://example.com", .top_level = "https://example.com" }).?;
         const request = try InternalRequest.init(a, "https://example.com/redirects.html");
         defer request.deinit();
         request.destination = .iframe;
@@ -567,7 +567,7 @@ test "Handle Fetch step 15: a GET navigation of a registration with navigation p
         manager.navigationPreload(fixture.page_environment, registration_id, if (case.enabled) .enable else .disable, 10 + i);
         var line_buffer: [32]u8 = undefined;
         try drainUntil(fixture.sink, &fixture.page, try std.fmt.bufPrint(&line_buffer, "undefined {d}", .{10 + i}), 10_000);
-        const reserved = manager.reserveClient(.window, fixture.page_environment, 0).?;
+        const reserved = manager.reserveClient(.window, fixture.page_environment, 0, .{ .nested = "https://example.com", .top_level = "https://example.com" }).?;
         const request = try InternalRequest.init(a, "https://example.com/frame.html");
         defer request.deinit();
         request.destination = .iframe;
@@ -716,7 +716,7 @@ test "Should Skip Event: a worker with no fetch listener is not asked - the netw
     defer request.deinit();
     try testing.expect(try route.handle(route.context, request, route.client) == .network);
     // A navigation too - its reserved client controlled all the same.
-    const reserved = manager.reserveClient(.window, fixture.page_environment, 0).?;
+    const reserved = manager.reserveClient(.window, fixture.page_environment, 0, .{ .nested = "https://example.com", .top_level = "https://example.com" }).?;
     const navigation = try InternalRequest.init(a, "https://example.com/frame.html");
     defer navigation.deinit();
     navigation.destination = .iframe;

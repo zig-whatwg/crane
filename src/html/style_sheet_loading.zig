@@ -141,6 +141,9 @@ const Load = struct {
     /// element set (HTML 4.2.6 step 6 for a style element, 4.6.7.23 for a
     /// stylesheet link): it takes the element out when it ends.
     render_blocking: bool = false,
+    /// Request metadata captured before the first fetch. Imports inherit it
+    /// even if attributes or actual document membership subsequently change.
+    fetch_render_blocking: bool = false,
     /// Static eligibility for the node document's script-blocking style
     /// sheet set: enabled at parser creation. Root and media are current
     /// conditions, checked by blocksScripts. Completion, cancellation and
@@ -429,6 +432,34 @@ fn blockRenderingFor(load: *Load, parser_created: bool) void {
     load.render_blocking = dom.document_rendering.contains(load.document, load.element);
 }
 
+/// HTML stylesheet fetch setup steps 3-4 / update a style block step 6,
+/// and CSS Values "fetch a style resource" step 4's inherited metadata.
+/// Chrome alone ships renderBlockingStatus. Blink's
+/// core/css/pending_sheet_type.cc classifies critical parser sheets outside
+/// body as blocking, and dynamic sheets by their explicit render token;
+/// LinkStyle additionally excludes alternate sheets. This is request
+/// metadata, independent of the document's current blocking-element set.
+fn fetchRenderBlocking(load: *Load, parser_created: bool) bool {
+    if (!mediaMatches(load.element)) return false;
+    if (load.kind == .stylesheet) {
+        const rel = interfaces.Element.call_getAttributeNS(load.element, null, runtime.DOMString.initInterned("rel")) catch null;
+        if (rel) |value| {
+            var tokens = std.mem.tokenizeAny(u8, value.asSlice(), "\t\n\x0C\r ");
+            while (tokens.next()) |token| {
+                if (std.ascii.eqlIgnoreCase(token, "alternate")) return false;
+            }
+        }
+    }
+    if (parser_created) {
+        const body = interfaces.Document.get_body(load.document) catch null;
+        if (body) |element| {
+            if (interfaces.Node.call_contains(element, load.element) catch false) return false;
+        }
+        return true;
+    }
+    return potentiallyRenderBlocking(load.element, false);
+}
+
 /// HTML 2.5.8 "potentially render-blocking": the blocking tokens set holds
 /// "render", or the element is implicitly potentially render-blocking.
 pub fn potentiallyRenderBlocking(element: *runtime.Instance, implicitly: bool) bool {
@@ -580,6 +611,7 @@ const ModulePreload = struct {
 
 fn startLinkFetch(element: *runtime.Instance, kind: Kind, options: LinkOptions, destination: fetch.internal.Destination) ?u64 {
     const load = newLoad(element, kind) orelse return null;
+    load.fetch_render_blocking = kind == .stylesheet and fetchRenderBlocking(load, options.parser_created);
     // `complete` can free the load: what is read after it is taken first.
     const id = load.id;
     const document_allocator = load.document.ctx.allocator;
@@ -604,6 +636,7 @@ fn startLinkFetch(element: *runtime.Instance, kind: Kind, options: LinkOptions, 
 /// could start (no event fires).
 pub fn startStyle(element: *runtime.Instance, text: []const u8, parser_created: bool) ?u64 {
     const load = newLoad(element, .style) orelse return null;
+    load.fetch_render_blocking = fetchRenderBlocking(load, parser_created);
     // `complete` can free the load (a realm with no event loop releases it
     // at once): what is read after it is taken first.
     const id = load.id;
@@ -920,6 +953,7 @@ fn startFetchOrFail(load: *Load, url: []const u8, parent: ?*Sheet, import_index:
     request.mode = if (cors == .no_cors) .no_cors else .cors;
     request.credentials_mode = if (cors == .anonymous) .same_origin else .include;
     request.use_url_credentials = true;
+    request.render_blocking = load.fetch_render_blocking;
     // "Set request's referrer policy to options's referrer policy."
     request.referrer_policy = options.referrer_policy;
     // HTML "create a link request", steps 6-7 and 10: the link's integrity,

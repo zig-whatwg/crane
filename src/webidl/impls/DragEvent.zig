@@ -16,42 +16,40 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+/// DragEvent currently has no owned state beyond its generated ancestors.
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
+pub const construction_args = .{"drag_init"};
+
+/// The generated chain initializes MouseEvent before DragEvent's own part.
+pub fn initOwn(
+    instance: *runtime.Instance,
     allocator: std.mem.Allocator,
     comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+    args: anytype,
+) !void {
+    _ = instance;
+    _ = allocator;
+    _ = StateType;
+    if (@hasField(@TypeOf(args), "drag_init")) {
+        const dictionary: dictionaries.DragEventInit = args.drag_init;
+        // TODO(520): HTML DragEvent's constructor must retain dataTransfer.
+        // The FILELIST + DATATRANSFER ownership item in
+        // tmp/plans/feature-queue.md:520 owns that holder; supplied values
+        // still read null until it lands. Never keep a bare pointer here.
+        _ = dictionary.dataTransfer;
+    }
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
+/// DOM event constructor steps 1–2, including all MouseEventInit members.
+/// https://html.spec.whatwg.org/multipage/dnd.html#the-dragevent-interface
 pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.DragEventInit)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &DragEvent.vtable, ctx);
-    errdefer deinit(instance);
-
-    _ = @"type";
-    _ = eventInitDict;
-    // TODO: Implement constructor logic with parameters
-
-    return instance;
+    const dictionary: dictionaries.DragEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{ .base = .{ .base = .{ .base = .{} } } } };
+    return DragEvent.initWith(ctx.allocator, ctx, .{
+        .mouse_type = @"type",
+        .mouse_init = dictionary.base,
+        .drag_init = dictionary,
+    });
 }
 
 /// Getter for dataTransfer

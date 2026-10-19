@@ -45,6 +45,7 @@ const clock = @import("clock");
 const fetch = @import("fetch");
 const interfaces = @import("interfaces");
 const fire_event = @import("fire_event.zig");
+const document_activity = @import("document_activity.zig");
 
 const Instance = runtime.Instance;
 
@@ -951,17 +952,60 @@ fn fireSimpleEvent(target: *Instance, comptime event_type: []const u8) void {
     event.releaseIfUnwrapped(generation);
 }
 
-/// Queue a task on the performance timeline task source to fire a buffer
-/// full event - a global task of the timeline's realm, as the observer task.
+/// Resource Timing 3.4, add an entry step 2: schedule one buffer-full event.
+/// Chrome and Safari use a zero-delay one-shot (Blink Performance::
+/// AddResourceTiming and WebKit Performance::addResourceTiming), so an
+/// overflow after a script-load continuation precedes a later zero timer.
+/// Firefox fails the corresponding two mixed-buffer WPTs. This preserves
+/// that shipping ordering while full_event_pending deduplicates the burst.
 fn queueBufferFullTask(timeline: *Timeline) void {
-    queueGlobalTask(timeline.owner, BufferFullTask.run, BufferFullTask.drop) catch {
-        // Nowhere to queue it: the entries stay in the secondary buffer, and
+    armBufferFullTimer(timeline.owner) catch {
+        // Nowhere to arm it: the entries stay in the secondary buffer, and
         // the pending flag clears so that the next entry tries again.
         timeline.resource.full_event_pending = false;
     };
 }
 
 const BufferFullTask = struct {
+    fn timerFired(context: ?*anyopaque) void {
+        const task: *GlobalTask = @ptrCast(@alignCast(context.?));
+        if (!task.target.isLive()) {
+            task.destroy();
+            return;
+        }
+        const ctx = task.target.instance.ctx;
+        if (!ctx.hasEngine()) return drop(context);
+        // HTML 8.1.7.1: a Window's task waits for its document to be fully
+        // active. Blink WindowPerformance's kPerformanceTimeline timer uses
+        // FrameSchedulerImpl's pausable/deferrable frame task runner. Our raw
+        // native timer does not suspend, so preserve the document task gate.
+        // Workers have no Document and deliver directly.
+        if (globalOf(ctx)) |global| {
+            if (global.stateAs(interfaces.Window.State) != null) {
+                const generation = runtime.SlabAllocator.generationOf(global);
+                switch (document_activity.activity(global, generation)) {
+                    .fully_active => {},
+                    .gone => return drop(context),
+                    .inactive => {
+                        const loop = ctx.getOptionalEventLoop() orelse return drop(context);
+                        loop.queueTask(.{
+                            .callback = run,
+                            .context = task,
+                            .drop = drop,
+                            .document = global,
+                            .document_generation = generation,
+                        });
+                        // The one-shot was removed before this callback;
+                        // the queue owns the task now, even if it dropped it
+                        // synchronously. Never access it after the handoff.
+                        return;
+                    },
+                }
+            }
+        }
+        run(context);
+    }
+
     fn run(context: ?*anyopaque) void {
         const task: *GlobalTask = @ptrCast(@alignCast(context.?));
         const performance = task.target;
@@ -997,29 +1041,16 @@ const GlobalTask = struct {
     }
 };
 
-/// Queue a global task for `target` (a Performance or a global) on its
-/// realm's event loop - a worker's own, or a window's, naming the realm's
-/// Window, so that it is dropped once the Window's document is not fully
-/// active.
-fn queueGlobalTask(target: *Instance, run: *const fn (?*anyopaque) void, drop: *const fn (?*anyopaque) void) !void {
+/// Transfer the task to an owned one-shot. A failed arm transfers nothing.
+fn armBufferFullTimer(target: *Instance) !void {
     const ctx = target.ctx;
+    const timer = ctx.getOptionalTimer() orelse return error.NotSupported;
     const allocator = ctx.allocator;
     const task = try allocator.create(GlobalTask);
+    errdefer task.destroy();
     task.* = .{ .allocator = allocator, .target = Link.to(target) };
-    if (ctx.getOptionalEventLoop()) |loop| {
-        const global = globalOf(ctx);
-        loop.queueTask(.{
-            .callback = run,
-            .context = task,
-            .drop = drop,
-            .document = if (global) |g| @ptrCast(g) else null,
-            .document_generation = if (global) |g| runtime.SlabAllocator.generationOf(g) else 0,
-        });
-        return;
-    }
-    // None (a bare realm, a unit test's).
-    task.destroy();
-    return error.NotSupported;
+    if (timer.setTimeoutOwned(0, BufferFullTask.timerFired, task, BufferFullTask.drop) == 0)
+        return error.NotSupported;
 }
 
 /// How a PerformanceResourceTiming's cache mode reads.
