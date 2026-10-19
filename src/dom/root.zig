@@ -130,6 +130,9 @@ pub const service_worker_clients = @import("service_worker_clients.zig");
 pub const agent_cluster_keys = @import("agent_cluster_keys.zig");
 /// The Browser's web state a realm reaches through its scope.
 pub const browser_state = @import("browser_state.zig");
+/// A blob URL's storage partition outside the store: a frame's blob:
+/// navigation's key, and the blob-URL noopener rule.
+pub const blob_partition = @import("blob_partition.zig");
 /// The fetches of a realm's agent, which its event loop pumps.
 pub const agent_fetches = @import("agent_fetches.zig");
 /// The CookieStores that hear their Browser's cookie jar, on any thread.

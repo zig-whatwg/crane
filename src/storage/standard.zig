@@ -8,8 +8,8 @@
 //!
 //! ```
 //! StorageShed (user agent or traversable navigable)
-//!     └── StorageKey (origin tuple)
-//!         └── StorageShelf (per-origin)
+//!     └── StorageKey (origin, top-level site, has cross-site ancestor)
+//!         └── StorageShelf (per storage key)
 //!             └── BucketMap ("default" → StorageBucket)
 //!                 └── StorageBucket (local or session)
 //!                     └── BottleMap (identifier → StorageBottle)
@@ -132,52 +132,103 @@ pub fn getEndpoint(identifier: StorageIdentifier) StorageEndpoint {
 // Storage Key (Phase 3.6)
 // ============================================================================
 
-/// A storage key is a tuple consisting of an origin
-/// https://storage.spec.whatwg.org/#storage-key
+/// A storage key (Storage 4.2) as every browser keys storage: an origin, the
+/// top-level site it runs under, and whether it has a cross-site ancestor.
+///
+/// The Storage Standard's text still says "a tuple consisting of an origin"
+/// (with "This is expected to change; see Client-Side Storage Partitioning"),
+/// and Crane follows the browsers over it (golden rule 2: no newer spec is
+/// involved, the browsers differ from the text, and all three agree):
+/// Chrome, Firefox and Safari all partition third-party storage by top-level
+/// by default (wpt.fyi aligned stable 23b0b89b1a: Chrome 155, Firefox 158,
+/// Safari 27 pass webstorage/localstorage-basic-partitioned.sub,
+/// sessionStorage-basic-partitioned.sub and
+/// localstorage-about-blank-3P-iframe-opens-3P-window.partitioned 1/1 each).
+/// Their keys: Chromium blink::StorageKey (origin, top_level_site,
+/// ancestor_chain_bit), Gecko OriginAttributes.partitionKey
+/// "(scheme,baseDomain[,port][,f])" whose "f" is the foreign-by-ancestor bit
+/// (caps/OriginAttributes.cpp ParsePartitionKey), WebKit ClientOrigin
+/// {topOrigin, clientOrigin}. So the top-level SITE and the bit (Chrome and
+/// Firefox). Corroboration, not the reason: whatwg/storage PR 182 (open since
+/// 2025-06, every engine interested, none opposed; Chromium 40177656, Gecko
+/// 1977899, WebKit 247732) makes the key exactly this, and HTML gave every
+/// environment its "has cross-site ancestor" (whatwg/html PR 11133, 2025-07).
+///
+/// The parts are serializations: `origin` an origin's ("null" when opaque),
+/// `top_level_site` a site's (HTML "obtain a site": "scheme://registrable
+/// domain", or "null" for an opaque top-level origin). Crane has no identity
+/// for an opaque origin or site, so "null" names every one of them; for
+/// storage purposes `obtainStorageKey` turns either down, and only the blob
+/// URL store - for non-storage purposes - compares them, as it compared
+/// opaque origins before.
 pub const StorageKey = struct {
-    /// The origin component of the storage key
-    /// For now this is a simple string; will integrate with HTML origin type
+    /// The origin, serialized.
     origin: []const u8,
+    /// The top-level site, serialized.
+    top_level_site: []const u8,
+    /// HTML "has cross-site ancestor" of the environment the key is for.
+    has_cross_site_ancestor: bool,
 
-    /// Allocator used to allocate the origin string
+    /// The allocator that made `origin` and `top_level_site` (one allocation
+    /// each); null for a borrowed key.
     allocator: ?std.mem.Allocator = null,
 
     const Self = @This();
 
-    /// Create a storage key from an origin string
-    pub fn init(allocator: std.mem.Allocator, origin: []const u8) !Self {
+    /// A key owning copies of its parts.
+    pub fn init(allocator: std.mem.Allocator, origin: []const u8, top_level_site: []const u8, has_cross_site_ancestor: bool) !Self {
         const origin_copy = try allocator.dupe(u8, origin);
-        return Self{
+        errdefer allocator.free(origin_copy);
+        const site_copy = try allocator.dupe(u8, top_level_site);
+        return .{
             .origin = origin_copy,
+            .top_level_site = site_copy,
+            .has_cross_site_ancestor = has_cross_site_ancestor,
             .allocator = allocator,
         };
     }
 
-    /// Create a storage key without copying (for temporary use)
-    pub fn initBorrowed(origin: []const u8) Self {
-        return Self{
+    /// A key borrowing its parts, for a lookup.
+    pub fn initBorrowed(origin: []const u8, top_level_site: []const u8, has_cross_site_ancestor: bool) Self {
+        return .{
             .origin = origin,
-            .allocator = null,
+            .top_level_site = top_level_site,
+            .has_cross_site_ancestor = has_cross_site_ancestor,
         };
     }
 
-    /// Free the storage key's resources
+    /// An owned copy of this key.
+    pub fn clone(self: Self, allocator: std.mem.Allocator) !Self {
+        return init(allocator, self.origin, self.top_level_site, self.has_cross_site_ancestor);
+    }
+
+    /// Free the key's parts, if it owns them.
     pub fn deinit(self: *Self) void {
         if (self.allocator) |alloc| {
             alloc.free(self.origin);
+            alloc.free(self.top_level_site);
         }
         self.* = undefined;
     }
 
-    /// Check if two storage keys are equal
+    /// Storage "equals" with whatwg/storage PR 182's steps: the origins are
+    /// same origin, the top-level sites same site, and the bits equal. The
+    /// parts are serializations, so each comparison is of bytes.
     /// https://storage.spec.whatwg.org/#storage-key-equal
     pub fn equals(self: Self, other: Self) bool {
-        return std.mem.eql(u8, self.origin, other.origin);
+        return self.has_cross_site_ancestor == other.has_cross_site_ancestor and
+            std.mem.eql(u8, self.origin, other.origin) and
+            std.mem.eql(u8, self.top_level_site, other.top_level_site);
     }
 
-    /// Hash function for use in hash maps
+    /// Hash function for use in hash maps: of every part `equals` compares.
     pub fn hash(self: Self) u64 {
-        return std.hash.Wyhash.hash(0, self.origin);
+        var hasher = std.hash.Wyhash.init(0);
+        hasher.update(self.origin);
+        hasher.update(&.{0});
+        hasher.update(self.top_level_site);
+        hasher.update(&.{@intFromBool(self.has_cross_site_ancestor)});
+        return hasher.final();
     }
 
     /// Context for hash map
@@ -190,6 +241,35 @@ pub const StorageKey = struct {
             return a.equals(b);
         }
     };
+
+    /// "<origin> <top-level site> <0|1>": the key as one string, for the
+    /// modules that keep or carry one without importing this one - the blob
+    /// URL store's entries (src/file) and a request's (src/fetch). No
+    /// serialized origin or site contains a space, so the form is canonical:
+    /// two keys are equal exactly when their serializations are. Owned by
+    /// the caller.
+    pub fn serialize(self: Self, allocator: std.mem.Allocator) ![]u8 {
+        return std.fmt.allocPrint(allocator, "{s} {s} {d}", .{ self.origin, self.top_level_site, @intFromBool(self.has_cross_site_ancestor) });
+    }
+
+    /// The key `serialized` (`serialize`'s form) names, borrowing from it;
+    /// null for anything else.
+    pub fn parse(serialized: []const u8) ?Self {
+        var parts = std.mem.splitScalar(u8, serialized, ' ');
+        const origin = parts.next() orelse return null;
+        const site = parts.next() orelse return null;
+        const bit = parts.next() orelse return null;
+        if (parts.next() != null or origin.len == 0 or site.len == 0) return null;
+        const has_cross_site_ancestor = if (std.mem.eql(u8, bit, "1")) true else if (std.mem.eql(u8, bit, "0")) false else return null;
+        return initBorrowed(origin, site, has_cross_site_ancestor);
+    }
+
+    /// Whether the origin or the top-level site is opaque (or missing):
+    /// Crane cannot tell one such key from another.
+    pub fn isOpaque(self: Self) bool {
+        return self.origin.len == 0 or std.mem.eql(u8, self.origin, "null") or
+            self.top_level_site.len == 0 or std.mem.eql(u8, self.top_level_site, "null");
+    }
 };
 
 // ============================================================================
@@ -358,6 +438,8 @@ pub const StorageBucket = struct {
             .mode = .best_effort,
             .allocator = allocator,
         };
+        // Its bottles hold nothing yet: freeing the map frees all of it.
+        errdefer bucket.bottle_map.deinit();
 
         // Initialize bottles for all registered endpoints of this type
         for (registered_storage_endpoints) |endpoint| {
@@ -431,8 +513,11 @@ pub const StorageShelf = struct {
             .allocator = allocator,
         };
 
+        errdefer shelf.bucket_map.deinit();
+
         // Create the default bucket
-        const bucket = try StorageBucket.init(allocator, storage_type);
+        var bucket = try StorageBucket.init(allocator, storage_type);
+        errdefer bucket.deinit();
         try shelf.bucket_map.put("default", bucket);
 
         return shelf;
@@ -531,19 +616,15 @@ pub const StorageShed = struct {
     /// https://storage.spec.whatwg.org/#obtain-a-storage-shelf
     pub fn obtainShelf(self: *Self, key: StorageKey) !*StorageShelf {
         // Check if shelf already exists
-        const borrowed_key = StorageKey.initBorrowed(key.origin);
-        if (self.shelves.getPtr(borrowed_key)) |shelf| {
+        if (self.shelves.getPtr(key)) |shelf| {
             return shelf;
         }
 
-        // Create new shelf
-        const owned_key = try StorageKey.init(self.allocator, key.origin);
-        errdefer {
-            var k = owned_key;
-            k.deinit();
-        }
-
-        const shelf = try StorageShelf.init(self.allocator, self.storage_type);
+        // Create new shelf, under a copy of the key the shed owns.
+        var owned_key = try key.clone(self.allocator);
+        errdefer owned_key.deinit();
+        var shelf = try StorageShelf.init(self.allocator, self.storage_type);
+        errdefer shelf.deinit();
         try self.shelves.put(owned_key, shelf);
 
         return self.shelves.getPtr(owned_key).?;
@@ -551,14 +632,12 @@ pub const StorageShed = struct {
 
     /// Get a shelf without creating it
     pub fn getShelf(self: *Self, key: StorageKey) ?*StorageShelf {
-        const borrowed_key = StorageKey.initBorrowed(key.origin);
-        return self.shelves.getPtr(borrowed_key);
+        return self.shelves.getPtr(key);
     }
 
     /// Remove a shelf
     pub fn removeShelf(self: *Self, key: StorageKey) void {
-        const borrowed_key = StorageKey.initBorrowed(key.origin);
-        if (self.shelves.fetchRemove(borrowed_key)) |entry| {
+        if (self.shelves.fetchRemove(key)) |entry| {
             var k = entry.key;
             k.deinit();
             var shelf = entry.value;
@@ -600,10 +679,16 @@ pub const StorageShed = struct {
 pub const UserAgentStorage = struct {
     allocator: std.mem.Allocator,
     mutex: std.Io.Mutex = .init,
-    /// The user agent's storage shed: local storage. Session storage keeps
-    /// its "{top-level browsing context}:{origin}" shelves here too, until
-    /// each tab has its traversable's shed (instances B4).
+    /// The user agent's storage shed: local storage, a shelf per storage
+    /// key.
     shed: StorageShed,
+    /// The session storage sheds: Storage 4.3 gives every traversable
+    /// navigable a storage shed of its own, here by the top-level
+    /// traversable's browsing context id. Each holds a shelf per storage key;
+    /// a shed's shelves stay in its own allocation when this map grows, so a
+    /// Storage object's proxy map stays valid. Until each tab holds its
+    /// traversable's shed itself (instances B4), they end with the Browser.
+    session_sheds: std.AutoHashMapUnmanaged(u64, StorageShed) = .empty,
     /// The bucket file systems (navigator.storage.getDirectory()).
     buckets: fs.BucketManager,
 
@@ -618,6 +703,9 @@ pub const UserAgentStorage = struct {
     /// With its Browser: every storage area of it is gone.
     pub fn deinit(self: *UserAgentStorage) void {
         self.shed.deinit();
+        var sheds = self.session_sheds.valueIterator();
+        while (sheds.next()) |shed| shed.deinit();
+        self.session_sheds.deinit(self.allocator);
         self.buckets.deinit();
     }
 
@@ -629,11 +717,39 @@ pub const UserAgentStorage = struct {
         std.Io.Threaded.mutexUnlock(&self.mutex);
     }
 
-    /// "Obtain a local storage shelf" for `origin` (the caller holds the
-    /// lock, or is the window thread reaching a shelf only it uses).
+    /// "Obtain a local storage shelf" for `key`, a key "obtain a storage key"
+    /// gave (the caller holds the lock, or is the window thread reaching a
+    /// shelf only it uses). Null - failure - for a key it would have refused.
+    pub fn obtainLocalShelfLocked(self: *UserAgentStorage, key: StorageKey) !?*StorageShelf {
+        const storage_key = obtainStorageKey(key) orelse return null;
+        return try self.shed.obtainShelf(storage_key);
+    }
+
+    /// "Obtain a session storage shelf": `key`'s shelf in the session storage
+    /// shed of the top-level traversable `traversable`, made on first use.
+    pub fn obtainSessionShelfLocked(self: *UserAgentStorage, traversable: u64, key: StorageKey) !?*StorageShelf {
+        const storage_key = obtainStorageKey(key) orelse return null;
+        const shed = try self.sessionShedLocked(traversable);
+        return try shed.obtainShelf(storage_key);
+    }
+
+    /// The session storage shed of the top-level traversable `traversable`,
+    /// made empty on first use.
+    pub fn sessionShedLocked(self: *UserAgentStorage, traversable: u64) !*StorageShed {
+        const entry = try self.session_sheds.getOrPut(self.allocator, traversable);
+        if (!entry.found_existing) entry.value_ptr.* = StorageShed.init(self.allocator, .session);
+        return entry.value_ptr;
+    }
+
+    /// The local storage shelf of `origin` alone, with no top-level site:
+    /// what the origin-only callers (StorageManager's persist, persisted and
+    /// estimate, the quota manager) reach until they are given their
+    /// environment's storage key. Kept apart from every partition a real
+    /// environment's key names (no site is empty), so it shares nothing with
+    /// them. The caller holds the lock.
     pub fn obtainShelfLocked(self: *UserAgentStorage, origin: []const u8) !?*StorageShelf {
         if (origin.len == 0 or std.mem.eql(u8, origin, "null")) return null;
-        return try self.shed.obtainShelf(StorageKey.initBorrowed(origin));
+        return try self.shed.obtainShelf(StorageKey.initBorrowed(origin, "", false));
     }
 
     /// The bucket file system of `origin`'s storage bucket, made on first use.
@@ -666,17 +782,19 @@ pub fn getBucketFileSystem(user_agent_storage: *UserAgentStorage, origin: []cons
 // Algorithms (Phase 3.6, 3.7, 3.8, 3.9)
 // ============================================================================
 
-/// Obtain a storage key for an origin
+/// Storage "obtain a storage key", given `key`, its environment's key for
+/// non-storage purposes (dom.global_settings computes it): failure (null)
+/// when its origin is opaque - step 2 - and, a deviation stated, when its
+/// top-level site is: Crane gives an opaque site no identity, so every
+/// sandboxed or opaque top-level page would share one "null" partition
+/// (lesson: a missing partition key is not a shared partition). The browsers
+/// give such a page a partition of its own (Chromium's opaque top-level site
+/// is a nonce, Gecko's partitionKey a null principal's); Crane gives it none.
+/// Step 3, "the user has disabled storage", has no setting here.
 /// https://storage.spec.whatwg.org/#obtain-a-storage-key
-pub fn obtainStorageKey(allocator: std.mem.Allocator, origin: []const u8) !?StorageKey {
-    // If origin is opaque, return failure
-    if (origin.len == 0 or std.mem.eql(u8, origin, "null")) {
-        return null;
-    }
-
-    // TODO: Check if user has disabled storage
-
-    return try StorageKey.init(allocator, origin);
+pub fn obtainStorageKey(key: StorageKey) ?StorageKey {
+    if (key.isOpaque()) return null;
+    return key;
 }
 
 /// Obtain a local storage shelf
@@ -685,75 +803,65 @@ pub fn obtainStorageKey(allocator: std.mem.Allocator, origin: []const u8) !?Stor
 /// From `user_agent_storage`, the user agent's - its Browser's. The caller
 /// holds its lock while it uses the shelf from a thread other than the
 /// Browser's window thread (UserAgentStorage, THREADS).
-pub fn obtainLocalStorageShelf(user_agent_storage: *UserAgentStorage, origin: []const u8) !?*StorageShelf {
-    // "Obtain a storage key": failure for an opaque origin.
-    // TODO: Check if user has disabled storage
+pub fn obtainLocalStorageShelf(user_agent_storage: *UserAgentStorage, key: StorageKey) !?*StorageShelf {
     user_agent_storage.lock();
     defer user_agent_storage.unlock();
-    return user_agent_storage.obtainShelfLocked(origin);
+    return user_agent_storage.obtainLocalShelfLocked(key);
 }
 
-/// Obtain a storage bottle map for an endpoint
+/// The proxy map of `identifier`'s bottle on `shelf`'s default bucket, the
+/// bottle made on first use with `allocator` (the shed's: freed with it).
+fn bottleMapOf(allocator: std.mem.Allocator, shelf: *StorageShelf, identifier: StorageIdentifier) !?StorageProxyMap {
+    const bucket = shelf.getDefaultBucket() orelse return null;
+    if (bucket.getBottle(identifier)) |bottle| return bottle.createProxyMap();
+    const endpoint = getEndpoint(identifier);
+    try bucket.bottle_map.put(identifier, StorageBottle.init(allocator, endpoint.quota));
+    return bucket.bottle_map.getPtr(identifier).?.createProxyMap();
+}
+
+/// Obtain a storage bottle map for an endpoint: local storage's, in the
+/// Browser's storage shed, for `key`.
 /// https://storage.spec.whatwg.org/#obtain-a-storage-bottle-map
 ///
-/// In `user_agent_storage`, its Browser's. The shelf, bucket and bottle are
-/// found or made under its lock; the proxy map returned reads and writes the
-/// bottle's map without it (UserAgentStorage, THREADS).
+/// The shelf, bucket and bottle are found or made under the lock of
+/// `user_agent_storage`, its Browser's; the proxy map returned reads and
+/// writes the bottle's map without it (UserAgentStorage, THREADS). Null when
+/// "obtain a storage key" fails for `key`.
 pub fn obtainStorageBottleMap(
     user_agent_storage: *UserAgentStorage,
-    storage_type: StorageType,
-    origin: []const u8,
+    key: StorageKey,
     identifier: StorageIdentifier,
 ) !?StorageProxyMap {
-    // Note: session storage uses the same shed for now, with a key that
-    // includes the browsing context: the caller (getSessionStorage in
-    // web_storage.zig) already makes a session key with the top-level
-    // browsing context's id. Each tab's traversable storage shed is
-    // instances B4.
-    _ = storage_type; // Both local and session use the same shed infrastructure
     user_agent_storage.lock();
     defer user_agent_storage.unlock();
-
-    // Obtain shelf (null: the storage key is failure)
-    const shelf = try user_agent_storage.obtainShelfLocked(origin) orelse return null;
-
-    // Get default bucket
-    const bucket = shelf.getDefaultBucket() orelse return null;
-
-    // Get bottle for this endpoint, creating it if needed
-    // Session storage bottles are created on-demand since they're scoped per browsing context
-    var bottle = bucket.getBottle(identifier);
-    if (bottle == null) {
-        // Create the bottle on-demand, with the shed's allocator: it is the
-        // shed's, freed with it.
-        const endpoint = getEndpoint(identifier);
-        const new_bottle = StorageBottle.init(user_agent_storage.allocator, endpoint.quota);
-        bucket.bottle_map.put(identifier, new_bottle) catch return null;
-        bottle = bucket.bottle_map.getPtr(identifier);
-    }
-
-    // Create and return proxy map
-    return if (bottle) |b| b.createProxyMap() else null;
+    const shelf = try user_agent_storage.obtainLocalShelfLocked(key) orelse return null;
+    return bottleMapOf(user_agent_storage.allocator, shelf, identifier);
 }
 
 /// Obtain a local storage bottle map
 /// https://storage.spec.whatwg.org/#obtain-a-local-storage-bottle-map
 pub fn obtainLocalStorageBottleMap(
     user_agent_storage: *UserAgentStorage,
-    origin: []const u8,
+    key: StorageKey,
     identifier: StorageIdentifier,
 ) !?StorageProxyMap {
-    return obtainStorageBottleMap(user_agent_storage, .local, origin, identifier);
+    return obtainStorageBottleMap(user_agent_storage, key, identifier);
 }
 
-/// Obtain a session storage bottle map
+/// Obtain a session storage bottle map: `key`'s, in the session storage
+/// shed of the top-level traversable `traversable` (its browsing context
+/// id). Null when "obtain a storage key" fails for `key`.
 /// https://storage.spec.whatwg.org/#obtain-a-session-storage-bottle-map
 pub fn obtainSessionStorageBottleMap(
     user_agent_storage: *UserAgentStorage,
-    origin: []const u8,
+    traversable: u64,
+    key: StorageKey,
     identifier: StorageIdentifier,
 ) !?StorageProxyMap {
-    return obtainStorageBottleMap(user_agent_storage, .session, origin, identifier);
+    user_agent_storage.lock();
+    defer user_agent_storage.unlock();
+    const shelf = try user_agent_storage.obtainSessionShelfLocked(traversable, key) orelse return null;
+    return bottleMapOf(user_agent_storage.allocator, shelf, identifier);
 }
 
 // ============================================================================
@@ -785,16 +893,19 @@ pub fn getStorageEstimate(user_agent_storage: *UserAgentStorage, origin: []const
 // Tests
 // ============================================================================
 
+/// A first-party storage key of https://example.com.
+const example_key = StorageKey.initBorrowed("https://example.com", "https://example.com", false);
+
 test "StorageKey - init and equals" {
     const allocator = std.testing.allocator;
 
-    var key1 = try StorageKey.init(allocator, "https://example.com");
+    var key1 = try StorageKey.init(allocator, "https://example.com", "https://example.com", false);
     defer key1.deinit();
 
-    var key2 = try StorageKey.init(allocator, "https://example.com");
+    var key2 = try StorageKey.init(allocator, "https://example.com", "https://example.com", false);
     defer key2.deinit();
 
-    var key3 = try StorageKey.init(allocator, "https://other.com");
+    var key3 = try StorageKey.init(allocator, "https://other.com", "https://other.com", false);
     defer key3.deinit();
 
     try std.testing.expect(key1.equals(key2));
@@ -892,7 +1003,7 @@ test "StorageShed - obtain shelf" {
     var shed = StorageShed.init(allocator, .local);
     defer shed.deinit();
 
-    const key = StorageKey.initBorrowed("https://example.com");
+    const key = StorageKey.initBorrowed("https://example.com", "https://example.com", false);
 
     // First obtain creates shelf
     const shelf1 = try shed.obtainShelf(key);
@@ -904,7 +1015,7 @@ test "StorageShed - obtain shelf" {
     try std.testing.expectEqual(@as(usize, 1), shed.count());
 
     // Different key creates new shelf
-    const key2 = StorageKey.initBorrowed("https://other.com");
+    const key2 = StorageKey.initBorrowed("https://other.com", "https://other.com", false);
     _ = try shed.obtainShelf(key2);
     try std.testing.expectEqual(@as(usize, 2), shed.count());
 }
@@ -914,7 +1025,7 @@ test "obtainLocalStorageBottleMap" {
     defer user_agent_storage.deinit();
 
     // Get bottle map for indexedDB
-    const proxy = try obtainLocalStorageBottleMap(&user_agent_storage, "https://example.com", .indexedDB);
+    const proxy = try obtainLocalStorageBottleMap(&user_agent_storage, example_key, .indexedDB);
     try std.testing.expect(proxy != null);
 
     // Store some data
@@ -922,7 +1033,7 @@ test "obtainLocalStorageBottleMap" {
     try std.testing.expectEqualStrings("testValue", proxy.?.get("testKey").?);
 
     // Opaque origin should return null
-    const opaque_result = try obtainLocalStorageBottleMap(&user_agent_storage, "null", .indexedDB);
+    const opaque_result = try obtainLocalStorageBottleMap(&user_agent_storage, StorageKey.initBorrowed("null", "https://example.com", true), .indexedDB);
     try std.testing.expect(opaque_result == null);
 }
 
@@ -930,8 +1041,11 @@ test "StorageEstimate" {
     var user_agent_storage = UserAgentStorage.init(std.testing.allocator);
     defer user_agent_storage.deinit();
 
-    // Store some data first
-    const proxy = try obtainLocalStorageBottleMap(&user_agent_storage, "https://example.com", .indexedDB);
+    // Store some data first, in the origin-only shelf the estimate reads.
+    user_agent_storage.lock();
+    const shelf = (try user_agent_storage.obtainShelfLocked("https://example.com")).?;
+    user_agent_storage.unlock();
+    const proxy = try bottleMapOf(user_agent_storage.allocator, shelf, .indexedDB);
     try std.testing.expect(proxy != null);
     try proxy.?.set("key1", "value1");
     try proxy.?.set("key2", "value2value2");
@@ -949,11 +1063,11 @@ test "UserAgentStorage - two user agents' sheds share nothing under one storage 
     var b = UserAgentStorage.init(std.testing.allocator);
     defer b.deinit();
 
-    const in_a = (try obtainLocalStorageBottleMap(&a, "https://example.com", .localStorage)).?;
+    const in_a = (try obtainLocalStorageBottleMap(&a, example_key, .localStorage)).?;
     try in_a.set("k", "a");
-    const in_b = (try obtainLocalStorageBottleMap(&b, "https://example.com", .localStorage)).?;
+    const in_b = (try obtainLocalStorageBottleMap(&b, example_key, .localStorage)).?;
     try std.testing.expect(in_b.get("k") == null);
-    const in_a_again = (try obtainLocalStorageBottleMap(&a, "https://example.com", .localStorage)).?;
+    const in_a_again = (try obtainLocalStorageBottleMap(&a, example_key, .localStorage)).?;
     try std.testing.expectEqualStrings("a", in_a_again.get("k").?);
 
     // Their bucket file systems too.

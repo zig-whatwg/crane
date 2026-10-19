@@ -1,0 +1,12 @@
+# Spec Compliance: Partitioning a store needs its exemptions in the same change
+
+**Date**: 2026-10-19
+**Lesson**: When a store that answered everyone starts checking a partition key, every case the spec exempts from the check passed before only because nothing was checked - list the exemptions and build them in the same change, or they regress.
+
+**Why**: An unpartitioned store is a lenient check. Tests of the exemptions (and of features nobody thought of as "partitioning") pass on it for the wrong reason, so they never appear in the failing list that motivated the work - they appear only as regressions once the key is enforced.
+
+**What Happened**: Lane partition1 keyed the blob URL store by storage key (File API 8.3.2). The motivating files were the failing cross-partition ones. But FileAPI/BlobURL/cross-partition-self-fetch.https.html passed on base (1/1), only because the store compared origins: a blob document opened at the top level fetches its own URL, which a third-party frame made. With the key enforced it would fetch nothing. The current Fetch text has two exemptions in scheme fetch "blob" step 6 - "top-level-navigation" (a `document` destination) and "top-level-self-fetch" (a top-level Window fetching its own creation URL, added to FileAPI/Fetch in 2025-12; Chrome ships it) - and a third lives in HTML, not in the store: a cross-site blob URL forces noopener on window.open and on followed hyperlinks instead of failing. Session storage had the same shape: row 79's popup clone copies the opener's shed, and only a key that kept every shelf's top-level site made a cross-site popup's frames start empty while a same-site popup kept its copy.
+
+**Fix**: Before enforcing the key, read every algorithm that consults it end to end (Fetch scheme fetch "blob" steps 3-6, File API "obtain a blob object", HTML "get noopener for window open" and "get an element's noopener", Storage "legacy-clone a traversable storage shed") and list each caller that must NOT be checked. Implement those with the key (InternalRequest.blob_top_level_self_fetch, the `document` destination, dom.blob_partition.forcesNoopener), and run the files that passed on base for the A/B, not just the failing ones.
+
+**Takeaway**: **A partition check that starts failing correct pages was usually passing everything before: build the spec's exemptions with the key, and A/B the files that already passed.**
