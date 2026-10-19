@@ -68,6 +68,7 @@ const Recorder = struct {
             // realm makes its object from it before firing the event.
             .controller_change => |m| std.fmt.allocPrint(self.allocator, "{d}: controllerchange {d} {s}", .{ environment.id, if (m) |w| w.id else 0, if (m) |w| @tagName(w.state) else "none" }),
             .ready => |m| std.fmt.allocPrint(self.allocator, "{d}: ready {s}", .{ environment.id, m.scope_url }),
+            .update_via_cache => |m| std.fmt.allocPrint(self.allocator, "{d}: registration {d} update via cache {s}", .{ environment.id, m.registration, @tagName(m.mode) }),
         } catch return;
         self.log.append(self.allocator, line) catch self.allocator.free(line);
     }
@@ -278,6 +279,84 @@ test "an update whose script is unchanged resolves without a new worker" {
     try answerFetch(&registry, &update_plan, "x", false);
     try recorder.expectLog(&.{"1: resolve registration https://example.com/"});
     try testing.expectEqual(@as(usize, 1), recorder.started.items.len);
+}
+
+test "a job that changes a registration's update via cache mode tells every realm of its origin before it resolves" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 13);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    const frame = try addWindow(&registry, "https://example.com/frame.html");
+    try registerJob(&registry, page, "https://example.com/sw.js", "https://example.com/", 1);
+    var plan = (try recorder.runQueuedJobs(&registry)).?;
+    try answerFetch(&registry, &plan, "x", true);
+    try registry.workerEvaluated(recorder.started.items[0], true, true);
+    try registry.lifecycleEventDone(recorder.lifecycle.items[0].op, false);
+    try registry.lifecycleEventDone(recorder.lifecycle.items[1].op, false);
+    for (recorder.log.items) |line| testing.allocator.free(line);
+    recorder.log.clearRetainingCapacity();
+    const registration_id = registry.getRegistration("https://example.com", "https://example.com/").?.id;
+    const expected_none = try std.fmt.allocPrint(testing.allocator, "registration {d} update via cache none", .{registration_id});
+    defer testing.allocator.free(expected_none);
+
+    // Register again with the same script and "none": Register step 5 does
+    // not match (another mode), Update step 9 (unchanged bytes) sets the
+    // registration's mode - every realm of the origin hears it, then the
+    // job's promise resolves.
+    const again = try registry.createJob(.{
+        .job_type = .register,
+        .storage_key = "https://example.com",
+        .scope_url = "https://example.com/",
+        .script_url = "https://example.com/sw.js",
+        .update_via_cache = .none,
+        .client = .{ .environment = page.id, .promise = 2 },
+        .referrer = page.creation_url,
+    });
+    try registry.scheduleJob(again);
+    var unchanged = (try recorder.runQueuedJobs(&registry)).?;
+    try answerFetch(&registry, &unchanged, "x", false);
+    const page_heard = try std.fmt.allocPrint(testing.allocator, "{d}: {s}", .{ page.id, expected_none });
+    defer testing.allocator.free(page_heard);
+    const frame_heard = try std.fmt.allocPrint(testing.allocator, "{d}: {s}", .{ frame.id, expected_none });
+    defer testing.allocator.free(frame_heard);
+    try recorder.expectLog(&.{ page_heard, frame_heard, "1: resolve registration https://example.com/" });
+
+    // The same mode again changes nothing, and nothing is told.
+    try registry.scheduleJob(try registry.createJob(.{
+        .job_type = .register,
+        .storage_key = "https://example.com",
+        .scope_url = "https://example.com/",
+        .script_url = "https://example.com/sw.js",
+        .update_via_cache = .none,
+        .client = .{ .environment = page.id, .promise = 3 },
+        .referrer = page.creation_url,
+    }));
+    try testing.expect((try recorder.runQueuedJobs(&registry)) == null);
+    try recorder.expectLog(&.{"1: resolve registration https://example.com/"});
+
+    // A new script with "all": Install step 3 sets the mode before Update
+    // Registration State shows the installing worker.
+    try registry.scheduleJob(try registry.createJob(.{
+        .job_type = .register,
+        .storage_key = "https://example.com",
+        .scope_url = "https://example.com/",
+        .script_url = "https://example.com/sw2.js",
+        .update_via_cache = .all,
+        .client = .{ .environment = page.id, .promise = 4 },
+        .referrer = page.creation_url,
+    }));
+    var changed = (try recorder.runQueuedJobs(&registry)).?;
+    try answerFetch(&registry, &changed, "y", true);
+    try registry.workerEvaluated(recorder.started.items[1], true, true);
+    try testing.expect(recorder.log.items.len >= 3);
+    const expected_all = try std.fmt.allocPrint(testing.allocator, "{d}: registration {d} update via cache all", .{ page.id, registration_id });
+    defer testing.allocator.free(expected_all);
+    try testing.expectEqualStrings(expected_all, recorder.log.items[0]);
+    try testing.expect(std.mem.endsWith(u8, recorder.log.items[1], "update via cache all"));
+    try testing.expect(std.mem.indexOf(u8, recorder.log.items[2], "installing = ") != null);
+    for (recorder.log.items) |line| testing.allocator.free(line);
+    recorder.log.clearRetainingCapacity();
 }
 
 test "a script that cannot be fetched rejects with a TypeError and leaves no registration" {

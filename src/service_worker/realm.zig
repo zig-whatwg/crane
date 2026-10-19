@@ -341,6 +341,14 @@ pub const RealmEnvironment = struct {
                 const registration = again.object.live() orelse return;
                 setSlot(registration, again.data, m.slot, value);
             },
+            // The registration's update via cache mode changed (Update step
+            // 9, Install step 3): what its object's getter returns.
+            .update_via_cache => |m| {
+                const entry = self.registrationEntry(m.registration) orelse return;
+                // The object's impl owns `data`: gone with the object.
+                if (entry.object.live() == null) return;
+                entry.data.update_via_cache = m.mode;
+            },
             // Install step 9.2: updatefound at the registration's objects.
             .update_found => |m| {
                 const entry = self.registrationEntry(m.registration) orelse return;
