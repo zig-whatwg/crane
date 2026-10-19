@@ -236,8 +236,8 @@ pub fn isSequentiallyFocusable(element: *Instance) bool {
             if (picker.isListbox(select) and picker.baseOptions(select)) return picker.firstFocusable(select, true) == element;
         }
     }
-    const value = tabindexValue(element) orelse return true;
-    return value >= 0;
+    if ((tabindexValue(element) orelse 0) < 0) return false;
+    return @import("forms/radio_focus.zig").isSequentialRepresentative(element);
 }
 
 // ============================================================================
@@ -760,6 +760,11 @@ fn following(node: *Instance, root: *Instance) ?*Instance {
 /// tree only), into `out`: positive tabindex values first, ascending, then
 /// the rest in tree order; how many.
 fn sequentialOrder(document: *Instance, out: []*Instance) usize {
+    // This entire walk uses native reads, with no script or event dispatch.
+    // Borrow group names/nodes only here; defer destroys the summary before
+    // any navigation candidate can be focused and run arbitrary script.
+    var radios = @import("forms/radio_focus.zig").Navigation.init(document.ctx.allocator, document);
+    defer radios.deinit();
     var count: usize = 0;
     // Positive tabindex values, in ascending order, ties in tree order: one
     // pass per distinct value would be quadratic, so collect then sort.
@@ -769,7 +774,7 @@ fn sequentialOrder(document: *Instance, out: []*Instance) usize {
     var node = following(document, document);
     while (node) |n| : (node = following(n, document)) {
         tree_index += 1;
-        if (!isElement(n) or !isSequentiallyFocusable(n)) continue;
+        if (!isElement(n) or !(radios.eligibility(n) orelse isSequentiallyFocusable(n))) continue;
         const value = tabindexValue(n) orelse 0;
         if (value > 0 and positive_count < positives.len) {
             positives[positive_count] = .{ .value = value, .index = tree_index, .element = n };
@@ -789,7 +794,7 @@ fn sequentialOrder(document: *Instance, out: []*Instance) usize {
     }
     node = following(document, document);
     while (node) |n| : (node = following(n, document)) {
-        if (!isElement(n) or !isSequentiallyFocusable(n)) continue;
+        if (!isElement(n) or !(radios.eligibility(n) orelse isSequentiallyFocusable(n))) continue;
         if ((tabindexValue(n) orelse 0) > 0) continue;
         if (count == out.len) return count;
         out[count] = n;
