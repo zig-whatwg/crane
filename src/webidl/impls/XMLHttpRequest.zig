@@ -1062,7 +1062,25 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
 
     // Step 12: a sync request blocks here, which is what sync MEANS.
     if (xhr_state.synchronous_flag) {
-        send_algo.sendDispatch(xhr_state, effective_body) catch |err| {
+        // Defensive against a future synchronous realm end (row 79 Q13):
+        // current frame removal only detaches, and realm ends wait until
+        // its script returns. Save Context/generation before dispatch;
+        // like PendingFetch.alive, never recover them from retired state.
+        const SyncOwner = struct {
+            context: runtime.Context,
+            instance: *runtime.Instance,
+            generation: u64,
+
+            fn alive(data: *anyopaque) bool {
+                const self: *@This() = @ptrCast(@alignCast(data));
+                if (!self.context.hasEngine()) return false;
+                if (self.generation == runtime.SlabAllocator.dead_generation or
+                    runtime.SlabAllocator.generationOf(self.instance) != self.generation) return false;
+                return self.instance.getState(State).own._internal != null;
+            }
+        };
+        var owner: SyncOwner = .{ .context = instance.ctx, .instance = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
+        send_algo.sendSync(xhr_state, effective_body, .{ .context = &owner, .is_live = SyncOwner.alive }) catch |err| {
             return switch (err) {
                 error.TimeoutError => error.TimeoutError,
                 error.NetworkError => error.NetworkError,

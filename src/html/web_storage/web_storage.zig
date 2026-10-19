@@ -532,6 +532,77 @@ pub fn getSessionStorage(
     return Storage.init(allocator, proxy_map, .session, origin);
 }
 
+/// Storage "legacy-clone a traversable storage shed", steps 1.1-1.3.
+/// Called only for a NEW traversable, before it has script or storage proxies.
+/// All origins are copied, including those used only by the opener's frames.
+/// Nothing is published until every allocation succeeds; no storage event is
+/// generated. The temporary shelves own every string independently.
+pub fn cloneSessionStorage(user_agent_storage: *storage_standard.UserAgentStorage, opener_top: u64, new_top: u64) std.mem.Allocator.Error!void {
+    std.debug.assert(opener_top != new_top);
+    user_agent_storage.lock();
+    defer user_agent_storage.unlock();
+    const allocator = user_agent_storage.allocator;
+    var prefix_buffer: [21]u8 = undefined;
+    const prefix = std.fmt.bufPrint(&prefix_buffer, "{d}:", .{opener_top}) catch unreachable;
+    var pending = storage_standard.StorageShed.init(allocator, .session);
+    defer pending.deinit();
+
+    var source_shelves = user_agent_storage.shed.shelves.iterator();
+    while (source_shelves.next()) |source| {
+        const source_key = source.key_ptr.origin;
+        if (!std.mem.startsWith(u8, source_key, prefix)) continue;
+        const bucket = source.value_ptr.getDefaultBucket() orelse continue;
+        const bottle = bucket.getBottle(.sessionStorage) orelse continue;
+        const key_bytes = try std.fmt.allocPrint(allocator, "{d}:{s}", .{ new_top, source_key[prefix.len..] });
+        var key: storage_standard.StorageKey = .{ .origin = key_bytes, .allocator = allocator };
+        errdefer key.deinit();
+        // HTML's caller supplies an empty new traversable. Reusing a named
+        // popup never enters this algorithm or replaces a live bottle.
+        std.debug.assert(!user_agent_storage.shed.shelves.contains(key));
+        var shelf = try cloneSessionShelf(allocator, bottle);
+        errdefer shelf.deinit();
+        try pending.shelves.put(key, shelf);
+    }
+
+    // The only allocation in publishing is reserved before the first move.
+    // Existing shelves' bottle maps stay in their own allocations, so their
+    // live Storage proxies remain valid when the outer shed grows.
+    try user_agent_storage.shed.shelves.ensureUnusedCapacity(pending.shelves.count());
+    var ready = pending.shelves.iterator();
+    while (ready.next()) |entry| user_agent_storage.shed.shelves.putAssumeCapacityNoClobber(entry.key_ptr.*, entry.value_ptr.*);
+    pending.shelves.clearRetainingCapacity();
+}
+
+fn cloneSessionShelf(allocator: std.mem.Allocator, source: *const storage_standard.StorageBottle) std.mem.Allocator.Error!storage_standard.StorageShelf {
+    // Construct the new session shelf with scoped cleanup at each ownership
+    // transfer. The legacy generic shelf constructors lack these errdefers.
+    var shelf: storage_standard.StorageShelf = .{ .allocator = allocator, .bucket_map = std.StringHashMap(storage_standard.StorageBucket).init(allocator) };
+    errdefer shelf.deinit();
+    var bucket: storage_standard.StorageBucket = .{
+        .allocator = allocator,
+        .bottle_map = std.AutoHashMap(storage_standard.StorageIdentifier, storage_standard.StorageBottle).init(allocator),
+        .storage_type = .session,
+        .mode = .best_effort,
+    };
+    errdefer bucket.deinit();
+    var bottle = storage_standard.StorageBottle.init(allocator, source.quota);
+    errdefer bottle.deinit();
+    try bottle.map.ensureTotalCapacity(source.map.count());
+    var entries = source.map.iterator();
+    while (entries.next()) |entry| {
+        const key = try allocator.dupe(u8, entry.key_ptr.*);
+        errdefer allocator.free(key);
+        const value = try allocator.dupe(u8, entry.value_ptr.*);
+        bottle.map.putAssumeCapacityNoClobber(key, value);
+    }
+    // Reserve the two remaining containers before either takes ownership.
+    try bucket.bottle_map.ensureUnusedCapacity(1);
+    try shelf.bucket_map.ensureUnusedCapacity(1);
+    bucket.bottle_map.putAssumeCapacityNoClobber(.sessionStorage, bottle);
+    shelf.bucket_map.putAssumeCapacityNoClobber("default", bucket);
+    return shelf;
+}
+
 // ============================================================================
 // Tests
 // ============================================================================

@@ -46,6 +46,7 @@ const html = @import("html_full");
 const html_core = @import("html");
 const keys = @import("webdriver_keys.zig");
 const cookiestore = @import("cookiestore");
+const permissions = @import("permissions");
 
 const Instance = runtime.Instance;
 const JSValue = runtime.JSValue;
@@ -66,7 +67,7 @@ pub const vendor_path = "/resources/testdriver-vendor.js";
 // The driver: its natives, its commands, the session's input state
 // ============================================================================
 
-const Native = enum { click, send_keys, action_sequence, minimize_window, set_window_rect, get_window_rect, get_all_cookies, get_named_cookie, delete_all_cookies };
+const Native = enum { click, send_keys, action_sequence, minimize_window, set_window_rect, get_window_rect, get_all_cookies, get_named_cookie, delete_all_cookies, set_permission };
 
 fn nativeName(comptime native: Native) []const u8 {
     return "__crane_test_driver_" ++ @tagName(native);
@@ -133,6 +134,9 @@ pub const TestDriver = struct {
     /// realms still exist.
     pub fn endTest(self: *TestDriver) void {
         for (self.commands.items) |command| command.cancel();
+        // A worker's queued delivery owns its own batch share and may end
+        // after this command. Abandon only the command's share here.
+        for (self.commands.items) |command| command.releasePermissionBatch();
         for (self.commands.items) |command| command.free();
         self.commands.clearRetainingCapacity();
         for (self.key_sources.items) |*source| source.deinit(self.allocator);
@@ -244,7 +248,7 @@ const Failure = struct {
 // Commands
 // ============================================================================
 
-const Kind = enum { click, send_keys, actions, minimize, restore, get_rect, get_cookies, get_named_cookie, delete_cookies };
+const Kind = enum { click, send_keys, actions, minimize, restore, get_rect, get_cookies, get_named_cookie, delete_cookies, set_permission };
 
 const Command = struct {
     driver: *TestDriver,
@@ -269,6 +273,9 @@ const Command = struct {
     timer_id: ?runtime.TimerId = null,
     /// send_keys's input source: removed when the command ends.
     own_key_source: ?[]u8 = null,
+    permission_descriptor: ?permissions.PermissionDescriptor = null,
+    permission_state: permissions.PermissionState = .prompt,
+    permission_batch: ?*permissions.ChangeBatch = null,
 
     /// Arm the command's next step after `delay_ms`.
     fn arm(self: *Command, delay_ms: f64) bool {
@@ -289,6 +296,7 @@ const Command = struct {
     /// not armed (it fired, or `cancel` ran).
     fn free(self: *Command) void {
         const allocator = self.driver.allocator;
+        self.releasePermissionBatch();
         engine.releasePromiseCapability(&self.capability);
         if (self.own_key_source) |id| {
             self.driver.removeKeySource(id);
@@ -298,6 +306,12 @@ const Command = struct {
         self.ticks.deinit(allocator);
         allocator.free(self.text);
         allocator.destroy(self);
+    }
+
+    fn releasePermissionBatch(self: *Command) void {
+        const batch = self.permission_batch orelse return;
+        self.permission_batch = null;
+        batch.release();
     }
 
     /// Whether the window that asked is still some browsing context's active
@@ -344,6 +358,16 @@ const Command = struct {
                 else => {},
             }
         }
+        if (self.kind == .set_permission) {
+            // Permissions B step 7: wait for every target task to run or
+            // be dropped. endTest cancels this existing timer and releases
+            // the command's independent share, so no worker owns a Command.
+            if (self.permission_batch) |batch| if (!batch.isDone()) {
+                if (!self.arm(1)) self.reject(.{ .code = "unknown error", .message = "the realm has no timers" });
+                return;
+            };
+            return self.resolve(JSValue.jsNull);
+        }
         if (self.next_tick < self.ticks.items.len) {
             const tick = &self.ticks.items[self.next_tick];
             self.next_tick += 1;
@@ -365,7 +389,22 @@ const Command = struct {
             .minimize => self.setSystemVisibility(.hidden),
             .restore => self.setSystemVisibility(.visible),
             .get_rect, .get_cookies, .get_named_cookie, .delete_cookies => null,
+            .set_permission => self.startSetPermission(),
         };
+    }
+
+    /// Permissions B.1.1 steps 5-6, after argument conversion: the target
+    /// realm's Browser owns the store; the native never changes process state.
+    fn startSetPermission(self: *Command) ?Failure {
+        const target = (self.target_window orelse return noSuchWindow()).get() orelse return noSuchWindow();
+        const descriptor = self.permission_descriptor orelse return invalid("missing permission descriptor");
+        const key = permissionKeyForWindow(target, descriptor) catch return outOfMemory();
+        defer if (key) |owned| target.ctx.allocator.free(owned);
+        const permission_key = key orelse return invalid("the target has no permission key");
+        const scope = target.ctx.browser_scope orelse return noSuchWindow();
+        const store = scope.of(permissions.BrowserStore) catch return outOfMemory();
+        self.permission_batch = store.set(permission_key, descriptor, self.permission_state) catch return outOfMemory();
+        return null;
     }
 
     // ------------------------------------------------------------------------
@@ -967,6 +1006,22 @@ fn startCommand(driver: *TestDriver, realm: runtime.Context, native: Native, arg
             command.target_window = if (target) |w| Weak.of(w) else null;
             break :blk null;
         },
+        .set_permission => blk: {
+            command.kind = .set_permission;
+            const context_arg = argument(args, 1);
+            const target = if (context_arg.isNullOrUndefined()) caller else windowArgument(realm, context_arg);
+            command.target_window = if (target) |window| Weak.of(window) else null;
+            if (target == null) break :blk noSuchWindow();
+            var parsed = PermissionParameters{ .realm = realm, .input = argument(args, 0) };
+            const exception = engine.completionOf(realm, PermissionParameters.convert, &parsed) catch break :blk invalid("invalid permission parameters");
+            if (exception) |held| {
+                held.release();
+                break :blk invalid("invalid permission parameters");
+            }
+            command.permission_descriptor = parsed.descriptor;
+            command.permission_state = parsed.state;
+            break :blk null;
+        },
     };
     driver.commands.append(allocator, command) catch {
         command.free();
@@ -979,6 +1034,70 @@ fn startCommand(driver: *TestDriver, realm: runtime.Context, native: Native, arg
         command.reject(.{ .code = "unknown error", .message = "the realm has no timers" });
     }
     return promise.take();
+}
+
+/// Permissions B.1.1 steps 1-4. No script object or borrowed value survives
+/// this conversion: the queued command stores the native descriptor/state.
+const PermissionParameters = struct {
+    realm: runtime.Context,
+    input: JSValue,
+    descriptor: ?permissions.PermissionDescriptor = null,
+    state: permissions.PermissionState = .prompt,
+
+    fn convert(data: ?*anyopaque) engine.Error!void {
+        const self: *PermissionParameters = @ptrCast(@alignCast(data.?));
+        if (engine.typeOf(self.realm, self.input) != .object) return error.TypeError;
+        const descriptor = try engine.getProperty(self.realm, self.input, "descriptor");
+        defer descriptor.release();
+        if (engine.typeOf(self.realm, descriptor.borrow()) != .object) return error.TypeError;
+        const state_value = try engine.getProperty(self.realm, self.input, "state");
+        defer state_value.release();
+        const state_name = try engine.convertToDOMString(self.realm, state_value.borrow(), self.realm.allocator);
+        defer self.realm.allocator.free(state_name);
+        self.state = permissions.PermissionState.fromString(state_name) orelse return error.TypeError;
+        // Step 4 chooses the descriptor type with Get(name), then performs
+        // that dictionary's conversion (including its inherited name).
+        const name = try self.nameOf(descriptor.borrow());
+        _ = try self.nameOf(descriptor.borrow());
+        self.descriptor = switch (name) {
+            .midi => permissions.PermissionDescriptor.midi(try self.boolean(descriptor.borrow(), "sysex")),
+            .camera => permissions.PermissionDescriptor.camera(try self.boolean(descriptor.borrow(), "panTiltZoom")),
+            .push => permissions.PermissionDescriptor.push(try self.boolean(descriptor.borrow(), "userVisibleOnly")),
+            else => permissions.PermissionDescriptor.simple(name),
+        };
+    }
+
+    fn nameOf(self: *PermissionParameters, object: JSValue) engine.Error!permissions.PermissionName {
+        const value = try engine.getProperty(self.realm, object, "name");
+        defer value.release();
+        if (value.borrow().isUndefined()) return error.TypeError;
+        const name = try engine.convertToDOMString(self.realm, value.borrow(), self.realm.allocator);
+        defer self.realm.allocator.free(name);
+        return permissions.query.supportedName(name) orelse error.TypeError;
+    }
+
+    fn boolean(self: *PermissionParameters, object: JSValue, member: []const u8) engine.Error!bool {
+        const value = try engine.getProperty(self.realm, object, member);
+        defer value.release();
+        return engine.toBoolean(self.realm, value.borrow());
+    }
+};
+
+fn permissionKeyForWindow(window: *Instance, descriptor: permissions.PermissionDescriptor) error{OutOfMemory}!?[]u8 {
+    const global_settings = @import("dom").global_settings;
+    const allocator = window.ctx.allocator;
+    const top = (try global_settings.topLevelOriginOf(window)) orelse return null;
+    if (descriptor.name != .storage_access) return top;
+    defer allocator.free(top);
+    // Storage Access 4 has its own key: (top-level site, requester site).
+    const settings = global_settings.of(window) orelse return null;
+    const origin = settings.origin(window) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else null;
+    defer allocator.free(origin);
+    const top_site = html.agent_clusters.siteOf(allocator, top) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else null;
+    defer allocator.free(top_site);
+    const requester_site = html.agent_clusters.siteOf(allocator, origin) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else null;
+    defer allocator.free(requester_site);
+    return try std.mem.concat(allocator, u8, &.{ top_site, "\x00", requester_site });
 }
 
 // ============================================================================

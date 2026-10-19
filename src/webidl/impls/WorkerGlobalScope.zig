@@ -139,6 +139,7 @@ pub const InternalState = struct {
     /// shared or service worker, an owner with none, or a scope no host
     /// started.
     top_level_site: ?[]u8 = null,
+    top_level_origin: ?[]u8 = null,
 
     /// Cross-origin isolated
     cross_origin_isolated: bool = false,
@@ -159,6 +160,8 @@ pub const InternalState = struct {
         self.origin_record = null;
         if (self.top_level_site) |site| self.allocator.free(site);
         self.top_level_site = null;
+        if (self.top_level_origin) |origin| self.allocator.free(origin);
+        self.top_level_origin = null;
         self.reporting.deinit(self.allocator);
         if (self.indexed_db) |*factory| factory.edge.release(factory.owner);
         if (self.performance) |*performance| performance.edge.release(performance.owner);
@@ -209,6 +212,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     if (@hasField(@TypeOf(args), "url")) return setUpFromUrl(instance, allocator, args.url, .classic);
     if (@import("html").worker_host.scopeSettings(instance.ctx)) |settings| {
         try setUpFromUrl(instance, allocator, settings.url, settings.worker_type);
+        errdefer deinitOwn(instance);
         if (instance.getState(State).own._internal) |internal| {
             internal.cookie_jar = settings.cookie_jar;
             internal.time_origin_ns = settings.time_origin_ns;
@@ -220,6 +224,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
             // HTML "set up a worker environment settings object": a dedicated
             // worker's top-level origin is its owner's.
             if (settings.top_level_site) |site| internal.top_level_site = try allocator.dupe(u8, site);
+            if (settings.top_level_origin) |origin| internal.top_level_origin = try allocator.dupe(u8, origin);
         }
     }
 }
@@ -252,6 +257,7 @@ pub fn installHooks() void {
         .reporting = &settingsReporting,
         .fetch_group = &settingsFetchGroup,
         .top_level_site = &settingsTopLevelSite,
+        .top_level_origin = &settingsTopLevelOrigin,
     });
 }
 
@@ -261,6 +267,12 @@ fn settingsTopLevelSite(instance: *runtime.Instance) error{OutOfMemory}!?[]u8 {
     const internal = instance.getState(State).own._internal orelse return null;
     const site = internal.top_level_site orelse return null;
     return try instance.ctx.allocator.dupe(u8, site);
+}
+
+fn settingsTopLevelOrigin(instance: *runtime.Instance) error{OutOfMemory}!?[]u8 {
+    const internal = instance.getState(State).own._internal orelse return null;
+    const origin = internal.top_level_origin orelse return null;
+    return try instance.ctx.allocator.dupe(u8, origin);
 }
 
 fn settingsReporting(instance: *runtime.Instance) ?*@import("dom").reporting.State {
