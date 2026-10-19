@@ -21,6 +21,7 @@ const encode_sets = @import("encode_sets");
 const log = std.log.scoped(.forms);
 
 const dom = @import("dom");
+const TaskHold = dom.node_holds.TaskHold;
 const form_associated = @import("html").form_associated;
 const forms = @import("html").forms;
 const attributeValue = form_associated.attributeValue;
@@ -1634,16 +1635,18 @@ fn textPlainBody(allocator: std.mem.Allocator, entries: []const Entry, encoding:
 }
 
 /// A planned navigation (§ 4.10.22.3 "plan to navigate"): the queued task's
-/// data. The form is held by address, so it is identified by its slab
-/// generation and its planned-navigation token before anything touches it.
+/// data. The task KEEPS the form, the submitter and the form document until
+/// it runs or is dropped (dom.node_holds.TaskHold: WebKit's planned form
+/// submission keeps its form and submitter by Ref, Blink's FormSubmission
+/// traces form_ and submit_button_); its planned-navigation token says
+/// whether it still navigates. Each hold reads null only after a teardown
+/// freed its node (the realm's end) - a net, never the behaviour.
 const PlannedNavigation = struct {
-    form: *runtime.Instance,
-    form_generation: u64,
-    /// The submit algorithm's submitter - the form itself for submit() - and
-    /// its slab generation: "plan to navigate" step 4.2 navigates with
-    /// sourceElement set to it (the navigate event's sourceElement).
-    submitter: *runtime.Instance,
-    submitter_generation: u64,
+    form: TaskHold = .{},
+    /// The submit algorithm's submitter - the form itself for submit():
+    /// "plan to navigate" step 4.2 navigates with sourceElement set to it
+    /// (the navigate event's sourceElement).
+    submitter: TaskHold = .{},
     token: u64,
     url: []const u8,
     target: []const u8,
@@ -1653,13 +1656,11 @@ const PlannedNavigation = struct {
     /// Submit step 22's condition, taken when the form was submitted: the
     /// form document had not completely loaded.
     source_not_completely_loaded: bool,
-    /// The form document at submission, and its slab generation: "the rules
-    /// for choosing a navigable" (submit step 22) start from its node
-    /// navigable. The form may be in another document by the time the task
-    /// runs - the navigation still goes to the navigable chosen at
-    /// submission.
-    form_document: ?*runtime.Instance = null,
-    form_document_generation: u64 = 0,
+    /// The form document at submission: "the rules for choosing a navigable"
+    /// (submit step 22) start from its node navigable. The form may be in
+    /// another document by the time the task runs - the navigation still
+    /// goes to the navigable chosen at submission.
+    form_document: TaskHold = .{},
     /// The POST resource of a submission "as entity body"; null for GET.
     post: ?PostResource = null,
     /// With it, the entry list as a FormData, kept alive until the planned
@@ -1668,7 +1669,12 @@ const PlannedNavigation = struct {
     form_data_pin: same_object.Pin = .{},
     allocator: std.mem.Allocator,
 
+    /// The task's one end, run or dropped: every hold is released here,
+    /// exactly once.
     fn destroy(self: *PlannedNavigation) void {
+        self.form.release();
+        self.submitter.release();
+        self.form_document.release();
         self.allocator.free(self.url);
         self.allocator.free(self.target);
         if (self.post) |*post| post.deinit(self.allocator);
@@ -1706,10 +1712,6 @@ fn planNavigationWith(form: *runtime.Instance, submitter: *runtime.Instance, url
     const document = interfaces.Node.get_ownerDocument(form) catch null;
     const not_loaded = if (document) |d| !@import("dom").document_lifecycle.isCompletelyLoaded(d) else false;
     task.* = .{
-        .form = form,
-        .form_generation = runtime.SlabAllocator.generationOf(form),
-        .submitter = submitter,
-        .submitter_generation = runtime.SlabAllocator.generationOf(submitter),
         .token = next_navigation_token,
         .url = url,
         .target = target,
@@ -1721,12 +1723,13 @@ fn planNavigationWith(form: *runtime.Instance, submitter: *runtime.Instance, url
             .browser_ui => .browser_ui,
         },
         .source_not_completely_loaded = not_loaded,
-        .form_document = document,
-        .form_document_generation = if (document) |d| runtime.SlabAllocator.generationOf(d) else 0,
         .post = post,
         .form_data = form_data,
         .allocator = allocator,
     };
+    task.form.take(form);
+    task.submitter.take(submitter);
+    if (document) |d| task.form_document.take(d);
     if (form_data) |fd| task.form_data_pin.hold(fd);
     next_navigation_token += 1;
 
@@ -1764,8 +1767,8 @@ fn planNavigationWith(form: *runtime.Instance, submitter: *runtime.Instance, url
     event_loop.queueTask(.{ .callback = &runPlannedNavigation, .context = task, .drop = &dropPlannedNavigation });
 }
 
-/// A closing queue still releases everything the task owns. No form or
-/// submitter is accessed here; their unwrapped native hold is separate debt.
+/// A closing queue still releases everything the task owns, its holds
+/// included (`destroy`).
 fn dropPlannedNavigation(data: ?*anyopaque) void {
     const task: *PlannedNavigation = @ptrCast(@alignCast(data orelse return));
     task.destroy();
@@ -1821,9 +1824,9 @@ fn runPlannedNavigation(data: ?*anyopaque) void {
     const task: *PlannedNavigation = @ptrCast(@alignCast(data orelse return));
     defer task.destroy();
 
-    // The form may have been collected and its slot reissued since.
-    if (runtime.SlabAllocator.generationOf(task.form) != task.form_generation) return;
-    const internal = Registry.get(task.form) orelse return;
+    // The task keeps the form; it reads null only after its realm's end.
+    const form = task.form.get() orelse return;
+    const internal = Registry.get(form) orelse return;
     // A later plan aimed at the same navigable, or a submission that fired
     // the submit event, cancelled this one (planNavigationWith).
     if (!takePendingNavigation(internal, task.token)) return;
@@ -1836,7 +1839,7 @@ fn runPlannedNavigation(data: ?*anyopaque) void {
     // behind it any more (its page has gone) runs nothing, and the task has
     // no one to report to: it is dropped, as a task of a document that is
     // not fully active is.
-    engine.runTaskInRealm(task.form.ctx, navigateSteps, task) catch {};
+    engine.runTaskInRealm(form.ctx, navigateSteps, task) catch {};
 }
 
 /// Step 4.2 of the planned navigation's task, inside the form's realm.
@@ -1855,11 +1858,9 @@ fn navigateSteps(data: ?*anyopaque) void {
     // task still navigates the navigable it was submitted in
     // (form-submission-0/reparent-form-during-planned-navigation-task; Chrome
     // and Safari pass it). The navigation uses the form's node document now.
-    const document = (interfaces.Node.get_ownerDocument(task.form) catch null) orelse return;
-    const form_document: ?*runtime.Instance = if (task.form_document) |d|
-        (if (runtime.SlabAllocator.generationOf(d) == task.form_document_generation) d else null)
-    else
-        null;
+    const form = task.form.get() orelse return;
+    const document = (interfaces.Node.get_ownerDocument(form) catch null) orelse return;
+    const form_document = task.form_document.get();
     const navigables = @import("dom").navigables;
     navigables.navigateByTarget(document, .{
         .target = task.target,
@@ -1870,9 +1871,8 @@ fn navigateSteps(data: ?*anyopaque) void {
         .source_not_completely_loaded = task.source_not_completely_loaded,
         // "Plan to navigate" step 4.2: "with ... sourceElement set to
         // submitter" - the submit button that was clicked or passed to
-        // requestSubmit(), or the form itself. One collected since (its slot
-        // reissued) is no element at all.
-        .source_element = if (runtime.SlabAllocator.generationOf(task.submitter) == task.submitter_generation) task.submitter else null,
+        // requestSubmit(), or the form itself, kept by the task.
+        .source_element = task.submitter.get(),
         .user_involvement = task.user_involvement,
         .post_resource = if (task.post) |post| .{ .body = post.body, .content_type = post.content_type } else null,
         .form_data = task.form_data,
