@@ -88,6 +88,22 @@ pub const RealmEnvironment = struct {
     frame_type: registry_mod.FrameType = .none,
     /// The realm's navigator's ServiceWorkerContainer, once made.
     container: ?Held = null,
+    /// The client's controller as this realm was last told it - what the
+    /// container's `controller` returns: the active service worker the
+    /// client was made with, then the one each controller_change brings, set
+    /// in the task that fires controllerchange. The registry's record changes
+    /// first, on whichever thread changes it, and a task already queued here
+    /// still sees the controller it was queued under. Chromium
+    /// (ServiceWorkerContainer::SetController) and Gecko
+    /// (ServiceWorkerContainer::ControllerChanged) set the container's
+    /// controller and fire controllerchange in one step; WebKit
+    /// (SWClientConnection updateController) sets it, then queues the event.
+    /// The spec's getter reads the client's active service worker, which
+    /// Notify Controller Change changes before its task fires: golden rule 2,
+    /// the majority (no newer spec involved). Its state follows the
+    /// worker_state deliveries the realm has run, so an object made from it
+    /// later shows what the queue has reached. OWNED.
+    controller: ?WorkerInfo = null,
     /// The service worker object map (3.1.1).
     workers: std.ArrayListUnmanaged(WorkerEntry) = .empty,
     /// The service worker registration object map (3.2.1).
@@ -342,6 +358,9 @@ pub const RealmEnvironment = struct {
             // Update Worker State 4.1-4.5: the object's state, then
             // statechange - if the realm has an object for the worker.
             .worker_state => |m| {
+                if (self.controller) |*kept| if (kept.id == m.worker) {
+                    kept.state = m.state;
+                };
                 const entry = self.workerEntry(m.worker) orelse return;
                 const instance = entry.object.live() orelse return;
                 entry.data.state = m.state;
@@ -367,13 +386,20 @@ pub const RealmEnvironment = struct {
                 const instance = entry.object.live() orelse return;
                 dom.navigables.fireSimpleEvent(instance, "updatefound");
             },
-            // Notify Controller Change step 2. The new controller's object is
-            // made first, from the controller as the change saw it (registry
-            // notifyControllerChange says why): the event's listeners read
-            // container.controller, and find that object.
+            // Notify Controller Change step 2. The realm's controller becomes
+            // the one the change carries, in this task (`controller` says
+            // why), whether or not the container exists yet: one made later
+            // reads it. The new controller's object is made first, from the
+            // controller as the change saw it (registry notifyControllerChange
+            // says why): the event's listeners read container.controller, and
+            // find that object.
             .controller_change => |*m| {
+                const taken = m.*;
+                m.* = null;
+                if (self.controller) |*old| old.deinit(self.allocator);
+                self.controller = taken;
                 const container = (self.container orelse return).live() orelse return;
-                if (m.*) |info| _ = try self.workerObject(info);
+                if (self.controller) |info| _ = try self.workerObject(info);
                 dom.navigables.fireSimpleEvent(container, "controllerchange");
             },
             // Activate step 7 and the ready getter's step 3.4: resolve the
@@ -649,6 +675,7 @@ pub const RealmEnvironment = struct {
     }
 
     fn destroy(self: *RealmEnvironment) void {
+        if (self.controller) |*kept| kept.deinit(self.allocator);
         for (self.client_queue.items) |message| message.destroy();
         self.client_queue.deinit(self.allocator);
         self.workers.deinit(self.allocator);
@@ -945,7 +972,7 @@ pub fn clientCreated(realm: runtime.Context, init: dom.service_worker_clients.Cl
         break :blk found.id;
     } else 0;
     if (global) |g| manager.noteCookieJar(dom.global_settings.cookieJarOf(g));
-    self.id = manager.createClient(.{
+    const created = manager.createClientControlled(.{
         .kind = kind,
         .origin = self.origin,
         .creation_url = self.creation_url,
@@ -960,6 +987,10 @@ pub fn clientCreated(realm: runtime.Context, init: dom.service_worker_clients.Cl
         discardRealmEnvironment(self);
         return;
     };
+    self.id = created.id;
+    // Its controller is the active service worker it was made with: the
+    // reserved client's, or its creator's (SW 2.5.1-2.5.2).
+    self.controller = created.controller;
 }
 
 /// Whether the document of the Window `global` is still loading (its
@@ -1366,9 +1397,10 @@ pub fn ready(container: *runtime.Instance) !runtime.JSValue {
 /// The controller attribute's getter steps.
 pub fn controller(container: *runtime.Instance) !?*runtime.Instance {
     const environment = environmentOf(container.ctx, true) orelse return null;
-    // 2. The client's active service worker, or null.
-    var info = (try environment.manager.controllerOf(environment.allocator, environment.id)) orelse return null;
-    defer info.deinit(environment.allocator);
+    // 2. The client's active service worker, or null - as the realm was last
+    // told it (RealmEnvironment.controller: the browsers' order, stated
+    // there).
+    const info = environment.controller orelse return null;
     // 3. Its object in this realm.
     return try environment.workerObject(info);
 }

@@ -1114,8 +1114,10 @@ pub const Manager = struct {
         return try RegistrationInfo.of(allocator, worker.registration);
     }
 
-    /// The `controller` attribute's step 2: the environment's active service
-    /// worker. OWNED; null when it has none.
+    /// The environment's active service worker as the registry has it now.
+    /// OWNED; null when it has none. (The `controller` attribute reads the
+    /// realm's own copy, RealmEnvironment.controller, which follows this one
+    /// task by task.)
     pub fn controllerOf(self: *Manager, allocator: Allocator, environment_id: u64) Allocator.Error!?WorkerInfo {
         self.lock();
         defer self.unlock();
@@ -1436,10 +1438,28 @@ pub const Manager = struct {
     /// origin, when no fetch went through HTTP for it (2.5.1); a worker's,
     /// what its reservation decided (2.5.2). Its id.
     pub fn createClient(self: *Manager, values: ClientValues) Allocator.Error!u64 {
+        var created = try self.createClientControlled(values);
+        if (created.controller) |*controller| controller.deinit(self.allocator);
+        return created.id;
+    }
+
+    /// A client `createClient` made: its id, and its active service worker
+    /// as the registry had it when the client was made - what its realm's
+    /// `controller` starts as. The changes after that reach the realm as
+    /// controller_change deliveries, posted under the same lock, so none is
+    /// missed and none is seen twice.
+    pub const CreatedClient = struct {
+        id: u64,
+        /// OWNED (the manager's allocator).
+        controller: ?WorkerInfo,
+    };
+
+    /// `createClient`, with the client's controller at creation.
+    pub fn createClientControlled(self: *Manager, values: ClientValues) Allocator.Error!CreatedClient {
         var requests: std.ArrayListUnmanaged(WindowDataRequest) = .empty;
         defer requests.deinit(self.allocator);
         defer if (values.reserved) |reserved| self.allocator.destroy(reserved);
-        const id = blk: {
+        const created: CreatedClient = blk: {
             self.lock();
             defer self.unlock();
             if (values.reserved) |reserved| if (reserved.environment != 0) {
@@ -1452,10 +1472,11 @@ pub const Manager = struct {
                         });
                         environment.secure_context = values.secure_context;
                         environment.navigable = values.navigable;
+                        const controller = try self.controllerAtCreation(environment);
                         // The messages a service worker sent it meanwhile.
                         self.deliverReservedMessages(environment);
                         self.navigated(&requests, values.navigable, environment) catch {};
-                        break :blk environment.id;
+                        break :blk .{ .id = environment.id, .controller = controller };
                     }
                     if (environment.endpoint == null) self.discardReserved(environment);
                 }
@@ -1477,11 +1498,24 @@ pub const Manager = struct {
                 break :inherit creator.active_worker;
             } else null;
             if (inherited) |worker| self.registry.setActiveWorker(environment, worker);
+            const controller = try self.controllerAtCreation(environment);
             self.navigated(&requests, values.navigable, environment) catch {};
-            break :blk environment.id;
+            break :blk .{ .id = environment.id, .controller = controller };
         };
         self.postWindowDataRequests(requests.items);
-        return id;
+        return created;
+    }
+
+    /// The active service worker of `environment`, just made a client, as its
+    /// realm's controller starts (the lock held). A copy that cannot be made
+    /// leaves no client behind: the realm that would have answered for it is
+    /// discarded by the caller.
+    fn controllerAtCreation(self: *Manager, environment: *registry_mod.Environment) Allocator.Error!?WorkerInfo {
+        const worker = environment.active_worker orelse return null;
+        return WorkerInfo.of(self.allocator, Registry.snapshotWorker(worker)) catch |err| {
+            self.registry.removeEnvironment(environment);
+            return err;
+        };
     }
 
     /// A reserved client never handed to `createClient` (taken): its
