@@ -77,6 +77,9 @@ pub const IDBRequest = request.IDBRequest;
 pub const IDBRequestReadyState = request.IDBRequestReadyState;
 pub const IDBOpenDBRequest = request.IDBOpenDBRequest;
 
+pub const server = @import("server.zig");
+pub const IDBServer = server.IDBServer;
+
 pub const factory = @import("factory.zig");
 pub const IDBFactory = factory.IDBFactory;
 pub const IDBDatabaseInfo = factory.IDBDatabaseInfo;
