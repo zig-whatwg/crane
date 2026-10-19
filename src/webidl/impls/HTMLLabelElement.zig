@@ -136,7 +136,10 @@ fn runActivationBehavior(label: *runtime.Instance, event: *runtime.Instance) voi
     // The two majority decisions together follow Blink (row72 Q13/Q14).
     const html = @import("html");
     const control_ref = html.user_input.Weak.of(control);
-    if (html.focus.isClickFocusable(control)) html.focus.focusingSteps(control, null, .click);
+    // Focusing step 1 resolves a delegating host even though the host is
+    // not itself click focusable (HTML 6.6.2). An unfocusable control with
+    // no delegate is still a no-op in step 2.
+    html.focus.focusingSteps(control, null, .click);
     // Focus listeners may remove the control, repoint the label and run GC.
     // TODO(refcount step 7): hold a counted reference across both steps,
     // as the engines do; meanwhile click the original only if still live.

@@ -59,8 +59,15 @@ pub const CacheHandle = struct {
 };
 
 /// What a member needs of its realm: the Browser's Cache Storage and
-/// platform state, and the storage key (the relevant settings object's
-/// origin).
+/// platform state, and the storage key - the relevant settings object's
+/// (Storage "obtain a storage key"), serialized: its origin, top-level site
+/// and cross-site-ancestor bit. Caches are partitioned by it as all three
+/// browsers partition them (wpt.fyi 23b0b89b1a, 0f26972422:
+/// service-workers/cache-storage/cross-partition.https.tentative.html 4/4
+/// in Chrome 155, Firefox 158 and Safari 27); a service worker's key is its
+/// registration's (lane sw1-b11). Caches persisted under the old origin-only
+/// key are not found under it (persist_storage, off by default: no
+/// migration).
 const Scope = struct {
     realm: runtime.Context,
     storage: *Storage,
@@ -75,13 +82,18 @@ const Scope = struct {
         const global = globalOf(realm) orelse return error.InvalidStateError;
         const settings = dom.global_settings.of(global) orelse return error.InvalidStateError;
         const origin = try settings.origin(global);
+        defer realm.allocator.free(origin);
         // "Obtain a local storage bottle map": an opaque origin has no
         // storage key - a SecurityError, as Chromium and Firefox reject.
-        if (std.mem.eql(u8, origin, "null")) {
-            realm.allocator.free(origin);
-            return error.SecurityError;
+        if (std.mem.eql(u8, origin, "null")) return error.SecurityError;
+        // A global whose kind keeps no key: its origin alone.
+        if ((try dom.global_settings.serializedStorageKeyOf(global)) == null) {
+            return .{ .realm = realm, .storage = storage, .browser = browser, .storage_key = try realm.allocator.dupe(u8, origin) };
         }
-        return .{ .realm = realm, .storage = storage, .browser = browser, .storage_key = @constCast(origin) };
+        // Obtain a storage key: failure - an opaque top-level site - is the
+        // same SecurityError.
+        const key = (try dom.global_settings.storageKeyOf(global)) orelse return error.SecurityError;
+        return .{ .realm = realm, .storage = storage, .browser = browser, .storage_key = try key.serialize(realm.allocator) };
     }
 
     fn deinit(self: *Scope) void {
