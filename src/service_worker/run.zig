@@ -51,8 +51,8 @@ pub const FetchClient = struct {
     allocator: Allocator,
     /// The client's origin, serialized. OWNED.
     origin: ?[]u8,
-    /// A clone of the client's policy container: its CSP list decides
-    /// whether the script may be fetched (CSP worker-src).
+    /// A clone of the client's policy container WITHOUT its CSP list
+    /// (`jobContainer`): its referrer policy still applies to the fetch.
     policy_container: ?fetch.internal.PolicyContainer,
     /// The client's Browser's (Browser-lifetime).
     cookie_jar: ?*fetch.internal.CookieJar,
@@ -68,12 +68,34 @@ pub const FetchClient = struct {
         self.* = .{
             .allocator = allocator,
             .origin = origin,
-            .policy_container = if (client.policy_container) |container| try container.clone(allocator) else null,
+            .policy_container = if (client.policy_container) |container| try jobContainer(allocator, container) else null,
             .cookie_jar = client.cookie_jar,
             .network = client.network,
             .blob_url_store = client.blob_url_store,
         };
         return self;
+    }
+
+    /// The client's policy container as the job's fetches use it: a clone
+    /// with an empty CSP list. Stated deviation: Update step 7 fetches given
+    /// job's client, so main fetch step 7 would check the script against the
+    /// client's CSP list - a blocked update() rejecting with Update step 8's
+    /// TypeError. All three browsers check the script URL once, at
+    /// register() on the client's thread (realm.zig register), and enforce
+    /// nothing on the job's own fetch: WebKit ServiceWorkerJob::
+    /// fetchScriptWithContext loads with ContentSecurityPolicyEnforcement::
+    /// DoNotEnforce; Chromium's ServiceWorkerRegistration::update checks no
+    /// CSP and its service_worker_register_job.cc and
+    /// service_worker_new_script_loader.cc check none; Gecko's
+    /// ServiceWorkerScriptCache (CompareNetwork::Initialize) opens its
+    /// channel with no CSP. So update() under a policy added after
+    /// registration still fetches (crane/sw1b10-update-csp.https.html).
+    /// Golden rule 2: the browsers agree against the spec text.
+    fn jobContainer(allocator: Allocator, container: *const fetch.internal.PolicyContainer) Allocator.Error!fetch.internal.PolicyContainer {
+        var copy = try container.clone(allocator);
+        copy.csp_list.deinit();
+        copy.csp_list = @TypeOf(copy.csp_list).init(allocator);
+        return copy;
     }
 
     pub fn destroy(self: *FetchClient) void {
