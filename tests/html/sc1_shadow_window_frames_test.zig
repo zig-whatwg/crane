@@ -1,4 +1,4 @@
-//! Window's child navigables follow document tree order, excluding shadow trees.
+//! Window filters document-tree children, retaining navigable insertion order.
 const std = @import("std");
 const interfaces = @import("interfaces");
 const runtime = @import("runtime");
@@ -54,7 +54,12 @@ fn windowFrames() !void {
         \\  if (window[0] !== first.contentWindow || window[1] !== second.contentWindow) return 'index';
         \\  document.body.insertBefore(second, first);
         \\  void first.contentWindow; void second.contentWindow;
-        \\  if (window[0] !== second.contentWindow || window[1] !== first.contentWindow) return 'order';
+        \\  if (window[0] !== first.contentWindow || window[1] !== second.contentWindow) return 'insertion order';
+        \\  const third = document.createElement('iframe');
+        \\  document.body.insertBefore(third, first);
+        \\  sc1DocumentFrames.push(third);
+        \\  void third.contentWindow;
+        \\  if (window.length !== 3 || window[2] !== third.contentWindow) return 'new insertion order';
         \\  return 'ok';
         \\})()
     );

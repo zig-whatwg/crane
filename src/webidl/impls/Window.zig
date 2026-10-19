@@ -1390,16 +1390,36 @@ pub fn get_frames(instance: *runtime.Instance) anyerror!typedefs.WindowProxy {
     return getWindowProxy(instance);
 }
 
-/// HTML "document-tree child navigables", steps 1–5: the existing DOM
-/// helper enumerates containers in document tree order, excluding shadow
-/// trees. A replaced or destroyed Window has none of its successor's list.
+/// HTML "document-tree child navigables", steps 1–5, supplies membership,
+/// excluding shadow trees. A replaced or destroyed Window has none of its
+/// successor's list. Window indices retain navigable insertion order.
 fn documentTreeChildNavigables(instance: *runtime.Instance, internal: *InternalState, allocator: std.mem.Allocator) std.ArrayListUnmanaged(@import("dom").navigables.ChildNavigable) {
     const navigable = navigableOf(instance, internal) orelse return .empty;
     const document = internal.document orelse blk: {
         const raw = navigable.getActiveDocument() orelse return .empty;
         break :blk @as(*runtime.Instance, @ptrCast(@alignCast(raw)));
     };
-    return @import("dom").navigables.childNavigablesOf(document, allocator);
+    const children = @import("dom").navigables.childNavigablesOf(document, allocator);
+    // Golden rule 2 (row 81 Q15, 2026-10-19): step 3's tree-order wording
+    // arrived with the navigables cleanup (whatwg/html#1336, 2022), with no
+    // browser adoption or demonstrated lag. WPT indexed-browsing-contexts-01
+    // still asserts "The child browsing contexts must be sorted in the order
+    // that their containers were inserted into the Document." Aligned stable
+    // Chrome 6244643405824000, Firefox 6213611998674944 and Safari
+    // 6209999629189120 all pass it. Re-check if the spec or test changes.
+    // Like WebKit FrameTree::scopedChild, filter membership while preserving
+    // the parent's frame-list order. Reorder in place; no new holder or list.
+    var next: usize = 0;
+    for (navigable.children.items) |child| {
+        if (next == children.items.len) break;
+        for (children.items[next..], next..) |entry, index| {
+            if (entry.browsing_context != child) continue;
+            std.mem.swap(@import("dom").navigables.ChildNavigable, &children.items[next], &children.items[index]);
+            next += 1;
+            break;
+        }
+    }
+    return children;
 }
 
 /// Getter for length - Number of document-tree child navigables.
