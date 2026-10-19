@@ -164,7 +164,7 @@ pub fn call_databases(instance: *runtime.Instance) anyerror!runtime.JSValue {
     internal.factory.setStorageKey(origin);
     defer internal.factory.storage_key = null;
     const db_list = try internal.factory.databases();
-    defer internal.allocator.free(db_list);
+    defer storage.indexeddb.server.freeInfos(internal.allocator, db_list);
 
     // Step 4.2-3: take a snapshot as IDBDatabaseInfo dictionaries. Each
     // dictionary is held until the array has taken its references.

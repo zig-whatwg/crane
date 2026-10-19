@@ -21,88 +21,65 @@ const compareKeys = @import("key.zig").compare;
 const IDBOpenDBRequest = @import("request.zig").IDBOpenDBRequest;
 const IDBDatabase = @import("database.zig").IDBDatabase;
 const IDBError = @import("errors.zig").IDBError;
+const server_mod = @import("server.zig");
+const IDBServer = server_mod.IDBServer;
+const StorageKey = @import("../standard.zig").StorageKey;
 
-/// Database info returned by databases() method
+/// Database info returned by databases() method, its name OWNED: free the
+/// list with `server.freeInfos`.
 /// https://w3c.github.io/IndexedDB/#dictdef-idbdatabaseinfo
-pub const IDBDatabaseInfo = struct {
-    name: []const u8,
-    version: u64,
-};
+pub const IDBDatabaseInfo = server_mod.DatabaseInfo;
 
-/// Storage key for identifying database ownership
-/// Per spec: "A storage key determines which storage areas are available"
-pub const StorageKey = struct {
-    /// Origin string (e.g., "https://example.com")
-    origin: []const u8,
-
-    pub fn eql(self: StorageKey, other: StorageKey) bool {
-        return std.mem.eql(u8, self.origin, other.origin);
-    }
-};
-
-/// Database metadata stored in the database list
-const DatabaseMetadata = struct {
-    name: []const u8,
-    database: *IDBDatabase,
-    /// Connections to this database
-    connections: std.ArrayListUnmanaged(*IDBDatabase),
-
-    fn deinit(self: *DatabaseMetadata, allocator: std.mem.Allocator) void {
-        self.database.releaseHeapOwnership();
-        self.connections.deinit(allocator);
-    }
-};
-
-/// IDBFactory interface
+/// IDBFactory interface, engine-free: one storage key's view of an
+/// IndexedDB server (server.zig). The platform object (the IDBFactory impl)
+/// uses the Browser's server directly; this view serves native callers and
+/// tests, with synchronous opens and no connection queue.
 /// https://w3c.github.io/IndexedDB/#idbfactory
-///
-/// The entry point for accessing IndexedDB databases.
 pub const IDBFactory = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
 
-    /// Map of storage key origin -> database name -> metadata
-    /// Length-prefixed origins keep (origin, database name) pairs unambiguous.
-    databases_map: std.StringHashMap(DatabaseMetadata),
+    /// A server of its own (`init`), used unless `shared` names another.
+    own_server: IDBServer,
+    /// The server this view shares with others (`initShared`): a Browser's.
+    shared: ?*IDBServer = null,
 
     /// Storage key for this factory (determined by environment)
     storage_key: ?StorageKey,
 
-    /// Initialize a new IDBFactory
+    /// A factory with a server of its own: it shares nothing.
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
             .allocator = allocator,
-            .databases_map = std.StringHashMap(DatabaseMetadata).init(allocator),
+            .own_server = IDBServer.init(allocator),
             .storage_key = null,
         };
     }
 
+    /// A factory over `server`, shared with every other factory over it.
+    pub fn initShared(allocator: std.mem.Allocator, shared: *IDBServer) Self {
+        var self = init(allocator);
+        self.shared = shared;
+        return self;
+    }
+
     /// Clean up resources
     pub fn deinit(self: *Self) void {
-        var it = self.databases_map.iterator();
-        while (it.next()) |entry| {
-            self.allocator.free(entry.key_ptr.*);
-            entry.value_ptr.deinit(self.allocator);
-        }
-        self.databases_map.deinit();
+        self.own_server.deinit();
+    }
+
+    pub fn server(self: *Self) *IDBServer {
+        return self.shared orelse &self.own_server;
     }
 
     /// Set the storage key (usually derived from the origin)
     pub fn setStorageKey(self: *Self, origin: []const u8) void {
-        self.storage_key = StorageKey{ .origin = origin };
+        self.storage_key = StorageKey.initBorrowed(origin);
     }
 
     /// Open a database connection
     /// https://w3c.github.io/IndexedDB/#dom-idbfactory-open
-    ///
-    /// Steps from spec (lines 391-463):
-    /// 1. If version is 0 (zero), throw a TypeError.
-    /// 2. Let environment be this's relevant settings object.
-    /// 3. Let storageKey be the result of running obtain a storage key.
-    /// 4. Let request be a new open request.
-    /// 5. Run steps in parallel to open database connection.
-    /// 6. Return a new IDBOpenDBRequest object for request.
     pub fn open(self: *Self, name: []const u8, version: ?u64) IDBError!*IDBOpenDBRequest {
         return self.openConnection(name, version, false);
     }
@@ -114,207 +91,61 @@ pub const IDBFactory = struct {
 
     fn openConnection(self: *Self, name: []const u8, version: ?u64, pending_upgrade: bool) IDBError!*IDBOpenDBRequest {
         // Step 1: If version is 0, throw TypeError
-        if (version) |v| {
-            if (v == 0) {
-                return IDBError.TypeError;
-            }
-        }
-
+        if (version) |v| if (v == 0) return IDBError.TypeError;
         // Step 3: Check storage key
-        if (self.storage_key == null) {
-            return IDBError.SecurityError;
-        }
+        const storage_key = self.storage_key orelse return IDBError.SecurityError;
 
-        // Step 4: Create new open request
         const request = try self.allocator.create(IDBOpenDBRequest);
         errdefer self.allocator.destroy(request);
-
         request.* = IDBOpenDBRequest.init(self.allocator);
-
-        // Set request source info
         request.base.source_type = .factory;
 
-        // Step 5: Open database connection (simplified - synchronous for now)
-        // In a real implementation, this would be async
-        const db_key = try self.makeDatabaseKey(name);
-        // The temporary lookup key remains ours until insertion succeeds.
-        var key_transferred = false;
-        defer if (!key_transferred) self.allocator.free(db_key);
-
-        const existing = self.databases_map.get(db_key);
-        const target_version = version orelse if (existing) |e| e.database.version else 1;
-
-        if (existing) |metadata| {
-            if (target_version < metadata.database.version) {
-                request.base.setError(IDBError.VersionError);
-                return request;
-            }
+        const database = try self.server().uniqueDatabase(storage_key, name);
+        defer self.server().release(database);
+        const old_version = self.server().currentVersion(database);
+        const target_version = version orelse if (old_version == 0) 1 else old_version;
+        if (target_version < old_version) {
+            request.base.setError(IDBError.VersionError);
+            return request;
         }
-
-        // Allocate the connection before publishing metadata: no fallible work
-        // follows the ownership transfer into databases_map.
-        const db = try self.allocator.create(IDBDatabase);
-        errdefer self.allocator.destroy(db);
-        db.* = IDBDatabase.init(self.allocator, name, target_version);
-        errdefer db.deinit();
-
-        if (existing) |metadata| {
-            db.backing = metadata.database;
-            metadata.database.retain();
-            try db.copyConnectionNames();
-            // Database exists - check version
-            if (version) |v| {
-                if (v > metadata.database.version) {
-                    // Upgrade needed
-                    request.old_version = metadata.database.version;
-                    request.new_version = v;
-                }
-            }
-            if (!pending_upgrade) metadata.database.version = target_version;
-        } else {
-            // New database
+        const opened = try self.server().openConnection(database, target_version, pending_upgrade, self.allocator, server_mod.Endpoint.here());
+        if (opened.old_version == 0) {
             request.old_version = 0;
             request.new_version = target_version;
-
-            // Create metadata entry
-            const name_copy = try self.allocator.dupe(u8, name);
-            errdefer self.allocator.free(name_copy);
-
-            const durable = try self.allocator.create(IDBDatabase);
-            errdefer self.allocator.destroy(durable);
-            durable.* = IDBDatabase.init(self.allocator, name_copy, if (pending_upgrade) 0 else target_version);
-            errdefer durable.deinit();
-            const metadata = DatabaseMetadata{
-                .name = name_copy,
-                .database = durable,
-                .connections = .empty,
-            };
-
-            try self.databases_map.put(db_key, metadata);
-            key_transferred = true;
-            durable.owned_name = name_copy;
-            db.backing = durable;
-            durable.retain();
+        } else if (target_version > opened.old_version) {
+            request.old_version = opened.old_version;
+            request.new_version = target_version;
         }
-
-        // Set result
-        request.base.setResult(.{ .database = db });
-
+        request.base.setResult(.{ .database = opened.connection });
         return request;
     }
 
     /// Delete a database
     /// https://w3c.github.io/IndexedDB/#dom-idbfactory-deletedatabase
-    ///
-    /// Steps from spec (lines 464-500):
-    /// 1. Let environment be this's relevant settings object.
-    /// 2. Let storageKey be the result of running obtain a storage key.
-    /// 3. Let request be a new open request.
-    /// 4. Run steps in parallel to delete database.
-    /// 5. Return a new IDBOpenDBRequest object for request.
     pub fn deleteDatabase(self: *Self, name: []const u8) IDBError!*IDBOpenDBRequest {
-        // Check storage key
-        if (self.storage_key == null) {
-            return IDBError.SecurityError;
-        }
-
-        // Create new open request
+        const storage_key = self.storage_key orelse return IDBError.SecurityError;
         const request = try self.allocator.create(IDBOpenDBRequest);
         errdefer self.allocator.destroy(request);
-
         request.* = IDBOpenDBRequest.init(self.allocator);
-
-        // Find and delete database
-        const db_key = try self.makeDatabaseKey(name);
-        defer self.allocator.free(db_key);
-
-        if (self.databases_map.fetchRemove(db_key)) |kv| {
-            // Found and removed
-            request.old_version = kv.value.database.version;
-            request.new_version = null; // null indicates deletion
-
-            // Clean up metadata
-            self.allocator.free(kv.key);
-            var metadata = kv.value;
-
-            // Close all connections
-            for (metadata.connections.items) |conn| {
-                conn.close();
-            }
-            metadata.deinit(self.allocator);
-
-            // Mark request as done
-            request.base.setResult(.{ .undefined = {} });
-        } else {
-            // Database doesn't exist - still succeeds per spec
-            request.old_version = 0;
-            request.new_version = null;
-            request.base.setResult(.{ .undefined = {} });
-        }
-
+        const database = try self.server().uniqueDatabase(storage_key, name);
+        defer self.server().release(database);
+        request.old_version = self.server().deleteDatabase(database);
+        request.new_version = null; // null indicates deletion
+        request.base.setResult(.{ .undefined = {} });
         return request;
     }
 
     /// Get list of databases
     /// https://w3c.github.io/IndexedDB/#dom-idbfactory-databases
-    ///
-    /// Returns a Promise that resolves to a sequence of IDBDatabaseInfo.
     pub fn databases(self: *Self) IDBError![]IDBDatabaseInfo {
-        if (self.storage_key == null) {
-            return IDBError.SecurityError;
-        }
-
-        const storage_key = self.storage_key.?;
-        const prefix = try std.fmt.allocPrint(self.allocator, "{d}:{s}:", .{ storage_key.origin.len, storage_key.origin });
-        defer self.allocator.free(prefix);
-
-        // Count matching databases
-        var count: usize = 0;
-        var it = self.databases_map.iterator();
-        while (it.next()) |entry| {
-            // ED 4.3 databases step 4.3.1: omit a version-zero database whose
-            // first upgrade has not committed.
-            if (entry.value_ptr.database.version != 0 and std.mem.startsWith(u8, entry.key_ptr.*, prefix)) {
-                count += 1;
-            }
-        }
-
-        // Allocate result array
-        const result = try self.allocator.alloc(IDBDatabaseInfo, count);
-        errdefer self.allocator.free(result);
-
-        // Fill array
-        var idx: usize = 0;
-        it = self.databases_map.iterator();
-        while (it.next()) |entry| {
-            if (entry.value_ptr.database.version != 0 and std.mem.startsWith(u8, entry.key_ptr.*, prefix)) {
-                result[idx] = IDBDatabaseInfo{
-                    .name = entry.value_ptr.name,
-                    .version = entry.value_ptr.database.version,
-                };
-                idx += 1;
-            }
-        }
-
-        return result;
+        const storage_key = self.storage_key orelse return IDBError.SecurityError;
+        return self.server().databaseInfos(storage_key, self.allocator);
     }
 
     /// Compare two keys
     /// https://w3c.github.io/IndexedDB/#dom-idbfactory-cmp
-    ///
-    /// Returns:
-    /// - 1 if first > second
-    /// - -1 if first < second
-    /// - 0 if first == second
     pub fn cmp(_: *Self, first: IDBKey, second: IDBKey) i16 {
         return compareKeys(first, second);
-    }
-
-    // Internal helpers
-
-    fn makeDatabaseKey(self: *Self, name: []const u8) ![]u8 {
-        const storage_key = self.storage_key orelse return IDBError.SecurityError;
-        return try std.fmt.allocPrint(self.allocator, "{d}:{s}:{s}", .{ storage_key.origin.len, storage_key.origin, name });
     }
 };
 
@@ -446,7 +277,7 @@ test "IDBFactory - databases" {
 
     // Get databases list
     const dbs = try factory.databases();
-    defer allocator.free(dbs);
+    defer server_mod.freeInfos(allocator, dbs);
 
     try std.testing.expectEqual(@as(usize, 2), dbs.len);
 }

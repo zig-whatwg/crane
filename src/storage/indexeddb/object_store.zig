@@ -68,9 +68,12 @@ pub const Record = struct {
 /// Records belong to a database store, not to an individual transaction handle.
 pub const RecordData = struct {
     allocator: std.mem.Allocator,
-    references: usize = 1,
+    /// Atomic: handles on several threads hold one store's records.
+    references: std.atomic.Value(usize) = .init(1),
     definition_id: u64 = 0,
     next_index_id: u64 = 1,
+    /// Set by an upgrade (which excludes every other transaction) and read
+    /// by any thread's handles: accessed atomically (`isDeleted`, `markDeleted`).
     deleted: bool = false,
     records: std.ArrayListUnmanaged(Record) = .empty,
     key_generator: u64 = 1,
@@ -78,7 +81,7 @@ pub const RecordData = struct {
 
     pub fn clone(self: *const RecordData) std.mem.Allocator.Error!*RecordData {
         const copy = try self.allocator.create(RecordData);
-        copy.* = .{ .allocator = self.allocator, .key_generator = self.key_generator, .deleted = self.deleted, .definition_id = self.definition_id, .next_index_id = self.next_index_id };
+        copy.* = .{ .allocator = self.allocator, .key_generator = self.key_generator, .deleted = self.isDeleted(), .definition_id = self.definition_id, .next_index_id = self.next_index_id };
         errdefer copy.release();
         try copy.records.ensureTotalCapacity(self.allocator, self.records.items.len);
         for (self.records.items) |record| {
@@ -96,13 +99,19 @@ pub const RecordData = struct {
         return copy;
     }
 
+    pub fn isDeleted(self: *const RecordData) bool {
+        return @atomicLoad(bool, &self.deleted, .monotonic);
+    }
+    pub fn markDeleted(self: *RecordData, deleted: bool) void {
+        @atomicStore(bool, &self.deleted, deleted, .monotonic);
+    }
     pub fn retain(self: *RecordData) void {
-        self.references += 1;
+        _ = self.references.fetchAdd(1, .monotonic);
     }
     pub fn release(self: *RecordData) void {
-        std.debug.assert(self.references > 0);
-        self.references -= 1;
-        if (self.references != 0) return;
+        const before = self.references.fetchSub(1, .acq_rel);
+        std.debug.assert(before > 0);
+        if (before != 1) return;
         for (self.records.items) |*record| record.deinit(self.allocator);
         self.records.deinit(self.allocator);
         var definitions = self.indexes.valueIterator();
@@ -279,7 +288,7 @@ pub const IDBObjectStore = struct {
     pub fn rollbackSchema(self: *Self, original: ?*const @import("database.zig").ObjectStoreMetadata) void {
         // ED 5.5.2 and 5.8.5: identity, not a reused name, decides whether this
         // is an old store. New stores retain their last name but lose indexes.
-        if (self.record_data) |data| data.deleted = original == null;
+        if (self.record_data) |data| data.markDeleted(original == null);
         if (original == null) {
             self.clearIndexNames();
         } else if (self.rollback_index_names) |names| {
@@ -447,7 +456,7 @@ pub const IDBObjectStore = struct {
     /// All handles for this definition observe deletion, including the
     /// temporary handle returned by the native database creation operation.
     pub fn isDeleted(self: *const Self) bool {
-        return if (self.record_data) |data| data.deleted else false;
+        return if (self.record_data) |data| data.isDeleted() else false;
     }
 
     /// Add or update a record

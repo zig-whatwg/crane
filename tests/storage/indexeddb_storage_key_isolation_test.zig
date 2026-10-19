@@ -24,12 +24,12 @@ test "IndexedDB database keys distinguish an origin port from a database-name pr
     defer dropRequest(std.testing.allocator, second);
     try std.testing.expectEqual(@as(u64, 0), second.old_version);
     const port_list = try factory.databases();
-    defer std.testing.allocator.free(port_list);
+    defer idb.server.freeInfos(std.testing.allocator, port_list);
     try std.testing.expectEqual(@as(usize, 1), port_list.len);
     try std.testing.expectEqualStrings("records", port_list[0].name);
     factory.setStorageKey("https://example.com");
     const list = try factory.databases();
-    defer std.testing.allocator.free(list);
+    defer idb.server.freeInfos(std.testing.allocator, list);
     try std.testing.expectEqual(@as(usize, 1), list.len);
     try std.testing.expectEqualStrings("8080:records", list[0].name);
 }

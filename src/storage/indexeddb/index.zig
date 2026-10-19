@@ -62,7 +62,8 @@ fn removeEntriesFromList(entries: *std.ArrayListUnmanaged(IndexEntry), allocator
 /// Persistent index definition and records, shared by transaction handles.
 pub const IndexData = struct {
     allocator: std.mem.Allocator,
-    references: usize = 1,
+    /// Atomic: handles on several threads hold one index's data.
+    references: std.atomic.Value(usize) = .init(1),
     definition_id: u64 = 0,
     name: []u8,
     key_path: ?[]const u8,
@@ -100,15 +101,15 @@ pub const IndexData = struct {
         return copy;
     }
     pub fn retain(self: *IndexData) void {
-        self.references += 1;
+        _ = self.references.fetchAdd(1, .monotonic);
     }
     pub fn removeEntriesInRange(self: *IndexData, range: IDBKeyRange) void {
         removeEntriesFromList(&self.entries, self.allocator, range);
     }
     pub fn release(self: *IndexData) void {
-        std.debug.assert(self.references > 0);
-        self.references -= 1;
-        if (self.references != 0) return;
+        const before = self.references.fetchSub(1, .acq_rel);
+        std.debug.assert(before > 0);
+        if (before != 1) return;
         for (self.entries.items) |*entry| entry.deinit(self.allocator);
         self.entries.deinit(self.allocator);
         self.allocator.free(self.name);

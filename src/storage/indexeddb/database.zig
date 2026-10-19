@@ -28,6 +28,7 @@ const IDBObjectStore = @import("object_store.zig").IDBObjectStore;
 const RecordData = @import("object_store.zig").RecordData;
 const IDBError = @import("errors.zig").IDBError;
 const key_path_mod = @import("key_path.zig");
+const server_mod = @import("server.zig");
 
 /// Options for createObjectStore
 pub const IDBObjectStoreParameters = struct {
@@ -100,10 +101,23 @@ pub const IDBDatabase = struct {
     allocator: std.mem.Allocator,
 
     // Native transactions hold a lease independent of wrapper GC order.
+    // Atomic: a durable database is held by connections on several threads.
     backing: ?*Self = null,
-    references: usize = 1,
+    references: std.atomic.Value(usize) = .init(1),
     destroy_on_release: bool = false,
     owned_name: ?[]u8 = null,
+
+    /// A durable database's: its server's lock, which guards the schema map
+    /// (server.zig, THE LOCK). Null for a standalone database.
+    schema_mutex: ?*std.Io.Mutex = null,
+    /// A connection's: the server record of its database, held until this
+    /// connection's end, and its connection record's id. Null for a
+    /// standalone database, whose transactions schedule among themselves.
+    server_database: ?*server_mod.UniqueIDBDatabase = null,
+    connection_id: server_mod.Id = 0,
+    /// A connection's: fires versionchange at its platform object, on its
+    /// thread (`serverNote`). Set by the owner of that object while it lives.
+    version_change_hook: ?VersionChangeHook = null,
 
     /// Database name
     name: []const u8,
@@ -135,6 +149,57 @@ pub const IDBDatabase = struct {
     onclose: ?*const fn (*Self) void,
     onerror: ?*const fn (*Self) void,
     onversionchange: ?*const fn (*Self, u64, ?u64) void,
+
+    pub const VersionChangeHook = struct {
+        context: *anyopaque,
+        /// `posted`: told by a task of its own (enter the realm); otherwise
+        /// within the requester's database task on this thread.
+        call: *const fn (context: *anyopaque, old_version: u64, new_version: ?u64, posted: bool) void,
+    };
+
+    /// The server's note for this connection (its record's client).
+    pub fn serverNote(context: *anyopaque, note: server_mod.Note) void {
+        const self: *Self = @ptrCast(@alignCast(context));
+        switch (note) {
+            .versionchange => |change| if (self.version_change_hook) |hook| hook.call(hook.context, change.old_version, change.new_version, change.posted),
+            else => {},
+        }
+    }
+
+    /// The server this connection's database belongs to.
+    pub fn server(self: *const Self) ?*server_mod.IDBServer {
+        const database = self.server_database orelse return null;
+        return database.server;
+    }
+
+    /// ED 5.2 step 1: set this connection's close pending flag in its
+    /// server. Idempotent; a standalone database has nothing to tell.
+    pub fn closePending(self: *Self) void {
+        const database = self.server_database orelse return;
+        database.server.closePending(database, self.connection_id);
+    }
+
+    /// The lock that guards the schema map this connection reads: its
+    /// durable database's server's. Taken around every read or change of the
+    /// map that may race another thread (a readwrite abort swaps entries).
+    pub fn lockSchema(self: *const Self) void {
+        if (self.schemaMutex()) |mutex| std.Io.Threaded.mutexLock(mutex);
+    }
+    pub fn unlockSchema(self: *const Self) void {
+        if (self.schemaMutex()) |mutex| std.Io.Threaded.mutexUnlock(mutex);
+    }
+    fn schemaMutex(self: *const Self) ?*std.Io.Mutex {
+        return if (self.backing) |database| database.schema_mutex else self.schema_mutex;
+    }
+
+    /// Whether every name in `names` is an object store (transaction()
+    /// steps 4-5), read under the schema lock.
+    pub fn hasObjectStores(self: *Self, names: []const []const u8) bool {
+        self.lockSchema();
+        defer self.unlockSchema();
+        for (names) |name| if (!self.schema().contains(name)) return false;
+        return true;
+    }
 
     /// Initialize a new IDBDatabase
     pub fn init(allocator: std.mem.Allocator, name: []const u8, version: u64) Self {
@@ -233,12 +298,15 @@ pub const IDBDatabase = struct {
     }
 
     pub fn publishVersion(self: *Self) void {
-        if (self.backing) |database| database.version = self.version;
+        const database = self.backing orelse return;
+        self.lockSchema();
+        defer self.unlockSchema();
+        database.version = self.version;
     }
 
     pub fn retain(self: *Self) void {
-        std.debug.assert(self.references > 0);
-        self.references += 1;
+        const before = self.references.fetchAdd(1, .monotonic);
+        std.debug.assert(before > 0);
     }
 
     /// Release a heap-allocated wrapper's owner lease. The final transaction
@@ -249,9 +317,15 @@ pub const IDBDatabase = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        std.debug.assert(self.references > 0);
-        self.references -= 1;
-        if (self.references != 0) return;
+        const before = self.references.fetchSub(1, .acq_rel);
+        std.debug.assert(before > 0);
+        if (before != 1) return;
+        // A connection's end closes it in its server, if nothing did yet,
+        // and lets go of its database record.
+        if (self.server_database) |database| {
+            database.server.closePending(database, self.connection_id);
+            database.server.release(database);
+        }
         var it = self.object_stores.iterator();
         while (it.next()) |entry| {
             entry.value_ptr.deinit(self.allocator);
@@ -313,11 +387,7 @@ pub const IDBDatabase = struct {
         }
 
         // Verify all store names exist
-        for (store_names) |name| {
-            if (!self.schema().contains(name)) {
-                return IDBError.NotFoundError;
-            }
-        }
+        if (!self.hasObjectStores(store_names)) return IDBError.NotFoundError;
 
         // Step 4: Create transaction
         const txn = try self.allocator.create(IDBTransaction);
@@ -328,11 +398,13 @@ pub const IDBDatabase = struct {
         try txn.copyScope(store_names);
         txn.durability = options.durability;
 
-        // Publish neither borrowed entry until both reservations succeed.
+        // Publish neither borrowed entry until every reservation succeeds:
+        // the server's scheduler record last (ED 2.7.2 creation order).
         try self.transactions.ensureUnusedCapacity(self.allocator, 1);
-        try self.transactionQueue().ensureUnusedCapacity(self.allocator, 1);
+        if (self.server_database == null) try self.transactionQueue().ensureUnusedCapacity(self.allocator, 1);
+        try txn.register();
         self.transactions.appendAssumeCapacity(txn);
-        self.transactionQueue().appendAssumeCapacity(txn);
+        if (self.server_database == null) self.transactionQueue().appendAssumeCapacity(txn);
 
         return txn;
     }
@@ -454,7 +526,7 @@ pub const IDBDatabase = struct {
         }
         var metadata = self.schema().fetchRemove(name).?.value;
         // Steps 5-7: invalidate every handle sharing this definition.
-        metadata.record_data.deleted = true;
+        metadata.record_data.markDeleted(true);
         if (txn.object_stores.fetchRemove(name)) |entry| {
             // Step 6 changes this handle's set, including after commit. Older
             // finished handles keep their independent index sets unchanged.
