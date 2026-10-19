@@ -443,10 +443,25 @@ pub const ReservedClient = struct {
     /// owner's active service worker when it was reserved (SW 2.5.2).
     inherited_worker: u64 = 0,
     /// The storage key Handle Fetch obtains for it (step 9.5), as its
-    /// creator computed it (realm.zig reservedStorageKey). OWNED (the
-    /// manager's allocator); null: none - no service worker handles its
-    /// fetch.
+    /// creator computed it (realm.zig reservedStorageKeys): a worker's, or a
+    /// nested navigable's document's. OWNED (the manager's allocator); null:
+    /// none - no service worker handles such a fetch.
     storage_key: ?[]u8 = null,
+    /// The same for a top-level traversable's document (a request whose
+    /// destination is "document"). OWNED; null: none.
+    top_level_storage_key: ?[]u8 = null,
+
+    /// The key for a fetch whose destination is `destination`.
+    fn storageKeyFor(self: *const ReservedClient, destination: fetch.internal.Destination) ?[]const u8 {
+        return if (destination == .document) self.top_level_storage_key else self.storage_key;
+    }
+};
+
+/// The storage keys a reservation is made with (`Manager.reserveClient`):
+/// BORROWED for the call.
+pub const ReservedKeys = struct {
+    nested: ?[]const u8 = null,
+    top_level: ?[]const u8 = null,
 };
 
 /// A fetch Handle Fetch hands to a service worker (Create Fetch Event and
@@ -1441,18 +1456,23 @@ pub const Manager = struct {
     /// (0: none), for a client of `kind`; `inherited_worker` is a worker's
     /// owner's active service worker it inherits (a blob: script). OWNED by
     /// the caller (`createClient` or `releaseReserved`).
-    pub fn reserveClient(self: *Manager, kind: registry_mod.EnvironmentKind, creator: u64, inherited_worker: u64, storage_key: ?[]const u8) ?*ReservedClient {
+    pub fn reserveClient(self: *Manager, kind: registry_mod.EnvironmentKind, creator: u64, inherited_worker: u64, keys: ReservedKeys) ?*ReservedClient {
         const handle = self.allocator.create(ReservedClient) catch return null;
-        const key: ?[]u8 = if (storage_key) |k| (self.allocator.dupe(u8, k) catch {
-            self.allocator.destroy(handle);
+        handle.* = .{ .manager = self, .kind = kind, .creator = creator, .inherited_worker = inherited_worker };
+        if (keys.nested) |k| handle.storage_key = self.allocator.dupe(u8, k) catch {
+            self.destroyReserved(handle);
             return null;
-        }) else null;
-        handle.* = .{ .manager = self, .kind = kind, .creator = creator, .inherited_worker = inherited_worker, .storage_key = key };
+        };
+        if (keys.top_level) |k| handle.top_level_storage_key = self.allocator.dupe(u8, k) catch {
+            self.destroyReserved(handle);
+            return null;
+        };
         return handle;
     }
 
     fn destroyReserved(self: *Manager, reserved: *ReservedClient) void {
         if (reserved.storage_key) |key| self.allocator.free(key);
+        if (reserved.top_level_storage_key) |key| self.allocator.free(key);
         self.allocator.destroy(reserved);
     }
 
@@ -1783,7 +1803,7 @@ pub const Manager = struct {
             // creator computed it for the URL it reserved for. One of another
             // origin - a reservation a cross-origin redirect left behind
             // (HTML re-reserves for the new URL) - matches nothing.
-            const reserved_key = reserved.storage_key orelse return .network;
+            const reserved_key = reserved.storageKeyFor(request.destination) orelse return .network;
             if (!std.mem.eql(u8, registry_mod.storageKeyOrigin(reserved_key), origin)) return .network;
             // 9.6-9.8, 11-12.
             const matched = (try self.registry.handleFetchNonSubresource(.{

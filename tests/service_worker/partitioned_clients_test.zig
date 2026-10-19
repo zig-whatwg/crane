@@ -70,6 +70,33 @@ const popup_html =
 ;
 
 const routes = [_]http.Route{
+    // The navigation test's resources (`a frame's navigation ...` below).
+    .{ .path = "/sw-fetch.js", .content_type = "text/javascript", .body =
+    \\self.addEventListener('fetch', e => {
+    \\  if (new URL(e.request.url).pathname === '/target.html')
+    \\    e.respondWith(new Response('<!doctype html><script>parent.postMessage("nav:from-1p-sw", "*")</script>', { headers: { 'content-type': 'text/html' } }));
+    \\});
+    },
+    .{ .path = "/sw-3p.js", .content_type = "text/javascript", .body =
+    \\self.addEventListener('fetch', e => {
+    \\  if (new URL(e.request.url).pathname === '/p/popup2.html')
+    \\    e.respondWith(new Response('<!doctype html><script>opener.postMessage("popup:from-3p-sw", "*")</script>', { headers: { 'content-type': 'text/html' } }));
+    \\});
+    },
+    .{ .path = "/hop.html", .body = "<!doctype html><script>location.href = 'http://localhost/target.html';</script>" },
+    .{ .path = "/target.html", .body = "<!doctype html><script>parent.postMessage('nav:from-network', '*');</script>" },
+    .{ .path = "/p/popup2.html", .body = "<!doctype html><script>opener.postMessage('popup:from-network', '*');</script>" },
+    .{ .path = "/frame3p.html", .body =
+    \\<!doctype html><script>
+    \\(async () => {
+    \\  const reg = await navigator.serviceWorker.register('/sw-3p.js', { scope: '/p/' });
+    \\  const w = reg.installing || reg.waiting || reg.active;
+    \\  await new Promise(r => { if (w.state === 'activated') return r(); w.addEventListener('statechange', () => { if (w.state === 'activated') r(); }); });
+    \\  addEventListener('message', e => parent.postMessage(e.data, '*'));
+    \\  globalThis.popup = window.open('http://b.localhost/p/popup2.html');
+    \\})().catch(e => parent.postMessage('error ' + e, '*'));
+    \\</script>
+    },
     .{ .path = "/frame.html", .body = frame_html },
     .{ .path = "/popup.html", .body = popup_html },
     .{ .path = "/sw.js", .content_type = "text/javascript", .body = "self.addEventListener('install', () => {});" },
@@ -225,6 +252,54 @@ test "a third-party frame's registration is its partition's; the registry's stor
     const browser = try startBrowser(debug.allocator(), server);
     defer browser.deinit();
     try runScenario(browser, "/");
+}
+
+test "a frame's navigation is matched in its container's partition, a popup's in its own" {
+    // A cross-site frame navigating itself to the page's origin is that
+    // origin's frame under the page: first-party, so the page's service
+    // worker handles it - though the frame's current document, which the
+    // navigation reserves its client from, is third-party. A popup a
+    // third-party frame opens is a top-level traversable: first-party, so
+    // the frame's partitioned service worker does not handle it.
+    const server = try http.Server.start(testing.allocator, &routes);
+    defer server.stop();
+    var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    defer testing.expect(debug.deinit() == .ok) catch @panic("leaked");
+    const browser = try startBrowser(debug.allocator(), server);
+    defer browser.deinit();
+    const page = browser.current_context orelse return error.NoPage;
+    try page.loadHTML(
+        \\<!doctype html><body><script>
+        \\globalThis.got = [];
+        \\addEventListener('message', e => { globalThis.got.push(String(e.data)); });
+        \\(async () => {
+        \\  const reg = await navigator.serviceWorker.register('/sw-fetch.js', { scope: '/' });
+        \\  const w = reg.installing || reg.waiting || reg.active;
+        \\  await new Promise(r => { if (w.state === 'activated') return r(); w.addEventListener('statechange', () => { if (w.state === 'activated') r(); }); });
+        \\  for (const src of ['http://b.localhost/hop.html', 'http://b.localhost/frame3p.html']) {
+        \\    const f = document.createElement('iframe');
+        \\    f.src = src;
+        \\    document.body.append(f);
+        \\  }
+        \\})().catch(e => globalThis.got.push('error ' + e));
+        \\</script>
+    , .{ .base_url = page_url });
+    var answer: ?[]u8 = null;
+    defer if (answer) |a| browser.allocator.free(a);
+    for (0..2000) |_| {
+        const got = try evaluate(browser, "globalThis.got.length >= 2 ? globalThis.got.slice().sort().join(',') : 'pending'");
+        if (!std.mem.eql(u8, got, "pending")) {
+            answer = got;
+            break;
+        }
+        browser.allocator.free(got);
+        _ = try browser.runEventLoopBlocking(10);
+    }
+    const got = answer orelse return error.NoAnswer;
+    testing.expectEqualStrings("nav:from-1p-sw,popup:from-network", got) catch |err| {
+        std.debug.print("got: {s}\n", .{got});
+        return err;
+    };
 }
 
 const Side = struct {

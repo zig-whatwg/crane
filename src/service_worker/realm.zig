@@ -969,23 +969,42 @@ fn topLevelStorageKey(allocator: Allocator, origin: []const u8) ![]u8 {
     return StorageKey.initBorrowed(origin, site orelse "null", false).serialize(allocator);
 }
 
-/// The storage key of the client a fetch of `url` made from `creator` will
-/// make (Handle Fetch step 9.5's "obtain a storage key given reserved
-/// client"): a frame's, its container's key nested; a worker's, its owner's
-/// with the worker's origin. OWNED (`allocator`); null when the creator has
-/// no key or the URL no origin.
-fn reservedStorageKey(allocator: Allocator, creator: runtime.Context, kind: ClientKind, url: []const u8) !?[]u8 {
-    const global = globalOf(creator) orelse return null;
-    const container = (try dom.global_settings.storageKeyForNonStoragePurposesOf(global)) orelse return null;
-    const origin = scope_mod.originOf(allocator, url) catch return null;
+/// The storage keys the client a fetch of `url` made from `creator` may
+/// have (Handle Fetch step 9.5's "obtain a storage key given reserved
+/// client"), as `clientStorageKey` will compute its realm's. OWNED
+/// (`allocator`); each null when it cannot be obtained.
+///
+/// - A worker's: its owner's (`creator`'s) key with the worker's origin.
+/// - A window's depends on the navigable, which the creator does not name:
+///   a frame's navigation reserves from the frame's own current realm (html
+///   navigationRealmOf: an iframe's integration has no parent realm), whose
+///   parent is the container - its key nested (`nested`); a top-level
+///   traversable's - a popup's, reserved from its opener's realm - is the
+///   URL's own site with no cross-site ancestor (`top_level`). Handle Fetch
+///   picks by the request's destination (a frame's or a document's).
+const ReservedKeys = struct { nested: ?[]u8 = null, top_level: ?[]u8 = null };
+
+fn reservedStorageKeys(allocator: Allocator, creator: runtime.Context, kind: ClientKind, url: []const u8) !ReservedKeys {
+    const global = globalOf(creator) orelse return .{};
+    const origin = scope_mod.originOf(allocator, url) catch return .{};
     defer allocator.free(origin);
     switch (kind) {
-        .window => return try dom.blob_partition.nestedStorageKey(allocator, container, origin),
+        .window => {
+            var keys: ReservedKeys = .{ .top_level = try topLevelStorageKey(allocator, origin) };
+            errdefer if (keys.top_level) |key| allocator.free(key);
+            const parent = interfaces.Window.get_parent(global) catch null;
+            if (parent) |p| if (p != global) {
+                if (try dom.global_settings.storageKeyForNonStoragePurposesOf(p)) |container| {
+                    keys.nested = try dom.blob_partition.nestedStorageKey(allocator, container, origin);
+                }
+            };
+            return keys;
+        },
         .dedicated_worker, .shared_worker => {
-            var key = container;
+            var key = (try dom.global_settings.storageKeyForNonStoragePurposesOf(global)) orelse return .{};
             key.origin = origin;
             key.allocator = null;
-            return try key.serialize(allocator);
+            return .{ .nested = try key.serialize(allocator) };
         },
     }
 }
@@ -1001,8 +1020,11 @@ pub fn reserveClient(creator: runtime.Context, kind: ClientKind, url: []const u8
     // worker - by the rules its realm's settings will follow
     // (`clientStorageKey`). Null: none can be obtained; no service worker
     // handles its fetch.
-    const reserved_key: ?[]u8 = reservedStorageKey(manager.allocator, creator, kind, url) catch null;
-    defer if (reserved_key) |key| manager.allocator.free(key);
+    const reserved_keys: ReservedKeys = reservedStorageKeys(manager.allocator, creator, kind, url) catch .{};
+    defer {
+        if (reserved_keys.nested) |key| manager.allocator.free(key);
+        if (reserved_keys.top_level) |key| manager.allocator.free(key);
+    }
     // The creator is a client itself (its navigation request's client).
     const creator_environment = environmentOf(creator, true);
     const creator_id: u64 = if (creator_environment) |e| e.id else 0;
@@ -1014,7 +1036,7 @@ pub fn reserveClient(creator: runtime.Context, kind: ClientKind, url: []const u8
             if (origin) |o| inherited = manager.controllerOfSameOrigin(owner.id, o);
         }
     }
-    const handle = manager.reserveClient(environmentKindOf(kind), creator_id, inherited, reserved_key) orelse return null;
+    const handle = manager.reserveClient(environmentKindOf(kind), creator_id, inherited, .{ .nested = reserved_keys.nested, .top_level = reserved_keys.top_level }) orelse return null;
     return handle;
 }
 
