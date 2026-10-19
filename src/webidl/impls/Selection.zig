@@ -475,10 +475,15 @@ pub fn call_setBaseAndExtent(instance: *runtime.Instance, anchorNode: *runtime.I
     // Steps 3-5: compare boundary points, including ancestor/descendant positions.
     const same_root = getRoot(anchorNode) == getRoot(focusNode);
     const backward = same_root and boundary_points.position(DomTree, focusNode, focusOffset, anchorNode, anchorOffset) == .before;
-    const range = if (backward)
-        try newRange(instance, focusNode, focusOffset, anchorNode, anchorOffset)
+    // Step 5 tests anchor-before-focus, independently of step 7's direction.
+    // Different roots take the else branch; the last Range setter collapses
+    // at the anchor. Blink DomSelection::setBaseAndExtent uses this order;
+    // Chrome/Firefox pass selection-nested-video.html (WPT 23b0b89b1a).
+    const anchor_before_focus = same_root and boundary_points.position(DomTree, anchorNode, anchorOffset, focusNode, focusOffset) == .before;
+    const range = if (anchor_before_focus)
+        try newRange(instance, anchorNode, anchorOffset, focusNode, focusOffset)
     else
-        try newRange(instance, anchorNode, anchorOffset, focusNode, focusOffset);
+        try newRange(instance, focusNode, focusOffset, anchorNode, anchorOffset);
     // Steps 6-7.
     internal.setRange(instance, range, if (backward) .backward else .forward);
 }
@@ -594,7 +599,10 @@ fn moveByCharacter(node: *runtime.Instance, offset: u32, forward: bool) !Positio
                 } else {
                     // At end of text node, try to move to next node
                     if (try getNextTextPosition(node)) |next| {
-                        return next;
+                        // Text has no contenteditable of its own: siblings
+                        // share every ancestor and therefore the editing host.
+                        if (parentNode(node) == parentNode(next.node)) return next;
+                        return skipEditingBoundary(.{ .node = node, .offset = offset }, next, true);
                     }
                     // Can't move further, stay at end
                     return .{ .node = node, .offset = offset };
@@ -606,7 +614,9 @@ fn moveByCharacter(node: *runtime.Instance, offset: u32, forward: bool) !Positio
                 } else {
                     // At start of text node, try to move to previous node
                     if (try getPreviousTextPosition(node)) |prev| {
-                        return prev;
+                        // The same sibling equivalence holds in reverse.
+                        if (parentNode(node) == parentNode(prev.node)) return prev;
+                        return skipEditingBoundary(.{ .node = node, .offset = offset }, prev, false);
                     }
                     // Can't move further, stay at start
                     return .{ .node = node, .offset = 0 };
@@ -615,7 +625,23 @@ fn moveByCharacter(node: *runtime.Instance, offset: u32, forward: bool) !Positio
         } else |_| {}
     }
 
-    // For element nodes, offset refers to child index
+    // Steps 10-11: a parent boundary adjacent to text is the same caret
+    // position as that text's edge, not a request to skip the whole child.
+    // Blink's Next/PreviousVisuallyDistinctCandidate traverses descendants
+    // from this boundary before consuming a character. Keep the existing
+    // character unit and editing-root check; no layout position is invented.
+    if (forward or offset != 0) {
+        if (childAt(node, if (forward) offset else offset - 1)) |child| {
+            if (try findTextNode(child, forward, true)) |text| {
+                const candidate = PositionResult{ .node = text, .offset = if (forward) 0 else try nodeLength(text) };
+                const adjusted = try skipEditingBoundary(.{ .node = node, .offset = offset }, candidate, forward);
+                if (!std.meta.eql(candidate, adjusted)) return adjusted;
+                return moveByCharacter(text, candidate.offset, forward);
+            }
+        }
+    }
+
+    // A child without text keeps its structural boundary movement.
     const child_count = countChildren(node);
     if (forward) {
         if (offset < child_count) {
@@ -629,6 +655,71 @@ fn moveByCharacter(node: *runtime.Instance, offset: u32, forward: bool) !Positio
 
     // Can't move within this node
     return .{ .node = node, .offset = offset };
+}
+
+fn isEditableNode(node: *runtime.Instance) bool {
+    var current: ?*runtime.Instance = node;
+    while (current) |element| : (current = parentNode(element)) {
+        if (element.stateAs(interfaces.HTMLElement.State) != null)
+            return interfaces.HTMLElement.get_isContentEditable(element) catch false;
+    }
+    return false;
+}
+
+fn highestEditableRoot(node: *runtime.Instance) ?*runtime.Instance {
+    if (!isEditableNode(node)) return null;
+    var root = node;
+    var current: ?*runtime.Instance = node;
+    while (current) |ancestor| : (current = parentNode(ancestor)) {
+        if (isEditableNode(ancestor)) root = ancestor;
+        if (ancestor.stateAs(interfaces.HTMLBodyElement.State) != null) break;
+    }
+    return root;
+}
+
+/// Selection.modify steps 10-11 follow user movement. Blink's
+/// position_units.cc SkipToEnd/StartOfEditingBoundary and editing_utilities.cc
+/// First/LastEditablePositionInRoot keep the caret in its highest editing
+/// root, skipping noneditable positions. Chrome/Safari pass all 16 cases in
+/// selection/contenteditable/modify-around-non-editable-span.html (WPT
+/// 23b0b89b1a); Firefox stops at some adjacent visible positions instead.
+/// Only a node transition needs these reads; moving inside Text is unchanged.
+fn skipEditingBoundary(origin: PositionResult, candidate: PositionResult, forward: bool) !PositionResult {
+    const root = highestEditableRoot(origin.node);
+    const candidate_root = highestEditableRoot(candidate.node);
+    if (root == candidate_root) return candidate;
+    if (root == null) {
+        const host = candidate_root orelse return candidate;
+        const parent = parentNode(host) orelse return origin;
+        return .{ .node = parent, .offset = getChildIndex(parent, host) + @as(u32, if (forward) 1 else 0) };
+    }
+    if (!try interfaces.Node.call_contains(root.?, candidate.node)) return origin;
+    var position = candidate;
+    while (!isEditableNode(position.node)) {
+        // A Text position can jump to its parent boundary without examining
+        // the noneditable characters. Element positions visit children in
+        // order, so an explicitly editable descendant remains reachable.
+        const child = if (isTextNode(position.node)) null else childAt(position.node, if (forward) position.offset else position.offset -| 1);
+        if (child != null and (forward or position.offset != 0)) {
+            position = .{ .node = child.?, .offset = if (forward) 0 else try nodeLength(child.?) };
+        } else {
+            if (position.node == root.?) return origin;
+            const parent = parentNode(position.node) orelse return origin;
+            const offset = getChildIndex(parent, position.node) + @as(u32, if (forward) 1 else 0);
+            position = .{ .node = parent, .offset = offset };
+        }
+    }
+    return position;
+}
+
+fn childAt(node: *runtime.Instance, offset: u32) ?*runtime.Instance {
+    var child = firstChild(node);
+    var index: u32 = 0;
+    while (child) |current| : (child = nextSibling(current)) {
+        if (index == offset) return current;
+        index += 1;
+    }
+    return null;
 }
 
 /// Move position by one word
@@ -668,8 +759,13 @@ fn moveByWord(node: *runtime.Instance, offset: u32, forward: bool) !PositionResu
         // Skip whitespace between words (ASCII: one byte each)
         while (pos < data.len and isWordBoundaryAt(data, pos)) : (pos += 1) {}
 
-        if (pos >= data.len) {
-            // Reached end of this text node, try next
+        if (pos >= data.len and at.byte == data.len) {
+            // Only leave a node when starting at its end. Reaching the end
+            // of its last word is itself a movement result (Selection.modify
+            // steps 10-11). Blink NextWordPositionInternal likewise returns
+            // the end of the current text segment before advancing to the
+            // next block; all three browsers pass the generated-content
+            // word-extension WPT at 23b0b89b1a.
             if (try getNextTextPosition(node)) |next| {
                 return next;
             }
@@ -837,40 +933,26 @@ fn getPreviousTextPosition(node: *runtime.Instance) !?PositionResult {
 
 /// Find first text node in subtree (depth-first)
 fn findFirstTextNode(root: *runtime.Instance) !?*runtime.Instance {
-    if (isTextNode(root)) {
-        return root;
-    }
-
-    var child = firstChild(root);
-    while (child) |c| {
-        if (try findFirstTextNode(c)) |text| {
-            return text;
-        }
-        child = nextSibling(c);
-    }
-    return null;
+    return findTextNode(root, true, false);
 }
 
 /// Find last text node in subtree (depth-first, rightmost)
 fn findLastTextNode(root: *runtime.Instance) !?*runtime.Instance {
+    return findTextNode(root, false, false);
+}
+
+/// Search siblings as well as descendants: an empty inline at a subtree's
+/// edge does not hide text before/after it. Character descent also skips
+/// empty Text nodes, which cannot consume the requested character.
+fn findTextNode(root: *runtime.Instance, forward: bool, comptime nonempty: bool) !?*runtime.Instance {
     if (isTextNode(root)) {
+        if (nonempty and try nodeLength(root) == 0) return null;
         return root;
     }
-
-    // Start from last child
-    var last_child: ?*runtime.Instance = null;
-    var child = firstChild(root);
-    while (child) |c| {
-        last_child = c;
-        child = nextSibling(c);
+    var child = if (forward) firstChild(root) else try interfaces.Node.get_lastChild(root);
+    while (child) |current| : (child = if (forward) nextSibling(current) else previousSibling(current)) {
+        if (try findTextNode(current, forward, nonempty)) |text| return text;
     }
-
-    if (last_child) |lc| {
-        if (try findLastTextNode(lc)) |text| {
-            return text;
-        }
-    }
-
     return null;
 }
 
