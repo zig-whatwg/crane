@@ -11,6 +11,8 @@
 //! - `Color`: an sRGB color (css.color's Color: 8-bit channels and an alpha)
 //!   or currentcolor (CSS Color 4 "currentcolor").
 //! - `Display`: CSS Display 4's two-keyword model.
+//! - `ColorScheme`: a `color-scheme` list (CSS Color Adjustment 1 2.2), its
+//!   serialization and the color scheme support it names.
 //! - `text`: a value kept as its serialization - a font-family list, an
 //!   <image> - in a counted string, so declarations and computed styles
 //!   share it.
@@ -23,6 +25,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const length_mod = @import("values/length.zig");
 const color_mod = @import("values/color.zig");
+const color_scheme_mod = @import("color_scheme.zig");
 
 pub const Length = length_mod.Length;
 pub const LengthUnit = length_mod.LengthUnit;
@@ -441,6 +444,22 @@ fn appendAlpha(alpha: f32, out: *std.ArrayList(u8), allocator: Allocator) Alloca
 }
 
 // ============================================================================
+// color-scheme
+// ============================================================================
+
+/// A `color-scheme` value other than `normal`: `[ light | dark |
+/// <custom-ident> ]+ && only?` (CSS Color Adjustment 1 2.2). Its computed
+/// value is as specified ("the keyword normal, or a color scheme support"),
+/// so one value serves both.
+pub const ColorScheme = struct {
+    /// The serialization, per grammar: the schemes in order - light and dark
+    /// lowercase, a <custom-ident> as an identifier - then `only`.
+    text: *SharedText,
+    /// The color scheme support it names (section 2.3).
+    support: color_scheme_mod.Support,
+};
+
+// ============================================================================
 // Shared text
 // ============================================================================
 
@@ -500,6 +519,7 @@ pub const Value = union(enum) {
     color: Color,
     display: Display,
     text_transform: TextTransform,
+    color_scheme: ColorScheme,
     /// Kept as its serialization (a font-family list, an <image>).
     text: *SharedText,
 
@@ -518,6 +538,7 @@ pub const Value = union(enum) {
         return switch (self) {
             .text => |t| t,
             .color => |c| if (c == .named) c.named.name else null,
+            .color_scheme => |c| c.text,
             else => null,
         };
     }
@@ -532,6 +553,7 @@ pub const Value = union(enum) {
             .color => |c| c.eql(b.color),
             .display => |d| d.eql(b.display),
             .text_transform => |t| t.eql(b.text_transform),
+            .color_scheme => |c| c.support.eql(b.color_scheme.support) and std.mem.eql(u8, c.text.bytes, b.color_scheme.text.bytes),
             .text => |t| t == b.text or std.mem.eql(u8, t.bytes, b.text.bytes),
         };
     }

@@ -709,3 +709,19 @@ test "text values are shared, not leaked" {
     try expectResolved(child, .font_family, "\"A B\", serif");
     try expectResolved(child, .background_image, "none");
 }
+
+test "color-scheme is inherited and computes as specified" {
+    var parent_block = try TestBlock.make("color-scheme: only dark Purple");
+    defer parent_block.deinit();
+    const parent = try cascade(.{ .allocator = testing.allocator, .parent = null, .is_root = true }, &.{.{ .block = &parent_block.block, .source = .{ .origin = .author } }});
+    defer parent.destroy();
+    try expectResolved(parent, .color_scheme, "dark Purple only");
+    const child = try cascade(.{ .allocator = testing.allocator, .parent = parent }, &.{});
+    defer child.destroy();
+    try expectResolved(child, .color_scheme, "dark Purple only");
+    var reset_block = try TestBlock.make("color-scheme: initial");
+    defer reset_block.deinit();
+    const reset = try cascade(.{ .allocator = testing.allocator, .parent = parent }, &.{.{ .block = &reset_block.block, .source = .{ .origin = .author } }});
+    defer reset.destroy();
+    try expectResolved(reset, .color_scheme, "normal");
+}
