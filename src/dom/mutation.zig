@@ -72,7 +72,8 @@ pub const DOMException = error{
 ///   - Custom element reactions
 ///
 /// This is an extension point for specifications to hook into DOM mutations.
-pub const ChildrenChangedCallback = *const fn (parent: *NodeBase) void;
+pub const ChildrenChange = enum { inserted, removed, replaced_data };
+pub const ChildrenChangedCallback = *const fn (parent: *NodeBase, change: ChildrenChange) void;
 
 /// Global registry for children changed steps callbacks
 /// This allows specifications (like HTML) to register their hooks
@@ -98,14 +99,14 @@ pub fn registerChildrenChangedCallback(callback: ChildrenChangedCallback) !void 
 /// - insert (step 9)
 /// - remove (step 17)
 /// - replace data in CharacterData (step 12)
-pub fn runChildrenChangedSteps(parent: anytype) void {
+pub fn runChildrenChangedSteps(parent: anytype, change: ChildrenChange) void {
     // Cast to *NodeBase for callbacks (all DOM types have Node fields duplicated)
     const parent_node: *NodeBase = @ptrCast(parent);
 
     // Call all registered callbacks
     if (children_changed_callbacks) |*callbacks| {
         for (callbacks.items()) |callback| {
-            callback(parent_node);
+            callback(parent_node, change);
         }
     }
 
@@ -984,7 +985,7 @@ pub fn insert(
     for (nodes[0..nodes_count]) |n| formSubtreeMoved(n, null, @ptrCast(parent));
 
     // Step 9: Run the children changed steps for parent
-    runChildrenChangedSteps(parent);
+    runChildrenChangedSteps(parent, .inserted);
 
     // Steps 10-12: Post-connection steps
     // Spec: The post-connection steps are run after a batch of nodes is inserted
@@ -1153,7 +1154,7 @@ pub fn appendChildren(
     for (children) |inserted| formSubtreeMoved(inserted, null, @ptrCast(parent));
 
     // Step 9: Run children changed steps once for all insertions
-    runChildrenChangedSteps(parent);
+    runChildrenChangedSteps(parent, .inserted);
 
     // Step 10: Run post-connection steps for all inserted nodes
     // OPTIMIZATION: Skip expensive descendant traversal if no callbacks registered.
@@ -1313,7 +1314,7 @@ pub fn insertChildrenBefore(
     for (children) |inserted| formSubtreeMoved(inserted, null, @ptrCast(parent));
 
     // Run children changed steps once
-    runChildrenChangedSteps(parent);
+    runChildrenChangedSteps(parent, .inserted);
 
     // Run post-connection steps
     // OPTIMIZATION: Skip expensive descendant traversal if no callbacks registered.
@@ -1690,7 +1691,7 @@ pub fn remove(
     }
 
     // Step 17: Run the children changed steps for parent
-    runChildrenChangedSteps(parent);
+    runChildrenChangedSteps(parent, .removed);
 
     if (refcount.treeChecksOn()) {
         refcount.checkAround(@ptrCast(parent));
@@ -1906,7 +1907,7 @@ pub fn move(
 
     // Step 13.1: Run children changed steps for oldParent
     // (Node was removed from oldParent's children)
-    runChildrenChangedSteps(old_parent);
+    runChildrenChangedSteps(old_parent, .removed);
 
     // Steps 14-16: the remove steps 8-10, with oldParent.
     removingSlotSteps(new_parent.allocator, @ptrCast(node), @ptrCast(old_parent));
@@ -1945,7 +1946,7 @@ pub fn move(
 
     // Step 20.1: Run children changed steps for newParent
     // (Node was added to newParent's children)
-    runChildrenChangedSteps(new_parent);
+    runChildrenChangedSteps(new_parent, .inserted);
 
     // Steps 21-23: the insert steps 7.4-7.6, with newParent.
     insertionSlotSteps(new_parent.allocator, @ptrCast(node), @ptrCast(new_parent));
@@ -2893,7 +2894,7 @@ pub fn adopt(
 test "a callback registered twice runs once" {
     const Counter = struct {
         var calls: usize = 0;
-        fn childrenChanged(_: *NodeBase) void {
+        fn childrenChanged(_: *NodeBase, _: ChildrenChange) void {
             calls += 1;
         }
     };
@@ -2913,6 +2914,6 @@ test "a callback registered twice runs once" {
     };
     defer parent.child_nodes.deinit();
     defer parent.registered_observers.deinit();
-    runChildrenChangedSteps(&parent);
+    runChildrenChangedSteps(&parent, .inserted);
     try std.testing.expectEqual(@as(usize, 1), Counter.calls);
 }

@@ -6,10 +6,9 @@
 //! Spec: https://html.spec.whatwg.org/multipage/browsers.html#active-sandboxing-flag-set
 //! Spec: https://html.spec.whatwg.org/multipage/webappapis.html#concept-n-script
 //!
-//! What these pin: the default (a document made with no flags is not
-//! sandboxed, and runs script), that the flags a document is made with are
-//! the flags it answers, and that only the sandboxed scripts flag - never
-//! another - disables its scripting.
+//! These realm-less fixtures pin the sandboxing flags: only the scripts
+//! flag makes scriptsSandboxed true. Scripting also requires a browsing
+//! context (HTML 8.1.3.4), so even an unsandboxed fixture cannot run script.
 
 const std = @import("std");
 const dom = @import("dom");
@@ -41,7 +40,7 @@ const Fixture = struct {
     }
 };
 
-test "a document made with no sandboxing flags is not sandboxed, and scripting is enabled" {
+test "a document with no sandboxing flags is not sandboxed, but scripting is disabled without a browsing context" {
     var fixture: Fixture = undefined;
     try fixture.init();
     defer fixture.deinit();
@@ -51,8 +50,8 @@ test "a document made with no sandboxing flags is not sandboxed, and scripting i
 
     try testing.expect(dom.document_scripts.activeSandboxingFlags(document).isEmpty());
     try testing.expect(!dom.document_scripts.scriptsSandboxed(document));
-    try testing.expect(dom.document_scripts.scriptingEnabled(document));
-    try testing.expect(dom.document_internals.isScriptingEnabled(document));
+    try testing.expect(!dom.document_scripts.scriptingEnabled(document));
+    try testing.expect(!dom.document_internals.isScriptingEnabled(document));
 }
 
 test "a document made sandboxed without allow-scripts answers its flags, and scripting is disabled" {
@@ -71,7 +70,7 @@ test "a document made sandboxed without allow-scripts answers its flags, and scr
     try testing.expect(!dom.document_internals.isScriptingEnabled(document));
 }
 
-test "allow-scripts leaves scripting enabled while every other restriction stays" {
+test "allow-scripts leaves every other restriction, but scripting is disabled without a browsing context" {
     var fixture: Fixture = undefined;
     try fixture.init();
     defer fixture.deinit();
@@ -80,7 +79,7 @@ test "allow-scripts leaves scripting enabled while every other restriction stays
     defer interfaces.Document.deinit(document);
 
     const flags = dom.document_scripts.activeSandboxingFlags(document);
-    try testing.expect(dom.document_scripts.scriptingEnabled(document));
+    try testing.expect(!dom.document_scripts.scriptingEnabled(document));
     try testing.expect(!dom.document_scripts.scriptsSandboxed(document));
     try testing.expect(flags.origin);
     try testing.expect(flags.forms);

@@ -636,7 +636,11 @@ fn scriptPostConnectionStepsCallback(node: *NodeBase) void {
 /// returned at step 6 without setting already started - runs once text is put
 /// in it: `s.append("code")`, `s.textContent = "code"`, or a Text child's data
 /// changing (DOM "replace data" runs the parent's children changed steps).
-fn scriptChildrenChangedCallback(parent: *NodeBase) void {
+fn scriptChildrenChangedCallback(parent: *NodeBase, change: dom_module.mutation.ChildrenChange) void {
+    // Golden rule 2: all three browsers skip pure child removal. DOM
+    // issues 808/1261 and HTML 10188/4354 track this difference from the
+    // current text; insertion and CharacterData replacement still prepare.
+    if (change == .removed) return;
     if (parent.node_type != 1) return;
     if (!std.ascii.eqlIgnoreCase(parent.node_name, "script")) return;
     // Step 1.

@@ -69,6 +69,7 @@ const csp = @import("csp");
 
 // Module graph for async module fetching - accessed via html_core module
 const html_core = @import("html_core");
+const script_encodings = html_core.parser.encoding_sniffing;
 const ModuleGraph = html_core.ModuleGraph;
 const ModuleGraphFetcher = html_core.ModuleGraphFetcher;
 const ModuleNode = html_core.ModuleNode;
@@ -156,9 +157,9 @@ const FetchedSource = struct {
     }
 };
 
-fn fetchClassicScriptSource(allocator: std.mem.Allocator, script_element: *runtime.Instance, document: ?*runtime.Instance, src: []const u8, url: []const u8) FetchedSource {
+fn fetchClassicScriptSource(allocator: std.mem.Allocator, script_element: *runtime.Instance, document: ?*runtime.Instance, src: []const u8, url: []const u8, encoding: script_encodings.Encoding) FetchedSource {
     if (embedderScriptSource(script_element, src)) |answered| return answered;
-    return networkClassicScriptSource(allocator, script_element, document, url);
+    return networkClassicScriptSource(allocator, script_element, document, url, encoding);
 }
 
 /// The embedder's loader's answer for `src`, if the parser preparing
@@ -171,8 +172,8 @@ fn embedderScriptSource(script_element: *runtime.Instance, src: []const u8) ?Fet
 
 /// "Fetch a classic script" for `url`, synchronously, without asking the
 /// embedder's loader.
-fn networkClassicScriptSource(allocator: std.mem.Allocator, script_element: *runtime.Instance, document: ?*runtime.Instance, url: []const u8) FetchedSource {
-    var fetch_result = fetchClassicScript(allocator, script_element, document, url);
+fn networkClassicScriptSource(allocator: std.mem.Allocator, script_element: *runtime.Instance, document: ?*runtime.Instance, url: []const u8, encoding: script_encodings.Encoding) FetchedSource {
+    var fetch_result = fetchClassicScript(allocator, script_element, document, url, encoding);
     const body = fetch_result.body;
     const final_url = fetch_result.final_url;
     fetch_result.body = null;
@@ -441,6 +442,11 @@ pub fn prepareScriptElement(
             return handleScriptScheduling(allocator, script_element, parser_document, script_type);
         }
 
+        // Prepare step 23: capture the fallback encoding before fetching.
+        // It is unused for inline/module scripts. No script runs between
+        // step 23 and this external-classic branch.
+        const encoding = classicScriptEncoding(script_element, node_document);
+
         // Content already cached for the element is used as-is. Otherwise the
         // embedder's loader for the parser preparing this script, when it has
         // one, stands in for "fetch a classic script" - here, at the fetch
@@ -473,16 +479,16 @@ pub fn prepareScriptElement(
                 const can_suspend = if (parserScriptLoaderFor(script_element)) |loader| loader.can_suspend else false;
                 if (!parser_blocking or can_suspend) {
                     if (node_document) |doc| {
-                        if (startClassicScriptFetch(script_element, doc, script_url, credentials_mode)) {
+                        if (startClassicScriptFetch(script_element, doc, script_url, credentials_mode, encoding)) {
                             return handleScriptSchedulingOf(allocator, script_element, parser_document, script_type, .fetching);
                         }
                     }
                 }
             }
             var fetched = answered orelse if (parser_blocking)
-                networkClassicScriptSource(allocator, script_element, node_document, script_url)
+                networkClassicScriptSource(allocator, script_element, node_document, script_url, encoding)
             else
-                fetchClassicScriptSource(allocator, script_element, node_document, src, script_url);
+                fetchClassicScriptSource(allocator, script_element, node_document, src, script_url, encoding);
             defer fetched.deinit();
             // Fetch-classic step 5.6 uses the response URL after redirects.
             // Keep it through the element's existing owned URL, which is also
@@ -1697,7 +1703,7 @@ fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Insta
         const url = parseUrl(element, raw, base_url) orelse return queueErrorEventTask(element);
         defer element.ctx.allocator.free(url);
 
-        var fetched = fetchClassicScript(allocator, element, document, url);
+        var fetched = fetchClassicScript(allocator, element, document, url, documentEncoding(document));
         defer fetched.deinit(allocator);
         const response_url = fetched.final_url orelse url;
         if (from_parser_end_tag) {
@@ -3176,6 +3182,48 @@ fn scriptFetchOptions(element: *runtime.Instance, credentials_mode: fetch.intern
     };
 }
 
+/// Prepare step 23: an encoding label from charset, or the node document's
+/// encoding. The table entry has static lifetime; retaining it needs no owner.
+fn classicScriptEncoding(element: *runtime.Instance, document: ?*runtime.Instance) script_encodings.Encoding {
+    if (getAttribute(element, "charset")) |label| {
+        if (script_encodings.lookup(label)) |encoding| return encoding;
+    }
+    return documentEncoding(document);
+}
+
+fn documentEncoding(document: ?*runtime.Instance) script_encodings.Encoding {
+    const doc = document orelse return script_encodings.utf_8;
+    var name = interfaces.Document.get_characterSet(doc) catch return script_encodings.utf_8;
+    defer name.deinit(doc.ctx.allocator);
+    return script_encodings.lookup(name.asSlice()) orelse script_encodings.utf_8;
+}
+
+/// Fetch a classic script, processResponseConsumeBody steps 3-5: extract a
+/// MIME type, legacy-extract its encoding (ignoring the MIME essence), then
+/// Encoding "decode", whose BOM takes precedence. The returned UTF-8 is owned.
+/// WebKit ScriptElement::requestClassicScript likewise captures charset at
+/// preparation and hands it to its script resource's text decoder.
+pub fn decodeClassicScript(allocator: std.mem.Allocator, bytes: []const u8, headers: *const fetch.internal.HeaderList, fallback: script_encodings.Encoding) ![]u8 {
+    var encoding = fallback;
+    if (try fetch.internal.mime.extractMimeType(allocator, headers)) |mime_value| {
+        var mime = mime_value;
+        defer mime.deinit();
+        if (fetch.internal.mime.parameterIndex(mime, "charset")) |index| {
+            const wide = mime.parameters.entries.items()[index].value;
+            const label = try allocator.alloc(u8, wide.len);
+            defer allocator.free(label);
+            // Encoding labels are ASCII. A non-ASCII label is unknown and
+            // therefore uses the fallback (legacy-extract step 4).
+            const ascii = for (wide, label) |unit, *byte| {
+                if (unit > 0x7f) break false;
+                byte.* = @intCast(unit);
+            } else true;
+            if (ascii) encoding = script_encodings.lookup(label) orelse fallback;
+        }
+    }
+    return script_encodings.decode(allocator, bytes, encoding);
+}
+
 /// HTML "fetch a classic script" for `element`, synchronously: Crane's
 /// fetch completes before this returns, so onComplete's result is the
 /// return value.
@@ -3191,10 +3239,8 @@ fn scriptFetchOptions(element: *runtime.Instance, credentials_mode: fetch.intern
 /// Never fails: running out of memory is reported the way the spec reports any
 /// other failed fetch, with a null body.
 ///
-/// Deviations, stated: step 4's "set up the classic script request" sets no
-/// priority; steps 5.2-5.4 decode as UTF-8, with no
-/// legacy encoding extraction.
-fn fetchClassicScript(allocator: std.mem.Allocator, element: *runtime.Instance, document: ?*runtime.Instance, url: []const u8) ExternalScriptFetchResult {
+/// Deviation, stated: step 4's request setup sets no priority.
+fn fetchClassicScript(allocator: std.mem.Allocator, element: *runtime.Instance, document: ?*runtime.Instance, url: []const u8, encoding: script_encodings.Encoding) ExternalScriptFetchResult {
     var result = ExternalScriptFetchResult{
         .body = null,
         .content_type = null,
@@ -3248,7 +3294,7 @@ fn fetchClassicScript(allocator: std.mem.Allocator, element: *runtime.Instance, 
     }
 
     const bytes: []const u8 = if (response.body) |resp_body| resp_body.data.items else "";
-    result.body = allocator.dupe(u8, bytes) catch {
+    result.body = decodeClassicScript(allocator, bytes, &response.header_list, encoding) catch {
         result.deinit(allocator);
         return .{ .body = null, .content_type = null, .status = response.status, .final_url = null };
     };
@@ -3316,6 +3362,9 @@ const ClassicScriptFetch = struct {
     body: ?[]u8 = null,
     muted: bool = false,
     credentials_mode: fetch.internal.CredentialsMode = .same_origin,
+    /// Prepare step 23's encoding, captured before async fetching. A later
+    /// charset edit or adoption cannot change how this response is decoded.
+    encoding: script_encodings.Encoding = script_encodings.utf_8,
     /// The task that delivers the result is queued.
     task_queued: bool = false,
     /// Marked before any document-abort callback can start new fetches.
@@ -3349,7 +3398,7 @@ fn isFetching(element: *runtime.Instance) bool {
 /// `url`, prepared in `document`. False when it cannot run in parallel - no
 /// event loop to hand the response to - and the caller fetches it
 /// synchronously instead.
-fn startClassicScriptFetch(element: *runtime.Instance, document: *runtime.Instance, url: []const u8, credentials_mode: fetch.internal.CredentialsMode) bool {
+fn startClassicScriptFetch(element: *runtime.Instance, document: *runtime.Instance, url: []const u8, credentials_mode: fetch.internal.CredentialsMode, encoding: script_encodings.Encoding) bool {
     if (element.ctx.getOptionalEventLoop() == null) return false;
     const allocator = element.ctx.allocator;
     const self = allocator.create(ClassicScriptFetch) catch return false;
@@ -3362,6 +3411,7 @@ fn startClassicScriptFetch(element: *runtime.Instance, document: *runtime.Instan
         .realm = element.ctx,
         .url = url,
         .credentials_mode = credentials_mode,
+        .encoding = encoding,
     };
     script_fetches.append(std.heap.smp_allocator, self) catch {
         allocator.destroy(self);
@@ -3436,7 +3486,7 @@ fn fetchDone(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.alg
         // response's own status, as `fetchClassicScript` reads it.
         if (response.response_type != .@"error" and response.status >= 200 and response.status < 300) {
             const bytes: []const u8 = if (response.body) |b| b.getBytes() else "";
-            self.body = self.allocator.dupe(u8, bytes) catch null;
+            self.body = decodeClassicScript(self.allocator, bytes, &response.header_list, self.encoding) catch null;
             // Step 5.5: muted errors for a CORS-cross-origin response.
             self.muted = response.response_type == .@"opaque" or response.response_type == .opaqueredirect;
             // Fetch-classic step 5.6: the result's base URL is the response's.

@@ -25,7 +25,6 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const engine = @import("engine");
-const clock = @import("clock");
 const event_construction = @import("dom").event_construction;
 const MessageEvent = interfaces.MessageEvent;
 
@@ -88,26 +87,38 @@ fn releaseData(state: anytype, internal: *InternalState) void {
     }
 }
 
-/// Initialize instance (creates the instance)
-pub fn init(
+/// Facts given at construction, all borrowed. Only user-agent construction
+/// supplies an actual origin record; call_constructor supplies a string.
+pub const construction_args = .{ "message_type", "message_init", "message_origin_record" };
+
+/// The generated chain creates Event's part before this interface's own.
+pub fn initOwn(
+    instance: *runtime.Instance,
     allocator: std.mem.Allocator,
     comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    args: anytype,
+) !void {
+    _ = allocator;
+    _ = StateType;
 
-    // Initialize internal state
     const state = instance.getState(State);
     const internal = try runtime.arenaOf(instance).create(InternalState);
     internal.* = .{};
     state.own._internal = internal;
+    errdefer deinitOwn(instance);
 
-    return instance;
+    if (@hasField(@TypeOf(args), "message_type")) {
+        const dictionary: dictionaries.MessageEventInit = if (@hasField(@TypeOf(args), "message_init")) args.message_init else .{ .base = .{} };
+        try initialize(instance, args.message_type, dictionary);
+    }
+    if (@hasField(@TypeOf(args), "message_origin_record")) {
+        const given: ?*@import("dom").origin_record.OriginRecord = args.message_origin_record;
+        if (given) |record| internal.origin_record = record.retain();
+    }
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// Release only this interface's own part; the generated chain ends Event's.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     var state = instance.getState(State);
 
     // The handles this event owns: a deserialized postMessage payload, and
@@ -137,7 +148,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     state.own.lastEventId.deinit(instance.ctx.allocator);
 
     if (state.own._internal) |internal| {
-        // Free origin string if we own it (allocated in createPostMessageEvent)
+        // Free the constructor's copy of an origin string.
         if (internal.owns_origin and state.own.origin.len > 0) {
             instance.ctx.allocator.free(state.own.origin);
         }
@@ -149,102 +160,69 @@ pub fn deinit(instance: *runtime.Instance) void {
         runtime.arenaOf(instance).destroy(InternalState, internal);
         state.own._internal = null;
     }
-
-    // Call parent Event deinit to clean up base class resources (including state.base.own.type)
-    interfaces.Event.deinit(instance);
 }
 
 /// Constructor implementation
 /// Spec: https://html.spec.whatwg.org/multipage/comms.html#dom-messageevent-messageevent
 pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.MessageEventInit)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &MessageEvent.vtable, ctx);
-    errdefer deinit(instance);
+    var dictionary = if (eventInitDict.was_passed) eventInitDict.value else dictionaries.MessageEventInit{ .base = .{} };
+    // Web IDL dictionary conversion applies the default to an undefined
+    // member. UA construction initializes attributes directly instead: a
+    // posted undefined value must remain undefined (HTML step 8.7).
+    if (dictionary.data) |data| {
+        if (data == .undefined) dictionary.data = runtime.JSValue.jsNull;
+    }
+    return MessageEvent.initWith(ctx.allocator, ctx, .{
+        .message_type = @"type",
+        .message_init = dictionary,
+    });
+}
 
+/// DOM event constructor steps 1-2, including the inherited Event steps and
+/// the MessageEventInit attributes. The event keeps every supplied value.
+fn initialize(instance: *runtime.Instance, event_type: runtime.DOMString, init_dict: dictionaries.MessageEventInit) !void {
+    const ctx = instance.ctx;
     const state = instance.getState(State);
+    try event_construction.innerEventCreationSteps(instance, event_type, event_construction.eventInitFrom(init_dict.base));
 
-    // Initialize base Event attributes (Event fields in state.base.own)
-
-    state.base.own.type = try @"type".clone(ctx.allocator);
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
-
-    // Get init dict values with defaults per spec
-    if (eventInitDict.was_passed) {
-        const init_dict = eventInitDict.value;
-
-        // Event properties from base EventInit
-        state.base.own.bubbles = init_dict.base.bubbles orelse false;
-        state.base.own.cancelable = init_dict.base.cancelable orelse false;
-        state.base.own.composed = init_dict.base.composed orelse false;
-
-        // MessageEvent-specific properties (in state.own)
-        // "data": the dictionary's, whose default is null (`any data =
-        // null`) - an absent or undefined member is null, not undefined.
-        // IMPORTANT: Clone the JSValue to take ownership. The argument cleanup code
-        // will free the original string buffer after the constructor returns.
-        state.own.data = if (init_dict.data) |data| (if (data == .undefined) runtime.JSValue.jsNull else try keepData(ctx, instance, data)) else runtime.JSValue.jsNull;
-        // The dictionary's string is freed when the constructor returns.
-        if (init_dict.origin) |origin| {
-            if (origin.len > 0) {
-                state.own.origin = try ctx.allocator.dupe(u8, origin);
-                if (state.own._internal) |internal| internal.owns_origin = true;
-            } else {
-                state.own.origin = "";
-            }
+    // DOM inner event creation step 4: initialize the dictionary's members.
+    // The binding and UA caller own their inputs; this event owns copies.
+    state.own.data = if (init_dict.data) |data| try keepData(ctx, instance, data) else runtime.JSValue.jsNull;
+    if (init_dict.origin) |origin| {
+        if (origin.len > 0) {
+            state.own.origin = try ctx.allocator.dupe(u8, origin);
+            if (state.own._internal) |internal| internal.owns_origin = true;
         } else {
             state.own.origin = "";
         }
-        // The dictionary's string too: a copy the event owns.
-        state.own.lastEventId = if (init_dict.lastEventId) |id| try id.clone(ctx.allocator) else runtime.DOMString.initEmpty();
-        // "source": the dictionary's - a WindowProxy, MessagePort or
-        // ServiceWorker, or null - as initMessageEvent sets it. The event
-        // holds its wrapper: nothing else may. `new MessageEvent(t, {source:
-        // new MessageChannel().port1})` leaves the event the port's only
-        // holder, and a port nobody started has no pending activity of its
-        // own, so a collection would free it under the event.
-        state.own.source = init_dict.source;
-        if (init_dict.source) |source| {
-            const source_instance: *runtime.Instance = switch (source) {
-                inline else => |object| object,
-            };
-            // With no engine to wrap in (a unit test's realm) there is no
-            // collector either, and nothing to hold.
-            if (state.own._internal) |internal| internal.source_hold = engine.retainValue(ctx, .{ .instance = source_instance }) catch null;
-        }
-        // "ports": a frozen array of the init dictionary's ports, made now
-        // rather than on first read, because the array is what holds them:
-        // a port handed to the constructor and dropped, or received with a
-        // message nobody has read yet, has nothing else - its own pending
-        // activity starts only once its queue does. `get_ports` returns it.
-        if (init_dict.ports) |ports| {
-            if (ports.len > 0) {
-                if (state.own._internal) |internal| {
-                    internal.ports = try ctx.allocator.dupe(*runtime.Instance, ports);
-                    // Where no array can be made now, the first read makes it.
-                    makePortsArray(instance) catch {};
-                }
-            }
-        }
     } else {
-        // Defaults per spec
-        state.base.own.bubbles = false;
-        state.base.own.cancelable = false;
-        state.base.own.composed = false;
-        state.own.data = runtime.JSValue.jsNull; // MessageEventInit's data defaults to null
         state.own.origin = "";
-        state.own.lastEventId = runtime.DOMString.initEmpty();
-        state.own.source = null;
+    }
+    state.own.lastEventId = if (init_dict.lastEventId) |id| try id.clone(ctx.allocator) else runtime.DOMString.initEmpty();
+
+    // A source wrapper may have no other holder, as when a new MessagePort
+    // is passed directly to the constructor. Retain it for this event.
+    state.own.source = init_dict.source;
+    if (init_dict.source) |source| {
+        const source_instance: *runtime.Instance = switch (source) {
+            inline else => |object| object,
+        };
+        // With no engine to wrap in (a unit test's realm) there is no
+        // collector either, and nothing to hold.
+        if (state.own._internal) |internal| internal.source_hold = engine.retainValue(ctx, .{ .instance = source_instance }) catch null;
     }
 
-    state.base.own.cancelBubble = false;
-    state.base.own.returnValue = true;
-    state.base.own.defaultPrevented = false;
-
-    // Create the INHERITED Event internal state and set the initialized flag.
-    // Without it dispatchEvent throws InvalidStateError, so the event can be
-    // constructed but never dispatched. Same thing MouseEvent does by hand.
-    try webidl.utils.initEventBase(&state.base.own, runtime.arenaOf(instance), ctx.allocator);
-
-    return instance;
+    // The frozen array is what keeps the ports before script first reads
+    // them. A port's own pending activity starts only once its queue does.
+    if (init_dict.ports) |ports| {
+        if (ports.len > 0) {
+            if (state.own._internal) |internal| {
+                internal.ports = try ctx.allocator.dupe(*runtime.Instance, ports);
+                // Where no array can be made now, the first read makes it.
+                makePortsArray(instance) catch {};
+            }
+        }
+    }
 }
 
 /// The event's own hold on `data` (borrowed from the dictionary): a string
@@ -288,7 +266,7 @@ pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
 /// For WebSocket, this is the URL of the WebSocket server.
 pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
-    // Getter step 2: serialize an origin. Step 3 below returns a string.
+    // Getter step 1: serialize an origin. Steps 2-3 return the string below.
     if (state.own._internal) |internal| {
         if (internal.origin_record) |record| return instance.ctx.allocator.dupe(u8, record.serialized orelse "null");
     }
@@ -425,65 +403,4 @@ pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": runtime.DOMSt
     // an `any` (initMessageEvent's ports default `[]`); setting the frozen
     // array from it needs the array's elements as MessagePort instances.
     _ = ports;
-}
-
-// =============================================================================
-// Factory functions for events the engine fires
-// =============================================================================
-
-/// Create the MessageEvent that HTML's "window post message steps" fire:
-/// `message` at step 8.7, or `messageerror` when deserialization fails at
-/// step 8.4.
-///
-/// Takes ownership of `data` if it succeeds - an owned string is freed, and a
-/// Global handle disposed, when the event is. If it fails the caller still
-/// owns `data`: everything that can fail happens before `data` is stored.
-pub fn createPostMessageEvent(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    event_type: []const u8,
-    data: runtime.JSValue,
-    origin_str: []const u8,
-    source_window: ?*runtime.Instance,
-) !*runtime.Instance {
-    const instance = try init(allocator, State, &MessageEvent.vtable, ctx);
-    errdefer deinit(instance);
-
-    const state = instance.getState(State);
-
-    // Event fields (state.base.own). `event_type` is a literal, so interning
-    // it borrows nothing that can go away.
-    state.base.own.type = runtime.DOMString.initInterned(event_type);
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
-
-    state.base.own.bubbles = false;
-    state.base.own.cancelable = false;
-    state.base.own.composed = false;
-    state.base.own.cancelBubble = false;
-    state.base.own.returnValue = true;
-    state.base.own.defaultPrevented = false;
-
-    // MessageEvent fields (state.own)
-    state.own.data = runtime.JSValue.jsUndefined;
-    state.own.origin = try allocator.dupe(u8, origin_str);
-    if (state.own._internal) |internal| internal.owns_origin = true;
-    state.own.lastEventId = runtime.DOMString.initEmpty();
-
-    // Set source to the posting window (WindowProxy)
-    // MessageEventSource is a tagged union type that can be WindowProxy, MessagePort, or ServiceWorker
-    state.own.source = if (source_window) |sw| typedefs.MessageEventSource{ .window_proxy = @ptrCast(sw) } else null;
-
-    // The inherited Event internal state and its initialized flag. Without
-    // them dispatchEvent throws InvalidStateError - which is what every
-    // window.postMessage call did, synchronously, before this line existed.
-    try webidl.utils.initEventBase(&state.base.own, runtime.arenaOf(instance), ctx.allocator);
-
-    // Nothing can fail from here, so the event takes `data`: a handle is
-    // the event's to release from now on.
-    state.own.data = data;
-    if (data == .handle) {
-        if (state.own._internal) |internal| internal.data_hold = .{ .value = data };
-    }
-
-    return instance;
 }

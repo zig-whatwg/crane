@@ -256,7 +256,7 @@ fn replaceDataInternal(instance: *runtime.Instance, internal: *InternalState, of
     // steps for node's parent."
     if (interfaces.Node.get_parentNode(instance) catch null) |parent| {
         if (dom.instance_bridge.getNodeBase(@ptrCast(parent))) |parent_base| {
-            dom.mutation.runChildrenChangedSteps(parent_base);
+            dom.mutation.runChildrenChangedSteps(parent_base, .replaced_data);
         }
     }
 }

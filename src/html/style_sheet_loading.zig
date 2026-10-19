@@ -1048,7 +1048,18 @@ fn processResponse(sheet: *Sheet, outcome: fetch.algorithms.FetchError!fetch.alg
     // at el. Otherwise, fire an event named load at el" - whatever its
     // status or type.
     if (load.kind == .preload) return;
-    if (!fetch.internal.isOkStatus(response.status)) return fail(load);
+    if (!fetch.internal.isOkStatus(response.status)) {
+        // HTML stylesheet processing step 4 gates sheet creation on success,
+        // but browsers retain an empty sheet after an HTTP error. Blink's
+        // LinkStyle::NotifyFinished and WebKit's setCSSStyleSheet create it
+        // before rejecting the response body (old spec, golden rule 2).
+        // Keep step 5's error event; never parse the failed response's CSS.
+        if (load.kind == .stylesheet and sheet.parent == null and response.status != 0) {
+            sheet.origin_clean = response.response_type != .@"opaque" and response.response_type != .opaqueredirect;
+            deliver(load, sheet, "", response.url() orelse sheet.url);
+        }
+        return fail(load);
+    }
     // "If the resource's Content-Type metadata is not text/css, then set
     // success to false" - with the quirk: "If the document has been set to
     // quirks mode, has the same origin as the URL of the external resource,

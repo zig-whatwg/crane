@@ -13,10 +13,9 @@
 //! The map itself is EventTarget's state, reached through the steps it
 //! installs once, at process start (its installHooks).
 //!
-//! An event handler content attribute set while its element's document has
-//! no browsing context makes an "internal raw uncompiled handler" (`setRaw`),
-//! which "getting the current value of the event handler" compiles once its
-//! document has one (`compileRaw`). Element owns content attributes and the
+//! An event handler content attribute makes an "internal raw uncompiled
+//! handler" (`setRaw`), which "getting the current value of the event
+//! handler" compiles on first use (`compileRaw`). Element owns attributes and the
 //! compiling, so it installs that step (`installRawCompiler`).
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-idl-attributes
@@ -32,7 +31,7 @@ pub const Implementation = struct {
     set: *const fn (*runtime.Instance, []const u8, ?usize) anyerror!void,
     /// Make the handler for the event type an internal raw uncompiled
     /// handler, and activate it.
-    set_raw: ?*const fn (*runtime.Instance, []const u8) anyerror!void = null,
+    set_raw: ?*const fn (*runtime.Instance, []const u8, RawSource) anyerror!void = null,
     erase: *const fn (*runtime.Instance) void,
     /// Whether the target's event listener list holds a listener that is not
     /// removed - an activated event handler's included.
@@ -52,10 +51,33 @@ pub const RawCompile = enum {
     settled,
 };
 
-/// Element's "getting the current value of the event handler" step 1 for a
+/// Element's "getting the current value of the event handler" step 3 for a
 /// raw uncompiled handler of `target` for an event type: compile the body (the
 /// content attribute) in the element's document and set the handler's value.
-pub const RawCompiler = *const fn (target: *runtime.Instance, event_type: []const u8) RawCompile;
+pub const RawCompiler = *const fn (target: *runtime.Instance, event_type: []const u8, source: RawSource) RawCompile;
+
+/// HTML's internal raw uncompiled handler body and source location. Borrowed
+/// at the hook boundary; EventTarget clones it into the handler map. The
+/// stored body cannot be reconstructed from the current attribute: CSP may
+/// reject a replacement, and a body/frameset's Window handler outlives that
+/// element. Like WebKit's JSLazyEventListener, it keeps no origin-element ptr.
+pub const RawSource = struct {
+    body: []const u8,
+    url: []const u8,
+    lineno: u32 = 0,
+
+    pub fn clone(self: RawSource, allocator: std.mem.Allocator) !RawSource {
+        const body = try allocator.dupe(u8, self.body);
+        errdefer allocator.free(body);
+        return .{ .body = body, .url = try allocator.dupe(u8, self.url), .lineno = self.lineno };
+    }
+
+    /// Only a clone owns its slices.
+    pub fn deinit(self: RawSource, allocator: std.mem.Allocator) void {
+        allocator.free(self.body);
+        allocator.free(self.url);
+    }
+};
 
 // process-wide: a function pointer Element's installHooks writes once at process start, the same for every Browser
 var raw_compiler: ?RawCompiler = null;
@@ -73,20 +95,20 @@ pub fn installRawCompiler(compiler: RawCompiler) void {
 }
 
 /// The event handler content attribute change steps 5.2-5.6 for an element
-/// whose document has no browsing context: `target`'s handler for
+/// given `target`: its handler for
 /// `event_type` becomes an internal raw uncompiled handler, activated.
-pub fn setRaw(target: *runtime.Instance, event_type: []const u8) !void {
+pub fn setRaw(target: *runtime.Instance, event_type: []const u8, source: RawSource) !void {
     const steps = implementation orelse return error.NotSupported;
     const set_raw = steps.set_raw orelse return error.NotSupported;
-    return set_raw(target, event_type);
+    return set_raw(target, event_type, source);
 }
 
 /// Compile `target`'s raw uncompiled handler for `event_type`
 /// (EventTarget's "getting the current value"). With no compiler installed
 /// the handler stays raw: nothing can compile it.
-pub fn compileRaw(target: *runtime.Instance, event_type: []const u8) RawCompile {
+pub fn compileRaw(target: *runtime.Instance, event_type: []const u8, source: RawSource) RawCompile {
     const compiler = raw_compiler orelse return .scripting_disabled;
-    return compiler(target, event_type);
+    return compiler(target, event_type, source);
 }
 
 /// The event handler event type for the event handler content attribute
@@ -276,7 +298,7 @@ test "without a compiler a raw handler stays raw" {
     raw_compiler = null;
     // Never dereferenced: nothing is installed to read it.
     var target: runtime.Instance = undefined;
-    try std.testing.expectEqual(RawCompile.scripting_disabled, compileRaw(&target, "click"));
+    try std.testing.expectEqual(RawCompile.scripting_disabled, compileRaw(&target, "click", .{ .body = "", .url = "" }));
 }
 
 test "an event handler's event type is its name without on" {

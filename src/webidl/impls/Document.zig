@@ -5651,6 +5651,11 @@ pub fn getWriteBuffer(instance: *runtime.Instance) []const u8 {
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#concept-n-noscript
 pub fn isScriptingEnabled(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
+    // HTML 8.1.3.4: scripting is disabled for a Node whose "node
+    // document's browsing context is null". A document retained in the
+    // back/forward cache still has its browsing context; this does not
+    // disable it merely because it is inactive.
+    if ((get_defaultView(instance) catch null) == null) return false;
     return internal.scripting_enabled and !internal.active_sandboxing_flags.scripts;
 }
 

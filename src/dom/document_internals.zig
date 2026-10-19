@@ -347,13 +347,11 @@ pub fn getWriteBuffer(instance: *runtime.Instance) []const u8 {
     return stream.buffer.items;
 }
 
-/// Check if scripting is enabled.
+/// HTML 8.1.3.4's scripting rule, answered by Document's installed hook.
+/// Keep the browsing-context and sandbox checks in that one rule.
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#concept-n-noscript
 pub fn isScriptingEnabled(instance: *runtime.Instance) bool {
-    const internal = getInternal(instance) orelse return false;
-    // HTML 8.1.3.4: not when the document's active sandboxing flag set has
-    // the sandboxed scripts browsing context flag set.
-    return internal.scripting_enabled and !internal.active_sandboxing_flags.scripts;
+    return @import("document_scripts.zig").scriptingEnabled(instance);
 }
 
 /// DOM "allow declarative shadow roots", the value an HTML parser for the
