@@ -193,7 +193,12 @@ pub const IDBTransaction = struct {
     pub fn ensureRollbackSnapshot(self: *Self) !void {
         if (self.rollback_schema != null) return;
         if (self.mode == .readonly) return;
-        var snapshot = try self.db.cloneSchema();
+        // An upgrade may change any store, so it keeps them all; a readwrite
+        // transaction only its scope - another store's records may be another
+        // transaction's, on another thread, while this one runs (ED 2.7.2
+        // lets disjoint scopes run at once). Its abort restores only its
+        // scope's stores.
+        var snapshot = try self.db.cloneSchemaOf(if (self.mode == .versionchange) null else self.scope);
         errdefer IDBDatabase.deinitSchema(&snapshot, self.allocator);
         const names = if (self.mode == .versionchange) try self.db.cloneConnectionNames() else null;
         self.rollback_schema = snapshot;

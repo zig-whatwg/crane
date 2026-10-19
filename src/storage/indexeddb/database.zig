@@ -161,8 +161,25 @@ pub const IDBDatabase = struct {
     }
 
     pub fn cloneSchema(self: *Self) !Schema {
+        return self.cloneSchemaOf(null);
+    }
+
+    /// A copy of the definitions named in `scope`, or of every definition
+    /// when `scope` is null. A readwrite transaction's rollback snapshot
+    /// copies only its scope: another store's records may be another
+    /// transaction's - on another thread - while this one runs.
+    pub fn cloneSchemaOf(self: *Self, scope: ?[]const []const u8) !Schema {
         var copy = Schema.init(self.allocator);
         errdefer deinitSchema(&copy, self.allocator);
+        if (scope) |names| {
+            for (names) |name| {
+                const metadata = self.schema().getPtr(name) orelse continue;
+                var cloned = try metadata.clone(self.allocator);
+                errdefer cloned.deinit(self.allocator);
+                try copy.put(cloned.name, cloned);
+            }
+            return copy;
+        }
         var iterator = self.schema().valueIterator();
         while (iterator.next()) |metadata| {
             var cloned = try metadata.clone(self.allocator);
