@@ -55,15 +55,18 @@ pub fn wantsTraces(value: ?[]const u8) bool {
 }
 
 /// Whether per-file leak attribution (`Attributing`) is on without
-/// `CRANE_LEAK_FILES`: a sweep's `leaked:` lines then name their files with
-/// no flag to remember. Measured cost: see the lane leaks6 report.
-pub const attribution_by_default = true;
+/// `CRANE_LEAK_FILES`. Off: it costs too much to run always - a 1,244-file
+/// sample (one in eight of the worklist, ReleaseSafe, 4 runners) took
+/// 224-225 s without it and 264-268 s with it, +18% (lane leaks6; the bar
+/// for on-by-default was 5%). Main's sweep sets CRANE_LEAK_FILES=1.
+pub const attribution_by_default = false;
 
 /// Whether `CRANE_LEAK_FILES` asks for per-file leak attribution: unset is
-/// `attribution_by_default`; set, it is on unless it starts with '0'.
+/// `attribution_by_default`; set, it is on when non-empty and not starting
+/// with '0' (as `CRANE_LEAK_TRACES`).
 pub fn wantsAttribution(value: ?[]const u8) bool {
     const v = value orelse return attribution_by_default;
-    return !(v.len != 0 and v[0] == '0');
+    return wantsTraces(v);
 }
 
 /// What a `CRANE_LEAK_TRACES=1` run in an optimized runner must say first, or
@@ -414,12 +417,12 @@ test "an optimized runner says its leak traces name no allocation site; Debug sa
     try testing.expect(tracesNote(.ReleaseFast, true) != null);
 }
 
-test "CRANE_LEAK_FILES: the default is pinned, and 0 turns it off" {
+test "CRANE_LEAK_FILES: off by default (its cost), on when set and not 0" {
     try testing.expectEqual(attribution_by_default, wantsAttribution(null));
-    try testing.expect(attribution_by_default);
+    try testing.expect(!attribution_by_default);
     try testing.expect(!wantsAttribution("0"));
+    try testing.expect(!wantsAttribution(""));
     try testing.expect(wantsAttribution("1"));
-    try testing.expect(wantsAttribution(""));
 }
 
 test "CRANE_LEAK_TRACES: set and not starting with 0" {

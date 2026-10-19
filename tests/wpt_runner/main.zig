@@ -1330,7 +1330,8 @@ pub fn main(init: std.process.Init) !void {
 var gpa_fast: runner_allocator.Fast = .{};
 var gpa_traced: runner_allocator.Traced = .{};
 /// Per-file leak attribution (`runner_allocator.Attributing`), in front of
-/// gpa_fast or gpa_traced unless `CRANE_LEAK_FILES=0`: at the run's end it
+/// gpa_fast or gpa_traced under `CRANE_LEAK_FILES=1` (off by default: it
+/// costs about 18% of a run's time): at the run's end it
 /// prints, for each file, the allocations made while it ran that are still
 /// live - the ones the DebugAllocator then reports as `leaked:`. Beside the
 /// two allocators it fronts, and for the same reason: it is this process's
