@@ -12,7 +12,7 @@ test "parserless completion releases the post-load readiness predicate" {
     defer runtime.deinitializeRuntime();
     var ctx = try runtime.ContextData.init(allocator, .{});
     defer ctx.deinit();
-    const document = try interfaces.Document.init(allocator, &ctx);
+    const document = try interfaces.Document.initWith(allocator, &ctx, .{ .ready_state = ._loading_ });
     defer interfaces.Document.deinit(document);
     try std.testing.expect(!dom.document_lifecycle.isReadyForPostLoadTasks(document));
     dom.document_lifecycle.finishWithoutParser(document);
@@ -26,7 +26,7 @@ test "parserless completion cannot finish an associated suspended HTML parser" {
     defer runtime.deinitializeRuntime();
     var ctx = try runtime.ContextData.init(allocator, .{});
     defer ctx.deinit();
-    const document = try interfaces.Document.init(allocator, &ctx);
+    const document = try interfaces.Document.initWith(allocator, &ctx, .{ .ready_state = ._loading_ });
     defer interfaces.Document.deinit(document);
     const parser = try html.scripted_parser.DocumentParser.createComplete(allocator, &ctx, document, "<p>pending", .{});
     defer parser.release();
