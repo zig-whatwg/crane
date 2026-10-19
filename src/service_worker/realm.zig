@@ -417,6 +417,34 @@ pub const RealmEnvironment = struct {
                 defer state.release();
                 try engine.resolvePromise(&capability, state.borrow());
             },
+            // CookieStoreManager.getSubscriptions() step 3.4: a new sequence
+            // of CookieStoreGetOptions in the promise's realm - "name" only
+            // when the subscription has one (a null name is no member), then
+            // "url".
+            .resolve_cookie_subscriptions => |m| {
+                var capability = self.takePromise(m.promise) orelse return;
+                defer engine.releasePromiseCapability(&capability);
+                const objects_made = try self.allocator.alloc(engine.Owned, m.subscriptions.len);
+                var made: usize = 0;
+                defer {
+                    for (objects_made[0..made]) |object| object.release();
+                    self.allocator.free(objects_made);
+                }
+                for (m.subscriptions, objects_made) |subscription, *object| {
+                    const url_member: engine.DictionaryMember = .{ .name = "url", .value = runtime.JSValue.fromStringRef(subscription.url) };
+                    object.* = if (subscription.name) |name|
+                        try engine.createDictionaryObject(self.realm, &.{ .{ .name = "name", .value = runtime.JSValue.fromStringRef(name) }, url_member })
+                    else
+                        try engine.createDictionaryObject(self.realm, &.{url_member});
+                    made += 1;
+                }
+                const values = try self.allocator.alloc(runtime.JSValue, made);
+                defer self.allocator.free(values);
+                for (objects_made[0..made], values) |object, *value| value.* = object.value;
+                const sequence = try engine.createSequenceOfValues(self.realm, values);
+                defer sequence.release();
+                try engine.resolvePromise(&capability, sequence.borrow());
+            },
             // get(id): Resolve Get Client Promise's resolution, or undefined.
             .resolve_client => |*m| {
                 var capability = self.takePromise(m.promise) orelse return;
@@ -1341,6 +1369,111 @@ pub fn rejectedHeaderValue(manager_object: *runtime.Instance, value: []const u8)
         else => {},
     };
     return null;
+}
+
+// ============================================================================
+// CookieStoreManager (Cookie Store 4)
+// ============================================================================
+
+const cookiestore = @import("cookiestore");
+
+/// A `CookieStoreGetOptions` dictionary as converted from script: each
+/// member present or not. OWNED.
+const GetOptions = struct {
+    name: ?[]u8 = null,
+    url: ?[]u8 = null,
+
+    fn deinit(self: GetOptions, allocator: Allocator) void {
+        if (self.name) |n| allocator.free(n);
+        if (self.url) |u| allocator.free(u);
+    }
+};
+
+/// WebIDL: `value` converted to `sequence<CookieStoreGetOptions>` - an
+/// iterable (else a TypeError), each element a dictionary: undefined or null
+/// has no members, an object's `name` and `url` (in that, lexicographic,
+/// order) are read and converted to USVString when not undefined, anything
+/// else is a TypeError. A failure is the operation's: its promise rejects
+/// (the binding's rejectOnThrow). OWNED.
+fn convertGetOptionsSequence(realm: runtime.Context, value: runtime.JSValue, allocator: Allocator) ![]GetOptions {
+    const values = try engine.convertToSequence(realm, value, allocator);
+    defer {
+        for (values) |v| v.release();
+        allocator.free(values);
+    }
+    const options = try allocator.alloc(GetOptions, values.len);
+    var made: usize = 0;
+    errdefer {
+        for (options[0..made]) |o| o.deinit(allocator);
+        allocator.free(options);
+    }
+    for (values, options) |element, *converted| {
+        converted.* = .{};
+        made += 1;
+        switch (engine.typeOf(realm, element.value)) {
+            .undefined, .null => continue,
+            .object => {},
+            else => return error.TypeError,
+        }
+        // A member's value is undefined when absent: Type(), not the
+        // JSValue's tag - Get() hands back an engine value, undefined too.
+        const name = try engine.getProperty(realm, element.value, "name");
+        defer name.release();
+        if (engine.typeOf(realm, name.value) != .undefined) converted.name = try engine.convertToUSVString(realm, name.value, allocator);
+        const url = try engine.getProperty(realm, element.value, "url");
+        defer url.release();
+        if (engine.typeOf(realm, url.value) != .undefined) converted.url = try engine.convertToUSVString(realm, url.value, allocator);
+    }
+    return options;
+}
+
+/// subscribe(subscriptions), getSubscriptions() and unsubscribe(subscriptions)
+/// of the CookieStoreManager `manager_object`, whose registration is
+/// `registration_id`, its scope url `scope_url` (Cookie Store 4.1-4.3): the
+/// argument converted, a new promise (subscribe/unsubscribe step 3), each
+/// entry's name and url (steps 4.2.1-4.2.5) found here - they read only the
+/// entry, the API base URL and the scope url - and the rest run by the
+/// manager on its job thread, which settles the promise in a later task of
+/// this realm.
+pub fn cookieSubscriptions(manager_object: *runtime.Instance, registration_id: u64, scope_url: []const u8, op: Manager.CookieSubscriptionsCall.Op, subscriptions: ?runtime.JSValue) !runtime.JSValue {
+    const realm = manager_object.ctx;
+    const allocator = realm.allocator;
+    const entries: []GetOptions = if (subscriptions) |value| try convertGetOptionsSequence(realm, value, allocator) else &.{};
+    defer {
+        for (entries) |entry| entry.deinit(allocator);
+        allocator.free(entries);
+    }
+    const environment = environmentOf(realm, true) orelse return noEnvironment(realm);
+    // Step 3: p, a new promise.
+    const made = try environment.newPromise();
+    errdefer made.promise.release();
+    const call = try Manager.CookieSubscriptionsCall.create(environment.manager.allocator, op, registration_id, environment.id, made.id);
+    errdefer call.destroy();
+    // Step 4.2: for each entry.
+    for (entries) |entry| {
+        // 4.2.1-4.2.2. name: null, or the entry's, normalized.
+        const name: ?[]const u8 = if (entry.name) |n| cookiestore.normalizeCookieNameOrValue(n) else null;
+        // 4.2.3-4.2.4. url: the scope url, or the entry's parsed with the
+        // API base URL.
+        var parsed: ?[]u8 = null;
+        defer if (parsed) |p| allocator.free(p);
+        if (entry.url) |given| parsed = try scope_mod.parseAgainst(allocator, given, realm.documentUrl());
+        const url: ?[]const u8 = if (entry.url == null) scope_url else parsed;
+        // 4.2.5. Failure, or not under the scope url: reject p with a
+        // TypeError and abort - what came before stays applied.
+        const checked = url orelse {
+            call.failure = "The subscription url could not be parsed";
+            break;
+        };
+        if (!std.mem.startsWith(u8, checked, scope_url)) {
+            call.failure = "The subscription url is not within the registration's scope";
+            break;
+        }
+        try call.append(name, checked);
+    }
+    // In parallel, on the manager's job thread.
+    environment.manager.cookieSubscriptions(call);
+    return made.promise.take();
 }
 
 // ============================================================================

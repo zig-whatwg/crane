@@ -19,7 +19,9 @@
 //!   fetching thread; navigation_preload.zig: the navigation preload's fetch
 //!   (Handle Fetch step 15) on the worker's thread; router.zig: static
 //!   routing's rules and algorithms, engine-free; add_routes.zig:
-//!   InstallEvent.addRoutes() in the worker's realm.
+//!   InstallEvent.addRoutes() in the worker's realm; functional_event.zig:
+//!   a functional event (Cookie Store's cookiechange) on its way to a
+//!   registration's active worker.
 //!
 //! - cache/: Cache Storage - a Browser's caches in its store, and the
 //!   steps of CacheStorage's and Cache's members.
@@ -37,6 +39,7 @@ pub const fetch_event = @import("fetch_event.zig");
 pub const navigation_preload = @import("navigation_preload.zig");
 pub const router = @import("router.zig");
 pub const add_routes = @import("add_routes.zig");
+pub const functional_event = @import("functional_event.zig");
 pub const cache = @import("cache/root.zig");
 
 pub const Registry = registry.Registry;
@@ -44,3 +47,5 @@ pub const Manager = manager.Manager;
 pub const ServiceWorkerObject = objects.ServiceWorkerObject;
 pub const RegistrationObject = objects.RegistrationObject;
 pub const ExtendLifetime = @import("extend_lifetime.zig").ExtendLifetime;
+pub const FunctionalEvent = functional_event.FunctionalEvent;
+pub const CookieChangeLists = functional_event.CookieChangeLists;

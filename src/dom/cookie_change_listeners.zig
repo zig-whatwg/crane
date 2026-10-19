@@ -16,6 +16,13 @@
 //!
 //! A listener is a platform object (the CookieStore) and the step that tells
 //! it (`Deliver`), its owner's: this module never names the CookieStore.
+//!
+//! "Process cookie changes" has a second step, for every service worker
+//! registration (Cookie Store 7.4 step 2): the Browser's service worker
+//! manager hears every change through `registrations`, one slot, which it
+//! sets when a realm first reaches it and clears at its end. Per-Browser
+//! state, set on this Browser's own object - not a process-wide hook (AGENTS.md
+//! "Global state" rule 2 is about those).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -29,13 +36,28 @@ pub const Cookie = cookiestore.Cookie;
 /// removed. Runs on the listener's realm's thread.
 pub const Deliver = *const fn (listener: *runtime.Instance, change_type: ChangeType, cookie: *const Cookie) void;
 
+/// Cookie Store "process cookie changes" step 2's owner: the Browser's
+/// service worker registrations (src/service_worker's manager). `changed`
+/// runs on the changing thread WITH the listeners' lock held - so that
+/// clearing the slot (`stopHearingRegistrations`) waits out a call under
+/// way, and no call reaches an owner that has ended. It must not run script
+/// or reach these listeners: it may read, copy and post.
+pub const RegistrationsHook = struct {
+    context: *anyopaque,
+    changed: *const fn (context: *anyopaque, change_type: ChangeType, cookie: *const Cookie) void,
+};
+
 pub const CookieChangeListeners = struct {
     /// Thread-safe (a supplement's; a delivery's copy is freed on any thread).
     allocator: Allocator,
-    /// Protects `entries`. Never held across a delivery: a delivery runs
-    /// script, which can make or end a CookieStore.
+    /// Protects `entries` and `registrations`. Never held across a
+    /// delivery: a delivery runs script, which can make or end a
+    /// CookieStore. Held across the registrations hook, which runs none.
     mutex: std.Io.Mutex = .init,
     entries: std.ArrayListUnmanaged(Entry) = .empty,
+    /// The registrations' step, or null while no service worker manager
+    /// hears this Browser's jar.
+    registrations: ?RegistrationsHook = null,
 
     const Entry = struct {
         listener: *runtime.Instance,
@@ -79,6 +101,23 @@ pub const CookieChangeListeners = struct {
     /// its jar and these listeners - before any realm can change the jar.
     pub fn hearJar(self: *CookieChangeListeners, jar: *cookiestore.CookieJar) void {
         jar.on_change = .{ .callback = &jarChanged, .context = self };
+    }
+
+    /// The Browser's service worker registrations hear every change from
+    /// now until `stopHearingRegistrations` (its manager's own end).
+    pub fn hearRegistrations(self: *CookieChangeListeners, hook: RegistrationsHook) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        self.registrations = hook;
+    }
+
+    /// The registrations owner `context` hears nothing more: once this
+    /// returns, no call to its hook is under way or will start.
+    pub fn stopHearingRegistrations(self: *CookieChangeListeners, context: *anyopaque) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        const hook = self.registrations orelse return;
+        if (hook.context == context) self.registrations = null;
     }
 
     /// `listener` hears every change from now until `unlisten`; `deliver`
@@ -152,6 +191,9 @@ pub const CookieChangeListeners = struct {
                 const delivery = Delivery.create(self, entry, change_type, cookie) catch continue;
                 _ = sink.post(.{ .run = Delivery.run, .drop = Delivery.drop, .data = delivery });
             }
+            // Step 2: the service worker registrations, told under the lock
+            // (`RegistrationsHook`).
+            if (self.registrations) |hook| hook.changed(hook.context, change_type, cookie);
         }
         for (local.items) |entry| {
             // A delivery runs script (its realm's task can run here and now,
