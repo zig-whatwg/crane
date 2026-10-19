@@ -991,15 +991,15 @@ fn renderBlockingTime(document: *runtime.Instance) f64 {
 /// which keeps frames of a cached page alive, adds it).
 ///
 /// Inactive: a live, undestroyed document whose navigable is open but shows
-/// another document. No path reaches it until the back/forward cache keeps
-/// documents (phase B): a document a load replaces loses its window at once
-/// (Window.setDocument), and one being unloaded is still its navigable's
-/// active document while its handlers run.
+/// another document - a document the back/forward cache keeps (phase B), or
+/// its Window: a cached page's Window is no navigable's active window
+/// (Navigables.ofWindow misses it), so the cache is asked (dom.bfcache.holds)
+/// before a Window or Document with no navigable is called gone.
 ///
 /// A global task on a Window names the Window: its associated Document when
 /// the task runs is the one asked about (see runtime.EventLoopTask.document).
-/// It is never inactive yet: a Window whose navigable moved to another
-/// Window is no navigable's (Navigables.ofWindow), so gone.
+/// A Window whose navigable moved to another Window and that no cache holds
+/// is no navigable's, so gone.
 ///
 /// The navigable's own record, not `Window.document`: the event loop asks
 /// with no script running, and the getter's cross-origin check would answer
@@ -1008,7 +1008,7 @@ fn renderBlockingTime(document: *runtime.Instance) f64 {
 /// has exactly one owner": engine code must not use script's getters).
 fn documentActivity(object: *runtime.Instance) @import("dom").document_activity.Activity {
     if (object.stateAs(interfaces.Window.State) != null) {
-        const navigable = @import("dom").browser_state.browsingContextOf(object) orelse return .gone;
+        const navigable = @import("dom").browser_state.browsingContextOf(object) orelse return cachedOrGone(object);
         if (navigable.is_closed) return .gone;
         const active = navigable.active_document orelse return .fully_active;
         return if (isActiveDocumentFullyActive(@ptrCast(@alignCast(active)))) .fully_active else .gone;
@@ -1016,11 +1016,17 @@ fn documentActivity(object: *runtime.Instance) @import("dom").document_activity.
     const internal = getInternal(object) orelse return .gone;
     if (internal.destroyed) return .gone;
     const window = internal.default_view orelse return .gone;
-    const navigable = @import("dom").browser_state.browsingContextOf(window) orelse return .gone;
+    const navigable = @import("dom").browser_state.browsingContextOf(window) orelse return cachedOrGone(object);
     if (navigable.is_closed) return .gone;
     const active = navigable.active_document orelse return .fully_active;
     if (active == @as(*anyopaque, @ptrCast(object))) return .fully_active;
     return .inactive;
+}
+
+/// A Window or Document no navigable shows: inactive when the back/forward
+/// cache keeps it (its page may be restored), else gone.
+fn cachedOrGone(object: *runtime.Instance) @import("dom").document_activity.Activity {
+    return if (@import("dom").bfcache.holds(object)) .inactive else .gone;
 }
 
 /// Whether `object` is fully active (`documentActivity`).
