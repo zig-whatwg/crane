@@ -5786,6 +5786,10 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // Static routing: a router condition's URL pattern (Parse URL Pattern,
     // Match Router Condition).
     service_worker_mod.addImport("urlpattern", urlpattern_mod);
+    // Cookie Store: a registration's cookie change subscription list and
+    // "process cookie changes" step 2 (cookiestore imports neither
+    // service_worker nor anything that does: no cycle).
+    service_worker_mod.addImport("cookiestore", cookiestore_mod);
     impls_mod.addImport("service_worker", service_worker_mod);
 
     // Permissions module (W3C Permissions API)
