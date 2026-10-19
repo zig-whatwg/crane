@@ -460,7 +460,9 @@ test "Schedule Job: an equivalent job joins the last one; a different one waits 
     try registerJob(&registry, page, "https://example.com/sw2.js", "https://example.com/", 3);
     // Only the first job's Run Job was queued.
     try testing.expectEqual(@as(usize, 1), recorder.run_jobs.items.len);
-    const queue = registry.job_queues.get("https://example.com/").?;
+    const queue_key = try Registry.jobQueueKey(testing.allocator, "https://example.com", "https://example.com/");
+    defer testing.allocator.free(queue_key);
+    const queue = registry.job_queues.get(queue_key).?;
     try testing.expectEqual(@as(usize, 2), queue.items.len);
     try testing.expectEqual(@as(usize, 1), queue.items[0].equivalent.items.len);
 
@@ -1618,4 +1620,124 @@ test "a registration's cookie change subscriptions persist across an update and 
     _ = try installAndActivate(&recorder, &registry, page, "https://example.com/sw.js", "https://example.com/", "v3");
     const fresh = registry.getRegistration("https://example.com", "https://example.com/").?;
     try testing.expectEqual(@as(usize, 0), fresh.cookie_subscriptions.items.len);
+}
+
+// ----------------------------------------------------------------------
+// Registrations partitioned by storage key (lane sw1-b11)
+// ----------------------------------------------------------------------
+
+/// One origin's storage keys (storage.StorageKey.serialize's form): as a
+/// first-party page has it, and framed by a page of another site.
+const first_party_key = "https://example.com https://example.com 0";
+const third_party_key = "https://example.com https://other.test 1";
+
+fn addKeyedWindow(registry: *Registry, url: []const u8, storage_key: []const u8) !*reg.Environment {
+    return registry.addEnvironment(.{
+        .kind = .window,
+        .origin = "https://example.com",
+        .storage_key = storage_key,
+        .creation_url = url,
+        .endpoint = &endpoint_dummy,
+    });
+}
+
+fn registerKeyedJob(registry: *Registry, client: *reg.Environment, script: []const u8, scope_url: []const u8, promise: u64) !void {
+    try registry.scheduleJob(try registry.createJob(.{
+        .job_type = .register,
+        .storage_key = client.storage_key,
+        .scope_url = scope_url,
+        .script_url = script,
+        .client = .{ .environment = client.id, .promise = promise },
+        .referrer = client.creation_url,
+    }));
+}
+
+/// Run every queued Run Job task, answering each fetch with `body` and each
+/// started worker's evaluation and lifecycle events, until nothing is left.
+fn runAllJobs(recorder: *Recorder, registry: *Registry, body: []const u8) !void {
+    var answered_starts: usize = 0;
+    var answered_events: usize = 0;
+    var turns: usize = 0;
+    while (turns < 64) : (turns += 1) {
+        var progressed = false;
+        while (recorder.run_jobs.items.len > 0) {
+            const key = recorder.run_jobs.orderedRemove(0);
+            defer recorder.allocator.free(key);
+            if (try registry.runJob(key)) |plan| {
+                var owned = plan;
+                try answerFetch(registry, &owned, body, true);
+            }
+            progressed = true;
+        }
+        while (answered_starts < recorder.started.items.len) : (answered_starts += 1) {
+            try registry.workerEvaluated(recorder.started.items[answered_starts], true, true);
+            progressed = true;
+        }
+        while (answered_events < recorder.lifecycle.items.len) : (answered_events += 1) {
+            try registry.lifecycleEventDone(recorder.lifecycle.items[answered_events].op, false);
+            progressed = true;
+        }
+        if (!progressed) return;
+    }
+    return error.JobsNeverSettled;
+}
+
+test "a third-party frame's register() and a first-party page's equal one, run together, make two registrations" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 31);
+    defer registry.deinit();
+    const page = try addKeyedWindow(&registry, "https://example.com/page.html", first_party_key);
+    const frame = try addKeyedWindow(&registry, "https://example.com/frame.html", third_party_key);
+    // Scheduled back to back, before either runs: equal but for the storage
+    // key. Neither joins the other (Chromium's job coordinator keeps a queue
+    // per scope AND storage key).
+    try registerKeyedJob(&registry, page, "https://example.com/sw.js", "https://example.com/", 1);
+    try registerKeyedJob(&registry, frame, "https://example.com/sw.js", "https://example.com/", 2);
+    try runAllJobs(&recorder, &registry, "x");
+
+    const first = registry.getRegistration(first_party_key, "https://example.com/") orelse return error.NoFirstPartyRegistration;
+    const third = registry.getRegistration(third_party_key, "https://example.com/") orelse return error.NoThirdPartyRegistration;
+    try testing.expect(first != third);
+    try testing.expect(first.active != null and third.active != null);
+    try testing.expect(first.active.? != third.active.?);
+    // Each partition matches its own.
+    try testing.expectEqual(first, registry.matchRegistration(first_party_key, "https://example.com/page.html").?);
+    try testing.expectEqual(third, registry.matchRegistration(third_party_key, "https://example.com/frame.html").?);
+    const listed = try registry.registrationsOf(testing.allocator, third_party_key);
+    defer testing.allocator.free(listed);
+    try testing.expectEqual(@as(usize, 1), listed.len);
+    try testing.expectEqual(third, listed[0]);
+}
+
+test "claim() and matchAll() see only the clients of the worker's storage key" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 32);
+    defer registry.deinit();
+    const page = try addKeyedWindow(&registry, "https://example.com/page.html", first_party_key);
+    const frame = try addKeyedWindow(&registry, "https://example.com/frame.html", third_party_key);
+    try registerKeyedJob(&registry, frame, "https://example.com/sw.js", "https://example.com/", 1);
+    try runAllJobs(&recorder, &registry, "x");
+    const third = registry.getRegistration(third_party_key, "https://example.com/") orelse return error.NoThirdPartyRegistration;
+    const worker = third.active.?;
+    // No first-party registration came of it.
+    try testing.expect(registry.getRegistration(first_party_key, "https://example.com/") == null);
+    try testing.expect(registry.matchRegistration(first_party_key, "https://example.com/page.html") == null);
+
+    for (recorder.log.items) |line| testing.allocator.free(line);
+    recorder.log.clearRetainingCapacity();
+    try registry.claim(worker.id);
+    try testing.expect(page.active_worker == null);
+    try testing.expectEqual(worker, frame.active_worker.?);
+    const changed = try std.fmt.allocPrint(testing.allocator, "{d}: controllerchange {d} activated", .{ frame.id, worker.id });
+    defer testing.allocator.free(changed);
+    try recorder.expectLog(&.{changed});
+
+    const clients = try registry.matchAllClients(testing.allocator, worker, true);
+    defer testing.allocator.free(clients);
+    try testing.expectEqual(@as(usize, 1), clients.len);
+    try testing.expectEqual(frame, clients[0]);
+    try testing.expect(registry.getClient(worker, &page.client_id) == null);
+    try testing.expectEqual(frame, registry.getClient(worker, &frame.client_id).?);
 }

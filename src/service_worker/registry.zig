@@ -228,9 +228,16 @@ pub const Environment = struct {
     /// Its id (an opaque string): a UUID. Clients' ids are what
     /// Clients.get() and FetchEvent.clientId name.
     client_id: [36]u8,
-    /// Its origin, serialized - also its storage key (Crane partitions no
-    /// storage). OWNED.
+    /// Its origin, serialized: what the spec's origin checks compare. OWNED.
     origin: []u8,
+    /// Its storage key (Storage "obtain a storage key"), as
+    /// storage.StorageKey.serialize writes it: "<origin> <top-level site>
+    /// <0|1>" - the origin, the top-level site it runs under and its "has
+    /// cross-site ancestor". What registrations are keyed and matched by,
+    /// and what claim(), matchAll() and get() compare with the worker's
+    /// registration's (lane sw1-b11: registrations are partitioned as every
+    /// browser partitions them). OWNED.
+    storage_key: []u8,
     /// Its creation URL, serialized. OWNED.
     creation_url: []u8,
     secure_context: bool = true,
@@ -283,6 +290,10 @@ pub const Job = struct {
     equivalent: std.ArrayListUnmanaged(*Job) = .empty,
     /// Its containing job queue's key (the scope url), when queued.
     queued: bool = false,
+    /// The key of the job queue Schedule Job put it in (`jobQueueKey`):
+    /// BORROWED from the scope to job queue map, which keeps its keys until
+    /// the registry ends.
+    queue_key: []const u8 = "",
     /// Run Job has run it (it is its queue's first item, and its algorithm
     /// has begun).
     started: bool = false,
@@ -394,8 +405,8 @@ pub const Effects = struct {
     /// Post `message` to `environment`'s realm, as a task of its event loop.
     notify: *const fn (ctx: *anyopaque, environment: *Environment, message: Message) void,
     /// Run Job step 2: queue a task (on the job thread) that calls
-    /// `runJob` for the job queue of `scope_url`.
-    queue_run_job: *const fn (ctx: *anyopaque, scope_url: []const u8) void,
+    /// `runJob` for the job queue whose key is `queue_key`.
+    queue_run_job: *const fn (ctx: *anyopaque, queue_key: []const u8) void,
     /// Start running `worker` (Run Service Worker steps 7-9): its answer is
     /// `workerEvaluated`, or `workerEnded` when it never ran.
     start_worker: *const fn (ctx: *anyopaque, worker: *Worker, force_bypass_cache: bool) void,
@@ -440,6 +451,9 @@ pub const FetchPlan = struct {
     /// The job's referrer (its client's creation URL), serialized - null
     /// for a job with no client (Soft Update's). OWNED.
     referrer: ?[]u8 = null,
+    /// The job's storage key - its registration's: the top-level site its
+    /// requests are partitioned by. OWNED; empty until the plan is made.
+    storage_key: []u8 = &.{},
 
     pub const Newest = struct {
         script_url: []u8,
@@ -451,6 +465,7 @@ pub const FetchPlan = struct {
     pub fn deinit(self: *FetchPlan, allocator: Allocator) void {
         allocator.free(self.script_url);
         allocator.free(self.scope_url);
+        allocator.free(self.storage_key);
         if (self.referrer) |r| allocator.free(r);
         if (self.newest) |*newest| {
             allocator.free(newest.script_url);
@@ -501,7 +516,8 @@ pub const Registry = struct {
     detached: std.ArrayListUnmanaged(*Registration) = .empty,
     /// Every service worker record not yet freed.
     workers: std.ArrayListUnmanaged(*Worker) = .empty,
-    /// The scope to job queue map: serialized scope url to its queue.
+    /// The scope to job queue map: a job queue per storage key and
+    /// serialized scope url (`jobQueueKey`).
     job_queues: std.StringArrayHashMapUnmanaged(std.ArrayListUnmanaged(*Job)) = .empty,
     environments: std.ArrayListUnmanaged(*Environment) = .empty,
     installs: std.ArrayListUnmanaged(*InstallOp) = .empty,
@@ -639,6 +655,9 @@ pub const Registry = struct {
     pub const EnvironmentInit = struct {
         kind: EnvironmentKind,
         origin: []const u8,
+        /// Its storage key (`Environment.storage_key`). Null: the origin
+        /// itself - an unpartitioned key, which only tests use.
+        storage_key: ?[]const u8 = null,
         creation_url: []const u8,
         secure_context: bool = true,
         frame_type: FrameType = .none,
@@ -653,6 +672,8 @@ pub const Registry = struct {
         errdefer self.allocator.destroy(environment);
         const origin = try self.allocator.dupe(u8, init_values.origin);
         errdefer self.allocator.free(origin);
+        const storage_key = try self.allocator.dupe(u8, init_values.storage_key orelse init_values.origin);
+        errdefer self.allocator.free(storage_key);
         const creation_url = try self.allocator.dupe(u8, init_values.creation_url);
         errdefer self.allocator.free(creation_url);
         environment.* = .{
@@ -660,6 +681,7 @@ pub const Registry = struct {
             .kind = init_values.kind,
             .client_id = undefined,
             .origin = origin,
+            .storage_key = storage_key,
             .creation_url = creation_url,
             .secure_context = init_values.secure_context,
             .frame_type = init_values.frame_type,
@@ -675,10 +697,12 @@ pub const Registry = struct {
     /// What a reserved client is made with: an environment whose realm does
     /// not exist yet (HTML "create navigation params by fetching"'s reserved
     /// client, "run a worker" step 7's inside settings before the fetch).
-    /// `origin` is its storage key - its creation URL's origin.
+    /// `origin` is its creation URL's origin; `storage_key` the key Handle
+    /// Fetch obtained for it (null: the origin, as in `EnvironmentInit`).
     pub const ReserveInit = struct {
         kind: EnvironmentKind,
         origin: []const u8,
+        storage_key: ?[]const u8 = null,
         creation_url: []const u8,
         secure_context: bool = true,
     };
@@ -692,6 +716,7 @@ pub const Registry = struct {
         const environment = try self.addEnvironment(.{
             .kind = init_values.kind,
             .origin = init_values.origin,
+            .storage_key = init_values.storage_key,
             .creation_url = init_values.creation_url,
             .secure_context = init_values.secure_context,
             .endpoint = null,
@@ -744,6 +769,7 @@ pub const Registry = struct {
     fn destroyEnvironment(self: *Registry, environment: *Environment) void {
         if (environment.active_worker) |worker| self.releaseWorker(worker);
         self.allocator.free(environment.origin);
+        self.allocator.free(environment.storage_key);
         self.allocator.free(environment.creation_url);
         self.allocator.destroy(environment);
     }
@@ -990,22 +1016,39 @@ pub const Registry = struct {
         self.allocator.destroy(job);
     }
 
+    /// The scope to job queue map's key for the queue of jobs of
+    /// `storage_key` and `scope_url`. The spec keys the map by the scope url
+    /// alone, and its job equivalence compares no storage key: with storage
+    /// keys that partition one origin (lane sw1-b11), a third-party frame's
+    /// register() would join a first-party page's equal job and resolve
+    /// with the other partition's registration. Chromium's
+    /// ServiceWorkerJobCoordinator keeps a queue per scope and storage key;
+    /// so does Crane. OWNED by the caller.
+    pub fn jobQueueKey(allocator: Allocator, storage_key: []const u8, scope_url: []const u8) Allocator.Error![]u8 {
+        return std.fmt.allocPrint(allocator, "{s}\n{s}", .{ storage_key, scope_url });
+    }
+
     /// Schedule Job. Takes `job`.
     pub fn scheduleJob(self: *Registry, job: *Job) Allocator.Error!void {
         // 1-4. jobQueue: the scope to job queue map's queue for the job's
-        // scope url, serialized - made when there is none.
-        const entry = self.job_queues.getOrPut(self.allocator, job.scope_url) catch |err| {
+        // storage key and scope url, serialized (`jobQueueKey`) - made when
+        // there is none.
+        const key = jobQueueKey(self.allocator, job.storage_key, job.scope_url) catch |err| {
             self.destroyJob(job);
             return err;
         };
-        if (!entry.found_existing) {
-            entry.key_ptr.* = self.allocator.dupe(u8, job.scope_url) catch |err| {
-                self.job_queues.swapRemoveAt(entry.index);
-                self.destroyJob(job);
-                return err;
-            };
+        const entry = self.job_queues.getOrPut(self.allocator, key) catch |err| {
+            self.allocator.free(key);
+            self.destroyJob(job);
+            return err;
+        };
+        if (entry.found_existing) {
+            self.allocator.free(key);
+        } else {
+            entry.key_ptr.* = key;
             entry.value_ptr.* = .empty;
         }
+        job.queue_key = entry.key_ptr.*;
         const queue = entry.value_ptr;
         // 5. If jobQueue is empty: enqueue job, and Run Job.
         if (queue.items.len == 0) {
@@ -1036,12 +1079,13 @@ pub const Registry = struct {
         job.queued = true;
     }
 
-    /// Run Job's task (step 2), for the queue of `scope_url`: the queue's
-    /// first job runs. A register or update job that reaches its script
-    /// fetch returns the fetch to make (the caller makes it without the
-    /// lock, then calls `updateFetched`).
-    pub fn runJob(self: *Registry, scope_url: []const u8) Allocator.Error!?FetchPlan {
-        const queue = self.job_queues.getPtr(scope_url) orelse return null;
+    /// Run Job's task (step 2), for the queue whose key is `queue_key` (what
+    /// Effects.queue_run_job was given): the queue's first job runs. A
+    /// register or update job that reaches its script fetch returns the
+    /// fetch to make (the caller makes it without the lock, then calls
+    /// `updateFetched`).
+    pub fn runJob(self: *Registry, queue_key: []const u8) Allocator.Error!?FetchPlan {
+        const queue = self.job_queues.getPtr(queue_key) orelse return null;
         // 1. Assert: jobQueue is not empty.
         if (queue.items.len == 0) return null;
         // 2.1. Let job be the first item in jobQueue.
@@ -1068,12 +1112,12 @@ pub const Registry = struct {
     /// Finish Job.
     fn finishJob(self: *Registry, job: *Job) void {
         // 1. Let jobQueue be job's containing job queue.
-        const queue = self.job_queues.getPtr(job.scope_url) orelse return self.destroyJob(job);
+        const key = job.queue_key;
+        const queue = self.job_queues.getPtr(key) orelse return self.destroyJob(job);
         // 2. Assert: the first item in jobQueue is job.
         std.debug.assert(queue.items.len > 0 and queue.items[0] == job);
         // 3. Dequeue from jobQueue.
         _ = queue.orderedRemove(0);
-        const key = self.job_queues.getKey(job.scope_url).?;
         self.destroyJob(job);
         // 4. If jobQueue is not empty, invoke Run Job with jobQueue.
         if (queue.items.len > 0) {
@@ -1311,6 +1355,8 @@ pub const Registry = struct {
         // job's client", whose request referrer it is).
         plan.referrer = if (job.referrer) |r| try self.allocator.dupe(u8, r) else null;
         errdefer if (plan.referrer) |r| self.allocator.free(r);
+        plan.storage_key = try self.allocator.dupe(u8, job.storage_key);
+        errdefer self.allocator.free(plan.storage_key);
         if (newest) |n| {
             const resources = try self.allocator.alloc(Resource, n.resources.items.len);
             var made: usize = 0;
@@ -1438,7 +1484,7 @@ pub const Registry = struct {
         /// The request's URL, serialized.
         url: []const u8,
         /// The reserved client, as it is made if the request is handled: its
-        /// origin is the storage key step 9.5 obtains.
+        /// storage key is the one step 9.5 obtains.
         reserve: ReserveInit,
         /// The reserved client an earlier call made for the same request.
         reserved: ?*Environment = null,
@@ -1455,7 +1501,7 @@ pub const Registry = struct {
     /// worker's containing service worker registration").
     pub fn handleFetchNonSubresource(self: *Registry, fetch: NonSubresourceFetch) Allocator.Error!?FetchMatch {
         // 6. Match Service Worker Registration given storage key and url.
-        const registration = self.matchRegistration(fetch.reserve.origin, fetch.url) orelse return null;
+        const registration = self.matchRegistration(fetch.reserve.storage_key orelse fetch.reserve.origin, fetch.url) orelse return null;
         // 7. A registration with no active worker: null.
         const active = registration.active orelse return null;
         // 8. Unless the destination is "report", the reserved client's
@@ -1906,8 +1952,8 @@ pub const Registry = struct {
     /// storage key, and the registration is what Match Service Worker
     /// Registration finds for it.
     fn creationUrlMatches(self: *const Registry, environment: *const Environment, registration: *const Registration) bool {
-        if (!std.mem.eql(u8, environment.origin, registration.storage_key)) return false;
-        const matched = self.matchRegistration(environment.origin, environment.creation_url) orelse return false;
+        if (!std.mem.eql(u8, environment.storage_key, registration.storage_key)) return false;
+        const matched = self.matchRegistration(environment.storage_key, environment.creation_url) orelse return false;
         return matched == registration;
     }
 
@@ -2008,6 +2054,18 @@ pub const Registry = struct {
     /// not yet begun is rejected and removed; the running one is rejected
     /// now and finishes through its own steps (`Job.aborted`), so no job is
     /// freed while a worker's start or an install waits on it.
+    ///
+    /// Every partition of the origin is cleared - each registration whose
+    /// storage key's origin is `origin`, whatever its top-level site: the
+    /// handler (src/browser/clear_site_data.zig) hands over an origin only.
+    /// Stated deviation, a follow-up for that handler: Chrome and Firefox
+    /// clear the response's own partition only - Chromium's
+    /// ClearSiteDataHandler passes the request's storage key, which
+    /// clear_site_data_utils.cc's filter builder applies to "storage"
+    /// (origin_filter_builder->SetStorageKey(storage_key_)); Gecko's
+    /// ClearSiteData::ClearStorage calls DeleteDataFromPrincipal with the
+    /// channel's storage principal (its OriginAttributes, partitionKey
+    /// included).
     pub fn clearOrigin(self: *Registry, origin: []const u8) Allocator.Error!void {
         // The registrations, held while they are cleared (clearing one may
         // release its last other reference).
@@ -2019,14 +2077,14 @@ pub const Registry = struct {
         try matched.ensureTotalCapacity(self.allocator, self.registrations.items.len + self.detached.items.len);
         for ([_][]const *Registration{ self.registrations.items, self.detached.items }) |list| {
             for (list) |registration| {
-                if (!std.mem.eql(u8, registration.storage_key, origin)) continue;
+                if (!std.mem.eql(u8, storageKeyOrigin(registration.storage_key), origin)) continue;
                 registration.refs += 1;
                 matched.appendAssumeCapacity(registration);
             }
         }
         for (matched.items) |registration| {
             // Chrome's job_coordinator_->Abort(scope, key).
-            self.abortJobs(registration.storage_key, registration.scope_url);
+            try self.abortJobs(registration.storage_key, registration.scope_url);
             // Unregister step 3: remove it from the registration map.
             if (registration.in_map) self.removeFromMap(registration);
             // A worker of it that holds no slot and is not redundant is the
@@ -2061,8 +2119,10 @@ pub const Registry = struct {
     /// `storage_key` (`clearOrigin`): each one's promise is rejected with an
     /// AbortError; those not yet begun leave the queue - the first one only
     /// when Run Job reaches it, as its Run Job task is already queued.
-    fn abortJobs(self: *Registry, storage_key: []const u8, scope_url: []const u8) void {
-        const queue = self.job_queues.getPtr(scope_url) orelse return;
+    fn abortJobs(self: *Registry, storage_key: []const u8, scope_url: []const u8) Allocator.Error!void {
+        const key = try jobQueueKey(self.allocator, storage_key, scope_url);
+        defer self.allocator.free(key);
+        const queue = self.job_queues.getPtr(key) orelse return;
         const message = "The registration was cleared (Clear-Site-Data)";
         var i: usize = queue.items.len;
         while (i > 1) {
@@ -2271,11 +2331,11 @@ pub const Registry = struct {
         for (self.environments.items) |environment| {
             // 3.1. Clients of the registration's storage key.
             if (!environment.kind.isClient()) continue;
-            if (!std.mem.eql(u8, environment.origin, registration.storage_key)) continue;
+            if (!std.mem.eql(u8, environment.storage_key, registration.storage_key)) continue;
             // 3.1.1-2. Execution ready, not discarded, a secure context.
             if (!environment.execution_ready or environment.discarded or !environment.secure_context) continue;
             // 3.1.4-5. Whose matching registration is this one.
-            const matched = self.matchRegistration(environment.origin, environment.creation_url) orelse continue;
+            const matched = self.matchRegistration(environment.storage_key, environment.creation_url) orelse continue;
             if (matched != registration) continue;
             // 3.1.6. Not already controlled by the worker.
             if (environment.active_worker == worker) continue;
@@ -2304,7 +2364,7 @@ pub const Registry = struct {
         const storage_key = worker.registration.storage_key;
         for (self.environments.items) |environment| {
             if (!environment.kind.isClient()) continue;
-            if (!std.mem.eql(u8, environment.origin, storage_key)) continue;
+            if (!std.mem.eql(u8, environment.storage_key, storage_key)) continue;
             // 2.2.1. Execution ready, not discarded.
             if (!environment.execution_ready or environment.discarded) continue;
             // 2.2.2. A secure context.
@@ -2330,7 +2390,7 @@ pub const Registry = struct {
         const storage_key = worker.registration.storage_key;
         for (self.environments.items) |environment| {
             if (!environment.kind.isClient()) continue;
-            if (!std.mem.eql(u8, environment.origin, storage_key)) continue;
+            if (!std.mem.eql(u8, environment.storage_key, storage_key)) continue;
             if (std.mem.eql(u8, &environment.client_id, id)) return environment;
         }
         return null;
@@ -2439,6 +2499,15 @@ pub const Registry = struct {
 /// Service Worker Has No Pending Events: no extended event is active - and,
 /// as Chromium counts its in-flight requests, no functional event handed to
 /// the worker is still being handled (`events_in_flight`).
+/// The origin a storage key names (`Environment.storage_key`'s form: the
+/// serialized origin, up to the first space - no serialized origin contains
+/// one); a key with no space is an origin itself (`EnvironmentInit`'s
+/// unpartitioned default).
+pub fn storageKeyOrigin(storage_key: []const u8) []const u8 {
+    const end = std.mem.indexOfScalar(u8, storage_key, ' ') orelse return storage_key;
+    return storage_key[0..end];
+}
+
 pub fn serviceWorkerHasNoPendingEvents(worker: *const Worker) bool {
     return worker.active_extended_events == 0 and worker.events_in_flight == 0;
 }

@@ -87,7 +87,7 @@ pub const WorkerInfo = struct {
 pub const RegistrationInfo = struct {
     id: u64,
     scope_url: []u8,
-    /// The registration's storage key (its origin, serialized).
+    /// The registration's storage key, serialized (storage.StorageKey.serialize).
     storage_key: []u8,
     update_via_cache: registry_mod.UpdateViaCache,
     installing: ?WorkerInfo = null,
@@ -442,6 +442,11 @@ pub const ReservedClient = struct {
     /// A worker whose script is a blob: URL of its owner's origin: the
     /// owner's active service worker when it was reserved (SW 2.5.2).
     inherited_worker: u64 = 0,
+    /// The storage key Handle Fetch obtains for it (step 9.5), as its
+    /// creator computed it (realm.zig reservedStorageKey). OWNED (the
+    /// manager's allocator); null: none - no service worker handles its
+    /// fetch.
+    storage_key: ?[]u8 = null,
 };
 
 /// A fetch Handle Fetch hands to a service worker (Create Fetch Event and
@@ -575,6 +580,10 @@ pub const WorkerStart = struct {
     registration_id: u64,
     script_url: []const u8,
     scope_url: []const u8,
+    /// Its registration's storage key (storage.StorageKey.serialize's
+    /// form): its global's storage key, and the top-level site its fetches
+    /// are partitioned by.
+    storage_key: []const u8,
     worker_type: registry_mod.WorkerType,
     /// The script resource: the main script's body.
     source: []const u8,
@@ -980,6 +989,45 @@ pub const Manager = struct {
         self.lock();
         defer self.unlock();
         if (self.cookie_jar == null) self.cookie_jar = jar;
+    }
+
+    /// An environment's storage key as the registry has it, with what
+    /// reaches its realm: what tests compare with its settings object's own
+    /// key, on its thread (tests/service_worker/partitioned_clients_test).
+    pub const EnvironmentKey = struct {
+        kind: registry_mod.EnvironmentKind,
+        /// OWNED (the caller's allocator).
+        storage_key: []u8,
+        /// OWNED (the caller's allocator).
+        creation_url: []u8,
+        /// Valid while the environment lives.
+        endpoint: *Endpoint,
+
+        pub fn deinit(self: *EnvironmentKey, allocator: Allocator) void {
+            allocator.free(self.storage_key);
+            allocator.free(self.creation_url);
+        }
+    };
+
+    /// Every environment with a realm, its storage key copied. OWNED (each
+    /// item and the slice).
+    pub fn environmentKeys(self: *Manager, allocator: Allocator) Allocator.Error![]EnvironmentKey {
+        self.lock();
+        defer self.unlock();
+        var list: std.ArrayListUnmanaged(EnvironmentKey) = .empty;
+        errdefer {
+            for (list.items) |*item| item.deinit(allocator);
+            list.deinit(allocator);
+        }
+        for (self.registry.environments.items) |environment| {
+            const endpoint = endpointOfEnvironment(environment) orelse continue;
+            const storage_key = try allocator.dupe(u8, environment.storage_key);
+            errdefer allocator.free(storage_key);
+            const creation_url = try allocator.dupe(u8, environment.creation_url);
+            errdefer allocator.free(creation_url);
+            try list.append(allocator, .{ .kind = environment.kind, .storage_key = storage_key, .creation_url = creation_url, .endpoint = endpoint });
+        }
+        return list.toOwnedSlice(allocator);
     }
 
     /// The endpoint of the environment whose realm is `realm`, if it is one.
@@ -1393,10 +1441,19 @@ pub const Manager = struct {
     /// (0: none), for a client of `kind`; `inherited_worker` is a worker's
     /// owner's active service worker it inherits (a blob: script). OWNED by
     /// the caller (`createClient` or `releaseReserved`).
-    pub fn reserveClient(self: *Manager, kind: registry_mod.EnvironmentKind, creator: u64, inherited_worker: u64) ?*ReservedClient {
+    pub fn reserveClient(self: *Manager, kind: registry_mod.EnvironmentKind, creator: u64, inherited_worker: u64, storage_key: ?[]const u8) ?*ReservedClient {
         const handle = self.allocator.create(ReservedClient) catch return null;
-        handle.* = .{ .manager = self, .kind = kind, .creator = creator, .inherited_worker = inherited_worker };
+        const key: ?[]u8 = if (storage_key) |k| (self.allocator.dupe(u8, k) catch {
+            self.allocator.destroy(handle);
+            return null;
+        }) else null;
+        handle.* = .{ .manager = self, .kind = kind, .creator = creator, .inherited_worker = inherited_worker, .storage_key = key };
         return handle;
+    }
+
+    fn destroyReserved(self: *Manager, reserved: *ReservedClient) void {
+        if (reserved.storage_key) |key| self.allocator.free(key);
+        self.allocator.destroy(reserved);
     }
 
     /// The active service worker of the environment `id` when its origin
@@ -1413,8 +1470,11 @@ pub const Manager = struct {
     /// What a realm becoming a client brings (`createClient`).
     pub const ClientValues = struct {
         kind: registry_mod.EnvironmentKind,
-        /// Serialized; its storage key.
+        /// Serialized.
         origin: []const u8,
+        /// Its storage key (registry Environment.storage_key); null: the
+        /// origin (an unpartitioned key, which only tests use).
+        storage_key: ?[]const u8 = null,
         creation_url: []const u8,
         secure_context: bool,
         frame_type: registry_mod.FrameType = .none,
@@ -1458,13 +1518,16 @@ pub const Manager = struct {
     pub fn createClientControlled(self: *Manager, values: ClientValues) Allocator.Error!CreatedClient {
         var requests: std.ArrayListUnmanaged(WindowDataRequest) = .empty;
         defer requests.deinit(self.allocator);
-        defer if (values.reserved) |reserved| self.allocator.destroy(reserved);
+        defer if (values.reserved) |reserved| self.destroyReserved(reserved);
+        const storage_key = values.storage_key orelse values.origin;
         const created: CreatedClient = blk: {
             self.lock();
             defer self.unlock();
             if (values.reserved) |reserved| if (reserved.environment != 0) {
                 if (self.registry.findEnvironment(reserved.environment)) |environment| {
-                    if (environment.endpoint == null and std.mem.eql(u8, environment.origin, values.origin)) {
+                    // Adopted when its storage key is the client's: the key
+                    // Handle Fetch matched with is the one the client has.
+                    if (environment.endpoint == null and std.mem.eql(u8, environment.storage_key, storage_key)) {
                         try self.registry.adoptEnvironment(environment, .{
                             .endpoint = values.endpoint,
                             .creation_url = values.creation_url,
@@ -1484,6 +1547,7 @@ pub const Manager = struct {
             const environment = try self.registry.addEnvironment(.{
                 .kind = values.kind,
                 .origin = values.origin,
+                .storage_key = storage_key,
                 .creation_url = values.creation_url,
                 .secure_context = values.secure_context,
                 .frame_type = values.frame_type,
@@ -1494,7 +1558,10 @@ pub const Manager = struct {
                 (if (reserved.inherited_worker != 0) self.registry.findWorker(reserved.inherited_worker) else null)
             else if (values.creator != 0) inherit: {
                 const creator = self.registry.findEnvironment(values.creator) orelse break :inherit null;
-                if (!std.mem.eql(u8, creator.origin, values.origin)) break :inherit null;
+                // SW 2.5.1's "same origin", by storage key: a client never
+                // inherits a controller of another partition (a popup a
+                // third-party frame opens is first-party).
+                if (!std.mem.eql(u8, creator.storage_key, storage_key)) break :inherit null;
                 break :inherit creator.active_worker;
             } else null;
             if (inherited) |worker| self.registry.setActiveWorker(environment, worker);
@@ -1532,7 +1599,7 @@ pub const Manager = struct {
                 }
             }
         }
-        self.allocator.destroy(reserved);
+        self.destroyReserved(reserved);
     }
 
     // ------------------------------------------------------------------
@@ -1712,10 +1779,16 @@ pub const Manager = struct {
                     if (!creator.secure_context) return .network;
                 };
             }
-            // 9.5-9.8, 11-12.
+            // 9.5. The storage key obtained for the reserved client: as its
+            // creator computed it for the URL it reserved for. One of another
+            // origin - a reservation a cross-origin redirect left behind
+            // (HTML re-reserves for the new URL) - matches nothing.
+            const reserved_key = reserved.storage_key orelse return .network;
+            if (!std.mem.eql(u8, registry_mod.storageKeyOrigin(reserved_key), origin)) return .network;
+            // 9.6-9.8, 11-12.
             const matched = (try self.registry.handleFetchNonSubresource(.{
                 .url = url,
-                .reserve = .{ .kind = reserved.kind, .origin = origin, .creation_url = url },
+                .reserve = .{ .kind = reserved.kind, .origin = origin, .storage_key = reserved_key, .creation_url = url },
                 .reserved = existing,
                 .destination_is_report = request.destination == .report,
             })) orelse return .network;
@@ -1738,8 +1811,8 @@ pub const Manager = struct {
             blocked = reserved.creator;
             skip = shouldSkipFetchEvent(matched.worker);
             // 13.3.3.4: a non-subresource request's cache source reads the
-            // reserved client's storage - its origin's.
-            try routing.take(self, matched.worker, reserved.creator, origin);
+            // reserved client's storage - its storage key's.
+            try routing.take(self, matched.worker, reserved.creator, reserved_key);
             // 15. A GET navigation request of a registration whose active
             // worker handles fetch: with its navigation preload enabled flag
             // set, the preload request is fetched (15.1) - by the service
@@ -1765,7 +1838,7 @@ pub const Manager = struct {
             blocked = client;
             skip = shouldSkipFetchEvent(matched.worker);
             // 13.3.3.5: a subresource request's, its client's.
-            try routing.take(self, matched.worker, client, environment.origin);
+            try routing.take(self, matched.worker, client, environment.storage_key);
         }
         // 13. Router rules: their source decides, before any fetch event.
         if (routing.rules) |list| {
@@ -2876,14 +2949,14 @@ pub const Manager = struct {
     /// update job that reaches its fetch fetches here, without the lock.
     const RunJobTask = struct {
         manager: *Manager,
-        /// OWNED.
-        scope_url: []u8,
+        /// The job queue's key (Registry.jobQueueKey). OWNED.
+        queue_key: []u8,
 
         fn run(data: ?*anyopaque) void {
             const self: *RunJobTask = @ptrCast(@alignCast(data.?));
             const manager = self.manager;
             defer self.destroy();
-            manager.runJob(self.scope_url) catch |err| log.debug("Run Job: {s}", .{@errorName(err)});
+            manager.runJob(self.queue_key) catch |err| log.debug("Run Job: {s}", .{@errorName(err)});
         }
 
         fn drop(data: ?*anyopaque) void {
@@ -2893,16 +2966,16 @@ pub const Manager = struct {
 
         fn destroy(self: *RunJobTask) void {
             const allocator = self.manager.allocator;
-            allocator.free(self.scope_url);
+            allocator.free(self.queue_key);
             allocator.destroy(self);
         }
     };
 
-    fn runJob(self: *Manager, scope_url: []const u8) Allocator.Error!void {
+    fn runJob(self: *Manager, queue_key: []const u8) Allocator.Error!void {
         var plan = blk: {
             self.lock();
             defer self.unlock();
-            break :blk (try self.registry.runJob(scope_url)) orelse return;
+            break :blk (try self.registry.runJob(queue_key)) orelse return;
         };
         defer plan.deinit(self.allocator);
         // Update step 7: the fetch, with the lock not held (the job stays
@@ -3014,6 +3087,8 @@ pub const Manager = struct {
             errdefer allocator.free(script_url);
             const scope_url = try allocator.dupe(u8, worker.registration.scope_url);
             errdefer allocator.free(scope_url);
+            const storage_key = try allocator.dupe(u8, worker.registration.storage_key);
+            errdefer allocator.free(storage_key);
             const main = worker.mainScript();
             const source = try allocator.dupe(u8, if (main) |m| m.body else "");
             return .{ .start = .{
@@ -3021,6 +3096,7 @@ pub const Manager = struct {
                 .registration_id = worker.registration.id,
                 .script_url = script_url,
                 .scope_url = scope_url,
+                .storage_key = storage_key,
                 .worker_type = worker.worker_type,
                 .source = source,
                 .policy = worker.policy,
@@ -3031,6 +3107,7 @@ pub const Manager = struct {
         fn deinit(self: *StartCopy, allocator: Allocator) void {
             allocator.free(self.start.script_url);
             allocator.free(self.start.scope_url);
+            allocator.free(self.start.storage_key);
             allocator.free(self.start.source);
         }
     };
@@ -3205,10 +3282,10 @@ pub const Manager = struct {
         _ = endpoint.sink.post(.{ .run = DeliveryTask.run, .drop = DeliveryTask.drop, .data = task });
     }
 
-    fn queueRunJob(ctx: *anyopaque, scope_url: []const u8) void {
+    fn queueRunJob(ctx: *anyopaque, queue_key: []const u8) void {
         const self = ofCtx(ctx);
         const task = self.allocator.create(RunJobTask) catch return;
-        task.* = .{ .manager = self, .scope_url = self.allocator.dupe(u8, scope_url) catch {
+        task.* = .{ .manager = self, .queue_key = self.allocator.dupe(u8, queue_key) catch {
             self.allocator.destroy(task);
             return;
         } };
