@@ -327,6 +327,18 @@ fn registerConnection(factory: *runtime.Instance, connection: *runtime.Instance,
     try internal.connections.append(internal.allocator, .{ .instance = connection, .realm = connection.ctx, .origin = origin_copy, .name = name_copy });
     dom.indexeddb.setDatabaseFactory(connection, factory);
 }
+/// The Window of `realm` when it belongs to a page the back/forward cache
+/// keeps. Only a Window's realm of `current`'s agent is asked: a worker's is
+/// never cached, and the cache is read only on its window thread.
+fn cachedWindowOf(realm: runtime.Context, current: runtime.Context) ?*runtime.Instance {
+    if (!realm.hasEngine()) return null;
+    if (realm.agent != current.agent) return null;
+    const record = realm.getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    if (global.stateAs(interfaces.Window.State) == null) return null;
+    return if (dom.bfcache.holds(global)) global else null;
+}
+
 fn unregisterConnection(factory: *runtime.Instance, connection: *runtime.Instance) void {
     const internal = factory.getState(State).own._internal orelse return;
     for (internal.connections.items, 0..) |entry, index| {
@@ -500,7 +512,16 @@ const ConnectionTask = struct {
                     const notification = self.notifications.items[self.next_notification];
                     self.next_notification += 1;
                     const connection = notification.instance;
-                    if (notification.realm.hasEngine() and self.connectionRegistered(connection) and !dom.indexeddb.connectionIsClosing(connection)) try self.versionEvent(connection, "versionchange", self.versionForEvent());
+                    if (cachedWindowOf(notification.realm, self.realm)) |window| {
+                        // A connection of a page the back/forward cache
+                        // keeps cannot answer versionchange: the page is
+                        // evicted instead, and its end closes the
+                        // connection, so the upgrade goes on (Blink's
+                        // kIgnoreEventAndEvict for IndexedDB versionchange;
+                        // IndexedDB/back-forward-cache-open-connection.window.js
+                        // passes in Chrome 155, Firefox 158 and Safari 27).
+                        dom.bfcache.evict(window, null);
+                    } else if (notification.realm.hasEngine() and self.connectionRegistered(connection) and !dom.indexeddb.connectionIsClosing(connection)) try self.versionEvent(connection, "versionchange", self.versionForEvent());
                     if (self.cancelled or !self.realm.hasEngine()) return;
                 }
                 if (self.next_notification == self.notifications.items.len) {
