@@ -2064,6 +2064,24 @@ fn nodeDocument(node: anytype) ?*runtime.Instance {
     return interfaces.Node.get_ownerDocument(instance) catch null;
 }
 
+/// Hold the teardowns of `document`'s agent for a walk of its live ranges
+/// or NodeIterators (engine.holdTeardowns): a step's engine call can start a
+/// collection, and what it collects is torn down when the walk ends, not
+/// under it - neither a range the walk has not reached nor the one it is
+/// stepping. The cursor (dom.live_range_list) keeps the walk whole when an
+/// entry leaves anyway, as a range that moves to another document does.
+///
+/// A hold must not span script, and these walks run none: their steps set
+/// boundary points and offsets (Range's live-range steps, setStart/setEnd in
+/// the replace-data and normalize steps), redraw traced edges, queue a
+/// selectionchange task without running it (dom.selection.rangeMutated), and
+/// move a NodeIterator's reference - its filter is not called by the
+/// pre-removing steps. No event is dispatched and no microtask checkpoint is
+/// performed inside one.
+fn holdTeardownsFor(document: *runtime.Instance) engine.TeardownHold {
+    return engine.holdTeardowns(document.ctx);
+}
+
 /// Helper: Run live range pre-remove steps
 /// Spec: https://dom.spec.whatwg.org/#concept-node-remove steps 4-7
 ///
@@ -2092,6 +2110,8 @@ fn runLiveRangePreRemoveSteps(node: anytype) void {
     const node_ptr: *const NodeBase = @ptrCast(node);
 
     // Iterate through all live ranges registered with this document
+    const hold = holdTeardownsFor(doc_instance);
+    defer hold.release();
     var walk: document_internals.LiveObjects.Walk = undefined;
     ranges.beginWalk(&walk);
     defer ranges.endWalk(&walk);
@@ -2182,6 +2202,8 @@ pub fn runLiveRangeSplitSteps(
     const live = range_boundaries.liveRange() orelse return;
     // Through a cursor: 7.2 and 7.3 redraw a range's edges, which can tear
     // collected ranges down mid-walk (runLiveRangePreRemoveSteps).
+    const hold = holdTeardownsFor(doc);
+    defer hold.release();
     var walk: document_internals.LiveObjects.Walk = undefined;
     ranges.beginWalk(&walk);
     defer ranges.endWalk(&walk);
@@ -2258,6 +2280,8 @@ pub fn runLiveRangeReplaceDataSteps(node: *runtime.Instance, offset: u32, count:
     if (ranges.isEmpty()) return;
     // Through a cursor: a setter's engine calls can tear collected ranges
     // down mid-walk (runLiveRangePreRemoveSteps).
+    const hold = holdTeardownsFor(doc);
+    defer hold.release();
     var walk: document_internals.LiveObjects.Walk = undefined;
     ranges.beginWalk(&walk);
     defer ranges.endWalk(&walk);
@@ -2300,6 +2324,8 @@ pub fn runLiveRangeNormalizeSteps(node: *runtime.Instance, current: *runtime.Ins
 
     // Through a cursor: setStart and setEnd redraw a range's edges, which
     // can tear collected ranges down mid-walk (runLiveRangePreRemoveSteps).
+    const hold = holdTeardownsFor(doc);
+    defer hold.release();
     var walk: document_internals.LiveObjects.Walk = undefined;
     ranges.beginWalk(&walk);
     defer ranges.endWalk(&walk);
@@ -2364,6 +2390,8 @@ fn runNodeIteratorPreRemoveSteps(node: anytype) void {
     // Through a cursor: a new reference redraws the iterator's edge to it,
     // an engine call that can tear collected iterators down mid-walk, each
     // leaving this list (runLiveRangePreRemoveSteps).
+    const hold = holdTeardownsFor(doc_instance);
+    defer hold.release();
     var walk: document_internals.LiveObjects.Walk = undefined;
     iterators.beginWalk(&walk);
     defer iterators.endWalk(&walk);
@@ -2396,6 +2424,8 @@ fn updateRangesForInsertionWithCount(doc: anytype, parent: anytype, child_index:
 
     // For each live range, update offsets if necessary - through a cursor,
     // like every walk of the list (runLiveRangePreRemoveSteps).
+    const hold = holdTeardownsFor(doc_instance);
+    defer hold.release();
     var walk: document_internals.LiveObjects.Walk = undefined;
     ranges.beginWalk(&walk);
     defer ranges.endWalk(&walk);
@@ -2544,6 +2574,8 @@ fn insertIntoChildrenList(node: anytype, parent: anytype, child: anytype) void {
 fn moveLiveRangesAfterAdoption(old_document: *runtime.Instance) void {
     const ranges = document_internals.liveRanges(old_document) orelse return;
     if (ranges.isEmpty()) return;
+    const hold = holdTeardownsFor(old_document);
+    defer hold.release();
     var walk: document_internals.LiveObjects.Walk = undefined;
     ranges.beginWalk(&walk);
     defer ranges.endWalk(&walk);

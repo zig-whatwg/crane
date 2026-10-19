@@ -587,6 +587,12 @@ pub fn hasWrapper(_: *Instance) bool {
 pub fn keepPlatformObjectAlive(_: *Instance) void {}
 pub fn releasePlatformObject(_: *Instance) void {}
 pub fn platformObjectDestroyed(_: *Instance) void {}
+/// Nothing is wrapped, so no collection tears anything down: nothing to hold.
+/// With JavaScriptCore linked, the teardowns its JSObjectFinalizeCallback
+/// queues (4.12) wait while a hold lasts and run at the last resume, as V8's
+/// do.
+pub fn deferTeardowns(_: Context) void {}
+pub fn resumeTeardowns(_: Context) void {}
 /// Nothing is wrapped, so nothing is collected: there is no edge to draw.
 /// With JavaScriptCore linked this is the owner relation of a managed
 /// reference (`-[JSVirtualMachine addManagedReference:withOwner:]`, the public

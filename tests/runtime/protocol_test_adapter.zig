@@ -524,6 +524,9 @@ pub fn hasWrapper(_: *Instance) bool {
 pub fn keepPlatformObjectAlive(_: *Instance) void {}
 pub fn releasePlatformObject(_: *Instance) void {}
 pub fn platformObjectDestroyed(_: *Instance) void {}
+/// No engine, no collector: no teardown to hold.
+pub fn deferTeardowns(_: Context) void {}
+pub fn resumeTeardowns(_: Context) void {}
 /// No engine, no collector: nothing to keep.
 pub fn traceChild(_: *Instance, _: *Instance, _: engine.TracedSlot) void {}
 pub fn forgetTracedChild(_: *Instance, _: engine.TracedSlot) void {}
