@@ -1662,7 +1662,16 @@ fn createFromResponse(env: *const Environment, url: []const u8, module_type: Mod
     if (policy != .empty) response_env.fetch_options.referrer_policy = policy;
     return switch (module_type) {
         .javascript => if (isJavaScriptMimeTypeEssence(essence)) createJavaScriptModuleScript(&response_env, body, base_url) catch null else null,
-        .json => if (isJsonMimeTypeEssence(essence)) createJsonModuleScript(&response_env, body, base_url) catch null else null,
+        .json => blk: {
+            if (!isJsonMimeTypeEssence(essence)) break :blk null;
+            // Fetch a single module script, processResponseConsumeBody
+            // step 13.7: UTF-8 decode bodyBytes before creating the module.
+            // Encoding's UTF-8 decode strips a leading BOM and replaces
+            // malformed sequences; JSON.parse must see that decoded text.
+            const text = css_rules.decodeUtf8(env.allocator, body) catch break :blk null;
+            defer env.allocator.free(text);
+            break :blk createJsonModuleScript(&response_env, text, base_url) catch null;
+        },
         .css => blk: {
             if (!std.mem.eql(u8, essence, "text/css")) break :blk null;
             const text = css_rules.decodeUtf8(env.allocator, body) catch break :blk null;
