@@ -1187,15 +1187,15 @@ pub fn register(container: *runtime.Instance, script_url: []const u8, options: R
     // reporter (the caller's script position). Stated deviation: the spec
     // checks at the job's fetch (Update step 7's "fetch a classic worker
     // script" given job's client, main fetch step 7), whose network error is
-    // Update step 8's TypeError. Every browser checks at register() instead:
-    // Blink ServiceWorkerContainer::registerServiceWorker
+    // Update step 8's TypeError. All three browsers check at register()
+    // instead, unanimously: Blink ServiceWorkerContainer::registerServiceWorker
     // (AllowWorkerContextFromSource, kSecurity, after the URL checks), WebKit
     // ServiceWorkerContainer::addRegistration (allowWorkerFromSource,
     // SecurityError), Gecko ServiceWorkerScopeAndScriptAreValid
     // (NS_CheckContentLoadPolicy for TYPE_INTERNAL_SERVICE_WORKER with the
-    // client's CSP event listener, ThrowSecurityError) - and none enforces
-    // the client's CSP on the job's own fetch (run.zig). Golden rule 2, no
-    // newer spec. WPT content-security-policy/worker-src/service-*.
+    // client's CSP event listener, ThrowSecurityError). Golden rule 2: no
+    // newer spec is involved, and the browsers agree against the spec text.
+    // WPT content-security-policy/worker-src/service-* (all three pass).
     if (scriptUrlBlockedByCsp(realm, urls.script_url)) {
         var capability = environment.takePromise(made.id).?;
         defer engine.releasePromiseCapability(&capability);
