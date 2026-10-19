@@ -410,9 +410,16 @@ pub fn prepareScriptElement(
             return ScriptExecutionError.OutOfMemory;
 
         // Prepare 33.7: potentially render-blocking external scripts block
-        // before fetching. 33.9: the fetch option records ACTUAL blocking.
+        // before fetching. 33.9: capture the fetch's blocking classification.
         if (isPotentiallyRenderBlocking(script_element)) try dom.document_rendering.block(script_element);
-        state.fetch_render_blocking = dom.document_rendering.isRenderBlocking(script_element);
+        // Chrome alone ships renderBlockingStatus: Blink's ScriptLoader
+        // (core/script/script_loader.cc) preserves explicit render tokens
+        // independently of document membership. Keep the implicit body case
+        // non-blocking, as HTMLPreloadScanner (core/html/parser/
+        // html_preload_scanner.cc) and ResourceFetcher (platform/loader/fetch/
+        // resource_fetcher.cc) distinguish it from kBlocking.
+        state.fetch_render_blocking = dom.document_rendering.isRenderBlocking(script_element) or
+            dom.document_rendering.hasRenderToken(getAttribute(script_element, "blocking") orelse "");
 
         // Prepare step 33.8: external classic scripts and module graphs
         // delay their preparation-time document until "mark as ready".
