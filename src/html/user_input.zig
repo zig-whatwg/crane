@@ -809,7 +809,11 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
         return;
     }
     // A radio button: the arrow keys move the checkedness through its group.
-    if (isRadio(target) and !form_associated.isDisabled(target)) {
+    // Blink RadioInputType::HandleKeydownEvent and Gecko HTMLInputElement::
+    // PostHandleEvent's eKeyPress radio branch leave modified arrows alone.
+    if (isRadio(target) and !form_associated.isDisabled(target) and
+        !modifiers.ctrl and !modifiers.alt and !modifiers.meta)
+    {
         if (isKey(key, "ArrowDown") or isKey(key, "ArrowRight")) return moveInRadioGroup(target, .forward, modifiers);
         if (isKey(key, "ArrowUp") or isKey(key, "ArrowLeft")) return moveInRadioGroup(target, .backward, modifiers);
     }
@@ -858,49 +862,60 @@ fn isRadio(element: *Instance) bool {
     return std.mem.eql(u8, form_associated.inputType(element, &buffer), "radio");
 }
 
-/// The value of `element`'s name attribute, owned by `allocator`, or null.
-fn nameOf(allocator: std.mem.Allocator, element: *Instance) ?[]u8 {
-    return form_associated.attributeValue(allocator, element, "name") catch null;
+/// Borrowed during the read-only radio walk, never used after firing script.
+fn radioName(element: *Instance) []const u8 {
+    const data = dom.element_data.of(element) orelse return "";
+    const index = data.indexOfQualifiedName("name") orelse return "";
+    return (data.attributeAt(index) orelse return "").value;
+}
+
+fn previousInRadioTree(node: *Instance, root: *Instance) ?*Instance {
+    if (node == root) return null;
+    if (interfaces.Node.get_previousSibling(node) catch null) |sibling| {
+        var last = sibling;
+        while (interfaces.Node.get_lastChild(last) catch null) |child| last = child;
+        return last;
+    }
+    return form_associated.parentOf(node);
 }
 
 /// The arrow keys on a radio button (Blink's RadioInputType and Gecko's
 /// HTMLInputElement keyboard handling; HTML 4.10.5.1.15's radio button
-/// group): the focus moves to the next (previous) enabled radio button of
+/// group): the focus moves to the next (previous) focusable radio button of
 /// its group in tree order, wrapping, and that button is activated as a
 /// key press activates it - which checks it and fires input and change.
 fn moveInRadioGroup(radio: *Instance, direction: focus.Direction, modifiers: Modifiers) void {
-    const allocator = radio.ctx.allocator;
-    const name = nameOf(allocator, radio) orelse return;
-    defer allocator.free(name);
+    const name = radioName(radio);
     if (name.len == 0) return;
     const owner = form_associated.formOwner(radio);
     const root = form_associated.rootOf(radio);
-    // The group, in tree order: radio buttons with the same name and form
-    // owner, in the same tree.
-    var group: [256]*Instance = undefined;
-    var count: usize = 0;
-    var position: ?usize = null;
-    var node: ?*Instance = root;
-    while (node) |n| : (node = form_associated.nextInTree(n, root, false)) {
-        if (count == group.len) break;
-        if (!isRadio(n) or form_associated.formOwner(n) != owner) continue;
-        const other = nameOf(allocator, n) orelse continue;
-        defer allocator.free(other);
-        if (!std.mem.eql(u8, other, name)) continue;
-        if (n == radio) position = count;
-        group[count] = n;
-        count += 1;
-    }
-    const start = position orelse return;
-    var index = start;
-    var steps: usize = 0;
-    while (steps < count) : (steps += 1) {
-        index = if (direction == .forward) (index + 1) % count else (index + count - 1) % count;
-        if (index == start) return;
-        const candidate = group[index];
-        if (form_associated.isDisabled(candidate)) continue;
+    // HTML 4.10.5.1.15: same non-empty name, form owner and tree. Walk in
+    // the requested direction and wrap without allocating or capping group
+    // membership. External form-associated controls can be outside the form.
+    var candidate = radio;
+    while (true) {
+        if (direction == .forward) {
+            candidate = form_associated.nextInTree(candidate, root, false) orelse root;
+        } else if (previousInRadioTree(candidate, root)) |previous| {
+            candidate = previous;
+        } else {
+            candidate = root;
+            while (interfaces.Node.get_lastChild(candidate) catch null) |child| candidate = child;
+        }
+        if (candidate == radio) return;
+        if (!isRadio(candidate) or !std.mem.eql(u8, radioName(candidate), name) or
+            form_associated.formOwner(candidate) != owner) continue;
+        // Blink FindNextFocusableRadioButtonInGroup and WebKit's radio
+        // key handler check full focusability, not just disabledness.
+        if (!focus.isFocusableArea(candidate)) continue;
+        const candidate_ref = Weak.of(candidate);
         focus.focusingSteps(candidate, null, .keyboard);
-        fireSyntheticClick(candidate, modifiers);
+        // A focus listener can remove and collect the candidate. Reuse the
+        // device's generation guard instead of reading that old pointer.
+        // TODO(refcount step 7): hold a counted reference across both steps;
+        // Blink still clicks a removed candidate that its strong hold keeps
+        // alive, while this guard skips one that has already been collected.
+        if (candidate_ref.get()) |live| fireSyntheticClick(live, modifiers);
         return;
     }
 }

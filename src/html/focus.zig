@@ -236,8 +236,8 @@ pub fn isSequentiallyFocusable(element: *Instance) bool {
             if (picker.isListbox(select) and picker.baseOptions(select)) return picker.firstFocusable(select, true) == element;
         }
     }
-    const value = tabindexValue(element) orelse return true;
-    return value >= 0;
+    if ((tabindexValue(element) orelse 0) < 0) return false;
+    return @import("forms/radio_focus.zig").isSequentialRepresentative(element);
 }
 
 // ============================================================================
@@ -489,6 +489,14 @@ fn focusUpdateSteps(old_chain_in: Chain, new_chain_in: Chain, new_focus_target: 
 /// HTML "get the focusable area" for `focus_target`, an element that is not
 /// a focusable area.
 fn getFocusableArea(focus_target: *Instance) ?*Instance {
+    // HTML 4.10.4's platform label behavior, used by focusing step 1:
+    // WebKit HTMLLabelElement::focus forwards only when the label itself
+    // is not focusable. All three browsers pass forward-focus-to-associated-
+    // element.html (6/6, wpt.fyi 23b0b89b1a), including a hidden label.
+    if (focus_target.stateAs(interfaces.HTMLLabelElement.State) != null) {
+        const control = (interfaces.HTMLLabelElement.get_control(focus_target) catch null) orelse return null;
+        return if (isFocusableArea(control)) control else null;
+    }
     // "If focus target is the document element of its Document": its viewport.
     if (nodeDocument(focus_target)) |document| {
         if ((interfaces.Document.get_documentElement(document) catch null) == focus_target) return document;
@@ -760,6 +768,11 @@ fn following(node: *Instance, root: *Instance) ?*Instance {
 /// tree only), into `out`: positive tabindex values first, ascending, then
 /// the rest in tree order; how many.
 fn sequentialOrder(document: *Instance, out: []*Instance) usize {
+    // This entire walk uses native reads, with no script or event dispatch.
+    // Borrow group names/nodes only here; defer destroys the summary before
+    // any navigation candidate can be focused and run arbitrary script.
+    var radios = @import("forms/radio_focus.zig").Navigation.init(document.ctx.allocator, document);
+    defer radios.deinit();
     var count: usize = 0;
     // Positive tabindex values, in ascending order, ties in tree order: one
     // pass per distinct value would be quadratic, so collect then sort.
@@ -769,7 +782,7 @@ fn sequentialOrder(document: *Instance, out: []*Instance) usize {
     var node = following(document, document);
     while (node) |n| : (node = following(n, document)) {
         tree_index += 1;
-        if (!isElement(n) or !isSequentiallyFocusable(n)) continue;
+        if (!isElement(n) or !(radios.eligibility(n) orelse isSequentiallyFocusable(n))) continue;
         const value = tabindexValue(n) orelse 0;
         if (value > 0 and positive_count < positives.len) {
             positives[positive_count] = .{ .value = value, .index = tree_index, .element = n };
@@ -789,7 +802,7 @@ fn sequentialOrder(document: *Instance, out: []*Instance) usize {
     }
     node = following(document, document);
     while (node) |n| : (node = following(n, document)) {
-        if (!isElement(n) or !isSequentiallyFocusable(n)) continue;
+        if (!isElement(n) or !(radios.eligibility(n) orelse isSequentiallyFocusable(n))) continue;
         if ((tabindexValue(n) orelse 0) > 0) continue;
         if (count == out.len) return count;
         out[count] = n;

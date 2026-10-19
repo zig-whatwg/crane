@@ -129,7 +129,19 @@ fn runActivationBehavior(label: *runtime.Instance, event: *runtime.Instance) voi
     while (inside) |n| : (inside = form_associated.parentOf(n)) {
         if (n == control) return;
     }
-    interfaces.HTMLElement.call_click(control) catch |err| {
+    // HTML 4.10.4 leaves activation to platform behavior. Blink's
+    // HTMLLabelElement::DefaultEventHandlerInternal and current Gecko's
+    // HTMLLabelElement::PostHandleEvent focus before clicking; WebKit
+    // clicks first. Blink/WebKit have no modifier filter (Gecko does).
+    // The two majority decisions together follow Blink (row72 Q13/Q14).
+    const html = @import("html");
+    const control_ref = html.user_input.Weak.of(control);
+    if (html.focus.isClickFocusable(control)) html.focus.focusingSteps(control, null, .click);
+    // Focus listeners may remove the control, repoint the label and run GC.
+    // TODO(refcount step 7): hold a counted reference across both steps,
+    // as the engines do; meanwhile click the original only if still live.
+    const live = control_ref.get() orelse return;
+    interfaces.HTMLElement.call_click(live) catch |err| {
         log.warn("label click not forwarded: {}", .{err});
     };
 }
