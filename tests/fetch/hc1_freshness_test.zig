@@ -150,3 +150,17 @@ test "hc1 freshness: Cache-Control lines combine, and the first max-age counts" 
     try std.testing.expect(f.directives.public);
     try std.testing.expectEqual(@as(u64, 5), freshness.lifetime(f, t0));
 }
+
+test "hc1 freshness: a response's Pragma: no-cache makes it no-cache, whatever Cache-Control says" {
+    // RFC 9111 5.4 gives Pragma no response meaning, but Chrome 155, Firefox
+    // 158 and Safari 27 all refuse to reuse such a response without the
+    // network (fetch/http-cache/pragma-no-cache-with-cache-control.html,
+    // wpt.fyi 23b0b89b1a; Chrome and Safari even with immutable).
+    const f = facts(200, &.{
+        .{ .name = "Cache-Control", .value = "max-age=2592000, public" },
+        .{ .name = "Pragma", .value = "no-cache" },
+    });
+    try std.testing.expect(f.directives.no_cache);
+    const other = facts(200, &.{.{ .name = "Pragma", .value = "x-other" }});
+    try std.testing.expect(!other.directives.no_cache);
+}

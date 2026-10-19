@@ -46,6 +46,7 @@ pub const Facts = struct {
         var seen_date = false;
         var seen_last_modified = false;
         var seen_age = false;
+        var pragma_no_cache = false;
         for (headers) |header| {
             const name = header.name;
             const value = header.value;
@@ -71,8 +72,23 @@ pub const Facts = struct {
                     };
                 }
                 seen_age = true;
+            } else if (std.ascii.eqlIgnoreCase(name, "Pragma")) {
+                var tokens = std.mem.splitScalar(u8, value, ',');
+                while (tokens.next()) |token| {
+                    if (std.ascii.eqlIgnoreCase(std.mem.trim(u8, token, " \t"), "no-cache")) pragma_no_cache = true;
+                }
             }
         }
+        // RFC 9111 5.4 gives a response's Pragma no meaning ("does not
+        // provide a reliable replacement for Cache-Control: no-cache"), but
+        // Chrome 155, Firefox 158 and Safari 27 all refuse to reuse a
+        // `Pragma: no-cache` response without the network, Cache-Control
+        // max-age and public notwithstanding; Chrome and Safari even with
+        // immutable, where Firefox reuses it (fetch/http-cache/
+        // pragma-no-cache-with-cache-control.html, wpt.fyi 23b0b89b1a;
+        // Mozilla bug 1937766, Chromium issue 447171250). Golden rule 2, no
+        // newer spec: the majority - it is no-cache.
+        if (pragma_no_cache) facts.directives.no_cache = true;
         return facts;
     }
 

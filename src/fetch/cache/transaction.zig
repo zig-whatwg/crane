@@ -260,12 +260,15 @@ pub const Transaction = struct {
         // without one, as Chromium ends the cache entry of a redirect it
         // follows without reading the body.
         const redirect = isRedirectStatus(response.status) and response.header_list.contains("Location");
+        // A null body status's body is made null by main fetch (step 20):
+        // stored now without one too, or the writer would see it cancelled.
+        const bodiless = redirect or isNullBodyStatus(response.status);
         const pipe: ?*body_pipe.BodyPipe = if (response.body) |b| b.pipe else null;
         // A pipe that is no longer open at the head failed or was cancelled:
         // there is no whole body to store.
-        if (!redirect and pipe != null and pipe.?.state != .open) return;
-        const arriving = pipe != null and !redirect;
-        const bytes: []const u8 = if (redirect or arriving) "" else if (response.body) |b| b.getBytes() else "";
+        if (!bodiless and pipe != null and pipe.?.state != .open) return;
+        const arriving = pipe != null and !bodiless;
+        const bytes: []const u8 = if (bodiless or arriving) "" else if (response.body) |b| b.getBytes() else "";
         if (bytes.len > limit) return;
         const entry = try StoredResponse.create(cache.allocator, .{
             .partition = self.partition,
@@ -475,6 +478,15 @@ fn validatorsAgree(stored: *const StoredResponse, response: *const InternalRespo
 fn opaqueTag(etag: []const u8) []const u8 {
     const trimmed = std.mem.trim(u8, etag, " \t");
     return if (std.mem.startsWith(u8, trimmed, "W/")) trimmed[2..] else trimmed;
+}
+
+/// Fetch's null body status: 101, 103, 204, 205, 304 (final ones only
+/// reach the cache; 304 is never stored).
+fn isNullBodyStatus(status: u16) bool {
+    return switch (status) {
+        101, 103, 204, 205, 304 => true,
+        else => false,
+    };
 }
 
 fn isRedirectStatus(status: u16) bool {

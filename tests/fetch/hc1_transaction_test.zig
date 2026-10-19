@@ -480,3 +480,25 @@ test "hc1 transaction: the cache outlives nothing it should not - a writer ends 
     streamed.source.finish();
     handed.deinit(); // the writer released the cache's core: no leak
 }
+
+test "hc1 transaction: a fresh 204 is stored at its head - main fetch drops a null body status's body" {
+    var fx = try Fixture.init(.{});
+    defer fx.deinit();
+    var streamed: Streamed = .{ .source = undefined };
+    const r = try fx.request("http://a.test/nobody");
+    defer r.deinit();
+    const handed = try exchange(r, try streamed.response(204, &.{.{ "Cache-Control", "max-age=60" }}), t0);
+    // Main fetch step 20 makes a null body status's body null: the pipe goes
+    // unread and the transfer stops.
+    handed.deinit();
+    try std.testing.expectEqual(@as(usize, 1), fx.store().entryCount());
+    const again = try fx.request("http://a.test/nobody");
+    defer again.deinit();
+    switch (try Transaction.begin(std.testing.allocator, again, viewOf(again), t0 + 1)) {
+        .response => |hit| {
+            defer hit.deinit();
+            try std.testing.expectEqual(@as(u16, 204), hit.status);
+        },
+        else => return error.TestExpectedHit,
+    }
+}
