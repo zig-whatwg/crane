@@ -519,6 +519,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A deferred pipe write is part of shutdown](spec-compliance-a-deferred-pipe-write-is-part-of-shutdown.md) - Include queued chunks in pipe shutdown and realm-drop cleanup.
 - [ICU word boundaries include tailoring](spec-compliance-icu-word-boundaries-include-tailoring.md) - Browser word movement needs the actual ICU rules, not untailored UAX29 assumptions.
 - [Selected text keeps its rendering context](spec-compliance-selected-text-keeps-its-rendering-context.md) - Preserve surrounding whitespace/casing context and map source offsets through transformation.
+- [Normalize XML input after Trusted Types](spec-compliance-domparser-normalizes-xml-input-after-trusted-types.md) - Put scalar conversion at the parser input boundary, preserving DOMString elsewhere.
+- [Share HTTP date parsing with source metadata](spec-compliance-share-http-date-parsing-with-source-metadata.md) - Reuse the protocol parser, test existing callers and check narrower timestamp conversions.
 
 ### Codegen
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
@@ -695,6 +697,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A referenced function is checked only to its signature; its address emits its body](testing-a-referenced-function-is-checked-only-to-its-signature.md) - `_ = f` checks a declaration; `_ = &f` checks the body and emits it - choose by what the test must catch, and build it where the body links.
 - [A GC Request Does Not Prove an Event Target Was Collected](testing-a-gc-request-does-not-prove-an-event-target-was-collected.md) - Verify native identity and generation before asserting collection.
 - [Equal browser pass counts can hide opposite behaviour](testing-equal-browser-pass-counts-can-hide-opposite-behaviour.md) - Compare aligned per-subtest results before applying a browser majority.
+- [Formatting expectations must not repeat the format expression](testing-formatting-expectations-must-not-repeat-the-format-expression.md) - Use literal expectations and compile the implementation-present test branch.
 
 ### Debugging
 - [A call that can free its argument ends every read of it](debugging-a-call-that-can-free-its-argument-ends-every-read-of-it.md) - A call that can free its argument ends the caller's use of it - including the `defer`s written above the call; read the trace's top frame before believing a deep one.
@@ -763,6 +766,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Worker report tests can fail before reporting](debugging-worker-report-tests-can-fail-before-reporting.md) - Trace harness prerequisites to the request producer; supplying a missing input makes inert options observable.
 - [A WPT that waits for a frame's message after its load event may have missed it](debugging-a-wpt-that-waits-for-a-message-after-load-may-have-missed-it.md) - A hang waiting for a frame's message is often an ordering bug, not a missing message: record when it arrived relative to the load, and buffer it to find what else fails.
 - [An aggregate assignment can overwrite its input](debugging-aggregate-assignment-can-overwrite-its-input.md) - Save dependent old fields before assigning an anonymous Zig aggregate.
+- [Measure a hot struct against allocator size classes](debugging-a-hot-struct-against-allocator-size-classes.md) - Compare the compiled request with its allocation bucket; a 16-byte field can cost 2 KiB.
 
 ### Workflow
 - [wpt.fyi's search answers 0/0 for browsers it has no aligned run of - read the runs' raw reports](workflow-wpt-fyi-search-hides-subtests-read-the-runs-raw-report.md) - For a browser-behaviour ruling, read the aligned stable runs' raw report.json - subtest status and message per browser - never the search endpoint's file counts.
