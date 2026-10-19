@@ -448,11 +448,11 @@ fn adoptedSheetsOf(instance: *runtime.Instance) ?*@import("dom").style.adopted.A
     return &internal.adopted_style_sheets;
 }
 
-/// DocumentOrShadowRoot.activeElement getter
-/// Returns the deepest element in this shadow tree that has focus, or null.
+/// HTML DocumentOrShadowRoot.activeElement steps 1–7: the document's
+/// focused area, retargeted into this tree (also used by Document).
 pub fn get_activeElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.active_element;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    return @import("html").focus.activeElement(instance);
 }
 
 // ============================================================================

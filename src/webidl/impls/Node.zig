@@ -1234,8 +1234,7 @@ pub fn call_cloneNode(instance: *runtime.Instance, subtree: webidl.Opt(bool)) an
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: If this is a shadow root, throw NotSupportedError
-    // Shadow roots have DOCUMENT_FRAGMENT_NODE type but also have a host
-    // For now, we don't have full shadow DOM so skip this check
+    if (instance.stateAs(interfaces.ShadowRoot.State) != null) return error.NotSupportedError;
 
     // Step 2: "Return the result of cloning a node given this with subtree
     // set to subtree" - document defaulting to this's node document, which

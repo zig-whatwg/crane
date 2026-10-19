@@ -77,8 +77,11 @@ pub fn processDataUrl(allocator: Allocator, url_str: []const u8) DataUrlError!?D
         return DataUrlError.NotDataUrl;
     }
 
-    // Step 2-3: Remove "data:" prefix
-    const input = url_str[5..];
+    // Steps 2-3: Serialize with exclude fragment, then remove "data:".
+    // Do this before finding the comma or percent-decoding: an escaped #
+    // belongs to the body, while a comma in the fragment cannot delimit it.
+    const input_end = std.mem.indexOfScalar(u8, url_str, '#') orelse url_str.len;
+    const input = url_str[5..input_end];
 
     // Step 4-5: Find the comma separator
     const comma_pos = std.mem.indexOf(u8, input, ",") orelse {

@@ -15,7 +15,7 @@
 //!     flat-tree membership answer whether rendering exists or is delegated.
 //!   * Focus navigation scopes are the document's tree only: shadow trees,
 //!     slots and delegatesFocus are not flattened into the sequential focus
-//!     navigation order, and a shadow host is focused as itself.
+//!     navigation order. Explicit focus and blur do follow delegatesFocus.
 //!   * Rendering-time fixup retains the existing no-blur deviation. Focus
 //!     actions validate their target, but their bookkeeping, script reads,
 //!     and selector matching only observe the designation (HTML 6.6.2–6.6.6).
@@ -215,6 +215,9 @@ fn isBeingRendered(element: *Instance) bool {
 pub fn isFocusableArea(element: *Instance) bool {
     if (!isElement(element)) return false;
     if (tabindexValue(element) == null and !isFocusableByDefault(element)) return false;
+    // HTML 6.6.2, first row: a host that delegates focus is not itself a
+    // focusable area, even with a tabindex. Focusing step 1 finds its delegate.
+    if (delegatingShadowRoot(element) != null) return false;
     if (isActuallyDisabled(element)) return false;
     if (isInert(element)) return false;
     return isBeingRendered(element);
@@ -488,14 +491,14 @@ fn focusUpdateSteps(old_chain_in: Chain, new_chain_in: Chain, new_focus_target: 
 
 /// HTML "get the focusable area" for `focus_target`, an element that is not
 /// a focusable area.
-fn getFocusableArea(focus_target: *Instance) ?*Instance {
+fn getFocusableArea(focus_target: *Instance, trigger: Trigger) ?*Instance {
     // HTML 4.10.4's platform label behavior, used by focusing step 1:
     // WebKit HTMLLabelElement::focus forwards only when the label itself
     // is not focusable. All three browsers pass forward-focus-to-associated-
     // element.html (6/6, wpt.fyi 23b0b89b1a), including a hidden label.
     if (focus_target.stateAs(interfaces.HTMLLabelElement.State) != null) {
         const control = (interfaces.HTMLLabelElement.get_control(focus_target) catch null) orelse return null;
-        return if (isFocusableArea(control)) control else null;
+        return if (isFocusableArea(control)) control else getFocusableArea(control, trigger);
     }
     // "If focus target is the document element of its Document": its viewport.
     if (nodeDocument(focus_target)) |document| {
@@ -504,7 +507,49 @@ fn getFocusableArea(focus_target: *Instance) ?*Instance {
     // "If focus target is a navigable container with a non-null content
     // navigable": that navigable's active document.
     if (isNavigableContainer(focus_target)) return contentDocumentOf(focus_target);
-    // Area shapes, scrollable regions and delegatesFocus: not implemented.
+    // Shadow-host case, steps 1–2: keep its already focused descendant.
+    // Read the existing designation; do not run rendering-time fixup here.
+    if (delegatingShadowRoot(focus_target) != null) {
+        if (nodeDocument(focus_target)) |document| {
+            const focused = currentlyFocusedArea(document);
+            if (isShadowIncludingInclusiveAncestor(focus_target, focused)) return focused;
+        }
+        // Step 3.
+        return focusDelegate(focus_target, trigger);
+    }
+    // Area shapes and scrollable regions have no layout-backed focus areas.
+    return null;
+}
+
+/// A host's delegating root, including closed roots. The public shadowRoot
+/// attribute is intentionally not the internal tree algorithm's lookup.
+fn delegatingShadowRoot(element: *Instance) ?*Instance {
+    const root = dom.shadow_hosts.rootForHost(element) orelse return null;
+    return if (interfaces.ShadowRoot.get_delegatesFocus(root) catch false) root else null;
+}
+
+/// HTML "focus delegate", steps 1–7. WebKit's Element::focusDelegate uses
+/// ordinary descendants and recurses only through delegating shadow hosts.
+fn focusDelegate(focus_target: *Instance, trigger: Trigger) ?*Instance {
+    // Steps 1–3.
+    var where_to_look = focus_target;
+    if (dom.shadow_hosts.rootForHost(focus_target)) |root| {
+        if (!(interfaces.ShadowRoot.get_delegatesFocus(root) catch false)) return null;
+        where_to_look = root;
+    }
+    // Steps 4–5.
+    if (autofocusDelegate(where_to_look, trigger)) |area| return area;
+    // Step 6: ordinary tree order, not shadow-including or flattened order.
+    const is_dialog = focus_target.stateAs(interfaces.HTMLDialogElement.State) != null;
+    var descendant = following(where_to_look, where_to_look);
+    while (descendant) |element| : (descendant = following(element, where_to_look)) {
+        if (!isElement(element)) continue;
+        // Steps 6.1–6.3.
+        if (if (is_dialog) isSequentiallyFocusable(element) else isFocusableArea(element)) return element;
+        // Steps 6.4–6.5: getFocusableArea recurses for a delegating host.
+        if (getFocusableArea(element, trigger)) |area| return area;
+    }
+    // Step 7.
     return null;
 }
 
@@ -516,7 +561,7 @@ pub fn autofocusDelegate(focus_target: *Instance, trigger: Trigger) ?*Instance {
         // Step 1.1.
         if (!isElement(element) or !form_associated.hasAttribute(element, "autofocus")) continue;
         // Steps 1.2-1.3.
-        const area = if (isFocusableArea(element)) element else getFocusableArea(element) orelse continue;
+        const area = if (isFocusableArea(element)) element else getFocusableArea(element, trigger) orelse continue;
         // Steps 1.4-1.5.
         if (trigger == .click and !isClickFocusable(area)) continue;
         return area;
@@ -528,12 +573,11 @@ pub fn autofocusDelegate(focus_target: *Instance, trigger: Trigger) ?*Instance {
 /// HTML "focusing steps" for `new_focus_target`, an element or a Document
 /// (its viewport).
 pub fn focusingSteps(new_focus_target_in: *Instance, fallback_target: ?*Instance, trigger: Trigger) void {
-    _ = trigger;
     var new_focus_target: ?*Instance = new_focus_target_in;
     // Step 1: "If new focus target is not a focusable area, then set it to
     // the result of getting the focusable area for it."
     if (isElement(new_focus_target_in) and !isFocusableArea(new_focus_target_in)) {
-        new_focus_target = getFocusableArea(new_focus_target_in);
+        new_focus_target = getFocusableArea(new_focus_target_in, trigger);
     }
     // Step 2: fall back, or return.
     const target = new_focus_target orelse fallback_target orelse return;
@@ -558,11 +602,18 @@ pub fn focusingSteps(new_focus_target_in: *Instance, fallback_target: ?*Instance
 }
 
 /// HTML "unfocusing steps" for `old_focus_target`.
-pub fn unfocusingSteps(old_focus_target: *Instance) void {
-    // Steps 1 and 3 (delegatesFocus, area shapes, scrollable regions): not
-    // implemented. Step 2: "If old focus target is inert, then return."
-    if (isInert(old_focus_target)) return;
+pub fn unfocusingSteps(old_focus_target_in: *Instance) void {
+    var old_focus_target = old_focus_target_in;
     const document = nodeDocument(old_focus_target) orelse return;
+    // Step 1: a delegating host unfocuses the currently focused area only
+    // when its shadow root is that area's shadow-including ancestor.
+    if (delegatingShadowRoot(old_focus_target)) |root| {
+        const focused = currentlyFocusedArea(document);
+        if (isShadowIncludingInclusiveAncestor(root, focused)) old_focus_target = focused;
+    }
+    // Step 2: "If old focus target is inert, then return."
+    if (isInert(old_focus_target)) return;
+    // Step 3: area shapes and scrollable regions need layout-backed areas.
     // Step 4: "Let old chain be the current focus chain of the top-level
     // traversable in which old focus target finds itself."
     const old_chain = focusChain(currentlyFocusedArea(document));

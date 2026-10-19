@@ -410,9 +410,16 @@ pub fn prepareScriptElement(
             return ScriptExecutionError.OutOfMemory;
 
         // Prepare 33.7: potentially render-blocking external scripts block
-        // before fetching. 33.9: the fetch option records ACTUAL blocking.
+        // before fetching. 33.9: capture the fetch's blocking classification.
         if (isPotentiallyRenderBlocking(script_element)) try dom.document_rendering.block(script_element);
-        state.fetch_render_blocking = dom.document_rendering.isRenderBlocking(script_element);
+        // Chrome alone ships renderBlockingStatus: Blink's ScriptLoader
+        // (core/script/script_loader.cc) preserves explicit render tokens
+        // independently of document membership. Keep the implicit body case
+        // non-blocking, as HTMLPreloadScanner (core/html/parser/
+        // html_preload_scanner.cc) and ResourceFetcher (platform/loader/fetch/
+        // resource_fetcher.cc) distinguish it from kBlocking.
+        state.fetch_render_blocking = dom.document_rendering.isRenderBlocking(script_element) or
+            dom.document_rendering.hasRenderToken(getAttribute(script_element, "blocking") orelse "");
 
         // Prepare step 33.8: external classic scripts and module graphs
         // delay their preparation-time document until "mark as ready".
@@ -1353,9 +1360,10 @@ pub fn executeScriptElement(
     switch (script_type) {
         .classic => {
             // Step 6.1: Let oldCurrentScript be document's currentScript
-            // Step 6.2: If el's root is not a shadow root, set currentScript to el
-            // (We'll assume no shadow roots for now)
-            const old_current_script = swapCurrentScript(node_document, script_element);
+            // Step 6.2: a shadow-tree script exposes null; otherwise el.
+            // Choose at execution entry, so moving a running script does
+            // not change the value (WebKit/Gecko's current-script scopes).
+            const old_current_script = swapCurrentScript(node_document, currentScriptAtEntry(script_element));
 
             // Step 6.3: Run the classic script given by el's result.
             runClassicScript(script_element, node_document, from_external);
@@ -1812,6 +1820,13 @@ fn swapCurrentScript(document: *runtime.Instance, script: ?*runtime.Instance) ?*
     return old;
 }
 
+/// HTML "execute the script element", classic step 6.2. A detached script
+/// has itself (or an ordinary fragment) as its root and remains current.
+fn currentScriptAtEntry(element: *runtime.Instance) ?*runtime.Instance {
+    const root = Node.call_getRootNode(element, .notPassed()) catch return null;
+    return if (root.stateAs(interfaces.ShadowRoot.State) != null) null else element;
+}
+
 /// "Scripting is enabled" for `document`.
 fn scriptingEnabled(document: *runtime.Instance) bool {
     return document_scripts.scriptingEnabled(document);
@@ -1819,11 +1834,11 @@ fn scriptingEnabled(document: *runtime.Instance) bool {
 
 /// Run `source` as a classic script for an SVG script element, with `url` as
 /// its resource name, `base_url` as its base URL and `muted` as its muted
-/// errors: currentScript is the element while it runs (it is an
-/// HTMLOrSVGScriptElement), and clean-up's microtask checkpoint follows, as
-/// for an HTML script.
+/// errors. The HTMLOrSVGScriptElement currentScript attribute uses the same
+/// execution-entry shadow-root rule as HTML; clean-up's microtask checkpoint
+/// follows. SVG 2, 15.9.1; HTML execute-script classic step 6.2.
 fn runSvgScriptSource(document: *runtime.Instance, element: *runtime.Instance, source: []const u8, url: []const u8, base_url: []const u8, muted: bool, credentials_mode: fetch.internal.CredentialsMode) void {
-    const old_current_script = swapCurrentScript(document, element);
+    const old_current_script = swapCurrentScript(document, currentScriptAtEntry(element));
     defer _ = swapCurrentScript(document, old_current_script);
     runClassicScriptText(element, document, source, url, base_url, muted, credentials_mode);
 }

@@ -1468,8 +1468,12 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
     const target = try dom.template_contents.insertionTarget(instance);
     const element_base = dom.instance_bridge.getNodeBase(target) orelse return error.InvalidStateError;
 
-    // The empty string parses to an empty fragment: replace all with nothing.
-    if (html_string.len == 0) {
+    // HTML fragment parsing steps 18 and 21 still create head/body for an
+    // HTML html-element context at EOF. Keep the empty-fragment shortcut
+    // only for other contexts (as Blink's SetInnerHTMLInternal does).
+    if (html_string.len == 0 and
+        !(std.mem.eql(u8, internal.data.local_name.asSlice(), "html") and isHtmlElementInHtmlDocument(instance, internal)))
+    {
         try dom.mutation.replaceAll(@as(?*dom.NodeBase, null), element_base);
         return;
     }
