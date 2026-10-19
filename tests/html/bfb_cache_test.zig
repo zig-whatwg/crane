@@ -484,3 +484,35 @@ test "the eligibility matrix: unload listeners do not keep a page out (Chrome, S
     // Kept, so its unload event never fired (unload step 12).
     try expectIn(realm_a, "String(localStorage.bfbUnload)", "undefined");
 }
+
+/// How many times the counting restore step ran (lane sw1-b10): tests in
+/// this executable run one at a time.
+var restore_steps_run = std.atomic.Value(u32).init(0);
+
+fn countRestore(_: runtime.Context) void {
+    _ = restore_steps_run.fetchAdd(1, .monotonic);
+}
+
+test "an owner's restore step runs once per restore, for the restored page, and never for an evicted one" {
+    dom.bfcache.installRestoreStep(&countRestore);
+    const fixture = try Fixture.start(.{ .back_forward_cache_ttl_seconds = 1 });
+    defer fixture.stop();
+    const bc = try fixture.openPopup("/a.html");
+    const before = restore_steps_run.load(.monotonic);
+    try fixture.goTo(bc, "location.href = '/b.html'", "/b.html");
+    // Kept, not restored: no restore step.
+    try testing.expectEqual(before, restore_steps_run.load(.monotonic));
+    // Back: A restored, once.
+    try fixture.goTo(bc, "history.back()", "/a.html");
+    try testing.expectEqual(before + 1, restore_steps_run.load(.monotonic));
+    // Forward: B restored, once.
+    try fixture.goTo(bc, "history.forward()", "/b.html");
+    try testing.expectEqual(before + 2, restore_steps_run.load(.monotonic));
+    // A evicted by its time to live: back fetches it again, and no restore
+    // step runs for it.
+    try fixture.turn(1300);
+    try testing.expectEqual(@as(usize, 0), fixture.cached());
+    try fixture.goTo(bc, "history.back()", "/a.html");
+    try testing.expectEqual(@as(u32, 2), fixture.server.count("/a.html"));
+    try testing.expectEqual(before + 2, restore_steps_run.load(.monotonic));
+}
