@@ -327,7 +327,11 @@ adapter will use Crane's own walker (src/html/structured_clone).
 
 The host's side of the ECMAScript host hooks is a `HostHooks` value, installed
 per agent by `createAgent` and nowhere else: `loadImportedModule`
-(HostLoadImportedModule for `import()`, finished with `finishDynamicImport`),
+(HostLoadImportedModule for `import()`, finished with `finishDynamicImport`;
+an `import()` whose attributes name a key other than "type" never reaches
+it - HTML's HostGetSupportedImportAttributes is « "type" », so the engine
+rejects it with a TypeError, as Blink's HostImportModuleDynamically does,
+and a static import's is parseModule's SyntaxError),
 `importMetaUrl` (HostGetImportMetaProperties steps 1-3, import.meta.url),
 `importMetaResolve` (its steps 4-6: the engine makes the builtin
 `import.meta.resolve` beside `url`, does its ToString, and asks the host to

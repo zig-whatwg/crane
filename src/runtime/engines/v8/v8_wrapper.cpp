@@ -12067,7 +12067,21 @@ static MaybeLocal<Promise> ProtocolHostImportModuleDynamically(
     protocolReadHostDefined(isolate, host_defined_options, &kind, &referrer);
     String::Utf8Value specifier_utf8(isolate, specifier);
     // A dynamic import's attributes are (key, value) pairs.
-    char* type_attribute = importTypeAttribute(isolate, context, import_attributes, 2, nullptr);
+    bool has_unsupported_key = false;
+    char* type_attribute = importTypeAttribute(isolate, context, import_attributes, 2, &has_unsupported_key);
+    // HTML HostGetSupportedImportAttributes is « "type" »: an import() whose
+    // attributes name any other key rejects with a TypeError and loads
+    // nothing - the check Blink's HostImportModuleDynamically makes before
+    // its host steps (ModuleRequest::HasInvalidImportAttributeKey, "Invalid
+    // attribute key"); a static import's is parseModule's SyntaxError.
+    // html/semantics/scripting-1/the-script-element/import-attributes/
+    // dynamic-import-with-attributes-argument.any.js: all three browsers
+    // pass with a TypeError.
+    if (has_unsupported_key) {
+        delete[] type_attribute;
+        (void)resolver->Reject(context, Exception::TypeError(String::NewFromUtf8Literal(isolate, "Invalid import attribute key: only \"type\" is supported")));
+        return handle_scope.Escape(resolver->GetPromise());
+    }
     dispatch(
         isolate,
         new Global<Context>(isolate, context),
