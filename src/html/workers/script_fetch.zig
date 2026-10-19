@@ -836,6 +836,12 @@ pub const ServiceWorkerFetchOptions = struct {
     /// Chrome and Safari send it (referrer-toplevel-script-fetch.https.html,
     /// wpt.fyi df642c4142; Firefox fails) - golden rule 2, the majority.
     referrer: ?[]const u8 = null,
+    /// Where a violation of the policy container's CSP list is reported
+    /// (BORROWED for the fetch): a service worker's importScripts() passes
+    /// its own global's - the fetch runs on the worker's thread, under the
+    /// worker's own policy (service_worker/run.zig). The job thread's fetches
+    /// pass none: they carry no CSP list (run.zig FetchClient).
+    csp_violation_reporter: ?fetch.internal.CspViolationReporter = null,
 };
 
 /// What a service worker script fetch got: the facts of the response the
@@ -921,6 +927,7 @@ pub fn serviceWorkerScriptRequest(allocator: Allocator, url: []const u8, options
     request.network = options.network;
     request.blob_url_store = options.blob_url_store;
     if (options.referrer) |referrer| try request.setReferrerUrl(referrer);
+    request.csp_violation_reporter = options.csp_violation_reporter;
     return request;
 }
 

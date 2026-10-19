@@ -291,6 +291,9 @@ fn importScript(manager_ptr: *anyopaque, worker_id: u64, ctx: runtime.Context, u
                 .bypass_http_cache = plan.bypass_http_cache,
                 .origin = client.request.origin,
                 .policy_container = client.request.policy_container,
+                // Its violations go to the worker's own global, on this
+                // thread (CSP 2.4.2: the request's client's).
+                .csp_violation_reporter = client.request.csp_violation_reporter,
                 .cookie_jar = client.request.cookie_jar,
                 .network = client.request.network,
                 .blob_url_store = client.request.blob_url_store,
