@@ -657,7 +657,7 @@ fn queueMutationObserverMicrotask(allocator: Allocator, realm: ?runtime.Context)
     // Step 3: Queue a microtask to notify mutation observers
     queueNotifyMicrotask(allocator, surrounding) catch {
         // If queueing fails, fall back to synchronous execution
-        std.log.err("MutationObserver: failed to queue microtask, falling back to synchronous", .{});
+        log.warn("the notify microtask could not be queued; notifying now", .{});
         try notifyMutationObservers(allocator);
     };
 }
