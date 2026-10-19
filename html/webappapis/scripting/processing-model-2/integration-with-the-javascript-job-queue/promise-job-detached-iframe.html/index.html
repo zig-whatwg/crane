@@ -32,7 +32,25 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 14 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-af6770c5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Reaction job should run even if onFulfilled handler belongs to detached iframe</span></div><a class="self" href="#s-af6770c5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2d59a833"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Reaction job should run even if onRejected handler belongs to detached iframe</span></div><a class="self" href="#s-2d59a833" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4e73485d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Reaction job should not be skipped if onFulfilled handler belongs to fully active global</span></div><a class="self" href="#s-4e73485d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d0ea286d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Reaction job should not be skipped if onRejected handler belongs to fully active global</span></div><a class="self" href="#s-d0ea286d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5965f855"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Thenable job for fulfilled promise should run even if it belongs to detached iframe</span></div><a class="self" href="#s-5965f855" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9ef392a6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Thenable job for rejected promise should run even if it belongs to detached iframe</span></div><a class="self" href="#s-9ef392a6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f1a04129"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">No job with detached iframe&#39;s realm should be used for Promise.reject on fulfilled promise</span></div><a class="self" href="#s-f1a04129" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-528c593f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">No job with detached iframe&#39;s realm should be used for Promise.reject on rejected promise</span></div><a class="self" href="#s-528c593f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cebba4c3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Thenable job created by reaction job for fulfillment should run even if it belongs to detached iframe</span></div><a class="self" href="#s-cebba4c3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-037f9a92"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Thenable job created by reaction job for rejection should run even if it belongs to detached iframe</span></div><a class="self" href="#s-037f9a92" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-be9fc08e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Thenable job created by Promise.all should run even if it belongs to detached iframe</span></div><a class="self" href="#s-be9fc08e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-87d19769"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Thenable job created by Promise.allSettled should run even if it belongs to detached iframe</span></div><a class="self" href="#s-87d19769" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7151eda5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Thenable job created by Promise.any should run even if it belongs to detached iframe</span></div><a class="self" href="#s-7151eda5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7898bc74"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Thenable job created by Promise.race should run even if it belongs to detached iframe</span></div><a class="self" href="#s-7898bc74" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

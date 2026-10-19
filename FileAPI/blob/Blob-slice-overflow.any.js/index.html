@@ -32,7 +32,25 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 8 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/FileAPI/blob/Blob-slice-overflow.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>4</b> / 4</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-2241fde6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">slice start is negative, relativeStart will be max((size + start), 0)</span></div><a class="self" href="#s-2241fde6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8e90985a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">slice start is greater than blob size, relativeStart will be min(start, size)</span></div><a class="self" href="#s-8e90985a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7236285e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">slice end is negative, relativeEnd will be max((size + end), 0)</span></div><a class="self" href="#s-7236285e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-019982ab"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">slice end is greater than blob size, relativeEnd will be min(end, size)</span></div><a class="self" href="#s-019982ab" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/FileAPI/blob/Blob-slice-overflow.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>4</b> / 4</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-7e499a73"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">slice start is negative, relativeStart will be max((size + start), 0)</span></div><a class="self" href="#s-7e499a73" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a8a569e2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">slice start is greater than blob size, relativeStart will be min(start, size)</span></div><a class="self" href="#s-a8a569e2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-aa4ac51c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">slice end is negative, relativeEnd will be max((size + end), 0)</span></div><a class="self" href="#s-aa4ac51c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-45d57a7f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">slice end is greater than blob size, relativeEnd will be min(end, size)</span></div><a class="self" href="#s-45d57a7f" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

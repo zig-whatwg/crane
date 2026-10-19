@@ -32,7 +32,20 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 7 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-3b76eb96"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Stream objects created in expected globals</span></div><a class="self" href="#s-3b76eb96" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b6eb41d6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cancel promise is created in same global as stream</span></summary><pre class="msg">assert_equals: Cancel promise comes from the same global as the stream expected true but got false</pre></details><a class="self" href="#s-b6eb41d6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0c257a17"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Closed Promise in correct global</span></div><a class="self" href="#s-0c257a17" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b5c1ddf6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Reader objects in correct global</span></summary><pre class="msg">assert_equals: Object comes from other realm expected true but got false</pre></details><a class="self" href="#s-b5c1ddf6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cad6e418"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Desired size can be grafted from one prototype to another</span></div><a class="self" href="#s-cad6e418" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-225ce9e7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Closing errored stream throws object in appropriate global</span></div><a class="self" href="#s-225ce9e7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-94887744"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Can enqueue chunks from multiple globals</span></div><a class="self" href="#s-94887744" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d38568b5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Correct errors and globals for closed streams</span></div><a class="self" href="#s-d38568b5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-48e319b7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Tee Branches in correct global</span></div><a class="self" href="#s-48e319b7" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

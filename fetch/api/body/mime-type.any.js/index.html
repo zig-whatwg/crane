@@ -32,7 +32,57 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 40 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/body/mime-type.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>20</b> / 20</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-040620d5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request: overriding explicit Content-Type</span></div><a class="self" href="#s-040620d5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-69045d36"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Response: overriding explicit Content-Type</span></div><a class="self" href="#s-69045d36" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ffeec9dc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request: removing implicit Content-Type</span></div><a class="self" href="#s-ffeec9dc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bda16a76"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Response: removing implicit Content-Type</span></div><a class="self" href="#s-bda16a76" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3f8a088d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request: setting missing Content-Type</span></div><a class="self" href="#s-3f8a088d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a67c98e9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Response: setting missing Content-Type</span></div><a class="self" href="#s-a67c98e9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f215fa28"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request: MIME type for Blob from empty body</span></div><a class="self" href="#s-f215fa28" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b8396da8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Response: MIME type for Blob from empty body</span></div><a class="self" href="#s-b8396da8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-542df3d9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request: MIME type for Blob from empty body with Content-Type</span></div><a class="self" href="#s-542df3d9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6cf32cc8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Response: MIME type for Blob from empty body with Content-Type</span></div><a class="self" href="#s-6cf32cc8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0e2ee76e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request: MIME type for Blob</span></div><a class="self" href="#s-0e2ee76e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d6f75f75"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Response: MIME type for Blob</span></div><a class="self" href="#s-d6f75f75" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-349c4a1b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request: MIME type for Blob with non-empty type</span></div><a class="self" href="#s-349c4a1b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c2f48cf1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Response: MIME type for Blob with non-empty type</span></div><a class="self" href="#s-c2f48cf1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d84466ee"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request: Extract a MIME type with clone</span></div><a class="self" href="#s-d84466ee" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-223442d0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Response: Extract a MIME type with clone</span></div><a class="self" href="#s-223442d0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9855298a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request: Content-Type in headers wins Blob&quot;s type</span></div><a class="self" href="#s-9855298a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2c95ad87"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Response: Content-Type in headers wins Blob&quot;s type</span></div><a class="self" href="#s-2c95ad87" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b731d38a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request: setting missing Content-Type in headers and it wins Blob&quot;s type</span></div><a class="self" href="#s-b731d38a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-26269a81"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Response: setting missing Content-Type in headers and it wins Blob&quot;s type</span></div><a class="self" href="#s-26269a81" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/body/mime-type.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>20</b> / 20</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-da9a2ec4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request: overriding explicit Content-Type</span></div><a class="self" href="#s-da9a2ec4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-94d4b5ea"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Response: overriding explicit Content-Type</span></div><a class="self" href="#s-94d4b5ea" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-831073e1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request: removing implicit Content-Type</span></div><a class="self" href="#s-831073e1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f39d7925"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Response: removing implicit Content-Type</span></div><a class="self" href="#s-f39d7925" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-97c1c82b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request: setting missing Content-Type</span></div><a class="self" href="#s-97c1c82b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-60ed2cf6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Response: setting missing Content-Type</span></div><a class="self" href="#s-60ed2cf6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ad12ead5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request: MIME type for Blob from empty body</span></div><a class="self" href="#s-ad12ead5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ca0b3468"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Response: MIME type for Blob from empty body</span></div><a class="self" href="#s-ca0b3468" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-eb23c55a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request: MIME type for Blob from empty body with Content-Type</span></div><a class="self" href="#s-eb23c55a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3930e273"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Response: MIME type for Blob from empty body with Content-Type</span></div><a class="self" href="#s-3930e273" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b6bef529"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request: MIME type for Blob</span></div><a class="self" href="#s-b6bef529" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5641ec12"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Response: MIME type for Blob</span></div><a class="self" href="#s-5641ec12" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4b9eae6b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request: MIME type for Blob with non-empty type</span></div><a class="self" href="#s-4b9eae6b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ea1192e0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Response: MIME type for Blob with non-empty type</span></div><a class="self" href="#s-ea1192e0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4da96513"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request: Extract a MIME type with clone</span></div><a class="self" href="#s-4da96513" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-93a1f17a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Response: Extract a MIME type with clone</span></div><a class="self" href="#s-93a1f17a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-758fa2b0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request: Content-Type in headers wins Blob&quot;s type</span></div><a class="self" href="#s-758fa2b0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-516fbe5f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Response: Content-Type in headers wins Blob&quot;s type</span></div><a class="self" href="#s-516fbe5f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9d7c6838"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request: setting missing Content-Type in headers and it wins Blob&quot;s type</span></div><a class="self" href="#s-9d7c6838" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ad0d222c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Response: setting missing Content-Type in headers and it wins Blob&quot;s type</span></div><a class="self" href="#s-ad0d222c" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,24 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 11 passed, 0 failed, 1 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/html/browsers/windows/clear-window-name.https.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>11</b> / 12</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-87cd18e4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Window.name is not reset when there is an opener around</span></div><a class="self" href="#s-87cd18e4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-38c7a77e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Window.name is not reset when there is an opener around (cross-origin)</span></div><a class="self" href="#s-38c7a77e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3c89768c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Window.name is not reset at the first navigation away from loaded initial about:blank</span></div><a class="self" href="#s-3c89768c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-06b52ec7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Window.name is not reset at the first navigation away from initial about:blank with noopener</span></div><a class="self" href="#s-06b52ec7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-068ad655"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Window.name is reset at the first cross-origin navigation with noopener</span></div><a class="self" href="#s-068ad655" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-aafd8798"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Window.name is not reset at the first navigation away from initial about:blank with window.opener set to null</span></div><a class="self" href="#s-aafd8798" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-29174a10"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Window.name is not reset at the same-origin navigation with window.opener set to null</span></div><a class="self" href="#s-29174a10" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fd71b7af"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Window.name is reset at the first first cross-origin navigation with window.opener set to null</span></div><a class="self" href="#s-fd71b7af" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ab3840ca"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Window.name is set by the window</span></div><a class="self" href="#s-ab3840ca" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-689716b5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Window.name is reset at the first cross-origin navigation</span></div><a class="self" href="#s-689716b5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9d7d4cd4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">window.name is not reset after navigating to an about:blank page from a non-about:blank page</span></div><a class="self" href="#s-9d7d4cd4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-timeout" id="s-4a1773aa"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">Window.name is not reset if the document.domain is set to the parent domain</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-4a1773aa" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

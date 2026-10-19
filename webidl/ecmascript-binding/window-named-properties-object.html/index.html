@@ -32,7 +32,24 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 5 passed, 8 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-ea1972b8"><details><summary><span class="mark">FAIL</span><span class="sub-name">[[SetPrototypeOf]] and [[GetPrototypeOf]]</span></summary><pre class="msg">Immutable prototype object &#39;[object WindowProperties]&#39; cannot have their prototype set</pre></details><a class="self" href="#s-ea1972b8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9ac4a734"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">[[PreventExtensions]] and [[IsExtensible]]</span></div><a class="self" href="#s-9ac4a734" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-85aeb771"><details><summary><span class="mark">FAIL</span><span class="sub-name">[[GetOwnProperty]]</span></summary><pre class="msg">assert_equals: supported indexed property name typeof desc expected &quot;object&quot; but got &quot;undefined&quot;</pre></details><a class="self" href="#s-85aeb771" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-eea4a34f"><details><summary><span class="mark">FAIL</span><span class="sub-name">[[GetOwnProperty]] (named property visibility algorithm)</span></summary><pre class="msg">assert_equals: supported non-index property name expected (undefined) undefined but got (object) object &quot;[object Object]&quot;</pre></details><a class="self" href="#s-eea4a34f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e05cb175"><details><summary><span class="mark">FAIL</span><span class="sub-name">[[DefineOwnProperty]]</span></summary><pre class="msg">Cannot define property on WindowProperties object</pre></details><a class="self" href="#s-e05cb175" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3d5047e4"><details><summary><span class="mark">FAIL</span><span class="sub-name">[[HasProperty]]</span></summary><pre class="msg">assert_true: supported indexed property name expected true got false</pre></details><a class="self" href="#s-3d5047e4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bb7dfda7"><details><summary><span class="mark">FAIL</span><span class="sub-name">[[Get]]</span></summary><pre class="msg">assert_equals: supported indexed property name expected (object) object &quot;[object Window]&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-bb7dfda7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f2701148"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">[[Get]] (named property visibility algorithm)</span></div><a class="self" href="#s-f2701148" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8c111d27"><details><summary><span class="mark">FAIL</span><span class="sub-name">[[Set]] (direct)</span></summary><pre class="msg">Cannot set property on WindowProperties object</pre></details><a class="self" href="#s-8c111d27" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a001eda5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">[[Set]] (prototype chain)</span></div><a class="self" href="#s-a001eda5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7ba711a7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">[[Set]] (Reflect.set)</span></div><a class="self" href="#s-7ba711a7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3bc8ad49"><details><summary><span class="mark">FAIL</span><span class="sub-name">[[Delete]]</span></summary><pre class="msg">Cannot delete property on WindowProperties object</pre></details><a class="self" href="#s-3bc8ad49" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b254bc19"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">[[OwnPropertyKeys]]</span></div><a class="self" href="#s-b254bc19" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

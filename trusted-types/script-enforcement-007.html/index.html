@@ -32,7 +32,15 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1 passed, 3 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-bc7a85bb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Untrusted SVGScriptElement with classic type uses the source text returned by the default policy.</span></div><a class="self" href="#s-bc7a85bb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3b3a085a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Untrusted SVGScriptElement of importmap type uses the source text returned by the default policy.</span></summary><pre class="msg">assert_array_equals: expected property 2 to be &quot;IMPORTMAP&quot; but got &quot;UNMAPPED&quot; (expected array [&quot;CREATE_SCRIPT&quot;, &quot;SVGScriptElement text&quot;, &quot;IMPORTMAP&quot;] got [&quot;CREATE_SCRIPT&quot;, &quot;SVGScriptElement text&quot;, &quot;UNMAPPED&quot;])</pre></details><a class="self" href="#s-3b3a085a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5b0ef5a8"><details><summary><span class="mark">FAIL</span><span class="sub-name">Untrusted SVGScriptElement of module type uses the source text returned by the default policy.</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [&quot;CREATE_SCRIPT&quot;, &quot;SVGScriptElement text&quot;, &quot;MODULE&quot;] length 3, got [&quot;CREATE_SCRIPT&quot;, &quot;SVGScriptElement text&quot;] length 2</pre></details><a class="self" href="#s-5b0ef5a8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-aaccf73a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Untrusted SVGScriptElement of two importmap type use the source text returned by the default policy.</span></summary><pre class="msg">assert_array_equals: expected property 2 to be &quot;IMPORTMAP2&quot; but got &quot;UNMAPPED2&quot; (expected array [&quot;CREATE_SCRIPT&quot;, &quot;SVGScriptElement text&quot;, &quot;IMPORTMAP2&quot;, &quot;CREATE_SCRIPT&quot;, &quot;SVGScriptElement text&quot;, &quot;IMPORTMAP3&quot;] got [&quot;CREATE_SCRIPT&quot;, &quot;SVGScriptElement text&quot;, &quot;UNMAPPED2&quot;, &quot;CREATE_SCRIPT&quot;, &quot;SVGScriptElement text&quot;, &quot;UNMAPPED3&quot;])</pre></details><a class="self" href="#s-aaccf73a" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

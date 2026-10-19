@@ -33,7 +33,30 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 5 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/trusted-types/block-string-assignment-to-Window-setTimeout-setInterval.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>5</b> / 9</span></h3>
+<pre class="msg harness-msg">SyntaxError: Unexpected identifier &#39;want&#39;</pre>
+<ol class="subtests">
+<li class="sub s-pass" id="s-243ed0a7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Window.setTimeout assigned via policy (successful Script transformation).</span></div><a class="self" href="#s-243ed0a7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2795e516"><details><summary><span class="mark">FAIL</span><span class="sub-name">`Window.setTimeout(string)` throws.</span></summary><pre class="msg">assert_throws_js: function &quot;_ =&gt; {
+    setTimeout(&quot;globalThis.timeoutTestString();&quot;);
+  }&quot; did not throw</pre></details><a class="self" href="#s-2795e516" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b67a9b10"><details><summary><span class="mark">FAIL</span><span class="sub-name">`Window.setTimeout(null)` throws.</span></summary><pre class="msg">assert_throws_js: function &quot;_ =&gt; {
+    globalThis.setTimeout(null);
+  }&quot; did not throw</pre></details><a class="self" href="#s-b67a9b10" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5df4af35"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Window.setInterval assigned via policy (successful Script transformation).</span></div><a class="self" href="#s-5df4af35" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5fbfe803"><details><summary><span class="mark">FAIL</span><span class="sub-name">`Window.setInterval(string)` throws.</span></summary><pre class="msg">assert_throws_js: function &quot;_ =&gt; {
+    globalThis.setInterval(&quot;globalThis.intervalTestString()&quot;);
+  }&quot; did not throw</pre></details><a class="self" href="#s-5fbfe803" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bf12b394"><details><summary><span class="mark">FAIL</span><span class="sub-name">`Window.setInterval(null)` throws.</span></summary><pre class="msg">assert_throws_js: function &quot;_ =&gt; {
+    globalThis.setInterval(null);
+  }&quot; did not throw</pre></details><a class="self" href="#s-bf12b394" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4dc78e7a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">`Window.setTimeout(string)`, `Window.setInterval(string)` via default policy (successful Script transformation).</span></div><a class="self" href="#s-4dc78e7a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c6b40702"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">`Window.setTimeout(null)`, `Window.setInterval(null)` via default policy (successful Script transformation).</span></div><a class="self" href="#s-c6b40702" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-20ab2335"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Window.setTimeout and Window.setInterval pass the correct sink to the default policy</span></div><a class="self" href="#s-20ab2335" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

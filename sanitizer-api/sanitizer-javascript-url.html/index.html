@@ -32,7 +32,17 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1,273 passed, 5 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-3af48551"><details><summary><span class="mark">FAIL</span><span class="sub-name">setHTMLUnsafe { sanitizer: &quot;default&quot; } default configuration, &quot;&lt;math&gt;&lt;a href=&quot;javascript:alert(1)&quot;&gt;&lt;/a&gt;&lt;/math&gt;&quot;</span></summary><pre class="msg">assert_not_equals: javascript: URL is removed (math a is kept) got disallowed value null</pre></details><a class="self" href="#s-3af48551" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3add564f"><details><summary><span class="mark">FAIL</span><span class="sub-name">parseHTMLUnsafe { sanitizer: &quot;default&quot; } default configuration, &quot;&lt;math&gt;&lt;a href=&quot;javascript:alert(1)&quot;&gt;&lt;/a&gt;&lt;/math&gt;&quot;</span></summary><pre class="msg">assert_not_equals: javascript: URL is removed (math a is kept) got disallowed value null</pre></details><a class="self" href="#s-3add564f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dcaa3e55"><details><summary><span class="mark">FAIL</span><span class="sub-name">setHTMLUnsafe { sanitizer: new Sanitizer() } default configuration, &quot;&lt;math&gt;&lt;a href=&quot;javascript:alert(1)&quot;&gt;&lt;/a&gt;&lt;/math&gt;&quot;</span></summary><pre class="msg">assert_not_equals: javascript: URL is removed (math a is kept) got disallowed value null</pre></details><a class="self" href="#s-dcaa3e55" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-123d65b5"><details><summary><span class="mark">FAIL</span><span class="sub-name">parseHTMLUnsafe { sanitizer: new Sanitizer() } default configuration, &quot;&lt;math&gt;&lt;a href=&quot;javascript:alert(1)&quot;&gt;&lt;/a&gt;&lt;/math&gt;&quot;</span></summary><pre class="msg">assert_not_equals: javascript: URL is removed (math a is kept) got disallowed value null</pre></details><a class="self" href="#s-123d65b5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ffcd453a"><details><summary><span class="mark">FAIL</span><span class="sub-name">setJavascriptURLs(true) on the default configuration, &quot;&lt;math&gt;&lt;a href=&quot;javascript:alert(1)&quot;&gt;&lt;/a&gt;&lt;/math&gt;&quot;</span></summary><pre class="msg">assert_not_equals: unsafe method keeps the javascript: URL (math a is kept) got disallowed value null</pre></details><a class="self" href="#s-ffcd453a" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<p class="omitted">1,273 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

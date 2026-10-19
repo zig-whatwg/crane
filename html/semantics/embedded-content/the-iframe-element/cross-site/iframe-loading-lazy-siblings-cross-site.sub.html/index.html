@@ -32,7 +32,15 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 2 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-172cec7d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">In-viewport left iframe loads eagerly</span></div><a class="self" href="#s-172cec7d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-12219537"><details><summary><span class="mark">FAIL</span><span class="sub-name">Below-viewport left iframe loads lazily</span></summary><pre class="msg">assert_true: The window load event should have fired before the left below-viewport iframe loads expected true got false</pre></details><a class="self" href="#s-12219537" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fc58a9bc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">In-viewport right iframe loads eagerly</span></div><a class="self" href="#s-fc58a9bc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cccbe7e1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Below-viewport right iframe loads lazily</span></summary><pre class="msg">assert_true: The window load event should have fired before the right below-viewport iframe loads expected true got false</pre></details><a class="self" href="#s-cccbe7e1" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,21 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 4 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-7eea2e54"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cross-origin via document.domain: the prototype is null</span></div><a class="self" href="#s-7eea2e54" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fba4470a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cross-origin via document.domain: setting the prototype to an empty object via Object.setPrototypeOf should throw a TypeError</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; {
+      Object.setPrototypeOf(target, newValue);
+    }&quot; threw object &quot;SecurityError: SecurityError&quot; (&quot;SecurityError&quot;) expected instance of function &quot;function TypeError() { [native code] }&quot; (&quot;TypeError&quot;)</pre></details><a class="self" href="#s-fba4470a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-57bb6637"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cross-origin via document.domain: setting the prototype to an empty object via __proto__ should throw a &quot;SecurityError&quot; DOMException</span></div><a class="self" href="#s-57bb6637" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e81bbfb5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cross-origin via document.domain: setting the prototype to an empty object via Reflect.setPrototypeOf should return false</span></summary><pre class="msg">SecurityError</pre></details><a class="self" href="#s-e81bbfb5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-22d68cae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cross-origin via document.domain: the prototype must still be null</span></div><a class="self" href="#s-22d68cae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d646e12e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cross-origin via document.domain: setting the prototype to null via Object.setPrototypeOf should not throw</span></summary><pre class="msg">SecurityError</pre></details><a class="self" href="#s-d646e12e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c611aa56"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cross-origin via document.domain: setting the prototype to null via __proto__ should throw a &quot;SecurityError&quot; since it ends up in CrossOriginGetOwnProperty</span></div><a class="self" href="#s-c611aa56" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c88c0a69"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cross-origin via document.domain: setting the prototype to null via Reflect.setPrototypeOf should return true</span></summary><pre class="msg">SecurityError</pre></details><a class="self" href="#s-c88c0a69" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,17 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 3 passed, 3 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-36bdc88c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Exposed when a cross-origin redirect opts in to the destination origin</span></summary><pre class="msg">assert_equals: redirectCount expected 1 but got 0</pre></details><a class="self" href="#s-36bdc88c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9ac12732"><details><summary><span class="mark">FAIL</span><span class="sub-name">Exposed when a cross-origin redirect opts in with a wildcard</span></summary><pre class="msg">assert_equals: redirectCount expected 1 but got 0</pre></details><a class="self" href="#s-9ac12732" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d27c06fd"><details><summary><span class="mark">FAIL</span><span class="sub-name">Exposed when every redirect in the chain opts in to the destination origin</span></summary><pre class="msg">assert_equals: redirectCount expected 2 but got 0</pre></details><a class="self" href="#s-d27c06fd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6bb6f029"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Hidden when the redirect opts in to a non-destination origin</span></div><a class="self" href="#s-6bb6f029" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a96424c1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Hidden when only part of the chain opts in to the destination origin</span></div><a class="self" href="#s-a96424c1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-15a9e52a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Hidden for a no-referrer navigation even when the redirect opts in</span></div><a class="self" href="#s-15a9e52a" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

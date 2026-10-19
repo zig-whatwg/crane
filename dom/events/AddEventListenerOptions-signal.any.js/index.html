@@ -32,7 +32,39 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 22 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/dom/events/AddEventListenerOptions-signal.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>11</b> / 11</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-1a4dedbb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing an AbortSignal to addEventListener options should allow removing a listener</span></div><a class="self" href="#s-1a4dedbb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-80eb9705"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing an AbortSignal to addEventListener does not prevent removeEventListener</span></div><a class="self" href="#s-80eb9705" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cdea910c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing an AbortSignal to addEventListener works with the once flag</span></div><a class="self" href="#s-cdea910c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c81661f2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Removing a once listener works with a passed signal</span></div><a class="self" href="#s-c81661f2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b06f5498"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing an AbortSignal to multiple listeners</span></div><a class="self" href="#s-b06f5498" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3c5bb38f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing an AbortSignal to addEventListener works with the capture flag</span></div><a class="self" href="#s-3c5bb38f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-64299c4f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Aborting from a listener does not call future listeners</span></div><a class="self" href="#s-64299c4f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ceffb2df"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Adding then aborting a listener in another listener does not call it</span></div><a class="self" href="#s-ceffb2df" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e2ef4728"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Aborting from a nested listener should remove it</span></div><a class="self" href="#s-e2ef4728" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3464d99d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing null as the signal should throw</span></div><a class="self" href="#s-3464d99d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f84cd97f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing null as the signal should throw (listener is also null)</span></div><a class="self" href="#s-f84cd97f" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/dom/events/AddEventListenerOptions-signal.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>11</b> / 11</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-7d395d71"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing an AbortSignal to addEventListener options should allow removing a listener</span></div><a class="self" href="#s-7d395d71" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7b312330"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing an AbortSignal to addEventListener does not prevent removeEventListener</span></div><a class="self" href="#s-7b312330" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-64e7be9d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing an AbortSignal to addEventListener works with the once flag</span></div><a class="self" href="#s-64e7be9d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1df3b436"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Removing a once listener works with a passed signal</span></div><a class="self" href="#s-1df3b436" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4d26ad92"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing an AbortSignal to multiple listeners</span></div><a class="self" href="#s-4d26ad92" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-316b587c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing an AbortSignal to addEventListener works with the capture flag</span></div><a class="self" href="#s-316b587c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e1619e5d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Aborting from a listener does not call future listeners</span></div><a class="self" href="#s-e1619e5d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6835f8e4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Adding then aborting a listener in another listener does not call it</span></div><a class="self" href="#s-6835f8e4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-79122719"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Aborting from a nested listener should remove it</span></div><a class="self" href="#s-79122719" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-efb474dd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing null as the signal should throw</span></div><a class="self" href="#s-efb474dd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-04003ac0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing null as the signal should throw (listener is also null)</span></div><a class="self" href="#s-04003ac0" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,28 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 16 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-958626b0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getResponseHeader: Expose Access-Control-Expose-Headers (x-custom-header-comma)</span></div><a class="self" href="#s-958626b0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-26cd7782"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getResponseHeader: Expose second Access-Control-Expose-Headers (x-second-expose)</span></div><a class="self" href="#s-26cd7782" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f21518ce"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getResponseHeader: Don&#39;t trim whitespace</span></div><a class="self" href="#s-f21518ce" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ed82a719"><details><summary><span class="mark">FAIL</span><span class="sub-name">getResponseHeader: x-custom-header bytes</span></summary><pre class="msg">assert_equals: x-custom-header-bytes expected &quot;â¦&quot; but got &quot;…&quot;</pre></details><a class="self" href="#s-ed82a719" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ea83670d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getResponseHeader: Exposed server field readable (Date)</span></div><a class="self" href="#s-ea83670d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-650167f0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getResponseHeader: Cache-Control: readable by default</span></div><a class="self" href="#s-650167f0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-43eafbd3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getResponseHeader: Content-Language: readable by default</span></div><a class="self" href="#s-43eafbd3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-abd2e1dc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getResponseHeader: Expires: readable by default</span></div><a class="self" href="#s-abd2e1dc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-171f2c86"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getResponseHeader: Last-Modified: readable by default</span></div><a class="self" href="#s-171f2c86" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2c01dda0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getResponseHeader: Pragma: readable by default</span></div><a class="self" href="#s-2c01dda0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7ad3e0d2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getResponseHeader: Content-Length: readable by default</span></div><a class="self" href="#s-7ad3e0d2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-39211787"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getResponseHeader: Content-Type: readable by default</span></div><a class="self" href="#s-39211787" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-53e54398"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getResponseHeader: Server: unreadable by default</span></div><a class="self" href="#s-53e54398" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c28e2545"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getResponseHeader: X-Powered-By: unreadable by default</span></div><a class="self" href="#s-c28e2545" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-64468846"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getResponseHeader: Combined testing of cors response headers</span></div><a class="self" href="#s-64468846" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-14d9a86c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getResponse: don&#39;t expose x-nonexposed</span></div><a class="self" href="#s-14d9a86c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-19bac1e6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getAllResponseHeaders: don&#39;t expose x-nonexposed</span></div><a class="self" href="#s-19bac1e6" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

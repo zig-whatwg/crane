@@ -33,7 +33,33 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 0 failed, 0 timed out and 14 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/navigation-api/focus-reset/autofocus.html?delayed-checkpoint</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>0</b> / 7</span></h3>
+<pre class="msg harness-msg">Error: assert_equals: Non-navigation API autofocus was processed expected Element node &lt;button autofocus=&quot;&quot; id=&quot;initialAutofocusTarget&quot;&gt;Initial ... but got Element node &lt;body&gt;&lt;button autofocus=&quot;&quot; id=&quot;initialAutofocusTarget&quot;&gt;In...</pre>
+<ol class="subtests">
+<li class="sub s-notrun" id="s-ce45088f"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">An element with autofocus, present before navigation, gets focused</span></div><a class="self" href="#s-ce45088f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-c4c0d7e2"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Two elements with autofocus, present before navigation; the first gets focused</span></div><a class="self" href="#s-c4c0d7e2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-a7495b7e"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">An element with autofocus, present before navigation but disabled before finished, does not get focused</span></div><a class="self" href="#s-a7495b7e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-222b23ae"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">An element with autofocus, present before navigation but with its autofocus attribute removed before finished, does not get focused</span></div><a class="self" href="#s-222b23ae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-0b6c5d35"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Two elements with autofocus, present before navigation, but the first gets disabled; the second gets focused</span></div><a class="self" href="#s-0b6c5d35" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-e31d551d"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">An element with autofocus, introduced between committed and finished, gets focused</span></div><a class="self" href="#s-e31d551d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-c5edb039"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">An element with autofocus, introduced after finished, does not get focused</span></div><a class="self" href="#s-c5edb039" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/navigation-api/focus-reset/autofocus.html?same-checkpoint</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>0</b> / 7</span></h3>
+<pre class="msg harness-msg">Error: assert_equals: Non-navigation API autofocus was processed expected Element node &lt;button autofocus=&quot;&quot; id=&quot;initialAutofocusTarget&quot;&gt;Initial ... but got Element node &lt;body&gt;&lt;button autofocus=&quot;&quot; id=&quot;initialAutofocusTarget&quot;&gt;In...</pre>
+<ol class="subtests">
+<li class="sub s-notrun" id="s-bc9d3c7c"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">An element with autofocus, present before navigation, gets focused</span></div><a class="self" href="#s-bc9d3c7c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-c6f38d2b"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Two elements with autofocus, present before navigation; the first gets focused</span></div><a class="self" href="#s-c6f38d2b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-bccf33d7"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">An element with autofocus, present before navigation but disabled before finished, does not get focused</span></div><a class="self" href="#s-bccf33d7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-4c20ff40"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">An element with autofocus, present before navigation but with its autofocus attribute removed before finished, does not get focused</span></div><a class="self" href="#s-4c20ff40" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-734c7aed"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Two elements with autofocus, present before navigation, but the first gets disabled; the second gets focused</span></div><a class="self" href="#s-734c7aed" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-48d57c70"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">An element with autofocus, introduced between committed and finished, gets focused</span></div><a class="self" href="#s-48d57c70" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-20112624"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">An element with autofocus, introduced after finished, does not get focused</span></div><a class="self" href="#s-20112624" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

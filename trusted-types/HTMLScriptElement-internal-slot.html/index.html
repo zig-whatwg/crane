@@ -32,7 +32,20 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 8 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-cdd2ebfe"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test TT application when manipulating &lt;script&gt; elements during loading.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: &quot;First message should have been blocked: first script element executed&quot;</pre></details><a class="self" href="#s-cdd2ebfe" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-54d8cf33"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Script set via .textContent executes on a connected HTMLScriptElement.</span></div><a class="self" href="#s-54d8cf33" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cc28245b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Script set via .textContent executes on an unconnected HTMLScriptElement.</span></div><a class="self" href="#s-cc28245b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4b46611a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Script set via .innerText executes on a connected HTMLScriptElement.</span></div><a class="self" href="#s-4b46611a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-36dc17a5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Script set via .innerText executes on an unconnected HTMLScriptElement.</span></div><a class="self" href="#s-36dc17a5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5b7757ed"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Setting .src to a plain string should throw an exception and not modify the script state, on an unconnected script element.</span></div><a class="self" href="#s-5b7757ed" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-679fabb6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Setting .src to a TrustedScriptURL should work and should execute the referenced script instead of the script body, on an unconnected script element.</span></div><a class="self" href="#s-679fabb6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1ae3f235"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Setting .src to a plain string should throw an exception and not modify the script state, on a connected script element.</span></div><a class="self" href="#s-1ae3f235" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0c2f73f0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Setting .src to a TrustedScriptURL should work and should execute the referenced script instead of the script body, on a onnected script element.</span></div><a class="self" href="#s-0c2f73f0" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

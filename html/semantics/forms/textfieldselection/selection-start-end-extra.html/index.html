@@ -32,7 +32,22 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 10 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-05f6dacc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Setting defaultValue in a textarea should NOT move the cursor to the end</span></div><a class="self" href="#s-05f6dacc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-afb65d5b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Setting defaultValue in a textarea with a value should NOT make any difference</span></div><a class="self" href="#s-afb65d5b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c2034965"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Setting textContent in a textarea should NOT move selection{Start,End} to the end</span></div><a class="self" href="#s-c2034965" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4af3e951"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Adding children to a textarea should NOT move selection{Start,End} to the end</span></div><a class="self" href="#s-4af3e951" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-31d6083d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Removing children from a textarea should NOT update selection{Start,End}</span></div><a class="self" href="#s-31d6083d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-63c6057a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Setting the same value (with different newlines) in a textarea should NOT update selection{Start,End}</span></div><a class="self" href="#s-63c6057a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1a176778"><details><summary><span class="mark">FAIL</span><span class="sub-name">Removing child nodes in non-dirty textarea should make selection{Start,End} 0</span></summary><pre class="msg">assert_equals: selectionStart after appendChild expected 0 but got 3</pre></details><a class="self" href="#s-1a176778" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-95cf9b3c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Setting value to a shorter string than defaultValue should correct the cursor position</span></div><a class="self" href="#s-95cf9b3c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ecc5553f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Shortening value by turning the input type into &#39;url&#39; should correct selection{Start,End}</span></div><a class="self" href="#s-ecc5553f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-48aaadbb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Shortening value by turning the input type into &#39;color&#39; and back to &#39;text&#39; should correct selection{Start,End}</span></div><a class="self" href="#s-48aaadbb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b634a3bb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Resetting a value to a shorter string than defaultValue should correct the cursor position</span></div><a class="self" href="#s-b634a3bb" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>
