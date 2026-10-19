@@ -336,6 +336,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A queued permission value is not delivered state](architecture-a-queued-permission-value-is-not-delivered-state.md) - Compare actual state after activity checks so skipped updates remain retryable.
 - [A settings getter may recompute security](architecture-a-settings-getter-may-recompute-security.md) - Profile hooks and share results within an operation without a cross-task cache.
 - [A key transfer must preserve its allocator](architecture-a-key-transfer-must-preserve-its-allocator.md) - Preserve destination ownership and prove the real move path.
+- [A native timer must preserve document task suspension](architecture-a-native-timer-must-preserve-document-task-suspension.md) - Preserve inactive-document delivery and transfer task ownership exactly once.
 
 ### Spec Compliance
 - [A subclass's copy of an event concept hides what dispatch does to it](spec-compliance-a-subclass-copy-of-an-event-concept-hides-dispatch.md) - A concept the base algorithm reads and writes has one home, the base's state; a subclass attribute that names it reads it there, never a copy of its own.
@@ -535,6 +536,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A failed stylesheet can still have a sheet](spec-compliance-a-failed-stylesheet-can-still-have-a-sheet.md) - Rejecting CSS bytes does not necessarily remove the CSSOM sheet.
 - [Partitioning a store needs its exemptions in the same change](spec-compliance-partitioning-a-store-needs-its-exemptions-in-the-same-change.md) - A partition check that starts failing correct pages was usually passing everything before: build the spec's exemptions with the key, and A/B the files that already passed.
 - [Find where the browsers check before carrying a report across threads](spec-compliance-find-where-the-browsers-check-before-carrying-a-report-across-threads.md) - When a spec step puts a check on a thread that cannot report it, read where the three engines make that check before designing a delivery. Often they make it earlier, on the caller's thread, and the cross-thread mechanism is never needed.
+- [Render-blocking timing is request metadata](spec-compliance-render-blocking-timing-is-request-metadata.md) - Capture classification at fetch start and inherit it through imports.
 
 ### Codegen
 - [A named special operation on a [Global] interface is a global function](codegen-a-named-special-operation-on-a-global-is-a-global-function.md) - A supplementary IDL member must not add a script-visible name the browsers lack - on a [Global] interface, a named special operation is a global function that shadows named access.
