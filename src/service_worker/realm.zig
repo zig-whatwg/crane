@@ -49,6 +49,7 @@ const engine = @import("engine");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
 const html = @import("html");
+const fetch = @import("fetch");
 const registry_mod = @import("registry.zig");
 const manager_mod = @import("manager.zig");
 const scope_mod = @import("scope.zig");
@@ -1171,6 +1172,32 @@ pub fn register(container: *runtime.Instance, script_url: []const u8, options: R
         },
     };
     defer urls.deinit(allocator);
+    // Content Security Policy: the script URL is checked here, on the
+    // client's own thread, after Start Register's URL checks and before
+    // Schedule Job - a blocked one rejects with a "SecurityError" and no job
+    // is made, its violation reported to the client by the client's own
+    // reporter (the caller's script position). Stated deviation: the spec
+    // checks at the job's fetch (Update step 7's "fetch a classic worker
+    // script" given job's client, main fetch step 7), whose network error is
+    // Update step 8's TypeError. Every browser checks at register() instead:
+    // Blink ServiceWorkerContainer::registerServiceWorker
+    // (AllowWorkerContextFromSource, kSecurity, after the URL checks), WebKit
+    // ServiceWorkerContainer::addRegistration (allowWorkerFromSource,
+    // SecurityError), Gecko ServiceWorkerScopeAndScriptAreValid
+    // (NS_CheckContentLoadPolicy for TYPE_INTERNAL_SERVICE_WORKER with the
+    // client's CSP event listener, ThrowSecurityError) - and none enforces
+    // the client's CSP on the job's own fetch (run.zig). Golden rule 2, no
+    // newer spec. WPT content-security-policy/worker-src/service-*.
+    if (scriptUrlBlockedByCsp(realm, urls.script_url)) {
+        var capability = environment.takePromise(made.id).?;
+        defer engine.releasePromiseCapability(&capability);
+        const message = try std.fmt.allocPrint(allocator, "Failed to register a ServiceWorker: The provided scriptURL ('{s}') violates the Content Security Policy.", .{urls.script_url});
+        defer allocator.free(message);
+        const exception = try engine.createDOMException(realm, "SecurityError", message);
+        defer exception.release();
+        try engine.rejectPromise(&capability, exception.borrow());
+        return made.promise.take();
+    }
     // 10-15. The storage key (Crane's is the origin), Create Job with the
     // client's creation URL as its referrer, its worker type and update via
     // cache mode, and Schedule Job.
@@ -1186,6 +1213,20 @@ pub fn register(container: *runtime.Instance, script_url: []const u8, options: R
     });
     // 8. Return p.
     return made.promise.take();
+}
+
+/// Would a request for the service worker script `url` (serialized), with
+/// destination "serviceworker", be blocked by the Content Security Policy
+/// of `realm`'s global (worker-src, falling back to child-src, script-src,
+/// default-src)? The check main fetch step 7 runs (CSP 4.1.2), over the
+/// global's own policy container; each violation goes to the global's
+/// reporter. False for a realm with no global or no policy container.
+fn scriptUrlBlockedByCsp(realm: runtime.Context, url: []const u8) bool {
+    const global = globalOf(realm) orelse return false;
+    const settings = dom.global_settings.of(global) orelse return false;
+    const container_of = settings.policy_container orelse return false;
+    const container = container_of(global) orelse return false;
+    return fetch.algorithms.csp_check.isBlockedFor(container, url, .serviceworker, dom.csp_violations.reporterFor(global));
 }
 
 /// What the job thread's script fetch reads of `realm`'s settings object.
