@@ -196,6 +196,21 @@ pub const StyleEngine = struct {
     /// read style again (the active sheets and the lineage's caches are in
     /// use). Checked in Debug builds (`enterResolution`).
     resolving: bool = false,
+    /// HTML 4.2.5.1, "the page's supported color schemes": the color scheme
+    /// support the first valid color-scheme meta element names
+    /// (`Support.none` for null), as of the last style read that found
+    /// `page_color_schemes_dirty` set. The engine is embedded in Document's
+    /// state, so both bytes sit in this struct's tail padding: see
+    /// tests/dom/style_engine_size_test.zig before adding a field.
+    page_color_schemes: css.color_scheme.Support = .none,
+    /// A color-scheme meta element was inserted into or removed from the
+    /// document, or changed its name or content, since `page_color_schemes`
+    /// was found ("user agents must re-run the above algorithm"): the next
+    /// style read runs it, once for a whole batch of changes (Blink's
+    /// Document::ColorSchemeMetaChanged and WebKit's
+    /// metaElementColorSchemeChanged walk on every change). Set at first:
+    /// nothing has run it for this document.
+    page_color_schemes_dirty: bool = true,
 
     pub fn init(allocator: Allocator) StyleEngine {
         return .{ .allocator = allocator };
@@ -265,6 +280,13 @@ pub const StyleEngine = struct {
             i += 1;
         }
         self.sheetsChanged();
+    }
+
+    /// HTML 4.2.5.1's re-run trigger for the page's supported color schemes
+    /// (HTMLMetaElement's own steps call it): the next style read finds
+    /// them again.
+    pub fn pageColorSchemesChanged(self: *StyleEngine) void {
+        self.page_color_schemes_dirty = true;
     }
 
     /// A sheet of this document was made, removed or changed one of its
