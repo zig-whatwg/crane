@@ -36,6 +36,7 @@ const main_fetch = @import("main_fetch.zig");
 const http_fetch = @import("http_fetch.zig");
 const scheme_fetch = @import("scheme_fetch.zig");
 const service_worker_fetch = @import("../internal/service_worker_fetch.zig");
+const cache_transaction = @import("../cache/transaction.zig");
 
 /// Error types for fetch.
 pub const FetchError = error{
@@ -109,6 +110,9 @@ pub const FetchJob = struct {
     /// Whether `network_request` is a CORS-preflight fetch's: its answer
     /// decides whether the request itself goes out.
     network_request_is_preflight: bool = false,
+    /// HTTP-network-or-cache fetch's use of the HTTP cache while the network
+    /// answers `network_request` (steps 11.3-11.5 run on the answer).
+    cache_transaction: ?cache_transaction.Transaction = null,
     /// Set once the job is `.done`.
     response: ?*InternalResponse = null,
     /// Main fetch step 23's response, owned until its full body is checked.
@@ -213,6 +217,7 @@ pub const FetchJob = struct {
         const allocator = self.allocator;
         if (self.authentication_realm) |realm| allocator.free(realm);
         if (self.network_request) |request| http_fetch.freeNetworkRequest(allocator, request);
+        if (self.cache_transaction) |*transaction| transaction.deinit();
         // A service worker still answering: its answer is freed when it comes.
         if (self.service_worker_call) |call| {
             call.abandon();
@@ -283,7 +288,11 @@ pub const FetchJob = struct {
         const allocator = self.allocator;
         const request = self.network_request orelse unreachable; // no request was asked for
         self.network_request = null;
-        http_fetch.freeNetworkRequest(allocator, request);
+        // Kept until the cache has read its headers (the Vary data).
+        defer http_fetch.freeNetworkRequest(allocator, request);
+        var transaction = self.cache_transaction;
+        self.cache_transaction = null;
+        defer if (transaction) |*t| t.deinit();
 
         var network_response = result catch |err| switch (err) {
             NetworkError.OutOfMemory => return FetchError.OutOfMemory,
@@ -295,7 +304,7 @@ pub const FetchJob = struct {
         const response = http_fetch.httpNetworkFetchFinish(allocator, self.params, &network_response, self.network_start_time, null) catch |err| {
             return self.httpFetchFailed(err);
         };
-        return self.httpNetworkOrCacheFetchReturned(response);
+        return self.httpNetworkOrCacheFetchReturned(try self.cacheAfterNetwork(if (transaction) |*t| t else null, &request, response));
     }
 
     /// Carry on from the network's answer to the request the last `.network`
@@ -309,7 +318,11 @@ pub const FetchJob = struct {
         const allocator = self.allocator;
         const request = self.network_request orelse unreachable; // no request was asked for
         self.network_request = null;
-        http_fetch.freeNetworkRequest(allocator, request);
+        // Kept until the cache has read its headers (the Vary data).
+        defer http_fetch.freeNetworkRequest(allocator, request);
+        var transaction = self.cache_transaction;
+        self.cache_transaction = null;
+        defer if (transaction) |*t| t.deinit();
 
         var network_response = head;
         defer network_response.deinit();
@@ -322,7 +335,18 @@ pub const FetchJob = struct {
         const response = http_fetch.httpNetworkFetchFinish(allocator, self.params, &network_response, self.network_start_time, body) catch |err| {
             return self.httpFetchFailed(err);
         };
-        return self.httpNetworkOrCacheFetchReturned(response);
+        return self.httpNetworkOrCacheFetchReturned(try self.cacheAfterNetwork(if (transaction) |*t| t else null, &request, response));
+    }
+
+    /// HTTP-network-or-cache fetch steps 11.3-11.5 for `response`,
+    /// forwardResponse to `sent`: invalidation, a 304's stored response, the
+    /// store - `response` itself without a transaction.
+    fn cacheAfterNetwork(self: *FetchJob, transaction: ?*cache_transaction.Transaction, sent: *const NetworkRequest, response: *InternalResponse) FetchError!*InternalResponse {
+        const t = transaction orelse return response;
+        return t.afterNetwork(self.allocator, self.request, .{ .added = sent.headers }, response, cache_transaction.clockNow()) catch {
+            response.deinit();
+            return FetchError.OutOfMemory;
+        };
     }
 
     /// The result, once the job is `.done`. Called once.
@@ -576,8 +600,9 @@ pub const FetchJob = struct {
         };
         switch (network_start) {
             .response => |response| return self.httpNetworkOrCacheFetchReturned(response),
-            .network => |request| {
-                self.network_request = request;
+            .network => |needed| {
+                self.network_request = needed.request;
+                self.cache_transaction = needed.cache;
                 self.network_start_time = http_fetch.getCurrentTimeMs();
                 return .{ .network = .{ .request = &self.network_request.? } };
             },
