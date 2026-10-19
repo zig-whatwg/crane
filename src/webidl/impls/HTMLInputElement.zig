@@ -454,7 +454,12 @@ fn userEdit(instance: *runtime.Instance, edit: dom.form_controls.UserEdit) !void
     internal.editor_text = raw;
     internal.bad_input = input_type == .number and raw.len != 0 and empty;
     // HTML 4.10.19.3–4: only this non-IDL path records a user edit.
+    const previous_selection = internal.selection;
     internal.selection = .{ .start = edit.selection_start, .end = edit.selection_end, .direction = .none };
+    // Selection API selectionchange: user edits also notify an extent or
+    // direction change, coalescing through this control's existing flag.
+    if (!std.meta.eql(previous_selection, internal.selection))
+        dom.selection.scheduleTextControlSelectionchange(instance, &selectionchangeScheduled) catch {};
 }
 
 /// The hooks this type owns (src/dom), installed once, at process start,
