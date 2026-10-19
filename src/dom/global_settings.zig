@@ -20,6 +20,7 @@ const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 const cookiestore = @import("cookiestore");
 const fetch = @import("fetch");
+const storage = @import("storage");
 const origin_record = @import("origin_record.zig");
 const OriginRecord = origin_record.OriginRecord;
 
@@ -87,7 +88,46 @@ pub const Settings = struct {
     /// serialized and OWNED by the caller (global.ctx.allocator). Null when
     /// absent or opaque. A site or the requesting origin cannot replace it.
     top_level_origin: ?*const fn (global: *runtime.Instance) error{OutOfMemory}!?[]u8 = null,
+    /// Storage "obtain a storage key for non-storage purposes" for the
+    /// settings object, as `storage.StorageKey.serialize` writes it: its
+    /// origin, its top-level origin obtained as a site ("null" when opaque)
+    /// and its "has cross-site ancestor" (HTML 8.1.3.2). Computed once per
+    /// environment and kept by the global: BORROWED, valid while the global
+    /// keeps its document (a Window) or lives (a worker). Null where this
+    /// kind of global keeps none.
+    storage_key: ?*const fn (global: *runtime.Instance) error{OutOfMemory}!?[]const u8 = null,
 };
+
+/// `global`'s settings object's storage key for non-storage purposes,
+/// serialized (`Settings.storage_key`): BORROWED from the global. Null where
+/// its kind keeps none - a global no Browser made, a kind with no hook.
+pub fn serializedStorageKeyOf(global: *runtime.Instance) error{OutOfMemory}!?[]const u8 {
+    const settings = of(global) orelse return null;
+    const key_of = settings.storage_key orelse return null;
+    return key_of(global);
+}
+
+/// Storage "obtain a storage key for non-storage purposes", given `global`'s
+/// settings object: its origin, top-level site and has-cross-site-ancestor
+/// bit (storage.StorageKey). BORROWED from the global, as
+/// `serializedStorageKeyOf`. What the blob URL store, SharedWorker matching
+/// and BroadcastChannel compare.
+/// https://storage.spec.whatwg.org/#obtain-a-storage-key-for-non-storage-purposes
+pub fn storageKeyForNonStoragePurposesOf(global: *runtime.Instance) error{OutOfMemory}!?storage.StorageKey {
+    const serialized = (try serializedStorageKeyOf(global)) orelse return null;
+    return storage.StorageKey.parse(serialized);
+}
+
+/// Storage "obtain a storage key", given `global`'s settings object: its key
+/// for non-storage purposes, or null - failure - for an opaque origin, or an
+/// opaque top-level site Crane cannot tell apart from another
+/// (storage.obtainStorageKey). BORROWED from the global. What a storage area
+/// is found by: localStorage's and sessionStorage's shelves, and IndexedDB's.
+/// https://storage.spec.whatwg.org/#obtain-a-storage-key
+pub fn storageKeyOf(global: *runtime.Instance) error{OutOfMemory}!?storage.StorageKey {
+    const key = (try storageKeyForNonStoragePurposesOf(global)) orelse return null;
+    return storage.obtainStorageKey(key);
+}
 
 pub fn topLevelOriginOf(global: *runtime.Instance) error{OutOfMemory}!?[]u8 {
     const settings = of(global) orelse return null;

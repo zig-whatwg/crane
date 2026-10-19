@@ -226,13 +226,6 @@ fn relevantWindow(instance: *runtime.Instance) ?*runtime.Instance {
     return global;
 }
 
-/// `window`'s settings object's origin, serialized; null when it cannot be
-/// read. Owned, `window.ctx.allocator`.
-fn originOf(window: *runtime.Instance) ?[]const u8 {
-    const settings = dom.global_settings.of(window) orelse return null;
-    return settings.origin(window) catch null;
-}
-
 /// HTML "broadcast" `storage` with `key`, `old_value` and `new_value` (each
 /// BORROWED).
 ///
@@ -242,6 +235,14 @@ fn originOf(window: *runtime.Instance) ?[]const u8 {
 /// "session", whose relevant settings object's associated Document's node
 /// navigable's traversable navigable is thisDocument's node navigable's
 /// traversable navigable."
+///
+/// Same STORAGE KEY, not only same origin: Crane partitions storage areas by
+/// storage key as every browser does (storage.StorageKey says why), so a
+/// window of the origin under another top-level site has another area, and
+/// hears nothing of this one - Chromium's StorageArea dispatches only to the
+/// frames whose storage key is the area's, Gecko's to the same partitioned
+/// principal. The keys are the windows' own, computed once each
+/// (dom.global_settings.storageKeyForNonStoragePurposesOf).
 ///
 /// Deviation, stated, matching every browser: the event goes to every other
 /// fully active Window that has - or, reading it now, would have - such a
@@ -259,10 +260,9 @@ fn broadcast(storage: *runtime.Instance, key: ?[]const u8, old_value: ?[]const u
     const document = interfaces.Window.get_document(window) catch return;
     const url = interfaces.Document.get_URL(document) catch return;
     defer document.ctx.allocator.free(url);
-    const origin = originOf(window) orelse return;
-    defer window.ctx.allocator.free(origin);
-    // An opaque origin has no storage: its getters threw before any change.
-    if (std.mem.eql(u8, origin, "null")) return;
+    // The storage key whose area changed. An opaque origin has no storage:
+    // its getters threw before any change.
+    const storage_key = (dom.global_settings.storageKeyOf(window) catch return) orelse return;
     const source_context = dom.browser_state.browsingContextOf(window);
     // The windows of this storage's Browser: its storage shed is theirs, and
     // no other Browser's window hears of a change to it.
@@ -276,9 +276,8 @@ fn broadcast(storage: *runtime.Instance, key: ?[]const u8, old_value: ?[]const u
             const source = source_context orelse continue;
             if (context.getTop() != source.getTop()) continue;
         }
-        const remote_origin = originOf(remote) orelse continue;
-        defer remote.ctx.allocator.free(remote_origin);
-        if (!std.mem.eql(u8, remote_origin, origin)) continue;
+        const remote_key = (dom.global_settings.storageKeyOf(remote) catch continue) orelse continue;
+        if (!remote_key.equals(storage_key)) continue;
         // "4. For each remoteStorage of remoteStorages: queue a global task
         // on the DOM manipulation task source given remoteStorage's relevant
         // global object to fire an event named storage at remoteStorage's

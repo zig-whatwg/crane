@@ -141,6 +141,17 @@ pub const InternalState = struct {
     top_level_site: ?[]u8 = null,
     top_level_origin: ?[]u8 = null,
 
+    /// The storage key's top-level site and has-cross-site-ancestor bit, as
+    /// the host captured them on the creator's thread when a dedicated or
+    /// shared worker started (worker_host.ScopeSettings): OWNED; null for a
+    /// service worker or a scope no host started, whose key is its own
+    /// origin's (`settingsStorageKey`).
+    storage_top_level_site: ?[]u8 = null,
+    has_cross_site_ancestor: bool = false,
+    /// The settings object's storage key for non-storage purposes,
+    /// serialized, made on first use (`settingsStorageKey`). OWNED.
+    storage_key: ?[]u8 = null,
+
     /// Cross-origin isolated
     cross_origin_isolated: bool = false,
 
@@ -162,6 +173,10 @@ pub const InternalState = struct {
         self.top_level_site = null;
         if (self.top_level_origin) |origin| self.allocator.free(origin);
         self.top_level_origin = null;
+        if (self.storage_top_level_site) |site| self.allocator.free(site);
+        self.storage_top_level_site = null;
+        if (self.storage_key) |key| self.allocator.free(key);
+        self.storage_key = null;
         self.reporting.deinit(self.allocator);
         if (self.indexed_db) |*factory| factory.edge.release(factory.owner);
         if (self.performance) |*performance| performance.edge.release(performance.owner);
@@ -225,6 +240,9 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
             // worker's top-level origin is its owner's.
             if (settings.top_level_site) |site| internal.top_level_site = try allocator.dupe(u8, site);
             if (settings.top_level_origin) |origin| internal.top_level_origin = try allocator.dupe(u8, origin);
+            // The storage key's partition: the creator's (worker_host).
+            if (settings.storage_top_level_site) |site| internal.storage_top_level_site = try allocator.dupe(u8, site);
+            internal.has_cross_site_ancestor = settings.has_cross_site_ancestor;
         }
     }
 }
@@ -258,7 +276,39 @@ pub fn installHooks() void {
         .fetch_group = &settingsFetchGroup,
         .top_level_site = &settingsTopLevelSite,
         .top_level_origin = &settingsTopLevelOrigin,
+        .storage_key = &settingsStorageKey,
     });
+}
+
+/// Storage "obtain a storage key for non-storage purposes" for this worker's
+/// settings object, serialized (storage.StorageKey.serialize): its origin,
+/// and the partition the host captured from its creator - a dedicated
+/// worker's owner's top-level site (HTML: its top-level origin is its
+/// owner's) and a shared worker's constructor's (HTML leaves it
+/// implementation-defined; Chromium keys a shared worker by its creator's
+/// storage key), with "has cross-site ancestry": the outside settings' bit,
+/// or a data: URL. A service worker - and a scope no host started - is keyed
+/// by its own origin's site with no cross-site ancestor: Crane's
+/// registrations are not partitioned (the SW lane's follow-up; Chromium
+/// keys a service worker by its registration's storage key). Made on first
+/// use and kept: BORROWED.
+fn settingsStorageKey(instance: *runtime.Instance) error{OutOfMemory}!?[]const u8 {
+    const internal = instance.getState(State).own._internal orelse return null;
+    if (internal.storage_key) |key| return key;
+    const allocator = internal.allocator;
+    const origin = if (internal.origin.len == 0) "null" else internal.origin;
+    const own_site: ?[]u8 = if (internal.storage_top_level_site != null or std.mem.eql(u8, origin, "null"))
+        null
+    else
+        @import("html").agent_clusters.siteOf(allocator, origin) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => null,
+        };
+    defer if (own_site) |site| allocator.free(site);
+    const site = internal.storage_top_level_site orelse own_site orelse "null";
+    const key = @import("storage").StorageKey.initBorrowed(origin, site, internal.has_cross_site_ancestor);
+    internal.storage_key = try key.serialize(allocator);
+    return internal.storage_key;
 }
 
 /// The settings object's top-level site, as the scope captured it at set-up

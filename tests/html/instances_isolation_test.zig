@@ -31,6 +31,8 @@ const UserAgentStorage = web_storage.UserAgentStorage;
 /// One origin for every Browser: the storage key both would share if the
 /// store were the process's.
 const origin = "http://inst3.test";
+/// Its first-party storage key.
+const storage_key = web_storage.StorageKey.initBorrowed(origin, origin, false);
 const page_url = "http://inst3.test/page.html";
 
 /// Run `function` with `args` on a thread of its own, and return its error.
@@ -95,14 +97,14 @@ fn waitFor(browser: *browser_mod.Browser, source: []const u8) !void {
 
 fn setLocal(scope: *runtime.BrowserScope, key: []const u8, value: []const u8) !void {
     const user_agent_storage = try scope.of(UserAgentStorage);
-    var storage = try web_storage.getLocalStorage(testing.allocator, user_agent_storage, origin);
+    var storage = try web_storage.getLocalStorage(testing.allocator, user_agent_storage, storage_key);
     defer storage.deinit();
     try storage.setItem(key, value);
 }
 
 fn expectLocal(scope: *runtime.BrowserScope, key: []const u8, expected: ?[]const u8) !void {
     const user_agent_storage = try scope.of(UserAgentStorage);
-    var storage = try web_storage.getLocalStorage(testing.allocator, user_agent_storage, origin);
+    var storage = try web_storage.getLocalStorage(testing.allocator, user_agent_storage, storage_key);
     defer storage.deinit();
     const actual = storage.getItem(key);
     if (expected) |value| {
