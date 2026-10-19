@@ -40,6 +40,143 @@ pub fn getText(element: *runtime.Instance) !runtime.DOMString {
     return .initOwned(try result.bytes.toOwnedSlice(result.allocator));
 }
 
+/// The rendered-text collection algorithm with optional DOM Range bounds.
+/// Selection stringification uses rendered text, not Range's raw descendant
+/// text. Blink DomSelection::toString -> TextIterator::HandleTextNodeInRange
+/// applies the offsets to rendered runs; CSS collapsing and casing still see
+/// the original surrounding text. No range metadata is allocated by innerText.
+pub fn getRenderedText(common: *runtime.Instance, bounds: ?dom.range_boundaries.Boundaries) !runtime.DOMString {
+    const selected = bounds orelse return getText(common);
+    if (selected.start_container == selected.end_container and selected.start_offset == selected.end_offset) return .empty;
+    const range = TextRange.from(selected) orelse return .empty;
+    const context = try selectionContext(common) orelse return .empty;
+    const element = instanceOf(context.style_node) orelse return .empty;
+    if (!try rootParticipates(element, context.style_node)) return .empty;
+    var collector = Collector{ .allocator = common.ctx.allocator, .range = range };
+    defer collector.deinit();
+    if (context.node == context.style_node) {
+        try collector.enter(context.node, null, true);
+    } else {
+        const style = (try Style.read(element)) orelse return .empty;
+        try collector.frames.append(collector.allocator, .{
+            .node = context.node,
+            .style = style,
+            .next_child = context.node.first_child,
+            .language = ownLanguage(element) orelse inheritedLanguage(context.style_node),
+        });
+    }
+    try collector.collectFrames(true);
+    try collector.transformTextForRange(true);
+    var result = TextResult{ .allocator = common.ctx.allocator };
+    defer result.deinit();
+    for (collector.tokens.items, collector.spans.items) |token, span| switch (token) {
+        .nothing => {},
+        .required => |boundary| if (span.empty()) result.lineBoundary() else result.requireBreaks(boundary.count),
+        .literal => |byte| if (span.empty()) result.lineBoundary() else try result.literal(byte),
+        .open_atomic => try result.openAtomic(),
+        .close_atomic => result.closeAtomic(),
+        .context_break => result.lineBoundary(),
+        .text => |text| try renderBoundedText(&result, text, span),
+    };
+    // TODO(STYLE): user-select and content-visibility must come from computed
+    // style once that shared style-engine item supplies those longhands.
+    return .initOwned(try result.bytes.toOwnedSlice(result.allocator));
+}
+
+const TextSpan = struct {
+    start: usize = 0,
+    end: usize = std.math.maxInt(usize),
+
+    fn empty(self: TextSpan) bool {
+        return self.start == self.end;
+    }
+};
+
+const TextRange = struct {
+    start: *NodeBase,
+    start_offset: u32,
+    end: *NodeBase,
+    end_offset: u32,
+
+    fn from(bounds: dom.range_boundaries.Boundaries) ?TextRange {
+        return .{
+            .start = dom.instance_bridge.getNodeBase(bounds.start_container) orelse return null,
+            .start_offset = bounds.start_offset,
+            .end = dom.instance_bridge.getNodeBase(bounds.end_container) orelse return null,
+            .end_offset = bounds.end_offset,
+        };
+    }
+
+    fn textSpan(self: TextRange, node: *NodeBase, data: []const u8) TextSpan {
+        const length: u32 = @intCast(infra.wtf8.codeUnitLength(data));
+        if (dom.boundary_points.position(TextTree, self.end, self.end_offset, node, 0) != .after or
+            dom.boundary_points.position(TextTree, self.start, self.start_offset, node, length) != .before) return .{ .end = 0 };
+        return .{
+            .start = if (self.start == node) @min(self.start_offset, length) else 0,
+            .end = if (self.end == node) @min(self.end_offset, length) else length,
+        };
+    }
+
+    fn boundarySpan(self: TextRange, node: *NodeBase, after: bool) TextSpan {
+        const parent = node.parent_node orelse return .{ .end = 0 };
+        const offset = TextTree.index(node) + @as(u32, @intFromBool(after));
+        const starts = dom.boundary_points.position(TextTree, self.start, self.start_offset, parent, offset);
+        const ends = dom.boundary_points.position(TextTree, parent, offset, self.end, self.end_offset);
+        return if (starts != .after and ends == .before) .{} else .{ .end = 0 };
+    }
+};
+
+const TextTree = struct {
+    pub const Node = *NodeBase;
+    pub fn parent(node: Node) ?Node {
+        return node.parent_node;
+    }
+    pub fn index(node: Node) u32 {
+        var count: u32 = 0;
+        var previous = node.previous_sibling;
+        while (previous) |sibling| : (previous = sibling.previous_sibling) count += 1;
+        return count;
+    }
+};
+
+/// An inline common ancestor needs its surrounding block's text context.
+/// A Document or ShadowRoot supplies children, with its element/host style.
+fn selectionContext(common: *runtime.Instance) !?struct { node: *NodeBase, style_node: *NodeBase } {
+    var node = dom.instance_bridge.getNodeBase(common) orelse return null;
+    while (true) {
+        if (node.node_type == NodeBase.ELEMENT_NODE) {
+            const element = instanceOf(node) orelse return null;
+            const style = (try Style.read(element)) orelse return null;
+            if (style.display.box == .none or style.display.isBlockLevel() or node.parent_node == null)
+                return .{ .node = node, .style_node = node };
+        } else if (node.node_type == NodeBase.DOCUMENT_NODE) {
+            var child = node.first_child;
+            while (child) |element| : (child = element.next_sibling) {
+                if (element.node_type == NodeBase.ELEMENT_NODE) return .{ .node = node, .style_node = element };
+            }
+            return null;
+        } else if (node.node_type == NodeBase.DOCUMENT_FRAGMENT_NODE) {
+            const root = instanceOf(node) orelse return null;
+            if (root.stateAs(interfaces.ShadowRoot.State) == null) return null;
+            const host = try interfaces.ShadowRoot.get_host(root);
+            return .{ .node = node, .style_node = dom.instance_bridge.getNodeBase(host) orelse return null };
+        }
+        node = node.parent_node orelse return null;
+    }
+}
+
+fn renderBoundedText(result: *TextResult, text: @FieldType(Token, "text"), span: TextSpan) !void {
+    const start = infra.wtf8.positionOfCodeUnit(text.bytes, span.start);
+    const end = infra.wtf8.positionOfCodeUnit(text.bytes, span.end);
+    var pieces: infra.wtf8.Pieces = .{};
+    pieces.substring(text.bytes, .{ .byte = 0 }, start);
+    for (pieces.items[0..pieces.count]) |part| try result.textRun(part, text.whitespace, false);
+    pieces.substring(text.bytes, start, end);
+    for (pieces.items[0..pieces.count]) |part| try result.textRun(part, text.whitespace, text.visible);
+    pieces.substring(text.bytes, end, .{ .byte = text.bytes.len });
+    for (pieces.items[0..pieces.count]) |part| try result.textRun(part, text.whitespace, false);
+}
+
 const html_namespace = "http://www.w3.org/1999/xhtml";
 const svg_namespace = "http://www.w3.org/2000/svg";
 
@@ -179,6 +316,11 @@ const Collector = struct {
     allocator: Allocator,
     tokens: std.ArrayList(Token) = .empty,
     frames: std.ArrayList(Frame) = .empty,
+    // Only the bounded specialization fills this parallel array. Keeping
+    // it separate preserves the ordinary innerText token size and traversal.
+    range: ?TextRange = null,
+    spans: std.ArrayList(TextSpan) = .empty,
+    current_span: TextSpan = .{},
 
     fn deinit(self: *Collector) void {
         for (self.tokens.items) |token| {
@@ -186,14 +328,27 @@ const Collector = struct {
         }
         self.tokens.deinit(self.allocator);
         self.frames.deinit(self.allocator);
+        self.spans.deinit(self.allocator);
     }
 
     fn emit(self: *Collector, token: Token) !void {
         try self.tokens.append(self.allocator, token);
     }
 
+    fn emitForRange(self: *Collector, comptime bounded: bool, token: Token) !void {
+        if (bounded) try self.spans.append(self.allocator, self.current_span);
+        errdefer if (bounded) {
+            _ = self.spans.pop();
+        };
+        try self.emit(token);
+    }
+
     fn collect(self: *Collector, root: *NodeBase) !void {
-        try self.enter(root, null);
+        try self.enter(root, null, false);
+        try self.collectFrames(false);
+    }
+
+    fn collectFrames(self: *Collector, comptime bounded: bool) !void {
         while (self.frames.items.len > 0) {
             const index = self.frames.items.len - 1;
             if (self.frames.items[index].next_child) |child| {
@@ -224,7 +379,8 @@ const Collector = struct {
                     // CSS Tables suppresses whitespace-only anonymous table
                     // children, including when white-space is preserved.
                     if (tableContainer(text_style.display) and allCssWhitespace(data)) continue;
-                    try self.emit(.{ .text = .{
+                    if (bounded) self.current_span = self.range.?.textSpan(child, data);
+                    try self.emitForRange(bounded, .{ .text = .{
                         .bytes = data,
                         .whitespace = text_style.whitespace,
                         .transform = text_style.transform,
@@ -232,13 +388,14 @@ const Collector = struct {
                         .visible = text_style.visible,
                     } });
                 } else if (child.node_type == NodeBase.ELEMENT_NODE) {
-                    try self.enter(child, index);
+                    try self.enter(child, index, bounded);
                 }
             } else {
                 const frame = self.frames.items[index];
+                if (bounded) self.current_span = self.range.?.boundarySpan(frame.node, true);
                 if (frame.suffix != .none) {
                     const marker = self.tokens.items.len;
-                    if (frame.style.visible) try self.emit(.nothing);
+                    if (frame.style.visible) try self.emitForRange(bounded, .nothing);
                     const value: ?usize = if (frame.style.visible) marker else null;
                     switch (frame.suffix) {
                         .cell => self.frames.items[frame.suffix_context].last_cell_end = value,
@@ -246,20 +403,21 @@ const Collector = struct {
                         .none => unreachable,
                     }
                 }
-                if (frame.atomic) try self.emit(.close_atomic);
-                if (frame.breaks > 0) try self.emit(.{ .required = .{ .count = frame.breaks, .word_boundary = frame.word_boundary } });
-                if (frame.context_break) try self.emit(.{ .context_break = frame.word_boundary });
+                if (frame.atomic) try self.emitForRange(bounded, .close_atomic);
+                if (frame.breaks > 0) try self.emitForRange(bounded, .{ .required = .{ .count = frame.breaks, .word_boundary = frame.word_boundary } });
+                if (frame.context_break) try self.emitForRange(bounded, .{ .context_break = frame.word_boundary });
                 _ = self.frames.pop();
             }
         }
     }
 
-    fn enter(self: *Collector, node: *NodeBase, parent_index: ?usize) !void {
+    fn enter(self: *Collector, node: *NodeBase, parent_index: ?usize, comptime bounded: bool) !void {
         const element = instanceOf(node) orelse return;
         const style = (try Style.read(element)) orelse return;
         // Steps 1-3: a display:none subtree has no rendered descendants.
         if (style.display.box == .none) return;
         if (isHtml(element, "audio") and !hasAttribute(element, "controls")) return;
+        if (bounded) self.current_span = self.range.?.boundarySpan(node, false);
         const parent: ?Frame = if (parent_index) |index| self.frames.items[index] else null;
         const names = dom.node_creation.elementNames(element) orelse return;
         const is_svg = std.mem.eql(u8, names.namespace orelse "", svg_namespace);
@@ -304,23 +462,23 @@ const Collector = struct {
                     frame.breaks = 1;
                 }
             }
-            if (frame.breaks > 0) try self.emit(.{ .required = .{ .count = frame.breaks, .word_boundary = frame.word_boundary } });
+            if (frame.breaks > 0) try self.emitForRange(bounded, .{ .required = .{ .count = frame.breaks, .word_boundary = frame.word_boundary } });
             // CSS atomic inlines are independent whitespace contexts. Their
             // presence also preserves an outer space on either side, even
             // when the element's own text is empty (e.g. an img).
             frame.atomic = parent_index != null and frame.breaks == 0 and !select and !option and !optgroup and
                 (ignoresChildren(element) or (style.display.box == .normal and style.display.outer == .inline_ and style.display.inner != .flow and style.display.inner != .ruby));
-            if (frame.atomic) try self.emit(.open_atomic);
+            if (frame.atomic) try self.emitForRange(bounded, .open_atomic);
         }
         // A hidden box still participates in CSS text processing, even
         // though HTML collection contributes none of its own strings or
         // required breaks. Its visible descendants remain collectible.
         if (!style.visible and style.display.box != .contents and !selected_wrapper and !select and parent_index != null) {
             frame.context_break = style.display.isBlockLevel() or isInternal(style.display, .table_caption) or option or optgroup;
-            if (frame.context_break) try self.emit(.{ .context_break = frame.word_boundary });
+            if (frame.context_break) try self.emitForRange(bounded, .{ .context_break = frame.word_boundary });
             frame.atomic = !frame.context_break and (ignoresChildren(element) or
                 (style.display.box == .normal and style.display.outer == .inline_ and style.display.inner != .flow and style.display.inner != .ruby));
-            if (frame.atomic) try self.emit(.open_atomic);
+            if (frame.atomic) try self.emitForRange(bounded, .open_atomic);
         }
         if (style.display.box == .normal and style.display.inner == .table) {
             frame.table = self.frames.items.len;
@@ -347,25 +505,32 @@ const Collector = struct {
             // A cell starts a new text line even though its separator is a tab.
             if (!frame.atomic) {
                 frame.atomic = true;
-                try self.emit(.open_atomic);
+                try self.emitForRange(bounded, .open_atomic);
             }
         }
         if (has_box and option) {
             // Blink/WebKit's longstanding option-text mechanism (HTML#3797):
             // the label attribute is ignored, nested blocks add no breaks.
-            var text = try interfaces.HTMLOptionElement.get_text(element);
-            // The getter allocates in this option's context, which can
-            // differ from the collector's context after adoption.
-            defer text.deinit(element.ctx.allocator);
-            const owned = try self.allocator.dupe(u8, text.asSlice());
-            errdefer self.allocator.free(owned);
-            try self.emit(.{ .text = .{ .bytes = owned, .whitespace = .preserve, .owned = true } });
+            if (bounded) {
+                // Preserve DOM positions while collecting the option's
+                // HTML-aware descendant text; the getter has already lost
+                // that provenance after stripping/collapsing its whitespace.
+                try self.collectOptionText(node);
+            } else {
+                var text = try interfaces.HTMLOptionElement.get_text(element);
+                // The getter allocates in this option's context, which can
+                // differ from the collector's context after adoption.
+                defer text.deinit(element.ctx.allocator);
+                const owned = try self.allocator.dupe(u8, text.asSlice());
+                errdefer self.allocator.free(owned);
+                try self.emitForRange(false, .{ .text = .{ .bytes = owned, .whitespace = .preserve, .owned = true } });
+            }
             frame.next_child = null;
         } else if (ignoresChildren(element) or isHtml(element, "br")) {
             frame.next_child = null;
             // Step 5 applies to descendants only: a br root returns empty.
             if (parent_index != null and isHtml(element, "br") and style.display.box != .contents) {
-                if (has_box) try self.emit(.{ .literal = '\n' }) else try self.emit(.{ .context_break = true });
+                if (has_box) try self.emitForRange(bounded, .{ .literal = '\n' }) else try self.emitForRange(bounded, .{ .context_break = true });
             }
         } else if (isHtml(element, "details") and !hasAttribute(element, "open")) {
             // Closed details has only its first summary's rendered subtree.
@@ -376,7 +541,47 @@ const Collector = struct {
         try self.frames.append(self.allocator, frame);
     }
 
+    fn collectOptionText(self: *Collector, root: *NodeBase) !void {
+        // HTML get-HTML-aware-text-content steps 2-3, retaining the source
+        // node of each run so partial ranges can use UTF-16 DOM offsets.
+        // The shared TextResult performs stripping/collapsing. Form feed is
+        // ASCII whitespace here although CSS Text ordinarily preserves it.
+        var current = root.first_child;
+        while (current) |node| {
+            var skip_children = false;
+            if (instanceOf(node)) |instance| {
+                if (node.node_type == NodeBase.TEXT_NODE or node.node_type == NodeBase.CDATA_SECTION_NODE) {
+                    if (dom.character_data.dataOf(instance)) |data| {
+                        self.current_span = self.range.?.textSpan(node, data);
+                        const owned = std.mem.indexOfScalar(u8, data, 0x0c) != null;
+                        const bytes = if (owned) try self.allocator.dupe(u8, data) else data;
+                        errdefer if (owned) self.allocator.free(bytes);
+                        if (owned) for (@constCast(bytes)) |*byte| {
+                            if (byte.* == 0x0c) byte.* = ' ';
+                        };
+                        try self.emitForRange(true, .{ .text = .{ .bytes = bytes, .whitespace = .collapse, .owned = owned } });
+                    }
+                } else if (dom.node_creation.elementNames(instance)) |names| {
+                    const ns = names.namespace orelse "";
+                    skip_children = (std.mem.eql(u8, names.local_name, "script") and
+                        (std.mem.eql(u8, ns, html_namespace) or std.mem.eql(u8, ns, svg_namespace))) or isHtml(instance, "img");
+                }
+            }
+            if (!skip_children) if (node.first_child) |child| {
+                current = child;
+                continue;
+            };
+            var previous = node;
+            while (previous != root and previous.next_sibling == null) previous = previous.parent_node orelse return;
+            current = if (previous == root) null else previous.next_sibling;
+        }
+    }
+
     fn transformText(self: *Collector) !void {
+        return self.transformTextForRange(false);
+    }
+
+    fn transformTextForRange(self: *Collector, comptime bounded: bool) !void {
         const needs_transform = for (self.tokens.items) |token| {
             if (token == .text and token.text.visible and transforms(token.text.transform)) break true;
         } else false;
@@ -397,13 +602,18 @@ const Collector = struct {
             .literal => |byte| try original.append(self.allocator, byte),
             else => {},
         };
-        for (self.tokens.items) |*token| {
+        for (self.tokens.items, 0..) |*token, token_index| {
             if (token.* != .text or !token.text.visible or !transforms(token.text.transform)) continue;
             const text = &token.text;
             var mapped: std.ArrayList(u8) = .empty;
             defer mapped.deinit(self.allocator);
+            var source_units: usize = 0;
+            var mapped_units: usize = 0;
+            var mapped_start: ?usize = null;
+            var mapped_end: ?usize = null;
             for (text.start..text.end) |index| {
                 const cp = original.items[index];
+                const previous_mapped = mapped_units;
                 const mode: ?infra.unicode_case.CaseMode = switch (text.transform.case) {
                     .uppercase => .upper,
                     .lowercase => .lower,
@@ -431,15 +641,29 @@ const Collector = struct {
                     var encoded: [4]u8 = undefined;
                     const length = try std.unicode.wtf8Encode(point, &encoded);
                     try infra.wtf8.appendJoined(self.allocator, &mapped, encoded[0..length]);
+                    if (bounded) mapped_units += if (point > 0xffff) @as(usize, 2) else 1;
+                }
+                if (bounded) {
+                    const source_length: usize = if (cp > 0xffff) 2 else 1;
+                    const span = self.spans.items[token_index];
+                    if (mapped_start == null) mapped_start = mappedOffset(span.start, source_units, source_length, previous_mapped, mapped_units);
+                    if (mapped_end == null) mapped_end = mappedOffset(span.end, source_units, source_length, previous_mapped, mapped_units);
+                    source_units += source_length;
                 }
             }
             const bytes = try mapped.toOwnedSlice(self.allocator);
             if (text.owned) self.allocator.free(text.bytes);
             text.bytes = bytes;
             text.owned = true;
+            if (bounded) self.spans.items[token_index] = .{ .start = mapped_start orelse mapped_units, .end = mapped_end orelse mapped_units };
         }
     }
 };
+
+fn mappedOffset(offset: usize, source: usize, length: usize, mapped_from: usize, mapped_to: usize) ?usize {
+    if (offset < source or offset >= source + length) return null;
+    return mapped_from + @min(offset - source, mapped_to - mapped_from);
+}
 
 fn isAsciiWhitespace(cp: u21) bool {
     return cp == ' ' or cp == '\t' or cp == '\n' or cp == '\r' or cp == 0x0C;
@@ -916,4 +1140,29 @@ test "full-width and full-size-kana map after the case transformation" {
     // full-size-kana then makes full-size ア.
     try std.testing.expectEqualStrings("ア", collector.tokens.items[2].text.bytes);
     try std.testing.expectEqualStrings("x", collector.tokens.items[3].text.bytes);
+}
+
+test "bounded rendered text keeps whitespace context and maps expanding case offsets" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, boundedTextAllocationFailures, .{});
+}
+
+fn boundedTextAllocationFailures(allocator: Allocator) !void {
+    var collector = Collector{ .allocator = allocator };
+    defer collector.deinit();
+    collector.current_span = .{ .start = 3, .end = 4 };
+    try collector.emitForRange(true, .{ .text = .{ .bytes = "one  two", .whitespace = .collapse } });
+    collector.current_span = .{};
+    try collector.emitForRange(true, .{ .required = .{ .count = 1 } });
+    collector.current_span = .{ .start = 4, .end = 5 };
+    try collector.emitForRange(true, .{ .text = .{ .bytes = "straßE", .whitespace = .collapse, .transform = .{ .case = .uppercase } } });
+    try collector.transformTextForRange(true);
+    try std.testing.expectEqual(@as(usize, 4), collector.spans.items[2].start);
+    try std.testing.expectEqual(@as(usize, 6), collector.spans.items[2].end);
+    var result = TextResult{ .allocator = allocator };
+    defer result.deinit();
+    try renderBoundedText(&result, collector.tokens.items[0].text, collector.spans.items[0]);
+    try std.testing.expectEqualStrings(" ", result.bytes.items);
+    result.requireBreaks(1);
+    try renderBoundedText(&result, collector.tokens.items[2].text, collector.spans.items[2]);
+    try std.testing.expectEqualStrings(" \nSS", result.bytes.items);
 }

@@ -1189,22 +1189,22 @@ const DomTree = struct {
 /// Stringifier - serialize method for toString
 /// Spec: https://w3c.github.io/selection-api/#dom-selection-stringifier
 ///
-/// "The stringification must return the string, which is the concatenation
-/// of the rendered text if there is a range associated with this." Crane has
-/// no layout, so the range's own stringification stands in for its rendered
-/// text (a stated deviation: Blink and Gecko serialize what is rendered);
-/// with no range, the empty string. The selected substring of a textarea or
-/// input value is not done (TODO). The result is the binding's to free - toString() is
-/// bound as an operation - so it is a copy in this selection's allocator. It
-/// returned the literal "[object]", and `String(getSelection())` died in
-/// Allocator.free's memset on the literal's read-only page.
+/// The associated live Range bounds the shared rendered-text collector.
+/// Blink DomSelection::toString likewise uses a rendered TextIterator; this
+/// leaves Range.toString's raw DOM concatenation unchanged. The binding owns
+/// the returned bytes in this Selection's allocator (possibly a different
+/// realm from the range's nodes). TODO(EDITING): a text control's persistent
+/// selection owner is part of the shared caret model, not focus designation.
 pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return "";
+    const b = visibleBoundaries(internal) orelse return "";
+    if (b.start_container == b.end_container and b.start_offset == b.end_offset) return "";
     const range = liveRange(internal) orelse return "";
-    const text = try Range.serialize(range);
-    defer if (text.len > 0) range.ctx.allocator.free(text);
-    if (text.len == 0) return "";
-    return instance.ctx.allocator.dupe(u8, text);
+    const common = try Range.get_commonAncestorContainer(range);
+    var text = try @import("html").inner_text.getRenderedText(common, b);
+    defer text.deinit(common.ctx.allocator);
+    if (text.isEmpty()) return "";
+    return instance.ctx.allocator.dupe(u8, text.asSlice());
 }
 
 /// DOM node length through the owning interfaces: CharacterData length (in
