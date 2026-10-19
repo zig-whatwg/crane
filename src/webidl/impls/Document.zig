@@ -3870,16 +3870,16 @@ pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: ?runtime.D
 }
 
 /// Operation: hasFocus
-/// HTML §6.4.4 - Returns true if document has focus
+/// HTML §6.6.6 - Whether this document is in the focused document chain.
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-hasfocus
-///
-/// In a typical browser context, this checks if the document's browsing context
-/// is focused. Since we're not in a browser, we return true as a sensible default.
 pub fn call_hasFocus(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    // In non-browser environment, default to true (document is considered focused)
-    // TODO: Integrate with browsing context/window focus state when available
-    return true;
+    // Has-focus steps 1-2 start from the node navigable's active document.
+    // A windowless, destroyed or inactive document cannot be on that chain.
+    if (!isFullyActive(instance)) return false;
+    // The method's step is to run the existing has-focus steps. Their
+    // system-focus policy and descent through child navigables are shared
+    // with the focusing implementation.
+    return @import("html").focus.hasFocus(instance);
 }
 
 /// Operation: exitFullscreen
