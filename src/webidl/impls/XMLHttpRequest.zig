@@ -506,6 +506,14 @@ fn setDocumentResponse(instance: *runtime.Instance) !void {
     // 11. Its origin: xhr's relevant settings object's origin - a
     // construction fact, so it is given to the document as it is made.
     const origin: ?*dom_mod.origin_record.OriginRecord = if (relevantDocument(instance)) |relevant| try dom_mod.document_origin.shareable(relevant) else null;
+    // HTML lastModified's source metadata: XHR steps 5-6 create this
+    // document from the response. Give its source timestamp at construction,
+    // retaining only the value, not a reference to the response or header.
+    const last_modified: ?@import("platform").WallTime = if (xhr_state.response) |response| modified: {
+        const header = (try response.header_list.get(allocator, "Last-Modified")) orelse break :modified null;
+        defer allocator.free(header);
+        break :modified fetch_mod.cache.freshness_mod.parseHttpDateWallTime(header);
+    } else null;
     const document = switch (kind) {
         .html => html: {
             // 5.1-5.3: the final encoding, else the prescan's, else UTF-8.
@@ -517,7 +525,7 @@ fn setDocumentResponse(instance: *runtime.Instance) !void {
             defer allocator.free(text);
             // 5.4-5.5: the HTML parser with scripting disabled, its document
             // an HTML document.
-            break :html try @import("html").dom_parser.parseHTML(allocator, instance.ctx, text, .{ .origin = origin });
+            break :html try @import("html").dom_parser.parseHTML(allocator, instance.ctx, text, .{ .origin = origin, .last_modified = last_modified });
         },
         .xml => xml: {
             // 6. "If that fails (unsupported character encoding, namespace
@@ -528,7 +536,7 @@ fn setDocumentResponse(instance: *runtime.Instance) !void {
             // An XMLDocument, as browsers make (Blink's
             // XMLHttpRequest::InitResponseDocument: XMLDocument::Create
             // unless HTML), where step 6 says only "a document".
-            const doc = try interfaces.XMLDocument.initWith(allocator, instance.ctx, .{ .origin = origin });
+            const doc = try interfaces.XMLDocument.initWith(allocator, instance.ctx, .{ .origin = origin, .ready_state = ._complete_, .last_modified = last_modified });
             errdefer dom_mod.node_creation.destroyUninserted(doc);
             try dom_mod.document_internals.setDocumentType(doc, .xml);
             if (try @import("html").xml_document_parser.parseInto(doc, decoded.text, .{ .scripting = false }) != null) {

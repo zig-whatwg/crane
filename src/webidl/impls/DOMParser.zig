@@ -194,7 +194,20 @@ pub fn call_parseFromString(instance: *runtime.Instance, string: typedefs.Truste
         ._application_xml_,
         ._application_xhtml_xml_,
         ._image_svg_xml_,
-        => parseXml(internal.allocator, instance.ctx, html_string, @"type", realm_url, relevant_document),
+        => {
+            // Step 4's XML parser consumes scalar UTF-8. Chrome and Firefox
+            // replace lone DOMString surrogates (wpt.fyi 23b0b89b1a,
+            // DOMParser-parseFromString-xml-parsererror); Safari does not.
+            // No newer spec change: golden rule 2's majority. Gecko's
+            // DOMParser::ParseFromStringInternal converts to UTF-8 before
+            // ParseFromStream: dom/base/DOMParser.cpp on searchfox.org.
+            // Normalize only our owned compliant string, after Trusted Types.
+            // ED starts every WTF-8 surrogate; skip scalar scans when absent.
+            if (std.mem.indexOfScalar(u8, compliant, 0xED)) |first| {
+                @import("infra").string.replaceLoneSurrogatesWtf8(compliant[first..]);
+            }
+            return parseXml(internal.allocator, instance.ctx, html_string, @"type", realm_url, relevant_document);
+        },
     };
 }
 
@@ -220,7 +233,7 @@ fn parseXml(
     // Its origin is the relevant global's associated Document's, a
     // construction fact (shared record, borrowed for the call).
     const origin: ?*dom.origin_record.OriginRecord = if (relevant_document) |relevant| try dom.document_origin.shareable(relevant) else null;
-    const document = try interfaces.XMLDocument.initWith(allocator, ctx, .{ .origin = origin });
+    const document = try interfaces.XMLDocument.initWith(allocator, ctx, .{ .origin = origin, .ready_state = ._complete_ });
     errdefer dom.node_creation.destroyUninserted(document);
     // A document no navigation loads is ready at once (as createDocument's).
     dom.document_lifecycle.markReadyForPostLoadTasks(document);

@@ -191,71 +191,162 @@ pub fn timeUntilStale(timing: CacheTiming, is_shared_cache: bool, current_time: 
     return freshness - age;
 }
 
-/// Parse HTTP date format (RFC 7231 § 7.1.1.1).
-/// Supports IMF-fixdate format: "Sun, 06 Nov 1994 08:49:37 GMT"
-///
-/// Returns seconds since Unix epoch, or null if parsing fails.
+/// RFC 9110 section 5.6.7: parse any of the three HTTP-date wire formats.
+/// Returns signed Unix epoch seconds, or null for an invalid date.
 pub fn parseHttpDate(date_str: []const u8) ?i64 {
-    // Simple parser for IMF-fixdate format
-    // Full format: "Sun, 06 Nov 1994 08:49:37 GMT"
-
-    // Must have at least "Day, DD Mon YYYY HH:MM:SS GMT" = 29 chars
-    if (date_str.len < 29) return null;
-
-    // Skip day name and comma
-    const after_day = std.mem.indexOf(u8, date_str, ", ") orelse return null;
-    const rest = date_str[after_day + 2 ..];
-
-    // Parse: "06 Nov 1994 08:49:37 GMT"
-    if (rest.len < 20) return null;
-
-    const day = std.fmt.parseInt(u8, rest[0..2], 10) catch return null;
-
-    const month_str = rest[3..6];
-    const month: u8 = blk: {
-        const months = [_][]const u8{ "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
-        for (months, 1..) |m, i| {
-            if (std.mem.eql(u8, month_str, m)) break :blk @intCast(i);
-        }
-        return null;
-    };
-
-    const year = std.fmt.parseInt(u16, rest[7..11], 10) catch return null;
-    const hour = std.fmt.parseInt(u8, rest[12..14], 10) catch return null;
-    const minute = std.fmt.parseInt(u8, rest[15..17], 10) catch return null;
-    const second = std.fmt.parseInt(u8, rest[18..20], 10) catch return null;
-
-    // Convert to epoch timestamp
-    // Simple conversion (doesn't handle all edge cases)
-    return dateToEpoch(year, month, day, hour, minute, second);
+    return parseHttpDateAt(date_str, @import("platform").wallSeconds());
 }
 
-/// Convert date components to Unix epoch seconds.
-fn dateToEpoch(year: u16, month: u8, day: u8, hour: u8, minute: u8, second: u8) i64 {
-    // Days from year 1970
-    var days: i64 = 0;
-
-    // Add days for years
-    var y: u16 = 1970;
-    while (y < year) : (y += 1) {
-        days += if (isLeapYear(y)) 366 else 365;
+/// The same parser with a supplied current UTC instant, for RFC850's
+/// fifty-year rule (section 5.6.7 paragraph 18).
+pub fn parseHttpDateAt(date_str: []const u8, now: i64) ?i64 {
+    const input = std.mem.trim(u8, date_str, " \t");
+    var date: HttpDate = undefined;
+    // Section 5.6.7 paragraph 11: IMF-fixdate.
+    if (input.len == 29 and input[3] == ',') {
+        if (!httpWeekday(input[0..3], false) or input[4] != ' ' or
+            input[7] != ' ' or input[11] != ' ' or input[16] != ' ' or
+            input[25] != ' ' or !std.ascii.eqlIgnoreCase(input[26..29], "GMT")) return null;
+        date = httpDateFields(input[5..7], input[8..11], input[12..16], input[17..25]) orelse return null;
+    } else if (std.mem.indexOfScalar(u8, input, ',')) |comma| {
+        // Section 5.6.7 paragraph 14: obsolete rfc850-date. Recipients MUST
+        // accept it, including its long weekday and two-digit year.
+        if (!httpWeekday(input[0..comma], true) or input.len - comma != 24 or input[comma + 1] != ' ') return null;
+        const rest = input[comma + 2 ..];
+        if (rest[2] != '-' or rest[6] != '-' or rest[9] != ' ' or
+            rest[18] != ' ' or !std.ascii.eqlIgnoreCase(rest[19..22], "GMT")) return null;
+        date = httpDateFields(rest[0..2], rest[3..6], rest[7..9], rest[10..18]) orelse return null;
+        const current = utcDateFields(now);
+        const latest_year = current.year + 50;
+        // Pick the matching year at or before the fifty-year boundary,
+        // including across centuries, then compare the rest of the date.
+        date.year = latest_year - @mod(latest_year - date.year, 100);
+        if (date.year == latest_year and httpDateRemainder(date) > httpDateRemainder(current)) date.year -= 100;
+    } else {
+        // Section 5.6.7 paragraph 15: asctime-date, implicitly UTC.
+        if (input.len != 24 or !httpWeekday(input[0..3], false) or
+            input[3] != ' ' or input[7] != ' ' or input[10] != ' ' or input[19] != ' ') return null;
+        const day = if (input[8] == ' ') input[9..10] else input[8..10];
+        date = httpDateFields(day, input[4..7], input[20..24], input[11..19]) orelse return null;
     }
-
-    // Add days for months
+    // Section 5.6.7 paragraph 17 imports RFC 5322 section 3.3's calendar
+    // semantics (year >= 1900, an actual day of the month, valid clock fields).
+    if (date.year < 1900 or date.year > 9999 or date.day == 0 or
+        date.hour > 23 or date.minute > 59 or date.second > 60) return null;
+    const year: u16 = @intCast(date.year);
     const days_in_month = [_]u8{ 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
-    var m: u8 = 1;
-    while (m < month) : (m += 1) {
-        days += days_in_month[m - 1];
-        if (m == 2 and isLeapYear(year)) {
-            days += 1;
-        }
+    const last_day = days_in_month[date.month - 1] + @as(u8, @intFromBool(date.month == 2 and isLeapYear(year)));
+    if (date.day > last_day) return null;
+    return dateToEpoch(year, date.month, date.day, date.hour, date.minute, date.second);
+}
+
+/// HTML lastModified: unrepresentable or invalid source dates are "not known".
+/// WallTime has a narrower nanosecond range than HTTP's epoch seconds. Never
+/// wrap or clamp it; a wider source timestamp is a separate follow-up.
+pub fn parseHttpDateWallTime(date_str: []const u8) ?@import("platform").WallTime {
+    const seconds = parseHttpDate(date_str) orelse return null;
+    return .{ .ns_since_epoch = std.math.mul(i64, seconds, std.time.ns_per_s) catch return null };
+}
+
+const HttpDate = struct {
+    year: i64,
+    month: u8,
+    day: u8,
+    hour: u8,
+    minute: u8,
+    second: u8,
+};
+
+fn httpDateFields(day: []const u8, month: []const u8, year: []const u8, time: []const u8) ?HttpDate {
+    if (time.len != 8 or time[2] != ':' or time[5] != ':') return null;
+    return .{
+        .year = httpDateNumber(year) orelse return null,
+        .month = httpMonth(month) orelse return null,
+        .day = @intCast(httpDateNumber(day) orelse return null),
+        .hour = @intCast(httpDateNumber(time[0..2]) orelse return null),
+        .minute = @intCast(httpDateNumber(time[3..5]) orelse return null),
+        .second = @intCast(httpDateNumber(time[6..8]) orelse return null),
+    };
+}
+
+/// All callers supply at most four digits; signs and other parseInt syntax
+/// are not DIGIT in the HTTP-date grammar.
+fn httpDateNumber(input: []const u8) ?u16 {
+    if (input.len == 0 or input.len > 4) return null;
+    var result: u16 = 0;
+    for (input) |c| {
+        if (!std.ascii.isDigit(c)) return null;
+        result = result * 10 + (c - '0');
     }
+    return result;
+}
 
-    // Add days in current month
+fn httpMonth(input: []const u8) ?u8 {
+    const months = [_][]const u8{ "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+    // RFC 9111 section 4.2 relaxes name case for cache recipients. This
+    // shared parser preserves that tolerance for its cache callers.
+    for (months, 1..) |month, number| {
+        if (std.ascii.eqlIgnoreCase(input, month)) return @intCast(number);
+    }
+    return null;
+}
+
+fn httpWeekday(input: []const u8, comptime long: bool) bool {
+    const names = if (long)
+        [_][]const u8{ "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" }
+    else
+        [_][]const u8{ "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+    // RFC 9110 section 5.6.7 imports weekday semantics, but all three
+    // browsers ignore a recognized weekday's disagreement with the date:
+    // WebKit Source/WTF/wtf/DateMath.cpp:709; Blink base/third_party/nspr/
+    // prtime.cc:1058-1068; Gecko nsHttpResponseHead.cpp:904-914,977-979 uses
+    // that same PR_ParseTimeString. No newer spec change (golden rule 2).
+    for (names) |name| if (std.ascii.eqlIgnoreCase(input, name)) return true;
+    return false;
+}
+
+/// UTC civil fields without an OS timezone or unsigned pre-epoch cast.
+fn utcDateFields(seconds: i64) HttpDate {
+    // Gregorian dates repeat every 400 years. Reduce to 1970..2369 so the
+    // standard library's unsigned epoch helpers also handle negative times.
+    const cycle_seconds: i64 = 146097 * std.time.s_per_day;
+    const epoch = std.time.epoch.EpochSeconds{ .secs = @intCast(@mod(seconds, cycle_seconds)) };
+    const year_day = epoch.getEpochDay().calculateYearDay();
+    const month_day = year_day.calculateMonthDay();
+    const time = epoch.getDaySeconds();
+    return .{
+        .year = @as(i64, year_day.year) + @divFloor(seconds, cycle_seconds) * 400,
+        .month = @intFromEnum(month_day.month),
+        .day = @as(u8, month_day.day_index) + 1,
+        .hour = time.getHoursIntoDay(),
+        .minute = time.getMinutesIntoHour(),
+        .second = time.getSecondsIntoMinute(),
+    };
+}
+
+/// Lexicographic month/day/time order, including 23:59:60. No calendar
+/// normalization is needed to compare with the fifty-year boundary.
+fn httpDateRemainder(date: HttpDate) u64 {
+    var value: u64 = date.month;
+    value = value * 32 + date.day;
+    value = value * 24 + date.hour;
+    value = value * 60 + date.minute;
+    return value * 61 + date.second;
+}
+
+/// Convert validated Gregorian date components to signed Unix epoch seconds.
+fn dateToEpoch(year: u16, month: u8, day: u8, hour: u8, minute: u8, second: u8) i64 {
+    var days = daysBeforeYear(year) - daysBeforeYear(1970);
+    const days_in_month = [_]u8{ 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+    for (days_in_month[0 .. month - 1]) |count| days += count;
+    if (month > 2 and isLeapYear(year)) days += 1;
     days += day - 1;
+    return days * 86400 + @as(i64, hour) * 3600 + @as(i64, minute) * 60 + second;
+}
 
-    // Convert to seconds
-    return days * 86400 + @as(i64, hour) * 3600 + @as(i64, minute) * 60 + @as(i64, second);
+fn daysBeforeYear(year: u16) i64 {
+    const previous = @as(i64, year) - 1;
+    return previous * 365 + @divFloor(previous, 4) - @divFloor(previous, 100) + @divFloor(previous, 400);
 }
 
 fn isLeapYear(year: u16) bool {

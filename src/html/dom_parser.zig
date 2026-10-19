@@ -83,6 +83,8 @@ pub const ParseOptions = struct {
     /// Document's), or null for an origin of its own. BORROWED: the document
     /// retains it.
     origin: ?*dom.origin_record.OriginRecord = null,
+    /// HTML lastModified: the source timestamp, if this parse has one.
+    last_modified: ?@import("platform").WallTime = null,
 };
 
 /// HTML 13.2.4.5 "parser scripting mode": the two the HTML fragment parsing
@@ -200,7 +202,7 @@ pub fn parseHTML(
     const document = interfaces.Document.initWith(
         allocator,
         ctx,
-        .{ .origin = options.origin },
+        .{ .origin = options.origin, .ready_state = ._complete_, .last_modified = options.last_modified },
     ) catch return error.OutOfMemory;
     errdefer dom.node_creation.destroyUninserted(document);
 

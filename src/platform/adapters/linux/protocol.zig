@@ -50,6 +50,7 @@ pub const protocol = struct {
     pub const defaultDataDirectory = posix.defaultDataDirectory;
     pub const preferredLanguages = posix.preferredLanguages;
     pub const defaultTimeZone = posix.defaultTimeZone;
+    pub const localDateTime = posix.localDateTime;
     pub const logicalProcessorCount = posix.logicalProcessorCount;
     pub const deviceMemoryGiB = posix.deviceMemoryGiB;
     pub const residentMemory = posix.residentMemory;

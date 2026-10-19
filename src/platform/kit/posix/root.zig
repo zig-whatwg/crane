@@ -15,6 +15,9 @@ const platform = @import("platform");
 const clock = @import("clock");
 const host = @import("host");
 const memory = @import("memory");
+const c_time = @cImport({
+    @cInclude("time.h");
+});
 
 const Str = platform.Str;
 const Bytes = platform.Bytes;
@@ -79,6 +82,31 @@ pub fn defaultTimeZone(allocator: std.mem.Allocator) Error![]u8 {
         if (std.mem.indexOf(u8, target, "zoneinfo/")) |at| return allocator.dupe(u8, target[at + "zoneinfo/".len ..]);
     }
     return allocator.dupe(u8, "UTC");
+}
+
+/// The OS applies its historical local-zone rules. No embedded transition
+/// table or UTC fallback. defaultTimeZone's existing regular-file fallback
+/// can misidentify this zone as UTC; its repair is a queued PLATFORM item.
+pub fn localDateTime(time: platform.WallTime) platform.LocalDateTime {
+    // Floor, not truncate: the nanosecond before the epoch is in 1969.
+    const seconds: c_time.time_t = @intCast(@divFloor(time.ns_since_epoch, std.time.ns_per_s));
+    var fields: c_time.struct_tm = undefined;
+    // POSIX permits localtime_r to rely on the caller having called tzset.
+    // libc owns the zone data; the output is caller-owned, never a static tm.
+    c_time.tzset();
+    if (c_time.localtime_r(&seconds, &fields) == null) {
+        // WallTime's range (1677-2262) fits these platforms' 64-bit time_t
+        // and tm_year. Failure cannot be represented by this operation.
+        @panic("localtime_r cannot represent WallTime");
+    }
+    return .{
+        .year = fields.tm_year + 1900,
+        .month = @intCast(fields.tm_mon + 1),
+        .day = @intCast(fields.tm_mday),
+        .hour = @intCast(fields.tm_hour),
+        .minute = @intCast(fields.tm_min),
+        .second = @intCast(fields.tm_sec),
+    };
 }
 
 pub fn logicalProcessorCount() u32 {
