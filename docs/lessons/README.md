@@ -525,6 +525,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Share HTTP date parsing with source metadata](spec-compliance-share-http-date-parsing-with-source-metadata.md) - Reuse the protocol parser, test existing callers and check narrower timestamp conversions.
 - [Raw event handlers own their source](spec-compliance-raw-event-handlers-own-their-source.md) - Retain the stored source; the current attribute can differ after CSP rejection or body replacement.
 - [Child removal does not prepare a script](spec-compliance-child-removal-does-not-prepare-a-script.md) - Carry the mutation reason so removal differs from insertion without changing style updates.
+- [A failed stylesheet can still have a sheet](spec-compliance-a-failed-stylesheet-can-still-have-a-sheet.md) - Rejecting CSS bytes does not necessarily remove the CSSOM sheet.
 
 ### Codegen
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
