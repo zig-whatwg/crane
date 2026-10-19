@@ -12,7 +12,7 @@ test "token removal retains implicit parser classic blocking and uses prepared t
     defer runtime.deinitializeRuntime();
     var ctx = try runtime.ContextData.init(allocator, .{});
     defer ctx.deinit();
-    const document = try interfaces.Document.init(allocator, &ctx);
+    const document = try interfaces.Document.initWith(allocator, &ctx, .{ .ready_state = ._loading_ });
     defer interfaces.Document.deinit(document);
     try dom.document_internals.setContentType(document, "text/html");
     try dom.document_internals.setDocumentType(document, .html);
@@ -48,7 +48,7 @@ test "execution unblocks even a null result before reporting load failure" {
     defer runtime.deinitializeRuntime();
     var ctx = try runtime.ContextData.init(allocator, .{});
     defer ctx.deinit();
-    const document = try interfaces.Document.init(allocator, &ctx);
+    const document = try interfaces.Document.initWith(allocator, &ctx, .{ .ready_state = ._loading_ });
     defer interfaces.Document.deinit(document);
     try dom.document_internals.setContentType(document, "text/html");
     try dom.document_internals.setDocumentType(document, .html);
@@ -85,7 +85,7 @@ test "navigation parser initialization allows render blockers before body" {
     defer runtime.deinitializeRuntime();
     var ctx = try runtime.ContextData.init(allocator, .{});
     defer ctx.deinit();
-    const document = try interfaces.Document.init(allocator, &ctx);
+    const document = try interfaces.Document.initWith(allocator, &ctx, .{ .ready_state = ._loading_ });
     defer interfaces.Document.deinit(document);
     // The browser creates the document singleton without a content type.
     // Exercise the real persistent parser initializer before its first pump.
@@ -121,7 +121,7 @@ test "HTML parser initialization preserves caller content types" {
     var ctx = try runtime.ContextData.init(allocator, .{});
     defer ctx.deinit();
     for ([_][]const u8{ "application/xml", "application/xhtml+xml", "text/plain", "text/html" }) |content_type| {
-        const document = try interfaces.Document.init(allocator, &ctx);
+        const document = try interfaces.Document.initWith(allocator, &ctx, .{ .ready_state = ._loading_ });
         defer interfaces.Document.deinit(document);
         try dom.document_internals.setContentType(document, content_type);
         const parser = try html.scripted_parser.DocumentParser.createComplete(allocator, &ctx, document, "<!doctype html><body>", .{});

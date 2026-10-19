@@ -1736,15 +1736,25 @@ const CookieTarget = struct {
 };
 
 /// document.cookie's target for `document`, or null for a cookie-averse
-/// Document - one whose browsing context is null, or whose URL's scheme is
-/// not an HTTP(S) scheme - or one no user agent jar reaches. An opaque
-/// origin is a SecurityError.
+/// Document - one whose browsing context is null, or whose cookie URL's
+/// scheme is not an HTTP(S) scheme - or one no user agent jar reaches. An
+/// opaque origin is a SecurityError.
+///
+/// The URL is the cookie URL (dom.global_settings.cookieUrlOf), not the
+/// document's current URL: the one it was made with, which pushState and
+/// fragment navigations leave, and an about:blank or srcdoc document's
+/// creator's. Blink's Document::cookie and WebKit's read their documents'
+/// cookie URL, fixed at creation and inherited from the owner document for
+/// about:blank (DocumentInit::GetCookieUrl, Document::initSecurityContext);
+/// HTML's text says the document's URL, which makes such a frame
+/// cookie-averse.
 fn cookieTarget(document: *runtime.Instance) !?CookieTarget {
     const internal = getInternal(document) orelse return null;
     if (internal.destroyed) return null;
     const window = internal.default_view orelse return null;
     const allocator = document.ctx.allocator;
-    const url = try get_URL(document);
+    const cookie_url = @import("dom").global_settings.cookieUrlOf(window) orelse return null;
+    const url = try allocator.dupe(u8, cookie_url);
     errdefer allocator.free(url);
     if (!std.ascii.startsWithIgnoreCase(url, "http:") and !std.ascii.startsWithIgnoreCase(url, "https:")) {
         allocator.free(url);
@@ -2968,6 +2978,18 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
             // prior explicit URL so later pushState updates stay visible.
             if (internal.url.len > 0) internal.allocator.free(internal.url);
             internal.url = "";
+            // The cookie URL becomes the entry document's (its cookie URL,
+            // not its current URL) - two of three browsers: Blink's
+            // Document::open sets cookie_url_ to the entered window's
+            // document's CookieURL() (document.cc, whose own comment weighs
+            // removing it and keeps it for web compatibility), WebKit's does
+            // setCookieURL(entryDocument->cookieURL()) (Document.cpp). The
+            // URL update above is a same-document change, which leaves it.
+            if (entry_document != instance) {
+                if (getInternal(entry_document)) |entry_internal| if (entry_internal.default_view) |entry_window| {
+                    if (dom.global_settings.cookieUrlOf(entry_window)) |cookie_url| window.ctx.setCreationUrl(cookie_url) catch {};
+                };
+            }
         }
     }
 

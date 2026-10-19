@@ -11,8 +11,9 @@
 //! Update Registration State's tasks run - and this impl owns that state. Its
 //! onupdatefound is the generated event handler (dom.event_handlers).
 //!
-//! WHATWG Service Worker + Cookie Store Standard Integration: the cookies
-//! attribute returns a CookieStoreManager for the registration.
+//! Cookie Store 4.4: the cookies attribute returns the registration's
+//! CookieStoreManager - made here with the registration's id and scope url,
+//! as navigationPreload's manager is.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -23,7 +24,6 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const service_worker = @import("service_worker");
-const CookieStoreManagerImpl = @import("CookieStoreManager.zig");
 const ServiceWorkerRegistration = interfaces.ServiceWorkerRegistration;
 
 pub const State = ServiceWorkerRegistration.State;
@@ -41,13 +41,6 @@ pub const construction_args = .{"service_worker_registration"};
 pub const InternalState = struct {
     /// The registration's state, OWNED (the environment sets what changes).
     registration: *service_worker.RegistrationObject,
-    /// The scope URL for this registration (the registration's, BORROWED
-    /// from it): the CookieStoreManager's.
-    scope_url: []const u8,
-    /// Whether this is a secure context
-    is_secure_context: bool,
-    /// Lazily initialized CookieStoreManager instance (SameObject)
-    cookie_store_manager: ?*runtime.Instance,
     /// Allocator for internal allocations
     allocator: std.mem.Allocator,
 };
@@ -61,10 +54,6 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     const internal = try allocator.create(InternalState);
     internal.* = .{
         .registration = registration,
-        .scope_url = registration.scope_url,
-        // [SecureContext]: made only in a secure context.
-        .is_secure_context = true,
-        .cookie_store_manager = null,
         .allocator = allocator,
     };
     instance.getState(State).own._internal = internal;
@@ -135,40 +124,15 @@ pub fn get_periodicSync(instance: *runtime.Instance) anyerror!*runtime.Instance 
     return error.NotImplemented;
 }
 
-/// Getter for cookies
-/// https://cookiestore.spec.whatwg.org/#dom-serviceworkerregistration-cookies
-///
-/// Returns the CookieStoreManager for this registration.
-/// CookieStoreManager is a SecureContext-only feature.
+/// Getter for cookies (Cookie Store 4.4): the registration's
+/// CookieStoreManager - one per object here ([SameObject], kept by the
+/// generated getter), associated with its service worker registration.
 pub fn get_cookies(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternalState(instance) orelse return error.NotImplemented;
-
-    // SecureContext check
-    if (!internal.is_secure_context) {
-        return error.SecurityError;
-    }
-
-    // Lazy initialization (SameObject behavior)
-    if (internal.cookie_store_manager) |manager| {
-        return manager;
-    }
-
-    // Create new CookieStoreManager for this registration
-    const CookieStoreManager = interfaces.CookieStoreManager;
-
-    const cookie_store_manager = CookieStoreManagerImpl.createForRegistration(
-        internal.allocator,
-        CookieStoreManager.State,
-        &CookieStoreManager.vtable,
-        instance.ctx,
-        internal.scope_url,
-        internal.is_secure_context,
-    ) catch {
-        return error.OutOfMemory;
-    };
-
-    internal.cookie_store_manager = cookie_store_manager;
-    return cookie_store_manager;
+    const registration = try registrationOf(instance);
+    return interfaces.CookieStoreManager.initWith(instance.ctx.allocator, instance.ctx, .{
+        .registration_id = registration.registration_id,
+        .scope_url = registration.scope_url,
+    });
 }
 
 /// Getter for sync

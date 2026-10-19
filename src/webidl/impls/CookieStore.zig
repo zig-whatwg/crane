@@ -60,7 +60,10 @@ fn clientOf(instance: *runtime.Instance) ?Client {
     const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
     const global_settings = @import("dom").global_settings;
     const jar = global_settings.cookieJarOf(global) orelse return null;
-    const url = instance.ctx.documentUrl() orelse return null;
+    // The settings object's creation URL (get() step 4) - or, as the
+    // browsers do, an about:blank or srcdoc document's creator's: the cookie
+    // URL (dom.global_settings.cookieUrlOf), which pushState leaves.
+    const url = global_settings.cookieUrlOf(global) orelse return null;
     const settings = global_settings.of(global) orelse return null;
     const origin = settings.origin(global) catch return null;
     defer global.ctx.allocator.free(origin);

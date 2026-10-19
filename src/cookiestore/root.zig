@@ -112,6 +112,12 @@ pub const CookieChange = change_observer.CookieChange;
 pub const CookieChangeType = change_observer.ChangeType;
 pub const CookieChangeObserver = change_observer.CookieChangeObserver;
 
+// Service worker registrations' cookie change subscriptions (2.3, 7.4 step 2)
+pub const subscriptions = @import("subscriptions.zig");
+pub const ChangeSubscription = subscriptions.ChangeSubscription;
+pub const observableFor = subscriptions.observableFor;
+pub const registrationObserves = subscriptions.registrationObserves;
+
 // Event dispatch
 pub const event_dispatch = @import("event_dispatch.zig");
 pub const processCookieChanges = event_dispatch.processCookieChanges;
@@ -141,8 +147,6 @@ pub const processSetCookieHeaders = http_integration.processSetCookieHeaders;
 // The state the API's platform objects keep, and their query
 pub const api_objects = @import("api_objects.zig");
 pub const CookieStoreState = api_objects.CookieStoreState;
-pub const CookieStoreManagerState = api_objects.CookieStoreManagerState;
-pub const CookieSubscription = api_objects.CookieSubscription;
 pub const CookieChangeEventState = api_objects.CookieChangeEventState;
 pub const queryItems = api_objects.queryItems;
 pub const freeItems = api_objects.freeItems;
@@ -156,6 +160,7 @@ test {
     _ = storage_integration;
     _ = change_observer;
     _ = event_dispatch;
+    _ = subscriptions;
     _ = http_integration;
     _ = api_objects;
 }

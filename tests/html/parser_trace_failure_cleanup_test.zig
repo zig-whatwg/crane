@@ -41,7 +41,7 @@ fn exercise() !void {
     defer runtime.deinitializeRuntime();
     var context = try runtime.ContextData.init(std.testing.allocator, .{});
     defer context.deinit();
-    const document = try interfaces.Document.init(std.testing.allocator, &context);
+    const document = try interfaces.Document.initWith(std.testing.allocator, &context, .{ .ready_state = ._loading_ });
     defer interfaces.Document.deinit(document);
     var loader = Loader{};
     const parser = try scripted_parser.DocumentParser.createComplete(std.testing.allocator, &context, document, "<!doctype html><body><div>failed input", .{
