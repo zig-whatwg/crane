@@ -105,6 +105,11 @@ const CallbackRealm = struct {
         // ends or detaches with its document. (The activity check walks the
         // Browser's navigables: keep it off every top-level callback.)
         if (!protocol_realms.isAttachedFrame(realm)) return true;
+        // A realm no Browser made (WindowRealmOptions.browser_scope unset:
+        // the engine's own tests) has no document state to consult - its
+        // Window belongs to no navigable. (Not browserScope(), which falls
+        // back to the process's standalone scope.)
+        if (realm.browser_scope == null) return true;
         const record = realm.getRealm() orelse return true;
         const global: *engine.Instance = @ptrCast(@alignCast(record.global_object orelse return true));
         if (global.stateAs(@import("interfaces").Window.State) == null) return true;
