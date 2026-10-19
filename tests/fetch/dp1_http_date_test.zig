@@ -69,22 +69,34 @@ test "dp1 HTTP-date to WallTime checks its nanosecond range" {
 }
 
 test "dp1 cache creation and revalidation keep Date Expires and Last-Modified seconds" {
+    // A stored response reads its freshness inputs from its fields when it
+    // is stored, and again when a 304 freshens it (lane httpcache1 replaced
+    // the RFC 7234 CacheEntry with StoredResponse; the dates are the same).
     const allocator = std.testing.allocator;
-    const entry = try cache.CacheEntry.init(allocator, 200, &.{
-        .{ .name = "Date", .value = "Sun, 06 Nov 1994 08:49:37 GMT" },
-        .{ .name = "Expires", .value = "Sun Nov  6 09:49:37 1994" },
-        .{ .name = "Last-Modified", .value = "Wed, 31 Dec 1969 23:59:59 GMT" },
-    }, null, 784111770, 784111780);
-    defer entry.deinit();
-    try std.testing.expectEqual(@as(i64, 784111777), entry.timing.date_value);
-    try std.testing.expectEqual(@as(?i64, 784115377), entry.timing.expires);
-    try std.testing.expectEqual(@as(?i64, -1), entry.timing.last_modified);
-    try entry.updateAfterRevalidation(&.{
+    const entry = try cache.StoredResponse.create(allocator, .{
+        .partition = "https://top.test",
+        .url = "https://a.test/",
+        .status = 200,
+        .headers = &.{
+            .{ .name = "Date", .value = "Sun, 06 Nov 1994 08:49:37 GMT" },
+            .{ .name = "Expires", .value = "Sun Nov  6 09:49:37 1994" },
+            .{ .name = "Last-Modified", .value = "Wed, 31 Dec 1969 23:59:59 GMT" },
+        },
+        .request_time = 784111770,
+        .response_time = 784111780,
+    });
+    defer entry.release();
+    try std.testing.expectEqual(@as(?i64, 784111777), entry.facts.date);
+    try std.testing.expectEqual(cache.freshness_mod.Facts.Expires{ .at = 784115377 }, entry.facts.expires);
+    try std.testing.expectEqual(@as(?i64, -1), entry.facts.last_modified);
+    const updated = try entry.freshened(allocator, &.{
         .{ .name = "Date", .value = "Sunday, 06-Nov-94 10:49:37 GMT" },
         .{ .name = "Expires", .value = "Sun, 06 Nov 1994 11:49:37 GMT" },
         .{ .name = "Last-Modified", .value = "Sun, 06 Nov 1994 08:49:37 GMT" },
     }, 784118970, 784118980);
-    try std.testing.expectEqual(@as(i64, 784118977), entry.timing.date_value);
-    try std.testing.expectEqual(@as(?i64, 784122577), entry.timing.expires);
-    try std.testing.expectEqual(@as(?i64, 784111777), entry.timing.last_modified);
+    defer updated.release();
+    try std.testing.expectEqual(@as(?i64, 784118977), updated.facts.date);
+    try std.testing.expectEqual(cache.freshness_mod.Facts.Expires{ .at = 784122577 }, updated.facts.expires);
+    try std.testing.expectEqual(@as(?i64, 784111777), updated.facts.last_modified);
+    try std.testing.expectEqual(@as(i64, 784118980), updated.response_time);
 }

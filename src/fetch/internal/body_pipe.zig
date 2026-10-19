@@ -63,6 +63,22 @@ pub const Producer = struct {
     unpause: ?*const fn (context: *anyopaque) void = null,
 };
 
+/// Sees a body as the network delivers it - each chunk, then its end -
+/// without being one of its readers: it holds nothing back (backpressure is
+/// the readers'), and the body stops when the readers go, whatever it
+/// wants. The HTTP cache's writer stores a body this way once it has ended
+/// (fetch/cache/transaction.zig; Chromium's HttpCache::Writers likewise sit
+/// between the network and the reader).
+pub const Observer = struct {
+    context: *anyopaque,
+    /// More of the body, before any reader has it. Borrowed for the call.
+    data: *const fn (context: *anyopaque, bytes: []const u8) void,
+    /// The body's end, once - `complete` when it finished; false when it
+    /// failed, was cancelled because no reader was left, or the source went
+    /// first. The observer is dropped after.
+    end: *const fn (context: *anyopaque, complete: bool) void,
+};
+
 /// Hears that a reader's pipe has something new: bytes, or its end.
 pub const Consumer = struct {
     context: *anyopaque,
@@ -78,6 +94,8 @@ pub const PipeSource = struct {
     failure: ?Failure = null,
     /// The producer is paused (`pause` ran, `unpause` has not).
     paused: bool = false,
+    /// Sees the body without reading it (`Observer`).
+    observer: ?Observer = null,
 
     /// A source with one reader. The producer, if any, is attached next.
     pub fn create(allocator: Allocator) !*PipeSource {
@@ -98,6 +116,7 @@ pub const PipeSource = struct {
     /// More of the body, for every reader.
     pub fn push(self: *PipeSource, bytes: []const u8) void {
         if (self.state != .open) return;
+        if (self.observer) |o| o.data(o.context, bytes);
         // Appended to all first, notified after: a reader's notification may
         // release another reader.
         for (self.branches.items) |pipe| {
@@ -143,6 +162,9 @@ pub const PipeSource = struct {
         self.producer = null;
         if (self.state != .open) return self.freeIfUnused();
         self.state = .closed;
+        // Before the readers hear it: a reader that fetches the same URL on
+        // hearing the end finds the body stored.
+        self.endObserver(true);
         for (self.branches.items) |pipe| {
             if (pipe.state == .open) pipe.state = .closed;
         }
@@ -160,11 +182,18 @@ pub const PipeSource = struct {
         }
         self.state = .errored;
         self.failure = failure;
+        self.endObserver(false);
         for (self.branches.items) |pipe| {
             if (pipe.state == .open) pipe.state = .errored;
         }
         self.notifyAll();
         self.freeIfUnused();
+    }
+
+    fn endObserver(self: *PipeSource, complete: bool) void {
+        const observer = self.observer orelse return;
+        self.observer = null;
+        observer.end(observer.context, complete);
     }
 
     fn notifyAll(self: *PipeSource) void {
@@ -195,9 +224,11 @@ pub const PipeSource = struct {
 
     fn stopIfUnread(self: *PipeSource) void {
         if (self.branches.items.len > 0) return;
-        // Nobody is reading: the network can stop.
+        // Nobody is reading: the network can stop, and an observer has seen
+        // all it will.
         if (self.producer) |p| {
             self.producer = null;
+            self.endObserver(false);
             p.cancel(p.context);
         }
         self.freeIfUnused();
@@ -205,6 +236,7 @@ pub const PipeSource = struct {
 
     fn freeIfUnused(self: *PipeSource) void {
         if (self.branches.items.len > 0 or self.producer != null) return;
+        self.endObserver(false);
         if (self.failure) |f| {
             if (f.reason) |r| if (f.release_reason) |release| release(r);
         }
@@ -354,4 +386,96 @@ test "a failure reaches every reader, and its reason goes with the source" {
     b.release();
     try testing.expectEqual(@as(usize, 1), Reason.released);
     try testing.expectEqual(@as(usize, 0), producer.cancelled);
+}
+
+const RecordingObserver = struct {
+    seen: std.ArrayListUnmanaged(u8) = .empty,
+    ended: ?bool = null,
+    ends: usize = 0,
+    fn data(context: *anyopaque, bytes: []const u8) void {
+        const self: *RecordingObserver = @ptrCast(@alignCast(context));
+        self.seen.appendSlice(testing.allocator, bytes) catch unreachable;
+    }
+    fn end(context: *anyopaque, complete: bool) void {
+        const self: *RecordingObserver = @ptrCast(@alignCast(context));
+        self.ended = complete;
+        self.ends += 1;
+    }
+    fn observer(self: *RecordingObserver) Observer {
+        return .{ .context = self, .data = data, .end = end };
+    }
+};
+
+const PausingProducer = struct {
+    paused: bool = false,
+    cancelled: usize = 0,
+    fn cancel(context: *anyopaque) void {
+        const self: *PausingProducer = @ptrCast(@alignCast(context));
+        self.cancelled += 1;
+    }
+    fn pause(context: *anyopaque) void {
+        const self: *PausingProducer = @ptrCast(@alignCast(context));
+        self.paused = true;
+    }
+    fn unpause(context: *anyopaque) void {
+        const self: *PausingProducer = @ptrCast(@alignCast(context));
+        self.paused = false;
+    }
+};
+
+test "an observer sees every byte while a slow reader still pauses the producer, then a complete end" {
+    const source = try PipeSource.create(testing.allocator);
+    var producer: PausingProducer = .{};
+    source.producer = .{ .context = &producer, .cancel = PausingProducer.cancel, .pause = PausingProducer.pause, .unpause = PausingProducer.unpause };
+    var watcher: RecordingObserver = .{};
+    defer watcher.seen.deinit(testing.allocator);
+    source.observer = watcher.observer();
+    const pipe = try source.branch();
+    // The reader takes nothing: the producer is paused at the high-water
+    // mark exactly as without an observer.
+    const chunk = [_]u8{'z'} ** (64 * 1024);
+    var pushed: usize = 0;
+    while (!producer.paused) : (pushed += chunk.len) source.push(&chunk);
+    try testing.expectEqual(high_water_mark, pushed);
+    try testing.expectEqual(pushed, watcher.seen.items.len);
+    try testing.expect(watcher.ended == null);
+    source.finish();
+    try testing.expectEqual(@as(?bool, true), watcher.ended);
+    try testing.expectEqual(@as(usize, 1), watcher.ends);
+    pipe.release();
+    try testing.expectEqual(@as(usize, 1), watcher.ends);
+}
+
+test "an observer's end is incomplete on a failure and when the last reader goes" {
+    {
+        const source = try PipeSource.create(testing.allocator);
+        var producer: PausingProducer = .{};
+        source.producer = .{ .context = &producer, .cancel = PausingProducer.cancel };
+        var watcher: RecordingObserver = .{};
+        defer watcher.seen.deinit(testing.allocator);
+        source.observer = watcher.observer();
+        const pipe = try source.branch();
+        source.push("ab");
+        source.fail(.{ .kind = .network });
+        try testing.expectEqual(@as(?bool, false), watcher.ended);
+        pipe.release();
+        try testing.expectEqual(@as(usize, 1), watcher.ends);
+    }
+    {
+        const source = try PipeSource.create(testing.allocator);
+        var producer: PausingProducer = .{};
+        source.producer = .{ .context = &producer, .cancel = PausingProducer.cancel };
+        var watcher: RecordingObserver = .{};
+        defer watcher.seen.deinit(testing.allocator);
+        source.observer = watcher.observer();
+        const pipe = try source.branch();
+        source.push("ab");
+        // The reader goes: the transfer is cancelled, and the observer has
+        // seen all it will - an incomplete body. The observer kept nothing
+        // going.
+        pipe.release();
+        try testing.expectEqual(@as(usize, 1), producer.cancelled);
+        try testing.expectEqual(@as(?bool, false), watcher.ended);
+        try testing.expectEqual(@as(usize, 1), watcher.ends);
+    }
 }

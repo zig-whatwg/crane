@@ -50,12 +50,22 @@ fn clear(context: *anyopaque, origin: []const u8, types: Types) void {
 
     // 5. Each type.
     if (types.cache) {
-        // 4.2.3 "clear cache for origin": every network cache entry whose
-        // target URI's host is the origin's host, and every other cache's
-        // entries for the origin. TODO(Clear-Site-Data cache): Crane keeps
-        // no HTTP cache yet; when it does, its entries for the host go here,
-        // and so do the CORS-preflight cache's (NetworkContext.preflight_cache)
-        // and any script or module cache keyed by the origin.
+        // 4.2.3 "clear cache for origin": the spec removes every network
+        // cache entry whose target URI's host is the origin's host - any
+        // scheme or port. Chrome and Safari clear the exact origin instead:
+        // Chromium's SiteDataClearer adds the origin to the cache's filter
+        // (clear_site_data_utils.cc, `AddOrigin(origin_)`, a URL filter over
+        // every partition), WebKit's processClearSiteDataHeader removes
+        // DiskCache and MemoryCache for a ClientOrigin whose origin is the
+        // response URL's (NetworkResourceLoader.cpp). Golden rule 2: the two
+        // shipping browsers agree, no newer spec text - the exact origin, in
+        // every partition of the Browser's HTTP cache.
+        // TODO(Clear-Site-Data cache): the CORS-preflight cache's entries
+        // (NetworkContext.preflight_cache) and any script or module cache
+        // keyed by the origin.
+        if (scope.existing(fetch.network.NetworkContext)) |network| {
+            if (network.http_cache) |http_cache| http_cache.clearOrigin(origin);
+        }
     }
     if (types.cookies) {
         // 4.2.4 "clear cookies for origin": every cookie in the jar whose

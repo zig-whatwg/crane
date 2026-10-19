@@ -526,6 +526,7 @@ progress = [
   "f13e81794f7 (merge) - service workers batch 3: every window and worker a service worker client from its creation, Handle Fetch (FetchEvent, respondWith, subresource and navigation interception, the response across threads), WindowClient.navigate and Soft Update; opaque responses keep their internal response",
   "c7de8b6e99f..a84b0e7cc58 - service workers batch 5: race-network-and-fetch-handler races a sibling network fetch; the report timing steps at the body's end; module imports byte-checked on update; the request's redirect taint and navigation origin carried to the worker; controllerchange and a worker's own objects without lazy-state races; a page's cancel reaches the worker's stream (sw1-b5 lane)",
   "7905e783ef7..aa1d486e942 - service workers batch 6: the service worker timing info reaches navigation timing (fetchStart after activation); a worker's response keeps the client's timing allowed only as its own fetch did, its CORS sizes hidden where it substituted another origin's response, Cache Storage keeping the flag; TAO step 6 fails a redirect-tainted navigation; Upgrade-Insecure-Requests on every navigation; module imports re-fetched with the graph's request on update (sw1-b6 lane)",
+  "da81e0faae7..4c15e890977 - the HTTP cache is the Browser's: one in-memory RFC 9111 cache on its network context (BrowserConfig.http_cache, 50 MiB, an eighth per response, LRU), shared by its tabs, frames and workers and by no other Browser, partitioned by network partition key; HTTP-network-or-cache fetch reads, revalidates and stores through it; frames, popups and service worker scripts carry their key; Clear-Site-Data cache clears it (httpcache1 lane)",
 ]
 
   [[infra.items]]
@@ -534,7 +535,7 @@ progress = [
 
   [[infra.items]]
   name = "The storage shed, cookie jar, HTTP cache and blob URL store belong to the instance"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "Cross-tab registries (BroadcastChannel, SharedWorker, Web Locks, service worker registrations and clients, permissions) belong to the instance"

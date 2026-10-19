@@ -58,11 +58,7 @@ pub const NetworkError = network.NetworkError;
 pub const MockBackend = network.MockBackend;
 
 // Re-export cache types
-pub const CacheBackend = cache.CacheBackend;
-pub const CacheKey = cache.CacheKey;
-pub const CacheEntry = cache.CacheEntry;
-pub const CacheControl = cache.CacheControl;
-pub const MemoryCacheBackend = cache.MemoryCacheBackend;
+pub const HttpCache = cache.HttpCache;
 
 // Re-export algorithm types and functions
 pub const processDataUrl = algorithms.processDataUrl;
