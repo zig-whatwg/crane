@@ -122,6 +122,13 @@ pub const BrowserConfig = struct {
     proxy: Proxy = .system,
     /// WebDriver's acceptInsecureCerts: TLS certificates are not verified.
     accept_insecure_certs: bool = false,
+    /// The Browser's HTTP cache (in memory, shared by its tabs, frames and
+    /// workers): its byte cap - default 50 MiB, Chromium's in-memory
+    /// backend's - and per-response cap - default an eighth of that, as
+    /// Chromium and Gecko both derive it. A max_bytes of 0: no HTTP cache.
+    http_cache: HttpCacheConfig = .{},
+
+    pub const HttpCacheConfig = @import("fetch").network.NetworkContext.HttpCacheConfig;
 
     pub const Proxy = union(enum) {
         /// The process's proxy settings (curl reads http_proxy, https_proxy
@@ -283,6 +290,7 @@ pub const Browser = struct {
                 .pac, .autodetect => unreachable, // refused by init
             },
             .accept_insecure_certs = config.accept_insecure_certs,
+            .http_cache = config.http_cache,
         });
         // What a response's Clear-Site-Data header clears: this Browser's
         // state, never another's (src/browser/clear_site_data.zig).
