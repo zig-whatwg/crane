@@ -837,9 +837,10 @@ pub fn parseHTMLWithScripting(
     // Step 1: Create DOM Document FIRST (before parsing), unless navigation
     // already did. It must exist before any DOM nodes are created.
     const owns_document = options.document == null;
-    const document = options.document orelse (interfaces.Document.init(
+    const document = options.document orelse (interfaces.Document.initWith(
         allocator,
         ctx,
+        .{ .ready_state = ._loading_ },
     ) catch return error.OutOfMemory);
     const document_generation = runtime.SlabAllocator.generationOf(document);
     const had_engine = ctx.hasEngine();

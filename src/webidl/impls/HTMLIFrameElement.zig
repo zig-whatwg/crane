@@ -499,10 +499,12 @@ fn createNavigationDocument(
     // Step 9's active sandboxing flag set: navigationParams's final
     // sandboxing flag set, which the commit gave the navigable for it.
     const sandboxing_flags = takeNextSandboxingFlags(browsing_ctx_ptr);
+    const last_modified = takeNextLastModified(browsing_ctx_ptr);
+    // HTML create and initialize a Document, step 9: navigation starts loading.
     const document_instance = (if (kind == .xml)
-        interfaces.XMLDocument.initWith(allocator, runtime_ctx, .{ .origin = origin, .sandboxing_flags = sandboxing_flags })
+        interfaces.XMLDocument.initWith(allocator, runtime_ctx, .{ .origin = origin, .sandboxing_flags = sandboxing_flags, .ready_state = ._loading_, .last_modified = last_modified })
     else
-        interfaces.Document.initWith(allocator, runtime_ctx, .{ .origin = origin, .sandboxing_flags = sandboxing_flags })) catch return null;
+        interfaces.Document.initWith(allocator, runtime_ctx, .{ .origin = origin, .sandboxing_flags = sandboxing_flags, .ready_state = ._loading_, .last_modified = last_modified })) catch return null;
     document_internals.setDocumentType(document_instance, kind) catch {};
     document_internals.setContentType(document_instance, content_type) catch {};
     browsing_ctx_ptr.ancestor_origins_policy = takeIframeReferrerPolicy(browsing_ctx_ptr);
@@ -1005,6 +1007,14 @@ fn takeIframeReferrerPolicy(browsing_context: *html_core.BrowsingContext) fetch_
 fn takeNextOrigin(browsing_context: *html_core.BrowsingContext) ?*OriginRecord {
     const integration = integrationOfBrowsingContext(browsing_context) orelse return null;
     return integration.takeNextOrigin();
+}
+
+/// The source timestamp for the document this navigation is creating.
+fn takeNextLastModified(browsing_context: *html_core.BrowsingContext) ?@import("platform").WallTime {
+    const integration = integrationOfBrowsingContext(browsing_context) orelse return null;
+    const value = integration.next_last_modified;
+    integration.next_last_modified = null;
+    return value;
 }
 
 /// The live navigable whose browsing context is `browsing_context`.
@@ -2198,6 +2208,8 @@ fn runCommit(context: ?*anyopaque) void {
     // Step 17: the response's Refresh header.
     integration.setNextRefresh(if (response.headers) |h| h.get("refresh") else null);
     defer integration.setNextRefresh(null);
+    integration.next_last_modified = response.last_modified;
+    defer integration.next_last_modified = null;
     commitNavigation(integration, record, response);
 }
 

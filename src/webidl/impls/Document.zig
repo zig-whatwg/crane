@@ -489,7 +489,9 @@ pub const InternalState = struct {
             .url = "",
             .origin = null,
             .encoding = runtime.DOMString.initInterned("UTF-8"), // DOM: "unless stated otherwise, a document's encoding is the utf-8 encoding"
-            .ready_state = ._loading_,
+            // HTML 3.1.5: current document readiness is initially complete.
+            // Navigation explicitly supplies loading through construction.
+            .ready_state = ._complete_,
             .document_element = null,
             .doctype = null,
             .ranges = .empty,

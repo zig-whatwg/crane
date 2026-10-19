@@ -431,6 +431,10 @@ pub const IFrameIntegration = struct {
     /// a meta refresh. Set just before the commit and cleared after. Owned.
     next_refresh: ?[]u8 = null,
 
+    /// HTML lastModified: the source timestamp passed to the next document
+    /// as a construction fact. A value, cleared after the commit.
+    next_last_modified: ?@import("platform").WallTime = null,
+
     /// Create a new IFrameIntegration (element not yet in document)
     pub fn init(allocator: Allocator) IFrameIntegration {
         return .{

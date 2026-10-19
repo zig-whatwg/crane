@@ -52,6 +52,8 @@ pub const NavigationFetchResult = struct {
     /// HTML "was created via cross-origin redirects": a hop of the fetch's
     /// redirect chain went to a URL whose origin was not the previous URL's.
     has_cross_origin_redirects: bool = false,
+    /// HTML lastModified: the response source timestamp, null when unknown.
+    last_modified: ?@import("platform").WallTime = null,
 
     /// Response headers (optional, for COOP/COEP)
     headers: ?HeaderMap,
@@ -445,6 +447,11 @@ pub fn resultFromResponse(
     // Content-Type value, not the first header (cookies/resources/
     // postToParent.py sends application/json, then text/html).
     result.content_type = extractedContentType(allocator, &response.header_list) catch return NavigationFetchError.OutOfMemory;
+    const modified_header = response.header_list.get(allocator, "Last-Modified") catch return NavigationFetchError.OutOfMemory;
+    defer if (modified_header) |value| allocator.free(value);
+    // The shared parser checks WallTime's range. HTML lastModified treats
+    // an unparseable or unrepresentable source date as not known.
+    result.last_modified = if (modified_header) |value| fetch.cache.freshness_mod.parseHttpDateWallTime(value) else null;
 
     // Get body bytes
     if (response.body) |body| {
@@ -705,6 +712,7 @@ fn handleFileUrl(allocator: Allocator, url: []const u8) NavigationFetchError!Nav
     result.body = bytes;
     result.status = 200;
     result.ok = true;
+    result.last_modified = if (@import("platform").fileInfo(@import("platform").Str.from(path))) |info| info.modified else |_| null;
     result.content_type = allocator.dupe(u8, contentTypeFromPath(path)) catch {
         return NavigationFetchError.OutOfMemory;
     };

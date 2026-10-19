@@ -53,6 +53,8 @@ pub const NavigationResult = struct {
     /// from an HTTP(S) navigation's fetch: its timing info, redirect count
     /// and response status. Owned; null for a response from no network.
     timing: ?NavigationTiming = null,
+    /// HTML lastModified: the source timestamp, null when unknown.
+    last_modified: ?@import("platform").WallTime = null,
 
     pub const NavigationTiming = struct {
         /// fetchTiming (its times are the unsafe shared current time, ms).
@@ -305,6 +307,8 @@ fn fetchFileUrl(allocator: Allocator, url: []const u8) NavigationError!Navigatio
         .body = body,
         .final_url = final_url,
         .allocator = allocator,
+        // HTML lastModified: use the source file's modification time.
+        .last_modified = if (@import("platform").fileInfo(@import("platform").Str.from(decoded_path))) |info| info.modified else |_| null,
     };
 }
 
@@ -395,6 +399,12 @@ fn fetchHttpUrl(
     errdefer policy_container.deinit();
     // "Create and initialize a Document object" step 7.1: the header the
     // document's requestsOAC is read from (dom.agent_cluster_keys).
+    const modified_header = response.header_list.get(allocator, "Last-Modified") catch return NavigationError.OutOfMemory;
+    defer if (modified_header) |value| allocator.free(value);
+    const last_modified = if (modified_header) |value|
+        @import("fetch").cache.freshness_mod.parseHttpDateWallTime(value)
+    else
+        null;
     const origin_agent_cluster = response.header_list.get(allocator, "Origin-Agent-Cluster") catch return NavigationError.OutOfMemory;
 
     // Navigation Timing: the fetch's timing info, its redirect count (the
@@ -408,6 +418,7 @@ fn fetchHttpUrl(
         .allocator = allocator,
         .policy_container = policy_container,
         .origin_agent_cluster = origin_agent_cluster,
+        .last_modified = last_modified,
         .timing = .{
             .timing_info = result.timing_info,
             .redirect_count = if (response.redirect_taint != .same_origin) 0 else @intCast(@min(response.url_list.items.len -| 1, std.math.maxInt(u16))),

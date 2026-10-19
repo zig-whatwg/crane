@@ -1962,6 +1962,7 @@ pub const Context = struct {
         const html_options: LoadHTMLOptions = .{
             .base_url = url,
             .sandboxing_flags = sandboxing_flags,
+            .last_modified = result.last_modified,
             // HTML 8.1.3.4: no script for a document sandboxed without
             // allow-scripts.
             .scripting_enabled = (kind == .html or kind == .xml) and !sandboxing_flags.scripts,
@@ -2066,6 +2067,8 @@ pub const Context = struct {
         /// no script, and with the sandboxed origin flag its origin is a new
         /// opaque one.
         sandboxing_flags: dom_mod.sandboxing.SandboxingFlagSet = .empty,
+        /// HTML lastModified: the source timestamp, null when unknown.
+        last_modified: ?@import("platform").WallTime = null,
     };
 
     /// Load HTML content as the page's new document
@@ -2168,6 +2171,9 @@ pub const Context = struct {
         const document = interfaces.Document.initWith(self.allocator, runtime_ctx, .{
             .origin = opaque_origin,
             .sandboxing_flags = options.sandboxing_flags,
+            // HTML create and initialize a Document, step 9.
+            .ready_state = ._loading_,
+            .last_modified = options.last_modified,
         }) catch |err| {
             load.release();
             return err;
