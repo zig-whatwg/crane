@@ -84,7 +84,6 @@ src/webidl/impls/Window.zig History.deinit 1
 src/webidl/impls/Window.zig History.getInternal 1
 src/webidl/impls/Window.zig History.init 1
 src/webidl/impls/Window.zig Location.deinit 1
-src/webidl/impls/Window.zig MessageEvent.createPostMessageEvent 1
 src/webidl/impls/Window.zig Screen.init 1
 src/webidl/impls/Window.zig Storage.initWithStorage 2
 src/webidl/impls/WorkerGlobalScope.zig WorkerLocation.InternalState 1
