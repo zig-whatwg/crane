@@ -167,6 +167,16 @@ fn isFocusableByDefault(element: *Instance) bool {
         var buffer: [16]u8 = undefined;
         return !std.mem.eql(u8, form_associated.inputType(element, &buffer), "hidden");
     }
+    // Golden rule 2 / row85 Q12: dialog focusing step 6's note leaves this
+    // to the UA; no newer spec mandates exclusion from sequential focus.
+    // wpt.fyi revision 23b0b89b1a, dialog-focusability.html: Chrome 155 PASS,
+    // Firefox 158 and Safari 27 FAIL at step 2/11 by tabbing to dialog1.
+    // https://wpt.fyi/results/html/semantics/interactive-elements/the-dialog-element/dialog-focusability.html?sha=23b0b89b1a&label=stable
+    // Gecko HTMLDialogElement::TabIndexDefault returns 0:
+    // https://searchfox.org/mozilla-central/source/dom/html/HTMLDialogElement.cpp
+    // WebKit HTMLDialogElement::supportsFocus returns true:
+    // https://github.com/WebKit/WebKit/blob/main/Source/WebCore/html/HTMLDialogElement.cpp
+    if (named(element, "dialog")) return true;
     return isSummaryForParentDetails(element) or isNavigableContainer(element) or isEditingHost(element);
 }
 
@@ -190,6 +200,7 @@ fn isActuallyDisabled(element: *Instance) bool {
 /// HTML "inert": an inclusive ancestor has the inert attribute or is a
 /// select's own button (4.10.6), whose whole subtree is inert.
 fn isInert(node: *Instance) bool {
+    if (dom.dialog.inertness(node)) |inert| return inert;
     var current: ?*Instance = node;
     while (current) |n| : (current = form_associated.parentOf(n)) {
         if (isElement(n) and (form_associated.hasAttribute(n, "inert") or
@@ -530,7 +541,7 @@ fn delegatingShadowRoot(element: *Instance) ?*Instance {
 
 /// HTML "focus delegate", steps 1–7. WebKit's Element::focusDelegate uses
 /// ordinary descendants and recurses only through delegating shadow hosts.
-fn focusDelegate(focus_target: *Instance, trigger: Trigger) ?*Instance {
+pub fn focusDelegate(focus_target: *Instance, trigger: Trigger) ?*Instance {
     // Steps 1–3.
     var where_to_look = focus_target;
     if (dom.shadow_hosts.rootForHost(focus_target)) |root| {

@@ -41,6 +41,7 @@ src/dom/content_navigables.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/crypto_keys.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/custom_elements.zig implementation 1 G P-res decl:89dd82c5fbd26c9f
 src/dom/declarative_shadow.zig implementation 1 G P-res decl:9c737e7125e9c3d4
+src/dom/dialog.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/document_activity.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/document_browsing_context.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/document_fetches.zig cancelers 1 G H decl:30e1703fbc925361
