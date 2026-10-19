@@ -301,6 +301,8 @@ pub const Delivery = union(enum) {
     /// CookieStoreManager.getSubscriptions() step 3.4: the registration's
     /// cookie change subscription list, copied. OWNED, each and the slice.
     resolve_cookie_subscriptions: struct { promise: u64, subscriptions: []cookiestore.ChangeSubscription },
+    /// The registration's update via cache mode changed.
+    update_via_cache: struct { registration: u64, mode: registry_mod.UpdateViaCache },
 
     /// `message`, copied - with the registry's lock held (its borrowed
     /// strings are valid until then). `registration`: the record a
@@ -323,6 +325,7 @@ pub const Delivery = union(enum) {
             .update_found => |m| .{ .update_found = .{ .registration = m.registration } },
             .controller_change => |m| .{ .controller_change = if (m) |w| try WorkerInfo.of(allocator, w) else null },
             .ready => |snapshot| .{ .ready = try infoOfSnapshot(allocator, registry, snapshot) },
+            .update_via_cache => |m| .{ .update_via_cache = .{ .registration = m.registration, .mode = m.mode } },
         };
     }
 
@@ -943,6 +946,16 @@ pub const Manager = struct {
         defer self.unlock();
         const environment = self.registry.findEnvironment(id) orelse return;
         self.registry.removeEnvironment(environment);
+    }
+
+    /// The environment `id`'s page entered the back/forward cache, or is
+    /// shown again (`Registry.setEnvironmentCached`): from its page's thread,
+    /// at the cache's store and restore steps (realm.zig).
+    pub fn environmentCached(self: *Manager, id: u64, cached: bool) void {
+        self.lock();
+        defer self.unlock();
+        const environment = self.registry.findEnvironment(id) orelse return;
+        self.registry.setEnvironmentCached(environment, cached);
     }
 
     /// Clear-Site-Data's "storage" type for the serialized origin `origin`

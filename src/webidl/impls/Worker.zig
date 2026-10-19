@@ -197,6 +197,15 @@ fn outsideSettingsOrigin(instance: *runtime.Instance, allocator: std.mem.Allocat
     return serializedOriginOf(allocator, api_base_url);
 }
 
+/// The outside settings' storage key for non-storage purposes, serialized
+/// (dom.global_settings): BORROWED from `instance`'s relevant global, which
+/// outlives the constructor; null where its kind keeps none.
+fn outsideSettingsStorageKey(instance: *runtime.Instance) error{OutOfMemory}!?[]const u8 {
+    const record = instance.ctx.getRealm() orelse return null;
+    const object = record.global_object orelse return null;
+    return @import("dom").global_settings.serializedStorageKeyOf(@ptrCast(@alignCast(object)));
+}
+
 /// The outside settings' origin, serialized: the origin of `api_base_url`,
 /// or "null" (an opaque origin) without one. OWNED (`allocator`).
 fn serializedOriginOf(allocator: std.mem.Allocator, api_base_url: ?[]const u8) ![]u8 {
@@ -285,6 +294,10 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     // same-origin with it) and the blob-URL store's same-origin check's.
     const requesting_origin = try outsideSettingsOrigin(instance, ctx.allocator, base_url);
     defer ctx.allocator.free(requesting_origin);
+    // And its storage key for non-storage purposes: what a blob: script's
+    // blob is obtained for (File API 8.3.2), BORROWED from the global - a
+    // worker made in a frame of another partition gets no blob.
+    const requesting_storage_key = try outsideSettingsStorageKey(instance);
 
     const internal = try ctx.allocator.create(InternalState);
     internal.* = .{ .allocator = ctx.allocator };
@@ -350,6 +363,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
             .include => .include,
         } else .same_origin,
         .requesting_origin = requesting_origin,
+        .requesting_storage_key = requesting_storage_key,
         .referrer_source = worker_host.creatorReferrerSource(ctx),
         // A blob: script's blob is in the outside settings' Browser's blob
         // URL store.

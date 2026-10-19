@@ -378,6 +378,13 @@ pub const ScopeSettings = struct {
     /// the host; null for a shared or service worker or an owner with none.
     top_level_site: ?[]const u8 = null,
     top_level_origin: ?[]const u8 = null,
+    /// The storage key's top-level site and has-cross-site-ancestor bit a
+    /// DEDICATED or SHARED worker takes from its creator
+    /// (`creatorStoragePartition`), read on the creator's thread. BORROWED
+    /// from the host; null for a service worker, whose key is its own
+    /// origin's.
+    storage_top_level_site: ?[]const u8 = null,
+    has_cross_site_ancestor: bool = false,
 };
 
 /// The settings for a global scope created in the realm whose runtime
@@ -395,6 +402,8 @@ pub fn scopeSettings(ctx: runtime.Context) ?ScopeSettings {
         .owner_prohibits_mixed_security_contexts = wctx.owner_prohibits_mixed_security_contexts,
         .top_level_site = wctx.top_level_site,
         .top_level_origin = wctx.top_level_origin,
+        .storage_top_level_site = wctx.storage_top_level_site,
+        .has_cross_site_ancestor = wctx.has_cross_site_ancestor,
     };
 }
 
@@ -796,6 +805,10 @@ pub const WorkerHost = struct {
     /// (`ScopeSettings.top_level_site`). OWNED.
     top_level_site: ?[]u8 = null,
     top_level_origin: ?[]u8 = null,
+    /// The storage key partition taken from the creator
+    /// (`ScopeSettings.storage_top_level_site`). OWNED.
+    storage_top_level_site: ?[]u8 = null,
+    has_cross_site_ancestor: bool = false,
 
     /// The worker object that ran the worker - a dedicated worker's Worker,
     /// a shared worker's first SharedWorker - as its owner's tasks find it:
@@ -940,6 +953,9 @@ pub const WorkerHost = struct {
         start.top_level_site = null;
         self.top_level_origin = start.top_level_origin;
         start.top_level_origin = null;
+        self.storage_top_level_site = start.storage_top_level_site;
+        start.storage_top_level_site = null;
+        self.has_cross_site_ancestor = start.has_cross_site_ancestor;
         // "Obtain a worker/worklet agent" step 3: a dedicated worker's agent
         // is in its owner's agent cluster, which a WebAssembly.Module it
         // serializes is bound to and one it receives is checked against
@@ -1305,6 +1321,7 @@ pub const WorkerHost = struct {
         self.agent_host.deinit();
         if (self.top_level_site) |site| self.allocator.free(site);
         if (self.top_level_origin) |origin| self.allocator.free(origin);
+        if (self.storage_top_level_site) |site| self.allocator.free(site);
         self.allocator.free(self.script_url);
         self.allocator.free(self.name);
         self.allocator.destroy(self);
@@ -2127,9 +2144,13 @@ pub const SharedWorkerRequest = struct {
     owner_realm: runtime.Context,
     /// urlRecord, serialized. BORROWED for the call.
     url: []const u8,
-    /// outsideStorageKey, and the constructor origin: the outside settings'
-    /// origin, serialized. BORROWED for the call.
+    /// The constructor origin: the outside settings' origin, serialized.
+    /// BORROWED for the call.
     origin: []const u8,
+    /// outsideStorageKey: the outside settings' storage key for non-storage
+    /// purposes, serialized (storage.StorageKey.serialize) - what the
+    /// manager matches a running worker by. BORROWED for the call.
+    storage_key: []const u8,
     /// options["name"], ["type"], ["credentials"] and ["extendedLifetime"].
     /// `name` BORROWED.
     name: []const u8,
@@ -2172,6 +2193,8 @@ pub fn connectSharedWorker(request: SharedWorkerRequest) !void {
     errdefer allocator.free(url);
     const origin = try allocator.dupe(u8, request.origin);
     errdefer allocator.free(origin);
+    const storage_key = try allocator.dupe(u8, request.storage_key);
+    errdefer allocator.free(storage_key);
     const name = try allocator.dupe(u8, request.name);
     errdefer allocator.free(name);
     task.* = .{
@@ -2181,6 +2204,7 @@ pub fn connectSharedWorker(request: SharedWorkerRequest) !void {
         .owner_realm = request.owner_realm,
         .url = url,
         .origin = origin,
+        .storage_key = storage_key,
         .name = name,
         .worker_type = request.worker_type,
         .credentials = request.credentials,
@@ -2270,6 +2294,8 @@ const SharedConnect = struct {
     owner_realm: runtime.Context,
     url: []const u8,
     origin: []const u8,
+    /// outsideStorageKey (SharedWorkerRequest.storage_key). OWNED.
+    storage_key: []const u8,
     name: []const u8,
     worker_type: WorkerType,
     credentials: workers.RequestCredentials,
@@ -2308,6 +2334,7 @@ const SharedConnect = struct {
         if (self.blob_entry) |*entry| entry.deinit();
         self.allocator.free(self.url);
         self.allocator.free(self.origin);
+        self.allocator.free(self.storage_key);
         self.allocator.free(self.name);
         self.allocator.destroy(self);
     }
@@ -2318,7 +2345,10 @@ const SharedConnect = struct {
 
     fn connect(self: *SharedConnect) void {
         const manager = SharedWorkerManager.of(self.owner_realm) orelse return self.fireError();
-        const key: SharedWorkerManager.Key = .{ .storage_key = self.origin, .url = self.url, .name = self.name };
+        // outsideStorageKey: the full key, so a creator under another
+        // top-level site (or with a cross-site ancestor) never joins this
+        // partition's worker - Chromium and Gecko key shared workers so.
+        const key: SharedWorkerManager.Key = .{ .storage_key = self.storage_key, .url = self.url, .name = self.name };
         // 1-2. workerGlobalScope: the scope whose constructor storage key
         // equals outsideStorageKey, whose closing flag is false, whose
         // constructor URL equals urlRecord and whose name equals
@@ -2660,6 +2690,29 @@ pub fn creatorTopLevelOrigin(allocator: Allocator, realm: runtime.Context) error
     const origin = (try @import("dom").global_settings.topLevelOriginOf(global)) orelse return null;
     defer global.ctx.allocator.free(origin);
     return try allocator.dupe(u8, origin);
+}
+
+/// The storage key partition a dedicated or shared worker takes from its
+/// creator - the realm `realm`, on its thread: its key's top-level site
+/// (dom.global_settings.storageKeyForNonStoragePurposesOf), copied with
+/// `allocator`, and HTML's "has cross-site ancestry": "1. If outside
+/// settings's has cross-site ancestor is true, then return true. 2. If
+/// worker global scope's url's scheme is "data", then return true. 3. Return
+/// false." A dedicated worker's top-level origin is its owner's (HTML); a
+/// shared worker's is implementation-defined, and Chromium keys a shared
+/// worker by its creator's storage key - which SharedWorker matching
+/// compares too. A creator with no key gives none (the worker then keys by
+/// its own origin's site).
+fn creatorStoragePartition(allocator: Allocator, realm: runtime.Context, script_url: []const u8) error{OutOfMemory}!struct { top_level_site: ?[]u8, has_cross_site_ancestor: bool } {
+    const is_data = std.ascii.startsWithIgnoreCase(script_url, "data:");
+    const record = realm.getRealm() orelse return .{ .top_level_site = null, .has_cross_site_ancestor = is_data };
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return .{ .top_level_site = null, .has_cross_site_ancestor = is_data }));
+    const key = (try @import("dom").global_settings.storageKeyForNonStoragePurposesOf(global)) orelse
+        return .{ .top_level_site = null, .has_cross_site_ancestor = is_data };
+    return .{
+        .top_level_site = try allocator.dupe(u8, key.top_level_site),
+        .has_cross_site_ancestor = key.has_cross_site_ancestor or is_data,
+    };
 }
 
 fn creatorCookieJar(realm: runtime.Context) ?*CookieJar {
@@ -3268,6 +3321,11 @@ const ThreadHost = struct {
         /// and Crane does not partition SharedWorker matching.
         top_level_site: ?[]u8,
         top_level_origin: ?[]u8,
+        /// The storage key partition a dedicated or shared worker takes from
+        /// its creator, read on the creator's thread
+        /// (`creatorStoragePartition`). OWNED.
+        storage_top_level_site: ?[]u8 = null,
+        has_cross_site_ancestor: bool = false,
         /// The worker's reserved client, until its realm adopts it.
         service_worker_client: ?*anyopaque,
     };
@@ -3285,6 +3343,10 @@ const ThreadHost = struct {
         const top_level_origin = if (start.shared == null) try creatorTopLevelOrigin(allocator, start.owner_realm) else null;
         errdefer if (top_level_origin) |origin| allocator.free(origin);
         const owner_prohibits_mixed_security_contexts = try ownerProhibitsMixedSecurityContexts(start.owner_realm);
+        // On the creator's thread, in its realm: the storage key partition
+        // the worker takes - a shared worker's too (`creatorStoragePartition`).
+        const storage_partition = try creatorStoragePartition(allocator, start.owner_realm, start.script_url);
+        errdefer if (storage_partition.top_level_site) |site| allocator.free(site);
         const self = try allocator.create(ThreadHost);
         self.* = .{
             .allocator = allocator,
@@ -3313,6 +3375,8 @@ const ThreadHost = struct {
                 .agent_cluster = if (start.shared == null) agent_clusters.ofRealm(start.owner_realm) else 0,
                 .top_level_site = top_level_site,
                 .top_level_origin = top_level_origin,
+                .storage_top_level_site = storage_partition.top_level_site,
+                .has_cross_site_ancestor = storage_partition.has_cross_site_ancestor,
                 .service_worker_client = start.service_worker_client,
             },
         };
@@ -3344,6 +3408,8 @@ const ThreadHost = struct {
         self.start.top_level_site = null;
         if (self.start.top_level_origin) |origin| self.allocator.free(origin);
         self.start.top_level_origin = null;
+        if (self.start.storage_top_level_site) |site| self.allocator.free(site);
+        self.start.storage_top_level_site = null;
         @import("dom").service_worker_clients.release(self.start.service_worker_client);
         self.start.service_worker_client = null;
     }

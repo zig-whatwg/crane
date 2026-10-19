@@ -262,6 +262,13 @@ pub const XMLHttpRequestState = struct {
         errdefer if (referrer_source) |r| self.allocator.free(r);
         const top_level_site = if (client.top_level_site) |site| try self.allocator.dupe(u8, site) else null;
         errdefer if (top_level_site) |site| self.allocator.free(site);
+        // What a blob: request obtains its blob for (scheme fetch "blob"):
+        // the client's storage key, and its creation URL if it is a
+        // top-level Window - copies, as the request may outlive them.
+        const storage_key = if (client.storage_key) |key| try self.allocator.dupe(u8, key) else null;
+        errdefer if (storage_key) |key| self.allocator.free(key);
+        const top_level_creation_url = if (client.top_level_creation_url) |url| try self.allocator.dupe(u8, url) else null;
+        errdefer if (top_level_creation_url) |url| self.allocator.free(url);
         // The policy container is the settings object's, which may be gone by
         // the time the request is made: keep a clone.
         const policy_container: ?*fetch.internal.PolicyContainer = if (client.policy_container) |container| blk: {
@@ -279,6 +286,8 @@ pub const XMLHttpRequestState = struct {
             .cookie_jar = client.cookie_jar,
             // Borrowed, as the jar: the client's Browser's blob URL store.
             .blob_url_store = client.blob_url_store,
+            .storage_key = storage_key,
+            .top_level_creation_url = top_level_creation_url,
             // Borrowed, as the jar: the client's Browser's network.
             .network = client.network,
             .policy_container = policy_container,
@@ -298,6 +307,8 @@ pub const XMLHttpRequestState = struct {
 
     fn freeClient(self: *XMLHttpRequestState) void {
         if (self.client.top_level_site) |site| self.allocator.free(site);
+        if (self.client.storage_key) |key| self.allocator.free(key);
+        if (self.client.top_level_creation_url) |url| self.allocator.free(url);
         if (self.client.origin) |o| self.allocator.free(o);
         if (self.client.referrer_source) |r| self.allocator.free(r);
         if (self.client.policy_container) |container| {

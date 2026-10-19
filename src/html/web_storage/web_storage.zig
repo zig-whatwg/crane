@@ -8,8 +8,10 @@
 //! ## Features
 //!
 //! - **Storage interface**: length, key(), getItem(), setItem(), removeItem(), clear()
-//! - **localStorage**: Persistent storage keyed by origin
-//! - **sessionStorage**: Session-scoped storage keyed by (browsing_context_id, origin)
+//! - **localStorage**: Persistent storage keyed by storage key (origin, top-level site,
+//!   has cross-site ancestor)
+//! - **sessionStorage**: Session-scoped storage: the top-level traversable's shed, keyed by
+//!   storage key
 //! - **StorageEvent**: Cross-window notification of storage changes
 //! - **Quota enforcement**: 5 MiB per origin per storage type
 //!
@@ -20,7 +22,7 @@
 //!
 //! // Get localStorage for an origin, in a Browser's user agent storage
 //! // (the supplement of its scope every realm of it reaches)
-//! var local = try storage.getLocalStorage(allocator, user_agent_storage, "https://example.com");
+//! var local = try storage.getLocalStorage(allocator, user_agent_storage, key);
 //! defer local.deinit();
 //!
 //! // Store and retrieve values
@@ -28,7 +30,7 @@
 //! const value = local.getItem("key"); // "value"
 //!
 //! // Get sessionStorage for a browsing context
-//! var session = try storage.getSessionStorage(allocator, user_agent_storage, context_id, "https://example.com");
+//! var session = try storage.getSessionStorage(allocator, user_agent_storage, context_id, key);
 //! defer session.deinit();
 //! ```
 //!
@@ -464,113 +466,102 @@ pub const StorageEvent = struct {
 // Storage getters (HTML Standard § 12.2.2, 12.2.3)
 // ============================================================================
 
-/// Get localStorage for an origin
+/// Get localStorage for a storage key
 /// HTML Standard § 12.2.3 - localStorage getter
 ///
 /// `user_agent_storage` is the user agent's storage shed - the Browser's
 /// the realm belongs to (storage.UserAgentStorage, a supplement of its
-/// scope), never another Browser's.
+/// scope), never another Browser's. `key` is the Window's relevant settings
+/// object's storage key for non-storage purposes
+/// (dom.global_settings.storageKeyForNonStoragePurposesOf); the area is its
+/// shelf's, so one origin embedded under two top-level sites has two.
 pub fn getLocalStorage(
     allocator: std.mem.Allocator,
     user_agent_storage: *storage_standard.UserAgentStorage,
-    origin: []const u8,
+    key: storage_standard.StorageKey,
 ) StorageError!Storage {
-    // Step 1-2: Check for opaque origin
-    if (origin.len == 0 or std.mem.eql(u8, origin, "null")) {
-        return error.SecurityError;
-    }
-
-    // Step 3: Obtain local storage bottle map
+    // Step 2: "obtain a local storage bottle map" - failure, a
+    // SecurityError, when "obtain a storage key" fails: an opaque origin, or
+    // an opaque top-level site (storage_standard.obtainStorageKey).
     const proxy_map_result = storage_standard.obtainLocalStorageBottleMap(
         user_agent_storage,
-        origin,
+        key,
         .localStorage,
     ) catch return error.OutOfMemory;
 
     const proxy_map = proxy_map_result orelse return error.SecurityError;
 
     // Step 4-5: Create and return Storage object
-    return Storage.init(allocator, proxy_map, .local, origin);
+    return Storage.init(allocator, proxy_map, .local, key.origin);
 }
 
-/// Get sessionStorage for an origin and browsing context
+/// Get sessionStorage for a storage key, in a top-level traversable's
+/// session storage shed
 /// HTML Standard § 12.2.2 - sessionStorage getter
 ///
-/// Note: browsing_context_id is used to scope session storage.
-/// Each top-level browsing context gets its own session storage.
+/// `browsing_context_id` names the top-level traversable whose shed it is
+/// (Storage 4.3: every traversable navigable has one); `key` picks the shelf
+/// in it, as `getLocalStorage`'s does.
 pub fn getSessionStorage(
     allocator: std.mem.Allocator,
     user_agent_storage: *storage_standard.UserAgentStorage,
     browsing_context_id: u64,
-    origin: []const u8,
+    key: storage_standard.StorageKey,
 ) StorageError!Storage {
-    // Step 1-2: Check for opaque origin
-    if (origin.len == 0 or std.mem.eql(u8, origin, "null")) {
-        return error.SecurityError;
-    }
-
-    // Create a unique key combining browsing context and origin
-    const session_key = std.fmt.allocPrint(
-        allocator,
-        "{d}:{s}",
-        .{ browsing_context_id, origin },
-    ) catch return error.OutOfMemory;
-    defer allocator.free(session_key);
-
-    // For session storage, we use the session storage bottle map
-    // Note: The spec says session storage is tied to traversable navigable
-    // Here we approximate this with browsing_context_id
     const proxy_map_result = storage_standard.obtainSessionStorageBottleMap(
         user_agent_storage,
-        session_key,
+        browsing_context_id,
+        key,
         .sessionStorage,
     ) catch return error.OutOfMemory;
 
     const proxy_map = proxy_map_result orelse return error.SecurityError;
 
-    // Create Storage object with the original origin (not session_key)
-    return Storage.init(allocator, proxy_map, .session, origin);
+    // The Storage object reports the origin, not the key.
+    return Storage.init(allocator, proxy_map, .session, key.origin);
 }
 
-/// Storage "legacy-clone a traversable storage shed", steps 1.1-1.3.
-/// Called only for a NEW traversable, before it has script or storage proxies.
-/// All origins are copied, including those used only by the opener's frames.
-/// Nothing is published until every allocation succeeds; no storage event is
-/// generated. The temporary shelves own every string independently.
+/// Storage "legacy-clone a traversable storage shed", steps 1.1-1.3: the
+/// opener's top-level traversable's session storage shed copied into the new
+/// traversable `new_top`'s. Called only for a NEW traversable, before it has
+/// script or storage proxies.
+///
+/// Every shelf is copied under its own storage key - origin, top-level site,
+/// ancestor bit - so a document of the popup reads a copy only where its own
+/// key is equal: under the opener's top-level site, a same-site popup has
+/// the opener's data, and an origin framed under another top-level site
+/// starts empty (webstorage/sessionStorage-basic-partitioned.sub.html, all
+/// three browsers 1/1; Chromium's SessionStorageNamespace clone copies every
+/// area by its StorageKey alike). Nothing is published until every
+/// allocation succeeds; no storage event is generated. The copied shed owns
+/// every string independently.
 pub fn cloneSessionStorage(user_agent_storage: *storage_standard.UserAgentStorage, opener_top: u64, new_top: u64) std.mem.Allocator.Error!void {
     std.debug.assert(opener_top != new_top);
     user_agent_storage.lock();
     defer user_agent_storage.unlock();
     const allocator = user_agent_storage.allocator;
-    var prefix_buffer: [21]u8 = undefined;
-    const prefix = std.fmt.bufPrint(&prefix_buffer, "{d}:", .{opener_top}) catch unreachable;
-    var pending = storage_standard.StorageShed.init(allocator, .session);
-    defer pending.deinit();
+    // HTML's caller supplies an empty new traversable. Reusing a named
+    // popup never enters this algorithm or replaces a live shed.
+    std.debug.assert(!user_agent_storage.session_sheds.contains(new_top));
+    const source = user_agent_storage.session_sheds.getPtr(opener_top) orelse return;
 
-    var source_shelves = user_agent_storage.shed.shelves.iterator();
-    while (source_shelves.next()) |source| {
-        const source_key = source.key_ptr.origin;
-        if (!std.mem.startsWith(u8, source_key, prefix)) continue;
-        const bucket = source.value_ptr.getDefaultBucket() orelse continue;
+    var copy = storage_standard.StorageShed.init(allocator, .session);
+    errdefer copy.deinit();
+    try copy.shelves.ensureTotalCapacity(source.shelves.count());
+    var source_shelves = source.shelves.iterator();
+    while (source_shelves.next()) |entry| {
+        const bucket = entry.value_ptr.getDefaultBucket() orelse continue;
         const bottle = bucket.getBottle(.sessionStorage) orelse continue;
-        const key_bytes = try std.fmt.allocPrint(allocator, "{d}:{s}", .{ new_top, source_key[prefix.len..] });
-        var key: storage_standard.StorageKey = .{ .origin = key_bytes, .allocator = allocator };
+        var key = try entry.key_ptr.clone(allocator);
         errdefer key.deinit();
-        // HTML's caller supplies an empty new traversable. Reusing a named
-        // popup never enters this algorithm or replaces a live bottle.
-        std.debug.assert(!user_agent_storage.shed.shelves.contains(key));
         var shelf = try cloneSessionShelf(allocator, bottle);
         errdefer shelf.deinit();
-        try pending.shelves.put(key, shelf);
+        copy.shelves.putAssumeCapacityNoClobber(key, shelf);
     }
 
-    // The only allocation in publishing is reserved before the first move.
-    // Existing shelves' bottle maps stay in their own allocations, so their
-    // live Storage proxies remain valid when the outer shed grows.
-    try user_agent_storage.shed.shelves.ensureUnusedCapacity(pending.shelves.count());
-    var ready = pending.shelves.iterator();
-    while (ready.next()) |entry| user_agent_storage.shed.shelves.putAssumeCapacityNoClobber(entry.key_ptr.*, entry.value_ptr.*);
-    pending.shelves.clearRetainingCapacity();
+    // The only allocation in publishing comes before the move. The new shed
+    // is a value in the map; its shelves stay in their own allocation.
+    try user_agent_storage.session_sheds.putNoClobber(allocator, new_top, copy);
 }
 
 fn cloneSessionShelf(allocator: std.mem.Allocator, source: *const storage_standard.StorageBottle) std.mem.Allocator.Error!storage_standard.StorageShelf {
@@ -607,6 +598,9 @@ fn cloneSessionShelf(allocator: std.mem.Allocator, source: *const storage_standa
 // Tests
 // ============================================================================
 
+/// A first-party storage key of https://example.com.
+const example_key = storage_standard.StorageKey.initBorrowed("https://example.com", "https://example.com", false);
+
 test "Storage - basic operations" {
     const allocator = std.testing.allocator;
 
@@ -614,7 +608,7 @@ test "Storage - basic operations" {
     defer user_agent_storage.deinit();
 
     // Get localStorage
-    var storage = try getLocalStorage(allocator, &user_agent_storage, "https://example.com");
+    var storage = try getLocalStorage(allocator, &user_agent_storage, example_key);
     defer storage.deinit();
 
     // Initially empty
@@ -644,7 +638,7 @@ test "Storage - setItem update" {
     var user_agent_storage = storage_standard.UserAgentStorage.init(allocator);
     defer user_agent_storage.deinit();
 
-    var storage = try getLocalStorage(allocator, &user_agent_storage, "https://example.com");
+    var storage = try getLocalStorage(allocator, &user_agent_storage, example_key);
     defer storage.deinit();
 
     // Set initial value
@@ -663,7 +657,7 @@ test "Storage - setItem same value no-op" {
     var user_agent_storage = storage_standard.UserAgentStorage.init(allocator);
     defer user_agent_storage.deinit();
 
-    var storage = try getLocalStorage(allocator, &user_agent_storage, "https://example.com");
+    var storage = try getLocalStorage(allocator, &user_agent_storage, example_key);
     defer storage.deinit();
 
     try storage.setItem("key", "value");
@@ -679,7 +673,7 @@ test "Storage - clear" {
     var user_agent_storage = storage_standard.UserAgentStorage.init(allocator);
     defer user_agent_storage.deinit();
 
-    var storage = try getLocalStorage(allocator, &user_agent_storage, "https://example.com");
+    var storage = try getLocalStorage(allocator, &user_agent_storage, example_key);
     defer storage.deinit();
 
     try storage.setItem("key1", "value1");
@@ -697,7 +691,7 @@ test "Storage - quota enforcement" {
     var user_agent_storage = storage_standard.UserAgentStorage.init(allocator);
     defer user_agent_storage.deinit();
 
-    var storage = try getLocalStorage(allocator, &user_agent_storage, "https://example.com");
+    var storage = try getLocalStorage(allocator, &user_agent_storage, example_key);
     defer storage.deinit();
 
     // Set a very small quota for testing
@@ -718,11 +712,11 @@ test "Storage - opaque origin security error" {
     defer user_agent_storage.deinit();
 
     // Empty origin should fail
-    const result1 = getLocalStorage(allocator, &user_agent_storage, "");
+    const result1 = getLocalStorage(allocator, &user_agent_storage, storage_standard.StorageKey.initBorrowed("", "https://example.com", false));
     try std.testing.expectError(error.SecurityError, result1);
 
     // "null" origin should fail
-    const result2 = getLocalStorage(allocator, &user_agent_storage, "null");
+    const result2 = getLocalStorage(allocator, &user_agent_storage, storage_standard.StorageKey.initBorrowed("null", "https://example.com", true));
     try std.testing.expectError(error.SecurityError, result2);
 }
 

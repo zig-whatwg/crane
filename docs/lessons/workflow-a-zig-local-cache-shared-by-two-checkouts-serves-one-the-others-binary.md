@@ -54,3 +54,10 @@ codegen-check matched it. The failed run wrote nothing, which is the only reason
 in stage 1, before any file was written. AGENTS.md still names the one shared local cache for every local
 build. Until it changes, a lane runs codegen and every build whose output it commits from a lane-private
 cache.
+
+**Status (2026-10-19)**: not only codegen. Lane partition1 ran `zig build test -Dspec=storage` in its
+worktree with `~/Library/Caches/crane-z16-cache`, after editing src/storage/standard.zig; the failing test's
+trace named `.claude/worktrees/idbshare1/src/storage/indexeddb/factory.zig` - the storage module's TEST
+binary had been built from lane idbshare1's in-progress tree. The same command with a lane-private cache
+(`~/Library/Caches/crane-partition1-cache`) ran the lane's own code and passed. Any local `zig build test`
+in a worktree needs the lane-private cache, not only codegen.

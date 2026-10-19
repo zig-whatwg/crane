@@ -916,15 +916,19 @@ pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSV
     };
 
     // FileAPI "generate a new blob URL", steps 3-6: settings is the current
-    // settings object, and the URL (and the entry's origin) carry the ASCII
-    // serialization of its origin - "null" only when it is opaque, or its
-    // global has no settings to ask.
-    const origin = currentSettingsOrigin(realm);
-    defer if (origin.owned) |o| origin.allocator.free(o);
+    // settings object, and the URL carries the ASCII serialization of its
+    // origin - "null" only when it is opaque, or its global has no settings
+    // to ask. The entry keeps the settings object's storage key for
+    // non-storage purposes - origin, top-level site, has-cross-site-ancestor
+    // - which "check for same-partition blob URL usage" compares (File API
+    // 8.3.2): the store is shared by threads, so the key, not the
+    // environment, is what it holds.
+    const storage_key = try currentSettingsStorageKey(realm);
+    defer if (storage_key.owned) |o| storage_key.allocator.free(o);
 
     // Create the blob URL. Its entry's environment is the current settings
     // object - its realm - whose end removes it (`removeBlobURLEntries`).
-    const blob_url = try store.createObjectURL(blob_internal.blob_data, origin.value, @ptrCast(realm));
+    const blob_url = try store.createObjectURL(blob_internal.blob_data, storage_key.value, @ptrCast(realm));
 
     // Return as DOMString (take ownership of the allocated URL string)
     return runtime.DOMString.initOwned(blob_url);
@@ -949,18 +953,25 @@ fn blobURLStoreOf(realm: runtime.Context) ?*BlobURLStore {
     return @import("dom").browser_state.blobURLStoreOf(realm);
 }
 
-/// The current settings object's origin, serialized: `realm`'s global
-/// object's settings (dom.global_settings), or "null" when there are none.
-/// `owned` is what to free, with `allocator`.
-const SettingsOrigin = struct { value: []const u8, owned: ?[]const u8 = null, allocator: std.mem.Allocator };
+/// The current settings object's storage key for non-storage purposes,
+/// serialized (storage.StorageKey.serialize): `realm`'s global object's
+/// (dom.global_settings, BORROWED from the global), or - for a global whose
+/// kind keeps none - its origin alone, "null" when it has no settings to ask:
+/// a key no environment with a storage key ever has, so its URLs resolve
+/// only for itself. `owned` is what to free, with `allocator`.
+const SettingsKey = struct { value: []const u8, owned: ?[]const u8 = null, allocator: std.mem.Allocator };
 
-fn currentSettingsOrigin(realm: runtime.Context) SettingsOrigin {
-    const none: SettingsOrigin = .{ .value = "null", .allocator = realm.allocator };
+fn currentSettingsStorageKey(realm: runtime.Context) error{OutOfMemory}!SettingsKey {
+    const none: SettingsKey = .{ .value = "null", .allocator = realm.allocator };
     const record = realm.getRealm() orelse return none;
     const raw = record.global_object orelse return none;
     const global: *runtime.Instance = @ptrCast(@alignCast(raw));
+    if (try @import("dom").global_settings.serializedStorageKeyOf(global)) |key| return .{ .value = key, .allocator = global.ctx.allocator };
     const settings = @import("dom").global_settings.of(global) orelse return none;
-    const origin = settings.origin(global) catch return none;
+    const origin = settings.origin(global) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return none,
+    };
     if (origin.len == 0) {
         global.ctx.allocator.free(origin);
         return none;
@@ -978,6 +989,12 @@ pub fn call_static_revokeObjectURL(instance: *runtime.Instance, url: runtime.DOM
     const realm = engine.currentRealm() orelse instance.ctx;
     const store = @import("dom").browser_state.existingBlobURLStoreOf(realm) orelse return;
 
-    // Revoke the URL
-    store.revokeObjectURL(url.asSlice());
+    // Steps 3-7: the entry is removed only when the current settings
+    // object's storage key equals its creator's ("check for same-partition
+    // blob URL usage"); another partition's or another origin's revoke
+    // silently does nothing (cross-global-revoke.sub.html, all three
+    // browsers 3/3).
+    const storage_key = try currentSettingsStorageKey(realm);
+    defer if (storage_key.owned) |o| storage_key.allocator.free(o);
+    store.revokeObjectURL(url.asSlice(), storage_key.value);
 }

@@ -147,13 +147,23 @@ pub const ResolvedBlob = struct {
     }
 };
 
+/// What scheme fetch "blob" step 6 obtains a blob for ("stringOrEnvironment"):
+/// File API "obtain a blob object"'s environment - by its storage key for
+/// non-storage purposes, serialized (storage.StorageKey.serialize), which
+/// must equal the entry's - or one of the two strings it does not check.
+pub const BlobAccess = union(enum) {
+    environment: []const u8,
+    top_level_navigation,
+    top_level_self_fetch,
+};
+
 /// Resolves a blob URL in `store` - the request's client's Browser's blob URL
-/// store (`InternalRequest.blob_url_store`) - for a request whose origin is
-/// `origin`, to its blob: null when "obtaining a blob object" fails: no
-/// entry, a revoked one, or another origin's. The File API's blob URL store
-/// is the file module's, which fetch does not import, so the code that owns
-/// the store installs this (src/webidl/impls/fetch_body.zig).
-pub const BlobResolver = *const fn (store: *anyopaque, allocator: Allocator, url: []const u8, origin: []const u8) error{OutOfMemory}!?ResolvedBlob;
+/// store (`InternalRequest.blob_url_store`) - for `access`, to its blob:
+/// null when "obtaining a blob object" fails: no entry, a revoked one, or
+/// one another partition made. The File API's blob URL store is the file
+/// module's, which fetch does not import, so the code that owns the store
+/// installs this (src/webidl/impls/fetch_body.zig).
+pub const BlobResolver = *const fn (store: *anyopaque, allocator: Allocator, url: []const u8, access: BlobAccess) error{OutOfMemory}!?ResolvedBlob;
 
 /// How a blob URL store is read: the same for every Browser, so installed
 /// once for the process; the store it reads is the request's.
@@ -188,13 +198,21 @@ fn blobFetchRequest(allocator: Allocator, request: *const InternalRequest) error
     // The user agent's blob URL store is the request's client's Browser's: a
     // request no Browser's realm made resolves no blob URL.
     const store = request.blob_url_store orelse return .{ .network_error = "no blob URL store" };
-    // 1, 3-8. The blob URL entry, and the blob obtained from it for the
-    //         request's environment - its origin.
-    const origin: []const u8 = switch (request.origin) {
-        .client => "",
-        .origin => |o| o,
-    };
-    const blob = (try resolver(store, allocator, request.currentUrl(), origin)) orelse return .{ .network_error = "no blob for this URL" };
+    // 3-6. stringOrEnvironment: "top-level-navigation" for a request whose
+    // destination is "document"; "top-level-self-fetch" for a top-level
+    // Window's fetch of its own creation URL (populateRequestFromClient
+    // decided it); else requestEnvironment - the reserved client or the
+    // client - by its storage key, which the request carries. A request
+    // that names no environment obtains nothing (a missing partition is not
+    // a shared one).
+    const access: BlobAccess = if (request.destination == .document)
+        .top_level_navigation
+    else if (request.blob_top_level_self_fetch)
+        .top_level_self_fetch
+    else
+        .{ .environment = request.blob_storage_key orelse return .{ .network_error = "blob: no environment to obtain the blob for" } };
+    // 1, 7-8. The blob URL entry, and the blob obtained from it.
+    const blob = (try resolver(store, allocator, request.currentUrl(), access)) orelse return .{ .network_error = "no blob for this URL" };
     defer blob.deinit(allocator);
 
     // 9. Let response be a new response.
@@ -481,9 +499,16 @@ test "scheme fetch: a data: URL's response says OK" {
 /// The store the test's requests carry: only blob URLs it holds resolve.
 const TestStore = struct { url: []const u8 };
 
-fn testResolver(store: *anyopaque, allocator: Allocator, url: []const u8, origin: []const u8) error{OutOfMemory}!?ResolvedBlob {
+/// The key the test's blob URLs were made under.
+const test_key = "http://a.test http://a.test 0";
+
+fn testResolver(store: *anyopaque, allocator: Allocator, url: []const u8, access: BlobAccess) error{OutOfMemory}!?ResolvedBlob {
     const test_store: *const TestStore = @ptrCast(@alignCast(store));
-    if (!std.mem.eql(u8, url, test_store.url) or !std.mem.eql(u8, origin, "http://a.test")) return null;
+    if (!std.mem.eql(u8, url, test_store.url)) return null;
+    switch (access) {
+        .environment => |key| if (!std.mem.eql(u8, key, test_key)) return null,
+        .top_level_navigation, .top_level_self_fetch => {},
+    }
     return .{ .bytes = try allocator.dupe(u8, "0123456789"), .content_type = try allocator.dupe(u8, "text/plain") };
 }
 
@@ -496,6 +521,7 @@ test "scheme fetch blob: the whole blob, or a range of it" {
     const request = try InternalRequest.init(allocator, "blob:http://a.test/1");
     defer request.deinit();
     try request.setOrigin("http://a.test");
+    try request.setBlobStorageKey(test_key);
 
     // A request that carries no store - no Browser's realm made it - and one
     // whose store does not hold the URL (another Browser's): network errors.
@@ -535,15 +561,34 @@ test "scheme fetch blob: the whole blob, or a range of it" {
         try std.testing.expectEqualStrings(case.content_range, content_range);
     }
 
-    // Past the end, a bad Range, another origin or another method: network errors.
+    // Past the end, a bad Range, another partition or another method:
+    // network errors.
     try request.header_list.set("Range", "bytes=10-");
     try std.testing.expect((try schemeFetchRequest(allocator, request)) == .network_error);
     try request.header_list.set("Range", "bits=1-2");
     try std.testing.expect((try schemeFetchRequest(allocator, request)) == .network_error);
     request.header_list.delete("Range");
-    try request.setOrigin("http://b.test");
+    try request.setBlobStorageKey("http://a.test http://b.test 1");
     try std.testing.expect((try schemeFetchRequest(allocator, request)) == .network_error);
-    try request.setOrigin("http://a.test");
+    // Steps 5-6: a top-level self-fetch, and a top-level navigation, obtain
+    // the blob unchecked.
+    request.blob_top_level_self_fetch = true;
+    {
+        const response = (try schemeFetchRequest(allocator, request)).response;
+        response.deinit();
+    }
+    request.blob_top_level_self_fetch = false;
+    request.destination = .document;
+    {
+        const response = (try schemeFetchRequest(allocator, request)).response;
+        response.deinit();
+    }
+    // A request that names no environment obtains nothing.
+    request.destination = .empty;
+    allocator.free(request.blob_storage_key.?);
+    request.blob_storage_key = null;
+    try std.testing.expect((try schemeFetchRequest(allocator, request)) == .network_error);
+    try request.setBlobStorageKey(test_key);
     try request.setMethod("POST");
     try std.testing.expect((try schemeFetchRequest(allocator, request)) == .network_error);
 }

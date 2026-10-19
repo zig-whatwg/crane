@@ -54,6 +54,9 @@ pub const RegistrationObject = struct {
     /// Its storage key: what update() and unregister() make their jobs with,
     /// even once the registry has let the registration go. OWNED.
     storage_key: []u8,
+    /// The registration's update via cache mode, as its last change was
+    /// delivered (the updateViaCache getter); kept once the registration is
+    /// unregistered.
     update_via_cache: registry_mod.UpdateViaCache,
     installing: ?*runtime.Instance = null,
     waiting: ?*runtime.Instance = null,

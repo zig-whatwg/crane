@@ -39,6 +39,10 @@ pub const InternalState = struct {};
 /// on its thread - and the realm's environment ends with it.
 pub fn installHooks() void {
     @import("dom").unloading_cleanup.install(&service_worker.realm.environmentEnded);
+    // A page the back/forward cache keeps uses no registration until it is
+    // shown again (service_worker.Registry.setEnvironmentCached).
+    @import("dom").bfcache.installStoreStep(&service_worker.realm.environmentStored);
+    @import("dom").bfcache.installRestoreStep(&service_worker.realm.environmentRestored);
     // HTML "the end" step 6.4: the client message queue is enabled after
     // DOMContentLoaded.
     @import("dom").client_message_queues.install(&service_worker.realm.enableClientMessageQueueOf);

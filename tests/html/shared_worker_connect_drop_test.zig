@@ -95,6 +95,7 @@ fn body() !void {
         .owner_realm = &owner_realm,
         .url = "https://web-platform.test:8443/workers/w.js",
         .origin = "https://web-platform.test:8443",
+        .storage_key = "https://web-platform.test:8443 https://web-platform.test 0",
         .name = "",
         .worker_type = .classic,
         .credentials = .same_origin,

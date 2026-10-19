@@ -69,6 +69,12 @@ pub const WorkerScriptFetchOptions = struct {
     /// outside settings for a worker's script - for the blob URL store's
     /// same-origin check.
     requesting_origin: ?[]const u8 = null,
+    /// The outside settings' storage key for non-storage purposes,
+    /// serialized (storage.StorageKey.serialize): what a blob: script's blob
+    /// is obtained for - the worker's reserved environment has its creator's
+    /// top-level site and ancestor bit, and the blob URL's origin, which is
+    /// the creator's or the constructor threw. BORROWED for the call.
+    requesting_storage_key: ?[]const u8 = null,
     /// Outside settings' referrer source. BORROWED only during the
     /// synchronous root fetch; workerScriptRequest takes an owned copy.
     referrer_source: ?[]const u8 = null,
@@ -222,7 +228,7 @@ pub fn fetchWorkerScript(
         if (options.blob_entry) |entry| {
             return FetchedScript.init(allocator, entry.source, entry.final_url, entry.content_type, true) catch WorkerScriptError.OutOfMemory;
         }
-        return handleBlobUrl(allocator, url, options.requesting_origin, options.blob_url_store, options.worker_type);
+        return handleBlobUrl(allocator, url, options.requesting_storage_key, options.blob_url_store, options.worker_type);
     }
 
     // Step 3: For HTTP(S) URLs, use the fetch module
@@ -315,12 +321,14 @@ fn handleDataUrl(allocator: Allocator, url: []const u8) WorkerScriptError!Fetche
 /// happens later (`WorkerScriptFetchOptions.blob_entry`): the SharedWorker
 /// constructor's urlRecord, which the shared worker manager's steps fetch
 /// after the constructor has returned, by when script may have revoked the
-/// URL. Obtained for `requesting_origin` from `blob_url_store`, as the fetch
-/// would. Null for a URL that is not blob:, or one that resolves to no blob
-/// (the fetch then fails as it would have). OWNED.
-pub fn captureBlobScript(allocator: Allocator, url: []const u8, requesting_origin: []const u8, blob_url_store: ?*anyopaque, worker_type: WorkerType) error{OutOfMemory}!?FetchedScript {
+/// URL. Obtained for `requesting_storage_key` (the outside settings' storage
+/// key for non-storage purposes, serialized) from `blob_url_store`, as the
+/// fetch would. Null for a URL that is not blob:, or one that resolves to no
+/// blob - none, a revoked one, another partition's (the fetch then fails as
+/// it would have). OWNED.
+pub fn captureBlobScript(allocator: Allocator, url: []const u8, requesting_storage_key: ?[]const u8, blob_url_store: ?*anyopaque, worker_type: WorkerType) error{OutOfMemory}!?FetchedScript {
     if (!std.mem.startsWith(u8, url, "blob:")) return null;
-    return handleBlobUrl(allocator, url, requesting_origin, blob_url_store, worker_type) catch |err| switch (err) {
+    return handleBlobUrl(allocator, url, requesting_storage_key, blob_url_store, worker_type) catch |err| switch (err) {
         error.OutOfMemory => error.OutOfMemory,
         else => null,
     };
@@ -329,25 +337,26 @@ pub fn captureBlobScript(allocator: Allocator, url: []const u8, requesting_origi
 /// Handle blob: URL for worker scripts
 ///
 /// Per HTML Standard § 10.2.5 and Fetch Standard § 4.3: the blob URL
-/// entry's blob, obtained for the requesting environment - same-origin only
-/// - is the script. Fetch's scheme fetch "blob" does exactly that, through
+/// entry's blob, obtained for the requesting environment - only one whose
+/// storage key equals the entry's (File API 8.3.2) - is the script. Fetch's scheme fetch "blob" does exactly that, through
 /// the blob URL store's resolver its owner installs once, at process start
 /// (fetch.algorithms.scheme_fetch.installBlobResolver), in `blob_url_store` -
 /// the outside settings' Browser's: so a worker on any thread resolves its
 /// Browser's store, and no other Browser's. (This used to be a resolver of
 /// its own, a threadlocal the WPT runner set on its thread only: a nested
 /// worker's blob: script, fetched on the outer worker's thread, found none.)
-fn handleBlobUrl(allocator: Allocator, url: []const u8, requesting_origin: ?[]const u8, blob_url_store: ?*anyopaque, worker_type: WorkerType) WorkerScriptError!FetchedScript {
-    // The requesting origin, for the same-origin check: the creating
-    // context's (document or worker), passed by the caller.
-    const origin = requesting_origin orelse {
-        std.log.debug("handleBlobUrl: no requesting origin for blob URL resolution", .{});
+fn handleBlobUrl(allocator: Allocator, url: []const u8, requesting_storage_key: ?[]const u8, blob_url_store: ?*anyopaque, worker_type: WorkerType) WorkerScriptError!FetchedScript {
+    // The requesting environment's storage key, for the same-partition
+    // check: the creating context's (document or worker), passed by the
+    // caller.
+    const storage_key = requesting_storage_key orelse {
+        std.log.debug("handleBlobUrl: no requesting storage key for blob URL resolution", .{});
         return WorkerScriptError.FetchFailed;
     };
 
     const request = fetch.internal.InternalRequest.init(allocator, url) catch return WorkerScriptError.OutOfMemory;
     defer request.deinit();
-    request.setOrigin(origin) catch return WorkerScriptError.OutOfMemory;
+    request.setBlobStorageKey(storage_key) catch return WorkerScriptError.OutOfMemory;
     request.blob_url_store = blob_url_store;
     const result = fetch.algorithms.scheme_fetch.schemeFetchRequest(allocator, request) catch return WorkerScriptError.OutOfMemory;
     const response = switch (result) {
@@ -841,6 +850,12 @@ pub const ServiceWorkerFetchOptions = struct {
     /// Chrome and Safari send it (referrer-toplevel-script-fetch.https.html,
     /// wpt.fyi df642c4142; Firefox fails) - golden rule 2, the majority.
     referrer: ?[]const u8 = null,
+    /// Where a violation of the policy container's CSP list is reported
+    /// (BORROWED for the fetch): a service worker's importScripts() passes
+    /// its own global's - the fetch runs on the worker's thread, under the
+    /// worker's own policy (service_worker/run.zig). The job thread's fetches
+    /// pass none: they carry no CSP list (run.zig FetchClient).
+    csp_violation_reporter: ?fetch.internal.CspViolationReporter = null,
 };
 
 /// What a service worker script fetch got: the facts of the response the
@@ -927,6 +942,7 @@ pub fn serviceWorkerScriptRequest(allocator: Allocator, url: []const u8, options
     request.blob_url_store = options.blob_url_store;
     if (options.network_partition_key) |key| request.network_partition_key = try allocator.dupe(u8, key);
     if (options.referrer) |referrer| try request.setReferrerUrl(referrer);
+    request.csp_violation_reporter = options.csp_violation_reporter;
     return request;
 }
 

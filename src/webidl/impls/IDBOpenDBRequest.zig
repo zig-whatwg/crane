@@ -1,19 +1,17 @@
 //! IndexedDB open request, with IDBRequest state initialized through its interface.
+//!
+//! Its open or delete operation lives in its factory's ConnectionTask and in
+//! the Browser's IndexedDB server (src/storage/indexeddb/server.zig): the
+//! request itself keeps no native state beyond its IDBRequest's.
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
-const dom = @import("dom");
-const storage = @import("storage");
 pub const State = interfaces.IDBOpenDBRequest.State;
 pub const ImplError = error{InvalidStateError};
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
-    open_request: ?*storage.indexeddb.IDBOpenDBRequest = null,
 };
-pub fn installHooks() void {
-    dom.indexeddb.installOpenRequests(.{ .attach = attachRequest });
-}
 pub fn init(allocator: std.mem.Allocator, comptime StateType: type, vtable: *const runtime.VTable, ctx: runtime.Context) !*runtime.Instance {
     const instance = try interfaces.IDBRequest.initWithState(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
@@ -27,24 +25,8 @@ pub fn init(allocator: std.mem.Allocator, comptime StateType: type, vtable: *con
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        if (internal.open_request) |request| {
-            if (request.base.result) |result| switch (result) {
-                .database => |db| {
-                    db.deinit();
-                    internal.allocator.destroy(db);
-                },
-                else => {},
-            };
-            request.deinit();
-            internal.allocator.destroy(request);
-        }
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
     interfaces.IDBRequest.deinit(instance);
-}
-fn attachRequest(instance: *runtime.Instance, request: *storage.indexeddb.IDBOpenDBRequest) void {
-    const internal = instance.getState(State).own._internal.?;
-    std.debug.assert(internal.open_request == null);
-    internal.open_request = request;
 }

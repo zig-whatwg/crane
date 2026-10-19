@@ -1100,7 +1100,7 @@ const PinnedBlobStore = struct {
 
     /// Answers for its own store only: left installed, it resolves nothing
     /// another test's store holds.
-    fn resolve(in: *anyopaque, allocator: std.mem.Allocator, _: []const u8, _: []const u8) error{OutOfMemory}!?scheme_fetch.ResolvedBlob {
+    fn resolve(in: *anyopaque, allocator: std.mem.Allocator, _: []const u8, _: scheme_fetch.BlobAccess) error{OutOfMemory}!?scheme_fetch.ResolvedBlob {
         if (in != @as(*anyopaque, @constCast(&store))) return null;
         return .{ .bytes = try allocator.dupe(u8, "b"), .content_type = try allocator.dupe(u8, "text/plain") };
     }
@@ -1116,6 +1116,7 @@ test "main fetch step 12's fetches hand step 14 unfiltered responses: data:, abo
         const request = try InternalRequest.init(allocator, url);
         defer request.deinit();
         try request.setOrigin("http://a.test");
+        try request.setBlobStorageKey("http://a.test http://a.test 0");
         request.blob_url_store = @constCast(&PinnedBlobStore.store);
         const fetched = try scheme_fetch.schemeFetchRequest(allocator, request);
         const response = fetched.response;

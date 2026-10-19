@@ -49,6 +49,7 @@ const engine = @import("engine");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
 const html = @import("html");
+const fetch = @import("fetch");
 const registry_mod = @import("registry.zig");
 const manager_mod = @import("manager.zig");
 const scope_mod = @import("scope.zig");
@@ -250,7 +251,15 @@ pub const RealmEnvironment = struct {
         // -clients-claim pass in Chrome 155 and Firefox 158, wpt.fyi
         // 23b0b89b1a). Every delivery here would run the page's script, so
         // every one evicts; the delivery is dropped (its owner frees it).
-        if (cachedWindowOf(self.realm)) |window| return dom.bfcache.evict(window, null);
+        if (cachedWindowOf(self.realm)) |window| {
+            // Except a registration's update via cache mode: a native field of
+            // its object's state, set with no engine call, no script, event
+            // or promise - nothing runs in the cached realm, so nothing needs
+            // evicting it (a kept realm is attached: the engine's
+            // detached-realm guard would not catch a call, so make none).
+            if (delivery.* == .update_via_cache) return self.setUpdateViaCache(delivery.update_via_cache.registration, delivery.update_via_cache.mode);
+            return dom.bfcache.evict(window, null);
+        }
         self.delivering += 1;
         defer {
             self.delivering -= 1;
@@ -349,6 +358,9 @@ pub const RealmEnvironment = struct {
                 const registration = again.object.live() orelse return;
                 setSlot(registration, again.data, m.slot, value);
             },
+            // The registration's update via cache mode changed (Update step
+            // 9, Install step 3): what its object's getter returns.
+            .update_via_cache => |m| self.setUpdateViaCache(m.registration, m.mode),
             // Install step 9.2: updatefound at the registration's objects.
             .update_found => |m| {
                 const entry = self.registrationEntry(m.registration) orelse return;
@@ -586,6 +598,15 @@ pub const RealmEnvironment = struct {
     fn workerEntry(self: *RealmEnvironment, worker_id: u64) ?*WorkerEntry {
         for (self.workers.items) |*entry| if (entry.worker_id == worker_id) return entry;
         return null;
+    }
+
+    /// The registration's update via cache mode changed: what its object's
+    /// getter returns. A native field write only.
+    fn setUpdateViaCache(self: *RealmEnvironment, registration_id: u64, mode: registry_mod.UpdateViaCache) void {
+        const entry = self.registrationEntry(registration_id) orelse return;
+        // The object's impl owns `data`: gone with the object.
+        if (entry.object.live() == null) return;
+        entry.data.update_via_cache = mode;
     }
 
     fn registrationEntry(self: *RealmEnvironment, registration_id: u64) ?*RegistrationEntry {
@@ -1111,6 +1132,28 @@ pub fn environmentEnded(realm: runtime.Context) void {
     RealmEnvironment.ofEndpoint(endpoint).end();
 }
 
+/// The back/forward cache keeps `realm`'s page (dom.bfcache store step, on
+/// the page's thread): its environment is using no registration while it is
+/// kept (Registry.setEnvironmentCached says why). Installed by
+/// ServiceWorkerContainer at process start.
+pub fn environmentStored(realm: runtime.Context) void {
+    environmentCached(realm, true);
+}
+
+/// The back/forward cache shows `realm`'s page again (dom.bfcache restore
+/// step): its environment uses its registration again.
+pub fn environmentRestored(realm: runtime.Context) void {
+    environmentCached(realm, false);
+}
+
+fn environmentCached(realm: runtime.Context, cached: bool) void {
+    const manager = Manager.existingOf(realm) orelse return;
+    const endpoint = manager.endpointOf(realm) orelse return;
+    const environment = RealmEnvironment.ofEndpoint(endpoint);
+    if (environment.ended) return;
+    manager.environmentCached(environment.id, cached);
+}
+
 // ============================================================================
 // ServiceWorkerContainer
 // ============================================================================
@@ -1188,6 +1231,32 @@ pub fn register(container: *runtime.Instance, script_url: []const u8, options: R
         },
     };
     defer urls.deinit(allocator);
+    // Content Security Policy: the script URL is checked here, on the
+    // client's own thread, after Start Register's URL checks and before
+    // Schedule Job - a blocked one rejects with a "SecurityError" and no job
+    // is made, its violation reported to the client by the client's own
+    // reporter (the caller's script position). Stated deviation: the spec
+    // checks at the job's fetch (Update step 7's "fetch a classic worker
+    // script" given job's client, main fetch step 7), whose network error is
+    // Update step 8's TypeError. All three browsers check at register()
+    // instead, unanimously: Blink ServiceWorkerContainer::registerServiceWorker
+    // (AllowWorkerContextFromSource, kSecurity, after the URL checks), WebKit
+    // ServiceWorkerContainer::addRegistration (allowWorkerFromSource,
+    // SecurityError), Gecko ServiceWorkerScopeAndScriptAreValid
+    // (NS_CheckContentLoadPolicy for TYPE_INTERNAL_SERVICE_WORKER with the
+    // client's CSP event listener, ThrowSecurityError). Golden rule 2: no
+    // newer spec is involved, and the browsers agree against the spec text.
+    // WPT content-security-policy/worker-src/service-* (all three pass).
+    if (scriptUrlBlockedByCsp(realm, urls.script_url)) {
+        var capability = environment.takePromise(made.id).?;
+        defer engine.releasePromiseCapability(&capability);
+        const message = try std.fmt.allocPrint(allocator, "Failed to register a ServiceWorker: The provided scriptURL ('{s}') violates the Content Security Policy.", .{urls.script_url});
+        defer allocator.free(message);
+        const exception = try engine.createDOMException(realm, "SecurityError", message);
+        defer exception.release();
+        try engine.rejectPromise(&capability, exception.borrow());
+        return made.promise.take();
+    }
     // 10-15. The storage key (Crane's is the origin), Create Job with the
     // client's creation URL as its referrer, its worker type and update via
     // cache mode, and Schedule Job.
@@ -1203,6 +1272,20 @@ pub fn register(container: *runtime.Instance, script_url: []const u8, options: R
     });
     // 8. Return p.
     return made.promise.take();
+}
+
+/// Would a request for the service worker script `url` (serialized), with
+/// destination "serviceworker", be blocked by the Content Security Policy
+/// of `realm`'s global (worker-src, falling back to child-src, script-src,
+/// default-src)? The check main fetch step 7 runs (CSP 4.1.2), over the
+/// global's own policy container; each violation goes to the global's
+/// reporter. False for a realm with no global or no policy container.
+fn scriptUrlBlockedByCsp(realm: runtime.Context, url: []const u8) bool {
+    const global = globalOf(realm) orelse return false;
+    const settings = dom.global_settings.of(global) orelse return false;
+    const container_of = settings.policy_container orelse return false;
+    const container = container_of(global) orelse return false;
+    return fetch.algorithms.csp_check.isBlockedFor(container, url, .serviceworker, dom.csp_violations.reporterFor(global));
 }
 
 /// What the job thread's script fetch reads of `realm`'s settings object.
