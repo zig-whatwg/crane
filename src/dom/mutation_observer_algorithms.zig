@@ -28,6 +28,8 @@ const MutationObserverInit = dictionaries.MutationObserverInit;
 const engine = @import("engine");
 const observer_registrations = @import("observer_registrations.zig");
 
+const log = std.log.scoped(.mutation_observer);
+
 /// Global mutation observer state (per similar-origin window agent)
 /// In a real implementation, this would be per-agent state
 /// For now, we use thread-local state (one agent per thread)
@@ -673,8 +675,10 @@ fn mutationMicrotask(data: ?*anyopaque) void {
     // Free the context first (we've captured what we need)
     allocator.destroy(ctx);
 
+    // Out of memory before any observer was notified: the observers stay
+    // pending, and the next mutation's microtask notifies them.
     notifyMutationObservers(allocator) catch |err| {
-        std.log.err("MutationObserver: notifyMutationObservers failed: {}", .{err});
+        log.warn("notify mutation observers failed: {s}", .{@errorName(err)});
     };
 }
 
@@ -744,20 +748,21 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
     for (notify_set.items(), 0..) |mo_instance, mo_index| {
         if (runtime.SlabAllocator.generationOf(mo_instance) != generations[mo_index]) continue;
 
-        // Step 6.1: Let records be a clone of mo's record queue
+        // Step 6.1: "Let records be a clone of mo's record queue." Step 6.2:
+        // "Empty mo's record queue." Together a move: the queue's list is
+        // taken whole, which allocates nothing. (A clone appended `catch
+        // continue`: out of memory, a record left the queue without
+        // reaching the clone, and was neither delivered nor freed.)
         const queue = observer_registrations.recordQueueOf(mo_instance);
-        const records: []const *runtime.Instance = if (queue) |q| q.records.items else &.{};
-
-        std.log.debug("[MutationObserver] Processing observer {*}, records.len={}", .{ mo_instance, records.len });
-
-        // Step 6.2: Empty mo's record queue
-        // We need to take ownership of the records before clearing
-        var records_copy = infra.List(*runtime.Instance).init(allocator);
-        defer records_copy.deinit();
-        for (records) |record| {
-            records_copy.append(record) catch continue;
+        var records: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+        const records_allocator = if (queue) |q| q.allocator else allocator;
+        if (queue) |q| {
+            records = q.records;
+            q.records = .empty;
         }
-        if (queue) |q| q.records.clearRetainingCapacity();
+        defer records.deinit(records_allocator);
+
+        std.log.debug("[MutationObserver] Processing observer {*}, records.len={}", .{ mo_instance, records.items.len });
 
         // Step 6.3: "For each node of mo's node list, remove all transient
         // registered observers whose observer is mo from node's registered
@@ -765,18 +770,17 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
         observer_registrations.removeTransients(mo_instance);
 
         // Step 6.4: If records is not empty, then invoke mo's callback with « records, mo »
-        if (records_copy.len > 0) {
-            // Delegate callback invocation to the impl layer which has V8 access
-            std.log.debug("[MutationObserver] Invoking callback with {} records", .{records_copy.len});
-            observer_registrations.invokeCallback(mo_instance, records_copy.items()) catch |err| {
-                std.log.err("[MutationObserver] invokeCallback failed: {}", .{err});
-                // If callback invocation fails, clean up records
-                for (records_copy.items()) |record| {
-                    runtime.Instance.deinit(record);
-                }
+        if (records.items.len > 0) {
+            std.log.debug("[MutationObserver] Invoking callback with {} records", .{records.items.len});
+            // The records are TAKEN on every path, failure included
+            // (observer_registrations.Implementation.invoke_callback):
+            // wrapped, they are the wrapper cache's; not, the observer frees
+            // them. So a failure frees nothing here - this catch used to
+            // free them all again, a double free whenever wrapping or the
+            // call failed (lane leaks6).
+            observer_registrations.invokeCallback(mo_instance, records.items) catch |err| {
+                log.warn("invoking an observer's callback failed: {s}", .{@errorName(err)});
             };
-            std.log.debug("[MutationObserver] Callback invocation completed", .{});
-            // Note: Records ownership is transferred to invokeCallback, which will clean them up
         }
     }
 
