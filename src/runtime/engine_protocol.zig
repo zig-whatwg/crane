@@ -347,6 +347,13 @@ pub const PromiseCapability = struct {
 /// For each `reactToPromise` that succeeded, exactly ONE of `fulfilled`,
 /// `rejected` and `dropped` runs, once - so the host frees its `data` at the
 /// end of its steps and in `dropped`, and nowhere else.
+///
+/// `fulfilled` and `rejected` run as HTML's HostEnqueuePromiseJob runs a
+/// promise job: between "prepare to run script" and "clean up after running
+/// script" with the realm the reaction was made in, so the JavaScript
+/// execution context stack is not empty while they run and nothing they
+/// call performs a microtask checkpoint of its own (an error listener's
+/// clean up, say) - the checkpoint running them goes on afterwards.
 pub const PromiseReactionSteps = struct {
     fulfilled: ?*const fn (data: ?*anyopaque, value: JSValue) void = null,
     rejected: ?*const fn (data: ?*anyopaque, reason: JSValue) void = null,

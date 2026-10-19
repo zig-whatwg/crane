@@ -30,6 +30,7 @@ const engine = @import("engine");
 const ffi = @import("ffi.zig");
 const support = @import("protocol_support.zig");
 const realm_finalizers = @import("realm_finalizers.zig");
+const protocol_scripts = @import("protocol_scripts.zig");
 
 const Context = engine.Context;
 const JSValue = engine.JSValue;
@@ -38,6 +39,9 @@ const Error = engine.Error;
 const Reaction = struct {
     steps: *const engine.PromiseReactionSteps,
     data: ?*anyopaque,
+    /// The realm the reaction was made in: its job's realm, which the
+    /// host's step runs prepared for (HostEnqueuePromiseJob).
+    realm: Context,
     /// The reaction functions' holder, WEAK: empty once the collector took
     /// it. Disposed when the reaction ends.
     holder: ?*ffi.Value = null,
@@ -49,13 +53,14 @@ const Reaction = struct {
     /// Release what the record holds - its place on the realm's list, its
     /// holder handle (disposing it cancels a second pass still to come) -
     /// and free it. Returns what the host's step needs.
-    fn end(self: *Reaction) struct { steps: *const engine.PromiseReactionSteps, data: ?*anyopaque } {
+    fn end(self: *Reaction) struct { steps: *const engine.PromiseReactionSteps, data: ?*anyopaque, realm: Context } {
         const steps = self.steps;
         const data = self.data;
+        const realm = self.realm;
         self.node.unlink();
         if (self.holder) |holder| ffi.v8_Global_Dispose(holder);
         allocator.destroy(self);
-        return .{ .steps = steps, .data = data };
+        return .{ .steps = steps, .data = data, .realm = realm };
     }
 
     /// Exactly once, when the promise settles (and the reaction was not
@@ -65,6 +70,20 @@ const Reaction = struct {
         const host = self.end();
         defer if (value) |v| ffi.v8_Global_Dispose(v);
         const argument: JSValue = if (value) |v| support.borrowed(v) else JSValue.jsUndefined;
+        // HTML HostEnqueuePromiseJob: the job runs between "prepare to run
+        // script" and "clean up after running script" with its realm's
+        // settings, so the JavaScript execution context stack is not empty
+        // while the host's step runs: a callback it invokes (an error event
+        // listener, a stream's algorithm) performs no microtask checkpoint
+        // of its own when it returns, and the checkpoint running this job
+        // goes on afterwards. (V8 runs it as a microtask, where it would
+        // also refuse a nested checkpoint; the scope is what makes the
+        // host's view - hasRunningScript, the entry realm - HTML's.) Every
+        // host reaction - module evaluation, fetch, streams, module loading,
+        // queueRealmMicrotask - runs here. A realm that cannot be entered
+        // (it ended between) runs its step unprepared, as before.
+        const scope: ?protocol_scripts.ScriptScope = protocol_scripts.prepareToRunScript(host.realm) catch null;
+        defer if (scope) |s| protocol_scripts.cleanUpAfterRunningJob(s);
         if (rejected) {
             // onRejectedSteps: 1. Let reason be R converted to `any`.
             // 2. If there is a set of steps to be run if the promise was
@@ -117,7 +136,7 @@ pub fn reactToPromise(realm: Context, promise: JSValue, steps: *const engine.Pro
     if (list) |l| if (l.ended) return error.OperationFailed;
 
     const reaction = Reaction.allocator.create(Reaction) catch return error.OutOfMemory;
-    reaction.* = .{ .steps = steps, .data = data };
+    reaction.* = .{ .steps = steps, .data = data, .realm = realm };
     // 1-4. onFulfilled and onRejected: CreateBuiltinFunction over the steps.
     // 5-6. Let newCapability be ? NewPromiseCapability(%Promise% of the
     //      promise's realm) - V8's derived promise.

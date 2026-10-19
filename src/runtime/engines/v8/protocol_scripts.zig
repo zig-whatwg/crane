@@ -62,6 +62,18 @@ pub fn prepareToRunScript(realm: Context) Error!ScriptScope {
 /// HTML "clean up after running script" with the settings object `scope`
 /// prepared.
 pub fn cleanUpAfterRunningScript(scope: ScriptScope) void {
+    cleanUp(scope, .checkpoint_when_empty);
+}
+
+/// "Clean up after running script" for a promise job: the job runs inside a
+/// microtask checkpoint, so step 3's checkpoint would return at once ("if
+/// the event loop's performing a microtask checkpoint is true, return") -
+/// and asking whether the stack is empty costs a stack walk per job.
+pub fn cleanUpAfterRunningJob(scope: ScriptScope) void {
+    cleanUp(scope, .inside_checkpoint);
+}
+
+fn cleanUp(scope: ScriptScope, step_3: enum { checkpoint_when_empty, inside_checkpoint }) void {
     // 1-2. Remove the realm execution context from the stack.
     if (context_manager.getWindowForContext(scope.context()) != null) context_manager.popAccessorWindow();
     prepared_depth -|= 1;
@@ -72,7 +84,7 @@ pub fn cleanUpAfterRunningScript(scope: ScriptScope) void {
     // microtask checkpoint. The agent stays entered for it, and the scope's
     // handle scope stays open: an agent the host entered only for this has
     // no other, and the checkpoint's callbacks make handles.
-    if (prepared_depth == 0 and !ffi.v8_Isolate_HasJavaScriptOnStack(isolate)) {
+    if (step_3 == .checkpoint_when_empty and prepared_depth == 0 and !ffi.v8_Isolate_HasJavaScriptOnStack(isolate)) {
         ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
     }
     ffi.v8_HandleScope_Dispose(scope.scope.handle_scope);

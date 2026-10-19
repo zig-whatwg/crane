@@ -2552,10 +2552,24 @@ fn runModuleScript(script_element: *runtime.Instance, document: *runtime.Instanc
     // Steps 6-8.
     switch (module_script.run(&env, script)) {
         .ok => {},
-        // Step 8: report the exception for the script's global.
+        // Steps 6-7 settled the evaluation promise with a rejection (an
+        // error to rethrow, or a graph with no top-level await that threw):
+        // step 8, "upon rejection of evaluationPromise with reason, report
+        // an exception" - a reaction, so the report is a promise job that
+        // runs in step 9's checkpoint, after the microtasks evaluation
+        // queued, with no checkpoint between its error listeners
+        // (microtasks/checkpoint-after-window-onerror-module.html; the
+        // worker's runModuleScript does the same).
         .report => |exception| {
             defer exception.release();
-            reportModuleException(realm, exception.value);
+            const promise = engine.createRejectedPromise(realm, exception.value) catch {
+                // Fallback: no promise could be made (out of memory, an
+                // engine failure) - report now rather than not at all.
+                reportModuleException(realm, exception.value);
+                return;
+            };
+            defer promise.release();
+            reportModuleRejectionLater(realm, promise.value);
         },
         // Step 8 "upon rejection" of a promise still waiting on top-level
         // await: react to it, and report the reason if it rejects.
