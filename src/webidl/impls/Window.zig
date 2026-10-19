@@ -1446,16 +1446,48 @@ pub fn get_frames(instance: *runtime.Instance) anyerror!typedefs.WindowProxy {
     return getWindowProxy(instance);
 }
 
-/// Getter for length - Number of child browsing contexts
-/// Per spec: Returns the number of child navigables.
+/// HTML "document-tree child navigables", steps 1–5, supplies membership,
+/// excluding shadow trees. A replaced or destroyed Window has none of its
+/// successor's list. Window indices retain navigable insertion order.
+fn documentTreeChildNavigables(instance: *runtime.Instance, internal: *InternalState, allocator: std.mem.Allocator) std.ArrayListUnmanaged(@import("dom").navigables.ChildNavigable) {
+    const navigable = navigableOf(instance, internal) orelse return .empty;
+    const document = internal.document orelse blk: {
+        const raw = navigable.getActiveDocument() orelse return .empty;
+        break :blk @as(*runtime.Instance, @ptrCast(@alignCast(raw)));
+    };
+    const children = @import("dom").navigables.childNavigablesOf(document, allocator);
+    // Golden rule 2 (row 81 Q15, 2026-10-19): step 3's tree-order wording
+    // arrived with the navigables cleanup (whatwg/html#1336, 2022), with no
+    // browser adoption or demonstrated lag. WPT indexed-browsing-contexts-01
+    // still asserts "The child browsing contexts must be sorted in the order
+    // that their containers were inserted into the Document." Aligned stable
+    // Chrome 6244643405824000, Firefox 6213611998674944 and Safari
+    // 6209999629189120 all pass it. Re-check if the spec or test changes.
+    // Like WebKit FrameTree::scopedChild, filter membership while preserving
+    // the parent's frame-list order. Reorder in place; no new holder or list.
+    var next: usize = 0;
+    for (navigable.children.items) |child| {
+        if (next == children.items.len) break;
+        for (children.items[next..], next..) |entry, index| {
+            if (entry.browsing_context != child) continue;
+            std.mem.swap(@import("dom").navigables.ChildNavigable, &children.items[next], &children.items[index]);
+            next += 1;
+            break;
+        }
+    }
+    return children;
+}
+
+/// Getter for length - Number of document-tree child navigables.
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     // "Return this's associated Document's document-tree child navigables's
     // size." A Window with no navigable has a destroyed document, whose child
     // navigables were destroyed with it - the context's list is its
     // successor's.
-    const navigable = navigableOf(instance, internal) orelse return 0;
-    return @intCast(navigable.children.items.len);
+    var children = documentTreeChildNavigables(instance, internal, internal.allocator);
+    defer children.deinit(internal.allocator);
+    return @intCast(children.items.len);
 }
 
 /// Indexed getter for frames[index] access
@@ -1469,16 +1501,16 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Ins
     const internal = getInternal(instance) orelse return null;
     // The document-tree child navigables of this's associated Document: none
     // once it has no navigable (see get_length).
-    const navigable = navigableOf(instance, internal) orelse return null;
-    const children = navigable.children.items;
+    var children = documentTreeChildNavigables(instance, internal, internal.allocator);
+    defer children.deinit(internal.allocator);
 
     // Out of bounds check
-    if (index >= children.len) {
+    if (index >= children.items.len) {
         return null;
     }
 
     // Get the child browsing context's Window
-    const child_ctx = children[index];
+    const child_ctx = children.items[index].browsing_context;
     const child_window = child_ctx.getActiveWindow() orelse return null;
 
     // Cast the InstancePtr (anyopaque) to runtime.Instance
@@ -4059,7 +4091,17 @@ const clock = @import("clock");
 /// exposes nothing.
 fn childNavigableNamed(window: *runtime.Instance, internal: *InternalState, name: []const u8) ?*runtime.Instance {
     if (name.len == 0) return null;
-    for (internal.browsing_context.children.items) |child| {
+    var children = documentTreeChildNavigables(window, internal, internal.allocator);
+    defer children.deinit(internal.allocator);
+    return childNavigableNamedIn(window, internal, children.items, name);
+}
+
+/// The first same-named child decides visibility, even when its origin
+/// prevents exposure. Reuse one document-tree list during enumeration.
+fn childNavigableNamedIn(window: *runtime.Instance, internal: *InternalState, children: []const @import("dom").navigables.ChildNavigable, name: []const u8) ?*runtime.Instance {
+    if (name.len == 0) return null;
+    for (children) |entry| {
+        const child = entry.browsing_context;
         if (!std.mem.eql(u8, child.target_name, name)) continue;
         const raw = child.getActiveWindow() orelse return null;
         const child_window: *runtime.Instance = @ptrCast(@alignCast(raw));
@@ -4155,8 +4197,11 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
 
     // The document-tree child navigable target name property set: each name
     // once, and only while its first navigable is same origin (domindex1).
-    for (internal.browsing_context.children.items) |child| {
-        if (childNavigableNamed(instance, internal, child.target_name) == null) continue;
+    var children = documentTreeChildNavigables(instance, internal, allocator);
+    defer children.deinit(allocator);
+    for (children.items) |entry| {
+        const child = entry.browsing_context;
+        if (childNavigableNamedIn(instance, internal, children.items, child.target_name) == null) continue;
         const listed = for (names.items) |existing| {
             if (std.mem.eql(u8, existing.asSlice(), child.target_name)) break true;
         } else false;
