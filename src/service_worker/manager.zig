@@ -53,6 +53,11 @@ const fetch = @import("fetch");
 const InternalRequest = fetch.internal.InternalRequest;
 const service_worker_fetch = fetch.internal.service_worker_fetch;
 const Call = service_worker_fetch.Call;
+const cookiestore = @import("cookiestore");
+const CookieChangeListeners = @import("dom").cookie_change_listeners.CookieChangeListeners;
+const functional_event = @import("functional_event.zig");
+const FunctionalEvent = functional_event.FunctionalEvent;
+const CookieChangeLists = functional_event.CookieChangeLists;
 
 const log = std.log.scoped(.service_worker);
 
@@ -293,6 +298,9 @@ pub const Delivery = union(enum) {
     /// NavigationPreloadManager.getState() step 2.5: a NavigationPreloadState
     /// with the registration's flag and header value (OWNED).
     resolve_preload_state: struct { promise: u64, enabled: bool, header_value: []u8 },
+    /// CookieStoreManager.getSubscriptions() step 3.4: the registration's
+    /// cookie change subscription list, copied. OWNED, each and the slice.
+    resolve_cookie_subscriptions: struct { promise: u64, subscriptions: []cookiestore.ChangeSubscription },
 
     /// `message`, copied - with the registry's lock held (its borrowed
     /// strings are valid until then). `registration`: the record a
@@ -337,10 +345,19 @@ pub const Delivery = union(enum) {
             .resolve_client => |*m| if (m.client) |*info| info.deinit(allocator),
             .navigate => |m| allocator.free(m.url),
             .resolve_preload_state => |m| allocator.free(m.header_value),
+            .resolve_cookie_subscriptions => |m| freeSubscriptions(allocator, m.subscriptions),
             else => {},
         }
     }
 };
+
+fn freeSubscriptions(allocator: Allocator, subscriptions: []const cookiestore.ChangeSubscription) void {
+    for (subscriptions) |subscription| {
+        if (subscription.name) |name| allocator.free(name);
+        allocator.free(subscription.url);
+    }
+    allocator.free(subscriptions);
+}
 
 /// A registration message's registration, copied from the record itself
 /// (the snapshot carries no storage key). The record is there: the message
@@ -601,7 +618,21 @@ pub const Host = struct {
     /// with `worker_id` and `generation`. Called with the lock held: it only
     /// posts.
     dispatch_fetch: *const fn (manager: *Manager, started: Started, dispatch: *FetchDispatch, worker_id: u64, generation: u64) void,
+    /// Fire Functional Event step 6: queue the task that creates `event`'s
+    /// event (taken) and dispatches it at the worker's global object; once
+    /// it is no longer active - or its task is discarded - the worker
+    /// reports `.functional_done` with `worker_id`, `generation` and the
+    /// event's registration. Called with the lock held: it only posts. A
+    /// host with no worker threads (a test's) drops the event: done at once.
+    dispatch_functional: *const fn (manager: *Manager, started: Started, event: *FunctionalEvent, worker_id: u64, generation: u64) void = dropFunctional,
 };
+
+/// The default `Host.dispatch_functional`: no worker to fire at.
+fn dropFunctional(manager: *Manager, _: Started, event: *FunctionalEvent, worker_id: u64, generation: u64) void {
+    const registration = event.registration_id;
+    event.destroy();
+    manager.report(.{ .functional_done = .{ .worker = worker_id, .generation = generation, .registration = registration } });
+}
 
 /// A service worker the manager started, until its thread has ended.
 const Running = struct {
@@ -689,6 +720,31 @@ pub const Manager = struct {
     /// How long a fetch's Soft Update waits for the burst it is part of to
     /// end (`scheduleSoftUpdate`).
     soft_update_delay_ms: u64 = 1000,
+    /// Functional events waiting for their service worker to start (Fire
+    /// Functional Event steps 4-5), by the registry `other` waiter that will
+    /// answer for them.
+    pending_functional: std.ArrayListUnmanaged(PendingFunctional) = .empty,
+    /// The Browser's CookieStore listeners - its jar's change hook - whose
+    /// `registrations` slot this manager fills (`hearCookieChanges`) until
+    /// its end. BORROWED: made by Browser.init before any realm, so before
+    /// this manager, and ended after it (a scope's supplements end in
+    /// reverse).
+    cookie_listeners: ?*CookieChangeListeners = null,
+    /// Whether a cookie change can concern any registration: subscribe()
+    /// calls posted and not yet run on the job thread, plus registrations in
+    /// the map with a non-empty cookie change subscription list. The jar's
+    /// changing thread reads it - one load - and does nothing more at 0.
+    /// It may over-count (a change posted that matches nothing), never
+    /// under-count: a subscribe() counts from the moment it is posted.
+    cookie_interest: std.atomic.Value(u32) = .init(0),
+    /// The registry's `cookie_subscribed` as `cookie_interest` counts it.
+    /// Under the lock.
+    cookie_counted: u32 = 0,
+
+    const PendingFunctional = struct {
+        waiter: u64,
+        event: *FunctionalEvent,
+    };
 
     const PendingMessage = struct {
         waiter: u64,
@@ -749,6 +805,10 @@ pub const Manager = struct {
     /// The scope's end, after every thread was joined (Browser.deinit joins
     /// the WorkerRegistry's first) - or a test's.
     pub fn deinit(self: *Manager) void {
+        // First: no cookie change reaches this manager from here on - and
+        // none is still under way on another thread (the listeners' lock).
+        if (self.cookie_listeners) |listeners| listeners.stopHearingRegistrations(self);
+        self.cookie_listeners = null;
         if (self.job_link) |link| {
             // A manager no Browser ran (a test's): its job thread is ended
             // here. A Browser's was terminated and joined already.
@@ -768,6 +828,8 @@ pub const Manager = struct {
         self.running.deinit(self.allocator);
         for (self.pending_messages.items) |pending| pending.message.destroy();
         self.pending_messages.deinit(self.allocator);
+        for (self.pending_functional.items) |pending| pending.event.destroy();
+        self.pending_functional.deinit(self.allocator);
         for (self.client_queries.items) |query| query.destroy(self.allocator);
         self.client_queries.deinit(self.allocator);
         for (self.pending_fetches.items) |pending| pending.dispatch.fail();
@@ -792,10 +854,24 @@ pub const Manager = struct {
     pub fn of(realm: runtime.Context) ?*Manager {
         const scope = realm.browserScope() orelse return null;
         const manager = scope.of(Manager) catch return null;
+        const listeners = scope.existing(CookieChangeListeners);
         std.Io.Threaded.mutexLock(&manager.mutex);
         defer std.Io.Threaded.mutexUnlock(&manager.mutex);
-        if (manager.scope == null) manager.scope = scope;
+        if (manager.scope == null) {
+            manager.scope = scope;
+            // Cookie Store 7.4 step 2: this Browser's jar is heard from the
+            // first reach on, before any realm can subscribe. Per-Browser
+            // state on the Browser's own listeners, not a process-wide hook.
+            if (listeners) |l| manager.hearCookieChanges(l);
+        }
         return manager;
+    }
+
+    /// Hear `listeners`' jar (the Browser's): "process cookie changes" step
+    /// 2 is this manager's until its end.
+    pub fn hearCookieChanges(self: *Manager, listeners: *CookieChangeListeners) void {
+        self.cookie_listeners = listeners;
+        listeners.hearRegistrations(.{ .context = self, .changed = cookieChanged });
     }
 
     /// The manager of `realm`'s Browser if one was made; never makes one.
@@ -810,7 +886,22 @@ pub const Manager = struct {
     }
 
     fn unlock(self: *Manager) void {
+        self.refreshCookieInterest();
         std.Io.Threaded.mutexUnlock(&self.mutex);
+    }
+
+    /// `cookie_interest` follows the registry's count of subscribed
+    /// registrations. Locked; before the lock is released, so a cookie change
+    /// after an unlock sees what that section did.
+    fn refreshCookieInterest(self: *Manager) void {
+        const now = self.registry.cookie_subscribed;
+        if (now == self.cookie_counted) return;
+        if (now > self.cookie_counted) {
+            _ = self.cookie_interest.fetchAdd(now - self.cookie_counted, .acq_rel);
+        } else {
+            _ = self.cookie_interest.fetchSub(self.cookie_counted - now, .acq_rel);
+        }
+        self.cookie_counted = now;
     }
 
     /// The registry's effects reach this manager (its address is stable
@@ -1172,12 +1263,24 @@ pub const Manager = struct {
         /// the promise `promise` of the worker's environment `environment`
         /// settles either way.
         add_routes: struct { allocator: Allocator, worker: u64, rules: []router.Rule, ops: router.PatternOps, environment: u64, promise: u64 },
+        /// The Browser's jar changed `cookie` (OWNED, a copy): Cookie Store
+        /// "process cookie changes" step 2.
+        cookie_change: struct { change_type: cookiestore.CookieChangeType, cookie: cookiestore.Cookie },
+        /// A CookieStoreManager method's in parallel steps (OWNED).
+        cookie_subscriptions: *CookieSubscriptionsCall,
+        /// A functional event handed to `worker` in its run `generation` is
+        /// done: dispatched and no longer active, or its task discarded.
+        /// Fire Functional Event step 8 Soft-Updates `registration` if
+        /// stale.
+        functional_done: struct { worker: u64, generation: u64, registration: u64 },
 
         fn deinit(self: *Report) void {
             switch (self.*) {
                 .post_message => |r| r.message.destroy(),
                 .fetch => |dispatch| dispatch.fail(),
                 .add_routes => |r| router.freeRules(r.allocator, r.rules, r.ops),
+                .cookie_change => |*r| r.cookie.deinit(),
+                .cookie_subscriptions => |call| call.destroy(),
                 else => {},
             }
         }
@@ -1253,6 +1356,17 @@ pub const Manager = struct {
             },
             .soft_update => |id| self.scheduleSoftUpdate(id),
             .add_routes => |r| try self.addRoutesNow(r.worker, r.rules, r.ops, r.environment, r.promise),
+            .cookie_change => |r| {
+                var cookie = r.cookie;
+                defer cookie.deinit();
+                try self.cookieChangeNow(r.change_type, &cookie);
+            },
+            .cookie_subscriptions => |call| try self.cookieSubscriptionsNow(call),
+            .functional_done => |r| {
+                try self.registry.functionalEventDone(r.worker, r.generation);
+                // Fire Functional Event step 8.
+                self.softUpdateIfStale(r.registration);
+            },
         }
     }
 
@@ -1997,6 +2111,214 @@ pub const Manager = struct {
             return pending.message;
         }
         return null;
+    }
+
+    // ------------------------------------------------------------------
+    // Cookie Store: subscriptions, and "process cookie changes" step 2
+    // ------------------------------------------------------------------
+
+    /// A CookieStoreManager method's call, as its realm made it: the steps
+    /// before "in parallel" done there (the argument's conversion, each
+    /// entry's name normalized and url parsed and checked), the rest - the
+    /// registration's list read or changed, the promise settled - on the
+    /// job thread (`cookieSubscriptionsNow`). OWNED (`destroy`), its strings
+    /// made with the manager's allocator.
+    pub const CookieSubscriptionsCall = struct {
+        allocator: Allocator,
+        op: Op,
+        registration_id: u64,
+        environment: u64,
+        promise: u64,
+        /// The entries' subscriptions, up to the first that failed.
+        entries: std.ArrayListUnmanaged(cookiestore.ChangeSubscription) = .empty,
+        /// An entry failed (subscribe() / unsubscribe() step 4.2.5): the
+        /// promise is rejected with a TypeError of this static message once
+        /// the entries before it are applied - the spec's loop appends one
+        /// by one and aborts at the failure.
+        failure: ?[]const u8 = null,
+
+        pub const Op = enum { subscribe, get, unsubscribe };
+
+        pub fn create(allocator: Allocator, op: Op, registration_id: u64, environment: u64, promise: u64) Allocator.Error!*CookieSubscriptionsCall {
+            const self = try allocator.create(CookieSubscriptionsCall);
+            self.* = .{ .allocator = allocator, .op = op, .registration_id = registration_id, .environment = environment, .promise = promise };
+            return self;
+        }
+
+        /// Add a subscription, its strings copied.
+        pub fn append(self: *CookieSubscriptionsCall, name: ?[]const u8, url: []const u8) Allocator.Error!void {
+            const owned_name = if (name) |n| try self.allocator.dupe(u8, n) else null;
+            errdefer if (owned_name) |n| self.allocator.free(n);
+            const owned_url = try self.allocator.dupe(u8, url);
+            errdefer self.allocator.free(owned_url);
+            try self.entries.append(self.allocator, .{ .name = owned_name, .url = owned_url });
+        }
+
+        pub fn destroy(self: *CookieSubscriptionsCall) void {
+            for (self.entries.items) |entry| {
+                if (entry.name) |name| self.allocator.free(name);
+                self.allocator.free(entry.url);
+            }
+            self.entries.deinit(self.allocator);
+            self.allocator.destroy(self);
+        }
+    };
+
+    /// Run `call`'s (taken) in parallel steps on the job thread - after
+    /// every cookie change and every other call posted before it, in order:
+    /// a change made before subscribe()'s steps never matches what they
+    /// append. Any thread.
+    pub fn cookieSubscriptions(self: *Manager, call: *CookieSubscriptionsCall) void {
+        // Counted from now: a change after this point is posted, and meets
+        // the subscription in the job thread's order.
+        if (call.op == .subscribe) _ = self.cookie_interest.fetchAdd(1, .acq_rel);
+        self.report(.{ .cookie_subscriptions = call });
+    }
+
+    /// The registrations' hook on the Browser's jar (`hearCookieChanges`):
+    /// `cookie` (borrowed) was inserted or removed, on this - the changing -
+    /// thread, the listeners' lock held. With no subscription anywhere: one
+    /// load, nothing allocated. Otherwise a copy, posted to the job thread;
+    /// never the manager's own lock, which a thread changing the jar might
+    /// hold.
+    fn cookieChanged(context: *anyopaque, change_type: cookiestore.CookieChangeType, cookie: *const cookiestore.Cookie) void {
+        const self: *Manager = @ptrCast(@alignCast(context));
+        if (self.cookie_interest.load(.acquire) == 0) return;
+        const copy = cookie.clone(self.allocator) catch {
+            log.debug("out of memory copying a cookie change; no cookiechange event", .{});
+            return;
+        };
+        self.report(.{ .cookie_change = .{ .change_type = change_type, .cookie = copy } });
+    }
+
+    /// CookieStoreManager's in parallel steps, on the job thread, locked:
+    /// subscribe() 4.2.1-4.3, getSubscriptions() 3.1-3.4, unsubscribe()
+    /// 4.2.1-4.3 - the promise settled in a task of its environment's loop.
+    /// A registration no longer in the map changes nothing (it hears no
+    /// change, `Registry.detach`); its promise settles as if it had.
+    fn cookieSubscriptionsNow(self: *Manager, call: *CookieSubscriptionsCall) Allocator.Error!void {
+        defer call.destroy();
+        // A subscribe() is counted by what it left from here on, not as
+        // posted - before the lock is released.
+        defer if (call.op == .subscribe) {
+            self.refreshCookieInterest();
+            _ = self.cookie_interest.fetchSub(1, .acq_rel);
+        };
+        const registration = self.registry.findRegistration(call.registration_id);
+        const delivery: Delivery = switch (call.op) {
+            .get => blk: {
+                // 3.2-3.3. result: each subscription's name and url.
+                const listed: []const cookiestore.ChangeSubscription = if (registration) |r| r.cookie_subscriptions.items else &.{};
+                const copied = self.copySubscriptions(listed) catch
+                    break :blk .{ .reject = .{ .promise = call.promise, .kind = .type_error, .message = "Out of memory" } };
+                break :blk .{ .resolve_cookie_subscriptions = .{ .promise = call.promise, .subscriptions = copied } };
+            },
+            .subscribe, .unsubscribe => blk: {
+                // 4.2.6-4.2.7 for each entry the realm's steps let through.
+                if (registration) |r| for (call.entries.items) |entry| switch (call.op) {
+                    .subscribe => self.registry.subscribeCookieChange(r, entry) catch
+                        break :blk .{ .reject = .{ .promise = call.promise, .kind = .type_error, .message = "Out of memory" } },
+                    .unsubscribe => self.registry.unsubscribeCookieChange(r, entry),
+                    .get => unreachable,
+                };
+                // 4.2.5's rejection, or 4.3's resolution with undefined.
+                if (call.failure) |message| break :blk .{ .reject = .{ .promise = call.promise, .kind = .type_error, .message = message } };
+                break :blk .{ .resolve_undefined = .{ .promise = call.promise } };
+            },
+        };
+        self.postDeliveryTo(call.environment, delivery);
+    }
+
+    fn copySubscriptions(self: *Manager, listed: []const cookiestore.ChangeSubscription) Allocator.Error![]cookiestore.ChangeSubscription {
+        const copied = try self.allocator.alloc(cookiestore.ChangeSubscription, listed.len);
+        var made: usize = 0;
+        errdefer freeSubscriptions(self.allocator, copied[0..made]);
+        for (listed, copied) |subscription, *copy| {
+            const name = if (subscription.name) |n| try self.allocator.dupe(u8, n) else null;
+            errdefer if (name) |n| self.allocator.free(n);
+            copy.* = .{ .name = name, .url = try self.allocator.dupe(u8, subscription.url) };
+            made += 1;
+        }
+        return copied;
+    }
+
+    /// Cookie Store "process cookie changes" step 2 for one change of
+    /// `cookie` (borrowed), on the job thread, locked: for every
+    /// registration whose subscriptions observe it (2.2), its lists prepared
+    /// now (2.4) and "cookiechange" fired on it (2.5). One jar notification
+    /// is one change, so one event per registration - as the window side
+    /// makes one task per notification.
+    fn cookieChangeNow(self: *Manager, change_type: cookiestore.CookieChangeType, cookie: *const cookiestore.Cookie) Allocator.Error!void {
+        // Decided over the map as it is now, then fired: firing starts
+        // workers, which must not run under this walk.
+        var events: std.ArrayListUnmanaged(*FunctionalEvent) = .empty;
+        defer events.deinit(self.allocator);
+        // The events not yet handed to `fireFunctionalEvent` are ours.
+        var fired: usize = 0;
+        defer for (events.items[fired..]) |event| event.destroy();
+        for (self.registry.registrations.items) |registration| {
+            if (registration.cookie_subscriptions.items.len == 0) continue;
+            // Fire Functional Event asserts an active worker.
+            if (registration.active == null) continue;
+            // 2.1-2.3.
+            if (!cookiestore.registrationObserves(registration.scope_url, registration.cookie_subscriptions.items, cookie)) continue;
+            // 2.4.
+            var lists = try CookieChangeLists.ofChange(self.allocator, change_type, cookie);
+            const event = FunctionalEvent.create(self.allocator, registration.id, .{ .cookie_change = lists }) catch |err| {
+                lists.deinit(self.allocator);
+                return err;
+            };
+            events.append(self.allocator, event) catch |err| {
+                event.destroy();
+                return err;
+            };
+        }
+        // 2.5. Each taken by Fire Functional Event, whatever it answers.
+        while (fired < events.items.len) {
+            const event = events.items[fired];
+            fired += 1;
+            try self.fireFunctionalEvent(event);
+        }
+    }
+
+    /// Fire Functional Event steps 1-5 for `event` (taken), on the job
+    /// thread, locked: its registration's active worker, once "activated"
+    /// (4), started (5) - its answer is `startAnswered`, which queues the
+    /// task (6) through the host.
+    fn fireFunctionalEvent(self: *Manager, event: *FunctionalEvent) Allocator.Error!void {
+        const registration = self.registry.findRegistration(event.registration_id) orelse return event.destroy();
+        // 1-2. Its active worker (it may have gone since the decision).
+        const active = registration.active orelse return event.destroy();
+        // 3. Should Skip Event: a MAY ("the user agent may return true"),
+        // not taken - Crane keeps "fetch" alone of the set of event types to
+        // handle, so an event is never skipped for want of a listener.
+        const waiter = self.next_waiter;
+        self.next_waiter += 1;
+        self.pending_functional.append(self.allocator, .{ .waiter = waiter, .event = event }) catch |err| {
+            event.destroy();
+            return err;
+        };
+        // 4-5. Wait for "activated", then Run Service Worker.
+        self.registry.runServiceWorkerForFetch(active, .{ .other = waiter }) catch |err| {
+            if (self.takePendingFunctional(waiter)) |pending| pending.destroy();
+            return err;
+        };
+    }
+
+    fn takePendingFunctional(self: *Manager, waiter: u64) ?*FunctionalEvent {
+        for (self.pending_functional.items, 0..) |pending, i| {
+            if (pending.waiter != waiter) continue;
+            _ = self.pending_functional.swapRemove(i);
+            return pending.event;
+        }
+        return null;
+    }
+
+    /// Fire Functional Event steps 3.1, 5.1 and 8: "If registration is
+    /// stale, then in parallel run the Soft Update algorithm". Locked.
+    fn softUpdateIfStale(self: *Manager, registration_id: u64) void {
+        const registration = self.registry.findRegistration(registration_id) orelse return;
+        if (registration.isStale(platform.wallMillis())) self.scheduleSoftUpdate(registration_id);
     }
 
     /// Client.postMessage step 4, from the service worker `worker_id`'s
@@ -2901,6 +3223,27 @@ pub const Manager = struct {
             }
             entry.?.epoch +%= 1;
             self.host.dispatch_fetch(self, started.?, dispatch, worker.id, generation);
+            return;
+        }
+        if (self.takePendingFunctional(waiter)) |event| {
+            const registration_id = event.registration_id;
+            // Fire Functional Event step 5: Run Service Worker failed -
+            // 5.1, Soft Update if stale; 5.2, return.
+            if (!ok) {
+                event.destroy();
+                return self.softUpdateIfStale(registration_id);
+            }
+            const entry = self.findRunning(worker.id);
+            const started = if (entry) |e| e.started else null;
+            if (started == null) {
+                event.destroy();
+                self.report(.{ .functional_done = .{ .worker = worker.id, .generation = generation, .registration = registration_id } });
+                return;
+            }
+            // An idle check armed before finds another event since.
+            entry.?.epoch +%= 1;
+            // 6. Queue the task.
+            self.host.dispatch_functional(self, started.?, event, worker.id, generation);
             return;
         }
         const message = self.takePendingMessage(waiter) orelse {

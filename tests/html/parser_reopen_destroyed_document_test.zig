@@ -27,7 +27,7 @@ fn reopenAfterDestroy() !void {
     defer runtime.deinitializeRuntime();
     var context = try runtime.ContextData.init(std.testing.allocator, .{});
     defer context.deinit();
-    const document = try interfaces.Document.init(std.testing.allocator, &context);
+    const document = try interfaces.Document.initWith(std.testing.allocator, &context, .{ .ready_state = ._loading_ });
     defer interfaces.Document.deinit(document);
     try dom.document_internals.setDocumentType(document, .html);
     const internal = dom.document_internals.getInternal(document).?;
@@ -65,7 +65,7 @@ fn destructionRevokesOldParser() !void {
     defer runtime.deinitializeRuntime();
     var context = try runtime.ContextData.init(std.testing.allocator, .{});
     defer context.deinit();
-    const document = try interfaces.Document.init(std.testing.allocator, &context);
+    const document = try interfaces.Document.initWith(std.testing.allocator, &context, .{ .ready_state = ._loading_ });
     defer interfaces.Document.deinit(document);
     try dom.document_internals.setDocumentType(document, .html);
     _ = try interfaces.Document.call_open(document, .{ .was_passed = false, .value = undefined }, .{ .was_passed = false, .value = undefined });

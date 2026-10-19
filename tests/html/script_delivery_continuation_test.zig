@@ -20,7 +20,7 @@ const Fixture = struct {
         self.ctx = try runtime.ContextData.init(std.testing.allocator, .{
             .event_loop = .{ .ptr = self, .vtable = &vtable },
         });
-        self.document = try interfaces.Document.init(std.testing.allocator, &self.ctx);
+        self.document = try interfaces.Document.initWith(std.testing.allocator, &self.ctx, .{ .ready_state = ._loading_ });
         try dom.document_internals.setContentType(self.document, "text/html");
         try dom.document_internals.setDocumentType(self.document, .html);
     }

@@ -65,6 +65,9 @@ pub const Settings = struct {
     /// Referrer Policy 8.3's client source. BORROWED, valid only for the
     /// requestClient call. An absent hook uses the realm's documentUrl().
     referrer_source: ?*const fn (global: *runtime.Instance) ?[]const u8 = null,
+    /// The cookie URL (`cookieUrlOf`). BORROWED, valid until script runs.
+    /// An absent hook uses the realm's creation URL.
+    cookie_url: ?*const fn (global: *runtime.Instance) ?[]const u8 = null,
     /// The global's native Reporting queues and observer registrations.
     reporting: ?*const fn (global: *runtime.Instance) ?*@import("reporting.zig").State = null,
     /// The settings object's fetch group (Fetch 2.4): its in-flight
@@ -166,6 +169,24 @@ pub fn cookieJarOf(global: *runtime.Instance) ?*cookiestore.CookieJar {
     const settings = of(global) orelse return null;
     const get = settings.cookie_jar orelse return null;
     return get(global);
+}
+
+/// The URL document.cookie and the Cookie Store API read and write cookies
+/// for: the settings object's creation URL - the document's URL when it was
+/// made, which a same-document change (pushState, replaceState, a fragment
+/// navigation) leaves - or, for an about:blank or about:srcdoc document, its
+/// creator's. The spec text says the creation URL (Cookie Store's get() step
+/// 4, "process cookie changes" 1.1), which is about:blank for such a frame;
+/// the browsers inherit the creator's, by golden rule 2: Blink
+/// DocumentInit::GetCookieUrl (the owner document's CookieURL for
+/// about:blank and srcdoc), WebKit Document::initSecurityContext
+/// (setCookieURL(ownerDocument->cookieURL())), Gecko the principal inherited
+/// from the creator (all three pass
+/// cookiestore/cookieStore_get_set_across_frames.https.html, wpt.fyi stable
+/// 2026-10). BORROWED, valid until script runs; null for none.
+pub fn cookieUrlOf(global: *runtime.Instance) ?[]const u8 {
+    if (of(global)) |settings| if (settings.cookie_url) |get| return get(global);
+    return global.ctx.creationUrl() orelse global.ctx.documentUrl();
 }
 
 /// `global`'s settings object as a request's client: what

@@ -1293,3 +1293,83 @@ test "Clear-Site-Data: a queued update job that has not started is rejected and 
     try registry.workerEnded(worker);
     try testing.expect(registry.findWorker(worker) == null);
 }
+
+// ----------------------------------------------------------------------
+// Cookie Store: a registration's cookie change subscription list (2.3)
+// ----------------------------------------------------------------------
+
+const ChangeSubscription = reg.ChangeSubscription;
+
+test "subscribe appends a cookie change subscription unless the list has an equal one; unsubscribe removes the equal one" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 36);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    _ = try installAndActivate(&recorder, &registry, page, "https://example.com/sw.js", "https://example.com/", "x");
+    const registration = registry.getRegistration("https://example.com", "https://example.com/").?;
+    try testing.expectEqual(@as(usize, 0), registration.cookie_subscriptions.items.len);
+    try testing.expectEqual(@as(u32, 0), registry.cookie_subscribed);
+
+    const named: ChangeSubscription = .{ .name = "session", .url = "https://example.com/" };
+    const any: ChangeSubscription = .{ .name = null, .url = "https://example.com/" };
+    try registry.subscribeCookieChange(registration, named);
+    try registry.subscribeCookieChange(registration, named);
+    try testing.expectEqual(@as(usize, 1), registration.cookie_subscriptions.items.len);
+    try testing.expectEqual(@as(u32, 1), registry.cookie_subscribed);
+    // A null name is not the empty name, nor any other.
+    try registry.subscribeCookieChange(registration, any);
+    try registry.subscribeCookieChange(registration, .{ .name = "", .url = "https://example.com/" });
+    try testing.expectEqual(@as(usize, 3), registration.cookie_subscriptions.items.len);
+    try testing.expectEqualStrings("session", registration.cookie_subscriptions.items[0].name.?);
+    try testing.expect(registration.cookie_subscriptions.items[1].name == null);
+    // The list keeps its own copies.
+    try testing.expect(registration.cookie_subscriptions.items[0].name.?.ptr != named.name.?.ptr);
+
+    registry.unsubscribeCookieChange(registration, named);
+    registry.unsubscribeCookieChange(registration, named);
+    registry.unsubscribeCookieChange(registration, .{ .name = null, .url = "https://example.com/other" });
+    try testing.expectEqual(@as(usize, 2), registration.cookie_subscriptions.items.len);
+    try testing.expectEqual(@as(u32, 1), registry.cookie_subscribed);
+    registry.unsubscribeCookieChange(registration, any);
+    registry.unsubscribeCookieChange(registration, .{ .name = "", .url = "https://example.com/" });
+    try testing.expectEqual(@as(usize, 0), registration.cookie_subscriptions.items.len);
+    try testing.expectEqual(@as(u32, 0), registry.cookie_subscribed);
+}
+
+test "a registration's cookie change subscriptions persist across an update and go with its unregistration" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 37);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    const first = try installAndActivate(&recorder, &registry, page, "https://example.com/sw.js", "https://example.com/", "v1");
+    const registration = registry.getRegistration("https://example.com", "https://example.com/").?;
+    try registry.subscribeCookieChange(registration, .{ .name = "session", .url = "https://example.com/" });
+
+    // An update installs and activates a new worker in the same registration.
+    const second = try installAndActivate(&recorder, &registry, page, "https://example.com/sw2.js", "https://example.com/", "v2");
+    try testing.expect(first != second);
+    try testing.expectEqual(registration, registry.getRegistration("https://example.com", "https://example.com/").?);
+    try testing.expectEqual(second, registration.active.?.id);
+    try testing.expectEqual(@as(usize, 1), registration.cookie_subscriptions.items.len);
+    try testing.expectEqual(@as(u32, 1), registry.cookie_subscribed);
+
+    // Unregistered: it leaves the map, and its list with it.
+    const job = try registry.createJob(.{
+        .job_type = .unregister,
+        .storage_key = "https://example.com",
+        .scope_url = "https://example.com/",
+        .client = .{ .environment = page.id, .promise = 9 },
+        .referrer = page.creation_url,
+    });
+    try registry.scheduleJob(job);
+    try testing.expect((try recorder.runQueuedJobs(&registry)) == null);
+    try testing.expect(registry.getRegistration("https://example.com", "https://example.com/") == null);
+    try testing.expectEqual(@as(u32, 0), registry.cookie_subscribed);
+
+    // A new registration of the same scope starts with an empty list.
+    _ = try installAndActivate(&recorder, &registry, page, "https://example.com/sw.js", "https://example.com/", "v3");
+    const fresh = registry.getRegistration("https://example.com", "https://example.com/").?;
+    try testing.expectEqual(@as(usize, 0), fresh.cookie_subscriptions.items.len);
+}

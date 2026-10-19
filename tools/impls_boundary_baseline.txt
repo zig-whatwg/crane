@@ -78,7 +78,6 @@ src/webidl/impls/Request.zig Headers.initWithHeaderList 1
 src/webidl/impls/Response.zig FormData.createFromInternal 1
 src/webidl/impls/Response.zig Headers.initWithHeaderList 1
 src/webidl/impls/SVGScriptElement.zig Node.setLocalName 1
-src/webidl/impls/ServiceWorkerRegistration.zig CookieStoreManager.createForRegistration 1
 src/webidl/impls/URL.zig Blob.getInternal 1
 src/webidl/impls/Window.zig History.State 1
 src/webidl/impls/Window.zig History.deinit 1

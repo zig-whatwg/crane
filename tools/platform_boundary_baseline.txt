@@ -739,8 +739,6 @@ src/webidl/impls/BeforeUnloadEvent.zig clock.@import 1
 src/webidl/impls/BeforeUnloadEvent.zig clock.monotonicMillis 1
 src/webidl/impls/Crypto.zig host.@import 1
 src/webidl/impls/Crypto.zig host.io 3
-src/webidl/impls/ExtendableCookieChangeEvent.zig clock.@import 1
-src/webidl/impls/ExtendableCookieChangeEvent.zig clock.monotonicMillis 2
 src/webidl/impls/File.zig clock.@import 1
 src/webidl/impls/File.zig clock.wallMillis 1
 src/webidl/impls/HTMLIFrameElement.zig clock.@import 1

@@ -23,6 +23,7 @@ const update_fetch = @import("update_fetch.zig");
 const realm_mod = @import("realm.zig");
 const objects = @import("objects.zig");
 const ExtendLifetime = @import("extend_lifetime.zig").ExtendLifetime;
+const FunctionalEvent = @import("functional_event.zig").FunctionalEvent;
 
 const Manager = manager_mod.Manager;
 const script_fetch = html_core.workers.script_fetch;
@@ -36,6 +37,7 @@ pub const host: manager_mod.Host = .{
     .dispatch = dispatch,
     .post_message = postMessage,
     .dispatch_fetch = dispatchFetch,
+    .dispatch_functional = dispatchFunctional,
 };
 
 // ============================================================================
@@ -602,6 +604,125 @@ fn fireMessage(manager: *Manager, realm: runtime.Context, global_scope: *runtime
     _ = dom.fire_event.dispatchTrusted(global_scope, instance) catch {};
     // 6.2.7. Update Service Worker Extended Events Set: the event stays in
     // flight while it is active, and reports its end once it is not.
+    lifetime.dispatchEnded();
+}
+
+// ============================================================================
+// Functional events (Fire Functional Event step 6)
+// ============================================================================
+
+fn dispatchFunctional(manager: *Manager, started: manager_mod.Started, event: *FunctionalEvent, worker_id: u64, generation: u64) void {
+    const done: FunctionalDone = .{ .manager = manager, .worker_id = worker_id, .generation = generation, .registration = event.registration_id };
+    const link = started.link orelse return functionalLost(event, done);
+    const handle = started.handle orelse return functionalLost(event, done);
+    const task = manager.allocator.create(FunctionalTask) catch return functionalLost(event, done);
+    task.* = .{ .event = event, .done = done };
+    worker_host.postServiceTask(manager.allocator, link, handle, .{ .run = FunctionalTask.run, .drop = FunctionalTask.drop, .data = task });
+}
+
+/// An event that never reaches its worker (step 7: "or been discarded"):
+/// dropped, and reported done.
+fn functionalLost(event: *FunctionalEvent, done: FunctionalDone) void {
+    event.destroy();
+    done.report();
+}
+
+/// The task queued on the worker's event loop, using the handle functional
+/// event task source.
+const FunctionalTask = struct {
+    event: *FunctionalEvent,
+    done: FunctionalDone,
+
+    /// On the worker's thread, in its realm.
+    fn run(data: ?*anyopaque, realm: runtime.Context, global_scope: *runtime.Instance) void {
+        const self: *FunctionalTask = @ptrCast(@alignCast(data.?));
+        const event = self.event;
+        const done = self.done;
+        done.manager.allocator.destroy(self);
+        defer event.destroy();
+        fireFunctional(realm, global_scope, event, done) catch |err| {
+            log.debug("a {s} event was not fired: {s}", .{ event.name(), @errorName(err) });
+            done.report();
+        };
+    }
+
+    /// Discarded (the worker is ending). Any thread.
+    fn drop(data: ?*anyopaque) void {
+        const self: *FunctionalTask = @ptrCast(@alignCast(data.?));
+        const event = self.event;
+        const done = self.done;
+        done.manager.allocator.destroy(self);
+        functionalLost(event, done);
+    }
+};
+
+/// What a functional event's end reports.
+const FunctionalDone = struct {
+    manager: *Manager,
+    worker_id: u64,
+    generation: u64,
+    registration: u64,
+
+    fn report(self: FunctionalDone) void {
+        self.manager.report(.{ .functional_done = .{ .worker = self.worker_id, .generation = self.generation, .registration = self.registration } });
+    }
+};
+
+/// The extended lifetime's settled callback: the event is done.
+const FunctionalSettled = struct {
+    done: FunctionalDone,
+
+    fn run(ctx: *anyopaque, _: bool) void {
+        const self: *FunctionalSettled = @ptrCast(@alignCast(ctx));
+        const done = self.done;
+        done.manager.allocator.destroy(self);
+        done.report();
+    }
+
+    fn drop(ctx: *anyopaque) void {
+        const self: *FunctionalSettled = @ptrCast(@alignCast(ctx));
+        const done = self.done;
+        done.manager.allocator.destroy(self);
+        done.report();
+    }
+};
+
+/// Fire Functional Event steps 6.1-6.4 on the worker's thread: the event
+/// created in the global's realm and initialized, dispatched at the global,
+/// and Update Service Worker Extended Events Set - its end is reported once
+/// it is not active.
+fn fireFunctional(realm: runtime.Context, global_scope: *runtime.Instance, event: *FunctionalEvent, done: FunctionalDone) !void {
+    const manager = done.manager;
+    const settled = try manager.allocator.create(FunctionalSettled);
+    settled.* = .{ .done = done };
+    const lifetime = ExtendLifetime.create(realm.allocator, .{ .ctx = settled, .run = FunctionalSettled.run, .drop = FunctionalSettled.drop }) catch |err| {
+        manager.allocator.destroy(settled);
+        return err;
+    };
+    // The dispatcher's reference. From here the lifetime reports the end -
+    // so nothing below returns an error, which would report it again.
+    defer lifetime.release();
+    // 6.1-6.2. Created with its constructor in the global's relevant realm,
+    // initialized with the event's properties.
+    const made = switch (event.kind) {
+        .cookie_change => |*lists| interfaces.ExtendableCookieChangeEvent.initWith(realm.allocator, realm, .{ .lifetime = lifetime, .cookie_changes = lists }),
+    };
+    const instance = made catch |err| {
+        log.debug("no {s} event: {s}", .{ event.name(), @errorName(err) });
+        lifetime.dispatchEnded();
+        return;
+    };
+    const generation = runtime.SlabAllocator.generationOf(instance);
+    defer instance.releaseIfUnwrapped(generation);
+    dom.event_construction.innerEventCreationSteps(instance, runtime.DOMString.initInterned(event.name()), dom.event_construction.eventInitFrom(@import("dictionaries").EventInit{})) catch |err| {
+        log.debug("no {s} event: {s}", .{ event.name(), @errorName(err) });
+        lifetime.dispatchEnded();
+        return;
+    };
+    lifetime.dispatching = true;
+    // 6.3. Dispatch it on the global.
+    _ = dom.fire_event.dispatchTrusted(global_scope, instance) catch {};
+    // 6.4. Update Service Worker Extended Events Set.
     lifetime.dispatchEnded();
 }
 

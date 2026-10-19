@@ -75,7 +75,7 @@ test "a waiting parser releases its loader after its run owner disappears and it
     defer runtime.deinitializeRuntime();
     var ctx = try runtime.ContextData.init(allocator, .{});
     defer ctx.deinit();
-    const document = try interfaces.Document.init(allocator, &ctx);
+    const document = try interfaces.Document.initWith(allocator, &ctx, .{ .ready_state = ._loading_ });
     defer interfaces.Document.deinit(document);
     var releases: usize = 0;
     const context = try LoaderContext.create(&releases);
@@ -99,7 +99,7 @@ test "document destruction releases a waiting parser's loader" {
     var releases: usize = 0;
     const context = try LoaderContext.create(&releases);
     defer LoaderContext.release(context);
-    const document = try interfaces.Document.init(allocator, &ctx);
+    const document = try interfaces.Document.initWith(allocator, &ctx, .{ .ready_state = ._loading_ });
     const parser = try html.scripted_parser.DocumentParser.createComplete(allocator, &ctx, document, "<p>later", .{ .script_loader = context.descriptor() });
     try std.testing.expect(dom.document_lifecycle.associateParser(document, parser));
     parser.release();
@@ -115,7 +115,7 @@ test "a suspended parser reaches EOF after the initiating owner returned" {
     defer runtime.deinitializeRuntime();
     var ctx = try runtime.ContextData.init(allocator, .{});
     defer ctx.deinit();
-    const document = try interfaces.Document.init(allocator, &ctx);
+    const document = try interfaces.Document.initWith(allocator, &ctx, .{ .ready_state = ._loading_ });
     defer interfaces.Document.deinit(document);
     var releases: usize = 0;
     const context = try LoaderContext.create(&releases);
@@ -163,7 +163,7 @@ const EngineRealm = struct {
             .host = &self.capture,
         });
         const window = self.capture.window orelse return error.NoWindow;
-        self.document = try interfaces.Document.init(allocator, self.realm);
+        self.document = try interfaces.Document.initWith(allocator, self.realm, .{ .ready_state = ._loading_ });
         dom.window_globals.setDocument(window, self.document);
         dom.document_browsing_context.setWindow(self.document, window);
     }
@@ -271,7 +271,7 @@ fn expectDocumentTracedParser() !void {
     });
     defer engine.destroyWindowRealm(realm, .global_detached);
     const window = capture.window orelse return error.NoWindow;
-    const document = try interfaces.Document.init(allocator, realm);
+    const document = try interfaces.Document.initWith(allocator, realm, .{ .ready_state = ._loading_ });
     dom.window_globals.setDocument(window, document);
     dom.document_browsing_context.setWindow(document, window);
 

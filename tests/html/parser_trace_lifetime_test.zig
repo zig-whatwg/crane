@@ -343,7 +343,7 @@ fn nativeCleanup() !void {
     defer runtime.deinitializeRuntime();
     var context = try runtime.ContextData.init(testing.allocator, .{});
     defer context.deinit();
-    const document = try interfaces.Document.init(testing.allocator, &context);
+    const document = try interfaces.Document.initWith(testing.allocator, &context, .{ .ready_state = ._loading_ });
     defer interfaces.Document.deinit(document);
     var loader = LoaderLifetime{};
     const parser = try scripted_parser.DocumentParser.createComplete(testing.allocator, &context, document, "<!doctype html><body><div>native", .{ .script_loader = loader.descriptor() });
@@ -370,7 +370,7 @@ test "engine-less parser cancellation and EOF release native ownership" {
 }
 
 fn parserConstructionFailure(allocator: std.mem.Allocator, context: runtime.Context) !void {
-    const document = try interfaces.Document.init(testing.allocator, context);
+    const document = try interfaces.Document.initWith(testing.allocator, context, .{ .ready_state = ._loading_ });
     defer interfaces.Document.deinit(document);
     var loader = LoaderLifetime{};
     const parser = try scripted_parser.DocumentParser.createComplete(allocator, context, document, "<!doctype html><body><div>allocation failure", .{ .script_loader = loader.descriptor() });

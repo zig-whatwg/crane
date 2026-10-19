@@ -197,6 +197,31 @@ test "a realm records its document URL, replacing and forgetting it" {
     try std.testing.expect(ctx.documentUrl() == null);
 }
 
+test "a realm's creation URL is its document's when made: a same-document change leaves it, a new document moves it" {
+    const ctx = try realm();
+    defer ctx.clearDocumentUrl();
+    try std.testing.expect(ctx.creationUrl() == null);
+    // A document is made: both.
+    try ctx.setDocumentUrl("https://example.test/a/page.html");
+    try std.testing.expectEqualStrings("https://example.test/a/page.html", ctx.creationUrl().?);
+    // pushState, replaceState, a fragment navigation: the document URL only.
+    try ctx.updateDocumentUrl("https://example.test/b/pushed");
+    try ctx.updateDocumentUrl("https://example.test/b/pushed#f");
+    try std.testing.expectEqualStrings("https://example.test/b/pushed#f", ctx.documentUrl().?);
+    try std.testing.expectEqualStrings("https://example.test/a/page.html", ctx.creationUrl().?);
+    // document.open(): the creation URL alone (the entry document's).
+    try ctx.setCreationUrl("https://example.test/entry.html");
+    try std.testing.expectEqualStrings("https://example.test/b/pushed#f", ctx.documentUrl().?);
+    try std.testing.expectEqualStrings("https://example.test/entry.html", ctx.creationUrl().?);
+    // The next document: both again.
+    try ctx.setDocumentUrl("https://example.test/next.html");
+    try std.testing.expectEqualStrings("https://example.test/next.html", ctx.documentUrl().?);
+    try std.testing.expectEqualStrings("https://example.test/next.html", ctx.creationUrl().?);
+    ctx.clearDocumentUrl();
+    try std.testing.expect(ctx.documentUrl() == null);
+    try std.testing.expect(ctx.creationUrl() == null);
+}
+
 test "defining an interface object on the global leaves no handle behind" {
     _ = try realm();
     const isolate = isolate_once.?;
