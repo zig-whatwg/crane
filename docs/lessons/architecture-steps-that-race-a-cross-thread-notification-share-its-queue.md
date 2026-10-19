@@ -1,0 +1,12 @@
+# Architecture: Steps that race a cross-thread notification share its queue
+
+**Date**: 2026-10-18
+**Lesson**: When a notification is posted from one thread and matched later on another, the steps that change what it is matched against must run in the same queue; a lock orders the writers but not when a queued notification is read.
+
+**Why**: Cookie Store "process cookie changes" step 2 matches each cookie change against every service worker registration's cookie change subscription list. The jar changes on whatever thread changed it; the matching runs on the service worker manager's job thread, from a posted report. CookieStoreManager's subscribe() and unsubscribe() change those lists. NavigationPreloadManager's in-parallel steps run under the manager's lock on the caller's thread and settle in a later task, which is right for state nothing else queues against - and wrong here.
+
+**What Happened**: The WPT cookiechange files run one test's cleanup and the next test's setup back to back: `cookieStore.delete()` (a change, posted to the job thread), then `registration.cookies.subscribe()`. Had subscribe() changed the list under the lock on its own thread, the job thread could match the earlier deletion against the newer subscription and fire a `deleted` event into the next test's listener - an order no browser shows, and only some of the time. Designed out before it was written (sw1-b9 design D2), and pinned by tests/service_worker/cookie_change_test.zig ("a change made before subscribe()'s steps run never matches what they append").
+
+**Fix**: subscribe(), getSubscriptions() and unsubscribe() run their in-parallel steps as reports to the job thread, the same FIFO the cookie changes are posted to; posting order is causal order, so a change made before a subscribe() is matched before the subscription exists. Only the steps that read nothing shared (argument conversion, name normalization, URL parsing against the API base URL, the scope check) run on the caller's thread. The changing thread's gate (one atomic: subscribe() calls posted plus subscribed registrations) counts a subscribe() from the moment it is posted, so it never drops a change the FIFO would match.
+
+**Takeaway**: **If a notification is matched where it is dequeued, the writes it is matched against belong in that queue too. Ask "can something posted before this write be read after it?" before choosing "lock and settle later".**

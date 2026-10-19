@@ -1,8 +1,11 @@
 //! CookieStore WebIDL Integration Tests
 //!
 //! These tests verify the state the API's platform objects keep, and its
-//! management: CookieStore, CookieStoreManager and CookieChangeEvent keep
-//! these types (src/cookiestore/api_objects.zig) as their internal state.
+//! management: CookieStore and CookieChangeEvent keep these types
+//! (src/cookiestore/api_objects.zig) as their internal state. (A
+//! CookieStoreManager keeps only its registration: the subscription list is
+//! the registration record's - tests/service_worker/registry_test.zig and
+//! tests/cookiestore/change_subscriptions_test.zig.)
 //! Full runtime integration requires V8, so these tests focus on unit-level verification.
 //!
 //! WHATWG Cookie Store Standard: https://cookiestore.spec.whatwg.org/
@@ -49,91 +52,6 @@ test "CookieStore - queries read the jar they are given, for the URL's host" {
     var items = try cookiestore.queryItems(allocator, &jar, "https://example.com/", null);
     defer cookiestore.freeItems(allocator, &items);
     try std.testing.expectEqual(@as(usize, 1), items.items.len);
-}
-
-// ============================================================================
-// CookieStoreManager InternalState Tests
-// ============================================================================
-
-test "CookieStoreManager.InternalState - init and deinit" {
-    const allocator = std.testing.allocator;
-
-    const internal = try cookiestore.CookieStoreManagerState.init(allocator, "https://example.com/app/", true);
-    defer internal.deinit();
-
-    try std.testing.expectEqualStrings("https://example.com/app/", internal.scope_url.?);
-    try std.testing.expect(internal.is_secure_context);
-}
-
-test "CookieStoreManager.InternalState - add subscription" {
-    const allocator = std.testing.allocator;
-
-    const internal = try cookiestore.CookieStoreManagerState.init(allocator, "https://example.com/", true);
-    defer internal.deinit();
-
-    try internal.addSubscription("session", null);
-    try std.testing.expectEqual(@as(usize, 1), internal.subscriptions.items.len);
-    try std.testing.expectEqualStrings("session", internal.subscriptions.items[0].name.?);
-}
-
-test "CookieStoreManager.InternalState - subscription deduplication" {
-    const allocator = std.testing.allocator;
-
-    const internal = try cookiestore.CookieStoreManagerState.init(allocator, "https://example.com/", true);
-    defer internal.deinit();
-
-    // Add same subscription twice
-    try internal.addSubscription("session", null);
-    try internal.addSubscription("session", null);
-
-    // Should only have one
-    try std.testing.expectEqual(@as(usize, 1), internal.subscriptions.items.len);
-}
-
-test "CookieStoreManager.InternalState - remove subscription" {
-    const allocator = std.testing.allocator;
-
-    const internal = try cookiestore.CookieStoreManagerState.init(allocator, "https://example.com/", true);
-    defer internal.deinit();
-
-    try internal.addSubscription("session", null);
-    try internal.addSubscription("other", null);
-    try std.testing.expectEqual(@as(usize, 2), internal.subscriptions.items.len);
-
-    internal.removeSubscription("session", null);
-    try std.testing.expectEqual(@as(usize, 1), internal.subscriptions.items.len);
-    try std.testing.expectEqualStrings("other", internal.subscriptions.items[0].name.?);
-}
-
-test "CookieStoreManager.InternalState - scope URL validation" {
-    const allocator = std.testing.allocator;
-
-    const internal = try cookiestore.CookieStoreManagerState.init(allocator, "https://example.com/app/", true);
-    defer internal.deinit();
-
-    // Within scope
-    try std.testing.expect(internal.isWithinScope("https://example.com/app/page"));
-    try std.testing.expect(internal.isWithinScope("https://example.com/app/sub/page"));
-
-    // Outside scope
-    try std.testing.expect(!internal.isWithinScope("https://example.com/other/"));
-    try std.testing.expect(!internal.isWithinScope("https://different.com/app/"));
-}
-
-test "CookieStoreManager.CookieSubscription - equality" {
-    const allocator = std.testing.allocator;
-
-    var sub1 = try cookiestore.CookieSubscription.init(allocator, "session", null);
-    defer sub1.deinit();
-
-    var sub2 = try cookiestore.CookieSubscription.init(allocator, "session", null);
-    defer sub2.deinit();
-
-    var sub3 = try cookiestore.CookieSubscription.init(allocator, "other", null);
-    defer sub3.deinit();
-
-    try std.testing.expect(sub1.eql(sub2));
-    try std.testing.expect(!sub1.eql(sub3));
 }
 
 // ============================================================================
@@ -204,21 +122,6 @@ test "CookieStore.InternalState - no memory leaks" {
         defer cookie2.deinit();
         try cookie2.setDomain("localhost");
         try internal.change_observer.recordChange(.deleted, cookie2);
-
-        internal.deinit();
-    }
-}
-
-test "CookieStoreManager.InternalState - no memory leaks" {
-    const allocator = std.testing.allocator;
-
-    for (0..10) |_| {
-        const internal = try cookiestore.CookieStoreManagerState.init(allocator, "https://example.com/", true);
-
-        try internal.addSubscription("session", null);
-        try internal.addSubscription("auth", "https://example.com/app/");
-
-        internal.removeSubscription("session", null);
 
         internal.deinit();
     }

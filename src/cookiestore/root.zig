@@ -147,8 +147,6 @@ pub const processSetCookieHeaders = http_integration.processSetCookieHeaders;
 // The state the API's platform objects keep, and their query
 pub const api_objects = @import("api_objects.zig");
 pub const CookieStoreState = api_objects.CookieStoreState;
-pub const CookieStoreManagerState = api_objects.CookieStoreManagerState;
-pub const CookieSubscription = api_objects.CookieSubscription;
 pub const CookieChangeEventState = api_objects.CookieChangeEventState;
 pub const queryItems = api_objects.queryItems;
 pub const freeItems = api_objects.freeItems;

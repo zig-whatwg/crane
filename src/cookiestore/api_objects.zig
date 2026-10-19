@@ -3,8 +3,8 @@
 //!
 //! WHATWG Cookie Store Standard: https://cookiestore.spec.whatwg.org/
 //!
-//! CookieStore, CookieStoreManager and CookieChangeEvent keep these as their
-//! state, each in its own impl, which makes, owns and frees it (lesson
+//! CookieStore and CookieChangeEvent keep these as their state, each in its
+//! own impl, which makes, owns and frees it (lesson
 //! architecture-move-the-states-type-out-of-the-impl-not-the-state): only the
 //! TYPES are here, beside the jar and the algorithms they use, so that what
 //! they do is testable without an engine. Nothing here touches one.
@@ -80,148 +80,6 @@ pub fn freeItems(
     for (items.items) |*item| item.deinit();
     items.deinit(allocator);
 }
-
-// ============================================================================
-// CookieStoreManager
-// ============================================================================
-
-/// A cookie subscription (matches CookieStoreGetOptions)
-pub const CookieSubscription = struct {
-    /// Cookie name to subscribe to (null = all cookies)
-    name: ?[]const u8,
-    /// URL to scope subscription to (null = registration scope)
-    url: ?[]const u8,
-
-    /// Allocator for owned strings
-    allocator: std.mem.Allocator,
-
-    const Self = @This();
-
-    pub fn init(allocator: std.mem.Allocator, name: ?[]const u8, url: ?[]const u8) !Self {
-        return Self{
-            .name = if (name) |n| try allocator.dupe(u8, n) else null,
-            .url = if (url) |u| try allocator.dupe(u8, u) else null,
-            .allocator = allocator,
-        };
-    }
-
-    pub fn deinit(self: *Self) void {
-        if (self.name) |n| self.allocator.free(n);
-        if (self.url) |u| self.allocator.free(u);
-        self.* = undefined;
-    }
-
-    pub fn clone(self: Self, allocator: std.mem.Allocator) !Self {
-        return Self.init(allocator, self.name, self.url);
-    }
-
-    /// Check if two subscriptions are equal (for deduplication)
-    pub fn eql(self: Self, other: Self) bool {
-        const name_eq = if (self.name) |n1| blk: {
-            if (other.name) |n2| {
-                break :blk std.mem.eql(u8, n1, n2);
-            }
-            break :blk false;
-        } else other.name == null;
-
-        const url_eq = if (self.url) |url1| blk: {
-            if (other.url) |url2| {
-                break :blk std.mem.eql(u8, url1, url2);
-            }
-            break :blk false;
-        } else other.url == null;
-
-        return name_eq and url_eq;
-    }
-};
-
-/// A CookieStoreManager's state.
-pub const CookieStoreManagerState = struct {
-    /// List of active subscriptions
-    subscriptions: std.ArrayListUnmanaged(CookieSubscription),
-
-    /// The scope URL for this manager (from ServiceWorkerRegistration)
-    scope_url: ?[]const u8,
-
-    /// Whether this is in a secure context
-    is_secure_context: bool,
-
-    /// Allocator for internal allocations
-    allocator: std.mem.Allocator,
-
-    pub fn init(allocator: std.mem.Allocator, scope_url: ?[]const u8, is_secure_context: bool) !*CookieStoreManagerState {
-        const internal = try allocator.create(CookieStoreManagerState);
-        errdefer allocator.destroy(internal);
-
-        const scope_copy = if (scope_url) |s| try allocator.dupe(u8, s) else null;
-        errdefer if (scope_copy) |s| allocator.free(s);
-
-        internal.* = CookieStoreManagerState{
-            .subscriptions = .empty,
-            .scope_url = scope_copy,
-            .is_secure_context = is_secure_context,
-            .allocator = allocator,
-        };
-
-        return internal;
-    }
-
-    pub fn deinit(self: *CookieStoreManagerState) void {
-        for (self.subscriptions.items) |*sub| {
-            sub.deinit();
-        }
-        self.subscriptions.deinit(self.allocator);
-
-        if (self.scope_url) |s| {
-            self.allocator.free(s);
-        }
-
-        self.allocator.destroy(self);
-    }
-
-    /// Add a subscription (with deduplication)
-    pub fn addSubscription(self: *CookieStoreManagerState, name: ?[]const u8, url: ?[]const u8) !void {
-        // Check for duplicate
-        for (self.subscriptions.items) |existing| {
-            const new_sub = CookieSubscription{
-                .name = name,
-                .url = url,
-                .allocator = self.allocator,
-            };
-            if (existing.eql(new_sub)) {
-                return; // Already exists
-            }
-        }
-
-        const sub = try CookieSubscription.init(self.allocator, name, url);
-        try self.subscriptions.append(self.allocator, sub);
-    }
-
-    /// Remove a subscription
-    pub fn removeSubscription(self: *CookieStoreManagerState, name: ?[]const u8, url: ?[]const u8) void {
-        const to_remove = CookieSubscription{
-            .name = name,
-            .url = url,
-            .allocator = self.allocator,
-        };
-
-        var i: usize = 0;
-        while (i < self.subscriptions.items.len) {
-            if (self.subscriptions.items[i].eql(to_remove)) {
-                var removed = self.subscriptions.orderedRemove(i);
-                removed.deinit();
-            } else {
-                i += 1;
-            }
-        }
-    }
-
-    /// Check if a URL is within the scope
-    pub fn isWithinScope(self: *CookieStoreManagerState, url: []const u8) bool {
-        const scope = self.scope_url orelse return true; // No scope = allow all
-        return std.mem.startsWith(u8, url, scope);
-    }
-};
 
 // ============================================================================
 // CookieChangeEvent
