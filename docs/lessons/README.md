@@ -700,6 +700,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Formatting expectations must not repeat the format expression](testing-formatting-expectations-must-not-repeat-the-format-expression.md) - Use literal expectations and compile the implementation-present test branch.
 
 ### Debugging
+- [An LRU list inside a hash map dangles after a rehash](debugging-an-lru-list-inside-a-hash-map-dangles-after-a-rehash.md) - Never keep a pointer to a hash map's value across a `put`: a list threaded through the values dangles at the first rehash. Heap-allocate the nodes and store pointers in the map.
 - [A call that can free its argument ends every read of it](debugging-a-call-that-can-free-its-argument-ends-every-read-of-it.md) - A call that can free its argument ends the caller's use of it - including the `defer`s written above the call; read the trace's top frame before believing a deep one.
 - [A parsed selector borrows its source text](debugging-a-parsed-selector-borrows-its-source-text.md) - Before keeping a parse result, find out what it borrows: an AST of slices lives no longer than its source.
 - [A per-call allocation in a lonely size class maps a page every call](debugging-a-per-call-allocation-in-a-lonely-size-class-maps-a-page.md) - Count allocations AND look at where they land: a per-call allocation that empties a DebugAllocator page costs a syscall pair; put call-lifetime data on the stack.
