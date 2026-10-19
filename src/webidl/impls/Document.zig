@@ -194,6 +194,14 @@ pub const InternalState = struct {
     /// HTML "suspended timer handles": the keys of its window's map of
     /// active timers when it was last unloaded (unload step 16). OWNED.
     suspended_timer_handles: []runtime.TimerId = &.{},
+    /// Unload step 5: the user agent intends to keep this document in the
+    /// back/forward cache (dom.bfcache.intendToKeep, the navigable's answer),
+    /// for the next unload, which consumes it.
+    intend_to_keep: bool = false,
+    /// The last unload kept this document - salvageable at step 20, so not
+    /// destroyed - for the back/forward cache, and neither "destroy" nor
+    /// "reactivate" has run since (dom.bfcache.isKept).
+    kept_in_bfcache: bool = false,
     /// HTML "about base URL": the document base URL of the document that
     /// created it, or of the navigation's source document, for an
     /// about:blank or about:srcdoc document; null otherwise. Owned.
@@ -897,6 +905,10 @@ pub fn installHooks() void {
     @import("dom").bfcache.install(.{
         .make_unsalvageable = &makeUnsalvageable,
         .blocking_details = &bfcacheBlockingDetails,
+        .may_keep = &bfcacheMayKeep,
+        .intend_to_keep = &bfcacheIntendToKeep,
+        .is_kept = &bfcacheIsKept,
+        .reactivate = &bfcacheReactivate,
     });
 }
 
@@ -4341,6 +4353,63 @@ fn bfcacheBlockingDetails(document: *runtime.Instance) []const @import("dom").bf
     return internal.bfcache_blocking_details.items();
 }
 
+/// dom.bfcache: the document's own part of unload step 5's
+/// intendToKeepInBfcache - "This must be false if oldDocument is not
+/// salvageable" - and its current document readiness "complete": Blink keeps
+/// only a page whose load has finished (back_forward_cache_impl.cc,
+/// kLoading), and the WPT helpers navigate away only after load.
+fn bfcacheMayKeep(document: *runtime.Instance) bool {
+    const internal = getInternal(document) orelse return false;
+    if (internal.destroyed or !internal.salvageable) return false;
+    return internal.ready_state == ._complete_;
+}
+
+/// dom.bfcache: the user agent intends to keep `document` (unload step 5).
+fn bfcacheIntendToKeep(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    internal.intend_to_keep = true;
+}
+
+/// dom.bfcache: whether `document`'s last unload kept it.
+fn bfcacheIsKept(document: *runtime.Instance) bool {
+    const internal = getInternal(document) orelse return false;
+    return internal.kept_in_bfcache and !internal.destroyed;
+}
+
+/// dom.bfcache: HTML "reactivate" `document`, its navigable's active
+/// document again, in its realm (the restore runs from a task).
+fn bfcacheReactivate(document: *runtime.Instance) void {
+    engine.runInRealm(document.ctx, reactivateSteps, document) catch |err| {
+        log.debug("reactivate not run: {}", .{err});
+    };
+}
+
+/// HTML "reactivate" (7.4.6.4) for a document out of the back/forward cache.
+///
+/// Step 1 (the form controls whose autofill field name is "off" are reset)
+/// is not run, stated: Crane fills no form control in, so none holds a value
+/// the user agent restored. Step 2 - the suspended timers moved by the
+/// suspension's length - is the cache's, before this (dom.bfcache.reactivate:
+/// each timer waits what it had left). Step 3, "update the navigation API
+/// entries for reactivation", and pagereveal are phase C's.
+fn reactivateSteps(data: ?*anyopaque) void {
+    const document: *runtime.Instance = @ptrCast(@alignCast(data.?));
+    const internal = getInternal(document) orelse return;
+    internal.kept_in_bfcache = false;
+    const window = (get_defaultView(document) catch null) orelse return;
+    // Step 4: "If document's current document readiness is "complete", and
+    // document's page showing is false":
+    if (internal.ready_state != ._complete_ or internal.page_showing) return;
+    // 4.1. "Set document's page showing to true." 4.2, has been revealed,
+    // is pagereveal's (phase C).
+    internal.page_showing = true;
+    // 4.3. "Update the visibility state of document to "visible"."
+    updateVisibilityState(document, ._visible_);
+    // 4.4. "Fire a page transition event named pageshow at document's
+    // relevant global object with true."
+    firePageTransition(document, window, "pageshow", true);
+}
+
 /// "Abort a document and its descendants", step 3.2.
 fn lifecyclePropagateAbort(parent: *runtime.Instance, child: *runtime.Instance) void {
     const child_state = getInternal(child) orelse return;
@@ -4701,11 +4770,14 @@ fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
 /// dom.document_lifecycle: "unload" `document` (HTML §7.5.9) with no new
 /// document given - the unload timing info is not modelled - from a task.
 ///
-/// Step 5: Crane keeps no document alive for history traversal, so
-/// intendToKeepInBfcache is false and the document is not salvageable.
-/// Steps 15-16 (suspension time, suspended timer handles) and 20 (destroy)
-/// run here; steps 18-19 (cleanup steps, not restored reasons) are the
-/// navigable's: navigation clears the window's timers once this returns.
+/// Step 5: intendToKeepInBfcache is the navigable's answer, given before
+/// the unload (dom.bfcache.intendToKeep), and the document's own: it is
+/// still salvageable and loaded. Kept, the document stays salvageable:
+/// pagehide reports persisted true, no unload event fires, and it is not
+/// destroyed (steps 10, 12, 20). Steps 15-16 (suspension time, suspended
+/// timer handles) and 20 (destroy) run here; steps 18-19 (cleanup steps,
+/// not restored reasons) are the navigable's: navigation clears the window's
+/// timers once this returns - or, for a kept document, suspends them.
 fn lifecycleUnload(document: *runtime.Instance) void {
     engine.runInRealm(document.ctx, unloadSteps, document) catch |err| {
         log.debug("unload not run: {}", .{err});
@@ -4727,8 +4799,15 @@ fn unloadSteps(data: ?*anyopaque) void {
     // it - document.open() is ignored in between (§8.4.1 step 5).
     internal.unload_counter += 1;
     defer internal.unload_counter -= 1;
-    // Step 9: intendToKeepInBfcache is false, so not salvageable.
-    internal.salvageable = false;
+    // Step 5: "Let intendToKeepInBfcache be true if the user agent intends
+    // to keep oldDocument alive in a session history entry ... This must be
+    // false if oldDocument is not salvageable": the navigable's intent
+    // (dom.bfcache.intendToKeep, consumed here) and the document's own part.
+    const intend_to_keep = internal.intend_to_keep and bfcacheMayKeep(document);
+    internal.intend_to_keep = false;
+    // Step 9: "If intendToKeepInBfcache is false, then set oldDocument's
+    // salvageable state to false."
+    if (!intend_to_keep) internal.salvageable = false;
     // Step 10: pagehide and hidden, if the page was showing.
     if (internal.page_showing) {
         internal.page_showing = false;
@@ -4749,8 +4828,13 @@ fn unloadSteps(data: ?*anyopaque) void {
     // phase B); a document destroyed below never is.
     recordSuspension(document, internal);
     // Step 20: "If oldDocument's salvageable state is false, then destroy
-    // oldDocument." Its handlers above still saw it fully active.
-    if (!internal.salvageable) lifecycleDestroy(document);
+    // oldDocument." Its handlers above still saw it fully active. One still
+    // salvageable is kept for the back/forward cache: the navigation code
+    // reads it (dom.bfcache.isKept) and stores the page. (Steps 18-19 run
+    // after this returns - see the doc comment - so a store step's reason
+    // recorded there can still make it unsalvageable; the navigation code
+    // destroys it then.)
+    if (!internal.salvageable) lifecycleDestroy(document) else internal.kept_in_bfcache = true;
 }
 
 /// "Unload a document" steps 15-16 for `document`. Out of memory, the handles
@@ -4775,6 +4859,7 @@ fn lifecycleDestroy(document: *runtime.Instance) void {
     internal.render_blocking_elements.clear();
     internal.salvageable = false;
     internal.destroyed = true;
+    internal.kept_in_bfcache = false;
     @import("html").script_execution.discardDocumentScripts(document);
     discardDocumentParser(internal);
 }

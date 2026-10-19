@@ -105,6 +105,19 @@ pub const InternalState = struct {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     dom.unloading_cleanup.install(&endWorkersOf);
+    dom.bfcache.installBlocker(&blocksBfcache);
+}
+
+/// dom.bfcache: a page that owns a dedicated worker that has not ended is
+/// not kept in the back/forward cache - a stated limit of phase B, with no
+/// reason the spec names (unload step 5 leaves the choice to the user
+/// agent). A kept page's workers would have to be frozen with it, as Chrome
+/// freezes them; left running they post to a page that cannot answer, and
+/// hold what they hold (a Web Lock: web-locks/bfcache/contention.https.window.js
+/// expects a page whose worker holds a lock not to be restored).
+fn blocksBfcache(realm: runtime.Context) ?dom.bfcache.Blocked {
+    const registry = html.WorkerRegistry.existingOf(realm) orelse return null;
+    return if (registry.ownsAny(realm)) .declined else null;
 }
 
 /// An unloading document cleanup step: the realm `realm` ends - its document
