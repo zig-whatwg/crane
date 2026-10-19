@@ -2340,7 +2340,7 @@ fn prepareInlineModuleScript(script_element: *runtime.Instance, document: *runti
 
     // Step 1: create a JavaScript module script - a parse error is kept on it.
     // (Where the engine has no modules there is none: the result stays null.)
-    const script = module_script.createJavaScriptModuleScript(&env, source, base_url) catch return false;
+    const script = module_script.createJavaScriptModuleScript(&env, source, .{}, base_url) catch return false;
 
     // Owned by the document from here on, like every fetched module script.
     // Its key is its address: unique in the map, which holds every inline

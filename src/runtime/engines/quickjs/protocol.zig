@@ -134,6 +134,10 @@ pub fn globalBuiltinFunction(_: Context, _: []const u8, _: []const u8, _: u32, _
 }
 
 // 4.3 Running script
+/// Runs no script yet. Once linked, an `.embedded` source runs as its text
+/// alone: JS_Eval takes no line or column offset, so the position is ignored
+/// and what the script reports counts from its own first line (docs/engine-
+/// protocol.md 7a) - the script still runs.
 pub fn runClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, _: ?*anyopaque, _: engine.Reporter) Error!void {
     return error.NotSupported;
 }
@@ -172,7 +176,7 @@ pub fn extractErrorInformation(_: Context, _: JSValue, _: Allocator) Error!engin
 pub fn runningScriptLocation(_: *Agent, _: Allocator) Error!?engine.ScriptLocation {
     return null;
 }
-pub fn parseModule(_: Context, _: []const u8, _: []const u8, _: ?*anyopaque) Error!engine.ParseResult {
+pub fn parseModule(_: Context, _: []const u8, _: engine.SourcePosition, _: []const u8, _: ?*anyopaque) Error!engine.ParseResult {
     return error.NotSupported;
 }
 pub fn parseJSONModule(_: Context, _: []const u8, _: []const u8, _: ?*anyopaque) Error!engine.ParseResult {

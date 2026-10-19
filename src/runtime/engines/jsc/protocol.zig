@@ -165,6 +165,10 @@ pub fn globalBuiltinFunction(_: Context, _: []const u8, _: []const u8, _: u32, _
 }
 
 // 4.3 Running script
+/// Runs no script yet. The route: JSEvaluateScript, with an `.embedded`
+/// source's start line as its startingLineNumber - JSC takes no column, so
+/// the first line's columns are the script's own (docs/engine-protocol.md
+/// 7a).
 pub fn runClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, _: ?*anyopaque, _: engine.Reporter) Error!void {
     return error.NotSupported;
 }
@@ -205,7 +209,7 @@ pub fn extractErrorInformation(_: Context, _: JSValue, _: Allocator) Error!engin
 pub fn runningScriptLocation(_: *Agent, _: Allocator) Error!?engine.ScriptLocation {
     return null;
 }
-pub fn parseModule(_: Context, _: []const u8, _: []const u8, _: ?*anyopaque) Error!engine.ParseResult {
+pub fn parseModule(_: Context, _: []const u8, _: engine.SourcePosition, _: []const u8, _: ?*anyopaque) Error!engine.ParseResult {
     return error.NotSupported;
 }
 pub fn parseJSONModule(_: Context, _: []const u8, _: []const u8, _: ?*anyopaque) Error!engine.ParseResult {

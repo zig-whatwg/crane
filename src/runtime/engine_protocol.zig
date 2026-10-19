@@ -264,12 +264,33 @@ pub const CallbackInterface = struct {
     }
 };
 
+/// Where a script's source text starts in the resource it came from - an
+/// inline script's text in its document: the 1-based line and column of its
+/// first character, as the HTML parser counts them (the position after the
+/// element's start tag - Blink's and WebKit's TextPosition, which their
+/// ScriptSourceCode keeps beside the text). Positions the engine reports in
+/// the script - what it throws, `runningScriptLocation` inside it - count
+/// from here: every line is offset by `line - 1`, and the first line's
+/// columns by `column - 1`. The default is a resource of its own. V8:
+/// ScriptOrigin's resource_line_offset and resource_column_offset.
+/// JavaScriptCore: JSEvaluateScript's startingLineNumber - a line, no column,
+/// so the first line's columns are the script's own. QuickJS: JS_Eval takes
+/// no offset, and the script runs at a resource of its own.
+pub const SourcePosition = struct {
+    line: u32 = 1,
+    column: u32 = 1,
+};
+
 /// A classic script's source: UTF-8 text, or a string value whose every code
-/// unit is kept (a timer's string handler).
+/// unit is kept (a timer's string handler), or UTF-8 text that starts inside
+/// a larger resource.
 pub const ScriptSource = union(enum) {
     utf8: []const u8,
     /// BORROWED.
     string: JSValue,
+    /// An inline script's text (`utf8`), which starts at `start` in its
+    /// document: what it reports, it reports in the document's lines.
+    embedded: struct { utf8: []const u8, start: SourcePosition },
 };
 
 /// HTML "getting the current value of the event handler", step 3: an event
@@ -279,10 +300,17 @@ pub const EventHandlerSource = struct {
     body: []const u8,
     /// The handler's name ("onclick"): the function's name.
     name: []const u8,
-    /// The document's URL: the script's URL.
+    /// The document's URL: the script's URL - the resource name the
+    /// function is compiled with, so what it throws and a violation inside it
+    /// report it. The function still has no [[ScriptOrModule]]: an import()
+    /// in it names no referrer.
     url: []const u8,
-    /// Where the attribute is, for errors (1-based; 0 when unknown).
+    /// Where the body is ("the location where the script body originated"),
+    /// 1-based; 0 when unknown. The function is compiled at this position,
+    /// as `SourcePosition` says: the body's first line is `lineno`, and its
+    /// first line's columns are offset by `colno - 1`.
     lineno: u32,
+    colno: u32 = 0,
     /// The function's parameter list (step 3.6).
     parameters: enum {
         /// `event` - every handler but the two below.
@@ -1209,11 +1237,13 @@ pub inline fn runningScriptLocation(agent: *Agent, allocator: std.mem.Allocator)
     return impl.runningScriptLocation(agent, allocator);
 }
 
-/// ECMAScript ParseModule. `host_defined` is the host's, handed back to its
-/// hooks.
-pub inline fn parseModule(realm: Context, source: []const u8, url: []const u8, host_defined: ?*anyopaque) Error!ParseResult {
+/// ECMAScript ParseModule. `start` is where `source` starts in its resource
+/// (an inline module script's text in its document; `.{}` for a module of
+/// its own), as `SourcePosition` says. `host_defined` is the host's, handed
+/// back to its hooks.
+pub inline fn parseModule(realm: Context, source: []const u8, start: SourcePosition, url: []const u8, host_defined: ?*anyopaque) Error!ParseResult {
     comptime gate(.module_scripts, "parseModule");
-    return impl.parseModule(realm, source, url, host_defined);
+    return impl.parseModule(realm, source, start, url, host_defined);
 }
 
 /// HTML "create a JSON module script": ParseJSONModule.

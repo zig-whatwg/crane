@@ -339,17 +339,21 @@ pub const Environment = struct {
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#creating-a-javascript-module-script
 /// Step 7 ParseModule, with the script as [[HostDefined]]; step 8: on a
 /// syntax error the script's parse error is that error and its record stays
-/// null.
+/// null. `start` is where `source` starts in its resource: an inline module
+/// script's position in its document (the parser's, script_element.State),
+/// `.{}` for a fetched one - so what it throws reports its document's lines
+/// (Blink's ModuleScriptCreationParams keep the inline script's start).
 pub fn createJavaScriptModuleScript(
     env: *const Environment,
     source: []const u8,
+    start: engine.SourcePosition,
     base_url: []const u8,
 ) !*ModuleScript {
     if (!supported) return error.NotSupported;
     const script = try ModuleScript.create(env.allocator, base_url, env.fetch_options);
     errdefer script.destroy();
 
-    switch (try engine.parseModule(env.realm(), source, base_url, script)) {
+    switch (try engine.parseModule(env.realm(), source, start, base_url, script)) {
         .record => |record| script.record = record,
         .parse_error => |parse_error| script.parse_error = parse_error,
     }
@@ -825,7 +829,7 @@ pub fn moduleWorkerScriptGraph(env: *const Environment, url: []const u8, respons
     const key = std.mem.concat(env.allocator, u8, &.{ ModuleType.javascript.keyPrefix(), url }) catch return null;
     defer env.allocator.free(key);
     const script: *ModuleScript = if (env.map.get(key)) |entry| @ptrCast(@alignCast(entry)) else blk: {
-        const created = createJavaScriptModuleScript(env, source, response_url) catch return null;
+        const created = createJavaScriptModuleScript(env, source, .{}, response_url) catch return null;
         if (!env.map.put(key, @ptrCast(created))) {
             created.destroy();
             return null;
@@ -1666,7 +1670,7 @@ fn createFromResponse(env: *const Environment, url: []const u8, module_type: Mod
     const policy = fetch.internal.policy_container.parseReferrerPolicyHeader(response.header_list.getFirstValue("referrer-policy"));
     if (policy != .empty) response_env.fetch_options.referrer_policy = policy;
     return switch (module_type) {
-        .javascript => if (isJavaScriptMimeTypeEssence(essence)) createJavaScriptModuleScript(&response_env, body, base_url) catch null else null,
+        .javascript => if (isJavaScriptMimeTypeEssence(essence)) createJavaScriptModuleScript(&response_env, body, .{}, base_url) catch null else null,
         .json => blk: {
             if (!isJsonMimeTypeEssence(essence)) break :blk null;
             // Fetch a single module script, processResponseConsumeBody

@@ -159,24 +159,61 @@ const Evaluation = struct {
     }
 };
 
+/// A classic script's source text as a V8 string, and where it starts in its
+/// resource. `made` is the string this made, OWNED (`free`); a string value
+/// source is borrowed.
+const SourceText = struct {
+    text: *ffi.String,
+    made: ?*ffi.String = null,
+    /// ScriptOrigin's resource_line_offset and resource_column_offset: the
+    /// protocol's 1-based SourcePosition less one.
+    line_offset: c_int = 0,
+    column_offset: c_int = 0,
+
+    fn of(isolate: *ffi.Isolate, source: engine.ScriptSource) Error!SourceText {
+        return switch (source) {
+            // UTF-8, a resource of its own.
+            .utf8 => |bytes| blk: {
+                const made = try support.newString(isolate, bytes);
+                break :blk .{ .text = made, .made = made };
+            },
+            // UTF-8 inside its document: offset to where it starts there.
+            .embedded => |embedded| blk: {
+                const made = try support.newString(isolate, embedded.utf8);
+                const offsets = originOffsets(embedded.start);
+                break :blk .{ .text = made, .made = made, .line_offset = offsets.line, .column_offset = offsets.column };
+            },
+            // A string value, kept with every code unit.
+            .string => |value| blk: {
+                const handle = support.handleOf(value) orelse return error.TypeError;
+                if (!ffi.v8_Value_IsString(handle)) return error.TypeError;
+                break :blk .{ .text = @ptrCast(handle) };
+            },
+        };
+    }
+
+    fn free(self: SourceText) void {
+        if (self.made) |t| ffi.v8_String_Dispose(t);
+    }
+};
+
+/// The protocol's SourcePosition (1-based) as ScriptOrigin's offsets
+/// (0-based). A position of 0 - unknown - is no offset.
+pub fn originOffsets(start: engine.SourcePosition) struct { line: c_int, column: c_int } {
+    const max: u32 = std.math.maxInt(c_int);
+    return .{
+        .line = @intCast(@min(start.line -| 1, max)),
+        .column = @intCast(@min(start.column -| 1, max)),
+    };
+}
+
 fn evaluate(scope: ScriptScope, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque) Error!Evaluation {
     const isolate = scope.isolate;
     const context = scope.context();
 
     // The source text: UTF-8, or a string value kept with every code unit.
-    var made_text: ?*ffi.String = null;
-    defer if (made_text) |t| ffi.v8_String_Dispose(t);
-    const text: *ffi.String = switch (source) {
-        .utf8 => |bytes| blk: {
-            made_text = try support.newString(isolate, bytes);
-            break :blk made_text.?;
-        },
-        .string => |value| blk: {
-            const handle = support.handleOf(value) orelse return error.TypeError;
-            if (!ffi.v8_Value_IsString(handle)) return error.TypeError;
-            break :blk @ptrCast(handle);
-        },
-    };
+    const text = try SourceText.of(isolate, source);
+    defer text.free();
 
     // The script's URL is its ScriptOrigin's resource name - the filename of
     // what it throws, and the referrer of its import() calls, with the host's
@@ -185,7 +222,7 @@ fn evaluate(scope: ScriptScope, source: engine.ScriptSource, url: []const u8, ho
     defer if (name) |n| ffi.v8_String_Dispose(n);
     if (url.len > 0) name = try support.newString(isolate, url);
 
-    var evaluation = Evaluation{ .compiled = ffi.v8_Script_CompileWithHostDefined_Safe(context, text, name, host_defined) };
+    var evaluation = Evaluation{ .compiled = ffi.v8_Script_CompileWithHostDefined_Safe(context, text.text, name, text.line_offset, text.column_offset, host_defined) };
     // "Create a classic script": a script that does not parse has a parse
     // error, which run a classic script step 6 turns into the evaluation
     // status - thrown, like anything evaluation throws.
@@ -286,35 +323,18 @@ const EvaluateRethrowing = struct {
     fn run(data: ?*anyopaque) callconv(.c) void {
         const self: *EvaluateRethrowing = @ptrCast(@alignCast(data orelse return));
         const isolate = self.scope.isolate;
-        var made_text: ?*ffi.String = null;
-        defer if (made_text) |t| ffi.v8_String_Dispose(t);
-        const text: *ffi.String = switch (self.source) {
-            .utf8 => |bytes| blk: {
-                made_text = support.newString(isolate, bytes) catch |err| {
-                    self.failure = err;
-                    return;
-                };
-                break :blk made_text.?;
-            },
-            .string => |value| blk: {
-                const handle = support.handleOf(value) orelse {
-                    self.failure = error.TypeError;
-                    return;
-                };
-                if (!ffi.v8_Value_IsString(handle)) {
-                    self.failure = error.TypeError;
-                    return;
-                }
-                break :blk @ptrCast(handle);
-            },
+        const text = SourceText.of(isolate, self.source) catch |err| {
+            self.failure = err;
+            return;
         };
+        defer text.free();
         var name: ?*ffi.String = null;
         defer if (name) |n| ffi.v8_String_Dispose(n);
         if (self.url.len > 0) name = support.newString(isolate, self.url) catch |err| {
             self.failure = err;
             return;
         };
-        self.outcome = ffi.v8_Script_RunRethrowingErrors(self.scope.context(), text, name, self.host_defined, self.muted_errors);
+        self.outcome = ffi.v8_Script_RunRethrowingErrors(self.scope.context(), text.text, name, text.line_offset, text.column_offset, self.host_defined, self.muted_errors);
     }
 };
 
@@ -470,8 +490,13 @@ pub fn compileEventHandler(realm: Context, source: *const engine.EventHandlerSou
 
     var parse_error: ?*ffi.V8ErrorInfo = null;
     defer ffi.v8_FreeErrorInfo(parse_error);
-    // 11. [[ScriptOrModule]] is null: the function is compiled with no
-    // ScriptOrigin, so an import() in it names no referrer.
+    // 4. `location`, where the body originated: the document's URL and the
+    // body's position in it - the ScriptOrigin the body is compiled with, so
+    // that what it throws, and a violation inside it, report them (Blink's
+    // JSEventHandlerForContentAttribute compiles with its TextPosition).
+    // 11. [[ScriptOrModule]] is null: no host-defined options, so an import()
+    // in it names no referrer.
+    const offsets = originOffsets(.{ .line = source.lineno, .column = source.colno });
     const function = ffi.v8_CompileEventHandlerWithParameters(
         context,
         source.name.ptr,
@@ -482,18 +507,21 @@ pub fn compileEventHandler(realm: Context, source: *const engine.EventHandlerSou
         @intCast(parameters.len),
         &scopes,
         @intCast(scope_count),
+        source.url.ptr,
+        @intCast(source.url.len),
+        offsets.line,
+        offsets.column,
         &parse_error,
     );
     if (function) |f| return .{ .value = realm_entry.owned(f) };
 
     // 7. The body does not parse: 2. a SyntaxError of the settings object's
-    // realm, based on `location` - where the attribute is, the body's own
-    // line counted from it - 3. reported for the global, 4. return null.
-    // (7.1, setting the handler's value to null, is the host's.)
+    // realm, based on `location` - V8 counts its line from the body's
+    // position - 3. reported for the global, 4. return null. (7.1, setting
+    // the handler's value to null, is the host's.)
     const info = parse_error orelse return error.OperationFailed;
     var error_info = protocolErrorInfo(info, realm);
     error_info.filename = source.url;
-    if (source.lineno > 0 and error_info.lineno > 0) error_info.lineno = source.lineno + error_info.lineno - 1;
     report(isolate, error_info, reporter);
     return null;
 }
