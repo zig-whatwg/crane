@@ -646,6 +646,37 @@ test "a restored client is using its registration again: unregister leaves it" {
     try testing.expect(registry.findWorker(fixture.worker_id) != null);
 }
 
+test "a client restored after its registration was cleared while it was kept loses its controller and hears controllerchange" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 18);
+    defer registry.deinit();
+    const fixture = try KeptFixture.make(&recorder, &registry);
+    registry.setEnvironmentCached(fixture.kept, true);
+    try fixture.unregister(&recorder, &registry, 2);
+    var lines: RedundantLines = undefined;
+    try recorder.expectLog(&.{ "1: resolve true", "1: active = 0", "2: active = 0", lines.of(1, fixture.worker_id), lines.of(2, fixture.worker_id) });
+    // Shown again before the delivery that would have evicted it ran: its
+    // controller went redundant while it was kept, so it has none now and
+    // hears so (Chromium's NotifyControllerLost, which a doomed version's
+    // controllees get).
+    registry.setEnvironmentCached(fixture.kept, false);
+    try recorder.expectLog(&.{"2: controllerchange 0 none"});
+    try testing.expect(fixture.kept.active_worker == null);
+}
+
+test "a client restored while its controller is still active keeps it, and hears nothing" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 19);
+    defer registry.deinit();
+    const fixture = try KeptFixture.make(&recorder, &registry);
+    registry.setEnvironmentCached(fixture.kept, true);
+    registry.setEnvironmentCached(fixture.kept, false);
+    try recorder.expectLog(&.{});
+    try testing.expectEqual(fixture.worker_id, fixture.kept.active_worker.?.id);
+}
+
 test "an environment that ends while it is controlled lets a waiting worker activate" {
     var recorder: Recorder = .{ .allocator = testing.allocator };
     defer recorder.deinit();

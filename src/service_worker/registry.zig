@@ -2086,10 +2086,23 @@ pub const Registry = struct {
     /// service-worker-unregister.https.html, which unregisters while the test
     /// page is still controlled: Chrome FAIL, Firefox PASS, Safari FAIL
     /// (wpt.fyi 23b0b89b1a) - it fails here as in Chrome.
+    ///
+    /// A page shown again before the delivery that would have evicted it ran
+    /// - its controller went redundant while it was cached - is a controllee
+    /// whose version was doomed: Chromium's ServiceWorkerVersion::Doom tells
+    /// each controllee ServiceWorkerClient::NotifyControllerLost, which sets
+    /// its controller to null and fires controllerchange. So it loses its
+    /// active service worker here, and hears so.
     pub fn setEnvironmentCached(self: *Registry, environment: *Environment, cached: bool) void {
         if (environment.cached == cached) return;
         environment.cached = cached;
-        if (!cached) return;
+        if (!cached) {
+            const worker = environment.active_worker orelse return;
+            if (worker.state != .redundant) return;
+            self.setActiveWorker(environment, null);
+            self.notifyControllerChange(environment);
+            return;
+        }
         // Leaving the controllees runs what a client's unload runs for its
         // registration (Chromium's OnNoControllees): Try Clear Registration
         // if it is unregistered, Try Activate.
