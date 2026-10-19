@@ -59,7 +59,7 @@ const Side = struct {
     /// higher than it is now, and add one store of this side's.
     fn upgrade(self: *Side, agent: *FakeAgent, round: u64) !void {
         const allocator = self.allocator;
-        const key = idb.server.StorageKey.initBorrowed(origin);
+        const key = idb.server.firstPartyKey(origin);
         const database = try self.server.uniqueDatabase(key, database_name);
         defer self.server.release(database);
         var signal: Signal = .{};
@@ -167,7 +167,7 @@ test "two Browsers on two threads opening one name each see only their own datab
     };
     try runSides(&sides);
     for ([_]*idb.IDBServer{ &first, &second }) |server| {
-        const database = try server.uniqueDatabase(idb.server.StorageKey.initBorrowed(origin), database_name);
+        const database = try server.uniqueDatabase(idb.server.firstPartyKey(origin), database_name);
         defer server.release(database);
         try std.testing.expectEqual(round_count, server.currentVersion(database));
     }

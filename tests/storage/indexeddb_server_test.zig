@@ -16,7 +16,7 @@ const Signal = @import("idb_fake_agent.zig").Signal;
 const origin = "https://server.example";
 
 fn key() server_mod.StorageKey {
-    return server_mod.StorageKey.initBorrowed(origin);
+    return server_mod.firstPartyKey(origin);
 }
 
 /// Open `name` at `version` with no other connection to wait on.

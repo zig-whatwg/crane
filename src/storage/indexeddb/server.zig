@@ -54,6 +54,19 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 pub const StorageKey = @import("../standard.zig").StorageKey;
+
+/// A key owning a copy of `key`'s parts (server allocator): the one place
+/// the server copies a StorageKey - it keeps every part `equals` compares.
+fn copyKey(allocator: Allocator, key: StorageKey) Allocator.Error!StorageKey {
+    return StorageKey.init(allocator, key.origin);
+}
+
+/// The key of a top-level document of `origin` (BORROWED): what a native
+/// caller with no environment - a test, the backend IDBFactory view - names
+/// a database by.
+pub fn firstPartyKey(origin: []const u8) StorageKey {
+    return StorageKey.initBorrowed(origin);
+}
 const database_mod = @import("database.zig");
 const IDBDatabase = database_mod.IDBDatabase;
 const IDBTransactionMode = @import("transaction.zig").IDBTransactionMode;
@@ -366,7 +379,7 @@ pub const IDBServer = struct {
         errdefer _ = self.databases.remove(.{ .storage_key = storage_key, .name = name });
         const made = try self.allocator.create(UniqueIDBDatabase);
         errdefer self.allocator.destroy(made);
-        var key_copy = try StorageKey.init(self.allocator, storage_key.origin);
+        var key_copy = try copyKey(self.allocator, storage_key);
         errdefer key_copy.deinit();
         const name_copy = try self.allocator.dupe(u8, name);
         made.* = .{ .server = self, .storage_key = key_copy, .name = name_copy, .holders = 1 };

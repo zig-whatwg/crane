@@ -75,7 +75,7 @@ pub const IDBFactory = struct {
 
     /// Set the storage key (usually derived from the origin)
     pub fn setStorageKey(self: *Self, origin: []const u8) void {
-        self.storage_key = StorageKey.initBorrowed(origin);
+        self.storage_key = server_mod.firstPartyKey(origin);
     }
 
     /// Open a database connection
