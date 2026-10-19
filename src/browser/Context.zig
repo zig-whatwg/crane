@@ -1113,8 +1113,11 @@ fn destroyTimer(wrapper: *WindowTimerCallback) void {
 /// timer's realm, at the timer's nesting level. A task runs from the event
 /// loop, so the realm is entered for it.
 fn runTimerTask(data: *WindowTimerData) void {
-    // A cached page's timers are suspended (suspendWindowTimers), or held.
-    dom_mod.bfcache.assertNotCached(data.realm);
+    // (No dom.bfcache.assertNotCached here: a cached page's timers are
+    // suspended at store - suspendWindowTimers - and one that fires anyway
+    // is held by holdIfInactive before it gets here, its document inactive.
+    // That guard is the check, and the assertion's cost showed on the
+    // setTimeout(0) burst cost page.)
     engine.runTaskInRealm(data.realm, runTimerSteps, data) catch |err| {
         log.debug("a timer's task did not run: {}", .{err});
     };
