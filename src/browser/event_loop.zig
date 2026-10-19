@@ -363,7 +363,7 @@ pub const EventLoop = struct {
     /// made again in the same slot is never taken for the cached one's. A
     /// group waiting to be put back takes no more: its document is fully
     /// active, and a task classified inactive is not its.
-    fn groupOf(self: *Self, task: Task) ?*SuspendedGroup {
+    noinline fn groupOf(self: *Self, task: Task) ?*SuspendedGroup {
         const document = task.document orelse return null;
         for (self.suspended.items) |*group| {
             if (group.resumed) continue;
@@ -385,7 +385,7 @@ pub const EventLoop = struct {
     /// queued earlier during that time. Only the page that replaced the
     /// cached one can have such a task, and a restore is unloading that page
     /// - its tasks are inactive or gone - so nothing observes the order.
-    fn spliceResumed(self: *Self) void {
+    noinline fn spliceResumed(self: *Self) void {
         var count: usize = 0;
         for (self.suspended.items) |group| {
             if (group.resumed) count += group.tasks.items.len;
@@ -411,7 +411,7 @@ pub const EventLoop = struct {
     }
 
     /// Whether a resumed group waits to be put back: runnable work.
-    fn resumedPending(self: *const Self) bool {
+    noinline fn resumedPending(self: *const Self) bool {
         for (self.suspended.items) |group| {
             if (group.resumed) return true;
         }
@@ -632,7 +632,7 @@ pub const EventLoop = struct {
     fn drainTasks(self: *Self, classify: Classify, after: AfterTask) bool {
         // The tasks of documents a restore made fully active again come
         // first: they were queued before anything queued while they waited.
-        self.spliceResumed();
+        if (self.suspended.items.len != 0) self.spliceResumed();
         var budget = self.tasks.items.len;
         // Until this drain is done, any queued task may be runnable.
         self.waiting = 0;
@@ -648,12 +648,14 @@ pub const EventLoop = struct {
                     // A document the back/forward cache holds: into its
                     // group, in queue order. `index` stays: the next task
                     // has moved into this slot.
-                    if (self.groupOf(task)) |group| {
-                        if (group.tasks.ensureUnusedCapacity(self.allocator, 1)) {
-                            _ = self.tasks.orderedRemove(index);
-                            group.tasks.appendAssumeCapacity(task);
-                            continue;
-                        } else |_| {}
+                    if (self.suspended.items.len != 0) {
+                        if (self.groupOf(task)) |group| {
+                            if (group.tasks.ensureUnusedCapacity(self.allocator, 1)) {
+                                _ = self.tasks.orderedRemove(index);
+                                group.tasks.appendAssumeCapacity(task);
+                                continue;
+                            } else |_| {}
+                        }
                     }
                     // Left where it is: the next drain asks again.
                     index += 1;
@@ -690,7 +692,7 @@ pub const EventLoop = struct {
     /// not leave waiting, or any while a drain runs - or a resumed document's
     /// group, which the next drain puts back. A suspended group is not.
     fn runnableQueued(self: *const Self) bool {
-        return self.tasks.items.len > self.waiting or self.resumedPending();
+        return self.tasks.items.len > self.waiting or (self.suspended.items.len != 0 and self.resumedPending());
     }
 
     /// Whether there is pending work that should keep the loop from idling.
