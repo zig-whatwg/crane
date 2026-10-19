@@ -184,8 +184,8 @@ pub const StyleEngine = struct {
     /// (owners connecting and disconnecting, media, disabled, title).
     sheets_version: u64 = 1,
     active: ?Active = null,
-    /// Moves every time the active sheets are rebuilt: part of each cached
-    /// style's key.
+    /// Moves every time the active sheets are rebuilt, and when the page's
+    /// supported color schemes change: part of each cached style's key.
     generation: u64 = 1,
     /// A style read of this document is resolving: nothing it reaches may
     /// read style again (the active sheets and the lineage's caches are in
@@ -805,6 +805,20 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
     engine.enterResolution();
     defer engine.resolving = false;
     const active = try engine.ensureActive(document);
+    // HTML 4.2.5.1's re-run, when a meta element's own steps asked for it.
+    // A changed answer moves the generation every cached style is keyed
+    // on: the meta's post-connection steps run after the whole batch was
+    // inserted, so a style read in between (a script earlier in the same
+    // fragment) has cached styles under the tree version that is still
+    // current.
+    if (engine.page_color_schemes_dirty) {
+        const found = try pageColorSchemes(engine.allocator, document);
+        engine.page_color_schemes_dirty = false;
+        if (!found.eql(engine.page_color_schemes)) {
+            engine.page_color_schemes = found;
+            engine.generation +%= 1;
+        }
+    }
     var res: Resolution = .{
         .allocator = engine.allocator,
         .document = document,
@@ -819,10 +833,6 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
     // prefers-color-scheme reads it; a change to it moves the media values,
     // and with them the generation every cached style is keyed on.
     res.preferred_color_scheme = if (active.media.prefers_color_scheme == .dark) .dark else .light;
-    if (engine.page_color_schemes_dirty) {
-        engine.page_color_schemes = try pageColorSchemes(engine.allocator, document);
-        engine.page_color_schemes_dirty = false;
-    }
     res.page_color_scheme = css.color_scheme.used(engine.page_color_schemes, res.preferred_color_scheme);
 
     // The flat-tree lineage, the element first.
