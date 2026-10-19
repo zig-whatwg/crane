@@ -1104,6 +1104,8 @@ fn destroyTimer(wrapper: *WindowTimerCallback) void {
 /// timer's realm, at the timer's nesting level. A task runs from the event
 /// loop, so the realm is entered for it.
 fn runTimerTask(data: *WindowTimerData) void {
+    // A cached page's timers are suspended (suspendWindowTimers), or held.
+    dom_mod.bfcache.assertNotCached(data.realm);
     engine.runTaskInRealm(data.realm, runTimerSteps, data) catch |err| {
         log.debug("a timer's task did not run: {}", .{err});
     };
@@ -2765,6 +2767,8 @@ fn animationFrameHandler(_: ?*anyopaque) void {
             // HTML run-animation-callbacks step 3.2: remove the handle before
             // JS so cancellation of an already-invoked handle is a no-op.
             entry.consumed = true;
+            // Only active documents' callbacks were collected.
+            dom_mod.bfcache.assertNotCached(entry.realm);
             invokeReporting(entry.realm, entry.callback, &.{timestamp});
             last_realm = entry.realm;
         }
