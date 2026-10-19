@@ -105,6 +105,15 @@ pub fn isDetached(realm: Context) bool {
     return state.detached != null;
 }
 
+/// Whether `realm` is a frame's realm - made under a parent realm (an
+/// iframe's, or a popup's under its opener's) - and not detached yet: the
+/// realms whose document can be destroyed while they stay attached (a
+/// removed frame's realm ends at a task of its own).
+pub fn isAttachedFrame(realm: Context) bool {
+    const state = stateOf(realm) orelse return false;
+    return state.parent != null and state.detached == null;
+}
+
 /// The Window realms an agent made, by realm. Held on the agent's record
 /// (protocol_agents.AgentRecord.window_realms) and freed with it, as Blink
 /// keeps its per-isolate maps on V8PerIsolateData: it was a `threadlocal` on
