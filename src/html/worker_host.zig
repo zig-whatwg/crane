@@ -502,9 +502,12 @@ pub fn fetchClassicWorkerImportedScript(ctx: runtime.Context, url: []const u8) e
 
     if (response.response_type == .@"error") return error.NetworkError;
     if (response.status < 200 or response.status >= 300) return error.NetworkError;
-    const body = if (response.body) |b| b.data.items else return error.NetworkError;
     const content_type = response.header_list.getFirstValue("content-type") orelse "";
     if (!module_script.isJavaScriptMimeType(content_type)) return error.NetworkError;
+    // HTML "fetch a classic worker-imported script" steps 7-8: a
+    // successful empty response supplies zero body bytes. Fetch represents
+    // that as no Body allocation; it is not a failed body consumption.
+    const body = if (response.body) |b| b.data.items else "";
 
     // "Let sourceText be the result of UTF-8 decoding bodyBytes": a leading
     // BOM goes; the engine replaces what is not UTF-8.
