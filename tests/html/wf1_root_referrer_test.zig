@@ -1,6 +1,7 @@
-//! Q9's additive root-referrer patch is held for row 68's merge. Until the
-//! integrator applies it, the Crane wf1-root-referrer test is expected-fail
-//! and this native ownership pin is explicitly skipped.
+//! The worker root request's creator referrer (Codex row 75 Q9, applied at
+//! its merge): the request owns a copy of the borrowed referrer source, and an
+//! opaque creator sends no referrer. The @hasField guards keep the file
+//! building on trees without the field.
 const std = @import("std");
 const script_fetch = @import("html_core").workers.script_fetch;
 

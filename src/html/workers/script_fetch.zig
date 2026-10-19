@@ -69,6 +69,9 @@ pub const WorkerScriptFetchOptions = struct {
     /// outside settings for a worker's script - for the blob URL store's
     /// same-origin check.
     requesting_origin: ?[]const u8 = null,
+    /// Outside settings' referrer source. BORROWED only during the
+    /// synchronous root fetch; workerScriptRequest takes an owned copy.
+    referrer_source: ?[]const u8 = null,
     /// The user agent's blob URL store (a `file.BlobURLStore`) the outside
     /// settings reach - its Browser's (BORROWED). A blob: script's blob is
     /// obtained there; null: a blob URL is a network error.
@@ -449,6 +452,14 @@ pub fn workerScriptRequest(
         }
     } else if (options.origin) |org| {
         internal_request.origin = .{ .origin = org };
+    }
+    // Referrer Policy "determine request's referrer" step 3: the
+    // outside settings' source for a root request with a client referrer.
+    // An opaque client sends no referrer. setReferrerUrl owns its copy.
+    if (options.requesting_origin != null and std.mem.eql(u8, options.requesting_origin.?, "null")) {
+        internal_request.setReferrer(.no_referrer);
+    } else if (options.referrer_source) |source| {
+        if (source.len > 0) internal_request.setReferrerUrl(source) catch return WorkerScriptError.OutOfMemory;
     }
     return internal_request;
 }

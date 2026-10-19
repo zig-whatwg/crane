@@ -337,6 +337,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
             .include => .include,
         } else .same_origin,
         .requesting_origin = requesting_origin,
+        .referrer_source = worker_host.creatorReferrerSource(ctx),
         // A blob: script's blob is in the outside settings' Browser's blob
         // URL store.
         .blob_url_store = @ptrCast(dom.browser_state.blobURLStoreOf(ctx)),

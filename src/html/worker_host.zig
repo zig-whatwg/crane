@@ -2360,6 +2360,7 @@ const SharedConnect = struct {
                 .include => .include,
             } else .same_origin,
             .requesting_origin = self.origin,
+            .referrer_source = creatorReferrerSource(self.owner_realm),
             // A blob: script's blob is in the outside settings' Browser's
             // blob URL store.
             .blob_url_store = @ptrCast(@import("dom").browser_state.blobURLStoreOf(self.owner_realm)),
@@ -2578,6 +2579,16 @@ pub fn workerPolicyContainer(allocator: Allocator, fetched: *workers.FetchedScri
     // or a shared worker's creator, has.
     if (creatorPolicyContainer(owner_realm)) |owner| return owner.clone(allocator);
     return PolicyContainer.init(allocator);
+}
+
+/// The outside settings' referrer source. BORROWED on the creating
+/// thread for the synchronous root-script fetch only. A srcdoc Window's
+/// settings hook resolves its ancestor source, as requestClient does.
+pub fn creatorReferrerSource(realm: runtime.Context) ?[]const u8 {
+    const record = realm.getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    const settings = @import("dom").global_settings.of(global) orelse return null;
+    return if (settings.referrer_source) |source_of| source_of(global) else realm.documentUrl();
 }
 
 /// The policy container of the global whose realm is `realm`: the
