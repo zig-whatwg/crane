@@ -1389,16 +1389,19 @@ pub fn windowIndexedPropertyGetter(
 
     // A child navigable whose Window script has not asked for yet: its
     // container makes it (its navigable's realm under this window's, its
-    // Window and initial document - dom.child_navigables.window), indexed in
-    // the same document-tree list, never the browsing context's raw children
-    // - which also hold a shadow tree's navigables, at indices script must
-    // not see (Codex row 81 Q8).
+    // Window and initial document - dom.child_navigables.window). Indexed in
+    // the list Window's length and item answer from: the browsing context's
+    // children in INSERTION order - all three browsers keep it (a
+    // foster-parented iframe does not reorder window[i]:
+    // html/browsers/the-window-object/accessing-other-browsing-contexts/
+    // indexed-browsing-contexts-01.html; the spec's tree order is unshipped)
+    // - keeping only DOCUMENT-TREE members, never a shadow tree's navigables
+    // (Codex row 81 Q8). TODO(row 81): take this list from the helper row
+    // 81's Window.call_item uses once it is on main; until then, membership
+    // is dom.navigables.childNavigablesOf (document-tree, shadow-excluded)
+    // and the order the raw children's.
     if (result == null) {
-        const document = (interfaces.Window.get_document(instance) catch null) orelse return .kNo;
-        var children = @import("dom").navigables.childNavigablesOf(document, std.heap.c_allocator);
-        defer children.deinit(std.heap.c_allocator);
-        if (index < children.items.len) {
-            const child_bc = children.items[index].browsing_context;
+        if (documentTreeChildAt(instance, index)) |child_bc| {
             result = if (child_bc.getActiveWindow()) |window|
                 @ptrCast(@alignCast(window))
             else
@@ -1424,6 +1427,29 @@ pub fn windowIndexedPropertyGetter(
     // If result is null (out of bounds), don't set a return value
     // This lets V8 continue with normal property lookup (returns undefined)
     return .kNo;
+}
+
+/// The `index`-th of `window`'s document-tree child navigables, in the
+/// order its browsing context's children were inserted (see
+/// windowIndexedPropertyGetter): null past their number, or for a Window with
+/// no navigable or associated Document.
+fn documentTreeChildAt(window: *runtime.Instance, index: u32) ?*@import("dom").browser_state.BrowsingContext {
+    const dom = @import("dom");
+    const interfaces = @import("interfaces");
+    const navigable = dom.browser_state.browsingContextOf(window) orelse return null;
+    const document = (interfaces.Window.get_document(window) catch null) orelse return null;
+    var members = dom.navigables.childNavigablesOf(document, std.heap.c_allocator);
+    defer members.deinit(std.heap.c_allocator);
+    var seen: u32 = 0;
+    for (navigable.children.items) |child| {
+        const member = for (members.items) |m| {
+            if (m.browsing_context == child) break true;
+        } else false;
+        if (!member) continue;
+        if (seen == index) return child;
+        seen += 1;
+    }
+    return null;
 }
 
 /// Indexed property query for Window global objects.
