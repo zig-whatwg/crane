@@ -1182,6 +1182,32 @@ pub const Registry = struct {
                     return null;
                 }
             }
+            // The registration takes the job's update via cache mode now,
+            // before Update - so Update's fetch (its fetch hook's step 2) and
+            // the new worker's imports use it - and keeps it if the job
+            // rejects. The spec sets it only once the job succeeds (Update
+            // step 9.1, Install step 3: w3c/ServiceWorker PR 1411, merged
+            // 2019-06-03, with wpt PR 17131's subtest "updateViaCache is not
+            // updated if register() rejects"), but no engine ever shipped
+            // that: Chromium ServiceWorkerRegisterJob::
+            // ContinueWithRegistration calls SetUpdateViaCache before
+            // UpdateAndContinue (commented as the older step "6.1 Invoke Set
+            // Registration ... with job's update via cache mode") and never
+            // restores it; WebKit SWServerJobQueue::runRegisterJob sets it
+            // before runUpdateJob ("This is not specified yet",
+            // w3c/ServiceWorker#1189); Gecko ServiceWorkerRegisterJob::
+            // AsyncExecute calls registration->SetOptions(GetUpdateViaCache(),
+            // mType) before its early exit (#1189, 2017). PR 1411's own
+            // author opened w3c/ServiceWorker#1414 the same day, proposing
+            // that a changed mode is a setting applied at once; it is open,
+            // and its 2026-07-17 triage kept it open leaning that way. No
+            // implementation bug exists in any tracker. wpt.fyi 23b0b89b1a
+            // (Chrome 155, Firefox 158) and 0f26972422 (Safari 27):
+            // registration-updateviacache.https.html 24/25 in each - the ten
+            // "-then-" subtests pass, the rejects subtest fails. Golden rule
+            // 2, (A*) contested (integrator, 2026-10-19): the browsers, until
+            // #1414 closes.
+            self.setUpdateViaCache(registration, job.update_via_cache);
         } else {
             // 6. Else: Set Registration.
             _ = try self.setRegistration(job.storage_key, job.scope_url, job.update_via_cache);

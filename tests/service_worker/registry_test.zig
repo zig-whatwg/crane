@@ -304,9 +304,10 @@ test "a job that changes a registration's update via cache mode tells every real
     defer testing.allocator.free(expected_none);
 
     // Register again with the same script and "none": Register step 5 does
-    // not match (another mode), Update step 9 (unchanged bytes) sets the
-    // registration's mode - every realm of the origin hears it, then the
-    // job's promise resolves.
+    // not match (another mode) and sets the registration's mode before
+    // Update, as the browsers do (registry.zig register says why) - every
+    // realm of the origin hears it, then the unchanged bytes resolve the
+    // job's promise.
     const again = try registry.createJob(.{
         .job_type = .register,
         .storage_key = "https://example.com",
@@ -318,12 +319,13 @@ test "a job that changes a registration's update via cache mode tells every real
     });
     try registry.scheduleJob(again);
     var unchanged = (try recorder.runQueuedJobs(&registry)).?;
-    try answerFetch(&registry, &unchanged, "x", false);
     const page_heard = try std.fmt.allocPrint(testing.allocator, "{d}: {s}", .{ page.id, expected_none });
     defer testing.allocator.free(page_heard);
     const frame_heard = try std.fmt.allocPrint(testing.allocator, "{d}: {s}", .{ frame.id, expected_none });
     defer testing.allocator.free(frame_heard);
-    try recorder.expectLog(&.{ page_heard, frame_heard, "1: resolve registration https://example.com/" });
+    try recorder.expectLog(&.{ page_heard, frame_heard });
+    try answerFetch(&registry, &unchanged, "x", false);
+    try recorder.expectLog(&.{"1: resolve registration https://example.com/"});
 
     // The same mode again changes nothing, and nothing is told.
     try registry.scheduleJob(try registry.createJob(.{
@@ -360,6 +362,50 @@ test "a job that changes a registration's update via cache mode tells every real
     try testing.expect(std.mem.indexOf(u8, recorder.log.items[2], "installing = ") != null);
     for (recorder.log.items) |line| testing.allocator.free(line);
     recorder.log.clearRetainingCapacity();
+}
+
+test "a register() that changes only the update via cache mode fetches with the new mode, and keeps it when it rejects" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 20);
+    defer registry.deinit();
+    const page = try addWindow(&registry, "https://example.com/page.html");
+    try registerJob(&registry, page, "https://example.com/sw.js", "https://example.com/", 1);
+    var plan = (try recorder.runQueuedJobs(&registry)).?;
+    try answerFetch(&registry, &plan, "x", true);
+    try registry.workerEvaluated(recorder.started.items[0], true, true);
+    try registry.lifecycleEventDone(recorder.lifecycle.items[0].op, false);
+    try registry.lifecycleEventDone(recorder.lifecycle.items[1].op, false);
+    for (recorder.log.items) |line| testing.allocator.free(line);
+    recorder.log.clearRetainingCapacity();
+    const registration = registry.getRegistration("https://example.com", "https://example.com/").?;
+    try testing.expectEqual(reg.UpdateViaCache.imports, registration.update_via_cache);
+
+    // The same script with "all": the registration takes "all" before
+    // Update's fetch, whose request then may use the HTTP cache - what the
+    // WPT's "-then-all" subtests expect of all three browsers.
+    try registry.scheduleJob(try registry.createJob(.{
+        .job_type = .register,
+        .storage_key = "https://example.com",
+        .scope_url = "https://example.com/",
+        .script_url = "https://example.com/sw.js",
+        .update_via_cache = .all,
+        .client = .{ .environment = page.id, .promise = 2 },
+        .referrer = page.creation_url,
+    }));
+    var cached = (try recorder.runQueuedJobs(&registry)).?;
+    defer cached.deinit(testing.allocator);
+    try testing.expectEqual(reg.UpdateViaCache.all, registration.update_via_cache);
+    try testing.expect(!cached.bypass_http_cache);
+    // The fetch fails: register() rejects, and the mode stays "all"
+    // (Chrome, Firefox and Safari all fail "updateViaCache is not updated if
+    // register() rejects").
+    var failed: reg.FetchOutcome = .{ .failure = .network };
+    try registry.updateFetched(cached.job, &failed);
+    try testing.expectEqual(reg.UpdateViaCache.all, registration.update_via_cache);
+    const told = try std.fmt.allocPrint(testing.allocator, "{d}: registration {d} update via cache all", .{ page.id, registration.id });
+    defer testing.allocator.free(told);
+    try recorder.expectLog(&.{ told, "1: reject type_error" });
 }
 
 test "a script that cannot be fetched rejects with a TypeError and leaves no registration" {
