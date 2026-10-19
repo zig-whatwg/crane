@@ -525,6 +525,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Share HTTP date parsing with source metadata](spec-compliance-share-http-date-parsing-with-source-metadata.md) - Reuse the protocol parser, test existing callers and check narrower timestamp conversions.
 
 ### Codegen
+- [A named special operation on a [Global] interface is a global function](codegen-a-named-special-operation-on-a-global-is-a-global-function.md) - A supplementary IDL member must not add a script-visible name the browsers lack - on a [Global] interface, a named special operation is a global function that shadows named access.
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
 
 - [A generated default runs a src/dom algorithm, not an impls helper](codegen-a-generated-default-runs-a-src-dom-algorithm-not-an.md) - A generated default is a spec algorithm the generated layer calls: put it in src/dom, decide what the IDL fixes at compile time, and hook only what needs an impl's own state.
@@ -566,6 +567,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A generated import can rest on a typedef an upstream IDL file happens to declare](codegen-a-generated-import-can-rest-on-a-typedef-an-upstream-idl-file-happens-to-declare.md) - When a generated file relies on something being generated, codegen must generate it itself; find out by deleting an upstream file in a test fixture, not by waiting for upstream to delete it.
 
 ### Testing
+- [A WPT file can depend on one engine's loading shortcut](testing-a-wpt-file-can-depend-on-one-engines-loading-shortcut.md) - When two browsers fail an assertion with your message, find out why they fail before you change the mechanism the test is named after - the test may encode one engine's shortcut.
 - [A unit test's Window has no associated Document](testing-a-unit-tests-window-has-no-associated-document.md) - Before a spec check reads "the Window's associated Document", decide what it does with a Window that has none - every unit test's - or it turns into a silent no-op.
 - [A hook in a function nothing calls has never compiled](testing-a-hook-in-a-function-nothing-calls-has-never-compiled.md) - A green build says nothing about a function nobody calls: find a caller, or a test that calls it, before you count a change in it as done.
 - [Measure that the blocked thing runs before building what blocks it](testing-measure-that-the-blocked-thing-runs-before-building-the-block.md) - Measure that the thing a mechanism blocks actually runs before you build the block - otherwise the work moves nothing, and a partial version can turn passing files into timeouts.
@@ -771,6 +773,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Measure a hot struct against allocator size classes](debugging-a-hot-struct-against-allocator-size-classes.md) - Compare the compiled request with its allocation bucket; a 16-byte field can cost 2 KiB.
 
 ### Workflow
+- [Measure the three browsers with a probe page that reports home](workflow-measure-the-three-browsers-with-a-probe-page-that-reports-home.md) - For a value or a phase wpt.fyi cannot show, measure all three browsers with one probe page that reports to a local server - Firefox through `open -n -a`, Safari on chat - and cite the versions and the JSON.
 - [wpt.fyi's search answers 0/0 for browsers it has no aligned run of - read the runs' raw reports](workflow-wpt-fyi-search-hides-subtests-read-the-runs-raw-report.md) - For a browser-behaviour ruling, read the aligned stable runs' raw report.json - subtest status and message per browser - never the search endpoint's file counts.
 - [leaks --atExit sees only the process it launched - run the WPT runner without --parallel](workflow-leaks-at-exit-sees-only-the-process-it-launched.md) - A leak count of zero means nothing until the same method has found a leak: run a positive control, and make sure the inspected process is the one that ran the code.
 - [Zig optimizes a compilation at its root module's level; a module's own mode is its semantics](workflow-zig-optimizes-a-compilation-at-its-root-module-s-level.md) - The root module's mode is the optimizer; every other module's mode is its semantics. To speed up a binary without losing a module's Debug-only checks, raise the root and leave the module.
