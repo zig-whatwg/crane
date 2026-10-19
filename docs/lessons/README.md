@@ -516,6 +516,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Freeze base URLs at mutation time](spec-compliance-freeze-base-urls-at-mutation-time.md) - Store the state the algorithm requires; pin mutation counts without production instrumentation.
 - [Radio Tab Order Is Not General Focusability](spec-compliance-radio-tab-order-is-not-general-focusability.md) - Keep Tab eligibility separate from general focusability and focus designation.
 - [A deferred pipe write is part of shutdown](spec-compliance-a-deferred-pipe-write-is-part-of-shutdown.md) - Include queued chunks in pipe shutdown and realm-drop cleanup.
+- [ICU word boundaries include tailoring](spec-compliance-icu-word-boundaries-include-tailoring.md) - Browser word movement needs the actual ICU rules, not untailored UAX29 assumptions.
+- [Selected text keeps its rendering context](spec-compliance-selected-text-keeps-its-rendering-context.md) - Preserve surrounding whitespace/casing context and map source offsets through transformation.
 
 ### Codegen
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
@@ -759,6 +761,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Console Label Insertion Must Roll Back on OOM](debugging-console-label-insertion-must-roll-back-on-oom.md) - Failed owned-key allocation must leave the map without the new borrowed entry.
 - [Worker report tests can fail before reporting](debugging-worker-report-tests-can-fail-before-reporting.md) - Trace harness prerequisites to the request producer; supplying a missing input makes inert options observable.
 - [A WPT that waits for a frame's message after its load event may have missed it](debugging-a-wpt-that-waits-for-a-message-after-load-may-have-missed-it.md) - A hang waiting for a frame's message is often an ordering bug, not a missing message: record when it arrived relative to the load, and buffer it to find what else fails.
+- [An aggregate assignment can overwrite its input](debugging-aggregate-assignment-can-overwrite-its-input.md) - Save dependent old fields before assigning an anonymous Zig aggregate.
 
 ### Workflow
 - [wpt.fyi's search answers 0/0 for browsers it has no aligned run of - read the runs' raw reports](workflow-wpt-fyi-search-hides-subtests-read-the-runs-raw-report.md) - For a browser-behaviour ruling, read the aligned stable runs' raw report.json - subtest status and message per browser - never the search endpoint's file counts.
