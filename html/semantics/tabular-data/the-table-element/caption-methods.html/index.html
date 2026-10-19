@@ -26,35 +26,13 @@
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-4cc82bc745</code>, <span class="nowrap">19 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/4cc82bc745"><code>4cc82bc745</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-cf46e3da6c</code>, <span class="nowrap">19 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/cf46e3da6c"><code>cf46e3da6c</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/semantics/tabular-data/the-table-element/caption-methods.html"><code>html/<wbr>semantics/<wbr>tabular-<wbr>data/<wbr>the-<wbr>table-<wbr>element/<wbr>caption-<wbr>methods.<wbr>html</code></a></dd></div>
 </dl>
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
-<div class="run">
-<ol class="subtests">
-<li class="sub s-pass" id="s-fd14d79f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">createCaption method creates new caption if existing caption is not in html namespace</span></div><a class="self" href="#s-fd14d79f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-e85e5b2e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">createCaption method returns the first caption element child of the table</span></div><a class="self" href="#s-e85e5b2e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-4ab9b9ca"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">createCaption method creates a new caption and inserts it as the first node of the table element</span></div><a class="self" href="#s-4ab9b9ca" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-5ce2fe8c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">createCaption will not create new caption if one exists</span></div><a class="self" href="#s-5ce2fe8c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-74401902"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">createCaption will not copy table&#39;s prefix</span></div><a class="self" href="#s-74401902" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-fe2bd06f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">deleteCaption method removes the first caption element child of the table element</span></div><a class="self" href="#s-fe2bd06f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-bba22bfb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">deleteCaption method not remove caption that is not in html namespace</span></div><a class="self" href="#s-bba22bfb" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-de57f294"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Setting caption rethrows exception</span></div><a class="self" href="#s-de57f294" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-94a63f22"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Assigning a caption to table.caption</span></div><a class="self" href="#s-94a63f22" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-0fbedf24"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Assigning null to table.caption</span></div><a class="self" href="#s-0fbedf24" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-35b876ac"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Assigning a non-caption to table.caption</span></div><a class="self" href="#s-35b876ac" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-9e8f2802"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Assigning a foreign caption to table.caption</span></div><a class="self" href="#s-9e8f2802" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-84ac093c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Set table.caption when the table doesn&#39;t already have a caption</span></div><a class="self" href="#s-84ac093c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-dbf648e2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Set table.caption when the table has a caption child but with other siblings before it</span></div><a class="self" href="#s-dbf648e2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-3b8ab0b3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Set table.caption when the table has a caption descendant</span></div><a class="self" href="#s-3b8ab0b3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-2e7d269c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Set table.caption when the table has two caption children</span></div><a class="self" href="#s-2e7d269c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-cdf6f226"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Assigning a caption has a different owner document to table.caption</span></div><a class="self" href="#s-cdf6f226" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-e34fa8b3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Assigning the caption already in the table to table.caption</span></div><a class="self" href="#s-e34fa8b3" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-</div>
+<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 18 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -26,61 +26,13 @@
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-4cc82bc745</code>, <span class="nowrap">19 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/4cc82bc745"><code>4cc82bc745</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-cf46e3da6c</code>, <span class="nowrap">19 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/cf46e3da6c"><code>cf46e3da6c</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-locks/acquire.https.any.js"><code>web-<wbr>locks/<wbr>acquire.<wbr>https.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
-<div class="run">
-<h3 class="run-head"><code>/web-locks/acquire.https.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>11</b> / 11</span></h3>
-<ol class="subtests">
-<li class="sub s-pass" id="s-4bdc783b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">navigator.locks.request requires a name and a callback</span></div><a class="self" href="#s-4bdc783b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-993fdd07"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">mode must be &quot;shared&quot; or &quot;exclusive&quot;</span></div><a class="self" href="#s-993fdd07" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-c7b1c7b7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The &#39;steal&#39; and &#39;ifAvailable&#39; options are mutually exclusive</span></div><a class="self" href="#s-c7b1c7b7" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-adda994c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The &#39;steal&#39; option must be used with exclusive locks</span></div><a class="self" href="#s-adda994c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-5ce51b18"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The &#39;signal&#39; and &#39;steal&#39; options are mutually exclusive</span></div><a class="self" href="#s-5ce51b18" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-a8b02993"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The &#39;signal&#39; and &#39;ifAvailable&#39; options are mutually exclusive</span></div><a class="self" href="#s-a8b02993" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-5ab1a87b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">callback must be a function</span></div><a class="self" href="#s-5ab1a87b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-5ffad206"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">navigator.locks.request&#39;s returned promise resolves after lock is released</span></div><a class="self" href="#s-5ffad206" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-866adbe6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Returned Promise rejects if callback throws synchronously</span></div><a class="self" href="#s-866adbe6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-bfae7917"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Returned Promise rejects if callback throws asynchronously</span></div><a class="self" href="#s-bfae7917" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-5a0ea51c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">If callback throws a thenable, its then() should not be invoked</span></div><a class="self" href="#s-5a0ea51c" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-</div>
-<div class="run">
-<h3 class="run-head"><code>/web-locks/acquire.https.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>11</b> / 11</span></h3>
-<ol class="subtests">
-<li class="sub s-pass" id="s-c22bc9b4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">navigator.locks.request requires a name and a callback</span></div><a class="self" href="#s-c22bc9b4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-966fccec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">mode must be &quot;shared&quot; or &quot;exclusive&quot;</span></div><a class="self" href="#s-966fccec" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-c8af6419"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The &#39;steal&#39; and &#39;ifAvailable&#39; options are mutually exclusive</span></div><a class="self" href="#s-c8af6419" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-bce1fc66"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The &#39;steal&#39; option must be used with exclusive locks</span></div><a class="self" href="#s-bce1fc66" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-af8c02e4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The &#39;signal&#39; and &#39;steal&#39; options are mutually exclusive</span></div><a class="self" href="#s-af8c02e4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-01cfaa43"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The &#39;signal&#39; and &#39;ifAvailable&#39; options are mutually exclusive</span></div><a class="self" href="#s-01cfaa43" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-4e8d293c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">callback must be a function</span></div><a class="self" href="#s-4e8d293c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-d64b97ee"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">navigator.locks.request&#39;s returned promise resolves after lock is released</span></div><a class="self" href="#s-d64b97ee" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-045a14a2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Returned Promise rejects if callback throws synchronously</span></div><a class="self" href="#s-045a14a2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-abef3194"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Returned Promise rejects if callback throws asynchronously</span></div><a class="self" href="#s-abef3194" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-a5f14785"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">If callback throws a thenable, its then() should not be invoked</span></div><a class="self" href="#s-a5f14785" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-</div>
-<div class="run">
-<h3 class="run-head"><code>/web-locks/acquire.https.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>11</b> / 11</span></h3>
-<ol class="subtests">
-<li class="sub s-pass" id="s-f7234d3c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">navigator.locks.request requires a name and a callback</span></div><a class="self" href="#s-f7234d3c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-52f6e8e4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">mode must be &quot;shared&quot; or &quot;exclusive&quot;</span></div><a class="self" href="#s-52f6e8e4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-a866407f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The &#39;steal&#39; and &#39;ifAvailable&#39; options are mutually exclusive</span></div><a class="self" href="#s-a866407f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-73cfb0c5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The &#39;steal&#39; option must be used with exclusive locks</span></div><a class="self" href="#s-73cfb0c5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-fcb7ddaf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The &#39;signal&#39; and &#39;steal&#39; options are mutually exclusive</span></div><a class="self" href="#s-fcb7ddaf" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-e406e4e3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The &#39;signal&#39; and &#39;ifAvailable&#39; options are mutually exclusive</span></div><a class="self" href="#s-e406e4e3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-816e6857"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">callback must be a function</span></div><a class="self" href="#s-816e6857" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-3f5d1e35"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">navigator.locks.request&#39;s returned promise resolves after lock is released</span></div><a class="self" href="#s-3f5d1e35" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-bb2364f4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Returned Promise rejects if callback throws synchronously</span></div><a class="self" href="#s-bb2364f4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-30107bf3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Returned Promise rejects if callback throws asynchronously</span></div><a class="self" href="#s-30107bf3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-2c607f30"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">If callback throws a thenable, its then() should not be invoked</span></div><a class="self" href="#s-2c607f30" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-</div>
+<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 33 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>
