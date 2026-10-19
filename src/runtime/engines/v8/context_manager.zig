@@ -1396,11 +1396,11 @@ pub fn windowIndexedPropertyGetter(
     // html/browsers/the-window-object/accessing-other-browsing-contexts/
     // indexed-browsing-contexts-01.html; the spec's tree order is unshipped)
     // - keeping only DOCUMENT-TREE members, never a shadow tree's navigables
-    // (Codex row 81 Q8). The same list Window's length and item walk (row
-    // 81's documentTreeChildNavigables, private to the Window impl, which no
-    // other file may reach): membership from dom.navigables.childNavigablesOf
-    // (document-tree, shadow-excluded), order the raw children's. TODO: one
-    // shared dom.navigables helper for both, if it moves out of the impl.
+    // (Codex row 81 Q8) - the one list Window's length and item walk too
+    // (dom.navigables.documentTreeChildNavigables). Window's item answers
+    // null for such a child as well as past the end: making the child's
+    // Window is the container's, which only the engine's access triggers
+    // here (HTMLIFrameElement's contentWindow makes it lazily too).
     if (result == null) {
         if (documentTreeChildAt(instance, index)) |child_bc| {
             result = if (child_bc.getActiveWindow()) |window|
@@ -1431,26 +1431,18 @@ pub fn windowIndexedPropertyGetter(
 }
 
 /// The `index`-th of `window`'s document-tree child navigables, in the
-/// order its browsing context's children were inserted (see
-/// windowIndexedPropertyGetter): null past their number, or for a Window with
-/// no navigable or associated Document.
+/// order Window's length and item count them (dom.navigables
+/// .documentTreeChildNavigables, the one list both walk): null past their
+/// number, or for a Window with no navigable or associated Document.
 fn documentTreeChildAt(window: *runtime.Instance, index: u32) ?*@import("dom").browser_state.BrowsingContext {
     const dom = @import("dom");
     const interfaces = @import("interfaces");
     const navigable = dom.browser_state.browsingContextOf(window) orelse return null;
     const document = (interfaces.Window.get_document(window) catch null) orelse return null;
-    var members = dom.navigables.childNavigablesOf(document, std.heap.c_allocator);
-    defer members.deinit(std.heap.c_allocator);
-    var seen: u32 = 0;
-    for (navigable.children.items) |child| {
-        const member = for (members.items) |m| {
-            if (m.browsing_context == child) break true;
-        } else false;
-        if (!member) continue;
-        if (seen == index) return child;
-        seen += 1;
-    }
-    return null;
+    var children = dom.navigables.documentTreeChildNavigables(navigable, document, std.heap.c_allocator);
+    defer children.deinit(std.heap.c_allocator);
+    if (index >= children.items.len) return null;
+    return children.items[index].browsing_context;
 }
 
 /// Indexed property query for Window global objects.

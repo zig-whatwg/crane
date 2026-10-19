@@ -446,6 +446,37 @@ pub fn childNavigablesOf(document: *runtime.Instance, allocator: std.mem.Allocat
     return out;
 }
 
+/// A Window's document-tree child navigables as window.length and window[i]
+/// count them: `document`'s (childNavigablesOf - membership, shadow trees
+/// excluded), in the order `navigable`'s children were inserted - `navigable`
+/// the Window's navigable, `document` its associated Document. Shared by
+/// Window's length and indexed getter and the engine adapter's indexed
+/// interceptor, which makes a child Window script has not asked for yet.
+///
+/// Golden rule 2 (Codex row 81 Q15, 2026-10-19): step 3's tree-order wording
+/// arrived with the navigables cleanup (whatwg/html#1336, 2022), with no
+/// browser adoption or demonstrated lag. WPT indexed-browsing-contexts-01
+/// still asserts "The child browsing contexts must be sorted in the order
+/// that their containers were inserted into the Document." Aligned stable
+/// Chrome 6244643405824000, Firefox 6213611998674944 and Safari
+/// 6209999629189120 all pass it. Re-check if the spec or test changes. Like
+/// WebKit FrameTree::scopedChild, filter membership while preserving the
+/// parent's frame-list order. Reorder in place; no new holder or list.
+pub fn documentTreeChildNavigables(navigable: *BrowsingContext, document: *runtime.Instance, allocator: std.mem.Allocator) std.ArrayListUnmanaged(ChildNavigable) {
+    const children = childNavigablesOf(document, allocator);
+    var next: usize = 0;
+    for (navigable.children.items) |child| {
+        if (next == children.items.len) break;
+        for (children.items[next..], next..) |entry, index| {
+            if (entry.browsing_context != child) continue;
+            std.mem.swap(ChildNavigable, &children.items[next], &children.items[index]);
+            next += 1;
+            break;
+        }
+    }
+    return children;
+}
+
 fn collectContainers(navigable: *BrowsingContext, node: *NodeBase, out: *std.ArrayListUnmanaged(ChildNavigable), allocator: std.mem.Allocator, depth: usize) void {
     if (depth > 512) return;
     for (node.child_nodes.items()) |child| {
