@@ -531,6 +531,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Raw event handlers own their source](spec-compliance-raw-event-handlers-own-their-source.md) - Retain the stored source; the current attribute can differ after CSP rejection or body replacement.
 - [Child removal does not prepare a script](spec-compliance-child-removal-does-not-prepare-a-script.md) - Carry the mutation reason so removal differs from insertion without changing style updates.
 - [A failed stylesheet can still have a sheet](spec-compliance-a-failed-stylesheet-can-still-have-a-sheet.md) - Rejecting CSS bytes does not necessarily remove the CSSOM sheet.
+- [Partitioning a store needs its exemptions in the same change](spec-compliance-partitioning-a-store-needs-its-exemptions-in-the-same-change.md) - A partition check that starts failing correct pages was usually passing everything before: build the spec's exemptions with the key, and A/B the files that already passed.
 
 ### Codegen
 - [A named special operation on a [Global] interface is a global function](codegen-a-named-special-operation-on-a-global-is-a-global-function.md) - A supplementary IDL member must not add a script-visible name the browsers lack - on a [Global] interface, a named special operation is a global function that shadows named access.
