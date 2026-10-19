@@ -813,3 +813,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [A queued remote job builds the mirror as its slot finds it](workflow-a-queued-remote-job-builds-the-mirror-as-its-slot-finds-it.md) - Before its slot comes, a queued job's mirror is still yours to update - sync it instead of resubmitting; after, never touch it.
 - [A Waiting Sweep Launcher Keeps Its Build Slot](workflow-a-waiting-sweep-launcher-keeps-its-build-slot.md) - Runtime runner tokens do not release the build slot of a waiting launcher.
 - [Native Build Output Needs a Pipe Too](workflow-native-build-output-needs-a-pipe-too.md) - Preserve positional-writer output through a pipe; quote retained evidence only.
+- [Download one browser's individual WPT report](workflow-wpt-fyi-individual-test-reports.md) - Compare individual statuses and messages from the aligned run's results directory without downloading its whole report.
