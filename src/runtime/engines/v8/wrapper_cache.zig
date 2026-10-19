@@ -143,6 +143,11 @@ const CacheEntry = struct {
     /// but its handle.
     stale: bool = false,
 
+    /// Its second pass ran while its agent's teardowns were held
+    /// (engine.deferTeardowns): it waits on the pending list, and on the
+    /// agent's TeardownHolds.deferred, for the last resume to tear it down.
+    teardown_deferred: bool = false,
+
     /// The cache's list of collected entries awaiting their finalizer.
     pending_prev: ?*CacheEntry = null,
     pending_next: ?*CacheEntry = null,
@@ -779,13 +784,138 @@ fn unlinkCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
 /// teardown runs here - never while the engine is collecting.
 fn finalizeCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
     const entry: *CacheEntry = @ptrCast(@alignCast(data orelse return));
+    // A walk holds the agent's teardowns (engine.deferTeardowns): this one
+    // waits for the last resume, on the pending list where it already is.
+    // V8 is done with it - the first pass reset the handle, and the C++ side
+    // forgot the finalizer before calling here - so the later finalizeEntry
+    // only deletes the Global, as the cache's end does for a pending entry.
+    if (!entry.is_orphaned) {
+        if (entry.cache.teardownHolds()) |holds| {
+            if (holds.count != 0 and holds.wait(entry)) return;
+        }
+    }
     finalizeEntry(entry);
+}
+
+/// An agent's holds on the teardowns of its collected platform objects
+/// (engine.deferTeardowns / resumeTeardowns), kept on its agent record
+/// (protocol_agents.teardownHoldsOf). The collections a hold spans still run
+/// and still unlink what they collect; `finalizeCollected` only flags the
+/// entry and lists it here, and the resume that ends the last hold runs
+/// `finalizeEntry` for each. Read and written on the agent's thread only.
+pub const TeardownHolds = struct {
+    /// Holds in progress, nested: teardowns wait while any remains - and,
+    /// in Debug builds, the adapter refuses to run script
+    /// (protocol.forbidScriptInHold).
+    count: u32 = 0,
+    /// The entries waiting, each still on its cache's pending list and
+    /// flagged `teardown_deferred`. OWNED storage (std.heap.c_allocator);
+    /// the entries are their caches'.
+    deferred: std.ArrayListUnmanaged(*CacheEntry) = .empty,
+
+    /// List `entry` to wait, and flag it; false - tear it down now - when
+    /// there is no memory to list it.
+    fn wait(self: *TeardownHolds, entry: *CacheEntry) bool {
+        self.deferred.append(std.heap.c_allocator, entry) catch return false;
+        entry.teardown_deferred = true;
+        return true;
+    }
+
+    /// `entry` is torn down or dropped some other way while it waits - its
+    /// cache's end: it leaves the list.
+    fn forget(self: *TeardownHolds, entry: *CacheEntry) void {
+        entry.teardown_deferred = false;
+        const index = std.mem.indexOfScalar(*CacheEntry, self.deferred.items, entry) orelse return;
+        _ = self.deferred.swapRemove(index);
+    }
+
+    /// Entries waiting for the last resume (tests, diagnostics).
+    pub fn deferredCount(self: *const TeardownHolds) usize {
+        return self.deferred.items.len;
+    }
+
+    pub fn deinit(self: *TeardownHolds) void {
+        self.deferred.deinit(std.heap.c_allocator);
+        self.deferred = .empty;
+        self.count = 0;
+    }
+
+    /// Whether a hold is in progress: teardowns wait, and in Debug builds
+    /// the adapter's script-running operations refuse (tests).
+    pub fn forbidsScript(self: *const TeardownHolds) bool {
+        return self.count != 0;
+    }
+
+    /// The agent's record is going (protocol_agents.forgetAgent): no cache
+    /// of this thread may read these holds again. Every realm of the agent
+    /// ended before it, so none should still point here; one that does
+    /// holds nothing from now on.
+    pub fn forgetCaches(self: *TeardownHolds) void {
+        for (live_caches.items) |cache| {
+            if (cache.holds == self) cache.holds = null;
+        }
+    }
+};
+
+/// The holds of `realm`'s agent, through the realm's wrapper cache, which
+/// keeps the answer: null for a realm with no engine behind it, or of an
+/// isolate createAgent did not make.
+fn holdsOfRealm(realm: runtime.Context) ?*TeardownHolds {
+    const storage = realm.getV8WrapperCacheStorage() orelse return null;
+    const cache: *WrapperCache = @ptrCast(@alignCast(storage));
+    const agent = realm.agent orelse return null;
+    return cache.teardownHoldsOf(@ptrCast(@alignCast(agent)));
+}
+
+/// engine.deferTeardowns: one more hold on `realm`'s agent.
+pub fn deferTeardowns(realm: runtime.Context) void {
+    const holds = holdsOfRealm(realm) orelse return;
+    holds.count += 1;
+}
+
+/// Whether `realm`'s agent holds its teardowns now: the Debug check of the
+/// adapter's script-running operations (protocol.forbidScriptInHold).
+pub fn teardownsHeldInRealm(realm: runtime.Context) bool {
+    const holds = holdsOfRealm(realm) orelse return false;
+    return holds.count != 0;
+}
+
+/// engine.resumeTeardowns: end one hold; the last runs what waited.
+pub fn resumeTeardowns(realm: runtime.Context) void {
+    const holds = holdsOfRealm(realm) orelse return;
+    if (holds.count == 0) {
+        if (builtin.mode == .Debug) log.err("resumeTeardowns with no deferTeardowns left to end: a walk released a hold it did not take", .{});
+        return;
+    }
+    holds.count -= 1;
+    if (holds.count != 0) return;
+    runDeferredTeardowns(holds);
+}
+
+/// The last hold has ended: tear down every entry it kept waiting. One at a
+/// time, taking the next from the list afresh each time and never holding a
+/// slice of it or of a pending list across `finalizeEntry`: a teardown may
+/// allocate, start a collection, and that collection's own teardowns -
+/// unheld now - edit the pending lists at once; a teardown that walks a
+/// document's live ranges takes and ends a hold of its own, whose resume
+/// runs this loop too.
+fn runDeferredTeardowns(holds: *TeardownHolds) void {
+    while (holds.count == 0) {
+        const entry = holds.deferred.pop() orelse return;
+        entry.teardown_deferred = false;
+        finalizeEntry(entry);
+    }
 }
 
 /// The teardown of a collected entry: free its instance unless something
 /// still owns it, then its handle and the entry. Run by the second pass, or
 /// by the cache's end for one whose second pass has not come yet.
 fn finalizeEntry(entry: *CacheEntry) void {
+    // Waiting for a hold's end (engine.deferTeardowns) and torn down another
+    // way first - its cache's end: it leaves the agent's list.
+    if (entry.teardown_deferred) {
+        if (entry.cache.holds) |holds| holds.forget(entry) else entry.teardown_deferred = false;
+    }
     // An orphaned entry means the cache was destroyed (via
     // deinitWithoutCallbacks): the instance pointer may have been reused for
     // a new object - just clean up the entry itself. The cache allocator
@@ -1088,6 +1218,13 @@ pub const WrapperCache = struct {
     deferred: ?*DeferredTeardown = null,
     deferred_looked_up: bool = false,
 
+    /// The agent's teardown holds (engine.deferTeardowns), looked up by this
+    /// cache's first second pass (`teardownHolds`); null before, or for an
+    /// isolate createAgent did not make. The agent outlives its realms'
+    /// caches.
+    holds: ?*TeardownHolds = null,
+    holds_looked_up: bool = false,
+
     const Self = @This();
 
     /// Pending activity kept on an instance script has not seen yet.
@@ -1108,6 +1245,23 @@ pub const WrapperCache = struct {
             self.deferred = @import("protocol_agents.zig").deferredTeardownOf(isolate);
         }
         return self.deferred;
+    }
+
+    /// The holds on this realm's agent's teardowns, from a second pass: the
+    /// isolate collecting is entered, as `deferredQueue` finds it.
+    fn teardownHolds(self: *Self) ?*TeardownHolds {
+        if (self.holds_looked_up) return self.holds;
+        const isolate = v8.v8_Isolate_GetCurrent() orelse return null;
+        return self.teardownHoldsOf(isolate);
+    }
+
+    /// The holds of `isolate`'s agent - this realm's - looked up once.
+    fn teardownHoldsOf(self: *Self, isolate: *v8.Isolate) ?*TeardownHolds {
+        if (!self.holds_looked_up) {
+            self.holds_looked_up = true;
+            self.holds = @import("protocol_agents.zig").teardownHoldsOf(isolate);
+        }
+        return self.holds;
     }
 
     /// This realm is ending: tear down every node it queued, now, before
@@ -1185,6 +1339,9 @@ pub const WrapperCache = struct {
     /// now, its instance with the batch free.
     fn orphanPending(self: *Self) void {
         while (self.pending_head) |entry| {
+            if (entry.teardown_deferred) {
+                if (self.holds) |holds| holds.forget(entry) else entry.teardown_deferred = false;
+            }
             self.unlinkPending(entry);
             disposeEntryWrapper(entry);
             self.allocator.destroy(entry);

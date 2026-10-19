@@ -17,8 +17,10 @@
 //! so no instance is ever torn down from a collection here. When this adapter
 //! wraps platform objects, its JSObjectFinalizeCallback runs inside JSC's
 //! collector ("must not call any JSC API"), so it may only take the instance
-//! off the wrapper map there and queue the teardown for a turn of the host's
-//! event loop - the rule V8's second pass keeps.
+//! off the wrapper map there and queue the teardown for a point where engine
+//! calls are allowed - as V8's second pass does, which runs not only at a
+//! turn of the host's event loop but also in the prologue of the next
+//! collection, inside whichever engine call allocated (engine_protocol 4.12).
 
 const std = @import("std");
 const engine = @import("engine");
@@ -585,6 +587,12 @@ pub fn hasWrapper(_: *Instance) bool {
 pub fn keepPlatformObjectAlive(_: *Instance) void {}
 pub fn releasePlatformObject(_: *Instance) void {}
 pub fn platformObjectDestroyed(_: *Instance) void {}
+/// Nothing is wrapped, so no collection tears anything down: nothing to hold.
+/// With JavaScriptCore linked, the teardowns its JSObjectFinalizeCallback
+/// queues (4.12) wait while a hold lasts and run at the last resume, as V8's
+/// do.
+pub fn deferTeardowns(_: Context) void {}
+pub fn resumeTeardowns(_: Context) void {}
 /// Nothing is wrapped, so nothing is collected: there is no edge to draw.
 /// With JavaScriptCore linked this is the owner relation of a managed
 /// reference (`-[JSVirtualMachine addManagedReference:withOwner:]`, the public

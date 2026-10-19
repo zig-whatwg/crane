@@ -37,6 +37,7 @@ const structured_serialization = @import("structured_serialization.zig");
 const isolate_ownership = @import("isolate_ownership.zig");
 const protocol_agents = @import("protocol_agents.zig");
 const protocol_modules = @import("protocol_modules.zig");
+const builtin = @import("builtin");
 const protocol_realms = @import("protocol_realms.zig");
 const protocol_scripts = @import("protocol_scripts.zig");
 const protocol_webassembly = @import("protocol_webassembly.zig");
@@ -268,19 +269,44 @@ pub fn globalBuiltinFunction(realm: Context, key: []const u8, function_name: []c
 // 4.3 Running script
 // ============================================================================
 
+/// engine.holdTeardowns' rule that a hold never spans script, checked in
+/// Debug builds where this adapter runs script: the operations below that
+/// run a script, a module, a callback, a realm's steps or a microtask
+/// checkpoint. Blink's ScriptForbiddenScope
+/// (third_party/blink/renderer/platform/bindings/script_forbidden_scope.h)
+/// is checked the same way, at Blink's own script entry points
+/// (V8ScriptRunner). V8's v8::Isolate::DisallowJavascriptExecutionScope
+/// cannot serve: it also refuses the builtins V8's API invokes - v8::Set::Add,
+/// which a new wrapper's tree edges use - and a walk legitimately wraps the
+/// node a range moves to (lane rangeuaf).
+fn forbidScriptInHold(realm: Context) void {
+    if (builtin.mode != .Debug) return;
+    if (@import("wrapper_cache.zig").teardownsHeldInRealm(realm)) @panic("script inside a teardown hold (engine.holdTeardowns)");
+}
+
+fn forbidScriptInAgentHold(agent: *Agent) void {
+    if (builtin.mode != .Debug) return;
+    const holds = protocol_agents.teardownHoldsOf(isolateOf(agent)) orelse return;
+    if (holds.count != 0) @panic("script inside a teardown hold (engine.holdTeardowns)");
+}
+
 pub fn runClassicScript(realm: Context, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque, reporter: engine.Reporter) Error!void {
+    forbidScriptInHold(realm);
     return protocol_scripts.runClassicScript(realm, source, url, host_defined, reporter);
 }
 
 pub fn runClassicScriptRethrowingErrors(realm: Context, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque, muted_errors: bool) Error!void {
+    forbidScriptInHold(realm);
     return protocol_scripts.runClassicScriptRethrowingErrors(realm, source, url, host_defined, muted_errors);
 }
 
 pub fn evaluateClassicScript(realm: Context, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque, reporter: engine.Reporter) Error!Owned {
+    forbidScriptInHold(realm);
     return protocol_scripts.evaluateClassicScript(realm, source, url, host_defined, reporter);
 }
 
 pub fn evaluateClassicScriptToString(realm: Context, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque, allocator: Allocator, reporter: engine.Reporter) Error![]u8 {
+    forbidScriptInHold(realm);
     return protocol_scripts.evaluateClassicScriptToString(realm, source, url, host_defined, allocator, reporter);
 }
 
@@ -297,14 +323,17 @@ pub fn cleanUpAfterRunningScript(scope: ScriptScope) void {
 }
 
 pub fn runInRealm(realm: Context, steps: engine.RealmSteps, data: ?*anyopaque) Error!void {
+    forbidScriptInHold(realm);
     return v8_engine.v8RunInRealm(realm, steps, data) catch |err| protocolError(err);
 }
 
 pub fn runTaskInRealm(realm: Context, steps: engine.RealmSteps, data: ?*anyopaque) Error!void {
+    forbidScriptInHold(realm);
     return v8_engine.v8RunTaskInRealm(realm, steps, data) catch |err| protocolError(err);
 }
 
 pub fn performMicrotaskCheckpoint(agent: *Agent) Error!void {
+    forbidScriptInAgentHold(agent);
     protocol_agents.performMicrotaskCheckpoint(agent);
 }
 
@@ -325,7 +354,10 @@ pub const parseJSONModule = protocol_modules.parseJSONModule;
 pub const createDefaultExportSyntheticModule = protocol_modules.createDefaultExportSyntheticModule;
 pub const moduleRequests = protocol_modules.moduleRequests;
 pub const linkModule = protocol_modules.linkModule;
-pub const evaluateModule = protocol_modules.evaluateModule;
+pub fn evaluateModule(realm: Context, record: *engine.ModuleRecord) Error!engine.ModuleEvaluation {
+    forbidScriptInHold(realm);
+    return protocol_modules.evaluateModule(realm, record);
+}
 pub const finishDynamicImport = protocol_modules.finishDynamicImport;
 pub const releaseModuleRecord = protocol_modules.releaseModuleRecord;
 
@@ -334,9 +366,20 @@ pub const releaseModuleRecord = protocol_modules.releaseModuleRecord;
 // ============================================================================
 
 const protocol_callbacks = @import("protocol_callbacks.zig");
-pub const invokeCallbackFunction = protocol_callbacks.invokeCallbackFunction;
-pub const constructCallbackFunction = protocol_callbacks.constructCallbackFunction;
-pub const callUserObjectOperation = protocol_callbacks.callUserObjectOperation;
+pub fn invokeCallbackFunction(realm: Context, callback: *const engine.CallbackFunction, this_arg: engine.CallbackThis, args: []const JSValue, behavior: engine.ExceptionBehavior) Error!engine.Completion {
+    forbidScriptInHold(realm);
+    return protocol_callbacks.invokeCallbackFunction(realm, callback, this_arg, args, behavior);
+}
+
+pub fn constructCallbackFunction(realm: Context, callback: *const engine.CallbackFunction, args: []const JSValue) Error!engine.Completion {
+    forbidScriptInHold(realm);
+    return protocol_callbacks.constructCallbackFunction(realm, callback, args);
+}
+
+pub fn callUserObjectOperation(realm: Context, callback: *const engine.CallbackInterface, operation: []const u8, this_arg: engine.CallbackThis, args: []const JSValue, behavior: engine.ExceptionBehavior) Error!engine.Completion {
+    forbidScriptInHold(realm);
+    return protocol_callbacks.callUserObjectOperation(realm, callback, operation, this_arg, args, behavior);
+}
 
 /// In `realm`'s agent: a realm that cannot be entered reads nothing.
 pub fn isCallable(realm: Context, value: JSValue) bool {
@@ -860,6 +903,17 @@ pub fn releasePlatformObject(instance: *Instance) void {
 
 pub fn platformObjectDestroyed(instance: *Instance) void {
     context_manager.markInstanceCleanedUp(instance);
+}
+
+/// engine.deferTeardowns: the agent's second passes flag their entries
+/// instead of tearing them down (wrapper_cache.TeardownHolds).
+pub fn deferTeardowns(realm: Context) void {
+    @import("wrapper_cache.zig").deferTeardowns(realm);
+}
+
+/// engine.resumeTeardowns: the last resume runs the flagged teardowns.
+pub fn resumeTeardowns(realm: Context) void {
+    @import("wrapper_cache.zig").resumeTeardowns(realm);
 }
 
 const protocol_tracing = @import("protocol_tracing.zig");

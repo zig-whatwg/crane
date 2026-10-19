@@ -2064,6 +2064,24 @@ fn nodeDocument(node: anytype) ?*runtime.Instance {
     return interfaces.Node.get_ownerDocument(instance) catch null;
 }
 
+/// Hold the teardowns of `document`'s agent for a walk of its live ranges
+/// or NodeIterators (engine.holdTeardowns): a step's engine call can start a
+/// collection, and what it collects is torn down when the walk ends, not
+/// under it - neither a range the walk has not reached nor the one it is
+/// stepping. The cursor (dom.live_range_list) keeps the walk whole when an
+/// entry leaves anyway, as a range that moves to another document does.
+///
+/// A hold must not span script, and these walks run none: their steps set
+/// boundary points and offsets (Range's live-range steps, setStart/setEnd in
+/// the replace-data and normalize steps), redraw traced edges, queue a
+/// selectionchange task without running it (dom.selection.rangeMutated), and
+/// move a NodeIterator's reference - its filter is not called by the
+/// pre-removing steps. No event is dispatched and no microtask checkpoint is
+/// performed inside one.
+fn holdTeardownsFor(document: *runtime.Instance) engine.TeardownHold {
+    return engine.holdTeardowns(document.ctx);
+}
+
 /// Helper: Run live range pre-remove steps
 /// Spec: https://dom.spec.whatwg.org/#concept-node-remove steps 4-7
 ///
@@ -2071,6 +2089,12 @@ fn nodeDocument(node: anytype) ?*runtime.Instance {
 /// dom.range_boundaries steps, and kept current here as steps 4 and 5 move
 /// them: Range's setters change nothing else, so steps 6 and 7 read what the
 /// range now holds.
+///
+/// The ranges are walked through a cursor, never a slice: setting a
+/// boundary redraws the range's edge to its node, an engine call that can
+/// start a collection, and the collection's prologue tears down the ranges
+/// collected before it - each leaving this list mid-walk
+/// (live_range_list.zig; lane rangeuaf).
 fn runLiveRangePreRemoveSteps(node: anytype) void {
     // Get the node's document to access the list of live ranges
     const doc_instance = nodeDocument(node) orelse return;
@@ -2079,14 +2103,19 @@ fn runLiveRangePreRemoveSteps(node: anytype) void {
     const parent = node.parent_node orelse return;
     const index = getChildIndex(node) orelse return;
 
-    // Access the document's internal state to get the ranges list
-    const internal = document_internals.getInternal(doc_instance) orelse return;
-    if (internal.ranges.items.len == 0) return;
+    // The document's live ranges
+    const ranges = document_internals.liveRanges(doc_instance) orelse return;
+    if (ranges.isEmpty()) return;
     const live = range_boundaries.liveRange() orelse return;
     const node_ptr: *const NodeBase = @ptrCast(node);
 
     // Iterate through all live ranges registered with this document
-    for (internal.ranges.items) |range| {
+    const hold = holdTeardownsFor(doc_instance);
+    defer hold.release();
+    var walk: document_internals.LiveObjects.Walk = undefined;
+    ranges.beginWalk(&walk);
+    defer ranges.endWalk(&walk);
+    while (walk.nextEntry()) |range| {
         var points = live.points(range) orelse continue;
 
         // Each boundary node is looked up once - the instance bridge is a
@@ -2160,8 +2189,8 @@ pub fn runLiveRangeSplitSteps(
     offset: u32,
 ) void {
     const doc = (interfaces.Node.get_ownerDocument(node) catch null) orelse return;
-    const internal = document_internals.getInternal(doc) orelse return;
-    if (internal.ranges.items.len == 0) return;
+    const ranges = document_internals.liveRanges(doc) orelse return;
+    if (ranges.isEmpty()) return;
 
     // Index of node in parent, for steps 7.4 and 7.5. Inserting newNode after
     // node does not move node, so this is the same index the spec means.
@@ -2171,7 +2200,14 @@ pub fn runLiveRangeSplitSteps(
     const node_index: u32 = @intCast(node_index_usize);
 
     const live = range_boundaries.liveRange() orelse return;
-    for (internal.ranges.items) |range| {
+    // Through a cursor: 7.2 and 7.3 redraw a range's edges, which can tear
+    // collected ranges down mid-walk (runLiveRangePreRemoveSteps).
+    const hold = holdTeardownsFor(doc);
+    defer hold.release();
+    var walk: document_internals.LiveObjects.Walk = undefined;
+    ranges.beginWalk(&walk);
+    defer ranges.endWalk(&walk);
+    while (walk.nextEntry()) |range| {
         // Read once, and kept current as 7.2 and 7.3 move the points.
         var points = live.points(range) orelse continue;
 
@@ -2240,8 +2276,16 @@ pub fn replaceDataBoundaryOffset(bp_offset: u32, offset: u32, count: u32, data_l
 /// carries the start past the old end, is undone by the setEnd that follows.
 pub fn runLiveRangeReplaceDataSteps(node: *runtime.Instance, offset: u32, count: u32, data_length: u32) void {
     const doc = (interfaces.Node.get_ownerDocument(node) catch null) orelse return;
-    const internal = document_internals.getInternal(doc) orelse return;
-    for (internal.ranges.items) |range| {
+    const ranges = document_internals.liveRanges(doc) orelse return;
+    if (ranges.isEmpty()) return;
+    // Through a cursor: a setter's engine calls can tear collected ranges
+    // down mid-walk (runLiveRangePreRemoveSteps).
+    const hold = holdTeardownsFor(doc);
+    defer hold.release();
+    var walk: document_internals.LiveObjects.Walk = undefined;
+    ranges.beginWalk(&walk);
+    defer ranges.endWalk(&walk);
+    while (walk.nextEntry()) |range| {
         const bp = range_boundaries.of(range) orelse continue;
         if (bp.start_container == node) {
             const moved = replaceDataBoundaryOffset(bp.start_offset, offset, count, data_length);
@@ -2266,8 +2310,8 @@ pub fn runLiveRangeReplaceDataSteps(node: *runtime.Instance, offset: u32, count:
 /// point of the parent, so setStart never collapses the range here.
 pub fn runLiveRangeNormalizeSteps(node: *runtime.Instance, current: *runtime.Instance, length: u32) void {
     const doc = (interfaces.Node.get_ownerDocument(node) catch null) orelse return;
-    const internal = document_internals.getInternal(doc) orelse return;
-    if (internal.ranges.items.len == 0) return;
+    const ranges = document_internals.liveRanges(doc) orelse return;
+    if (ranges.isEmpty()) return;
 
     // currentNode's parent and index, for steps 6.3 and 6.4.
     const parent = interfaces.Node.get_parentNode(current) catch null;
@@ -2278,7 +2322,14 @@ pub fn runLiveRangeNormalizeSteps(node: *runtime.Instance, current: *runtime.Ins
         break :blk i;
     };
 
-    for (internal.ranges.items) |range| {
+    // Through a cursor: setStart and setEnd redraw a range's edges, which
+    // can tear collected ranges down mid-walk (runLiveRangePreRemoveSteps).
+    const hold = holdTeardownsFor(doc);
+    defer hold.release();
+    var walk: document_internals.LiveObjects.Walk = undefined;
+    ranges.beginWalk(&walk);
+    defer ranges.endWalk(&walk);
+    while (walk.nextEntry()) |range| {
         const bp = range_boundaries.of(range) orelse continue;
         // Step 6.1: "For each live range whose start node is currentNode: add
         // length to its start offset and set its start node to node."
@@ -2325,8 +2376,9 @@ fn runNodeIteratorPreRemoveSteps(node: anytype) void {
     // Get the node's document to access the list of NodeIterators
     const doc_instance = nodeDocument(node) orelse return;
 
-    // Access the document's internal state to get the node_iterators list
-    const internal = document_internals.getInternal(doc_instance) orelse return;
+    // The document's NodeIterators
+    const iterators = document_internals.nodeIterators(doc_instance) orelse return;
+    if (iterators.isEmpty()) return;
 
     // Get the node as a runtime.Instance for passing to NodeIterator.preRemoveSteps
     const node_base_ptr: *NodeBase = @ptrCast(node);
@@ -2335,7 +2387,15 @@ fn runNodeIteratorPreRemoveSteps(node: anytype) void {
 
     // For each NodeIterator object iterator whose root's node document is node's node document,
     // run the NodeIterator pre-removing steps given node and iterator.
-    for (internal.node_iterators.items) |iterator| {
+    // Through a cursor: a new reference redraws the iterator's edge to it,
+    // an engine call that can tear collected iterators down mid-walk, each
+    // leaving this list (runLiveRangePreRemoveSteps).
+    const hold = holdTeardownsFor(doc_instance);
+    defer hold.release();
+    var walk: document_internals.LiveObjects.Walk = undefined;
+    iterators.beginWalk(&walk);
+    defer iterators.endWalk(&walk);
+    while (walk.nextEntry()) |iterator| {
         @import("traversal.zig").preRemoveNodeIterator(iterator, node_runtime);
     }
 }
@@ -2353,17 +2413,23 @@ fn updateRangesForInsertionWithCount(doc: anytype, parent: anytype, child_index:
     // Cast document to runtime.Instance
     const doc_instance: *runtime.Instance = @ptrCast(@alignCast(doc));
 
-    // Access the document's internal state to get the ranges list
-    const internal = document_internals.getInternal(doc_instance) orelse return;
+    // The document's live ranges
+    const ranges = document_internals.liveRanges(doc_instance) orelse return;
 
     // Get parent as a pointer for comparison
     const parent_base: *const NodeBase = @ptrCast(parent);
 
-    if (internal.ranges.items.len == 0) return;
+    if (ranges.isEmpty()) return;
     const live = range_boundaries.liveRange() orelse return;
 
-    // For each live range, update offsets if necessary
-    for (internal.ranges.items) |range| {
+    // For each live range, update offsets if necessary - through a cursor,
+    // like every walk of the list (runLiveRangePreRemoveSteps).
+    const hold = holdTeardownsFor(doc_instance);
+    defer hold.release();
+    var walk: document_internals.LiveObjects.Walk = undefined;
+    ranges.beginWalk(&walk);
+    defer ranges.endWalk(&walk);
+    while (walk.nextEntry()) |range| {
         // Get range boundary points (an offset change moves no container),
         // and their nodes - one lookup when the range starts and ends in one
         // node, as in the pre-remove steps.
@@ -2501,14 +2567,19 @@ fn insertIntoChildrenList(node: anytype, parent: anytype, child: anytype) void {
 }
 
 /// After a tree left `old_document`: every live range of `old_document`
-/// moves to its start node's document if that is no longer this one. The
-/// list is copied first; moving a range edits it.
+/// moves to its start node's document if that is no longer this one. Moving
+/// a range removes it from this list, which the walk's cursor allows for
+/// (Blink's DidMoveTreeToNewDocument copies ranges_ for the same reason; a
+/// copy here would also hold ranges a teardown frees mid-walk).
 fn moveLiveRangesAfterAdoption(old_document: *runtime.Instance) void {
-    const internal = document_internals.getInternal(old_document) orelse return;
-    if (internal.ranges.items.len == 0) return;
-    const ranges = internal.allocator.dupe(*runtime.Instance, internal.ranges.items) catch return;
-    defer internal.allocator.free(ranges);
-    for (ranges) |range| {
+    const ranges = document_internals.liveRanges(old_document) orelse return;
+    if (ranges.isEmpty()) return;
+    const hold = holdTeardownsFor(old_document);
+    defer hold.release();
+    var walk: document_internals.LiveObjects.Walk = undefined;
+    ranges.beginWalk(&walk);
+    defer ranges.endWalk(&walk);
+    while (walk.nextEntry()) |range| {
         range_boundaries.updateOwnerDocument(range) catch {};
     }
 }

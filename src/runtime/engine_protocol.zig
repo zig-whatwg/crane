@@ -2061,6 +2061,20 @@ pub inline fn abortWebAssemblyResponse(compilation: *WebAssemblyResponseCompilat
 // class finalizer) queues the teardown the same way. Nor does a teardown run
 // for an instance wrapped again in between: the new wrapper owns it.
 //
+// Where those points are. V8 runs the second pass from a task it posts to
+// the platform (the host's event loop pumps it), at the end of a forced
+// collection - and in the prologue of the NEXT collection, before any
+// marking (Heap::CollectGarbage: "Ensure that all pending phantom callbacks
+// are invoked"). Any engine call that allocates on the JavaScript heap can
+// start that collection: engine.traceChild, a wrap, a string. So a teardown
+// can run inside any such call, not only at a turn of the host's event
+// loop, and native code that keeps a pointer to a platform object nothing
+// keeps alive - an entry of a list that holds its entries weakly, such as a
+// document's live ranges - across one may find the object freed, and the
+// list changed, when the call returns. Such a list is walked through a
+// cursor its removals move (dom.live_range_list; lane rangeuaf: the
+// live-range walks read a slot a torn-down Range had vacated).
+//
 // A wrapper owns one reference to a counted instance (VTable.counted: the
 // nodes, refcount design 2.1): the adapter acquires it when it makes and
 // caches the wrapper and releases it, on the agent's thread and never inside a
@@ -2104,6 +2118,77 @@ pub inline fn releasePlatformObject(instance: *Instance) void {
 /// teardown the adapter deferred past a collection (4.12) run for it.
 pub inline fn platformObjectDestroyed(instance: *Instance) void {
     impl.platformObjectDestroyed(instance);
+}
+
+/// Hold the teardowns of the collected platform objects of `realm`'s agent -
+/// every realm of it - until the matching `resumeTeardowns`. Collections still run while they are held:
+/// the collector still takes wrappers, and the adapter still makes each
+/// collected instance unreachable through the binding at once (a later wrap
+/// makes a new wrapper). Only the instances' teardowns - the vtable deinit
+/// and the storage it returns, which the adapter otherwise runs at the points
+/// "Where those points are" names above - wait, and they run at the
+/// `resumeTeardowns` that ends the outermost hold, before it returns. That is
+/// a point where engine calls are allowed: the caller's own native step, no
+/// collection in progress, so a deinit there may do whatever a teardown may.
+///
+/// For native code that walks pointers to platform objects nothing keeps
+/// alive - a document's live ranges and NodeIterators, which the mutation
+/// algorithms walk - across engine calls that can allocate: inside a hold no
+/// such call tears an object down under the walk, neither one the walk has
+/// not reached nor the one it is stepping. WebKit's DeferGC and Blink's
+/// GCForbiddenScope defer the collection itself; this defers only what
+/// Crane runs after it.
+///
+/// COUNTED: holds nest, and each is ended by exactly one `resumeTeardowns`.
+/// Script must not run inside a hold - no callback, event dispatch or
+/// microtask checkpoint - since what it lets go would wait with no bound;
+/// nor may either operation run while the collector does. Callers use
+/// `holdTeardowns`, whose `release` pairs them. The realm, not the agent,
+/// names the hold so that taking one costs a walk no lookup of its agent; a
+/// realm with no engine behind it holds nothing. An engine that tears nothing
+/// down from a collection (it wraps no platform objects yet) does nothing.
+pub inline fn deferTeardowns(realm: Context) void {
+    impl.deferTeardowns(realm);
+}
+
+/// End ONE hold `deferTeardowns` began. Ending the outermost runs every
+/// teardown the hold kept waiting, one at a time, before returning; a
+/// teardown run there may allocate and start a collection, whose own
+/// teardowns then run at once, as they would outside a hold.
+pub inline fn resumeTeardowns(realm: Context) void {
+    impl.resumeTeardowns(realm);
+}
+
+/// A hold `holdTeardowns` began: `release` ends it, exactly once.
+pub const TeardownHold = struct {
+    realm: ?Context,
+
+    pub fn release(self: TeardownHold) void {
+        if (self.realm) |realm| resumeTeardowns(realm);
+    }
+};
+
+/// Hold the teardowns of `realm`'s agent for a native walk
+/// (`deferTeardowns`), the one way callers take a hold:
+/// `const hold = engine.holdTeardowns(realm); defer hold.release();`, so no
+/// return path leaves one held. A null realm holds nothing.
+///
+/// No script may run while a hold lasts. In Debug builds the adapter checks
+/// it where it runs script, as Blink's ScriptForbiddenScope
+/// (third_party/blink/renderer/platform/bindings/script_forbidden_scope.h)
+/// is checked at Blink's own script entry points: runClassicScript,
+/// runClassicScriptRethrowingErrors, evaluateClassicScript,
+/// evaluateClassicScriptToString, evaluateModule, runInRealm, runTaskInRealm,
+/// performMicrotaskCheckpoint, invokeCallbackFunction,
+/// constructCallbackFunction and callUserObjectOperation panic with "script
+/// inside a teardown hold (engine.holdTeardowns)". The engine's own API use
+/// stays free. V8's v8::Isolate::DisallowJavascriptExecutionScope does not
+/// fit: it also refuses the builtins V8's API invokes on the embedder's
+/// behalf - v8::Set::Add, which a new wrapper's tree edges use - and a walk
+/// legitimately wraps the node a range moves to.
+pub fn holdTeardowns(realm: ?Context) TeardownHold {
+    if (realm) |r| deferTeardowns(r);
+    return .{ .realm = realm };
 }
 
 /// Which of its children an owner keeps through `traceChild`: the member that

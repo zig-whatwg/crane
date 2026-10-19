@@ -181,7 +181,20 @@ const AgentRecord = struct {
     /// (protocol_webassembly.zig); the agent's end ends and frees them,
     /// before the isolate is disposed.
     webassembly_compilations: protocol_webassembly.Compilations,
+    /// engine.deferTeardowns: the walks holding this agent's teardowns, and
+    /// the collected entries waiting for the last of them to end
+    /// (wrapper_cache.TeardownHolds). Read and written on the agent's own
+    /// thread only; its storage is freed with the record (forgetAgent).
+    teardown_holds: @import("wrapper_cache.zig").TeardownHolds = .{},
 };
+
+/// The agent's teardown holds (engine.deferTeardowns); null for an isolate
+/// createAgent did not make, which then holds nothing. Called on the agent's
+/// own thread only.
+pub fn teardownHoldsOf(isolate: *ffi.Isolate) ?*@import("wrapper_cache.zig").TeardownHolds {
+    const record = recordOf(isolate) orelse return null;
+    return &record.teardown_holds;
+}
 
 /// The agent's PatternMatcher, made on its first use; null for an isolate
 /// createAgent did not make (a test's own), which then matches in a context
@@ -282,6 +295,9 @@ pub fn deferredTeardownOf(isolate: *ffi.Isolate) ?*runtime.gc.DeferredTeardown {
 pub fn drainDeferredTeardown(agent: *Agent) void {
     const queue = deferredTeardownOf(@ptrCast(@alignCast(agent))) orelse return;
     if (queue.isEmpty()) return;
+    // Not inside a walk holding the agent's teardowns: what it queued is
+    // torn down at the next turn instead (engine.deferTeardowns).
+    if (teardownsHeld(@ptrCast(@alignCast(agent)))) return;
     const entered = EnteredIsolate.of(agent);
     defer entered.leave();
     queue.drainAll();
@@ -524,14 +540,22 @@ pub fn notifyMemoryPressure(agent: *Agent, level: engine.MemoryPressure) void {
             // The trees the collections queued are torn down now - the host
             // wants the memory back - and what their teardown let go of is
             // collected by the third pass, which also takes what the
-            // second's weak callbacks revived.
-            const queue = deferredTeardownOf(entered.isolate);
+            // second's weak callbacks revived - unless a walk holds the
+            // agent's teardowns, when they wait for its end or the next turn
+            // (engine.deferTeardowns).
+            const queue = if (teardownsHeld(entered.isolate)) null else deferredTeardownOf(entered.isolate);
             if (queue) |q| q.drainAll();
             ffi.v8_Isolate_RequestGarbageCollection(entered.isolate);
             if (queue) |q| q.drainAll();
         },
         .moderate => _ = ffi.v8_Isolate_ContextDisposedNotification(entered.isolate, false),
     }
+}
+
+/// Whether a walk holds the agent's teardowns now (engine.deferTeardowns).
+fn teardownsHeld(isolate: *ffi.Isolate) bool {
+    const holds = teardownHoldsOf(isolate) orelse return false;
+    return holds.count != 0;
 }
 
 /// Forget `agent`'s hooks, before its isolate is disposed.
@@ -552,6 +576,12 @@ pub fn forgetAgent(agent: *Agent) void {
     // left - which a thread-local map kept after its thread had gone.
     if (record.window_realms.count() != 0) log.err("the agent ended with {d} Window realm(s) still alive; the host must destroy them first", .{record.window_realms.count()});
     record.window_realms.deinit(std.heap.c_allocator);
+    // Its teardown holds: every walk ended (a hold is scoped to one), and
+    // every entry it deferred was torn down by the last resume or by its
+    // realm's end, which ran before.
+    if (record.teardown_holds.count != 0) log.err("the agent ended inside {d} teardown hold(s); a walk did not release its engine.holdTeardowns", .{record.teardown_holds.count});
+    record.teardown_holds.forgetCaches();
+    record.teardown_holds.deinit();
     std.heap.c_allocator.destroy(record);
 }
 
