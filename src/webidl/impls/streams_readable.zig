@@ -1866,6 +1866,11 @@ const PipeState = struct {
     shutting_down: bool = false,
     /// The last write's promise, or null before any write.
     current_write: ?Value = null,
+    /// Owned until the queued write takes it, or its reaction is dropped.
+    pending_chunk: ?Value = null,
+    /// A chunk has been read but its queued write has not started yet.
+    write_pending: bool = false,
+    shutdown_waiting_for_chunk: bool = false,
     promise: Deferred,
     /// Pending reactions, read requests and the pipe itself, each holding one reference.
     refs: usize = 1,
@@ -1890,6 +1895,7 @@ const PipeState = struct {
         self.refs -= 1;
         if (self.refs > 0) return;
         js.disposeOptional(&self.current_write);
+        js.disposeOptional(&self.pending_chunk);
         js.disposeOptional(&self.pending_error);
         self.promise.deinit();
         self.allocator.destroy(self);
@@ -2114,6 +2120,57 @@ const pipe_read_vtable = ReadRequest.VTable{
 fn pipeReadChunk(ctx: *anyopaque, realm: Realm, chunk: Value) void {
     const state: *PipeState = @ptrCast(@alignCast(ctx));
     defer state.release();
+    // Step 15, "shutdown must stop activity": a pending read fulfilled
+    // after shutdown does not start another write.
+    if (state.shutting_down) return;
+    // Step 15's asynchronous activity: enqueue must return before author
+    // write code runs. Blink's PipeToReadRequest::ChunkSteps likewise queues
+    // the write and retains its chunk (core/streams/pipe_to_engine.cc).
+    // All three browsers pass streams/piping/general-addition.any.js:
+    // https://wpt.fyi/results/streams/piping/general-addition.any.html
+    std.debug.assert(!state.write_pending);
+    state.pending_chunk = js.clone(chunk) catch return;
+    state.write_pending = true;
+    // The realm microtask contract forbids a checkpoint inside the handoff,
+    // including for a native producer with no JavaScript frame on the stack.
+    // Exactly one run/drop owns this reference. On failure the engine took
+    // nothing; release the same chunk and reference without running script.
+    engine.queueRealmMicrotask(realm.ctx, &pipe_continue_steps, state.retain()) catch {
+        pipeContinueDropped(state);
+    };
+}
+
+const pipe_continue_steps: engine.PromiseReactionSteps = .{
+    .fulfilled = pipeContinue,
+    .dropped = pipeContinueDropped,
+};
+
+fn pipeContinue(ctx: ?*anyopaque, _: runtime.JSValue) void {
+    const state: *PipeState = @ptrCast(@alignCast(ctx.?));
+    defer state.release();
+    const chunk = state.pending_chunk.?;
+    state.pending_chunk = null;
+    // Step 15, shutdown step 3: only the queued interval is pending here.
+    // With no newer spec involved, follow Blink and WebKit: both clear their
+    // pending-read flag before invoking the sink and install the last-write
+    // promise afterward. A first write that synchronously aborts therefore
+    // allows cancellation before that write settles (Q7, engine-source evidence).
+    // Blink PipeToEngine::ReadRequestChunkStepsBody :365-377;
+    // WebKit StreamPipeToState::doWrite :393-400, waitForPendingReadAndWrite :602-663.
+    state.write_pending = false;
+    defer {
+        if (state.shutdown_waiting_for_chunk) {
+            state.shutdown_waiting_for_chunk = false;
+            pipeAfterWrites(state);
+        } else {
+            pipeStep(state);
+        }
+    }
+    defer js.dispose(chunk);
+    // Step 15 permits only already-read chunks during shutdown, and only
+    // while the destination is writable (shutdown step 3).
+    if (state.finalized or (state.shutting_down and !state.shutdown_waiting_for_chunk)) return;
+    const realm = Realm.of(state.source) catch return;
     // Write the chunk; the write's outcome is observed through dest's state.
     const writer = sw.writerOf(state.writer) orelse return;
     if (writer.stream != null) {
@@ -2124,12 +2181,13 @@ fn pipeReadChunk(ctx: *anyopaque, realm: Realm, chunk: Value) void {
             state.write_count += 1;
         } else |_| {}
     }
-    // Next iteration after a microtask, as a resolved promise would.
-    js.queueMicrotask(realm, PipeState, state.retain(), pipeContinue);
 }
 
-fn pipeContinue(state: *PipeState) void {
-    pipeStep(state);
+fn pipeContinueDropped(ctx: ?*anyopaque) void {
+    const state: *PipeState = @ptrCast(@alignCast(ctx.?));
+    js.disposeOptional(&state.pending_chunk);
+    state.write_pending = false;
+    state.shutdown_waiting_for_chunk = false;
     state.release();
 }
 
@@ -2174,6 +2232,14 @@ fn pipeAfterWrites(state: *PipeState) void {
     const realm = Realm.of(state.source) catch return;
     const dest = sw.streamOf(state.dest).?;
     if (dest.state == .writable and !sw.closeQueuedOrInFlight(dest)) {
+        // Step 3.1: an already-read chunk may still await its microtask.
+        // Step 3.2 resumes once that promise is installed, not the prior
+        // write's promise. WebKit's StreamPipeToState similarly waits for
+        // a fulfilled read before its pending write and shutdown action.
+        if (state.write_pending) {
+            state.shutdown_waiting_for_chunk = true;
+            return;
+        }
         if (state.current_write) |w| {
             state.waited_write_count = state.write_count;
             realm.react(w, PipeState, state.retain(), pipeWriteSettled, pipeWriteSettled, pipeDropped) catch {
