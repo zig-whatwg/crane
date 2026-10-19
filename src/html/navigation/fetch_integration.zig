@@ -590,70 +590,25 @@ fn handleAboutUrl(allocator: Allocator, url: []const u8) NavigationFetchError!Na
 /// Handle data: URLs
 fn handleDataUrl(allocator: Allocator, url: []const u8) NavigationFetchError!NavigationFetchResult {
     var result = NavigationFetchResult.init(allocator);
+    errdefer result.deinit();
     result.final_url = try allocator.dupe(u8, url);
 
-    // Parse data URL: data:[<mediatype>][;base64],<data>
-    const data_prefix = "data:";
-    if (url.len <= data_prefix.len) {
+    // Fetch's data: URL processor, including step 2's excluded fragment.
+    // Keep the complete navigation URL above for location.hash and :target.
+    const processed = fetch.algorithms.processDataUrl(allocator, url) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => null,
+    };
+    const data = processed orelse {
         result.status = 400;
         result.ok = false;
         result.is_network_error = false;
         return result;
-    }
+    };
 
-    const rest = url[data_prefix.len..];
-
-    // Find comma separator
-    const comma_pos = std.mem.indexOf(u8, rest, ",");
-    if (comma_pos == null) {
-        result.status = 400;
-        result.ok = false;
-        result.is_network_error = false;
-        return result;
-    }
-
-    const metadata = rest[0..comma_pos.?];
-    const data_part = rest[comma_pos.? + 1 ..];
-
-    // Check for base64 encoding
-    const is_base64 = std.mem.endsWith(u8, metadata, ";base64");
-    const mediatype = if (is_base64)
-        metadata[0 .. metadata.len - 7]
-    else
-        metadata;
-
-    // Set content type (default to text/plain if empty)
-    if (mediatype.len > 0) {
-        result.content_type = try allocator.dupe(u8, mediatype);
-    } else {
-        result.content_type = try allocator.dupe(u8, "text/plain;charset=US-ASCII");
-    }
-
-    // Decode data
-    if (is_base64) {
-        // Base64 decode
-        const decoded_size = std.base64.standard.Decoder.calcSizeForSlice(data_part) catch {
-            result.status = 400;
-            result.ok = false;
-            result.is_network_error = false;
-            return result;
-        };
-        const decoded = try allocator.alloc(u8, decoded_size);
-        errdefer allocator.free(decoded);
-
-        std.base64.standard.Decoder.decode(decoded, data_part) catch {
-            allocator.free(decoded);
-            result.status = 400;
-            result.ok = false;
-            result.is_network_error = false;
-            return result;
-        };
-        result.body = decoded;
-    } else {
-        // Percent-decode
-        result.body = try percentDecode(allocator, data_part);
-    }
-
+    // Transfer the processor's two owned slices to the navigation result.
+    result.content_type = data.mime_type;
+    result.body = data.body;
     result.status = 200;
     result.ok = true;
     result.is_network_error = false;
