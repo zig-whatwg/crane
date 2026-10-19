@@ -17,7 +17,6 @@ const std = @import("std");
 const log = std.log.scoped(.browser_context);
 const engine = @import("engine");
 const clock = @import("clock");
-const platform = @import("platform");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const webidl = @import("webidl");
@@ -343,6 +342,54 @@ test "a held timer stays in its window's map until cleared, and clearing it free
     try std.testing.expect(timer_contexts.?.get(interval) == null);
     // Another window's timer is untouched, and still armed.
     try std.testing.expect(timer_contexts.?.get(elsewhere) != null);
+    clearTimer(&other, @intCast(elsewhere));
+    try std.testing.expectEqual(@as(usize, 0), timer_contexts.?.count());
+}
+
+test "a suspended timer keeps the wait it had left, and a resumed one is armed for it" {
+    const allocator = std.testing.allocator;
+    var realm = try runtime.ContextData.init(allocator, .{});
+    defer realm.deinit();
+    var other = try runtime.ContextData.init(allocator, .{});
+    defer other.deinit();
+    const saved_interface = current_timer_interface;
+    const saved_allocator = current_allocator;
+    const saved_contexts = timer_contexts;
+    defer {
+        current_timer_interface = saved_interface;
+        current_allocator = saved_allocator;
+        timer_contexts = saved_contexts;
+    }
+    const manager = try runtime.native_timer.NativeTimerManager.init(allocator);
+    defer manager.deinit();
+    current_timer_interface = manager.timerInterface();
+    current_allocator = allocator;
+    timer_contexts = std.AutoHashMap(TimerId, *WindowTimerCallback).init(allocator);
+    defer timer_contexts.?.deinit();
+
+    const id: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 5_000, &.{}, false));
+    const elsewhere: TimerId = @intCast(initializeTimer(&other, .{ .function = .{ .number = 2 } }, 5_000, &.{}, false));
+    try std.testing.expect(id != 0 and elsewhere != 0);
+    const armed = timer_contexts.?.get(id).?.getData().current_timer_id;
+
+    // The page is kept: its timer's native timer is cancelled, and the wait
+    // it had left is kept.
+    suspendWindowTimers(&realm);
+    const data = timer_contexts.?.get(id).?.getData();
+    try std.testing.expect(data.held);
+    try std.testing.expectEqual(@as(?u64, null), manager.remainingMs(armed));
+    try std.testing.expect(data.current_timer_id > 4_000 and data.current_timer_id <= 5_000);
+    // Another window's timer is untouched.
+    try std.testing.expect(!timer_contexts.?.get(elsewhere).?.getData().held);
+
+    // Restored: armed again for what it had left, not its whole timeout
+    // from now and not at once.
+    resumeWindowTimers(&realm);
+    try std.testing.expect(!data.held);
+    const left = manager.remainingMs(data.current_timer_id) orelse return error.NotArmed;
+    try std.testing.expect(left > 4_000 and left <= 5_000);
+
+    clearTimer(&realm, @intCast(id));
     clearTimer(&other, @intCast(elsewhere));
     try std.testing.expectEqual(@as(usize, 0), timer_contexts.?.count());
 }
@@ -752,9 +799,10 @@ pub fn clearTimerInterface() void {
             // timer manager is going away with us and every wrapper must be freed
             // here or leak. Unlike unregisterTimerContext there is no later callback
             // to hand ownership to.
-            if (current_timer_interface) |timer| {
+            // (A held one has no native timer: its current_timer_id is a wait.)
+            if (current_timer_interface) |timer| if (!wrapper.getData().held) {
                 _ = timer.clearTimeout(wrapper.getData().current_timer_id);
-            }
+            };
             destroyTimer(wrapper);
         }
         map.deinit();
@@ -879,18 +927,23 @@ fn activeTimerHandles(realm: runtime.Context, allocator: std.mem.Allocator) erro
 fn suspendWindowTimers(realm: runtime.Context) void {
     const map = if (timer_contexts) |*m| m else return;
     const timer = current_timer_interface orelse return;
-    const now = platform.monotonicMillis();
     var iter = map.iterator();
     while (iter.next()) |entry| {
         const data = entry.value_ptr.*.getData();
         if (data.realm != realm or data.held or data.cancelled or data.executing) continue;
+        // The wait still to go, asked of the native timer before it is
+        // cancelled - WebKit's SuspendableTimer saves its next-fire interval
+        // the same way (m_savedNextFireInterval), and nothing is stored at
+        // schedule time. A timer interface that cannot say ("unknown") makes
+        // it due at once: it runs as soon as its page is restored.
+        const remaining = timer.remainingMs(data.current_timer_id) orelse 0;
         // Not confirmed cancelled: its callback is on its way, and a timer
         // that comes due while its document is inactive is held there
         // (`holdIfInactive`).
         if (!timer.clearTimeout(data.current_timer_id)) continue;
         data.held = true;
-        data.current_timer_id = 0;
-        data.remaining_ms = if (data.due_ms > now) @intCast(data.due_ms - now) else 0;
+        // A held timer's current_timer_id is its wait still to go.
+        data.current_timer_id = remaining;
     }
 }
 
@@ -900,19 +953,17 @@ fn suspendWindowTimers(realm: runtime.Context) void {
 /// callbacks get a frame again.
 fn resumeWindowTimers(realm: runtime.Context) void {
     if (timer_contexts) |*map| if (current_timer_interface) |timer| {
-        const now = platform.monotonicMillis();
         var iter = map.iterator();
         while (iter.next()) |entry| {
             const wrapper = entry.value_ptr.*;
             const data = wrapper.getData();
             if (data.realm != realm or !data.held) continue;
-            const id = timer.setTimeout(data.remaining_ms, WindowTimerCallback.getTrampolineCallback(), wrapper.eraseForFFI());
+            // A held timer's current_timer_id is its wait still to go.
+            const id = timer.setTimeout(data.current_timer_id, WindowTimerCallback.getTrampolineCallback(), wrapper.eraseForFFI());
             // Not armed: it stays held, cleared or freed with its window.
             if (id == 0) continue;
             data.held = false;
             data.current_timer_id = id;
-            data.due_ms = now + @as(i64, @intCast(data.remaining_ms));
-            data.remaining_ms = 0;
         }
     };
     scheduleAnimationFrame();
@@ -925,10 +976,11 @@ pub fn clearPendingTimers() void {
         var iter = map.iterator();
         while (iter.next()) |entry| {
             const wrapper = entry.value_ptr.*;
-            // Cancel the timer at the libuv level
-            if (current_timer_interface) |timer| {
+            // Cancel the timer at the libuv level (a held one has none: its
+            // current_timer_id is a wait).
+            if (current_timer_interface) |timer| if (!wrapper.getData().held) {
                 _ = timer.clearTimeout(wrapper.getData().current_timer_id);
-            }
+            };
             destroyTimer(wrapper);
         }
         map.clearRetainingCapacity();
@@ -957,7 +1009,6 @@ fn scheduleTimer(timer: TimerInterface, wrapper: *WindowTimerCallback, delay_ms:
     }
     wrapper.getData().id = id;
     wrapper.getData().current_timer_id = id;
-    wrapper.getData().due_ms = dueAt(delay_ms);
     map.put(id, wrapper) catch {
         // Untracked, it could never be cleared or cleaned up. Cancel before
         // freeing: a scheduled timer holds the wrapper.
@@ -966,15 +1017,6 @@ fn scheduleTimer(timer: TimerInterface, wrapper: *WindowTimerCallback, delay_ms:
         return null;
     };
     return id;
-}
-
-/// When a run armed now for `delay_ms` comes due (platform.monotonicMillis):
-/// 0 for no delay - due at once, whenever it is suspended - so that a burst
-/// of setTimeout(0) reads no clock (the event-loop cost page,
-/// crane/bfa-cost-timers.html).
-fn dueAt(delay_ms: u64) i64 {
-    if (delay_ms == 0) return 0;
-    return platform.monotonicMillis() + @as(i64, @intCast(delay_ms));
 }
 
 /// Unregister a timer context (cancels and destroys it)
@@ -1049,7 +1091,12 @@ const WindowTimerData = struct {
     /// The id setTimeout/setInterval returned, and this timer's key in
     /// `timer_contexts`. Stable for the timer's life (see scheduleTimer).
     id: TimerId = 0,
-    /// The manager's id for the pending run. An interval gets a new one per repeat.
+    /// The manager's id for the pending run. An interval gets a new one per
+    /// repeat. While `held`, no native timer is armed and this is the wait
+    /// still to go, in ms, instead: what was left when its document was
+    /// suspended (`suspendWindowTimers`), 0 for one that came due inactive -
+    /// kept here, not in a field of its own, so that the record stays the
+    /// size a setTimeout(0) burst allocates 50,000 of.
     current_timer_id: TimerId = 0,
     /// For intervals: whether the interval has been cancelled
     cancelled: bool = false,
@@ -1076,12 +1123,6 @@ const WindowTimerData = struct {
     /// rest. Re-armed when the document is reactivated (the back/forward
     /// cache's phase B; HTML "reactivate" step 2).
     held: bool = false,
-    /// When the pending run comes due (platform.monotonicMillis), while one is
-    /// armed: what a suspension keeps of it (`suspendWindowTimers`).
-    due_ms: i64 = 0,
-    /// A held timer's wait still to go when it is armed again: what was left
-    /// when its document was suspended, 0 for one that came due inactive.
-    remaining_ms: u64 = 0,
 
     /// Return every handle this timer owns. Only `destroyTimer` calls it.
     fn release(self: *WindowTimerData, allocator: std.mem.Allocator) void {
@@ -1093,6 +1134,30 @@ const WindowTimerData = struct {
         self.arguments = &.{};
     }
 };
+
+/// WindowTimerData's shape before the back/forward cache (phase A): the
+/// record a suspension may not grow (`WindowTimerData` test below).
+const TimerDataBaseShape = struct {
+    handler: runtime.WindowTimerHandler,
+    arguments: []runtime.JSValue,
+    realm: runtime.Context,
+    is_interval: bool,
+    timeout_ms: i64,
+    id: TimerId,
+    current_timer_id: TimerId,
+    cancelled: bool,
+    nesting_level: u32,
+    executing: bool,
+    held: bool,
+};
+
+test "a window timer's record is no larger than before the back/forward cache" {
+    // A setTimeout(0) burst allocates 50,000 of these at once
+    // (crane/bfa-cost-timers.html): 16 more bytes each measured 4-8%
+    // slower there. A suspension asks the native timer for the wait still
+    // to go (TimerInterface.remainingMs) instead of storing a due time.
+    try std.testing.expectEqual(@sizeOf(TimerDataBaseShape), @sizeOf(WindowTimerData));
+}
 
 /// Type-safe timer callback wrapper for window timers.
 ///
@@ -1225,10 +1290,10 @@ fn holdIfInactive(data: *WindowTimerData) bool {
 /// Hold a timer whose native timer has just fired (`holdIfInactive`).
 fn holdTimer(data: *WindowTimerData) void {
     data.held = true;
-    // The native timer that called here has fired: none is armed.
+    // The native timer that called here has fired: none is armed, and it is
+    // due already - it runs as soon as it is armed again (a held timer's
+    // current_timer_id is its wait still to go).
     data.current_timer_id = 0;
-    // Due already: it runs as soon as it is armed again.
-    data.remaining_ms = 0;
 }
 
 /// Handler function for one-shot timer callbacks (invoked via SelfContainedCallback trampoline)
@@ -1287,7 +1352,6 @@ fn intervalHandler(data: *WindowTimerData) void {
             if (new_timer_id != 0) {
                 // The id script holds stays the key; only the pending run changes.
                 data.current_timer_id = new_timer_id;
-                data.due_ms = dueAt(delay);
                 return;
             }
         }

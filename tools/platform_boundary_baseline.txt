@@ -460,7 +460,7 @@ src/runtime/environment_settings.zig clock.wallMillis 1
 src/runtime/logger.zig clock.@import 1
 src/runtime/logger.zig clock.wallSeconds 1
 src/runtime/native_timer.zig clock.@import 1
-src/runtime/native_timer.zig clock.monotonicNanos 3
+src/runtime/native_timer.zig clock.monotonicNanos 1
 src/runtime/native_timer.zig clock.sleep 1
 src/storage/backend.zig builtin.os.tag 2
 src/storage/backends/leveldb.zig extern.leveldb_approximate_sizes 1
