@@ -538,6 +538,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [Find where the browsers check before carrying a report across threads](spec-compliance-find-where-the-browsers-check-before-carrying-a-report-across-threads.md) - When a spec step puts a check on a thread that cannot report it, read where the three engines make that check before designing a delivery. Often they make it earlier, on the caller's thread, and the cross-thread mechanism is never needed.
 - [Render-blocking timing is request metadata](spec-compliance-render-blocking-timing-is-request-metadata.md) - Capture classification at fetch start and inherit it through imports.
 - [Navigation shares the data URL processor](spec-compliance-navigation-shares-the-data-url-processor.md) - Keep URL identity separate from body decoding and share the decoder across callers.
+- [Shadow activeElement reads the document designation](spec-compliance-shadow-active-element-reads-the-document-designation.md) - Reuse the document designation and retarget it; another cached pointer duplicates state and lifetime rules.
+- [currentScript visibility is decided at execution entry](spec-compliance-current-script-visibility-is-decided-at-entry.md) - Capture an algorithm-boundary designation at entry, not by recomputing mutable tree state in its getter.
+- [Window frame membership and order are separate](spec-compliance-window-frame-membership-and-order-are-separate.md) - Verify membership and ordering independently when substituting a traversal helper.
 
 ### Codegen
 - [A named special operation on a [Global] interface is a global function](codegen-a-named-special-operation-on-a-global-is-a-global-function.md) - A supplementary IDL member must not add a script-visible name the browsers lack - on a [Global] interface, a named special operation is a global function that shadows named access.
