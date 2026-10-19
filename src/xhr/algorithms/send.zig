@@ -264,7 +264,7 @@ pub fn sendDispatch(
     if (!state.synchronous_flag) {
         try sendAsync(state, body);
     } else {
-        try sendSync(state, body);
+        try sendSync(state, body, null);
     }
 }
 
@@ -359,17 +359,21 @@ fn sendAsync(
 ///
 /// Spec: https://xhr.spec.whatwg.org/#the-send()-method step 12
 ///
-/// A sync request fires no progress events and reports failure by THROWING,
-/// which is why `requestErrorSteps` returns after step 3 when the synchronous
-/// flag is set. The throw is here.
-fn sendSync(
+/// The WebIDL caller supplies the same saved-owner continuation used by
+/// asynchronous response delivery. This is defensive against a future
+/// synchronous owner retirement; current realm ends wait for running script
+/// (row 79 Q13). No state may be read after the continuation becomes false.
+pub fn sendSync(
     state: *XMLHttpRequestState,
     body: ?[]const u8,
+    continuation: @FieldType(ResponseProcessor, "continuation"),
 ) !void {
     var processor = ResponseProcessor.init(state);
+    processor.continuation = continuation;
 
     // Step 12: no upload events at all for a sync request, so no tracker.
     try FetchIntegration.fetch(state, body, &processor, null);
+    if (!processor.mayContinue()) return;
 
     // Step 12.4: If this's timed out flag is set, throw a "TimeoutError".
     if (state.timed_out_flag) {
