@@ -42,3 +42,67 @@ test "leaks6 fail closed: a worker creator realm with no realm record answers th
     const container = html.worker_host.creatorPolicyContainer(&context) orelse return error.NoContainer;
     try testing.expect(container.csp_list.blocksEverything());
 }
+
+const page_url = "https://leaks6.test/page.html";
+
+fn ignoreReport(_: ?*anyopaque, _: *const engine.ErrorInfo) void {}
+
+fn answer(realm: runtime.Context, source: []const u8) ![]u8 {
+    return engine.evaluateClassicScriptToString(realm, .{ .utf8 = source }, "", null, testing.allocator, .{ .report = ignoreReport });
+}
+
+fn expectAnswer(realm: runtime.Context, source: []const u8, want: []const u8) !void {
+    const got = try answer(realm, source);
+    defer testing.allocator.free(got);
+    try testing.expectEqualStrings(want, got);
+}
+
+const insert_html =
+    \\(() => { const d = document.createElement('div'); d.setAttribute('nonce', 'abc'); document.body.append(d); return d.getAttribute('nonce') + '|' + d.nonce; })()
+;
+const insert_svg =
+    \\(() => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('nonce', 'abc'); document.body.append(s); return s.getAttribute('nonce'); })()
+;
+
+fn nonceHiding() !void {
+    var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    defer if (debug.deinit() == .leak) @panic("leaked");
+    const browser = try Browser.init(debug.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+    defer browser.deinit();
+    try browser.navigateWithOptions(page_url, .window, .{ .skip_load = true });
+    const page = browser.current_context orelse return error.NoPage;
+    try page.loadHTML("<!doctype html><body>", .{ .base_url = page_url });
+    const realm = browser.getRealm() orelse return error.NoRealm;
+
+    // The control: no header-delivered policy, so the nonce stays visible.
+    try expectAnswer(realm, insert_html, "abc|abc");
+    // Crane's SVG elements have no nonce IDL attribute yet: the content
+    // attribute alone says whether it was hidden.
+    try expectAnswer(realm, insert_svg, "abc");
+
+    // The document's list can no longer be trusted.
+    const owned = try page.evaluateScript("document");
+    defer owned.release();
+    const document = engine.convertToPlatformObject(realm, owned.value) orelse return error.NoDocument;
+    const container = dom.policy_containers.of(document) orelse return error.NoContainer;
+    container.csp_list.unenforceable = true;
+    defer container.csp_list.unenforceable = false;
+
+    // Hidden: the content attribute is emptied, the internal slot kept.
+    try expectAnswer(realm, insert_html, "|abc");
+    try expectAnswer(realm, insert_svg, "");
+}
+
+test "leaks6 fail closed: nonce hiding hides the nonce in a document whose CSP list cannot be trusted" {
+    const Run = struct {
+        fn run(failure: *?anyerror) void {
+            nonceHiding() catch |err| {
+                failure.* = err;
+            };
+        }
+    };
+    var failure: ?anyerror = null;
+    const thread = try std.Thread.spawn(.{}, Run.run, .{&failure});
+    thread.join();
+    if (failure) |err| return err;
+}
