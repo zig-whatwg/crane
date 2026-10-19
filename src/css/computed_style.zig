@@ -20,6 +20,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const properties = @import("properties.zig");
 const values = @import("style_values.zig");
+const color_scheme = @import("color_scheme.zig");
 
 const Longhand = properties.Longhand;
 const Value = values.Value;
@@ -28,6 +29,9 @@ const Color = values.Color;
 pub const ComputedStyle = struct {
     allocator: Allocator,
     values: [Longhand.count]Value,
+    /// CSS Color Adjustment 1 2.2, the element color scheme: what its system
+    /// colors were resolved against.
+    used_color_scheme: color_scheme.Scheme = .light,
 
     /// A style whose every value is its longhand's initial value, computed
     /// (the root's parent; an element no rule styles).
@@ -109,6 +113,9 @@ pub fn initialComputed(l: Longhand) Value {
         .border_top_width, .border_right_width, .border_bottom_width, .border_left_width, .border_block_start_width, .border_block_end_width, .border_inline_start_width, .border_inline_end_width => Value.px(0),
         .font_size => Value.px(16),
         .font_weight => .{ .number = 400 },
+        // CanvasText with no element to take a color scheme from: the UA
+        // default's (light). The cascade resolves it per element.
+        .color => .{ .color = .{ .rgba = values.RgbaColor.black } },
         else => l.info().initial,
     };
 }

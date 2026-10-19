@@ -11,6 +11,8 @@
 //! - `Color`: an sRGB color (css.color's Color: 8-bit channels and an alpha)
 //!   or currentcolor (CSS Color 4 "currentcolor").
 //! - `Display`: CSS Display 4's two-keyword model.
+//! - `ColorScheme`: a `color-scheme` list (CSS Color Adjustment 1 2.2), its
+//!   serialization and the color scheme support it names.
 //! - `text`: a value kept as its serialization - a font-family list, an
 //!   <image> - in a counted string, so declarations and computed styles
 //!   share it.
@@ -23,6 +25,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const length_mod = @import("values/length.zig");
 const color_mod = @import("values/color.zig");
+const color_scheme_mod = @import("color_scheme.zig");
 
 pub const Length = length_mod.Length;
 pub const LengthUnit = length_mod.LengthUnit;
@@ -384,6 +387,10 @@ pub const Color = union(enum) {
     /// (CSS Color 4 15 "Serializing <color> Values": "the keyword ...
     /// converted to ASCII lowercase"). A computed value is its color.
     named: Named,
+    /// A <system-color>: kept as the keyword until the computed-value step
+    /// resolves it against the element's used color scheme (CSS Color 4
+    /// 15.5; CSS Color Adjustment 1 2.4). A computed value never holds one.
+    system: color_mod.SystemColor,
 
     pub const Named = struct {
         rgba: RgbaColor,
@@ -404,14 +411,17 @@ pub const Color = union(enum) {
                 .named => |y| x.rgba.eql(y.rgba) and std.mem.eql(u8, x.name.bytes, y.name.bytes),
                 else => false,
             },
+            .system => |x| b == .system and b.system == x,
         };
     }
 
-    /// The color itself; currentcolor has none of its own.
+    /// The color itself; currentcolor has none of its own. A system color
+    /// with no element to take a scheme from is the UA default's (light).
     pub fn absolute(self: Color) ?RgbaColor {
         return switch (self) {
             .rgba => |c| c,
             .named => |n| n.rgba,
+            .system => |s| s.color(.light),
             .current => null,
         };
     }
@@ -439,6 +449,22 @@ fn appendAlpha(alpha: f32, out: *std.ArrayList(u8), allocator: Allocator) Alloca
     const value: f64 = if (@as(i32, @intFromFloat(@round(two * 255))) == byte) two else @round(a * 1000) / 1000;
     try appendNumber(value, out, allocator);
 }
+
+// ============================================================================
+// color-scheme
+// ============================================================================
+
+/// A `color-scheme` value other than `normal`: `[ light | dark |
+/// <custom-ident> ]+ && only?` (CSS Color Adjustment 1 2.2). Its computed
+/// value is as specified ("the keyword normal, or a color scheme support"),
+/// so one value serves both.
+pub const ColorScheme = struct {
+    /// The serialization, per grammar: the schemes in order - light and dark
+    /// lowercase, a <custom-ident> as an identifier - then `only`.
+    text: *SharedText,
+    /// The color scheme support it names (section 2.3).
+    support: color_scheme_mod.Support,
+};
 
 // ============================================================================
 // Shared text
@@ -500,6 +526,7 @@ pub const Value = union(enum) {
     color: Color,
     display: Display,
     text_transform: TextTransform,
+    color_scheme: ColorScheme,
     /// Kept as its serialization (a font-family list, an <image>).
     text: *SharedText,
 
@@ -518,6 +545,7 @@ pub const Value = union(enum) {
         return switch (self) {
             .text => |t| t,
             .color => |c| if (c == .named) c.named.name else null,
+            .color_scheme => |c| c.text,
             else => null,
         };
     }
@@ -532,6 +560,7 @@ pub const Value = union(enum) {
             .color => |c| c.eql(b.color),
             .display => |d| d.eql(b.display),
             .text_transform => |t| t.eql(b.text_transform),
+            .color_scheme => |c| c.support.eql(b.color_scheme.support) and std.mem.eql(u8, c.text.bytes, b.color_scheme.text.bytes),
             .text => |t| t == b.text or std.mem.eql(u8, t.bytes, b.text.bytes),
         };
     }
