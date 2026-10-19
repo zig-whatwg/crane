@@ -62,18 +62,6 @@ pub fn prepareToRunScript(realm: Context) Error!ScriptScope {
 /// HTML "clean up after running script" with the settings object `scope`
 /// prepared.
 pub fn cleanUpAfterRunningScript(scope: ScriptScope) void {
-    cleanUp(scope, .checkpoint_when_empty);
-}
-
-/// "Clean up after running script" for a promise job: the job runs inside a
-/// microtask checkpoint, so step 3's checkpoint would return at once ("if
-/// the event loop's performing a microtask checkpoint is true, return") -
-/// and asking whether the stack is empty costs a stack walk per job.
-pub fn cleanUpAfterRunningJob(scope: ScriptScope) void {
-    cleanUp(scope, .inside_checkpoint);
-}
-
-fn cleanUp(scope: ScriptScope, step_3: enum { checkpoint_when_empty, inside_checkpoint }) void {
     // 1-2. Remove the realm execution context from the stack.
     if (context_manager.getWindowForContext(scope.context()) != null) context_manager.popAccessorWindow();
     prepared_depth -|= 1;
@@ -84,11 +72,61 @@ fn cleanUp(scope: ScriptScope, step_3: enum { checkpoint_when_empty, inside_chec
     // microtask checkpoint. The agent stays entered for it, and the scope's
     // handle scope stays open: an agent the host entered only for this has
     // no other, and the checkpoint's callbacks make handles.
-    if (step_3 == .checkpoint_when_empty and prepared_depth == 0 and !ffi.v8_Isolate_HasJavaScriptOnStack(isolate)) {
+    if (prepared_depth == 0 and !ffi.v8_Isolate_HasJavaScriptOnStack(isolate)) {
         ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
     }
     ffi.v8_HandleScope_Dispose(scope.scope.handle_scope);
     if (scope.entered_isolate) ffi.v8_Isolate_Exit(isolate);
+}
+
+/// "Prepare to run script" for a promise job (HTML HostEnqueuePromiseJob),
+/// from inside the job: the reaction function V8 is calling, whose own
+/// context - the job's realm's - is the current one.
+///
+/// Unlike prepareToRunScript, it holds a handle of its OWN to the context:
+/// the job's steps may end the realm they run in (a media element's stable
+/// state callback retiring its realm, parser_stable_activity_test's
+/// self-retirement case), and the realm's end disposes the realm's own
+/// handle (context_manager.retireEntry) - which the clean up after would
+/// otherwise exit through. Whether an accessor Window was pushed is
+/// recorded now, for the same reason: the clean up reads nothing of the
+/// realm.
+pub const JobScope = struct {
+    isolate: *ffi.Isolate,
+    /// OWNED: disposed by cleanUpAfterRunningJob.
+    context: *ffi.Context,
+    handle_scope: *ffi.HandleScope,
+    pushed_accessor: bool,
+};
+
+/// `prepareToRunScript` for the promise job running now, in its realm
+/// (see JobScope). Null when no context is current (no job runs).
+pub fn prepareToRunJob(isolate: *ffi.Isolate) ?JobScope {
+    // 1. The job's realm execution context: the current context, held by a
+    // handle of this scope's own.
+    const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return null;
+    const handle_scope = ffi.v8_HandleScope_New(isolate) orelse {
+        ffi.v8_Context_Dispose(context);
+        return null;
+    };
+    ffi.v8_Context_Enter(context);
+    const window = context_manager.getWindowForContext(context);
+    if (window) |w| context_manager.pushAccessorWindow(w);
+    prepared_depth += 1;
+    return .{ .isolate = isolate, .context = context, .handle_scope = handle_scope, .pushed_accessor = window != null };
+}
+
+/// "Clean up after running script" for a promise job: steps 1-2 only. The
+/// job runs inside a microtask checkpoint, so step 3's checkpoint would
+/// return at once ("if the event loop's performing a microtask checkpoint
+/// is true, return") - and asking whether the stack is empty costs a stack
+/// walk per job. Reads nothing of the job's realm, which may have ended.
+pub fn cleanUpAfterRunningJob(scope: JobScope) void {
+    if (scope.pushed_accessor) context_manager.popAccessorWindow();
+    prepared_depth -|= 1;
+    ffi.v8_Context_Exit(scope.context);
+    ffi.v8_HandleScope_Dispose(scope.handle_scope);
+    ffi.v8_Context_Dispose(scope.context);
 }
 
 // ============================================================================

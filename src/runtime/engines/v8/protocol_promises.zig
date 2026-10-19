@@ -39,9 +39,6 @@ const Error = engine.Error;
 const Reaction = struct {
     steps: *const engine.PromiseReactionSteps,
     data: ?*anyopaque,
-    /// The realm the reaction was made in: its job's realm, which the
-    /// host's step runs prepared for (HostEnqueuePromiseJob).
-    realm: Context,
     /// The reaction functions' holder, WEAK: empty once the collector took
     /// it. Disposed when the reaction ends.
     holder: ?*ffi.Value = null,
@@ -53,14 +50,13 @@ const Reaction = struct {
     /// Release what the record holds - its place on the realm's list, its
     /// holder handle (disposing it cancels a second pass still to come) -
     /// and free it. Returns what the host's step needs.
-    fn end(self: *Reaction) struct { steps: *const engine.PromiseReactionSteps, data: ?*anyopaque, realm: Context } {
+    fn end(self: *Reaction) struct { steps: *const engine.PromiseReactionSteps, data: ?*anyopaque } {
         const steps = self.steps;
         const data = self.data;
-        const realm = self.realm;
         self.node.unlink();
         if (self.holder) |holder| ffi.v8_Global_Dispose(holder);
         allocator.destroy(self);
-        return .{ .steps = steps, .data = data, .realm = realm };
+        return .{ .steps = steps, .data = data };
     }
 
     /// Exactly once, when the promise settles (and the reaction was not
@@ -80,10 +76,17 @@ const Reaction = struct {
         // also refuse a nested checkpoint; the scope is what makes the
         // host's view - hasRunningScript, the entry realm - HTML's.) Every
         // host reaction - module evaluation, fetch, streams, module loading,
-        // queueRealmMicrotask - runs here. A realm that cannot be entered
-        // (it ended between) runs its step unprepared, as before.
-        const scope: ?protocol_scripts.ScriptScope = protocol_scripts.prepareToRunScript(host.realm) catch null;
+        // queueRealmMicrotask - runs here. The steps may end the realm they
+        // run in, so the scope holds its own handle of the context (JobScope):
+        // the reaction function's, which V8 entered to call it - the realm
+        // the reaction was made in.
+        const isolate = ffi.v8_Isolate_GetCurrent() orelse return runSteps(host, argument, rejected);
+        const scope = protocol_scripts.prepareToRunJob(isolate);
         defer if (scope) |s| protocol_scripts.cleanUpAfterRunningJob(s);
+        runSteps(host, argument, rejected);
+    }
+
+    fn runSteps(host: anytype, argument: JSValue, rejected: bool) void {
         if (rejected) {
             // onRejectedSteps: 1. Let reason be R converted to `any`.
             // 2. If there is a set of steps to be run if the promise was
@@ -136,7 +139,7 @@ pub fn reactToPromise(realm: Context, promise: JSValue, steps: *const engine.Pro
     if (list) |l| if (l.ended) return error.OperationFailed;
 
     const reaction = Reaction.allocator.create(Reaction) catch return error.OutOfMemory;
-    reaction.* = .{ .steps = steps, .data = data, .realm = realm };
+    reaction.* = .{ .steps = steps, .data = data };
     // 1-4. onFulfilled and onRejected: CreateBuiltinFunction over the steps.
     // 5-6. Let newCapability be ? NewPromiseCapability(%Promise% of the
     //      promise's realm) - V8's derived promise.
