@@ -279,12 +279,12 @@ pub const UndoManager = struct {
         for (self.undo_stack.items) |*entry| {
             entry.deinit();
         }
-        self.undo_stack.deinit();
+        self.undo_stack.deinit(self.allocator);
 
         for (self.redo_stack.items) |*entry| {
             entry.deinit();
         }
-        self.redo_stack.deinit();
+        self.redo_stack.deinit(self.allocator);
     }
 
     /// Add an undo entry
@@ -305,7 +305,7 @@ pub const UndoManager = struct {
         }
 
         // Add entry to undo stack
-        try self.undo_stack.append(entry);
+        try self.undo_stack.append(self.allocator, entry);
         self.last_entry_time = entry.timestamp;
 
         // Enforce max entries limit
