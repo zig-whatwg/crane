@@ -21,6 +21,24 @@ fn press(page: helpers.Page, key: []const u8, modifiers: html.user_input.Modifie
     html.user_input.keyUp(&keyboard, documentOf(page), .{ .key = key }, modifiers);
 }
 
+fn labelFocus() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(
+        \\document.body.innerHTML = '<input id="control"><label id="label" for="control">Label</label><button id="elsewhere">Elsewhere</button>';
+        \\label.focus();
+    );
+    try expectFocus(page, "control");
+    try page.run("label.tabIndex = -1; label.focus()");
+    try expectFocus(page, "label");
+    try page.run("label.setAttribute('tabindex', ''); control.blur(); label.focus()");
+    try expectFocus(page, "control");
+    try page.run("label.tabIndex = 0; label.style.display = 'none'; control.blur(); label.focus()");
+    try expectFocus(page, "control");
+    try page.run("elsewhere.focus(); control.disabled = true; label.focus()");
+    try expectFocus(page, "elsewhere");
+}
+
 fn radioTab() !void {
     const page = try helpers.Page.open();
     defer page.close();
@@ -87,6 +105,42 @@ fn radioKeys() !void {
     try expectFocus(page, "r299");
 }
 
+fn labelClick() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(
+        \\document.body.innerHTML = '<input id="control"><label id="label" for="control">Label</label>';
+        \\globalThis.labelOrder = [];
+        \\control.addEventListener('focus', () => labelOrder.push('focus'));
+        \\control.addEventListener('click', () => labelOrder.push('click'));
+        \\label.click();
+    );
+    try expectFocus(page, "control");
+    try page.run("if (labelOrder.join() !== 'focus,click') throw Error('wrong label activation order')");
+}
+
+fn labelControlRemovedDuringFocus() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(
+        \\document.body.innerHTML = '<input id="control"><label id="label" for="control">Label</label>';
+        \\globalThis.labelOrder = [];
+        \\document.getElementById('control').addEventListener('click', () => labelOrder.push('click'));
+        \\document.getElementById('control').addEventListener('focus', event => {
+        \\  labelOrder.push('focus');
+        \\  event.currentTarget.remove();
+        \\  document.getElementById('label').remove();
+        \\  TestUtils.gc();
+        \\});
+    );
+    const control = (try interfaces.Document.call_getElementById(documentOf(page), runtime.DOMString.initInterned("control"))) orelse return error.MissingControl;
+    const control_ref = html.user_input.Weak.of(control);
+    try page.run("document.getElementById('label').click()");
+    try expectFocus(page, "");
+    try std.testing.expect(control_ref.get() == control);
+    try page.run("if (labelOrder.join() !== 'focus,click') throw Error('live removed label control missed click'); TestUtils.gc()");
+}
+
 fn radioGroupBoundaries() !void {
     const page = try helpers.Page.open();
     defer page.close();
@@ -129,6 +183,26 @@ fn radioRemovedDuringFocus() !void {
     try page.run("if (radioClicks !== 1) throw Error('live removed radio missed its click'); TestUtils.gc()");
 }
 
+fn labelRemovedDuringClick() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(
+        \\document.body.innerHTML = '<input id="control"><label id="label" for="control">Label</label>';
+        \\document.getElementById('control').addEventListener('click', event => {
+        \\  event.currentTarget.remove();
+        \\  document.getElementById('label').remove();
+        \\  TestUtils.gc();
+        \\});
+        \\document.getElementById('label').click();
+        \\TestUtils.gc();
+    );
+    try expectFocus(page, "");
+}
+
+test "labels forward focus only when the label is not focusable" {
+    try helpers.onFreshThread(labelFocus);
+}
+
 test "radio groups occupy one sequential focus stop with dynamic checkedness" {
     try helpers.onFreshThread(radioTab);
 }
@@ -137,10 +211,22 @@ test "radio arrows skip unfocusable members and modifier shortcuts without a gro
     try helpers.onFreshThread(radioKeys);
 }
 
+test "label activation focuses the associated control before its click" {
+    try helpers.onFreshThread(labelClick);
+}
+
+test "label activation survives removal and GC during the control click" {
+    try helpers.onFreshThread(labelRemovedDuringClick);
+}
+
 test "radio arrows respect name, form owner and full focusability" {
     try helpers.onFreshThread(radioGroupBoundaries);
 }
 
 test "radio activation survives removal and GC during focus" {
     try helpers.onFreshThread(radioRemovedDuringFocus);
+}
+
+test "label activation clicks the still-live control removed by its focus listener" {
+    try helpers.onFreshThread(labelControlRemovedDuringFocus);
 }

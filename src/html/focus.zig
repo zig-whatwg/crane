@@ -489,6 +489,14 @@ fn focusUpdateSteps(old_chain_in: Chain, new_chain_in: Chain, new_focus_target: 
 /// HTML "get the focusable area" for `focus_target`, an element that is not
 /// a focusable area.
 fn getFocusableArea(focus_target: *Instance) ?*Instance {
+    // HTML 4.10.4's platform label behavior, used by focusing step 1:
+    // WebKit HTMLLabelElement::focus forwards only when the label itself
+    // is not focusable. All three browsers pass forward-focus-to-associated-
+    // element.html (6/6, wpt.fyi 23b0b89b1a), including a hidden label.
+    if (focus_target.stateAs(interfaces.HTMLLabelElement.State) != null) {
+        const control = (interfaces.HTMLLabelElement.get_control(focus_target) catch null) orelse return null;
+        return if (isFocusableArea(control)) control else null;
+    }
     // "If focus target is the document element of its Document": its viewport.
     if (nodeDocument(focus_target)) |document| {
         if ((interfaces.Document.get_documentElement(document) catch null) == focus_target) return document;
