@@ -315,9 +315,11 @@ pub const IFrameIntegration = struct {
     execute_script_callback: ?*const fn (?*anyopaque, []const u8) void,
 
     /// Callback to update the Location URL in the iframe's window
-    /// Parameters: (runtime_context - the realm, url) -> void
+    /// Parameters: (runtime_context - the realm, url, same_document) -> void:
+    /// `same_document` for a fragment navigation (the realm's creation URL
+    /// stays), false for a document's commit.
     /// Set by modules with engine access
-    update_location_callback: ?*const fn (?*anyopaque, []const u8) void,
+    update_location_callback: ?*const fn (?*anyopaque, []const u8, bool) void,
 
     /// Callback to parse HTML content into the iframe's document using DomTreeAdapter.
     /// This is needed for srcdoc and src navigation to properly populate the document
@@ -1200,7 +1202,8 @@ pub const IFrameIntegration = struct {
     /// context's document URL - as a fragment navigation does (HTML
     /// §7.4.2.3.3 step 12).
     pub fn setDocumentUrl(self: *IFrameIntegration, url: []const u8) void {
-        self.updateLocationUrl(url);
+        // Same-document: the document's creation URL (its cookie URL) stays.
+        self.updateLocationUrlFor(url, true);
     }
 
     /// Commit a document made of `html` at `url`, whose origin is the
@@ -1732,12 +1735,18 @@ pub const IFrameIntegration = struct {
     /// Update the iframe's Location URL to reflect the navigated URL.
     /// This is called during navigation so that `location.hash`, etc. work correctly.
     fn updateLocationUrl(self: *IFrameIntegration, url: []const u8) void {
+        self.updateLocationUrlFor(url, false);
+    }
+
+    /// `same_document`: a fragment navigation's step 12 (the document stays)
+    /// rather than a document's commit - the realm's creation URL is left.
+    fn updateLocationUrlFor(self: *IFrameIntegration, url: []const u8, same_document: bool) void {
         // Need both the realm and the location update callback
         const realm = self.runtime_context orelse return;
         const update_callback = self.update_location_callback orelse return;
 
         // Call the callback (which has impls access)
-        update_callback(realm, url);
+        update_callback(realm, url, same_document);
     }
 };
 

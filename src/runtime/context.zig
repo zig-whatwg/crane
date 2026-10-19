@@ -219,8 +219,18 @@ pub const ContextData = struct {
     /// Window) or its script's (a worker): the API base URL that fetch, XHR,
     /// WebSocket and module resolution resolve against. Realm state, not
     /// engine state - it used to live in the V8 adapter's context manager.
-    /// Owned; set with `setDocumentUrl`.
+    /// Owned; set with `setDocumentUrl` when a document is made, and with
+    /// `updateDocumentUrl` by a same-document change (history.pushState and
+    /// replaceState, a fragment navigation).
     document_url: ?[]u8 = null,
+
+    /// The settings object's creation URL: the URL its document (or worker
+    /// script) had when it was made - what `setDocumentUrl` last recorded,
+    /// which a same-document change (`updateDocumentUrl`) leaves. The cookie
+    /// URL document.cookie and the Cookie Store API use is it (or a creator's,
+    /// dom.global_settings.cookieUrlOf); document.open() moves it to the
+    /// entry document's (`setCreationUrl`). Owned.
+    creation_url: ?[]u8 = null,
 
     /// For a ShadowRealm's realm, the realm that created it: HTML's
     /// ShadowRealm integration gives a ShadowRealm a synthetic realm settings
@@ -357,17 +367,46 @@ pub const ContextData = struct {
         return self.document_url;
     }
 
-    /// Record `url` as this realm's document URL, replacing any before it.
+    /// The settings object's creation URL, if any (`creation_url`).
+    pub fn creationUrl(self: *const Self) ?[]const u8 {
+        return self.creation_url;
+    }
+
+    /// Record `url` as the URL of a document (or worker script) made in this
+    /// realm: its document URL and its creation URL, replacing any before.
+    /// A same-document change is `updateDocumentUrl`.
     pub fn setDocumentUrl(self: *Self, url: []const u8) !void {
         const copy = try self.allocator.dupe(u8, url);
+        errdefer self.allocator.free(copy);
+        const creation = try self.allocator.dupe(u8, url);
         self.clearDocumentUrl();
+        self.document_url = copy;
+        self.creation_url = creation;
+    }
+
+    /// A same-document change of the document's URL (history.pushState and
+    /// replaceState, a fragment navigation): the document URL only - the
+    /// creation URL stays the one the document was made with.
+    pub fn updateDocumentUrl(self: *Self, url: []const u8) !void {
+        const copy = try self.allocator.dupe(u8, url);
+        if (self.document_url) |old| self.allocator.free(old);
         self.document_url = copy;
     }
 
-    /// Forget the recorded document URL, freeing it.
+    /// Set the creation URL alone (document.open(): the cookie URL becomes
+    /// the entry document's).
+    pub fn setCreationUrl(self: *Self, url: []const u8) !void {
+        const copy = try self.allocator.dupe(u8, url);
+        if (self.creation_url) |old| self.allocator.free(old);
+        self.creation_url = copy;
+    }
+
+    /// Forget the recorded document URL and creation URL, freeing them.
     pub fn clearDocumentUrl(self: *Self) void {
         if (self.document_url) |url| self.allocator.free(url);
         self.document_url = null;
+        if (self.creation_url) |url| self.allocator.free(url);
+        self.creation_url = null;
     }
 
     /// Get V8 wrapper cache storage (returns null if not initialized)

@@ -545,9 +545,10 @@ fn urlAndHistoryUpdate(
 }
 
 /// Set the URL of `window`'s associated Document - which its realm records,
-/// and its Location reads.
+/// and its Location reads. A same-document change: the realm's creation URL
+/// (the cookie URL) stays the document's at creation.
 fn setDocumentUrl(window: *runtime.Instance, url: []const u8) void {
-    window.ctx.setDocumentUrl(url) catch |err| log.warn("history: the document URL was not recorded: {s}", .{@errorName(err)});
+    window.ctx.updateDocumentUrl(url) catch |err| log.warn("history: the document URL was not recorded: {s}", .{@errorName(err)});
 }
 
 // =============================================================================
