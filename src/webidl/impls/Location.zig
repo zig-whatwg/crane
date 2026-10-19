@@ -1294,8 +1294,9 @@ fn topLevelFragmentNavigation(
     }
 
     // Step 12: "Set navigable's active document's URL to url." A document
-    // with a window reads its URL from its realm's record.
-    try window.ctx.setDocumentUrl(url);
+    // with a window reads its URL from its realm's record - a same-document
+    // change, which leaves its creation URL (the cookie URL).
+    try window.ctx.updateDocumentUrl(url);
 
     // Step 15, "update document for history step application" 6.4.2:
     // "Update the navigation API entries for a same-document navigation

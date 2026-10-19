@@ -709,8 +709,8 @@ fn resolveSrc(instance: *runtime.Instance, src: []const u8) error{OutOfMemory}![
 
 /// Location URL update callback for iframes
 /// Called by IFrameIntegration.updateLocationUrl to set the iframe's Location URL.
-/// Parameters: (the realm, url) -> void
-fn updateIframeLocation(realm_ptr: ?*anyopaque, url: []const u8) void {
+/// Parameters: (the realm, url, same_document) -> void
+fn updateIframeLocation(realm_ptr: ?*anyopaque, url: []const u8, same_document: bool) void {
     const realm: runtime.Context = @ptrCast(@alignCast(realm_ptr orelse return));
 
     // The realm's Window.
@@ -723,8 +723,10 @@ fn updateIframeLocation(realm_ptr: ?*anyopaque, url: []const u8) void {
 
     // Record it as the realm's document URL too - only top-level pages and
     // workers ever did, so `document.URL` inside an iframe was "".
-    // Document.get_URL and, through it, Location read this.
-    realm.setDocumentUrl(url) catch {};
+    // Document.get_URL and, through it, Location read this. A document's
+    // commit records its creation URL with it; a fragment navigation (the
+    // same document) leaves that.
+    if (same_document) realm.updateDocumentUrl(url) catch {} else realm.setDocumentUrl(url) catch {};
 
     // Update Location's URL
     const LocationImpl = @import("Location.zig");
