@@ -689,6 +689,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A test file at the top of tests/ is never built](testing-a-test-file-at-the-top-of-tests-is-never-built.md) - A test file nothing builds is not a test: check that build.zig reaches it before trusting, converting or counting it.
 - [A referenced function is checked only to its signature; its address emits its body](testing-a-referenced-function-is-checked-only-to-its-signature.md) - `_ = f` checks a declaration; `_ = &f` checks the body and emits it - choose by what the test must catch, and build it where the body links.
 - [A GC Request Does Not Prove an Event Target Was Collected](testing-a-gc-request-does-not-prove-an-event-target-was-collected.md) - Verify native identity and generation before asserting collection.
+- [Equal browser pass counts can hide opposite behaviour](testing-equal-browser-pass-counts-can-hide-opposite-behaviour.md) - Compare aligned per-subtest results before applying a browser majority.
 
 ### Debugging
 - [A call that can free its argument ends every read of it](debugging-a-call-that-can-free-its-argument-ends-every-read-of-it.md) - A call that can free its argument ends the caller's use of it - including the `defer`s written above the call; read the trace's top frame before believing a deep one.
