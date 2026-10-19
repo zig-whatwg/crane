@@ -513,6 +513,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [IndexedDB Shared Buffer Keys Are Not Stored Values](spec-compliance-indexeddb-shared-buffer-keys-are-not-stored-values.md) - Key conversion copies shared bytes; storage serialization rejects them.
 - [An empty link target uses the base target](spec-compliance-an-empty-link-target-uses-the-base-target.md) - Isolate target selection from URL resolution before changing a base-element failure.
 - [Freeze base URLs at mutation time](spec-compliance-freeze-base-urls-at-mutation-time.md) - Store the state the algorithm requires; pin mutation counts without production instrumentation.
+- [Radio Tab Order Is Not General Focusability](spec-compliance-radio-tab-order-is-not-general-focusability.md) - Keep Tab eligibility separate from general focusability and focus designation.
 
 ### Codegen
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
@@ -687,6 +688,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A keepalive timeout can precede the Fetch assertion](testing-a-keepalive-timeout-can-precede-the-fetch-assertion.md) - Prove which setup handshake was lost before editing the feature algorithm.
 - [A test file at the top of tests/ is never built](testing-a-test-file-at-the-top-of-tests-is-never-built.md) - A test file nothing builds is not a test: check that build.zig reaches it before trusting, converting or counting it.
 - [A referenced function is checked only to its signature; its address emits its body](testing-a-referenced-function-is-checked-only-to-its-signature.md) - `_ = f` checks a declaration; `_ = &f` checks the body and emits it - choose by what the test must catch, and build it where the body links.
+- [A GC Request Does Not Prove an Event Target Was Collected](testing-a-gc-request-does-not-prove-an-event-target-was-collected.md) - Verify native identity and generation before asserting collection.
 
 ### Debugging
 - [A call that can free its argument ends every read of it](debugging-a-call-that-can-free-its-argument-ends-every-read-of-it.md) - A call that can free its argument ends the caller's use of it - including the `defer`s written above the call; read the trace's top frame before believing a deep one.
@@ -794,3 +796,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [A parked lane resumes by asking main what it already has](workflow-a-parked-lane-resumes-by-asking-main-what-it-already-has.md) - A stale branch's diff says what it changed, not what main still lacks: ask main item by item (log, grep, latest sweep) before merging.
 - [A queued remote job builds the mirror as its slot finds it](workflow-a-queued-remote-job-builds-the-mirror-as-its-slot-finds-it.md) - Before its slot comes, a queued job's mirror is still yours to update - sync it instead of resubmitting; after, never touch it.
 - [A Waiting Sweep Launcher Keeps Its Build Slot](workflow-a-waiting-sweep-launcher-keeps-its-build-slot.md) - Runtime runner tokens do not release the build slot of a waiting launcher.
+- [Native Build Output Needs a Pipe Too](workflow-native-build-output-needs-a-pipe-too.md) - Preserve positional-writer output through a pipe; quote retained evidence only.
