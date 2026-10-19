@@ -56,6 +56,7 @@ const scope_mod = @import("scope.zig");
 const objects = @import("objects.zig");
 const run_mod = @import("run.zig");
 
+const StorageKey = @import("html_core").web_storage.StorageKey;
 const Manager = manager_mod.Manager;
 const Delivery = manager_mod.Delivery;
 const WorkerInfo = manager_mod.WorkerInfo;
@@ -77,8 +78,12 @@ pub const RealmEnvironment = struct {
     /// The environment's id in the manager.
     id: u64,
     kind: registry_mod.EnvironmentKind,
-    /// Its origin, serialized: also its storage key. OWNED.
+    /// Its origin, serialized. OWNED.
     origin: []u8,
+    /// Its storage key, serialized (storage.StorageKey.serialize): what its
+    /// registrations are keyed and matched by (`clientStorageKey` and
+    /// `makeEnvironment` say how it is obtained). OWNED.
+    storage_key: []u8,
     /// Its creation URL, serialized. OWNED.
     creation_url: []u8,
     /// A service worker's own global: which worker it runs.
@@ -88,6 +93,22 @@ pub const RealmEnvironment = struct {
     frame_type: registry_mod.FrameType = .none,
     /// The realm's navigator's ServiceWorkerContainer, once made.
     container: ?Held = null,
+    /// The client's controller as this realm was last told it - what the
+    /// container's `controller` returns: the active service worker the
+    /// client was made with, then the one each controller_change brings, set
+    /// in the task that fires controllerchange. The registry's record changes
+    /// first, on whichever thread changes it, and a task already queued here
+    /// still sees the controller it was queued under. Chromium
+    /// (ServiceWorkerContainer::SetController) and Gecko
+    /// (ServiceWorkerContainer::ControllerChanged) set the container's
+    /// controller and fire controllerchange in one step; WebKit
+    /// (SWClientConnection updateController) sets it, then queues the event.
+    /// The spec's getter reads the client's active service worker, which
+    /// Notify Controller Change changes before its task fires: golden rule 2,
+    /// the majority (no newer spec involved). Its state follows the
+    /// worker_state deliveries the realm has run, so an object made from it
+    /// later shows what the queue has reached. OWNED.
+    controller: ?WorkerInfo = null,
     /// The service worker object map (3.1.1).
     workers: std.ArrayListUnmanaged(WorkerEntry) = .empty,
     /// The service worker registration object map (3.2.1).
@@ -342,6 +363,9 @@ pub const RealmEnvironment = struct {
             // Update Worker State 4.1-4.5: the object's state, then
             // statechange - if the realm has an object for the worker.
             .worker_state => |m| {
+                if (self.controller) |*kept| if (kept.id == m.worker) {
+                    kept.state = m.state;
+                };
                 const entry = self.workerEntry(m.worker) orelse return;
                 const instance = entry.object.live() orelse return;
                 entry.data.state = m.state;
@@ -367,13 +391,20 @@ pub const RealmEnvironment = struct {
                 const instance = entry.object.live() orelse return;
                 dom.navigables.fireSimpleEvent(instance, "updatefound");
             },
-            // Notify Controller Change step 2. The new controller's object is
-            // made first, from the controller as the change saw it (registry
-            // notifyControllerChange says why): the event's listeners read
-            // container.controller, and find that object.
+            // Notify Controller Change step 2. The realm's controller becomes
+            // the one the change carries, in this task (`controller` says
+            // why), whether or not the container exists yet: one made later
+            // reads it. The new controller's object is made first, from the
+            // controller as the change saw it (registry notifyControllerChange
+            // says why): the event's listeners read container.controller, and
+            // find that object.
             .controller_change => |*m| {
+                const taken = m.*;
+                m.* = null;
+                if (self.controller) |*old| old.deinit(self.allocator);
+                self.controller = taken;
                 const container = (self.container orelse return).live() orelse return;
-                if (m.*) |info| _ = try self.workerObject(info);
+                if (self.controller) |info| _ = try self.workerObject(info);
                 dom.navigables.fireSimpleEvent(container, "controllerchange");
             },
             // Activate step 7 and the ready getter's step 3.4: resolve the
@@ -649,6 +680,7 @@ pub const RealmEnvironment = struct {
     }
 
     fn destroy(self: *RealmEnvironment) void {
+        if (self.controller) |*kept| kept.deinit(self.allocator);
         for (self.client_queue.items) |message| message.destroy();
         self.client_queue.deinit(self.allocator);
         self.workers.deinit(self.allocator);
@@ -656,6 +688,7 @@ pub const RealmEnvironment = struct {
         self.promises.deinit(self.allocator);
         self.endpoint.sink.release();
         self.allocator.free(self.origin);
+        self.allocator.free(self.storage_key);
         self.allocator.free(self.creation_url);
         self.allocator.destroy(self);
     }
@@ -711,6 +744,13 @@ pub fn environmentOf(realm: runtime.Context, create: bool) ?*RealmEnvironment {
     };
 }
 
+/// On the thread of the realm whose environment's endpoint is `endpoint`:
+/// that realm's global (tests compare its settings' storage key with the
+/// registry's, Manager.environmentKeys).
+pub fn endpointGlobal(endpoint: *manager_mod.Endpoint) ?*runtime.Instance {
+    return globalOf(RealmEnvironment.ofEndpoint(endpoint).realm);
+}
+
 /// `realm`'s Window when a page the back/forward cache keeps is its own; on
 /// the realm's thread.
 fn cachedWindowOf(realm: runtime.Context) ?*runtime.Instance {
@@ -728,6 +768,7 @@ fn globalOf(realm: runtime.Context) ?*runtime.Instance {
 const EnvironmentValues = struct {
     kind: registry_mod.EnvironmentKind,
     origin: []const u8,
+    storage_key: []const u8,
     creation_url: []const u8,
     secure_context: bool,
     service_worker_id: u64 = 0,
@@ -743,6 +784,8 @@ fn newRealmEnvironment(manager: *Manager, realm: runtime.Context, values: Enviro
     errdefer allocator.destroy(self);
     const owned_origin = try allocator.dupe(u8, values.origin);
     errdefer allocator.free(owned_origin);
+    const owned_key = try allocator.dupe(u8, values.storage_key);
+    errdefer allocator.free(owned_key);
     const owned_url = try allocator.dupe(u8, values.creation_url);
     errdefer allocator.free(owned_url);
     self.* = .{
@@ -760,6 +803,7 @@ fn newRealmEnvironment(manager: *Manager, realm: runtime.Context, values: Enviro
         .id = 0,
         .kind = values.kind,
         .origin = owned_origin,
+        .storage_key = owned_key,
         .creation_url = owned_url,
         .service_worker_id = values.service_worker_id,
         .frame_type = values.frame_type,
@@ -816,9 +860,21 @@ fn makeEnvironment(manager: *Manager, realm: runtime.Context) !?*RealmEnvironmen
         .service_worker => false,
     };
 
+    // Its storage key: a service worker's own global's is its
+    // registration's (Chromium: a version's storage key is its
+    // registration's); a realm reaching the API from script - its document
+    // or global final by now - has its settings object's own.
+    const storage_key: []u8 = if (kind == .service_worker) key: {
+        var registration = (try manager.registrationOfWorker(manager.allocator, service_worker_id)) orelse return null;
+        defer registration.deinit(manager.allocator);
+        break :key try manager.allocator.dupe(u8, registration.storage_key);
+    } else (try ownStorageKey(manager.allocator, global, origin));
+    defer manager.allocator.free(storage_key);
+
     const self = try newRealmEnvironment(manager, realm, .{
         .kind = kind,
         .origin = origin,
+        .storage_key = storage_key,
         .creation_url = creation_url,
         .secure_context = is_secure,
         .service_worker_id = service_worker_id,
@@ -829,6 +885,7 @@ fn makeEnvironment(manager: *Manager, realm: runtime.Context) !?*RealmEnvironmen
     self.id = try manager.addEnvironment(.{
         .kind = kind,
         .origin = self.origin,
+        .storage_key = self.storage_key,
         .creation_url = self.creation_url,
         .secure_context = is_secure,
         .frame_type = frame_type,
@@ -852,12 +909,122 @@ fn environmentKindOf(kind: ClientKind) registry_mod.EnvironmentKind {
     };
 }
 
+// ============================================================================
+// Storage keys (lane sw1-b11: registrations partitioned by storage key)
+// ============================================================================
+//
+// A client's storage key is Storage "obtain a storage key" for its settings
+// object, as storage.StorageKey.serialize writes it: its origin, its
+// top-level site and its "has cross-site ancestor" - the key partition1 gave
+// every environment's settings, which Chrome and Firefox partition service
+// worker registrations by (wpt.fyi 23b0b89b1a: partitioned.tentative both
+// subtests, partitioned-getRegistrations, partitioned-claim; Safari 27
+// partitions by the top-level site only, 0f26972422). One key, two
+// computations: the settings object's (dom.global_settings) and the one
+// here, for a client that is made before its settings can be asked - a
+// Window caches its key per document, and a frame becomes a client before
+// its document's URL is set. tests/service_worker/partitioned_clients_test
+// pins that the two agree.
+
+/// The storage key of a new client of `origin` whose global is `global`:
+/// for a window, its parent's key nested (dom.blob_partition
+/// .nestedStorageKey: the parent's top-level site, and HTML 8.1.3.2 "has
+/// cross-site ancestor"), or, top-level or auxiliary, its own origin's site
+/// and no cross-site ancestor; for a worker, its global's own key (fixed
+/// when its global was made: its origin, its owner's top-level site and
+/// bit - html worker_host). OWNED (`allocator`).
+fn clientStorageKey(allocator: Allocator, kind: registry_mod.EnvironmentKind, global: ?*runtime.Instance, origin: []const u8) ![]u8 {
+    const g = global orelse return topLevelStorageKey(allocator, origin);
+    switch (kind) {
+        .window => {
+            const parent = interfaces.Window.get_parent(g) catch null;
+            if (parent) |p| if (p != g) {
+                const container = (try dom.global_settings.storageKeyForNonStoragePurposesOf(p)) orelse
+                    return topLevelStorageKey(allocator, origin);
+                return dom.blob_partition.nestedStorageKey(allocator, container, origin);
+            };
+            return topLevelStorageKey(allocator, origin);
+        },
+        else => return ownStorageKey(allocator, g, origin),
+    }
+}
+
+/// `global`'s settings object's own storage key, copied - for a realm whose
+/// document or global is final. A global with no key: its origin as a
+/// top-level client's. OWNED (`allocator`).
+fn ownStorageKey(allocator: Allocator, global: *runtime.Instance, origin: []const u8) ![]u8 {
+    const key = (try dom.global_settings.serializedStorageKeyOf(global)) orelse return topLevelStorageKey(allocator, origin);
+    return allocator.dupe(u8, key);
+}
+
+/// The storage key of a top-level (or auxiliary) window client of `origin`:
+/// its own origin's site - "null" for one with none - and no cross-site
+/// ancestor, as Window's settings compute it. OWNED (`allocator`).
+fn topLevelStorageKey(allocator: Allocator, origin: []const u8) ![]u8 {
+    const site: ?[]u8 = if (std.mem.eql(u8, origin, "null")) null else html.agent_clusters.siteOf(allocator, origin) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => null,
+    };
+    defer if (site) |s| allocator.free(s);
+    return StorageKey.initBorrowed(origin, site orelse "null", false).serialize(allocator);
+}
+
+/// The storage keys the client a fetch of `url` made from `creator` may
+/// have (Handle Fetch step 9.5's "obtain a storage key given reserved
+/// client"), as `clientStorageKey` will compute its realm's. OWNED
+/// (`allocator`); each null when it cannot be obtained.
+///
+/// - A worker's: its owner's (`creator`'s) key with the worker's origin.
+/// - A window's depends on the navigable, which the creator does not name:
+///   a frame's navigation reserves from the frame's own current realm (html
+///   navigationRealmOf: an iframe's integration has no parent realm), whose
+///   parent is the container - its key nested (`nested`); a top-level
+///   traversable's - a popup's, reserved from its opener's realm - is the
+///   URL's own site with no cross-site ancestor (`top_level`). Handle Fetch
+///   picks by the request's destination (a frame's or a document's).
+const ReservedKeys = struct { nested: ?[]u8 = null, top_level: ?[]u8 = null };
+
+fn reservedStorageKeys(allocator: Allocator, creator: runtime.Context, kind: ClientKind, url: []const u8) !ReservedKeys {
+    const global = globalOf(creator) orelse return .{};
+    const origin = scope_mod.originOf(allocator, url) catch return .{};
+    defer allocator.free(origin);
+    switch (kind) {
+        .window => {
+            var keys: ReservedKeys = .{ .top_level = try topLevelStorageKey(allocator, origin) };
+            errdefer if (keys.top_level) |key| allocator.free(key);
+            const parent = interfaces.Window.get_parent(global) catch null;
+            if (parent) |p| if (p != global) {
+                if (try dom.global_settings.storageKeyForNonStoragePurposesOf(p)) |container| {
+                    keys.nested = try dom.blob_partition.nestedStorageKey(allocator, container, origin);
+                }
+            };
+            return keys;
+        },
+        .dedicated_worker, .shared_worker => {
+            var key = (try dom.global_settings.storageKeyForNonStoragePurposesOf(global)) orelse return .{};
+            key.origin = origin;
+            key.allocator = null;
+            return .{ .nested = try key.serialize(allocator) };
+        },
+    }
+}
+
 /// dom.service_worker_clients' `reserve`, on the creator's thread: the
 /// reserved client of a navigation or a worker made from `creator`. A
 /// worker's blob: script inherits its owner's active service worker when it
 /// is of the owner's origin (SW 2.5.2: decided here, where the owner is).
 pub fn reserveClient(creator: runtime.Context, kind: ClientKind, url: []const u8) ?*anyopaque {
     const manager = Manager.of(creator) orelse return null;
+    // The storage key Handle Fetch obtains for it (step 9.5), from its
+    // creator's - the container document's for a frame, the owner's for a
+    // worker - by the rules its realm's settings will follow
+    // (`clientStorageKey`). Null: none can be obtained; no service worker
+    // handles its fetch.
+    const reserved_keys: ReservedKeys = reservedStorageKeys(manager.allocator, creator, kind, url) catch .{};
+    defer {
+        if (reserved_keys.nested) |key| manager.allocator.free(key);
+        if (reserved_keys.top_level) |key| manager.allocator.free(key);
+    }
     // The creator is a client itself (its navigation request's client).
     const creator_environment = environmentOf(creator, true);
     const creator_id: u64 = if (creator_environment) |e| e.id else 0;
@@ -869,7 +1036,7 @@ pub fn reserveClient(creator: runtime.Context, kind: ClientKind, url: []const u8
             if (origin) |o| inherited = manager.controllerOfSameOrigin(owner.id, o);
         }
     }
-    const handle = manager.reserveClient(environmentKindOf(kind), creator_id, inherited) orelse return null;
+    const handle = manager.reserveClient(environmentKindOf(kind), creator_id, inherited, .{ .nested = reserved_keys.nested, .top_level = reserved_keys.top_level }) orelse return null;
     return handle;
 }
 
@@ -926,9 +1093,16 @@ pub fn clientCreated(realm: runtime.Context, init: dom.service_worker_clients.Cl
     const kind = environmentKindOf(init.kind);
     const global = globalOf(realm);
     const frame_type: registry_mod.FrameType = if (kind == .window) (if (global) |g| frameTypeOf(g) else .none) else .none;
+    const storage_key = clientStorageKey(manager.allocator, kind, global, init.origin) catch |err| {
+        log.debug("no service worker client for a new realm: {s}", .{@errorName(err)});
+        if (reserved) |r| manager.releaseReserved(r);
+        return;
+    };
+    defer manager.allocator.free(storage_key);
     const self = newRealmEnvironment(manager, realm, .{
         .kind = kind,
         .origin = init.origin,
+        .storage_key = storage_key,
         .creation_url = init.creation_url,
         .secure_context = init.secure_context,
         .frame_type = frame_type,
@@ -945,9 +1119,10 @@ pub fn clientCreated(realm: runtime.Context, init: dom.service_worker_clients.Cl
         break :blk found.id;
     } else 0;
     if (global) |g| manager.noteCookieJar(dom.global_settings.cookieJarOf(g));
-    self.id = manager.createClient(.{
+    const created = manager.createClientControlled(.{
         .kind = kind,
         .origin = self.origin,
+        .storage_key = self.storage_key,
         .creation_url = self.creation_url,
         .secure_context = init.secure_context,
         .frame_type = frame_type,
@@ -960,6 +1135,10 @@ pub fn clientCreated(realm: runtime.Context, init: dom.service_worker_clients.Cl
         discardRealmEnvironment(self);
         return;
     };
+    self.id = created.id;
+    // Its controller is the active service worker it was made with: the
+    // reserved client's, or its creator's (SW 2.5.1-2.5.2).
+    self.controller = created.controller;
 }
 
 /// Whether the document of the Window `global` is still loading (its
@@ -1257,12 +1436,13 @@ pub fn register(container: *runtime.Instance, script_url: []const u8, options: R
         try engine.rejectPromise(&capability, exception.borrow());
         return made.promise.take();
     }
-    // 10-15. The storage key (Crane's is the origin), Create Job with the
-    // client's creation URL as its referrer, its worker type and update via
-    // cache mode, and Schedule Job.
+    // 10-15. The storage key (obtain a storage key given the client - its
+    // environment's, partitioned), Create Job with the client's creation URL
+    // as its referrer, its worker type and update via cache mode, and
+    // Schedule Job.
     try environment.manager.schedule(.{
         .job_type = .register,
-        .storage_key = environment.origin,
+        .storage_key = environment.storage_key,
         .scope_url = urls.scope_url,
         .script_url = urls.script_url,
         .worker_type = options.worker_type,
@@ -1316,7 +1496,7 @@ pub fn getRegistration(container: *runtime.Instance, client_url: []const u8) !ru
     const made = try environment.newPromise();
     errdefer made.promise.release();
     // 8.1. Match Service Worker Registration; 8.2, a task resolves.
-    const info = try environment.manager.match(allocator, environment.origin, url);
+    const info = try environment.manager.match(allocator, environment.storage_key, url);
     environment.manager.deliverLater(environment.id, .{ .resolve_optional_registration = .{ .promise = made.id, .registration = info } });
     return made.promise.take();
 }
@@ -1329,7 +1509,7 @@ pub fn getRegistrations(container: *runtime.Instance) !runtime.JSValue {
     errdefer made.promise.release();
     // 4.1-4.2. Every registration of the client's storage key; 4.3, a task
     // resolves with their objects.
-    const infos = try environment.manager.registrationsOf(environment.allocator, environment.origin);
+    const infos = try environment.manager.registrationsOf(environment.allocator, environment.storage_key);
     environment.manager.deliverLater(environment.id, .{ .resolve_registrations = .{ .promise = made.id, .registrations = infos } });
     return made.promise.take();
 }
@@ -1355,7 +1535,7 @@ pub fn ready(container: *runtime.Instance) !runtime.JSValue {
     // 3. While it is pending: the registration matching the client's
     // creation URL, if its active worker is not null, resolves it in a task.
     if (!kept.settled) {
-        if (try environment.manager.readyRegistration(environment.allocator, environment.origin, environment.creation_url)) |info| {
+        if (try environment.manager.readyRegistration(environment.allocator, environment.storage_key, environment.creation_url)) |info| {
             environment.manager.deliverLater(environment.id, .{ .ready = info });
         }
     }
@@ -1366,9 +1546,10 @@ pub fn ready(container: *runtime.Instance) !runtime.JSValue {
 /// The controller attribute's getter steps.
 pub fn controller(container: *runtime.Instance) !?*runtime.Instance {
     const environment = environmentOf(container.ctx, true) orelse return null;
-    // 2. The client's active service worker, or null.
-    var info = (try environment.manager.controllerOf(environment.allocator, environment.id)) orelse return null;
-    defer info.deinit(environment.allocator);
+    // 2. The client's active service worker, or null - as the realm was last
+    // told it (RealmEnvironment.controller: the browsers' order, stated
+    // there).
+    const info = environment.controller orelse return null;
     // 3. Its object in this realm.
     return try environment.workerObject(info);
 }

@@ -287,11 +287,12 @@ pub fn installHooks() void {
 /// owner's) and a shared worker's constructor's (HTML leaves it
 /// implementation-defined; Chromium keys a shared worker by its creator's
 /// storage key), with "has cross-site ancestry": the outside settings' bit,
-/// or a data: URL. A service worker - and a scope no host started - is keyed
-/// by its own origin's site with no cross-site ancestor: Crane's
-/// registrations are not partitioned (the SW lane's follow-up; Chromium
-/// keys a service worker by its registration's storage key). Made on first
-/// use and kept: BORROWED.
+/// or a data: URL. A service worker is keyed by its registration's storage
+/// key - its top-level site and bit, which its host captured from the
+/// registration (html worker_host initServiceOnThread; lane sw1-b11, as
+/// Chromium keys a service worker by its registration's storage key). A
+/// scope no host started is keyed by its own origin's site with no
+/// cross-site ancestor. Made on first use and kept: BORROWED.
 fn settingsStorageKey(instance: *runtime.Instance) error{OutOfMemory}!?[]const u8 {
     const internal = instance.getState(State).own._internal orelse return null;
     if (internal.storage_key) |key| return key;

@@ -128,21 +128,26 @@ fn fetchForUpdate(manager: *Manager, plan: *const registry_mod.FetchPlan) regist
     // origin - the script url's, which Register checked against the scope's.
     const own_origin = scope_mod.originOf(manager.allocator, plan.script_url) catch return .{ .failure = .network };
     defer manager.allocator.free(own_origin);
-    const partition = partitionKeyOf(manager.allocator, own_origin) catch return .{ .failure = .network };
+    const partition = partitionKeyOf(manager.allocator, plan.storage_key, own_origin) catch return .{ .failure = .network };
     defer if (partition) |p| manager.allocator.free(p);
     var fetcher: Fetcher = .{ .client = client, .manager = manager, .fallback_origin = own_origin, .referrer = plan.referrer, .partition_key = partition };
     return update_fetch.run(manager.allocator, plan, fetcher.interface());
 }
 
 /// Fetch "determine the network partition key" for a service worker's
-/// script requests: the top-level site of the service worker's environment.
-/// Crane's storage key is the origin (unpartitioned, realm.zig Register), so
-/// that is the site of the service worker's own origin - the registration's
-/// - for the update's fetches and the worker's imports alike, which then
-/// share one HTTP cache partition (Chromium keys a service worker's script
-/// fetches by its storage key's top-level site the same way). Null - no
-/// cache - for an origin with no site. OWNED.
-fn partitionKeyOf(allocator: Allocator, origin: []const u8) Allocator.Error!?[]u8 {
+/// script requests: the top-level site of the service worker's environment
+/// - its registration's storage key's (lane sw1-b11: registrations are
+/// partitioned), as Chromium keys a service worker's script fetches by its
+/// storage key's top-level site. The update's fetches use it here; the
+/// worker's imports, through its global's settings, the same site
+/// (html worker_host initServiceOnThread). Null - no cache - for an opaque
+/// site. A key with no site (a test's bare origin): the origin's own site.
+/// OWNED.
+fn partitionKeyOf(allocator: Allocator, storage_key: []const u8, origin: []const u8) Allocator.Error!?[]u8 {
+    if (html_core.web_storage.StorageKey.parse(storage_key)) |key| {
+        if (std.mem.eql(u8, key.top_level_site, "null")) return null;
+        return try allocator.dupe(u8, key.top_level_site);
+    }
     return html.agent_clusters.siteOf(allocator, origin) catch |err| switch (err) {
         error.OutOfMemory => error.OutOfMemory,
         else => null,
@@ -214,6 +219,7 @@ fn start(manager: *Manager, values: *const manager_mod.WorkerStart) anyerror!man
         policy = try box.container.clone(allocator);
     }
     defer if (policy) |*container| container.deinit();
+    const partition = html_core.web_storage.StorageKey.parse(values.storage_key);
     var thread_start: worker_host.ServiceWorkerStart = .{
         .source = values.source,
         .script_url = values.script_url,
@@ -226,6 +232,11 @@ fn start(manager: *Manager, values: *const manager_mod.WorkerStart) anyerror!man
         .browser_scope = manager.scope,
         .owner_sink = job_link.worker_sink,
         .owner = .{ .data = owner, .ended = OwnerEnd.ended, .drop = OwnerEnd.dropped },
+        // Its global's storage key is its registration's: the key's
+        // top-level site and cross-site-ancestor bit (a bare origin - a
+        // test's - names none).
+        .top_level_site = if (partition) |key| key.top_level_site else null,
+        .has_cross_site_ancestor = if (partition) |key| key.has_cross_site_ancestor else false,
         .service = .{
             .worker_id = values.worker_id,
             .registration_id = values.registration_id,
@@ -328,10 +339,9 @@ fn importScript(manager_ptr: *anyopaque, worker_id: u64, ctx: runtime.Context, u
             const global = globalOf(ctx);
             var client = if (global) |g| try dom.global_settings.requestClient(g) else dom.global_settings.Client{ .allocator = allocator };
             defer client.deinit();
-            // The partition the update's fetches use: the worker's own
-            // origin's site (`partitionKeyOf`).
-            const partition = if (client.request.origin) |origin| try partitionKeyOf(allocator, origin) else null;
-            defer if (partition) |p| allocator.free(p);
+            // The partition: the worker's settings' top-level site - its
+            // registration's (`partitionKeyOf`).
+            const partition = client.request.top_level_site;
             var response = script_fetch.fetchServiceWorkerResource(allocator, url, .{
                 .kind = .imported_script,
                 .bypass_http_cache = plan.bypass_http_cache,

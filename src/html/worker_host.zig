@@ -1027,18 +1027,30 @@ pub const WorkerHost = struct {
             .owner_is_secure_context = true,
             .service = start.service,
             // Service Workers "Run Service Worker" leaves the environment's
-            // top-level origin implementation-defined. Crane's storage key is
-            // the origin (unpartitioned), so it is the service worker's own:
-            // its top-level site keys every request its global makes - the
+            // top-level origin implementation-defined. A service worker's
+            // storage key is its registration's (lane sw1-b11; Chromium: a
+            // version's storage key is its registration's), so its top-level
+            // site is that key's: it keys every request its global makes - the
             // HTTP cache's partition (Fetch 2.7-2.8), the preflight cache's
             // and authentication entries' - as Chromium keys a service worker
-            // by its storage key's top-level site. Null for an origin with no
-            // site, or no memory: its requests then share nothing.
+            // by its storage key's top-level site. (Before, lane httpcache1's
+            // G7: the site of the worker's own origin, unpartitioned.) A
+            // start that names no site: its own origin's. Null for an opaque
+            // site, an origin with no site, or no memory: its requests then
+            // share nothing.
             .top_level_site = site: {
+                if (start.top_level_site) |named| {
+                    if (std.mem.eql(u8, named, "null")) break :site null;
+                    break :site allocator.dupe(u8, named) catch null;
+                }
                 const origin = fetch_mod.internal.origins.serializedOriginOf(allocator, start.script_url) catch break :site null;
                 defer allocator.free(origin);
                 break :site agent_clusters.siteOf(allocator, origin) catch null;
             },
+            // Its storage key's partition (WorkerGlobalScope's settings):
+            // the registration's top-level site and cross-site-ancestor bit.
+            .storage_top_level_site = if (start.top_level_site) |named| allocator.dupe(u8, named) catch null else null,
+            .has_cross_site_ancestor = start.has_cross_site_ancestor,
         };
         thread_host.host = self;
         hosts.append(std.heap.page_allocator, self) catch {};
@@ -3629,6 +3641,14 @@ pub const ServiceWorkerStart = struct {
     /// Setup step 1, the unsafe creation time (hr_time's monotonic clock,
     /// nanoseconds): the global scope's time origin.
     time_origin_ns: ?i64 = null,
+    /// Its registration's storage key's partition (registrations are
+    /// partitioned by storage key, lane sw1-b11): the top-level site,
+    /// serialized ("null" for an opaque one), and "has cross-site ancestor"
+    /// - its global's storage key's, and the top-level site its requests are
+    /// keyed by. BORROWED (copied). Null: none named - the script URL's own
+    /// origin's site, with no cross-site ancestor.
+    top_level_site: ?[]const u8 = null,
+    has_cross_site_ancestor: bool = false,
 };
 
 /// A service worker started on a thread of its own.
@@ -3742,6 +3762,9 @@ const ServiceThreadHost = struct {
         browser_scope: ?*runtime.BrowserScope,
         time_origin_ns: ?i64,
         service: ServiceScope,
+        /// ServiceWorkerStart.top_level_site, copied. OWNED.
+        top_level_site: ?[]u8,
+        has_cross_site_ancestor: bool,
     };
 
     fn create(allocator: Allocator, start: *const ServiceWorkerStart) !*ServiceThreadHost {
@@ -3749,6 +3772,8 @@ const ServiceThreadHost = struct {
         errdefer allocator.free(source);
         const script_url = try allocator.dupe(u8, start.script_url);
         errdefer allocator.free(script_url);
+        const top_level_site: ?[]u8 = if (start.top_level_site) |site| try allocator.dupe(u8, site) else null;
+        errdefer if (top_level_site) |site| allocator.free(site);
         const self = try allocator.create(ServiceThreadHost);
         self.* = .{
             .allocator = allocator,
@@ -3761,6 +3786,8 @@ const ServiceThreadHost = struct {
                 .browser_scope = start.browser_scope,
                 .time_origin_ns = start.time_origin_ns,
                 .service = start.service,
+                .top_level_site = top_level_site,
+                .has_cross_site_ancestor = start.has_cross_site_ancestor,
             },
         };
         return self;
@@ -3777,6 +3804,8 @@ const ServiceThreadHost = struct {
     fn freeStart(self: *ServiceThreadHost) void {
         self.allocator.free(self.start.source);
         self.allocator.free(self.start.script_url);
+        if (self.start.top_level_site) |site| self.allocator.free(site);
+        self.start.top_level_site = null;
         if (self.start.policy_container) |*container| container.deinit();
         self.start.policy_container = null;
     }
