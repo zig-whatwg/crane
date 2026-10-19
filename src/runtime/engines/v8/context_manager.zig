@@ -1396,10 +1396,11 @@ pub fn windowIndexedPropertyGetter(
     // html/browsers/the-window-object/accessing-other-browsing-contexts/
     // indexed-browsing-contexts-01.html; the spec's tree order is unshipped)
     // - keeping only DOCUMENT-TREE members, never a shadow tree's navigables
-    // (Codex row 81 Q8). TODO(row 81): take this list from the helper row
-    // 81's Window.call_item uses once it is on main; until then, membership
-    // is dom.navigables.childNavigablesOf (document-tree, shadow-excluded)
-    // and the order the raw children's.
+    // (Codex row 81 Q8). The same list Window's length and item walk (row
+    // 81's documentTreeChildNavigables, private to the Window impl, which no
+    // other file may reach): membership from dom.navigables.childNavigablesOf
+    // (document-tree, shadow-excluded), order the raw children's. TODO: one
+    // shared dom.navigables helper for both, if it moves out of the impl.
     if (result == null) {
         if (documentTreeChildAt(instance, index)) |child_bc| {
             result = if (child_bc.getActiveWindow()) |window|
