@@ -122,6 +122,12 @@ pub const Entry = struct {
     /// makes for the state reports them. Shared by the entries of the
     /// document state, each holding its own copy. Owned.
     not_restored_reasons: ?NotRestoredReasons = null,
+    /// Its document came from a GET of an HTTP(S) URL answered 200: what the
+    /// back/forward cache keeps (Blink's eligibility, BackForwardCacheImpl
+    /// CanStoreDocument: kHTTPStatusNotOK, kSchemeNotHTTPOrHTTPS,
+    /// kHTTPMethodNotGET). Recorded at the commit; shared by the entries of
+    /// the document state.
+    keepable_response: bool = false,
 
     fn deinit(self: *Entry, allocator: Allocator) void {
         allocator.free(self.url);
@@ -538,6 +544,8 @@ pub const JointHistory = struct {
         var current_reasons: ?NotRestoredReasons = if (current.not_restored_reasons) |*r| try r.clone(self.allocator) else null;
         errdefer if (current_reasons) |*r| r.deinit(self.allocator);
         const new_api_state = api_state orelse try current.api_state.clone(self.allocator);
+        // Read now: the commit below may move the entries.
+        const keepable = current.keepable_response;
         try self.commit(navigable, url, current.document_state, current.document, state, new_api_state, origin, handling, true, null);
         const committed = self.currentEntry(navigable) orelse unreachable;
         if (committed.resource) |old| self.allocator.free(old);
@@ -551,6 +559,33 @@ pub const JointHistory = struct {
             committed.not_restored_reasons = reasons;
             current_reasons = null;
         }
+        // And whether its document's response may be kept.
+        committed.keepable_response = keepable;
+    }
+
+    /// Whether `document_state`'s document came from a response the
+    /// back/forward cache may keep (`Entry.keepable_response`).
+    pub fn keepableResponse(self: *const JointHistory, document_state: u64) bool {
+        for (self.entries.items) |entry| {
+            if (entry.document_state == document_state) return entry.keepable_response;
+        }
+        return false;
+    }
+
+    /// Record whether `document_state`'s document came from a response the
+    /// back/forward cache may keep - on every entry of the state.
+    pub fn setKeepableResponse(self: *JointHistory, document_state: u64, keepable: bool) void {
+        for (self.entries.items) |*entry| {
+            if (entry.document_state == document_state) entry.keepable_response = keepable;
+        }
+    }
+
+    /// Whether an entry of `document_state` is still in the history.
+    pub fn hasDocumentState(self: *const JointHistory, document_state: u64) bool {
+        for (self.entries.items) |entry| {
+            if (entry.document_state == document_state) return true;
+        }
+        return false;
     }
 
     /// HTML "populate a session history entry" step 7.2.3: `document_state`'s

@@ -172,15 +172,10 @@ const Active = struct {
 pub const StyleEngine = struct {
     allocator: Allocator,
     owners: std.ArrayList(Owner) = .empty,
-    /// CSSOM View 4.2: the MediaQueryList objects whose document this is,
-    /// in the order they were created - raw back links each list removes in
-    /// its own teardown, the generation a teardown net. The engine never
-    /// keeps a list alive.
-    media_query_lists: std.ArrayList(Owner) = .empty,
-    /// Shadow roots whose adoptedStyleSheets were set (a shadow tree with no
-    /// style element is a scope only through them): raw back links with
-    /// their generation, never holds.
-    adopting_roots: std.ArrayList(Owner) = .empty,
+    /// The state few documents use, made on first use (WebKit's
+    /// DocumentRareData pattern): the engine is embedded in Document's state,
+    /// which sits just under its allocation size class.
+    rare: ?*Rare = null,
     /// Moves whenever a slot's assigned nodes change (DOM "assign
     /// slottables"): part of each cached style's key, since a slotted
     /// element inherits from its slot.
@@ -189,13 +184,53 @@ pub const StyleEngine = struct {
     /// (owners connecting and disconnecting, media, disabled, title).
     sheets_version: u64 = 1,
     active: ?Active = null,
-    /// Moves every time the active sheets are rebuilt: part of each cached
-    /// style's key.
+    /// Moves every time the active sheets are rebuilt, and when the page's
+    /// supported color schemes change: part of each cached style's key.
     generation: u64 = 1,
     /// A style read of this document is resolving: nothing it reaches may
     /// read style again (the active sheets and the lineage's caches are in
     /// use). Checked in Debug builds (`enterResolution`).
     resolving: bool = false,
+    /// HTML 4.2.5.1, "the page's supported color schemes": the color scheme
+    /// support the first valid color-scheme meta element names
+    /// (`Support.none` for null), as of the last style read that found
+    /// `page_color_schemes_dirty` set. The engine is embedded in Document's
+    /// state, so both bytes sit in this struct's tail padding: see
+    /// tests/dom/style_engine_size_test.zig before adding a field.
+    page_color_schemes: css.color_scheme.Support = .none,
+    /// A color-scheme meta element was inserted into or removed from the
+    /// document, or changed its name or content, since `page_color_schemes`
+    /// was found ("user agents must re-run the above algorithm"): the next
+    /// style read runs it, once for a whole batch of changes (Blink's
+    /// Document::ColorSchemeMetaChanged and WebKit's
+    /// metaElementColorSchemeChanged walk on every change). Set at first:
+    /// nothing has run it for this document.
+    page_color_schemes_dirty: bool = true,
+
+    /// What `rare` holds.
+    pub const Rare = struct {
+        /// CSSOM View 4.2: the MediaQueryList objects whose document this
+        /// is, in the order they were created - raw back links each list
+        /// removes in its own teardown, the generation a teardown net. The
+        /// engine never keeps a list alive.
+        media_query_lists: std.ArrayList(Owner) = .empty,
+        /// Shadow roots whose adoptedStyleSheets were set (a shadow tree with
+        /// no style element is a scope only through them): raw back links
+        /// with their generation, never holds.
+        adopting_roots: std.ArrayList(Owner) = .empty,
+        /// CSSOM 6.2's preferred CSS style sheet set name once something
+        /// changed it - HTML's default-style pragma - owned. Null until then:
+        /// it is the first titled persistent sheet's title (buildActive).
+        /// CSSOM's "last CSS style sheet set name" has no field: nothing
+        /// selects a set (selectedStyleSheetSet left CSSOM), so it stays null.
+        preferred_set_name: ?[]u8 = null,
+
+        fn deinit(self: *Rare, allocator: Allocator) void {
+            self.media_query_lists.deinit(allocator);
+            self.adopting_roots.deinit(allocator);
+            if (self.preferred_set_name) |name| allocator.free(name);
+        }
+    };
 
     pub fn init(allocator: Allocator) StyleEngine {
         return .{ .allocator = allocator };
@@ -205,14 +240,44 @@ pub const StyleEngine = struct {
         if (self.active) |*a| a.deinit(self.allocator);
         self.active = null;
         self.owners.deinit(self.allocator);
-        self.media_query_lists.deinit(self.allocator);
-        self.adopting_roots.deinit(self.allocator);
+        if (self.rare) |rare| {
+            rare.deinit(self.allocator);
+            self.allocator.destroy(rare);
+            self.rare = null;
+        }
+    }
+
+    fn ensureRare(self: *StyleEngine) Error!*Rare {
+        if (self.rare) |rare| return rare;
+        const rare = try self.allocator.create(Rare);
+        rare.* = .{};
+        self.rare = rare;
+        return rare;
     }
 
     /// The shadow root `root` adopted style sheets.
     pub fn addAdoptingRoot(self: *StyleEngine, root: *runtime.Instance) Error!void {
-        for (self.adopting_roots.items) |o| if (o.element == root and o.live()) return;
-        try self.adopting_roots.append(self.allocator, .{ .element = root, .generation = runtime.SlabAllocator.generationOf(root) });
+        const rare = try self.ensureRare();
+        for (rare.adopting_roots.items) |o| if (o.element == root and o.live()) return;
+        try rare.adopting_roots.append(self.allocator, .{ .element = root, .generation = runtime.SlabAllocator.generationOf(root) });
+    }
+
+    /// CSSOM 6.2 "change the preferred CSS style sheet set name" with
+    /// `name` (HTML 4.2.5.3, the default style state). "1. Let current be
+    /// the preferred CSS style sheet set name. 2. Set [it] to name. 3. If
+    /// name is not a case-sensitive match for current and last CSS style
+    /// sheet set name is null enable a CSS style sheet set with name name":
+    /// the active sheets are rebuilt with that set enabled and every other
+    /// set disabled, synchronously for the next style read.
+    pub fn changePreferredStyleSheetSetName(self: *StyleEngine, name: []const u8) Error!void {
+        const rare = try self.ensureRare();
+        if (rare.preferred_set_name) |current| {
+            if (std.mem.eql(u8, current, name)) return;
+        }
+        const owned = try self.allocator.dupe(u8, name);
+        if (rare.preferred_set_name) |current| self.allocator.free(current);
+        rare.preferred_set_name = owned;
+        self.sheetsChanged();
     }
 
     /// A style read begins. Re-entering one - matching or a hook reaching
@@ -226,16 +291,18 @@ pub const StyleEngine = struct {
 
     /// A MediaQueryList whose document this is was made (matchMedia).
     pub fn addMediaQueryList(self: *StyleEngine, list: *runtime.Instance) Error!void {
-        try self.media_query_lists.append(self.allocator, .{ .element = list, .generation = runtime.SlabAllocator.generationOf(list) });
+        const rare = try self.ensureRare();
+        try rare.media_query_lists.append(self.allocator, .{ .element = list, .generation = runtime.SlabAllocator.generationOf(list) });
     }
 
     /// The MediaQueryList `list` is going.
     pub fn removeMediaQueryList(self: *StyleEngine, list: *runtime.Instance) void {
+        const rare = self.rare orelse return;
         var i: usize = 0;
-        while (i < self.media_query_lists.items.len) {
-            const entry = self.media_query_lists.items[i];
+        while (i < rare.media_query_lists.items.len) {
+            const entry = rare.media_query_lists.items[i];
             if (entry.element == list or !entry.live()) {
-                _ = self.media_query_lists.orderedRemove(i);
+                _ = rare.media_query_lists.orderedRemove(i);
                 continue;
             }
             i += 1;
@@ -265,6 +332,13 @@ pub const StyleEngine = struct {
             i += 1;
         }
         self.sheetsChanged();
+    }
+
+    /// HTML 4.2.5.1's re-run trigger for the page's supported color schemes
+    /// (HTMLMetaElement's own steps call it): the next style read finds
+    /// them again.
+    pub fn pageColorSchemesChanged(self: *StyleEngine) void {
+        self.page_color_schemes_dirty = true;
     }
 
     /// A sheet of this document was made, removed or changed one of its
@@ -319,12 +393,18 @@ pub const StyleEngine = struct {
         // sheet set name is the first titled, non-alternate sheet's title;
         // a titled sheet is enabled only when its title is that name. (The
         // spec sets it as sheets are added; tree order stands in, stated.)
-        var preferred: ?[]const u8 = null;
-        for (owners.items) |owner| {
+        // Once "change the preferred CSS style sheet set name" has run (the
+        // default-style pragma), the name it set holds: step 4 changes it
+        // only while it is the empty string, and the change enabled that
+        // set and disabled every other (CSSOM "enable a CSS style sheet
+        // set"). Stated: the set enabling is derived here, apart from each
+        // sheet's own disabled flag, which it never touches.
+        var preferred: ?[]const u8 = if (self.rare) |rare| rare.preferred_set_name else null;
+        if (preferred == null) for (owners.items) |owner| {
             const record = hooks.sheetOf(owner) orelse continue;
             if (record.disabled) continue;
             if (record.title.len != 0 and !record.alternate and preferred == null) preferred = record.title;
-        }
+        };
 
         var layers = LayerTree.init(self.allocator);
         defer layers.deinit();
@@ -387,18 +467,20 @@ pub const StyleEngine = struct {
             while (root.parent_node) |p| root = p;
             if (std.mem.indexOfScalar(*NodeBase, roots.items, root) == null) try roots.append(self.allocator, root);
         }
-        var i: usize = 0;
-        while (i < self.adopting_roots.items.len) {
-            const o = self.adopting_roots.items[i];
-            if (!o.live()) {
-                _ = self.adopting_roots.swapRemove(i);
-                continue;
+        if (self.rare) |rare| {
+            var i: usize = 0;
+            while (i < rare.adopting_roots.items.len) {
+                const o = rare.adopting_roots.items[i];
+                if (!o.live()) {
+                    _ = rare.adopting_roots.swapRemove(i);
+                    continue;
+                }
+                i += 1;
+                const root = instance_bridge.getNodeBase(o.element) orelse continue;
+                if (!root.is_connected and !hostConnected(root)) continue;
+                if (root.node_type == NodeBase.DOCUMENT_NODE) continue;
+                if (std.mem.indexOfScalar(*NodeBase, roots.items, root) == null) try roots.append(self.allocator, root);
             }
-            i += 1;
-            const root = instance_bridge.getNodeBase(o.element) orelse continue;
-            if (!root.is_connected and !hostConnected(root)) continue;
-            if (root.node_type == NodeBase.DOCUMENT_NODE) continue;
-            if (std.mem.indexOfScalar(*NodeBase, roots.items, root) == null) try roots.append(self.allocator, root);
         }
         for (roots.items) |root| {
             var layers = LayerTree.init(self.allocator);
@@ -629,6 +711,52 @@ fn shadowDepth(root: *NodeBase) u16 {
     return depth;
 }
 
+/// HTML 4.2.5.1, "to obtain a page's supported color-schemes": the first
+/// meta element in tree order that is in a document tree, has a name that
+/// is an ASCII case-insensitive match for "color-scheme" and a content
+/// attribute that parses as a color-scheme value names them (`Support.none`
+/// for `normal`); none, null (`Support.none`). The walk follows the
+/// document's children only, so a shadow tree's meta elements and a
+/// template's contents are not candidates (not in a document tree); and only
+/// an HTML meta element (an SVG-namespace "meta" is not one: Chrome 151,
+/// Firefox 144 and Safari 27.0.1 ignore it).
+fn pageColorSchemes(allocator: Allocator, document: *runtime.Instance) Error!css.color_scheme.Support {
+    const root = instance_bridge.getNodeBase(document) orelse return .none;
+    var next: ?*NodeBase = root.first_child;
+    while (next) |node| {
+        if (node.node_type == NodeBase.ELEMENT_NODE) if (instanceOf(node)) |element| if (colorSchemeMetaContent(element)) |content| {
+            if (try css.properties.parseColorSchemeSupport(allocator, content)) |support| return support;
+        };
+        // Preorder: the first child, else the next sibling of the nearest
+        // inclusive ancestor that has one.
+        if (node.first_child) |child| {
+            next = child;
+            continue;
+        }
+        var current = node;
+        next = while (true) {
+            if (current.next_sibling) |sibling| break sibling;
+            const parent = current.parent_node orelse break null;
+            if (parent == root) break null;
+            current = parent;
+        };
+    }
+    return .none;
+}
+
+/// Step 1's candidate test for one element: its content attribute's value,
+/// when it is an HTML meta element named color-scheme with one.
+fn colorSchemeMetaContent(element: *runtime.Instance) ?[]const u8 {
+    const data = element_data.of(element) orelse return null;
+    const ns = data.namespaceSlice() orelse return null;
+    if (!std.mem.eql(u8, ns, html_namespace)) return null;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "meta")) return null;
+    const name = data.findAttribute(null, "name") orelse return null;
+    if (!std.ascii.eqlIgnoreCase(name.value, "color-scheme")) return null;
+    const content = data.findAttribute(null, "content") orelse return null;
+    return content.value;
+}
+
 /// The document's singleton states, by address and generation.
 fn singletonKey(document: *runtime.Instance) [5]u64 {
     var key: [5]u64 = .{0} ** 5;
@@ -651,6 +779,10 @@ const Resolution = struct {
     active: *Active,
     key: Key,
     root_font_size: f64 = 16,
+    /// The page color scheme (CSS Color Adjustment 1 2.1) and the user's
+    /// preferred one, found once per style read.
+    page_color_scheme: css.color_scheme.Scheme = .light,
+    preferred_color_scheme: css.color_scheme.Scheme = .light,
     matched: std.ArrayList(Matched) = .empty,
     candidates: std.ArrayList(u32) = .empty,
 
@@ -673,6 +805,20 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
     engine.enterResolution();
     defer engine.resolving = false;
     const active = try engine.ensureActive(document);
+    // HTML 4.2.5.1's re-run, when a meta element's own steps asked for it.
+    // A changed answer moves the generation every cached style is keyed
+    // on: the meta's post-connection steps run after the whole batch was
+    // inserted, so a style read in between (a script earlier in the same
+    // fragment) has cached styles under the tree version that is still
+    // current.
+    if (engine.page_color_schemes_dirty) {
+        const found = try pageColorSchemes(engine.allocator, document);
+        engine.page_color_schemes_dirty = false;
+        if (!found.eql(engine.page_color_schemes)) {
+            engine.page_color_schemes = found;
+            engine.generation +%= 1;
+        }
+    }
     var res: Resolution = .{
         .allocator = engine.allocator,
         .document = document,
@@ -681,6 +827,13 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
         .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slot_version, .singletons = singletonKey(document) },
     };
     defer res.deinit();
+    // CSS Color Adjustment 1 2.1: "the page color scheme is determined by
+    // finding the used color scheme, given the preferred color scheme and
+    // the page's supported color schemes". The preference is the host's, as
+    // prefers-color-scheme reads it; a change to it moves the media values,
+    // and with them the generation every cached style is keyed on.
+    res.preferred_color_scheme = if (active.media.prefers_color_scheme == .dark) .dark else .light;
+    res.page_color_scheme = css.color_scheme.used(engine.page_color_schemes, res.preferred_color_scheme);
 
     // The flat-tree lineage, the element first.
     var lineage: std.ArrayList(LineageEntry) = .empty;
@@ -770,6 +923,8 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         .viewport_width = res.active.media.width,
         .viewport_height = res.active.media.height,
         .is_root = is_root and pseudo == null,
+        .page_color_scheme = res.page_color_scheme,
+        .preferred_color_scheme = res.preferred_color_scheme,
     }, res.matched.items);
 }
 
@@ -1097,8 +1252,9 @@ fn sortTreeOrder(items: []*runtime.Instance) void {
 /// lists are taken first, and each is checked to be live before it runs.
 pub fn reportMediaQueryChanges(document: *runtime.Instance) void {
     const engine = hooks.engineOf(document) orelse return;
-    if (engine.media_query_lists.items.len == 0) return;
-    const lists = engine.allocator.dupe(Owner, engine.media_query_lists.items) catch return;
+    const rare = engine.rare orelse return;
+    if (rare.media_query_lists.items.len == 0) return;
+    const lists = engine.allocator.dupe(Owner, rare.media_query_lists.items) catch return;
     defer engine.allocator.free(lists);
     for (lists) |entry| {
         if (!entry.live()) continue;

@@ -113,6 +113,7 @@ pub const media_queries = @import("media_queries.zig");
 pub const computed_style = @import("computed_style.zig");
 pub const cascade = @import("cascade.zig");
 pub const text_transform = @import("text_transform.zig");
+pub const color_scheme = @import("color_scheme.zig");
 
 // ============================================================================
 // Tests

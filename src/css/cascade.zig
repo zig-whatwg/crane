@@ -35,6 +35,7 @@ const properties = @import("properties.zig");
 const values = @import("style_values.zig");
 const declarations_mod = @import("declarations.zig");
 const computed_mod = @import("computed_style.zig");
+const color_scheme_mod = @import("color_scheme.zig");
 
 const Longhand = properties.Longhand;
 const Value = values.Value;
@@ -113,6 +114,13 @@ pub const Context = struct {
     viewport_height: f64 = 768,
     /// The element is the root element (Display 4 2.8).
     is_root: bool = false,
+    /// CSS Color Adjustment 1 2.1, the page color scheme: the used color
+    /// scheme of the page's supported color schemes - an element whose
+    /// color-scheme is `normal` has it.
+    page_color_scheme: color_scheme_mod.Scheme = .light,
+    /// The user's preferred color scheme (the host's, as prefers-color-scheme
+    /// reports it).
+    preferred_color_scheme: color_scheme_mod.Scheme = .light,
 };
 
 const Candidate = struct {
@@ -186,6 +194,8 @@ const Builder = struct {
     style: *ComputedStyle = undefined,
     writing_mode: Keyword = .horizontal_tb,
     direction: Keyword = .ltr,
+    /// The element color scheme, once color-scheme is computed.
+    used_scheme: color_scheme_mod.Scheme = .light,
 
     fn parentValue(self: *const Builder, l: Longhand) Value {
         if (self.ctx.parent) |p| return p.get(l);
@@ -249,16 +259,20 @@ const Builder = struct {
 
     fn run(self: *Builder) Allocator.Error!void {
         // The high-priority longhands: the mapping of logical ones, then
-        // font-size (em), then color (currentcolor).
+        // color-scheme (what every system color resolves against - Blink
+        // applies it before color too), then font-size (em), then color
+        // (currentcolor).
         self.writing_mode = (try self.computeAndStore(.writing_mode)).keyword;
         self.direction = (try self.computeAndStore(.direction)).keyword;
+        self.used_scheme = self.elementColorScheme(try self.computeAndStore(.color_scheme));
+        self.style.used_color_scheme = self.used_scheme;
         _ = try self.computeAndStore(.font_size);
         _ = try self.computeAndStore(.color);
         for (0..Longhand.count) |i| {
             const l: Longhand = @enumFromInt(i);
             if (l.logical() != null) continue;
             switch (l) {
-                .writing_mode, .direction, .font_size, .color => continue,
+                .writing_mode, .direction, .color_scheme, .font_size, .color => continue,
                 else => {},
             }
             _ = try self.computeAndStore(l);
@@ -272,6 +286,18 @@ const Builder = struct {
             v.retain();
             self.style.values[i] = v;
         }
+    }
+
+    /// CSS Color Adjustment 1 2.2, the element color scheme of a computed
+    /// color-scheme: `normal` is the page color scheme; any other value is
+    /// the used color scheme of the color scheme support it names, given
+    /// the user's preference (2.3). An inherited value is the parent's, and
+    /// so is its result (Blink's ColorScheme::ApplyInherit copies it).
+    fn elementColorScheme(self: *const Builder, v: Value) color_scheme_mod.Scheme {
+        return switch (v) {
+            .color_scheme => |c| color_scheme_mod.used(c.support, self.ctx.preferred_color_scheme),
+            else => self.ctx.page_color_scheme,
+        };
     }
 
     /// Compute `l` and store it (holding its own reference).
@@ -288,11 +314,19 @@ const Builder = struct {
             // "inherit: the property's specified and computed values are the
             // inherited value."
             .inherit => {
+                // The root's color has no parent to inherit from: "the
+                // inherited value is the initial value" (Cascade 5 7.3.2),
+                // CanvasText in the root's own color scheme.
+                if (self.ctx.parent == null and l == .color) return self.computeValue(l, l.info().initial);
                 const p = self.parentValue(l);
                 p.retain();
                 return p;
             },
-            .initial => computed_mod.initialComputed(l),
+            // color's initial value, CanvasText, is resolved in the
+            // element's color scheme (Chrome 151 and Safari 27.0.1 answer
+            // white for `color: initial` under `only dark`; Firefox 144
+            // black).
+            .initial => if (l == .color) l.info().initial else computed_mod.initialComputed(l),
             .value => |v| v,
         };
         return self.computeValue(l, v);
@@ -315,12 +349,16 @@ const Builder = struct {
                     return p;
                 },
                 .named => |n| return .{ .color = .{ .rgba = n.rgba } },
+                .system => |s| return .{ .color = .{ .rgba = s.color(self.used_scheme) } },
                 .rgba => {},
             },
             .opacity => return .{ .number = std.math.clamp(v.number, 0, 1) },
-            // A named or system color computes to its color.
-            .background_color, .border_top_color, .border_right_color, .border_bottom_color, .border_left_color => if (v == .color and v.color == .named) {
-                return .{ .color = .{ .rgba = v.color.named.rgba } };
+            // A named color computes to its color; a system color to its
+            // color in the element color scheme (CSS Color 4 15.5).
+            .background_color, .border_top_color, .border_right_color, .border_bottom_color, .border_left_color => if (v == .color) switch (v.color) {
+                .named => |n| return .{ .color = .{ .rgba = n.rgba } },
+                .system => |s| return .{ .color = .{ .rgba = s.color(self.used_scheme) } },
+                .rgba, .current => {},
             },
             .line_height => switch (v) {
                 .length => |len| if (len.unit == .percent) return Value.px(len.value / 100 * self.fontSize()),
@@ -708,4 +746,105 @@ test "text values are shared, not leaked" {
     defer child.destroy();
     try expectResolved(child, .font_family, "\"A B\", serif");
     try expectResolved(child, .background_image, "none");
+}
+
+test "color-scheme is inherited and computes as specified" {
+    var parent_block = try TestBlock.make("color-scheme: only dark Purple");
+    defer parent_block.deinit();
+    const parent = try cascade(.{ .allocator = testing.allocator, .parent = null, .is_root = true }, &.{.{ .block = &parent_block.block, .source = .{ .origin = .author } }});
+    defer parent.destroy();
+    try expectResolved(parent, .color_scheme, "dark Purple only");
+    const child = try cascade(.{ .allocator = testing.allocator, .parent = parent }, &.{});
+    defer child.destroy();
+    try expectResolved(child, .color_scheme, "dark Purple only");
+    var reset_block = try TestBlock.make("color-scheme: initial");
+    defer reset_block.deinit();
+    const reset = try cascade(.{ .allocator = testing.allocator, .parent = parent }, &.{.{ .block = &reset_block.block, .source = .{ .origin = .author } }});
+    defer reset.destroy();
+    try expectResolved(reset, .color_scheme, "normal");
+}
+
+fn cascadeText(parent: ?*const ComputedStyle, text: []const u8, ctx_override: struct { is_root: bool = false, page: color_scheme_mod.Scheme = .light, preferred: color_scheme_mod.Scheme = .light }) !*ComputedStyle {
+    var block = try TestBlock.make(text);
+    defer block.deinit();
+    return cascade(.{
+        .allocator = testing.allocator,
+        .parent = parent,
+        .is_root = ctx_override.is_root,
+        .page_color_scheme = ctx_override.page,
+        .preferred_color_scheme = ctx_override.preferred,
+    }, &.{.{ .block = &block.block, .source = .{ .origin = .author } }});
+}
+
+test "system colors compute against the element's used color scheme" {
+    // CSS Color 4 15.5: "the computed and used value is the corresponding
+    // color"; CSS Color Adjustment 1 2.4: system colors match the element
+    // color scheme.
+    const light = try cascadeText(null, "color: CanvasText; background-color: Canvas; color-scheme: only light", .{ .is_root = true });
+    defer light.destroy();
+    try expectResolved(light, .color, "rgb(0, 0, 0)");
+    try expectResolved(light, .background_color, "rgb(255, 255, 255)");
+    const dark = try cascadeText(null, "color: CanvasText; background-color: Canvas; border-top: 1px solid; color-scheme: only dark", .{ .is_root = true });
+    defer dark.destroy();
+    try testing.expectEqual(color_scheme_mod.Scheme.dark, dark.used_color_scheme);
+    try expectResolved(dark, .color, "rgb(255, 255, 255)");
+    try expectResolved(dark, .background_color, "rgb(18, 18, 18)");
+    // currentcolor follows the element's color.
+    try expectResolved(dark, .border_top_color, "rgb(255, 255, 255)");
+    const link = try cascadeText(null, "color: LinkText; background-color: Menu; color-scheme: dark", .{ .is_root = true });
+    defer link.destroy();
+    try expectResolved(link, .color, "rgb(158, 158, 255)");
+    // A deprecated system color is its standard color (Appendix A).
+    try expectResolved(link, .background_color, "rgb(18, 18, 18)");
+}
+
+test "an inherited system color is the parent's resolved color" {
+    // Chrome 151, Firefox 144 and Safari 27.0.1 (lane style4 probe): a light
+    // parent's CanvasText reaches its dark child as rgb(0, 0, 0).
+    const parent = try cascadeText(null, "color: CanvasText; color-scheme: light", .{ .is_root = true });
+    defer parent.destroy();
+    const child = try cascadeText(parent, "color-scheme: dark", .{});
+    defer child.destroy();
+    try testing.expectEqual(color_scheme_mod.Scheme.dark, child.used_color_scheme);
+    try expectResolved(child, .color, "rgb(0, 0, 0)");
+}
+
+test "color's initial value is CanvasText in the element's own scheme" {
+    // The root's default color follows its used scheme - the page's for
+    // `normal` - and `color: initial` an element's own (Chrome and Safari;
+    // Firefox answers black).
+    const root = try cascadeText(null, "", .{ .is_root = true, .page = .dark });
+    defer root.destroy();
+    try testing.expectEqual(color_scheme_mod.Scheme.dark, root.used_color_scheme);
+    try expectResolved(root, .color, "rgb(255, 255, 255)");
+    const light_root = try cascadeText(null, "", .{ .is_root = true });
+    defer light_root.destroy();
+    const initial = try cascadeText(light_root, "color: initial; color-scheme: only dark", .{});
+    defer initial.destroy();
+    try expectResolved(initial, .color, "rgb(255, 255, 255)");
+    // An element with no color declaration inherits it, whatever its scheme.
+    const inherits = try cascadeText(light_root, "color-scheme: only dark", .{});
+    defer inherits.destroy();
+    try expectResolved(inherits, .color, "rgb(0, 0, 0)");
+}
+
+test "the element color scheme: normal is the page's, a list is resolved against the preference" {
+    const cases = [_]struct { []const u8, color_scheme_mod.Scheme, color_scheme_mod.Scheme, color_scheme_mod.Scheme }{
+        // text, page scheme, preference, expected
+        .{ "color-scheme: normal", .dark, .light, .dark },
+        .{ "color-scheme: normal", .light, .dark, .light },
+        .{ "color-scheme: foo", .dark, .light, .light },
+        .{ "color-scheme: foo dark", .light, .light, .dark },
+        .{ "color-scheme: light dark", .light, .light, .light },
+        .{ "color-scheme: light dark", .light, .dark, .dark },
+        .{ "color-scheme: only dark light", .light, .light, .light },
+    };
+    for (cases) |case| {
+        const style = try cascadeText(null, case[0], .{ .is_root = true, .page = case[1], .preferred = case[2] });
+        defer style.destroy();
+        testing.expectEqual(case[3], style.used_color_scheme) catch |err| {
+            std.debug.print("{s} page {s} preferred {s}\n", .{ case[0], @tagName(case[1]), @tagName(case[2]) });
+            return err;
+        };
+    }
 }

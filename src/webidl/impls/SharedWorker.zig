@@ -86,6 +86,18 @@ pub fn installHooks() void {
     // "Destroy a document" step 8: the Document leaves every shared worker's
     // owner set, and a worker whose owner set empties is closed.
     @import("dom").unloading_cleanup.install(&worker_host.sharedWorkerOwnerGone);
+    @import("dom").bfcache.installBlocker(&blocksBfcache);
+}
+
+/// dom.bfcache: a page in a shared worker's owner set is not kept in the
+/// back/forward cache, with Chromium's reason "sharedworker"
+/// (BackForwardCacheImpl's blocklisted features, kSharedWorker; WebKit's
+/// BackForwardCache refuses one too). The worker outlives the page's leaving
+/// only while another owner keeps it, and HTML's owner set has no state for
+/// a cached owner.
+fn blocksBfcache(realm: runtime.Context) ?@import("dom").bfcache.Blocked {
+    const manager = worker_host.SharedWorkerManager.existingOf(realm) orelse return null;
+    return if (manager.hasOwner(realm)) .{ .reason = .sharedworker } else null;
 }
 
 /// Deinitialize instance

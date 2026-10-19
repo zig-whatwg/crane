@@ -243,6 +243,15 @@ pub const RealmEnvironment = struct {
     fn deliver(endpoint: *manager_mod.Endpoint, delivery: *Delivery) void {
         const self = RealmEnvironment.ofEndpoint(endpoint);
         if (self.ended) return;
+        // A client page the back/forward cache keeps cannot answer: it is
+        // evicted instead (lane bfcache-b). Chromium evicts on its service
+        // worker's postMessage and on clients.claim() reaching it
+        // (kServiceWorkerPostMessage, kServiceWorkerClaim;
+        // back-forward-cache/service-worker-client-postmessage and
+        // -clients-claim pass in Chrome 155 and Firefox 158, wpt.fyi
+        // 23b0b89b1a). Every delivery here would run the page's script, so
+        // every one evicts; the delivery is dropped (its owner frees it).
+        if (cachedWindowOf(self.realm)) |window| return dom.bfcache.evict(window, null);
         self.delivering += 1;
         defer {
             self.delivering -= 1;
@@ -688,6 +697,14 @@ pub fn environmentOf(realm: runtime.Context, create: bool) ?*RealmEnvironment {
         log.debug("no service worker environment for a realm: {s}", .{@errorName(err)});
         return null;
     };
+}
+
+/// `realm`'s Window when a page the back/forward cache keeps is its own; on
+/// the realm's thread.
+fn cachedWindowOf(realm: runtime.Context) ?*runtime.Instance {
+    const global = globalOf(realm) orelse return null;
+    if (global.stateAs(interfaces.Window.State) == null) return null;
+    return if (dom.bfcache.holds(global)) global else null;
 }
 
 fn globalOf(realm: runtime.Context) ?*runtime.Instance {

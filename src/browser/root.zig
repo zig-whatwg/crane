@@ -45,6 +45,7 @@ pub const process = @import("process.zig");
 pub const Process = process.Process;
 
 pub const Context = @import("Context.zig").Context;
+pub const back_forward_cache = @import("back_forward_cache.zig");
 pub const ContextType = @import("Context.zig").ContextType;
 
 pub const navigation = @import("navigation.zig");

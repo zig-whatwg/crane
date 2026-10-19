@@ -168,7 +168,7 @@ test "request error steps - the async order is readystatechange, error, loadend"
     }
 }
 
-test "request error steps - a sync request fires nothing" {
+test "request error steps - a sync network error fires terminal download events" {
     const allocator = std.testing.allocator;
 
     var state = XMLHttpRequestState.init(allocator);
@@ -185,8 +185,11 @@ test "request error steps - a sync request fires nothing" {
     var processor = ResponseProcessor.init(&state);
     processor.handleNetworkError();
 
-    // Step 4: a sync request THROWS and fires nothing; steps 5-8 are skipped.
-    try std.testing.expectEqual(@as(usize, 0), recorder.entries.items.len);
+    // Firefox/WebKit dispatch these before send throws (row 79 Q4).
+    try std.testing.expectEqual(@as(usize, 3), recorder.entries.items.len);
+    try std.testing.expectEqual(XHREventType.readystatechange, recorder.entries.items[0].event_type);
+    try std.testing.expectEqual(XHREventType.@"error", recorder.entries.items[1].event_type);
+    try std.testing.expectEqual(XHREventType.loadend, recorder.entries.items[2].event_type);
 
     // Steps 1-3 still ran.
     try std.testing.expectEqual(ReadyState.DONE, state.ready_state);

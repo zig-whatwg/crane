@@ -98,6 +98,13 @@ pub const TimerVTable = struct {
     /// `TimerInterface.setTimeoutOwned` then arms nothing (returns 0).
     setTimeoutOwned: ?*const fn (ctx: *anyopaque, ms: u64, callback: TimerCallback, user_data: ?*anyopaque, drop: TimerDrop) TimerId = null,
 
+    /// How long until the pending timer `id` is due, in whole milliseconds
+    /// rounded up (0 when due already); null when it fired, was cancelled or
+    /// is unknown. Null for an implementation that cannot say:
+    /// `TimerInterface.remainingMs` then answers null ("unknown"), which a
+    /// suspension takes as "due now" (the timer runs as soon as it resumes).
+    remainingMs: ?*const fn (ctx: *anyopaque, id: TimerId) ?u64 = null,
+
     /// Cancel a pending timer.
     ///
     /// Returns true only if a live timer with this id was found and cancelled.
@@ -139,6 +146,14 @@ pub const TimerInterface = struct {
     /// timer was armed - the implementation cannot promise the drop, or it
     /// failed - and the caller still owns `user_data`. A successful
     /// clearTimeout hands it back to the caller, as for any timer.
+    /// The pending timer `id`'s wait still to go (TimerVTable.remainingMs);
+    /// null when it fired, was cancelled, is unknown, or the implementation
+    /// cannot say.
+    pub fn remainingMs(self: Self, id: TimerId) ?u64 {
+        const remaining = self.vtable.remainingMs orelse return null;
+        return remaining(self.ctx, id);
+    }
+
     pub fn setTimeoutOwned(self: Self, ms: u64, callback: TimerCallback, user_data: ?*anyopaque, drop: TimerDrop) TimerId {
         const owned = self.vtable.setTimeoutOwned orelse return 0;
         return owned(self.ctx, ms, callback, user_data, drop);

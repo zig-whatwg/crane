@@ -293,6 +293,20 @@ pub const SharedWorkerManager = struct {
         return orphaned;
     }
 
+    /// Whether `owner` - a Document's realm - is in the owner set of a
+    /// shared worker: the back/forward cache keeps no page that owns one
+    /// (Blink's "sharedworker" reason). A snapshot: the set may change as
+    /// soon as the lock drops; the cache decides at unload, on the owner's
+    /// own thread, which is the only thread that adds that owner.
+    pub fn hasOwner(self: *SharedWorkerManager, owner: *const anyopaque) bool {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        for (self.entries.items) |entry| {
+            if (entry.hasOwner(owner)) return true;
+        }
+        return false;
+    }
+
     /// How many workers the manager knows (closing ones included).
     pub fn count(self: *SharedWorkerManager) usize {
         std.Io.Threaded.mutexLock(&self.mutex);

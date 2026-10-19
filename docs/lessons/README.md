@@ -329,6 +329,11 @@ A lane brief now carries the lessons chosen for its batch.
 - [Build URL replacements before releasing old fields](architecture-build-url-replacements-before-releasing-old-fields.md) - Reuse a failure-safe constructor, then swap; do not partially destroy an object while constructing its replacement.
 - [Focus selectors must not run style-dependent focus fixup](architecture-focus-selectors-must-not-run-style-dependent-focus-fixup.md) - Separate the stored designation from style-dependent validation.
 - [Abort a job by marking it, not by freeing it](architecture-abort-a-job-by-marking-it-not-freeing-it.md) - An outside abort settles and marks; the job's own resume points finish it. List every pointer to the job (waiters, ops, queued tasks) before freeing anything.
+- [A kept page runs only store steps at unload - the cleanup steps run when it is destroyed](architecture-a-kept-page-runs-only-store-steps-the-cleanup-steps-run-at-its-destroy.md) - When a lifecycle gains a state between two steps that used to coincide, re-read every hook that ran at both: decide for each whether it belongs to the leaving or to the end.
+- [A cached realm is attached, so the engine's detached-realm guard misses it](architecture-a-cached-realm-is-attached-so-the-detached-realm-guard-misses-it.md) - A realm that may not run script but is not detached needs its own check wherever script is entered - grep every path that enters a realm without a document-tagged task.
+- [A queued permission value is not delivered state](architecture-a-queued-permission-value-is-not-delivered-state.md) - Compare actual state after activity checks so skipped updates remain retryable.
+- [A settings getter may recompute security](architecture-a-settings-getter-may-recompute-security.md) - Profile hooks and share results within an operation without a cross-task cache.
+- [A key transfer must preserve its allocator](architecture-a-key-transfer-must-preserve-its-allocator.md) - Preserve destination ownership and prove the real move path.
 
 ### Spec Compliance
 - [A subclass's copy of an event concept hides what dispatch does to it](spec-compliance-a-subclass-copy-of-an-event-concept-hides-dispatch.md) - A concept the base algorithm reads and writes has one home, the base's state; a subclass attribute that names it reads it there, never a copy of its own.
@@ -529,6 +534,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Find where the browsers check before carrying a report across threads](spec-compliance-find-where-the-browsers-check-before-carrying-a-report-across-threads.md) - When a spec step puts a check on a thread that cannot report it, read where the three engines make that check before designing a delivery. Often they make it earlier, on the caller's thread, and the cross-thread mechanism is never needed.
 
 ### Codegen
+- [A named special operation on a [Global] interface is a global function](codegen-a-named-special-operation-on-a-global-is-a-global-function.md) - A supplementary IDL member must not add a script-visible name the browsers lack - on a [Global] interface, a named special operation is a global function that shadows named access.
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
 
 - [A generated default runs a src/dom algorithm, not an impls helper](codegen-a-generated-default-runs-a-src-dom-algorithm-not-an.md) - A generated default is a spec algorithm the generated layer calls: put it in src/dom, decide what the IDL fixes at compile time, and hook only what needs an impl's own state.
@@ -570,6 +576,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A generated import can rest on a typedef an upstream IDL file happens to declare](codegen-a-generated-import-can-rest-on-a-typedef-an-upstream-idl-file-happens-to-declare.md) - When a generated file relies on something being generated, codegen must generate it itself; find out by deleting an upstream file in a test fixture, not by waiting for upstream to delete it.
 
 ### Testing
+- [A WPT file can depend on one engine's loading shortcut](testing-a-wpt-file-can-depend-on-one-engines-loading-shortcut.md) - When two browsers fail an assertion with your message, find out why they fail before you change the mechanism the test is named after - the test may encode one engine's shortcut.
 - [A unit test's Window has no associated Document](testing-a-unit-tests-window-has-no-associated-document.md) - Before a spec check reads "the Window's associated Document", decide what it does with a Window that has none - every unit test's - or it turns into a silent no-op.
 - [A hook in a function nothing calls has never compiled](testing-a-hook-in-a-function-nothing-calls-has-never-compiled.md) - A green build says nothing about a function nobody calls: find a caller, or a test that calls it, before you count a change in it as done.
 - [Measure that the blocked thing runs before building what blocks it](testing-measure-that-the-blocked-thing-runs-before-building-the-block.md) - Measure that the thing a mechanism blocks actually runs before you build the block - otherwise the work moves nothing, and a partial version can turn passing files into timeouts.
@@ -704,6 +711,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A GC Request Does Not Prove an Event Target Was Collected](testing-a-gc-request-does-not-prove-an-event-target-was-collected.md) - Verify native identity and generation before asserting collection.
 - [Equal browser pass counts can hide opposite behaviour](testing-equal-browser-pass-counts-can-hide-opposite-behaviour.md) - Compare aligned per-subtest results before applying a browser majority.
 - [Formatting expectations must not repeat the format expression](testing-formatting-expectations-must-not-repeat-the-format-expression.md) - Use literal expectations and compile the implementation-present test branch.
+- [Pre-existing allocations distort failure-injection accounting](testing-preexisting-allocations-distort-failure-injection-accounting.md) - Align accounting with ownership and cover destination growth separately.
 
 ### Debugging
 - [A call that can free its argument ends every read of it](debugging-a-call-that-can-free-its-argument-ends-every-read-of-it.md) - A call that can free its argument ends the caller's use of it - including the `defer`s written above the call; read the trace's top frame before believing a deep one.
@@ -775,6 +783,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Measure a hot struct against allocator size classes](debugging-a-hot-struct-against-allocator-size-classes.md) - Compare the compiled request with its allocation bucket; a 16-byte field can cost 2 KiB.
 
 ### Workflow
+- [Measure the three browsers with a probe page that reports home](workflow-measure-the-three-browsers-with-a-probe-page-that-reports-home.md) - For a value or a phase wpt.fyi cannot show, measure all three browsers with one probe page that reports to a local server - Firefox through `open -n -a`, Safari on chat - and cite the versions and the JSON.
 - [wpt.fyi's search answers 0/0 for browsers it has no aligned run of - read the runs' raw reports](workflow-wpt-fyi-search-hides-subtests-read-the-runs-raw-report.md) - For a browser-behaviour ruling, read the aligned stable runs' raw report.json - subtest status and message per browser - never the search endpoint's file counts.
 - [leaks --atExit sees only the process it launched - run the WPT runner without --parallel](workflow-leaks-at-exit-sees-only-the-process-it-launched.md) - A leak count of zero means nothing until the same method has found a leak: run a positive control, and make sure the inspected process is the one that ran the code.
 - [Zig optimizes a compilation at its root module's level; a module's own mode is its semantics](workflow-zig-optimizes-a-compilation-at-its-root-module-s-level.md) - The root module's mode is the optimizer; every other module's mode is its semantics. To speed up a binary without losing a module's Debug-only checks, raise the root and leave the module.
@@ -816,3 +825,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [A Waiting Sweep Launcher Keeps Its Build Slot](workflow-a-waiting-sweep-launcher-keeps-its-build-slot.md) - Runtime runner tokens do not release the build slot of a waiting launcher.
 - [Native Build Output Needs a Pipe Too](workflow-native-build-output-needs-a-pipe-too.md) - Preserve positional-writer output through a pipe; quote retained evidence only.
 - [Download one browser's individual WPT report](workflow-wpt-fyi-individual-test-reports.md) - Compare individual statuses and messages from the aligned run's results directory without downloading its whole report.
+- [A Debug check runs in the ReleaseSafe runner - keep it lock-free on hot paths](workflow-a-debug-check-runs-in-the-release-runner-keep-it-off-locks.md) - Treat a Debug check in Crane code as production code for cost: it runs in the runner every measurement uses. And profile before attributing a cost-page difference to a change.

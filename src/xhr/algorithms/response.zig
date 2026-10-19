@@ -47,7 +47,7 @@ pub const ResponseProcessor = struct {
         };
     }
 
-    fn mayContinue(self: *const ResponseProcessor) bool {
+    pub fn mayContinue(self: *const ResponseProcessor) bool {
         const continuation = self.continuation orelse return true;
         return continuation.is_live(continuation.context);
     }
@@ -189,9 +189,9 @@ pub const ResponseProcessor = struct {
     /// The spec fires it with 0 and 0, NOT with the bytes transferred so far,
     /// which is why the progress tracker is deliberately not consulted here.
     ///
-    /// Steps 4 and 5 fork on the synchronous flag: a sync request throws the
-    /// exception and fires NOTHING, so this returns after step 3 and leaves the
-    /// throw to the caller (`send.sendSync`).
+    /// Synchronous network errors follow Firefox/WebKit's terminal events
+    /// before sendSync throws. Synchronous timeout/abort keep step 4's early
+    /// return; this deviation changes network errors only.
     pub fn requestErrorSteps(self: *ResponseProcessor, event: XHREventType) void {
         // Step 1: Set state to done.
         self.state.changeState(.DONE);
@@ -202,16 +202,20 @@ pub const ResponseProcessor = struct {
         // Step 3: Set response to a network error.
         self.state.setResponseToNetworkError();
 
-        // Step 4: If the synchronous flag is set, throw exception. The throw is
-        // the caller's; what matters here is that steps 5-8 do not run.
-        if (self.state.synchronous_flag) return;
+        // Step 4 deviation, no newer spec involved (row 79 Q4): Gecko
+        // XMLHttpRequestMainThread::ChangeStateToDoneInternal and WebKit
+        // XMLHttpRequest::networkError fire DONE/error/loadend before send
+        // throws. Firefox/Safari pass both send-authentication-cors-
+        // setrequestheader-no-cred subtests; Chrome passes one (wpt.fyi
+        // 23b0b89b1a). The throw stays in sendSync, with a saved-owner guard.
+        if (self.state.synchronous_flag and event != .@"error") return;
 
         // Step 5: Fire an event named readystatechange.
         event_support.fireEvent(self.state.event_sink, .readystatechange);
         if (!self.mayContinue()) return;
 
         // Step 6: If the upload complete flag is unset, then:
-        if (!self.state.upload_complete_flag) {
+        if (!self.state.synchronous_flag and !self.state.upload_complete_flag) {
             // Step 6.1
             self.state.upload_complete_flag = true;
 

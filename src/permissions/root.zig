@@ -56,6 +56,9 @@ pub const Origin = types.Origin;
 
 // Rules used by the live WebIDL query implementation (no native registry).
 pub const query = @import("query.zig");
+pub const OverrideStore = @import("override_store.zig").OverrideStore;
+pub const ChangeBatch = @import("change_batch.zig").ChangeBatch;
+pub const BrowserStore = @import("browser_store.zig").BrowserStore;
 
 // Storage
 pub const storage = @import("storage.zig");
@@ -82,4 +85,5 @@ test {
     _ = status;
     _ = permissions;
     _ = query;
+    _ = @import("change_batch.zig");
 }

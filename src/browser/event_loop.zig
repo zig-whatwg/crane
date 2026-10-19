@@ -27,8 +27,11 @@
 //!
 //! ## Bfcache support
 //!
+//! A document the back/forward cache holds has its tasks kept in a group of
+//! their own (`suspendDocument`, `resumeDocument`, `discardDocument`: WebKit's
+//! EventLoopTaskGroup), so a page cached for minutes costs the drain nothing.
 //! freeze() suspends all timer and task processing and thaw() resumes it:
-//! while frozen, a turn returns at once and runs nothing.
+//! while frozen, a turn returns at once and runs nothing (unused).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -122,6 +125,13 @@ pub const EventLoop = struct {
     /// other agent's. Null for a loop whose agent has none.
     fetches: ?*AgentFetches = null,
 
+    /// The documents the back/forward cache holds, each with the tasks that
+    /// wait for it (`suspendDocument`), in the order they were suspended.
+    suspended: std.ArrayListUnmanaged(SuspendedGroup) = .empty,
+
+    /// The thread the loop runs on - the one that made it.
+    owner_thread: std.Thread.Id,
+
     const Self = @This();
 
     /// Default maximum wait time when no explicit timeout is provided.
@@ -144,6 +154,7 @@ pub const EventLoop = struct {
             .sink = sink,
             .timer_manager = timer_mgr,
             .frozen = false,
+            .owner_thread = std.Thread.getCurrentId(),
         };
     }
 
@@ -160,6 +171,15 @@ pub const EventLoop = struct {
             if (task.drop) |drop| drop(task.context);
         }
         self.tasks.deinit(self.allocator);
+        // So does one waiting for a document the cache still holds (the
+        // cache empties itself before the loop ends; this is the net).
+        for (self.suspended.items) |*group| {
+            for (group.tasks.items) |task| {
+                if (task.drop) |drop| drop(task.context);
+            }
+            group.tasks.deinit(self.allocator);
+        }
+        self.suspended.deinit(self.allocator);
         // A poster still holding the sink finds it closed.
         self.sink.release();
         // A window still waiting for an idle period is told nothing: its
@@ -244,6 +264,164 @@ pub const EventLoop = struct {
     /// Whether the event loop is currently frozen.
     pub fn isFrozen(self: *Self) bool {
         return self.frozen;
+    }
+
+    // ========================================================================
+    // Suspended documents (the back/forward cache)
+    // ========================================================================
+
+    //
+    // A document the back/forward cache holds is not fully active for
+    // minutes, and its tasks wait for it ("the first runnable task in
+    // taskQueue"). Left in the queue, as the transient inactive documents'
+    // tasks are, every drain would classify them again. WebKit's task groups
+    // (WebCore/dom/EventLoop.cpp EventLoopTaskGroup::suspend, resume and
+    // stopAndDiscardAllTasks) give each document's tasks a place of their
+    // own; so does this:
+    //
+    // - `suspendDocument` makes the document's group. It moves nothing: it
+    //   runs inside a task the drain is running, and the drain must be the
+    //   only thing that removes from the queue while it walks it. The drain
+    //   moves each task it classifies inactive that belongs to a group, in
+    //   queue order; fully active and gone tasks are handled exactly as
+    //   before, so the hot path is unchanged.
+    // - `resumeDocument` marks the group; the next drain, before it takes
+    //   its budget, puts the group's tasks back at the front of the queue.
+    // - `discardDocument` drops the group's tasks unrun.
+    //
+    // All three run on the loop's own thread (asserted). Another thread's
+    // post for a cached document arrives through the sink, joins the queue
+    // at a turn's step 2 and reaches the group through a drain like any
+    // other task.
+
+    /// The back/forward cache keeps `document` - its Window `window`, for the
+    /// global tasks that name the Window (runtime.EventLoopTask.document) -
+    /// each with the slab generation it has now: its tasks wait in a group of
+    /// their own until `resumeDocument` or `discardDocument`. Suspending a
+    /// document whose group is still waiting to be put back keeps the group.
+    /// On out of memory nothing changes: its tasks wait in the queue, as any
+    /// inactive document's do.
+    pub fn suspendDocument(self: *Self, document: *anyopaque, document_generation: u64, window: ?*anyopaque, window_generation: u64) error{OutOfMemory}!void {
+        self.assertOwnThread();
+        if (self.groupIndexOf(document, document_generation)) |index| {
+            self.suspended.items[index].resumed = false;
+            return;
+        }
+        try self.suspended.append(self.allocator, .{
+            .document = document,
+            .document_generation = document_generation,
+            .window = window,
+            .window_generation = window_generation,
+        });
+    }
+
+    /// `document` is fully active again (HTML "reactivate"): the tasks of its
+    /// group run first at the next drain - never in the middle of one, whose
+    /// walk of the queue they would shift - ahead of every task queued since.
+    /// Nothing for a document with no group.
+    pub fn resumeDocument(self: *Self, document: *anyopaque, document_generation: u64) void {
+        self.assertOwnThread();
+        const index = self.groupIndexOf(document, document_generation) orelse return;
+        self.suspended.items[index].resumed = true;
+    }
+
+    /// `document` leaves the cache to be destroyed (HTML "destroy a document"
+    /// step 5: "remove any tasks whose document is document from any task
+    /// queue (without running those tasks)"): its group goes, and each task's
+    /// `drop` frees what it carries. A `drop` never runs script or a
+    /// callback - it frees memory - so this is safe wherever eviction runs,
+    /// which is itself a task (src/browser/back_forward_cache.zig), never
+    /// inside the collector. Nothing for a document with no group.
+    pub fn discardDocument(self: *Self, document: *anyopaque, document_generation: u64) void {
+        self.assertOwnThread();
+        const index = self.groupIndexOf(document, document_generation) orelse return;
+        var group = self.suspended.orderedRemove(index);
+        for (group.tasks.items) |task| {
+            if (task.drop) |drop| drop(task.context);
+        }
+        group.tasks.deinit(self.allocator);
+    }
+
+    /// The group of `document` as suspended with that generation.
+    ///
+    /// A linear scan: there is a group per document the Browser's
+    /// back/forward cache holds - BrowserConfig.back_forward_cache_size of
+    /// them, 2 by default and rarely more - and it runs only for a task the
+    /// drain found inactive, never for a runnable one. A Browser configured
+    /// with a large cache pays a scan of that many per waiting task, which is
+    /// still far less than classifying each waiting task again every drain.
+    fn groupIndexOf(self: *const Self, document: *anyopaque, document_generation: u64) ?usize {
+        for (self.suspended.items, 0..) |group, index| {
+            if (group.document == document and group.document_generation == document_generation) return index;
+        }
+        return null;
+    }
+
+    /// The group `task` belongs to: its document's, or its document's
+    /// window's for a global task that names the Window - each matched with
+    /// the generation it was queued with, so a task of a document freed and
+    /// made again in the same slot is never taken for the cached one's. A
+    /// group waiting to be put back takes no more: its document is fully
+    /// active, and a task classified inactive is not its.
+    noinline fn groupOf(self: *Self, task: Task) ?*SuspendedGroup {
+        const document = task.document orelse return null;
+        for (self.suspended.items) |*group| {
+            if (group.resumed) continue;
+            if (group.document == document and group.document_generation == task.document_generation) return group;
+            if (group.window) |window| {
+                if (window == document and group.window_generation == task.document_generation) return group;
+            }
+        }
+        return null;
+    }
+
+    /// Put the resumed groups' tasks back at the front of the queue, in the
+    /// order the groups were suspended, each group's in the order its tasks
+    /// were queued, and let the groups go. Only between drains (`drainTasks`
+    /// calls it before it takes its budget).
+    ///
+    /// Stated reorder: a task queued for the document WHILE it was cached is
+    /// in its group too, so it now runs ahead of another document's task
+    /// queued earlier during that time. Only the page that replaced the
+    /// cached one can have such a task, and a restore is unloading that page
+    /// - its tasks are inactive or gone - so nothing observes the order.
+    noinline fn spliceResumed(self: *Self) void {
+        var count: usize = 0;
+        for (self.suspended.items) |group| {
+            if (group.resumed) count += group.tasks.items.len;
+        }
+        // A group with no tasks goes all the same.
+        var back: std.ArrayListUnmanaged(Task) = .empty;
+        defer back.deinit(self.allocator);
+        if (count > 0) {
+            back.ensureTotalCapacityPrecise(self.allocator, count) catch return;
+            self.tasks.ensureUnusedCapacity(self.allocator, count) catch return;
+        }
+        var index: usize = 0;
+        while (index < self.suspended.items.len) {
+            if (!self.suspended.items[index].resumed) {
+                index += 1;
+                continue;
+            }
+            var group = self.suspended.orderedRemove(index);
+            back.appendSliceAssumeCapacity(group.tasks.items);
+            group.tasks.deinit(self.allocator);
+        }
+        if (back.items.len > 0) self.tasks.insertSliceAssumeCapacity(0, back.items);
+    }
+
+    /// Whether a resumed group waits to be put back: runnable work.
+    noinline fn resumedPending(self: *const Self) bool {
+        for (self.suspended.items) |group| {
+            if (group.resumed) return true;
+        }
+        return false;
+    }
+
+    /// The loop's suspend, resume and discard steps run on its own thread:
+    /// its queue and groups are not locked.
+    fn assertOwnThread(self: *const Self) void {
+        if (std.debug.runtime_safety) std.debug.assert(std.Thread.getCurrentId() == self.owner_thread);
     }
 
     // ========================================================================
@@ -441,12 +619,20 @@ pub const EventLoop = struct {
     ///   its `drop` freeing what it carries ("destroy a document" step 5
     ///   removes its tasks; here at the first drain after, as before).
     ///
-    /// The waiting tasks end up a prefix of the queue, `waiting` long; every
-    /// drain classifies them again (O(waiting)). WebKit's EventLoop::run does
+    /// An inactive task of a document the back/forward cache holds goes to
+    /// that document's group instead (`suspendDocument`), and a resumed
+    /// group's tasks are put back at the front before the drain begins.
+    ///
+    /// The other waiting tasks - transient: a document not fully active for
+    /// the length of a navigation - end up a prefix of the queue, `waiting`
+    /// long; every drain classifies them again (O(waiting)). WebKit's EventLoop::run does
     /// the same: a suspended group's tasks are put back, in order, ahead of
     /// those queued meanwhile, a stopped group's are discarded
     /// (WebCore/dom/EventLoop.cpp). Whether any task ran or was dropped.
     fn drainTasks(self: *Self, classify: Classify, after: AfterTask) bool {
+        // The tasks of documents a restore made fully active again come
+        // first: they were queued before anything queued while they waited.
+        if (self.suspended.items.len != 0) self.spliceResumed();
         var budget = self.tasks.items.len;
         // Until this drain is done, any queued task may be runnable.
         self.waiting = 0;
@@ -458,8 +644,22 @@ pub const EventLoop = struct {
         while (budget > 0 and index < self.tasks.items.len) : (budget -= 1) {
             const task = self.tasks.items[index];
             switch (classify(task)) {
-                // Left where it is: the next drain asks again.
-                .inactive => index += 1,
+                .inactive => {
+                    // A document the back/forward cache holds: into its
+                    // group, in queue order. `index` stays: the next task
+                    // has moved into this slot.
+                    if (self.suspended.items.len != 0) {
+                        if (self.groupOf(task)) |group| {
+                            if (group.tasks.ensureUnusedCapacity(self.allocator, 1)) {
+                                _ = self.tasks.orderedRemove(index);
+                                group.tasks.appendAssumeCapacity(task);
+                                continue;
+                            } else |_| {}
+                        }
+                    }
+                    // Left where it is: the next drain asks again.
+                    index += 1;
+                },
                 .gone => {
                     _ = self.tasks.orderedRemove(index);
                     if (task.drop) |drop| drop(task.context);
@@ -489,9 +689,10 @@ pub const EventLoop = struct {
     }
 
     /// Whether a task that may be runnable is queued: one the last drain did
-    /// not leave waiting, or any while a drain runs.
+    /// not leave waiting, or any while a drain runs - or a resumed document's
+    /// group, which the next drain puts back. A suspended group is not.
     fn runnableQueued(self: *const Self) bool {
-        return self.tasks.items.len > self.waiting;
+        return self.tasks.items.len > self.waiting or (self.suspended.items.len != 0 and self.resumedPending());
     }
 
     /// Whether there is pending work that should keep the loop from idling.
@@ -507,8 +708,9 @@ pub const EventLoop = struct {
         if (self.sink.hasPosted()) return true;
         // A worker this loop owns is running: it may post at any time.
         if (self.sink.sourceCount() > 0) return true;
-        // A window waiting for an idle period: one will start.
-        if (self.idle_requests.items.len > 0) return true;
+        // A window waiting for an idle period: one will start - unless it is
+        // a page the back/forward cache keeps.
+        if (self.idleRequestsRunnable()) return true;
         // A fetch in flight will queue a task when it ends.
         if (self.fetches) |fetches| if (fetches.inFlight() > 0) return true;
         if (self.timer_manager) |mgr| {
@@ -567,7 +769,7 @@ pub const EventLoop = struct {
     /// for each same-loop window, "start an idle period" with
     /// computeDeadline. Whether one started.
     fn startIdlePeriod(self: *Self, now: i64) bool {
-        if (self.idle_requests.items.len == 0) return false;
+        if (!self.idleRequestsRunnable()) return false;
         // A runnable task: not idle. Tasks waiting for their documents are
         // not runnable ("has no runnable task").
         if (self.runnableQueued()) return false;
@@ -587,8 +789,42 @@ pub const EventLoop = struct {
         var requests = self.idle_requests;
         self.idle_requests = .empty;
         defer requests.deinit(self.allocator);
-        for (requests.items) |request| request.start(request.realm, period);
+        for (requests.items) |request| {
+            // A cached page's window keeps asking: its idle callbacks run in
+            // an idle period after its restore, not into a page that cannot
+            // run script (its "invoke idle callbacks" task names no document).
+            if (self.idleRequestSuspended(request)) {
+                self.idle_requests.append(self.allocator, request) catch {};
+                continue;
+            }
+            request.start(request.realm, period);
+        }
         return true;
+    }
+
+    /// Whether a window that asked for an idle period may get one: any that
+    /// is not a page the back/forward cache keeps.
+    fn idleRequestsRunnable(self: *const Self) bool {
+        for (self.idle_requests.items) |request| {
+            if (!self.idleRequestSuspended(request)) return true;
+        }
+        return false;
+    }
+
+    /// Whether `request` is of a window whose document this loop holds
+    /// suspended (`suspendDocument`): only read while a group exists.
+    fn idleRequestSuspended(self: *const Self, request: IdleRequest) bool {
+        if (self.suspended.items.len == 0) return false;
+        if (!request.realm.hasEngine()) return false;
+        const record = request.realm.getRealm() orelse return false;
+        const global = record.global_object orelse return false;
+        for (self.suspended.items) |group| {
+            if (group.resumed) continue;
+            if (group.window) |window| {
+                if (window == @as(*anyopaque, @ptrCast(global))) return true;
+            }
+        }
+        return false;
     }
 
     /// Whether a new idle period may start at `now`: the current one has
@@ -605,7 +841,7 @@ pub const EventLoop = struct {
     /// How long until a waiting window's idle period can start (ms), when
     /// one is waiting.
     fn idleWaitMs(self: *Self, now: i64) ?u64 {
-        if (self.idle_requests.items.len == 0) return null;
+        if (!self.idleRequestsRunnable()) return null;
         const at = @max(self.idle_blocked_until_ns, self.idle_period_end_ns);
         if (at <= now) return 0;
         return @intCast(@divTrunc(at - now + std.time.ns_per_ms - 1, std.time.ns_per_ms));
@@ -696,6 +932,16 @@ pub const EventLoop = struct {
 fn monotonicNs() i64 {
     return @intCast(clock.monotonicNanos());
 }
+
+/// The tasks of a document the back/forward cache holds.
+const SuspendedGroup = struct {
+    document: *anyopaque,
+    document_generation: u64,
+    window: ?*anyopaque,
+    window_generation: u64,
+    tasks: std.ArrayListUnmanaged(Task) = .empty,
+    resumed: bool = false,
+};
 
 /// A same-loop window waiting for an idle period. Its realm is BORROWED: work
 /// on the realm's own agent may keep it across turns, and the start steps
@@ -1053,6 +1299,210 @@ test "the loop's end drops a waiting task" {
         var loop = try testLoop();
         defer loop.deinit();
         loop.eventLoop().queueTask(a.task(&document));
+        _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
+        try testing.expect(!a.dropped);
+    }
+    try testing.expect(a.dropped);
+    try testing.expectEqualStrings("", log.items);
+}
+
+// ----------------------------------------------------------------------------
+// Suspended documents (the back/forward cache): a cached document's tasks
+// wait in a group of their own, not in the queue every drain walks.
+// ----------------------------------------------------------------------------
+
+/// Queue `tasks` in order.
+fn queueAll(loop: *EventLoop, tasks: []const Task) void {
+    for (tasks) |task| loop.eventLoop().queueTask(task);
+}
+
+test "a suspended document's tasks move to its group in order, consecutive ones included, and active ones run" {
+    var loop = try testLoop();
+    defer loop.deinit();
+    var log: std.ArrayListUnmanaged(u8) = .empty;
+    defer log.deinit(testing.allocator);
+    var cached: TestDocument = .{ .activity = .inactive };
+    var a1: Ordered = .{ .log = &log, .name = '1' };
+    var x: Ordered = .{ .log = &log, .name = 'x' };
+    var a2: Ordered = .{ .log = &log, .name = '2' };
+    var a3: Ordered = .{ .log = &log, .name = '3' };
+    var a4: Ordered = .{ .log = &log, .name = '4' };
+    var y: Ordered = .{ .log = &log, .name = 'y' };
+    var a5: Ordered = .{ .log = &log, .name = '5' };
+    queueAll(&loop, &.{ a1.task(&cached), x.task(null), a2.task(&cached), a3.task(&cached), a4.task(&cached), y.task(null), a5.task(&cached) });
+    try loop.suspendDocument(&cached, 0, null, 0);
+
+    try testing.expect(loop.drainTasks(TestDocument.classify, noCheckpoint));
+    try testing.expectEqualStrings("xy", log.items);
+    // Out of the queue every drain walks: nothing waits there.
+    try testing.expectEqual(@as(usize, 0), loop.tasks.items.len);
+    try testing.expectEqual(@as(usize, 0), loop.waiting);
+    // All five in the group, in the order they were queued, none dropped.
+    try testing.expectEqual(@as(usize, 1), loop.suspended.items.len);
+    const group = loop.suspended.items[0].tasks.items;
+    try testing.expectEqual(@as(usize, 5), group.len);
+    for (group, [_]*Ordered{ &a1, &a2, &a3, &a4, &a5 }) |task, expected| {
+        try testing.expectEqual(@as(?*anyopaque, expected), task.context);
+    }
+    for ([_]*Ordered{ &a1, &a2, &a3, &a4, &a5 }) |task| try testing.expect(!task.dropped);
+    // A suspended group is not work: the loop may wait and idle.
+    try testing.expect(!loop.runnableQueued());
+    try testing.expect(!loop.hasPendingWork());
+}
+
+test "a task naming the suspended document's window joins its group" {
+    var loop = try testLoop();
+    defer loop.deinit();
+    var log: std.ArrayListUnmanaged(u8) = .empty;
+    defer log.deinit(testing.allocator);
+    var cached: TestDocument = .{ .activity = .inactive };
+    var window: TestDocument = .{ .activity = .inactive };
+    var a: Ordered = .{ .log = &log, .name = 'a' };
+    var w: Ordered = .{ .log = &log, .name = 'w' };
+    queueAll(&loop, &.{ a.task(&cached), w.task(&window) });
+    try loop.suspendDocument(&cached, 0, &window, 0);
+    _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
+    try testing.expectEqual(@as(usize, 0), loop.tasks.items.len);
+    try testing.expectEqual(@as(usize, 1), loop.suspended.items.len);
+    try testing.expectEqual(@as(usize, 2), loop.suspended.items[0].tasks.items.len);
+}
+
+test "an inactive task of another document, or of another generation, stays in place" {
+    var loop = try testLoop();
+    defer loop.deinit();
+    var log: std.ArrayListUnmanaged(u8) = .empty;
+    defer log.deinit(testing.allocator);
+    var cached: TestDocument = .{ .activity = .inactive };
+    var other: TestDocument = .{ .activity = .inactive };
+    var a: Ordered = .{ .log = &log, .name = 'a' };
+    var b: Ordered = .{ .log = &log, .name = 'b' };
+    var stale = a.task(&cached);
+    stale.document_generation = 7;
+    queueAll(&loop, &.{ stale, b.task(&other) });
+    try loop.suspendDocument(&cached, 0, null, 0);
+    _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
+    // Both are the transient kind: left in place, as phase A leaves them.
+    try testing.expectEqual(@as(usize, 2), loop.tasks.items.len);
+    try testing.expectEqual(@as(usize, 2), loop.waiting);
+    try testing.expectEqual(@as(usize, 1), loop.suspended.items.len);
+    try testing.expectEqual(@as(usize, 0), loop.suspended.items[0].tasks.items.len);
+}
+
+test "a resumed group's tasks run first at the next drain, ahead of the tasks queued since" {
+    var loop = try testLoop();
+    defer loop.deinit();
+    var log: std.ArrayListUnmanaged(u8) = .empty;
+    defer log.deinit(testing.allocator);
+    var cached: TestDocument = .{ .activity = .inactive };
+    var a1: Ordered = .{ .log = &log, .name = '1' };
+    var a2: Ordered = .{ .log = &log, .name = '2' };
+    var a3: Ordered = .{ .log = &log, .name = '3' };
+    var z: Ordered = .{ .log = &log, .name = 'z' };
+    queueAll(&loop, &.{ a1.task(&cached), a2.task(&cached) });
+    try loop.suspendDocument(&cached, 0, null, 0);
+    _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
+    // Queued while its document is cached: behind the older ones, in its group.
+    queueAll(&loop, &.{a3.task(&cached)});
+    _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
+    try testing.expectEqual(@as(usize, 1), loop.suspended.items.len);
+    try testing.expectEqual(@as(usize, 3), loop.suspended.items[0].tasks.items.len);
+    // Another document's task, queued while it was cached.
+    queueAll(&loop, &.{z.task(null)});
+
+    cached.activity = .fully_active;
+    loop.resumeDocument(&cached, 0);
+    try testing.expect(loop.runnableQueued());
+    try testing.expect(loop.hasPendingWork());
+    try testing.expect(loop.drainTasks(TestDocument.classify, noCheckpoint));
+    try testing.expectEqualStrings("123z", log.items);
+    try testing.expectEqual(@as(usize, 0), loop.suspended.items.len);
+    try testing.expectEqual(@as(usize, 0), loop.tasks.items.len);
+}
+
+test "a document resumed by a task of the drain waits for the next drain" {
+    var loop = try testLoop();
+    defer loop.deinit();
+    var log: std.ArrayListUnmanaged(u8) = .empty;
+    defer log.deinit(testing.allocator);
+    var cached: TestDocument = .{ .activity = .inactive };
+    var a: Ordered = .{ .log = &log, .name = 'a' };
+    queueAll(&loop, &.{a.task(&cached)});
+    try loop.suspendDocument(&cached, 0, null, 0);
+    _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
+
+    // A traversal task restores it, mid-drain, between two other tasks.
+    const Restore = struct {
+        loop: *EventLoop,
+        document: *TestDocument,
+        log: *std.ArrayListUnmanaged(u8),
+        fn run(data: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(data.?));
+            self.document.activity = .fully_active;
+            self.loop.resumeDocument(self.document, 0);
+            self.log.append(testing.allocator, 'r') catch {};
+        }
+    };
+    var restore: Restore = .{ .loop = &loop, .document = &cached, .log = &log };
+    var b: Ordered = .{ .log = &log, .name = 'b' };
+    queueAll(&loop, &.{ .{ .callback = &Restore.run, .context = &restore }, b.task(null) });
+    _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
+    try testing.expectEqualStrings("rb", log.items);
+    // Still in its group until the next drain begins: work, though.
+    try testing.expectEqual(@as(usize, 1), loop.suspended.items.len);
+    try testing.expect(loop.runnableQueued());
+    _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
+    try testing.expectEqualStrings("rba", log.items);
+    try testing.expectEqual(@as(usize, 0), loop.suspended.items.len);
+}
+
+test "suspending a document again before its group was put back keeps the group" {
+    var loop = try testLoop();
+    defer loop.deinit();
+    var log: std.ArrayListUnmanaged(u8) = .empty;
+    defer log.deinit(testing.allocator);
+    var cached: TestDocument = .{ .activity = .inactive };
+    var a: Ordered = .{ .log = &log, .name = 'a' };
+    queueAll(&loop, &.{a.task(&cached)});
+    try loop.suspendDocument(&cached, 0, null, 0);
+    _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
+    loop.resumeDocument(&cached, 0);
+    try loop.suspendDocument(&cached, 0, null, 0);
+    try testing.expect(!loop.runnableQueued());
+    _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
+    try testing.expectEqualStrings("", log.items);
+    try testing.expectEqual(@as(usize, 1), loop.suspended.items.len);
+    try testing.expectEqual(@as(usize, 1), loop.suspended.items[0].tasks.items.len);
+}
+
+test "discarding a suspended document drops its tasks without running them" {
+    var loop = try testLoop();
+    defer loop.deinit();
+    var log: std.ArrayListUnmanaged(u8) = .empty;
+    defer log.deinit(testing.allocator);
+    var cached: TestDocument = .{ .activity = .inactive };
+    var a: Ordered = .{ .log = &log, .name = 'a' };
+    var b: Ordered = .{ .log = &log, .name = 'b' };
+    queueAll(&loop, &.{ a.task(&cached), b.task(&cached) });
+    try loop.suspendDocument(&cached, 0, null, 0);
+    _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
+    loop.discardDocument(&cached, 0);
+    try testing.expect(a.dropped and b.dropped);
+    try testing.expectEqualStrings("", log.items);
+    try testing.expectEqual(@as(usize, 0), loop.suspended.items.len);
+    // Discarding one with no group is nothing.
+    loop.discardDocument(&cached, 0);
+}
+
+test "the loop's end drops a suspended group's tasks" {
+    var log: std.ArrayListUnmanaged(u8) = .empty;
+    defer log.deinit(testing.allocator);
+    var cached: TestDocument = .{ .activity = .inactive };
+    var a: Ordered = .{ .log = &log, .name = 'a' };
+    {
+        var loop = try testLoop();
+        defer loop.deinit();
+        queueAll(&loop, &.{a.task(&cached)});
+        try loop.suspendDocument(&cached, 0, null, 0);
         _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
         try testing.expect(!a.dropped);
     }

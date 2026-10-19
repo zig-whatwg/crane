@@ -72,11 +72,15 @@ fn waitFor(browser: *browser_mod.Browser, source: []const u8) !void {
     return error.TimedOut;
 }
 
-/// Turn the Browser's event loop until `flag` is set.
+/// Turn the Browser's event loop until `flag` is set. The bound matches the
+/// fetching thread's 60 s wait for both sides: the other side may still be
+/// starting its service worker when this one is ready, and under a full
+/// `zig build test` load that took more than the old 10 s (two gate failures,
+/// 2026-10-19).
 fn pumpUntil(browser: *browser_mod.Browser, flag: *const std.atomic.Value(bool)) !void {
     var turns: usize = 0;
     while (!flag.load(.acquire)) : (turns += 1) {
-        if (turns > 2000) return error.TheOtherSideNeverCame;
+        if (turns > 12_000) return error.TheOtherSideNeverCame;
         _ = try browser.runEventLoopBlocking(5);
     }
 }
@@ -187,5 +191,8 @@ test "Clear-Site-Data on one Browser's fetching thread clears its registrations,
     shared.cleared.store(true, .release);
 
     for (threads) |thread| thread.join();
-    for (sides) |side| if (side.failure) |err| return err;
+    for (sides) |side| if (side.failure) |err| {
+        std.debug.print("Browser {c} failed: {s}\n", .{ "AB"[side.index], @errorName(err) });
+        return err;
+    };
 }

@@ -13,6 +13,7 @@
 //! - CSS 2.1 9.5.1 / CSS Logical 1: float
 //! - CSS Writing Modes 4: direction, unicode-bidi, writing-mode
 //! - CSS Color 4: color, opacity; CSS Backgrounds 3: background-*, border-*
+//! - CSS Color Adjustment 1: color-scheme
 //! - CSS Box 4 / Sizing 3: margin-*, padding-*, width, height
 //! - CSS Fonts 4: font-family, font-size, font-style, font-weight
 //! - CSS Inline 3 / CSS 2.1: line-height
@@ -24,8 +25,7 @@
 //! Stated deviations: math functions (calc() and friends) and var() make a
 //! declaration invalid until the numeric-expression capability lands
 //! (design section 6.1); an <image> other than none/url() is kept as
-//! written, unresolved; system colors resolve to the light palette at parse
-//! time (color-scheme is a later batch).
+//! written, unresolved.
 //!
 //! Spec: https://drafts.csswg.org/css-cascade-5/#shorthand
 //! Spec: https://drafts.csswg.org/cssom-1/#serializing-css-values
@@ -37,6 +37,8 @@ const Tokenizer = tokenizer_mod.Tokenizer;
 const Token = tokenizer_mod.Token;
 const values = @import("style_values.zig");
 const color_mod = @import("values/color.zig");
+const color_scheme_mod = @import("color_scheme.zig");
+const serialize_mod = @import("serialize.zig");
 const length_mod = @import("values/length.zig");
 const ParserContext = @import("context.zig").ParserContext;
 
@@ -84,6 +86,7 @@ pub const Longhand = enum(u8) {
     border_top_width,
     bottom,
     color,
+    color_scheme,
     direction,
     display,
     float,
@@ -280,6 +283,8 @@ pub const Grammar = enum {
     z_index,
     /// CSS Text 4 text-transform (`values.TextTransform`).
     text_transform,
+    /// CSS Color Adjustment 1 color-scheme (`values.ColorScheme`).
+    color_scheme,
 };
 
 pub const Info = struct {
@@ -332,8 +337,12 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .border_top_style, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &border_styles },
         .{ .longhand = .border_top_width, .inherited = false, .initial = medium_width, .grammar = .line_width, .quirky_length = true },
         .{ .longhand = .bottom, .inherited = false, .initial = Value.kw(.auto), .grammar = .length_percentage_auto, .quirky_length = true },
-        // CSS Color 4: "Initial: CanvasText".
-        .{ .longhand = .color, .inherited = true, .initial = .{ .color = Color.black }, .grammar = .color, .quirky_color = true },
+        // CSS Color 4: "Initial: CanvasText" - resolved in the element's
+        // color scheme when it is computed (initialComputed answers the light
+        // one where there is no element).
+        .{ .longhand = .color, .inherited = true, .initial = .{ .color = .{ .system = .canvastext } }, .grammar = .color, .quirky_color = true },
+        // CSS Color Adjustment 1 2.2: "Initial: normal", "Inherited: yes".
+        .{ .longhand = .color_scheme, .inherited = true, .initial = Value.kw(.normal), .grammar = .color_scheme },
         .{ .longhand = .direction, .inherited = true, .initial = Value.kw(.ltr), .grammar = .keywords, .keywords = &.{ .ltr, .rtl } },
         .{ .longhand = .display, .inherited = false, .initial = .{ .display = Display.inline_flow }, .grammar = .display },
         .{ .longhand = .float, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .left, .right, .inline_start, .inline_end } },
@@ -726,6 +735,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .image => return imageValue(options, stream),
         .display => return displayValue(stream),
         .text_transform => return textTransformValue(stream),
+        .color_scheme => return colorSchemeValue(options, stream),
         .font_family => return fontFamilyValue(options, stream),
         .font_size => {
             if (takeKeyword(stream, &.{ .xx_small, .x_small, .small, .medium, .large, .x_large, .xx_large, .xxx_large, .larger, .smaller })) |k| return Value.kw(k);
@@ -848,13 +858,16 @@ fn colorValue(options: ParseOptions, stream: *Stream, def: *const Info) ?Value {
         }
         return .{ .color = .{ .rgba = c } };
     } else |_| {}
-    // A <system-color> (CSS Color 4 6.2), its color the light palette's
-    // (stated: color-scheme is a later batch).
+    // A <system-color> (CSS Color 4 6.2): kept as the keyword, resolved
+    // against the element's used color scheme when it is computed.
     if (t.token_type == .ident) {
-        if (color_mod.ColorParser.parseWithoutContext(t.value, options.allocator)) |fc| {
+        const escaped = std.mem.indexOfScalar(u8, t.value, '\\') != null;
+        const decoded = if (escaped) tokenizer_mod.decode(options.allocator, t.value) catch return null else t.value;
+        defer if (escaped) options.allocator.free(decoded);
+        if (color_mod.SystemColor.parse(decoded)) |system| {
             _ = stream.next();
-            return namedColor(options, t.value, fc.quantize()) catch null;
-        } else |_| {}
+            return .{ .color = .{ .system = system } };
+        }
     }
     return null;
 }
@@ -1069,6 +1082,79 @@ const generic_families = [_][]const u8{ "serif", "sans-serif", "cursive", "fanta
 /// CSS Fonts 4 3.1: `[ <family-name> | <generic-family> ]#`, kept as its
 /// serialization - strings as CSSOM serializes a string, identifier
 /// sequences joined by one space.
+/// CSS Color Adjustment 1 2.2: `normal | [ light | dark | <custom-ident> ]+
+/// && only?`. `only` comes first or last (`light only dark` is invalid);
+/// normal, only and the <custom-ident> exclusions (CSS Values 4 4.2: the
+/// CSS-wide keywords and `default`) are no scheme names. Serialized per
+/// grammar: the schemes in order, light and dark lowercase, a custom ident
+/// as an identifier with its case, then `only` (Chrome, Firefox and Safari:
+/// "only dark light" reads "dark light only").
+fn colorSchemeValue(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
+    const allocator = options.allocator;
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(allocator);
+    var support: color_scheme_mod.Support = .{};
+    var names: usize = 0;
+    var index: usize = 0;
+    while (!stream.atEnd()) : (index += 1) {
+        const t = stream.peek();
+        if (t.token_type != .ident) return null;
+        _ = stream.next();
+        const decoded = try tokenizer_mod.decode(allocator, t.value);
+        defer allocator.free(decoded);
+        if (std.ascii.eqlIgnoreCase(decoded, "normal")) {
+            // `normal` alone; never one name of several.
+            if (index != 0 or !stream.atEnd()) return null;
+            return Value.kw(.normal);
+        }
+        if (std.ascii.eqlIgnoreCase(decoded, "only")) {
+            if (support.only) return null;
+            support.only = true;
+            // Last, after at least one name - or first, before them.
+            if (names > 0) {
+                if (!stream.atEnd()) return null;
+                break;
+            }
+            continue;
+        }
+        if (values.CssWide.parse(decoded) != null or std.ascii.eqlIgnoreCase(decoded, "default")) return null;
+        if (names > 0) try out.append(allocator, ' ');
+        if (std.ascii.eqlIgnoreCase(decoded, "light")) {
+            support.add(.light);
+            try out.appendSlice(allocator, "light");
+        } else if (std.ascii.eqlIgnoreCase(decoded, "dark")) {
+            support.add(.dark);
+            try out.appendSlice(allocator, "dark");
+        } else {
+            const ident = try serialize_mod.serializeIdentifier(allocator, decoded);
+            defer allocator.free(ident);
+            try out.appendSlice(allocator, ident);
+        }
+        names += 1;
+    }
+    if (names == 0) return null;
+    if (support.only) try out.appendSlice(allocator, " only");
+    return .{ .color_scheme = .{ .text = try SharedText.create(allocator, out.items), .support = support } };
+}
+
+/// The color scheme support `text` names when it is a valid color-scheme
+/// value - `Support.none` for `normal` - or null when it is not one: HTML
+/// 4.2.5.1 step 2 for a color-scheme meta's content ("parse a list of
+/// component values" given it, then "if parsed is a valid CSS
+/// 'color-scheme' property value"). A CSS-wide keyword is no color scheme
+/// value there: Firefox 144 and Safari 27.0.1 skip a meta whose content is
+/// `inherit` for the next one, Chrome 151 stops at it (lane style4 probe).
+pub fn parseColorSchemeSupport(allocator: Allocator, text: []const u8) Allocator.Error!?color_scheme_mod.Support {
+    var stream = Stream.init(text);
+    const value = (try colorSchemeValue(.{ .allocator = allocator }, &stream)) orelse return null;
+    defer value.release();
+    if (!stream.atEnd()) return null;
+    return switch (value) {
+        .color_scheme => |c| c.support,
+        else => color_scheme_mod.Support.none,
+    };
+}
+
 fn fontFamilyValue(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
     var out: std.ArrayList(u8) = .empty;
     defer out.deinit(options.allocator);
@@ -1454,9 +1540,11 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
             .current => try out.appendSlice(allocator, "currentcolor"),
             .rgba => |rgba| try values.serializeRgba(rgba, out, allocator),
             .named => |n| try out.appendSlice(allocator, n.name.bytes),
+            .system => |system| try out.appendSlice(allocator, system.keyword()),
         },
         .display => |d| try d.serialize(out, allocator),
         .text_transform => |t| try t.serialize(out, allocator),
+        .color_scheme => |c| try out.appendSlice(allocator, c.text.bytes),
         .text => |t| try out.appendSlice(allocator, t.bytes),
     }
 }
@@ -1682,6 +1770,115 @@ test "colors: named, hex, rgb(), currentcolor, system colors" {
     try expectSerialized("color", "CanvasText", "canvastext");
     try expectInvalid("color", "notacolor");
     try expectInvalid("color", "red blue");
+}
+
+test "color-scheme: normal, or light, dark and custom idents with only first or last" {
+    // css/css-color-adjust/parsing/color-scheme-valid.html; the custom
+    // idents keep their case and `only` serializes last (Chrome 151,
+    // Firefox 144 and Safari 27 alike, tmp/analysis of lane style4).
+    try expectSerialized("color-scheme", "normal", "normal");
+    try expectSerialized("color-scheme", "NORMAL", "normal");
+    try expectSerialized("color-scheme", "light", "light");
+    try expectSerialized("color-scheme", "dark", "dark");
+    try expectSerialized("color-scheme", "light dark", "light dark");
+    try expectSerialized("color-scheme", "dark light", "dark light");
+    try expectSerialized("color-scheme", "only light", "light only");
+    try expectSerialized("color-scheme", "light only", "light only");
+    try expectSerialized("color-scheme", "light dark only", "light dark only");
+    try expectSerialized("color-scheme", "light light", "light light");
+    try expectSerialized("color-scheme", "dark dark", "dark dark");
+    try expectSerialized("color-scheme", "light purple", "light purple");
+    try expectSerialized("color-scheme", "purple dark interesting", "purple dark interesting");
+    try expectSerialized("color-scheme", "none", "none");
+    try expectSerialized("color-scheme", "light none", "light none");
+    try expectSerialized("color-scheme", "only light dark", "light dark only");
+    try expectSerialized("color-scheme", "only light light", "light light only");
+    try expectSerialized("color-scheme", "only light purple", "light purple only");
+    try expectSerialized("color-scheme", "only none", "none only");
+    try expectSerialized("color-scheme", "LIGHT Dark ONLY", "light dark only");
+    try expectSerialized("color-scheme", "Purple", "Purple");
+    try expectSerialized("color-scheme", "\\6c ight", "light");
+    try expectSerialized("color-scheme", "  dark  ", "dark");
+    // css/css-color-adjust/parsing/color-scheme-invalid.html.
+    try expectInvalid("color-scheme", "only normal");
+    try expectInvalid("color-scheme", "normal dark");
+    try expectInvalid("color-scheme", "normal purple");
+    try expectInvalid("color-scheme", "light normal");
+    try expectInvalid("color-scheme", "light, dark");
+    try expectInvalid("color-scheme", "light inherit");
+    try expectInvalid("color-scheme", "light initial");
+    try expectInvalid("color-scheme", "light unset");
+    try expectInvalid("color-scheme", "light revert");
+    try expectInvalid("color-scheme", "light revert-layer");
+    try expectInvalid("color-scheme", "default");
+    try expectInvalid("color-scheme", "light default");
+    try expectInvalid("color-scheme", "only");
+    try expectInvalid("color-scheme", "only only");
+    try expectInvalid("color-scheme", "light only dark");
+    try expectInvalid("color-scheme", "only light only");
+    try expectInvalid("color-scheme", "");
+    try expectInvalid("color-scheme", "light 1");
+    try expectInvalid("color-scheme", "\"light\"");
+}
+
+test "a color-scheme meta's content: a whole color-scheme value, CSS-wide keywords not" {
+    // HTML 4.2.5.1 step 2.2: "If parsed is a valid CSS 'color-scheme'
+    // property value". Chrome 151, Firefox 144 and Safari 27.0.1 alike:
+    // whitespace around is fine, `dark !important` is invalid; `inherit`
+    // is invalid in Firefox and Safari (Chrome takes it as valid).
+    const Case = struct { []const u8, ?color_scheme_mod.Support.First };
+    const cases = [_]Case{
+        .{ "  dark  ", .dark },
+        .{ "light dark", .light },
+        .{ "normal", .none },
+        .{ "foo", .none },
+        .{ "dark !important", null },
+        .{ "inherit", null },
+        .{ "initial", null },
+        .{ "", null },
+        .{ ",,invalid", null },
+        .{ "light,dark", null },
+        .{ "light only dark", null },
+    };
+    for (cases) |case| {
+        const support = try parseColorSchemeSupport(testing.allocator, case[0]);
+        if (case[1]) |first| {
+            testing.expectEqual(first, support.?.first) catch |err| {
+                std.debug.print("{s}\n", .{case[0]});
+                return err;
+            };
+        } else {
+            testing.expect(support == null) catch |err| {
+                std.debug.print("{s}\n", .{case[0]});
+                return err;
+            };
+        }
+    }
+}
+
+test "color-scheme names the color scheme support its schemes make" {
+    const Case = struct { text: []const u8, first: color_scheme_mod.Support.First, light: bool, dark: bool, only: bool };
+    const cases = [_]Case{
+        .{ .text = "dark", .first = .dark, .light = false, .dark = true, .only = false },
+        .{ .text = "purple light dark", .first = .light, .light = true, .dark = true, .only = false },
+        .{ .text = "only dark light", .first = .dark, .light = true, .dark = true, .only = true },
+        .{ .text = "purple", .first = .none, .light = false, .dark = false, .only = false },
+        .{ .text = "none only", .first = .none, .light = false, .dark = false, .only = true },
+    };
+    for (cases) |case| {
+        var list: std.ArrayList(Assignment) = .empty;
+        defer freeAssignments(&list);
+        try testing.expect(try parseText("color-scheme", case.text, &list));
+        const support = list.items[0].value.value.color_scheme.support;
+        try testing.expectEqual(case.first, support.first);
+        try testing.expectEqual(case.light, support.light);
+        try testing.expectEqual(case.dark, support.dark);
+        try testing.expectEqual(case.only, support.only);
+    }
+    var list: std.ArrayList(Assignment) = .empty;
+    defer freeAssignments(&list);
+    try testing.expect(try parseText("color-scheme", "normal", &list));
+    try testing.expect(list.items[0].value.value.isKeyword(.normal));
 }
 
 test "text-transform: a case keyword, full-width and full-size-kana in any order, or math-auto" {

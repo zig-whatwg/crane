@@ -377,6 +377,7 @@ pub const ScopeSettings = struct {
     /// on the owner's thread when a DEDICATED worker started. BORROWED from
     /// the host; null for a shared or service worker or an owner with none.
     top_level_site: ?[]const u8 = null,
+    top_level_origin: ?[]const u8 = null,
 };
 
 /// The settings for a global scope created in the realm whose runtime
@@ -393,6 +394,7 @@ pub fn scopeSettings(ctx: runtime.Context) ?ScopeSettings {
         .owner_is_secure_context = wctx.owner_is_secure_context,
         .owner_prohibits_mixed_security_contexts = wctx.owner_prohibits_mixed_security_contexts,
         .top_level_site = wctx.top_level_site,
+        .top_level_origin = wctx.top_level_origin,
     };
 }
 
@@ -793,6 +795,7 @@ pub const WorkerHost = struct {
     /// The owner's top-level site, for a dedicated worker
     /// (`ScopeSettings.top_level_site`). OWNED.
     top_level_site: ?[]u8 = null,
+    top_level_origin: ?[]u8 = null,
 
     /// The worker object that ran the worker - a dedicated worker's Worker,
     /// a shared worker's first SharedWorker - as its owner's tasks find it:
@@ -935,6 +938,8 @@ pub const WorkerHost = struct {
         // has no failure to unwind.
         self.top_level_site = start.top_level_site;
         start.top_level_site = null;
+        self.top_level_origin = start.top_level_origin;
+        start.top_level_origin = null;
         // "Obtain a worker/worklet agent" step 3: a dedicated worker's agent
         // is in its owner's agent cluster, which a WebAssembly.Module it
         // serializes is bound to and one it receives is checked against
@@ -1286,6 +1291,7 @@ pub const WorkerHost = struct {
         self.policy_container.deinit();
         self.agent_host.deinit();
         if (self.top_level_site) |site| self.allocator.free(site);
+        if (self.top_level_origin) |origin| self.allocator.free(origin);
         self.allocator.free(self.script_url);
         self.allocator.free(self.name);
         self.allocator.destroy(self);
@@ -2633,6 +2639,16 @@ fn ownerTopLevelSite(allocator: Allocator, realm: runtime.Context) error{OutOfMe
     return try allocator.dupe(u8, site);
 }
 
+/// A dedicated worker's settings snapshot, copied on its owner's thread.
+/// The caller owns the result; failure cannot publish a partial snapshot.
+pub fn creatorTopLevelOrigin(allocator: Allocator, realm: runtime.Context) error{OutOfMemory}!?[]u8 {
+    const record = realm.getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    const origin = (try @import("dom").global_settings.topLevelOriginOf(global)) orelse return null;
+    defer global.ctx.allocator.free(origin);
+    return try allocator.dupe(u8, origin);
+}
+
 fn creatorCookieJar(realm: runtime.Context) ?*CookieJar {
     const record = realm.getRealm() orelse return null;
     const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
@@ -3238,6 +3254,7 @@ const ThreadHost = struct {
         /// shared worker: HTML leaves its top-level origin to the user agent,
         /// and Crane does not partition SharedWorker matching.
         top_level_site: ?[]u8,
+        top_level_origin: ?[]u8,
         /// The worker's reserved client, until its realm adopts it.
         service_worker_client: ?*anyopaque,
     };
@@ -3252,6 +3269,8 @@ const ThreadHost = struct {
         // On the owner's thread, in its realm: its top-level site.
         const top_level_site = if (start.shared == null) try ownerTopLevelSite(allocator, start.owner_realm) else null;
         errdefer if (top_level_site) |site| allocator.free(site);
+        const top_level_origin = if (start.shared == null) try creatorTopLevelOrigin(allocator, start.owner_realm) else null;
+        errdefer if (top_level_origin) |origin| allocator.free(origin);
         const owner_prohibits_mixed_security_contexts = try ownerProhibitsMixedSecurityContexts(start.owner_realm);
         const self = try allocator.create(ThreadHost);
         self.* = .{
@@ -3280,6 +3299,7 @@ const ThreadHost = struct {
                 // cluster, for a dedicated worker.
                 .agent_cluster = if (start.shared == null) agent_clusters.ofRealm(start.owner_realm) else 0,
                 .top_level_site = top_level_site,
+                .top_level_origin = top_level_origin,
                 .service_worker_client = start.service_worker_client,
             },
         };
@@ -3309,6 +3329,8 @@ const ThreadHost = struct {
         self.start.shared = null;
         if (self.start.top_level_site) |site| self.allocator.free(site);
         self.start.top_level_site = null;
+        if (self.start.top_level_origin) |origin| self.allocator.free(origin);
+        self.start.top_level_origin = null;
         @import("dom").service_worker_clients.release(self.start.service_worker_client);
         self.start.service_worker_client = null;
     }
@@ -3749,3 +3771,134 @@ test "WorkerHost - struct definition" {
     const T = WorkerHost;
     try std.testing.expect(@sizeOf(T) > 0);
 }
+
+// The HTML module root is not V8-linked. The linked tests/html target runs
+// these two owner-local harnesses; production exports no test operation.
+pub const worker_origin_oom_test_cases = if (@import("builtin").is_test) struct {
+    pub fn startup() !void {
+        const Harness = struct {
+            const settings = @import("dom").global_settings;
+            const methods = .{};
+            const vtable: runtime.VTable = .{ .name = "pm2-startup-global", .deinit = null, .methods_ptr = &methods };
+
+            fn owns(global: *runtime.Instance) bool {
+                return std.mem.eql(u8, global.vtable.name, "pm2-startup-global");
+            }
+
+            fn origin(global: *runtime.Instance) anyerror!runtime.USVString {
+                return global.ctx.allocator.dupe(u8, "https://owner.example.test");
+            }
+
+            fn topOrigin(global: *runtime.Instance) error{OutOfMemory}!?[]u8 {
+                return try global.ctx.allocator.dupe(u8, "https://top.example.test:8443");
+            }
+
+            fn secure(_: *runtime.Instance) bool {
+                return true;
+            }
+
+            fn isolated(_: *runtime.Instance) bool {
+                return false;
+            }
+
+            fn errorReported(_: *runtime.Instance, _: *const ErrorReport.Info) void {}
+            fn ended(_: *runtime.Instance) void {}
+
+            fn allocationScenario(allocator: Allocator, realm: runtime.Context, global: *runtime.Instance) !void {
+                const saved_allocator = realm.allocator;
+                realm.allocator = allocator;
+                defer realm.allocator = saved_allocator;
+                const start: WorkerStart = .{
+                    .source = "postMessage('ready')",
+                    .script_url = "https://owner.example.test/worker.js",
+                    .worker_type = .classic,
+                    .name = "pm2",
+                    .policy_container = null,
+                    .cookie_jar = null,
+                    .owner_realm = realm,
+                    .owner_worker = .{
+                        .instance = global,
+                        .generation = 0,
+                        .steps = &.{ .error_reported = errorReported, .start_failed = ended, .ended = ended },
+                    },
+                    .inside_end = null,
+                };
+                const host = try ThreadHost.create(allocator, &start);
+                defer host.destroyUnstarted();
+                try std.testing.expectEqualStrings("https://top.example.test:8443", host.start.top_level_origin.?);
+            }
+        };
+        // Native settings only: no V8 realm, thread or running worker.
+        // The supplied immutable hook accepts only this test's global kind.
+        Harness.settings.install(.{
+            .owns = Harness.owns,
+            .origin = Harness.origin,
+            .is_secure_context = Harness.secure,
+            .cross_origin_isolated = Harness.isolated,
+            .top_level_origin = Harness.topOrigin,
+        });
+        var realm = try runtime.ContextData.init(std.testing.allocator, .{});
+        defer realm.deinit();
+        var native_state: u8 = 0;
+        var global: runtime.Instance = .{ .vtable = &Harness.vtable, .state = &native_state, .ctx = &realm };
+        const record = try runtime.Realm.init(std.testing.allocator, .{ .context_type = .window, .global_object = &global });
+        defer record.deinit();
+        realm.setRealm(record);
+        defer realm.clearRealm();
+        try std.testing.checkAllAllocationFailures(std.testing.allocator, Harness.allocationScenario, .{ &realm, &global });
+        std.debug.print("pm2 worker startup owns its top-level origin across every allocation failure: passed\n", .{});
+    }
+
+    pub fn scopeCopies() !void {
+        const Harness = struct {
+            fn allocationScenario(allocator: Allocator, realm: runtime.Context) !void {
+                const scope = try interfaces.WorkerGlobalScope.init(allocator, realm);
+                defer interfaces.WorkerGlobalScope.deinit(scope);
+                const settings = @import("dom").global_settings;
+                const site = (try settings.topLevelSiteOf(scope)).?;
+                defer realm.allocator.free(site);
+                const origin = (try settings.topLevelOriginOf(scope)).?;
+                defer realm.allocator.free(origin);
+                try std.testing.expectEqualStrings("https://example.test", site);
+                try std.testing.expectEqualStrings("https://top.example.test:8443", origin);
+            }
+
+            fn body() !void {
+                const allocator = std.testing.allocator;
+                interfaces.process_hooks.startHooksForTest();
+                runtime.initializeRuntime(allocator);
+                defer runtime.deinitializeRuntime();
+                var realm = try runtime.ContextData.init(allocator, .{});
+                defer realm.deinit();
+                const site = try allocator.dupe(u8, "https://example.test");
+                defer allocator.free(site);
+                const origin = try allocator.dupe(u8, "https://top.example.test:8443");
+                defer allocator.free(origin);
+                // Only scopeSettings reads this host. It never starts an agent,
+                // task sink, loop or thread; those fields are deliberately unused.
+                var host: WorkerHost = .{
+                    .agent = undefined,
+                    .agent_host = undefined,
+                    .realm = &realm,
+                    .script_url = "https://worker.example.test/worker.js",
+                    .worker_type = .classic,
+                    .policy_container = fetch_mod.internal.PolicyContainer.init(allocator),
+                    .timer = null,
+                    .task_sink = undefined,
+                    .allocator = allocator,
+                    .event_loop = undefined,
+                    .link = undefined,
+                    .owner_is_secure_context = true,
+                    .top_level_site = site,
+                    .top_level_origin = origin,
+                };
+                defer host.policy_container.deinit();
+                try live_contexts.append(std.heap.page_allocator, &host);
+                defer removeLive(&host);
+                try std.testing.checkAllAllocationFailures(allocator, allocationScenario, .{&realm});
+            }
+        };
+        try Harness.body();
+        std.debug.print("pm2 hosted worker scope unwinds its own state when a settings copy fails: passed\n", .{});
+    }
+} else struct {};

@@ -1822,6 +1822,8 @@ pub fn build(b: *std.Build) void {
             // Browsers' scopes (tests/html/instances_isolation_test.zig).
             .{ .name = "file", .module = testing_graph.file },
             .{ .name = "cookiestore", .module = testing_graph.cookiestore },
+            .{ .name = "permissions", .module = testing_graph.permissions },
+            .{ .name = "xhr", .module = testing_graph.xhr },
         };
         addTestFilesFromDir(b, test_step, "tests/html", target, &html_imports, true, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add html test files: {}\n", .{err});
@@ -3223,6 +3225,8 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "file", .module = runner_graph.file },
                 // The cookie store, for testdriver's cookie commands (test_driver.zig)
                 .{ .name = "cookiestore", .module = runner_graph.cookiestore },
+                // Permissions, for testdriver's set_permission (test_driver.zig).
+                .{ .name = "permissions", .module = runner_graph.permissions },
                 // MIME Sniffing's parser, for the WAV test backend's canPlayType
                 // (wav_backend.zig)
                 .{ .name = "mimesniff", .module = runner_graph.mimesniff },
@@ -5799,6 +5803,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     });
 
     // Add permissions to impls for navigator.permissions implementation
+    permissions_mod.addImport("runtime", runtime_mod);
     impls_mod.addImport("permissions", permissions_mod);
 
     // Browser module - Single V8 isolate browser implementation for WPT

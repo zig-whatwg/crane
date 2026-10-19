@@ -346,6 +346,54 @@ test "a held timer stays in its window's map until cleared, and clearing it free
     try std.testing.expectEqual(@as(usize, 0), timer_contexts.?.count());
 }
 
+test "a suspended timer keeps the wait it had left, and a resumed one is armed for it" {
+    const allocator = std.testing.allocator;
+    var realm = try runtime.ContextData.init(allocator, .{});
+    defer realm.deinit();
+    var other = try runtime.ContextData.init(allocator, .{});
+    defer other.deinit();
+    const saved_interface = current_timer_interface;
+    const saved_allocator = current_allocator;
+    const saved_contexts = timer_contexts;
+    defer {
+        current_timer_interface = saved_interface;
+        current_allocator = saved_allocator;
+        timer_contexts = saved_contexts;
+    }
+    const manager = try runtime.native_timer.NativeTimerManager.init(allocator);
+    defer manager.deinit();
+    current_timer_interface = manager.timerInterface();
+    current_allocator = allocator;
+    timer_contexts = std.AutoHashMap(TimerId, *WindowTimerCallback).init(allocator);
+    defer timer_contexts.?.deinit();
+
+    const id: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 5_000, &.{}, false));
+    const elsewhere: TimerId = @intCast(initializeTimer(&other, .{ .function = .{ .number = 2 } }, 5_000, &.{}, false));
+    try std.testing.expect(id != 0 and elsewhere != 0);
+    const armed = timer_contexts.?.get(id).?.getData().current_timer_id;
+
+    // The page is kept: its timer's native timer is cancelled, and the wait
+    // it had left is kept.
+    suspendWindowTimers(&realm);
+    const data = timer_contexts.?.get(id).?.getData();
+    try std.testing.expect(data.held);
+    try std.testing.expectEqual(@as(?u64, null), manager.remainingMs(armed));
+    try std.testing.expect(data.current_timer_id > 4_000 and data.current_timer_id <= 5_000);
+    // Another window's timer is untouched.
+    try std.testing.expect(!timer_contexts.?.get(elsewhere).?.getData().held);
+
+    // Restored: armed again for what it had left, not its whole timeout
+    // from now and not at once.
+    resumeWindowTimers(&realm);
+    try std.testing.expect(!data.held);
+    const left = manager.remainingMs(data.current_timer_id) orelse return error.NotArmed;
+    try std.testing.expect(left > 4_000 and left <= 5_000);
+
+    clearTimer(&realm, @intCast(id));
+    clearTimer(&other, @intCast(elsewhere));
+    try std.testing.expectEqual(@as(usize, 0), timer_contexts.?.count());
+}
+
 test "per-document frame batches include parent additions but defer their own additions" {
     const allocator = std.testing.allocator;
     var parent = try runtime.ContextData.init(allocator, .{});
@@ -751,9 +799,10 @@ pub fn clearTimerInterface() void {
             // timer manager is going away with us and every wrapper must be freed
             // here or leak. Unlike unregisterTimerContext there is no later callback
             // to hand ownership to.
-            if (current_timer_interface) |timer| {
+            // (A held one has no native timer: its current_timer_id is a wait.)
+            if (current_timer_interface) |timer| if (!wrapper.getData().held) {
                 _ = timer.clearTimeout(wrapper.getData().current_timer_id);
-            }
+            };
             destroyTimer(wrapper);
         }
         map.deinit();
@@ -796,7 +845,15 @@ const window_operations = runtime.WindowOperations{
 /// takes its window's timers and animation frames with it, while its realm
 /// lives on (HTMLIFrameElement asks, through dom.window_documents).
 pub fn installHooks() void {
-    @import("dom").window_documents.install(.{ .destroyed = clearWindowState, .active_timer_handles = activeTimerHandles });
+    @import("dom").window_documents.install(.{
+        .destroyed = clearWindowState,
+        .active_timer_handles = activeTimerHandles,
+        .suspend_timers = suspendWindowTimers,
+        .resume_timers = resumeWindowTimers,
+    });
+    // The Browser's back/forward cache, which the navigation code reaches
+    // through dom.bfcache.
+    @import("back_forward_cache.zig").installHooks();
     @import("dom").idle_periods.installLoop(@import("event_loop.zig").EventLoop.idle_period_hooks);
 }
 
@@ -855,6 +912,63 @@ fn activeTimerHandles(realm: runtime.Context, allocator: std.mem.Allocator) erro
     return handles.toOwnedSlice(allocator);
 }
 
+/// dom.window_documents: the back/forward cache keeps `realm`'s window's
+/// document. Each of its timers stops - its native timer cancelled, how
+/// long it still had to wait kept - and is HELD (`WindowTimerData.held`):
+/// still in the map of active timers, cleared by clearTimeout at once, freed
+/// with its window. WebKit suspends a cached document's timers the same way
+/// (EventLoopTaskGroup::suspend, EventLoopTimer::suspend keeps the remaining
+/// interval); HTML keeps each timer's due time and "reactivate" step 2 moves
+/// it by the time the document was suspended, which is the same wait.
+/// Chrome fires them early instead (back-forward-cache/timers.html: Firefox
+/// and Safari pass, Chrome fails, wpt.fyi 23b0b89b1a). Its animation frame
+/// callbacks wait too, without a frame scheduled for them
+/// (`scheduleAnimationFrame`).
+fn suspendWindowTimers(realm: runtime.Context) void {
+    const map = if (timer_contexts) |*m| m else return;
+    const timer = current_timer_interface orelse return;
+    var iter = map.iterator();
+    while (iter.next()) |entry| {
+        const data = entry.value_ptr.*.getData();
+        if (data.realm != realm or data.held or data.cancelled or data.executing) continue;
+        // The wait still to go, asked of the native timer before it is
+        // cancelled - WebKit's SuspendableTimer saves its next-fire interval
+        // the same way (m_savedNextFireInterval), and nothing is stored at
+        // schedule time. A timer interface that cannot say ("unknown") makes
+        // it due at once: it runs as soon as its page is restored.
+        const remaining = timer.remainingMs(data.current_timer_id) orelse 0;
+        // Not confirmed cancelled: its callback is on its way, and a timer
+        // that comes due while its document is inactive is held there
+        // (`holdIfInactive`).
+        if (!timer.clearTimeout(data.current_timer_id)) continue;
+        data.held = true;
+        // A held timer's current_timer_id is its wait still to go.
+        data.current_timer_id = remaining;
+    }
+}
+
+/// dom.window_documents: HTML "reactivate" step 2 for `realm`'s window -
+/// every held timer is armed again for what it still had to wait (0 for one
+/// that came due while its document was inactive), and its animation frame
+/// callbacks get a frame again.
+fn resumeWindowTimers(realm: runtime.Context) void {
+    if (timer_contexts) |*map| if (current_timer_interface) |timer| {
+        var iter = map.iterator();
+        while (iter.next()) |entry| {
+            const wrapper = entry.value_ptr.*;
+            const data = wrapper.getData();
+            if (data.realm != realm or !data.held) continue;
+            // A held timer's current_timer_id is its wait still to go.
+            const id = timer.setTimeout(data.current_timer_id, WindowTimerCallback.getTrampolineCallback(), wrapper.eraseForFFI());
+            // Not armed: it stays held, cleared or freed with its window.
+            if (id == 0) continue;
+            data.held = false;
+            data.current_timer_id = id;
+        }
+    };
+    scheduleAnimationFrame();
+}
+
 /// Clear ALL pending timer contexts but keep the timer interface
 /// This is used during test isolation to cancel timers without tearing down the interface
 pub fn clearPendingTimers() void {
@@ -862,10 +976,11 @@ pub fn clearPendingTimers() void {
         var iter = map.iterator();
         while (iter.next()) |entry| {
             const wrapper = entry.value_ptr.*;
-            // Cancel the timer at the libuv level
-            if (current_timer_interface) |timer| {
+            // Cancel the timer at the libuv level (a held one has none: its
+            // current_timer_id is a wait).
+            if (current_timer_interface) |timer| if (!wrapper.getData().held) {
                 _ = timer.clearTimeout(wrapper.getData().current_timer_id);
-            }
+            };
             destroyTimer(wrapper);
         }
         map.clearRetainingCapacity();
@@ -976,7 +1091,12 @@ const WindowTimerData = struct {
     /// The id setTimeout/setInterval returned, and this timer's key in
     /// `timer_contexts`. Stable for the timer's life (see scheduleTimer).
     id: TimerId = 0,
-    /// The manager's id for the pending run. An interval gets a new one per repeat.
+    /// The manager's id for the pending run. An interval gets a new one per
+    /// repeat. While `held`, no native timer is armed and this is the wait
+    /// still to go, in ms, instead: what was left when its document was
+    /// suspended (`suspendWindowTimers`), 0 for one that came due inactive -
+    /// kept here, not in a field of its own, so that the record stays the
+    /// size a setTimeout(0) burst allocates 50,000 of.
     current_timer_id: TimerId = 0,
     /// For intervals: whether the interval has been cancelled
     cancelled: bool = false,
@@ -1015,6 +1135,30 @@ const WindowTimerData = struct {
     }
 };
 
+/// WindowTimerData's shape before the back/forward cache (phase A): the
+/// record a suspension may not grow (`WindowTimerData` test below).
+const TimerDataBaseShape = struct {
+    handler: runtime.WindowTimerHandler,
+    arguments: []runtime.JSValue,
+    realm: runtime.Context,
+    is_interval: bool,
+    timeout_ms: i64,
+    id: TimerId,
+    current_timer_id: TimerId,
+    cancelled: bool,
+    nesting_level: u32,
+    executing: bool,
+    held: bool,
+};
+
+test "a window timer's record is no larger than before the back/forward cache" {
+    // A setTimeout(0) burst allocates 50,000 of these at once
+    // (crane/bfa-cost-timers.html): 16 more bytes each measured 4-8%
+    // slower there. A suspension asks the native timer for the wait still
+    // to go (TimerInterface.remainingMs) instead of storing a due time.
+    try std.testing.expectEqual(@sizeOf(TimerDataBaseShape), @sizeOf(WindowTimerData));
+}
+
 /// Type-safe timer callback wrapper for window timers.
 ///
 /// Uses SelfContainedWorkCallback to bundle the callback function and context data
@@ -1034,6 +1178,11 @@ fn destroyTimer(wrapper: *WindowTimerCallback) void {
 /// timer's realm, at the timer's nesting level. A task runs from the event
 /// loop, so the realm is entered for it.
 fn runTimerTask(data: *WindowTimerData) void {
+    // (No dom.bfcache.assertNotCached here: a cached page's timers are
+    // suspended at store - suspendWindowTimers - and one that fires anyway
+    // is held by holdIfInactive before it gets here, its document inactive.
+    // That guard is the check, and the assertion's cost showed on the
+    // setTimeout(0) burst cost page.)
     engine.runTaskInRealm(data.realm, runTimerSteps, data) catch |err| {
         log.debug("a timer's task did not run: {}", .{err});
     };
@@ -1141,7 +1290,9 @@ fn holdIfInactive(data: *WindowTimerData) bool {
 /// Hold a timer whose native timer has just fired (`holdIfInactive`).
 fn holdTimer(data: *WindowTimerData) void {
     data.held = true;
-    // The native timer that called here has fired: none is armed.
+    // The native timer that called here has fired: none is armed, and it is
+    // due already - it runs as soon as it is armed again (a held timer's
+    // current_timer_id is its wait still to go).
     data.current_timer_id = 0;
 }
 
@@ -2556,20 +2707,54 @@ fn scheduleAnimationFrame() void {
     // nested loop pumping must never start another rendering turn.
     if (state.dispatch_token != null) return;
     if (state.pending.items.len == 0) return;
+    // Callbacks of pages the back/forward cache keeps wait without a frame:
+    // a frame every 16 ms for a page that cannot run them would keep the
+    // loop busy for as long as the page is cached. Their restore asks for
+    // one (resumeWindowTimers).
+    if (!anyAnimationFrameRunnable(state)) return;
     const timer = getTimerInterface() orelse return;
     const id = timer.setTimeout(FRAME_INTERVAL_MS, animationFrameHandler, null);
     // 0 is the failure sentinel; leaving timer_id null lets a later rAF retry.
     if (id != 0) state.timer_id = id;
 }
 
+/// Whether a pending callback's page may run it at a frame: not one the
+/// back/forward cache keeps.
+fn anyAnimationFrameRunnable(state: *const AnimationFrameState) bool {
+    for (state.pending.items) |entry| {
+        if (!realmIsCached(entry.realm)) return true;
+    }
+    return false;
+}
+
+/// Whether `realm`'s Window belongs to a page the back/forward cache keeps:
+/// no navigable shows it, and it may be shown again (dom.bfcache.holds).
+fn realmIsCached(realm: runtime.Context) bool {
+    if (!realm.hasEngine()) return false;
+    const window = realmWindow(realm) orelse return false;
+    return windowIsCached(realm, window);
+}
+
+/// Whether `window`, `realm`'s, is a cached page's - asked of the realm's
+/// event loop first, where a cached page always has its suspended task
+/// group: a realm on no Browser loop, or on one with none, has no cached
+/// page (and its Window is not read).
+fn windowIsCached(realm: runtime.Context, window: *runtime.Instance) bool {
+    const loop = @import("event_loop.zig").EventLoop.of(realm) orelse return false;
+    if (loop.suspended.items.len == 0) return false;
+    return dom_mod.bfcache.holds(window);
+}
+
 /// A removed/replaced Window has no active navigable; no future frame can
 /// invoke its callback map. The realm itself may remain callable from script.
 /// A live navigable with no document yet is temporary, and keeps callbacks.
+/// So does a Window the back/forward cache keeps: its map of animation frame
+/// callbacks is its document's, which may be shown again.
 fn animationFrameRealmIsTerminal(realm: runtime.Context) bool {
     if (!realm.hasEngine()) return true;
     const window = realmWindow(realm) orelse return true;
     if (instance_lifecycle.isCleanupStarted(window)) return true;
-    const navigable = realmNavigable(realm, window) orelse return true;
+    const navigable = realmNavigable(realm, window) orelse return !windowIsCached(realm, window);
     if (navigable.is_closed or navigable.orphaned) return true;
     if (navigable.active_document) |ptr| {
         const document: *runtime.Instance = @ptrCast(@alignCast(ptr));
@@ -2586,7 +2771,8 @@ fn animationFrameTargetReplaced(entry: AnimationFrameEntry) bool {
     if (entry.target_document_generation == runtime.SlabAllocator.dead_generation) return true;
     if (runtime.SlabAllocator.generationOf(target) != entry.target_document_generation) return true;
     const window = realmWindow(entry.realm) orelse return true;
-    const navigable = realmNavigable(entry.realm, window) orelse return true;
+    // A cached page's map stays its document's (`animationFrameRealmIsTerminal`).
+    const navigable = realmNavigable(entry.realm, window) orelse return !windowIsCached(entry.realm, window);
     // A temporarily unassigned active document is deferred. A different
     // document is a permanent replacement of this entry's target map.
     const active = navigable.active_document orelse return false;
@@ -2673,6 +2859,8 @@ fn animationFrameHandler(_: ?*anyopaque) void {
             // HTML run-animation-callbacks step 3.2: remove the handle before
             // JS so cancellation of an already-invoked handle is a no-op.
             entry.consumed = true;
+            // Only active documents' callbacks were collected.
+            dom_mod.bfcache.assertNotCached(entry.realm);
             invokeReporting(entry.realm, entry.callback, &.{timestamp});
             last_realm = entry.realm;
         }

@@ -29,6 +29,7 @@ const Tokenizer = tokenizer.Tokenizer;
 const isHexColor = tokenizer.isHexColor;
 const context = @import("../context.zig");
 const ParserContext = context.ParserContext;
+const Scheme = @import("../color_scheme.zig").Scheme;
 
 /// RGBA color value.
 pub const Color = struct {
@@ -758,47 +759,189 @@ fn colorFromHex(rgb: u32) Color {
     return Color.rgb(@intCast(rgb >> 16), @truncate(rgb >> 8), @truncate(rgb));
 }
 
-// CSS Color 4 §6.2 permits a fixed UA palette. These opaque light values
-// are Blink's DefaultSystemColor and default platform selection RGBs:
+// CSS Color 4 §6.2 permits a fixed UA palette, and §6.2 / CSS Color
+// Adjustment 1 §2.4 make it follow the element color scheme.
+//
+// Light: Blink's DefaultSystemColor and its default platform selection RGBs
+// (layout_theme.cc, renderer_preferences.h):
 // https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/layout/layout_theme.cc
 // https://github.com/chromium/chromium/blob/main/third_party/blink/public/common/renderer_preferences/renderer_preferences.h
-// TODO(style color-scheme): host/dark palettes need the style-system policy.
-const light_system_colors = std.StaticStringMap(u32).initComptime(.{
-    .{ "accentcolor", 0x0075ff },   .{ "accentcolortext", 0xffffff },
-    .{ "activetext", 0xff0000 },    .{ "buttonborder", 0x767676 },
-    .{ "buttonface", 0xefefef },    .{ "buttontext", 0x000000 },
-    .{ "canvas", 0xffffff },        .{ "canvastext", 0x000000 },
-    .{ "field", 0xffffff },         .{ "fieldtext", 0x000000 },
-    .{ "graytext", 0x808080 },      .{ "highlight", 0x1967d2 },
-    .{ "highlighttext", 0xffffff }, .{ "linktext", 0x0000ee },
-    .{ "mark", 0xffff00 },          .{ "marktext", 0x000000 },
-    .{ "selecteditem", 0x1967d2 },  .{ "selecteditemtext", 0xffffff },
-    .{ "visitedtext", 0x551a8b },
-});
+//
+// Dark: measured, not taken from a source table. Lane style4's probe set
+// `color-scheme: only dark; color: <keyword>` on a div and read
+// getComputedStyle in Chrome 151 (headless) and Firefox 144 on macOS 27,
+// and in Safari 27.0.1 on macOS 27, all in Dark appearance (the JSON is in
+// that lane's tmp/analysis/{chrome,firefox,safari}.json). The rule, golden
+// rule 2 per keyword: the majority's value where two of the three agree,
+// and where all three differ Chrome's measured value (the integrator's
+// ruling: each keyword with a majority already takes Chrome's, so the
+// three-way splits follow the same browser):
+//
+//   keyword            Chrome 151        Firefox 144       Safari 27.0.1          Crane
+//   CanvasText         #ffffff           #fbfbfe           #ffffff                #ffffff (C+S)
+//   LinkText           #9e9eff           #8c8cff           #9e9eff                #9e9eff (C+S)
+//   VisitedText        #d0adf0           #ffadff           #d0adf0                #d0adf0 (C+S)
+//   HighlightText      #000000           #000000           #ffffff                #000000 (C+F)
+//   ButtonBorder       #ffffff           #8f8f9d           #ffffff                #ffffff (C+S)
+//   ActiveText         #ff0000           #ff6666           #ff9e9e                #ff0000 (Chrome)
+//   ButtonFace         #6b6b6b           #2b2a33           rgba(255,255,255,.25)  #6b6b6b (Chrome)
+//   ButtonText         #ffffff           #fbfbfe           rgba(255,255,255,.85)  #ffffff (Chrome)
+//   Canvas             #121212           #1c1b22           #1e1e1e                #121212 (Chrome)
+//   Field              #3b3b3b           #2b2a33           rgba(255,255,255,.25)  #3b3b3b (Chrome)
+//   FieldText          #ffffff           #fbfbfe           rgba(255,255,255,.85)  #ffffff (Chrome)
+//   GrayText           #808080           #75747a           rgba(255,255,255,.25)  #808080 (Chrome)
+//   SelectedItem       #99c8ff           #0059d1           #c0c0c0                #99c8ff (Chrome)
+//   SelectedItemText   #3b3b3b           #ffffff           #000000                #3b3b3b (Chrome)
+//
+// Highlight follows Chrome's mechanism, one value in both schemes (Blink's
+// default ActiveSelectionBackgroundColor ignores the scheme off macOS), so
+// dark keeps the light value. Mark, MarkText, AccentColor and
+// AccentColorText are the same in both schemes in all three browsers.
 
-// CSS Color 4 Appendix A: each deprecated keyword computes to a standard
-// system color, so aliases never carry a second set of palette values.
-const deprecated_system_colors = std.StaticStringMap([]const u8).initComptime(.{
-    .{ "activeborder", "buttonborder" },      .{ "activecaption", "canvas" },
-    .{ "appworkspace", "canvas" },            .{ "background", "canvas" },
-    .{ "buttonhighlight", "buttonface" },     .{ "buttonshadow", "buttonface" },
-    .{ "captiontext", "canvastext" },         .{ "inactiveborder", "buttonborder" },
-    .{ "inactivecaption", "canvas" },         .{ "inactivecaptiontext", "graytext" },
-    .{ "infobackground", "canvas" },          .{ "infotext", "canvastext" },
-    .{ "menu", "canvas" },                    .{ "menutext", "canvastext" },
-    .{ "scrollbar", "canvas" },               .{ "threeddarkshadow", "buttonborder" },
-    .{ "threedface", "buttonface" },          .{ "threedhighlight", "buttonborder" },
-    .{ "threedlightshadow", "buttonborder" }, .{ "threedshadow", "buttonborder" },
-    .{ "window", "canvas" },                  .{ "windowframe", "buttonborder" },
-    .{ "windowtext", "canvastext" },
-});
+/// A <system-color> (CSS Color 4 §6.2) or a deprecated system color
+/// (Appendix A), by its keyword, ASCII lowercase - which is how a declared
+/// value serializes ("the declared value is itself, converted to ASCII
+/// lowercase", §15.5).
+pub const SystemColor = enum(u8) {
+    accentcolor,
+    accentcolortext,
+    activetext,
+    buttonborder,
+    buttonface,
+    buttontext,
+    canvas,
+    canvastext,
+    field,
+    fieldtext,
+    graytext,
+    highlight,
+    highlighttext,
+    linktext,
+    mark,
+    marktext,
+    selecteditem,
+    selecteditemtext,
+    visitedtext,
+    // Appendix A: deprecated.
+    activeborder,
+    activecaption,
+    appworkspace,
+    background,
+    buttonhighlight,
+    buttonshadow,
+    captiontext,
+    inactiveborder,
+    inactivecaption,
+    inactivecaptiontext,
+    infobackground,
+    infotext,
+    menu,
+    menutext,
+    scrollbar,
+    threeddarkshadow,
+    threedface,
+    threedhighlight,
+    threedlightshadow,
+    threedshadow,
+    window,
+    windowframe,
+    windowtext,
 
+    /// The system color named `name`, ASCII case-insensitively.
+    pub fn parse(name: []const u8) ?SystemColor {
+        var lower: [20]u8 = undefined;
+        if (name.len > lower.len) return null;
+        return by_name.get(std.ascii.lowerString(lower[0..name.len], name));
+    }
+
+    const by_name = blk: {
+        @setEvalBranchQuota(10_000);
+        const fields = @typeInfo(SystemColor).@"enum".fields;
+        var entries: [fields.len]struct { []const u8, SystemColor } = undefined;
+        for (fields, 0..) |field, i| entries[i] = .{ field.name, @enumFromInt(field.value) };
+        break :blk std.StaticStringMap(SystemColor).initComptime(entries);
+    };
+
+    /// The keyword, ASCII lowercase.
+    pub fn keyword(self: SystemColor) []const u8 {
+        return @tagName(self);
+    }
+
+    /// Appendix A: "the computed and used value is the color of the
+    /// corresponding system color" - so the aliases carry no palette of
+    /// their own.
+    pub fn standard(self: SystemColor) SystemColor {
+        return switch (self) {
+            .activeborder, .inactiveborder, .threeddarkshadow, .threedhighlight, .threedlightshadow, .threedshadow, .windowframe => .buttonborder,
+            .activecaption, .appworkspace, .background, .inactivecaption, .infobackground, .menu, .scrollbar, .window => .canvas,
+            .buttonhighlight, .buttonshadow, .threedface => .buttonface,
+            .captiontext, .infotext, .menutext, .windowtext => .canvastext,
+            .inactivecaptiontext => .graytext,
+            else => self,
+        };
+    }
+
+    /// The color in `scheme`'s palette.
+    pub fn color(self: SystemColor, scheme: Scheme) Color {
+        return colorFromHex(switch (scheme) {
+            .light => lightRgb(self.standard()),
+            .dark => darkRgb(self.standard()),
+        });
+    }
+};
+
+fn lightRgb(c: SystemColor) u32 {
+    return switch (c) {
+        .accentcolor => 0x0075ff,
+        .accentcolortext => 0xffffff,
+        .activetext => 0xff0000,
+        .buttonborder => 0x767676,
+        .buttonface => 0xefefef,
+        .buttontext => 0x000000,
+        .canvas => 0xffffff,
+        .canvastext => 0x000000,
+        .field => 0xffffff,
+        .fieldtext => 0x000000,
+        .graytext => 0x808080,
+        .highlight => 0x1967d2,
+        .highlighttext => 0xffffff,
+        .linktext => 0x0000ee,
+        .mark => 0xffff00,
+        .marktext => 0x000000,
+        .selecteditem => 0x1967d2,
+        .selecteditemtext => 0xffffff,
+        .visitedtext => 0x551a8b,
+        else => unreachable, // deprecated: `standard` first
+    };
+}
+
+fn darkRgb(c: SystemColor) u32 {
+    return switch (c) {
+        .accentcolor, .accentcolortext, .highlight, .mark, .marktext => lightRgb(c),
+        .activetext => 0xff0000,
+        .buttonborder => 0xffffff,
+        .buttonface => 0x6b6b6b,
+        .buttontext => 0xffffff,
+        .canvas => 0x121212,
+        .canvastext => 0xffffff,
+        .field => 0x3b3b3b,
+        .fieldtext => 0xffffff,
+        .graytext => 0x808080,
+        .highlighttext => 0x000000,
+        .linktext => 0x9e9eff,
+        .selecteditem => 0x99c8ff,
+        .selecteditemtext => 0x3b3b3b,
+        .visitedtext => 0xd0adf0,
+        else => unreachable, // deprecated: `standard` first
+    };
+}
+
+/// A system color with no element to take a color scheme from: the UA
+/// default, light (CSS Color 4 §4.5 "parse a CSS <color> value" without a
+/// context element).
 fn getSystemColor(name: []const u8) ?Color {
-    var lower: [20]u8 = undefined;
-    if (name.len > lower.len) return null;
-    const key = std.ascii.lowerString(lower[0..name.len], name);
-    const standard = deprecated_system_colors.get(key) orelse key;
-    return colorFromHex(light_system_colors.get(standard) orelse return null);
+    const c = SystemColor.parse(name) orelse return null;
+    return c.color(.light);
 }
 
 // ============================================================================
@@ -1078,4 +1221,24 @@ test "context-free colors map every deprecated system keyword to its standard co
         const standard = try ColorParser.parseWithoutContext(pair[1], std.testing.allocator);
         try std.testing.expect(old.quantize().eql(standard.quantize()));
     }
+}
+
+test "the dark system palette, and the deprecated keywords in it" {
+    const cases = .{
+        .{ "CanvasText", 0xffffff },      .{ "Canvas", 0x121212 },              .{ "LinkText", 0x9e9eff },
+        .{ "VisitedText", 0xd0adf0 },     .{ "ActiveText", 0xff0000 },          .{ "ButtonBorder", 0xffffff },
+        .{ "ButtonFace", 0x6b6b6b },      .{ "ButtonText", 0xffffff },          .{ "Field", 0x3b3b3b },
+        .{ "FieldText", 0xffffff },       .{ "GrayText", 0x808080 },            .{ "Highlight", 0x1967d2 },
+        .{ "HighlightText", 0x000000 },   .{ "SelectedItem", 0x99c8ff },        .{ "SelectedItemText", 0x3b3b3b },
+        .{ "Mark", 0xffff00 },            .{ "MarkText", 0x000000 },            .{ "AccentColor", 0x0075ff },
+        .{ "AccentColorText", 0xffffff }, .{ "Menu", 0x121212 },                .{ "WindowText", 0xffffff },
+        .{ "ThreeDFace", 0x6b6b6b },      .{ "InactiveCaptionText", 0x808080 }, .{ "WindowFrame", 0xffffff },
+    };
+    inline for (cases) |case| {
+        const c = SystemColor.parse(case[0]).?.color(.dark);
+        try std.testing.expect(c.eql(colorFromHex(case[1])));
+    }
+    try std.testing.expectEqualStrings("threeddarkshadow", SystemColor.parse("ThreeDDarkShadow").?.keyword());
+    try std.testing.expect(SystemColor.parse("Text") == null);
+    try std.testing.expect(SystemColor.parse("currentcolor") == null);
 }

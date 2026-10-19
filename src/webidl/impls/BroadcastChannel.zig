@@ -327,6 +327,9 @@ fn originOf(global: *runtime.Instance) ?[]const u8 {
 fn eligibleForMessaging(instance: *runtime.Instance) bool {
     const global = relevantGlobal(instance) orelse return false;
     if (global.stateAs(interfaces.Window.State) != null) {
+        // A Window of a page the back/forward cache keeps: its Document is
+        // its window's, and not fully active.
+        if (@import("dom").bfcache.holds(global)) return false;
         // Fully active: still its Window's document, and still with a
         // browsing context ("destroy" sets it to null). Not `closed`: a
         // window that is closing is still fully active until it is
@@ -377,6 +380,21 @@ const Delivery = struct {
         const self: *Delivery = @ptrCast(@alignCast(data orelse return));
         defer self.destroy();
         const channel = self.target() orelse return;
+        // A channel of a page the back/forward cache keeps is not eligible
+        // for messaging (its Document is not fully active), and the page is
+        // evicted rather than left to miss the message: Chromium's
+        // "broadcastchannel-message" (BackForwardCacheImpl, kBroadcastChannelOnMessage),
+        // which the design takes (tmp/plans/bfcache-design.md item 2). Decided
+        // here, on the destination's own thread, before its realm is entered.
+        // (A worker's global is never cached, and its cache is another
+        // thread's: only a Window's is asked.)
+        if (relevantGlobal(channel)) |global| if (global.stateAs(interfaces.Window.State) != null) {
+            if (@import("dom").bfcache.holds(global)) {
+                @import("dom").bfcache.evict(global, .broadcastchannel_message);
+                return;
+            }
+        };
+        @import("dom").bfcache.assertNotCached(channel.ctx);
         engine.runTaskInRealm(channel.ctx, steps, self) catch {};
     }
 
