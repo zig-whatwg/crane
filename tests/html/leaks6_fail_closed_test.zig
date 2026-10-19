@@ -34,3 +34,11 @@ test "leaks6 fail closed: an unenforceable CSP list derives every sandboxing fla
     try testing.expect(!every.isEmpty());
     try testing.expect(sandboxing.cspDerivedSandboxingFlags(&unavailable.csp_list).eql(every));
 }
+
+test "leaks6 fail closed: a worker creator realm with no realm record answers the unavailable container" {
+    var context = try runtime.ContextData.init(testing.allocator, .{});
+    defer context.deinit();
+    try testing.expect(context.getRealm() == null);
+    const container = html.worker_host.creatorPolicyContainer(&context) orelse return error.NoContainer;
+    try testing.expect(container.csp_list.blocksEverything());
+}
