@@ -33,6 +33,8 @@
 //! Spec: https://w3c.github.io/ServiceWorker/#algorithms
 
 const std = @import("std");
+/// A cookie change subscription (Cookie Store 2.3).
+pub const ChangeSubscription = @import("cookiestore").ChangeSubscription;
 const Allocator = std.mem.Allocator;
 const scope_mod = @import("scope.zig");
 const router = @import("router.zig");
@@ -197,6 +199,11 @@ pub const Registration = struct {
     navigation_preload_header_value: []u8,
     /// Whether the registration map holds it: "unregistered" when not.
     in_map: bool = false,
+    /// Its cookie change subscription list (Cookie Store 2.3), in the order
+    /// subscribe() appended them: each name and url OWNED. Emptied when it
+    /// leaves the map (`detach`): an unregistered registration hears no
+    /// cookie change (Blink's CookieStoreManager::OnRegistrationDeleted).
+    cookie_subscriptions: std.ArrayListUnmanaged(ChangeSubscription) = .empty,
 
     pub fn slot(self: *const Registration, which: Slot) ?*Worker {
         return switch (which) {
@@ -468,6 +475,9 @@ pub const FetchOutcome = struct {
 pub const Registry = struct {
     allocator: Allocator,
     effects: Effects,
+    /// How many registrations in the map have a non-empty cookie change
+    /// subscription list: none, and no cookie change concerns them.
+    cookie_subscribed: u32 = 0,
     next_id: u64 = 1,
     /// The registration map: (storage key, serialized scope url) to a
     /// registration, in insertion order (getRegistrations() lists them so).
@@ -782,6 +792,7 @@ pub const Registry = struct {
     }
 
     fn destroyRegistration(self: *Registry, registration: *Registration) void {
+        self.clearCookieSubscriptions(registration);
         self.allocator.free(registration.storage_key);
         self.allocator.free(registration.scope_url);
         self.allocator.free(registration.navigation_preload_header_value);
@@ -801,6 +812,60 @@ pub const Registry = struct {
                 return;
             }
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Cookie Store: the cookie change subscription list (2.3)
+    // ------------------------------------------------------------------
+
+    /// subscribe() step 4.2.7: append `subscription` (copied) to
+    /// `registration`'s cookie change subscription list unless the list
+    /// already contains an equal one.
+    pub fn subscribeCookieChange(self: *Registry, registration: *Registration, subscription: ChangeSubscription) Allocator.Error!void {
+        for (registration.cookie_subscriptions.items) |listed| {
+            if (listed.eql(subscription)) return;
+        }
+        const name = if (subscription.name) |n| try self.allocator.dupe(u8, n) else null;
+        errdefer if (name) |n| self.allocator.free(n);
+        const url = try self.allocator.dupe(u8, subscription.url);
+        errdefer self.allocator.free(url);
+        try registration.cookie_subscriptions.append(self.allocator, .{ .name = name, .url = url });
+        if (registration.cookie_subscriptions.items.len == 1 and registration.in_map) self.cookie_subscribed += 1;
+    }
+
+    /// unsubscribe() step 4.2.7: remove any item of `registration`'s cookie
+    /// change subscription list equal to `subscription`.
+    pub fn unsubscribeCookieChange(self: *Registry, registration: *Registration, subscription: ChangeSubscription) void {
+        const list = &registration.cookie_subscriptions;
+        if (list.items.len == 0) return;
+        var i: usize = 0;
+        while (i < list.items.len) {
+            if (list.items[i].eql(subscription)) {
+                const removed = list.orderedRemove(i);
+                freeSubscription(self.allocator, removed);
+            } else {
+                i += 1;
+            }
+        }
+        if (list.items.len == 0) {
+            list.clearAndFree(self.allocator);
+            if (registration.in_map) self.cookie_subscribed -= 1;
+        }
+    }
+
+    /// Empty `registration`'s cookie change subscription list: its end, or
+    /// its leaving the map.
+    fn clearCookieSubscriptions(self: *Registry, registration: *Registration) void {
+        const had = registration.cookie_subscriptions.items.len > 0;
+        for (registration.cookie_subscriptions.items) |subscription| freeSubscription(self.allocator, subscription);
+        registration.cookie_subscriptions.clearAndFree(self.allocator);
+        // Counted while in the map; `detach` clears before it unlists.
+        if (had and registration.in_map) self.cookie_subscribed -= 1;
+    }
+
+    fn freeSubscription(allocator: Allocator, subscription: ChangeSubscription) void {
+        if (subscription.name) |name| allocator.free(name);
+        allocator.free(subscription.url);
     }
 
     fn createWorker(self: *Registry, registration: *Registration, script_url: []const u8, worker_type: WorkerType) Allocator.Error!*Worker {
@@ -1140,6 +1205,8 @@ pub const Registry = struct {
     }
 
     fn detach(self: *Registry, registration: *Registration) Allocator.Error!void {
+        // Unregistered: it hears no cookie change from now on.
+        self.clearCookieSubscriptions(registration);
         registration.in_map = false;
         try self.detached.append(self.allocator, registration);
         self.releaseRegistration(registration);
