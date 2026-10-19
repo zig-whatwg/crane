@@ -122,6 +122,14 @@ pub const BrowserConfig = struct {
     proxy: Proxy = .system,
     /// WebDriver's acceptInsecureCerts: TLS certificates are not verified.
     accept_insecure_certs: bool = false,
+    /// How many pages the back/forward cache keeps (back_forward_cache.zig):
+    /// 2 by default - WebKit's page cache on a small device (CacheModel);
+    /// Blink keeps 6 - for an engine that runs many Browsers in one
+    /// process. 0 keeps none.
+    back_forward_cache_size: usize = @import("back_forward_cache.zig").default_size,
+    /// How long a page stays in the back/forward cache, in seconds: 600, as
+    /// Blink (BackForwardCacheImpl::GetTimeToLiveInBackForwardCache).
+    back_forward_cache_ttl_seconds: u64 = @import("back_forward_cache.zig").default_ttl_seconds,
 
     pub const Proxy = union(enum) {
         /// The process's proxy settings (curl reads http_proxy, https_proxy
@@ -285,6 +293,9 @@ pub const Browser = struct {
             .accept_insecure_certs = config.accept_insecure_certs,
         });
 
+        // The back/forward cache, on the Browser's loop, as configured.
+        (try scope.of(@import("back_forward_cache.zig").BackForwardCache)).configure(event_loop, config.back_forward_cache_size, config.back_forward_cache_ttl_seconds);
+
         // Allocate browser struct
         const browser = try allocator.create(Browser);
         errdefer allocator.destroy(browser);
@@ -325,6 +336,10 @@ pub const Browser = struct {
             registry.terminateAll();
             registry.joinAll();
         }
+        // The pages the back/forward cache keeps leave first: their realms
+        // are children of the page's (which would end them), and their
+        // eviction needs the loop, which ends below.
+        @import("back_forward_cache.zig").evictAllIn(self.scope);
         // Destroy current context if any
         if (self.current_context) |ctx| {
             ctx.deinit();
@@ -429,6 +444,10 @@ pub const Browser = struct {
 
         // Destroy current context if any
         if (self.current_context) |old_ctx| {
+            // The pages the back/forward cache keeps were opened from this
+            // page: they leave while its realm - their realms' parent - and
+            // the loop still live.
+            @import("back_forward_cache.zig").evictAllIn(self.scope);
             old_ctx.deinit();
             self.allocator.destroy(old_ctx);
             self.current_context = null;

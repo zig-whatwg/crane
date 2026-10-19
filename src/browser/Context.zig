@@ -797,7 +797,15 @@ const window_operations = runtime.WindowOperations{
 /// takes its window's timers and animation frames with it, while its realm
 /// lives on (HTMLIFrameElement asks, through dom.window_documents).
 pub fn installHooks() void {
-    @import("dom").window_documents.install(.{ .destroyed = clearWindowState, .active_timer_handles = activeTimerHandles });
+    @import("dom").window_documents.install(.{
+        .destroyed = clearWindowState,
+        .active_timer_handles = activeTimerHandles,
+        .suspend_timers = suspendWindowTimers,
+        .resume_timers = resumeWindowTimers,
+    });
+    // The Browser's back/forward cache, which the navigation code reaches
+    // through dom.bfcache.
+    @import("back_forward_cache.zig").installHooks();
     @import("dom").idle_periods.installLoop(@import("event_loop.zig").EventLoop.idle_period_hooks);
 }
 
