@@ -2061,6 +2061,20 @@ pub inline fn abortWebAssemblyResponse(compilation: *WebAssemblyResponseCompilat
 // class finalizer) queues the teardown the same way. Nor does a teardown run
 // for an instance wrapped again in between: the new wrapper owns it.
 //
+// Where those points are. V8 runs the second pass from a task it posts to
+// the platform (the host's event loop pumps it), at the end of a forced
+// collection - and in the prologue of the NEXT collection, before any
+// marking (Heap::CollectGarbage: "Ensure that all pending phantom callbacks
+// are invoked"). Any engine call that allocates on the JavaScript heap can
+// start that collection: engine.traceChild, a wrap, a string. So a teardown
+// can run inside any such call, not only at a turn of the host's event
+// loop, and native code that keeps a pointer to a platform object nothing
+// keeps alive - an entry of a list that holds its entries weakly, such as a
+// document's live ranges - across one may find the object freed, and the
+// list changed, when the call returns. Such a list is walked through a
+// cursor its removals move (dom.live_range_list; lane rangeuaf: the
+// live-range walks read a slot a torn-down Range had vacated).
+//
 // A wrapper owns one reference to a counted instance (VTable.counted: the
 // nodes, refcount design 2.1): the adapter acquires it when it makes and
 // caches the wrapper and releases it, on the agent's thread and never inside a

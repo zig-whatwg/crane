@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A weak list walked across an engine call loses entries mid-walk - walk it through a cursor its removals move](architecture-a-weak-list-walked-across-an-engine-call-loses-entries-mid-walk.md) - Any engine call that can allocate can run teardowns: a list of objects the collector frees must survive a removal at every engine call in its walk - walk it through a cursor the list moves, never through a slice or a copy of raw pointers.
 - [A task that may wait needs a third answer, and every "is there work" check must ask it](architecture-a-task-that-may-wait-needs-a-third-answer.md) - When a queue gains items that may not run yet, grep every "queue is non-empty" check: each one is a busy-wait or a hang unless it counts only what may run.
 - [An ID index is kept at the link, not in the removing steps](architecture-an-id-index-is-kept-at-the-link-not-in-the-removing-steps.md) - An index of the tree is part of the tree's state: update it where the tree changes, not in the steps that run after, because some of those steps read it.
 - [A shared append hook needs the reason carried with the attribute](architecture-a-shared-append-hook-needs-the-reason-carried-with-the-attribute.md) - If two callers share a hook and only one may skip a check, the reason must travel with the call (Blink's AttributeModificationReason); state the element "notices" cannot tell them apart.

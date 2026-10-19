@@ -17,8 +17,10 @@
 //! so no instance is ever torn down from a collection here. When this adapter
 //! wraps platform objects, its JSObjectFinalizeCallback runs inside JSC's
 //! collector ("must not call any JSC API"), so it may only take the instance
-//! off the wrapper map there and queue the teardown for a turn of the host's
-//! event loop - the rule V8's second pass keeps.
+//! off the wrapper map there and queue the teardown for a point where engine
+//! calls are allowed - as V8's second pass does, which runs not only at a
+//! turn of the host's event loop but also in the prologue of the next
+//! collection, inside whichever engine call allocated (engine_protocol 4.12).
 
 const std = @import("std");
 const engine = @import("engine");

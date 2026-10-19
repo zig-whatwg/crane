@@ -193,41 +193,51 @@ pub fn internString(instance: *runtime.Instance, str: []const u8) ![]const u8 {
 // Range and NodeIterator Registration
 // =============================================================================
 
+/// A document's live ranges, or its NodeIterators: a list the mutation
+/// algorithms walk while a step's engine call may tear one of its entries
+/// down, which removes it (live_range_list.zig). Walk it only through a
+/// `LiveObjects.Walk`, never a slice.
+pub const LiveObjects = @import("live_range_list.zig").LiveList(*runtime.Instance);
+
 /// Register a live range with this document.
 /// Spec: https://dom.spec.whatwg.org/#concept-live-range
 pub fn registerRange(instance: *runtime.Instance, range: *runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    try internal.ranges.append(internal.allocator, range);
+    try internal.ranges.add(internal.allocator, range);
 }
 
-/// Unregister a live range from this document.
+/// Unregister a live range from this document: the range's teardown, or its
+/// move to another document's list. A walk of the list in progress - this
+/// may run inside one - visits every range still on it.
 pub fn unregisterRange(instance: *runtime.Instance, range: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
+    internal.ranges.remove(range);
+}
 
-    for (internal.ranges.items, 0..) |r, i| {
-        if (r == range) {
-            _ = internal.ranges.orderedRemove(i);
-            return;
-        }
-    }
+/// This document's live ranges, for the live-range steps of the mutation
+/// algorithms; null for an instance with no Document state.
+pub fn liveRanges(instance: *runtime.Instance) ?*LiveObjects {
+    const internal = getInternal(instance) orelse return null;
+    return &internal.ranges;
 }
 
 /// Register a node iterator with this document.
 pub fn registerNodeIterator(instance: *runtime.Instance, iterator: *runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    try internal.node_iterators.append(internal.allocator, iterator);
+    try internal.node_iterators.add(internal.allocator, iterator);
 }
 
-/// Unregister a node iterator from this document.
+/// Unregister a node iterator from this document (its teardown), during a
+/// walk of the list or not.
 pub fn unregisterNodeIterator(instance: *runtime.Instance, iterator: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
+    internal.node_iterators.remove(iterator);
+}
 
-    for (internal.node_iterators.items, 0..) |iter, i| {
-        if (iter == iterator) {
-            _ = internal.node_iterators.orderedRemove(i);
-            return;
-        }
-    }
+/// This document's NodeIterators, for the NodeIterator pre-removing steps.
+pub fn nodeIterators(instance: *runtime.Instance) ?*LiveObjects {
+    const internal = getInternal(instance) orelse return null;
+    return &internal.node_iterators;
 }
 
 // =============================================================================

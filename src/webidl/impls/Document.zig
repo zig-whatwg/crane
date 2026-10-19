@@ -237,12 +237,16 @@ pub const InternalState = struct {
     /// The doctype node (if any)
     doctype: ?*runtime.Instance,
 
-    /// Live ranges associated with this document
-    /// Spec: https://dom.spec.whatwg.org/#concept-live-range
-    ranges: std.ArrayList(*runtime.Instance),
+    /// This document's live ranges: those whose start node's node document
+    /// it is (Spec: https://dom.spec.whatwg.org/#concept-live-range). The
+    /// mutation algorithms walk it while a step may tear a collected range
+    /// down, which leaves the list mid-walk: a dom.live_range_list.LiveList,
+    /// reached through dom.document_internals.
+    ranges: @import("dom").live_range_list.LiveList(*runtime.Instance),
 
-    /// Node iterators associated with this document
-    node_iterators: std.ArrayList(*runtime.Instance),
+    /// The NodeIterators whose root's node document this is, walked by the
+    /// NodeIterator pre-removing steps the same way.
+    node_iterators: @import("dom").live_range_list.LiveList(*runtime.Instance),
 
     // === HTML Document Properties ===
 
@@ -1251,47 +1255,6 @@ pub fn internString(instance: *runtime.Instance, str: []const u8) ![]const u8 {
 
     try internal.string_pool.put(owned, {});
     return owned;
-}
-
-// =============================================================================
-// Range and NodeIterator Registration
-// =============================================================================
-
-/// Register a live range with this document
-/// Spec: https://dom.spec.whatwg.org/#concept-live-range
-pub fn registerRange(instance: *runtime.Instance, range: *runtime.Instance) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    try internal.ranges.append(internal.allocator, range);
-}
-
-/// Unregister a live range from this document
-pub fn unregisterRange(instance: *runtime.Instance, range: *runtime.Instance) void {
-    const internal = getInternal(instance) orelse return;
-
-    for (internal.ranges.items, 0..) |r, i| {
-        if (r == range) {
-            _ = internal.ranges.orderedRemove(i);
-            return;
-        }
-    }
-}
-
-/// Register a node iterator with this document
-pub fn registerNodeIterator(instance: *runtime.Instance, iterator: *runtime.Instance) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    try internal.node_iterators.append(internal.allocator, iterator);
-}
-
-/// Unregister a node iterator from this document
-pub fn unregisterNodeIterator(instance: *runtime.Instance, iterator: *runtime.Instance) void {
-    const internal = getInternal(instance) orelse return;
-
-    for (internal.node_iterators.items, 0..) |iter, i| {
-        if (iter == iterator) {
-            _ = internal.node_iterators.orderedRemove(i);
-            return;
-        }
-    }
 }
 
 /// Getter for implementation
@@ -5311,7 +5274,7 @@ pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Insta
     try traversal.setUpNodeIterator(iterator, root, what_to_show, filter_wrapper, root_document);
 
     // Register in the same document recorded for generation-safe teardown.
-    try registerNodeIterator(root_document, iterator);
+    try @import("dom").document_internals.registerNodeIterator(root_document, iterator);
 
     // Step 7: Return iterator
     return iterator;

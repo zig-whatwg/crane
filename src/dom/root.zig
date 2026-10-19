@@ -66,6 +66,9 @@ pub const port_channels = @import("port_channels.zig");
 pub const cloning_steps = @import("cloning_steps.zig");
 pub const selection = @import("selection.zig");
 pub const range_boundaries = @import("range_boundaries.zig");
+/// A list the mutation algorithms walk while its entries may leave it: a
+/// document's live ranges and NodeIterators.
+pub const live_range_list = @import("live_range_list.zig");
 pub const node_document = @import("node_document.zig");
 pub const template_contents = @import("template_contents.zig");
 pub const navigable_container = @import("navigable_container.zig");
