@@ -46,8 +46,9 @@ pub fn matches(element: *Instance, which: Kind) bool {
         // Crane has no autofill or picker UI and never locks media volume.
         .autofill, .volume_locked => false,
         // Owner capabilities routed as follow-ups (tables Q4): user validity,
-        // dialog/fullscreen modal state, and media's is-currently-stalled flag.
-        .user_valid, .user_invalid, .modal, .stalled => false,
+        // fullscreen modal state, and media's is-currently-stalled flag.
+        .user_valid, .user_invalid, .stalled => false,
+        .modal => dom.dialog.isModal(element),
         .playing => isMedia(element) and !(interfaces.HTMLMediaElement.get_paused(element) catch true),
         .paused => isMedia(element) and (interfaces.HTMLMediaElement.get_paused(element) catch false),
         .seeking => isMedia(element) and (interfaces.HTMLMediaElement.get_seeking(element) catch false),
