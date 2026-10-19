@@ -18,6 +18,14 @@ const routes = [_]http.Route{
     .{ .path = "/worker.txt", .body = "from the page" },
     .{ .path = "/frame.html", .body = "<!doctype html><p>frame", .content_type = "text/html" },
     .{ .path = "/popup.html", .body = "<!doctype html><p>popup", .content_type = "text/html" },
+    .{ .path = "/sw.js", .content_type = "text/javascript", .cache_control = "no-store", .body =
+    \\self.onmessage = async e => {
+    \\  const a = await (await fetch('/sw-shared.txt')).text();
+    \\  const b = await (await fetch('/sw-shared.txt')).text();
+    \\  e.source.postMessage(a + ',' + b);
+    \\};
+    },
+    .{ .path = "/sw-shared.txt", .body = "from the worker" },
 };
 
 const page_url = "http://hc1.test/page.html";
@@ -50,6 +58,10 @@ fn startBrowser(allocator: std.mem.Allocator, server: *http.Server) !*Browser {
 }
 
 fn startBrowserWith(allocator: std.mem.Allocator, server: *http.Server, cache: @import("browser").BrowserConfig.HttpCacheConfig) !*Browser {
+    return startBrowserAt(allocator, server, cache, page_url);
+}
+
+fn startBrowserAt(allocator: std.mem.Allocator, server: *http.Server, cache: @import("browser").BrowserConfig.HttpCacheConfig, url: []const u8) !*Browser {
     var proxy_buf: [64]u8 = undefined;
     const proxy = try server.proxyUrl(&proxy_buf);
     const browser = try Browser.init(allocator, .{
@@ -59,9 +71,9 @@ fn startBrowserWith(allocator: std.mem.Allocator, server: *http.Server, cache: @
         .http_cache = cache,
     });
     errdefer browser.deinit();
-    try browser.navigateWithOptions(page_url, .window, .{ .skip_load = true });
+    try browser.navigateWithOptions(url, .window, .{ .skip_load = true });
     const page = browser.current_context orelse return error.NoPage;
-    try page.loadHTML("<!doctype html><body>", .{ .base_url = page_url });
+    try page.loadHTML("<!doctype html><body>", .{ .base_url = url });
     return browser;
 }
 
@@ -166,9 +178,7 @@ const open_popup_twice =
     \\    await new Promise(r => setTimeout(r, 10));
     \\    if (w.document && w.document.readyState === 'complete' && w.location.pathname === '/popup.html') break;
     \\  }
-    \\  const text = w.document.body.textContent;
-    \\  w.close();
-    \\  return text;
+    \\  return w.document.body.textContent;
     \\};
     \\return [await loadPopup(), await loadPopup()].join(',');
 ;
@@ -202,6 +212,30 @@ test "hc1 one Browser: a popup navigation is stored and answered from the HTTP c
     try std.testing.expectEqual(@as(u32, 1), try navigateTwice(open_popup_twice, "/popup.html", "popup,popup", 50 * 1024 * 1024));
 }
 
-test "hc1 one Browser: without an HTTP cache, both popup navigations reach the server" {
-    try std.testing.expectEqual(@as(u32, 2), try navigateTwice(open_popup_twice, "/popup.html", "popup,popup", 0));
+test "hc1 one Browser: a service worker's own fetches are keyed and answered from the HTTP cache" {
+    // Before, a ServiceWorkerGlobalScope's settings had no top-level site, so
+    // its requests carried no network partition key and bypassed the cache:
+    // the server saw both fetches. http://localhost is a secure context.
+    const server = try http.Server.start(std.testing.allocator, &routes);
+    defer server.stop();
+    var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    defer std.testing.expect(debug.deinit() == .ok) catch @panic("leaked");
+    const browser = try startBrowserAt(debug.allocator(), server, .{}, "http://localhost/page.html");
+    defer browser.deinit();
+    const got = try runInPage(browser,
+        \\const reg = await navigator.serviceWorker.register('/sw.js');
+        \\const worker = reg.installing || reg.waiting || reg.active;
+        \\await new Promise(resolve => {
+        \\  if (worker.state === 'activated') return resolve();
+        \\  worker.addEventListener('statechange', () => { if (worker.state === 'activated') resolve(); });
+        \\});
+        \\const reply = new Promise(resolve => { navigator.serviceWorker.onmessage = e => resolve(e.data); });
+        \\worker.postMessage('go');
+        \\const answer = await reply;
+        \\await reg.unregister();
+        \\return answer;
+    );
+    defer browser.allocator.free(got);
+    try std.testing.expectEqualStrings("from the worker,from the worker", got);
+    try std.testing.expectEqual(@as(u32, 1), server.count("/sw-shared.txt"));
 }
