@@ -1,4 +1,4 @@
-# Performance: A settings getter may recompute security
+# Architecture: A settings getter may recompute security
 
 **Date**: 2026-10-19
 **Lesson**: Read an expensive settings hook once within a native operation when several steps need the same answer.

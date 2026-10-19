@@ -331,6 +331,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [Abort a job by marking it, not by freeing it](architecture-abort-a-job-by-marking-it-not-freeing-it.md) - An outside abort settles and marks; the job's own resume points finish it. List every pointer to the job (waiters, ops, queued tasks) before freeing anything.
 - [A kept page runs only store steps at unload - the cleanup steps run when it is destroyed](architecture-a-kept-page-runs-only-store-steps-the-cleanup-steps-run-at-its-destroy.md) - When a lifecycle gains a state between two steps that used to coincide, re-read every hook that ran at both: decide for each whether it belongs to the leaving or to the end.
 - [A cached realm is attached, so the engine's detached-realm guard misses it](architecture-a-cached-realm-is-attached-so-the-detached-realm-guard-misses-it.md) - A realm that may not run script but is not detached needs its own check wherever script is entered - grep every path that enters a realm without a document-tagged task.
+- [A queued permission value is not delivered state](architecture-a-queued-permission-value-is-not-delivered-state.md) - Compare actual state after activity checks so skipped updates remain retryable.
+- [A settings getter may recompute security](architecture-a-settings-getter-may-recompute-security.md) - Profile hooks and share results within an operation without a cross-task cache.
+- [A key transfer must preserve its allocator](architecture-a-key-transfer-must-preserve-its-allocator.md) - Preserve destination ownership and prove the real move path.
 
 ### Spec Compliance
 - [A subclass's copy of an event concept hides what dispatch does to it](spec-compliance-a-subclass-copy-of-an-event-concept-hides-dispatch.md) - A concept the base algorithm reads and writes has one home, the base's state; a subclass attribute that names it reads it there, never a copy of its own.
@@ -705,6 +708,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A GC Request Does Not Prove an Event Target Was Collected](testing-a-gc-request-does-not-prove-an-event-target-was-collected.md) - Verify native identity and generation before asserting collection.
 - [Equal browser pass counts can hide opposite behaviour](testing-equal-browser-pass-counts-can-hide-opposite-behaviour.md) - Compare aligned per-subtest results before applying a browser majority.
 - [Formatting expectations must not repeat the format expression](testing-formatting-expectations-must-not-repeat-the-format-expression.md) - Use literal expectations and compile the implementation-present test branch.
+- [Pre-existing allocations distort failure-injection accounting](testing-preexisting-allocations-distort-failure-injection-accounting.md) - Align accounting with ownership and cover destination growth separately.
 
 ### Debugging
 - [A call that can free its argument ends every read of it](debugging-a-call-that-can-free-its-argument-ends-every-read-of-it.md) - A call that can free its argument ends the caller's use of it - including the `defer`s written above the call; read the trace's top frame before believing a deep one.
