@@ -130,6 +130,17 @@ pub const WallTime = extern struct {
     ns_since_epoch: i64,
 };
 
+/// Gregorian calendar fields in the platform's local time zone. Months and
+/// days are one-based; hours use the 24-hour clock.
+pub const LocalDateTime = extern struct {
+    year: i32,
+    month: u8,
+    day: u8,
+    hour: u8,
+    minute: u8,
+    second: u8,
+};
+
 /// What an OS operation fails with. `NotSupported` only from an operation
 /// whose capability is `.unsupported`. Network failures are `HttpError`
 /// (6.7), storage failures `StoreError` (6.6), crypto failures `CryptoError`
@@ -487,6 +498,14 @@ pub inline fn preferredLanguages(allocator: std.mem.Allocator) Error![]Str {
 /// The IANA time zone id for the engine adapter's Date and Intl, OWNED.
 pub inline fn defaultTimeZone(allocator: std.mem.Allocator) Error![]u8 {
     return impl.defaultTimeZone(allocator);
+}
+
+/// Calendar fields for `time` in the OS's local zone. HTML document.lastModified.
+/// Any thread. The queued PLATFORM defaultTimeZone fix must align Date on
+/// hosts whose /etc/localtime is a regular file: that existing identifier
+/// operation falls back to UTC there, while this operation uses the OS zone.
+pub inline fn localDateTime(time: WallTime) LocalDateTime {
+    return impl.localDateTime(time);
 }
 
 /// navigator.hardwareConcurrency's input. At least 1.

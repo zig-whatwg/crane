@@ -130,6 +130,7 @@ The types are the ownership rule, as in the engine protocol.
 |---|---|
 | `Instant` | `extern struct { ns: u64 }` on the monotonic clock, arbitrary origin. HR-Time 2.1's monotonic clock. |
 | `WallTime` | `extern struct { ns_since_epoch: i64 }`, the wall clock; it jumps. HR-Time 2.1's wall clock. |
+| `LocalDateTime` | `extern struct { year: i32, month: u8, day: u8, hour: u8, minute: u8, second: u8 }`, local Gregorian fields; month and day are one-based, hour is 0–23. |
 | `Str`, `Bytes` | Pointer and length. BORROWED for the call unless an operation says it returns one OWNED (then allocated with the allocator passed in). |
 | `Error` | `error{ OutOfMemory, NotSupported, AccessDenied, NotFound, AlreadyExists, NoSpace, Io, Canceled, Busy }` for operations that can fail. `NotSupported` only from an operation whose capability is `.unsupported`. Network failures are `HttpError` (6.7), storage failures `StoreError` (6.6), crypto failures `CryptoError` (6.8). |
 | `BrowserPlatform` | Opaque per-Browser platform state (section 3). OWNED by the Browser: `createBrowserPlatform` / `destroyBrowserPlatform`. Every per-Browser operation takes it first. |
@@ -310,6 +311,7 @@ today; a lane that implements the capability flips the constant.
 | `defaultDataDirectory` | `(allocator) Error!?[]u8` | any | The CLI's profile root, OWNED (macOS ~/Library/Application Support/Crane; Linux $XDG_DATA_HOME/crane; null on iOS - the app passes its container). |
 | `preferredLanguages` | `(allocator) Error![]Str` | any | The OS's preferred languages, OWNED. HTML 8.10.1.2. |
 | `defaultTimeZone` | `(allocator) Error![]u8` | any | IANA id for the engine adapter's Date/Intl. |
+| `localDateTime` | `(time: WallTime) LocalDateTime` | any | OS local calendar fields, including historical offsets. HTML `document.lastModified`. The queued PLATFORM fix for `defaultTimeZone`'s regular-file `/etc/localtime` fallback must align Date on those hosts. |
 | `logicalProcessorCount` | `() u32` | any | navigator.hardwareConcurrency. |
 | `deviceMemoryGiB` | `() f64` | any | navigator.deviceMemory before Device Memory's rounding. |
 | `residentMemory` | `() ?MemoryReading` [resident_memory] | any | Diagnostics (tools). |
