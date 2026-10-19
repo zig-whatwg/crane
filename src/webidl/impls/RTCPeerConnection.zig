@@ -36,8 +36,67 @@ pub fn init(
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    // It is no longer one of its Browser's peer connections.
+    if (instance.ctx.browserScope()) |scope| {
+        if (scope.existing(LiveConnections)) |live| live.remove(instance);
+    }
+    // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+}
+
+/// The hooks this type owns (src/dom), installed once, at process start, by
+/// crane.Process through the generated interface.
+pub fn installHooks() void {
+    @import("dom").bfcache.installBlocker(&blocksBfcache);
+}
+
+/// A Browser's RTCPeerConnections, each with its realm: what keeps a page
+/// with one out of the back/forward cache (`blocksBfcache`). A supplement of
+/// the Browser's scope (never process-wide); RTCPeerConnection is exposed to
+/// Windows only, so it is read and written on the window thread.
+const LiveConnections = struct {
+    allocator: std.mem.Allocator,
+    connections: std.ArrayListUnmanaged(*runtime.Instance) = .empty,
+
+    pub fn init(allocator: std.mem.Allocator) LiveConnections {
+        return .{ .allocator = allocator };
+    }
+
+    pub fn deinit(self: *LiveConnections) void {
+        self.connections.deinit(self.allocator);
+    }
+
+    fn add(self: *LiveConnections, instance: *runtime.Instance) void {
+        self.connections.append(self.allocator, instance) catch {};
+    }
+
+    fn remove(self: *LiveConnections, instance: *runtime.Instance) void {
+        for (self.connections.items, 0..) |connection, index| {
+            if (connection != instance) continue;
+            _ = self.connections.swapRemove(index);
+            return;
+        }
+    }
+
+    fn inRealm(self: *const LiveConnections, realm: runtime.Context) bool {
+        for (self.connections.items) |connection| {
+            if (connection.ctx == realm) return true;
+        }
+        return false;
+    }
+};
+
+/// dom.bfcache: a page with an RTCPeerConnection is not kept in the
+/// back/forward cache, with Chromium's reason "rtc" (kWebRTC). Chrome 155 and
+/// Firefox 158 keep such a page out and Safari 27 caches it
+/// (webrtc/back-forward-cache-with-open-webrtc-connection.https.window.js:
+/// PASS, PASS, FAIL on wpt.fyi 23b0b89b1a) - the majority. Crane's
+/// RTCPeerConnection cannot be closed yet (close() is not implemented), so
+/// every one counts; one that could be would leave the page cacheable, as
+/// back-forward-cache-with-closed-webrtc-connection expects in all three.
+fn blocksBfcache(realm: runtime.Context) ?@import("dom").bfcache.Blocked {
+    const scope = realm.browserScope() orelse return null;
+    const live = scope.existing(LiveConnections) orelse return null;
+    return if (live.inRealm(realm)) .{ .reason = .rtc } else null;
 }
 
 /// Constructor implementation
@@ -48,6 +107,10 @@ pub fn call_constructor(ctx: runtime.Context, configuration: webidl.Opt(dictiona
     errdefer deinit(instance);
 
     _ = configuration;
+    // One of its Browser's peer connections, until its deinit.
+    if (ctx.browserScope()) |scope| {
+        if (scope.of(LiveConnections) catch null) |live| live.add(instance);
+    }
     // TODO: Implement constructor logic with parameters
 
     return instance;

@@ -47,6 +47,8 @@ const routes = [_]http.Route{
     .{ .path = "/lock.html", .content_type = "text/html", .body = page("lock", "navigator.locks.request('bfb-lock', () => new Promise(() => {}));") },
     // A page with a frame: phase B keeps no page with child navigables.
     .{ .path = "/frame.html", .content_type = "text/html", .body = page("frame", "") ++ "<iframe srcdoc='<p>child'></iframe>" },
+    // A page with an RTCPeerConnection (Chromium's "rtc").
+    .{ .path = "/rtc.html", .content_type = "text/html", .body = page("rtc", "var pc = new RTCPeerConnection();") },
     // A page that a 404 answers.
     .{ .path = "/missing.html", .content_type = "text/html", .body = page("missing", ""), .fail_first = 1000 },
     // A page that runs a dedicated worker, and one that connects to a shared worker.
@@ -351,6 +353,7 @@ test "the eligibility matrix: a page that holds a lock, has a frame, a worker or
     try testing.expect(!try keptAfterLeaving("/frame.html", "/b.html"));
     try testing.expect(!try keptAfterLeaving("/worker.html", "/b.html"));
     try testing.expect(!try keptAfterLeaving("/shared.html", "/b.html"));
+    try testing.expect(!try keptAfterLeaving("/rtc.html", "/b.html"));
 }
 
 test "the eligibility matrix: a 404, a POST's response and a page still loading are not kept" {
