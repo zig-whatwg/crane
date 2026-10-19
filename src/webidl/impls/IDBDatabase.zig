@@ -49,7 +49,6 @@ pub const InternalState = struct {
     upgrade_transaction: ?*runtime.Instance = null,
     factory: ?*runtime.Instance = null,
     factory_generation: u64 = 0,
-    live_transactions: std.ArrayList(*runtime.Instance) = .empty,
 
     /// Event handlers (EventHandler = ?*const fn, so null = no handler)
     onabort: typedefs.EventHandler,
@@ -58,7 +57,6 @@ pub const InternalState = struct {
     onversionchange: typedefs.EventHandler,
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        self.live_transactions.deinit(allocator);
         self.database.releaseHeapOwnership();
         allocator.destroy(self);
     }
@@ -91,10 +89,11 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        if (internal.factory) |factory| {
-            if (runtime.SlabAllocator.generationOf(factory) == internal.factory_generation)
-                dom.indexeddb.unregisterConnection(factory, instance);
-        }
+        // The connection's object is gone (collected, or its realm ended): it
+        // hears no versionchange again, and the Browser's server closes it
+        // once its transactions finish (ED 5.2; agent end).
+        internal.database.version_change_hook = null;
+        internal.database.closePending();
         engine.forgetTracedChild(instance, .{ .name = "idb.factory" });
         engine.forgetTracedChild(instance, .{ .name = "idb.upgrade" });
         internal.deinit(internal.allocator);
@@ -171,7 +170,7 @@ pub fn call_transaction(instance: *runtime.Instance, storeNames: runtime.JSValue
         if (!duplicate) try scope.append(allocator, name);
     }
     // Steps 4-6: missing name, empty scope, then invalid versionchange mode.
-    for (scope.items) |name| if (!internal.database.schema().contains(name)) return error.NotFoundError;
+    if (!internal.database.hasObjectStores(scope.items)) return error.NotFoundError;
     if (scope.items.len == 0) return error.InvalidAccessError;
     const backend_mode: BackendTransactionMode = switch (if (mode.wasPassed()) mode.value else ._readonly_) {
         ._readonly_ => .readonly,
@@ -240,8 +239,11 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
+    // ED 5.2 "close a database connection" step 1: close pending; the
+    // Browser's server closes it once its transactions finish (step 2) and
+    // then lets a request waiting on it go on.
     internal.database.closed = true;
-    closeIfReady(instance);
+    internal.database.closePending();
 }
 
 /// Operation: deleteObjectStore
@@ -257,34 +259,72 @@ pub fn call_deleteObjectStore(instance: *runtime.Instance, name: runtime.DOMStri
 }
 
 pub fn installHooks() void {
-    dom.indexeddb.installDatabases(.{ .close_if_ready = closeIfReady, .is_closing = isClosing, .set_factory = setFactory, .attach = attachDatabase, .begin_upgrade = beginUpgrade, .end_upgrade = endUpgrade, .register_transaction = registerTransaction, .remove_transaction = removeTransaction, .wake_transactions = wakeTransactions, .transaction_finished = transactionFinished });
+    dom.indexeddb.installDatabases(.{ .is_closing = isClosing, .set_factory = setFactory, .attach = attachDatabase, .begin_upgrade = beginUpgrade, .end_upgrade = endUpgrade, .transaction_finished = transactionFinished });
 }
 
-fn registerTransaction(instance: *runtime.Instance, transaction: *runtime.Instance) !void {
-    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
-    try internal.live_transactions.append(internal.allocator, transaction);
-}
-fn removeTransaction(instance: *runtime.Instance, transaction: *runtime.Instance) void {
-    const internal = instance.getState(State).own._internal orelse return;
-    for (internal.live_transactions.items, 0..) |entry, index| if (entry == transaction) {
-        _ = internal.live_transactions.orderedRemove(index);
-        break;
-    };
-}
-fn wakeTransactions(instance: *runtime.Instance) void {
-    const internal = instance.getState(State).own._internal orelse return;
-    for (internal.live_transactions.items) |transaction| dom.indexeddb.wakeTransaction(transaction);
-}
+/// An upgrade transaction of this connection finished: its factory's open
+/// request may take its final step. (Every other wake is the server's.)
 fn transactionFinished(instance: *runtime.Instance) void {
     const internal = instance.getState(State).own._internal orelse return;
-    if (internal.factory) |factory| {
-        if (runtime.SlabAllocator.generationOf(factory) == internal.factory_generation) {
-            dom.indexeddb.wakeFactoryTransactions(factory);
+    const factory = internal.factory orelse return;
+    if (runtime.SlabAllocator.generationOf(factory) == internal.factory_generation)
+        dom.indexeddb.wakeFactoryTransactions(factory);
+}
+
+/// The server's versionchange for this connection (ED 5.1 step 10.2): on
+/// this thread - within the requester's own database task when it is of
+/// this agent, else as a task of this agent's loop (`posted`), entering the
+/// connection's realm first (lesson
+/// architecture-a-task-from-a-sink-runs-outside-every-realm).
+fn versionChangeHook(context: *anyopaque, old_version: u64, new_version: ?u64, posted: bool) void {
+    const instance: *runtime.Instance = @ptrCast(@alignCast(context));
+    var change: VersionChange = .{ .instance = instance, .old_version = old_version, .new_version = new_version };
+    if (!instance.ctx.hasEngine()) return;
+    if (posted) engine.runTaskInRealm(instance.ctx, VersionChange.steps, &change) catch {} else VersionChange.steps(&change);
+}
+
+const VersionChange = struct {
+    instance: *runtime.Instance,
+    old_version: u64,
+    new_version: ?u64,
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *VersionChange = @ptrCast(@alignCast(data.?));
+        self.fire() catch {};
+    }
+
+    fn fire(self: *VersionChange) !void {
+        const realm = self.instance.ctx;
+        if (!realm.hasEngine()) return;
+        if (cachedWindowOf(realm)) |window| {
+            // A connection of a page the back/forward cache keeps cannot
+            // answer versionchange: the page is evicted instead, and its end
+            // closes the connection, so the upgrade goes on (Blink's
+            // kIgnoreEventAndEvict for IndexedDB versionchange;
+            // IndexedDB/back-forward-cache-open-connection.window.js passes
+            // in Chrome 155, Firefox 158 and Safari 27).
+            dom.bfcache.evict(window, null);
             return;
         }
+        const internal = self.instance.getState(State).own._internal orelse return;
+        if (internal.database.closed) return;
+        const event = try interfaces.IDBVersionChangeEvent.call_constructor(realm, runtime.DOMString.initInterned("versionchange"), webidl.Opt(dictionaries.IDBVersionChangeEventInit).passed(.{ .base = .{}, .oldVersion = self.old_version, .newVersion = self.new_version }));
+        const root = try engine.retainValue(realm, .{ .instance = event });
+        defer root.release();
+        _ = try dom.fire_event.dispatchTrusted(self.instance, event);
     }
-    wakeTransactions(instance);
+};
+
+/// The Window of `realm` when it belongs to a page the back/forward cache
+/// keeps. Asked on `realm`'s own thread: a worker's global is never cached,
+/// and the cache is read only on its window thread.
+fn cachedWindowOf(realm: runtime.Context) ?*runtime.Instance {
+    const record = realm.getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    if (global.stateAs(interfaces.Window.State) == null) return null;
+    return if (dom.bfcache.holds(global)) global else null;
 }
+
 fn attachDatabase(instance: *runtime.Instance, database: *BackendDatabase) !void {
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
     // Backend names borrow their caller's string. The connection owns its copy.
@@ -293,6 +333,7 @@ fn attachDatabase(instance: *runtime.Instance, database: *BackendDatabase) !void
     if (database.owned_name) |old| database.allocator.free(old);
     database.owned_name = name;
     database.name = name;
+    database.version_change_hook = .{ .context = instance, .call = versionChangeHook };
     internal.database = database;
 }
 fn beginUpgrade(instance: *runtime.Instance) !*runtime.Instance {
@@ -301,6 +342,10 @@ fn beginUpgrade(instance: *runtime.Instance) !*runtime.Instance {
     errdefer internal.allocator.destroy(transaction);
     transaction.* = storage.indexeddb.IDBTransaction.init(internal.allocator, internal.database, &.{}, .versionchange);
     errdefer transaction.deinit();
+    // 5.7 step 3: the upgrade joins the server's scheduler - excluding every
+    // other transaction, and holding its request's place in the queue until
+    // it finishes (rolled back, if its agent ends).
+    try transaction.register();
     const wrapper = try interfaces.IDBTransaction.init(internal.allocator, instance.ctx);
     errdefer runtime.Instance.deinit(wrapper);
     try dom.indexeddb.attachTransaction(wrapper, transaction, instance);
@@ -325,16 +370,4 @@ fn setFactory(instance: *runtime.Instance, factory: *runtime.Instance) void {
 
 fn isClosing(instance: *runtime.Instance) bool {
     return (instance.getState(State).own._internal orelse return true).database.closed;
-}
-fn closeIfReady(instance: *runtime.Instance) void {
-    const internal = instance.getState(State).own._internal orelse return;
-    if (!internal.database.closed) return;
-    if (internal.database.version_change_transaction) |transaction| {
-        if (transaction.state != .finished) return;
-    }
-    for (internal.database.transactions.items) |transaction| if (transaction.state != .finished) return;
-    if (internal.factory) |factory| {
-        if (runtime.SlabAllocator.generationOf(factory) == internal.factory_generation)
-            dom.indexeddb.unregisterConnection(factory, instance);
-    }
 }

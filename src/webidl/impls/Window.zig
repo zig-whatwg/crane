@@ -59,7 +59,6 @@ const StorageImpl = @import("Storage.zig");
 // IndexedDB types for window.indexedDB
 const storage = @import("storage");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
-const IDBFactoryBackend = storage.indexeddb.IDBFactory;
 
 // Cache Storage types for window.caches
 // TODO: Add service_worker module to impls in build.zig to enable CacheStorage
@@ -210,7 +209,6 @@ pub const InternalState = struct {
     /// IndexedDB factory (lazily created)
     /// IndexedDB spec: window.indexedDB getter
     indexeddb_factory: ?*runtime.Instance = null,
-    indexeddb_backend: ?*IDBFactoryBackend = null,
 
     /// Service Workers 5.3: this global's CacheStorage, made on first use
     /// and traced for its whole lifetime.
@@ -335,14 +333,6 @@ pub const InternalState = struct {
             storage_backend.deinit();
             self.allocator.destroy(storage_backend);
         }
-
-        // NOTE: Do NOT deinit indexeddb_backend here!
-        // The backend is owned by the IDBFactory instance (indexeddb_factory),
-        // which will be cleaned up via wrapper_cache.deinit → IDBFactory.deinit.
-        // If we deinit the backend here AND the IDBFactory also deinits it,
-        // we get a double-free. The backend pointer is cached here only for
-        // quick access, not for ownership.
-        self.indexeddb_backend = null;
 
         if (self.cache_storage) |*caches| caches.edge.release(caches.owner);
 
@@ -791,42 +781,14 @@ fn settingsCrossOriginIsolated(instance: *runtime.Instance) bool {
     return internal.browsing_context.isCrossOriginIsolated();
 }
 
-/// This window's IDBFactory, made on first use.
+/// This window's IDBFactory, made on first use. Its databases are the
+/// Browser's (the IndexedDB server, a BrowserScope supplement), shared with
+/// every same-origin frame, worker and tab of the Browser.
 fn settingsIndexedDB(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Return cached instance if available
-    if (internal.indexeddb_factory) |factory_instance| {
-        return factory_instance;
-    }
-
-    // Create the backend IDBFactory. Until the factory takes it over below,
-    // it is this call's: the errdefers release it - once. (The factory's
-    // failure path used to free it too, and then the errdefer freed it again:
-    // a double free on every failed allocation of IDBFactory.init.)
-    const backend = internal.allocator.create(IDBFactoryBackend) catch return error.OutOfMemory;
-    errdefer internal.allocator.destroy(backend);
-
-    backend.* = IDBFactoryBackend.init(internal.allocator);
-    errdefer backend.deinit();
-    backend.setStorageKey(internal.origin);
-
-    // Create the WebIDL IDBFactory instance
-    const factory_instance = interfaces.IDBFactory.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
-
-    // Set the backend in the factory's internal state
-    const factory_state = factory_instance.getState(interfaces.IDBFactory.State);
-    if (factory_state.own._internal) |factory_internal| {
-        // The IDBFactory impl creates its own backend, so we need to replace it
-        factory_internal.factory.deinit();
-        internal.allocator.destroy(factory_internal.factory);
-        factory_internal.factory = backend;
-    }
-
-    // Cache both
-    internal.indexeddb_backend = backend;
+    if (internal.indexeddb_factory) |factory_instance| return factory_instance;
+    const factory_instance = try interfaces.IDBFactory.init(internal.allocator, instance.ctx);
     internal.indexeddb_factory = factory_instance;
-
     return factory_instance;
 }
 

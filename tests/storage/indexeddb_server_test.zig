@@ -306,3 +306,62 @@ test "IndexedDB the transaction scheduler spans threads: a readonly waits for an
     try read.commit();
     setup.releaseHeapOwnership();
 }
+
+test "IndexedDB an execution context's end closes its connections, once their transactions finish" {
+    const allocator = std.testing.allocator;
+    var server = idb.IDBServer.init(allocator);
+    defer server.deinit();
+    var agent = FakeAgent.init(allocator);
+    defer agent.deinit();
+    const database = try server.uniqueDatabase(key(), "environment");
+    defer server.release(database);
+    // Two contexts on one thread (a page and its frame); the frame's
+    // connection has a transaction that has not finished.
+    var page_context: u8 = 0;
+    var frame_context: u8 = 0;
+    var page_endpoint = agent.endpoint();
+    page_endpoint.environment = &page_context;
+    var frame_endpoint = agent.endpoint();
+    frame_endpoint.environment = &frame_context;
+    const page = (try server.openConnection(database, 1, false, allocator, page_endpoint)).connection;
+    defer page.releaseHeapOwnership();
+    const frame = (try server.openConnection(database, 1, false, allocator, frame_endpoint)).connection;
+    defer frame.releaseHeapOwnership();
+    var setup = idb.IDBTransaction.init(allocator, page, &.{}, .versionchange);
+    page.version_change_transaction = &setup;
+    const store = try page.createObjectStore("s", .{});
+    store.deinit();
+    allocator.destroy(store);
+    try setup.commit();
+    page.version_change_transaction = null;
+    setup.deinit();
+    const unfinished = try frame.transaction(&.{"s"}, .readonly, .{});
+    defer {
+        unfinished.deinit();
+        allocator.destroy(unfinished);
+    }
+
+    // A deletion waits for both connections.
+    var signal: Signal = .{};
+    const queued = try server.enqueue(database, agent.endpoint(), signal.client());
+    const start = try server.start(database, queued.id, null, true, allocator);
+    allocator.free(start.proceed.local);
+    try std.testing.expect(!server.awaitCloses(database, queued.id));
+
+    // The page's context ends: its idle connection is closed at once; the
+    // frame's stays.
+    server.closeEnvironment(&page_context);
+    try std.testing.expectEqual(@as(usize, 0), signal.notes);
+    try std.testing.expect(server.hasConnections(database));
+    // The frame's context ends: its connection is close-pending - no
+    // versionchange reaches it - until its transaction finishes (a realm
+    // that runs no task again aborts it).
+    server.closeEnvironment(&frame_context);
+    try std.testing.expect(server.versionChangeWanted(database, frame.connection_id) == null);
+    try std.testing.expect(server.hasConnections(database));
+    try unfinished.abort();
+    try std.testing.expectEqual(@as(usize, 1), signal.notes);
+    try std.testing.expect(server.awaitCloses(database, queued.id));
+    try std.testing.expectEqual(@as(u64, 1), server.deleteDatabase(database));
+    server.dequeue(database, queued.id);
+}

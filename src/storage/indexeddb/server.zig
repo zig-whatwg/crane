@@ -88,6 +88,10 @@ pub const Endpoint = struct {
     /// only what is told on its own thread (a realm with no sink).
     sink: ?*anyopaque = null,
     ops: ?*const SinkOps = null,
+    /// The execution context (its realm, opaque here) a connection was made
+    /// in: its end closes the connection (`closeEnvironment`). Null for a
+    /// native caller's.
+    environment: ?*const anyopaque = null,
 
     /// An endpoint for the calling thread, with no sink.
     pub fn here() Endpoint {
@@ -677,6 +681,38 @@ pub const IDBServer = struct {
             const connection = database.findConnection(id) orelse return;
             connection.close_pending = true;
             if (connection.open_transactions == 0) self.removeConnectionLocked(database, connection, &deliveries);
+        }
+        self.deliver(&deliveries);
+    }
+
+    /// IndexedDB 2.? connection: "If the execution context where the
+    /// connection was created is destroyed (for example due to the user
+    /// navigating away from that page), the connection is closed."
+    /// `environment` ended - a document unloaded or destroyed, a worker's
+    /// global ended (dom.unloading_cleanup): every connection made in it is
+    /// close-pending, closed once its transactions finish - and they finish:
+    /// a realm that runs no task again aborts each one at its next run.
+    pub fn closeEnvironment(self: *IDBServer, environment: *const anyopaque) void {
+        var deliveries: Deliveries = .{};
+        {
+            self.lock();
+            defer self.unlock();
+            var it = self.databases.valueIterator();
+            while (it.next()) |entry| {
+                const database = entry.*;
+                var index: usize = 0;
+                while (index < database.connections.items.len) {
+                    const connection = database.connections.items[index];
+                    if (connection.endpoint.environment != environment) {
+                        index += 1;
+                        continue;
+                    }
+                    connection.close_pending = true;
+                    if (connection.open_transactions == 0) {
+                        self.removeConnectionLocked(database, connection, &deliveries);
+                    } else index += 1;
+                }
+            }
         }
         self.deliver(&deliveries);
     }
