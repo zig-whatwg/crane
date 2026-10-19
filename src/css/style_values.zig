@@ -387,6 +387,10 @@ pub const Color = union(enum) {
     /// (CSS Color 4 15 "Serializing <color> Values": "the keyword ...
     /// converted to ASCII lowercase"). A computed value is its color.
     named: Named,
+    /// A <system-color>: kept as the keyword until the computed-value step
+    /// resolves it against the element's used color scheme (CSS Color 4
+    /// 15.5; CSS Color Adjustment 1 2.4). A computed value never holds one.
+    system: color_mod.SystemColor,
 
     pub const Named = struct {
         rgba: RgbaColor,
@@ -407,14 +411,17 @@ pub const Color = union(enum) {
                 .named => |y| x.rgba.eql(y.rgba) and std.mem.eql(u8, x.name.bytes, y.name.bytes),
                 else => false,
             },
+            .system => |x| b == .system and b.system == x,
         };
     }
 
-    /// The color itself; currentcolor has none of its own.
+    /// The color itself; currentcolor has none of its own. A system color
+    /// with no element to take a scheme from is the UA default's (light).
     pub fn absolute(self: Color) ?RgbaColor {
         return switch (self) {
             .rgba => |c| c,
             .named => |n| n.rgba,
+            .system => |s| s.color(.light),
             .current => null,
         };
     }

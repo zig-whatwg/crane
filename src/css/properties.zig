@@ -25,8 +25,7 @@
 //! Stated deviations: math functions (calc() and friends) and var() make a
 //! declaration invalid until the numeric-expression capability lands
 //! (design section 6.1); an <image> other than none/url() is kept as
-//! written, unresolved; system colors resolve to the light palette at parse
-//! time (color-scheme is a later batch).
+//! written, unresolved.
 //!
 //! Spec: https://drafts.csswg.org/css-cascade-5/#shorthand
 //! Spec: https://drafts.csswg.org/cssom-1/#serializing-css-values
@@ -338,8 +337,10 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .border_top_style, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &border_styles },
         .{ .longhand = .border_top_width, .inherited = false, .initial = medium_width, .grammar = .line_width, .quirky_length = true },
         .{ .longhand = .bottom, .inherited = false, .initial = Value.kw(.auto), .grammar = .length_percentage_auto, .quirky_length = true },
-        // CSS Color 4: "Initial: CanvasText".
-        .{ .longhand = .color, .inherited = true, .initial = .{ .color = Color.black }, .grammar = .color, .quirky_color = true },
+        // CSS Color 4: "Initial: CanvasText" - resolved in the element's
+        // color scheme when it is computed (initialComputed answers the light
+        // one where there is no element).
+        .{ .longhand = .color, .inherited = true, .initial = .{ .color = .{ .system = .canvastext } }, .grammar = .color, .quirky_color = true },
         // CSS Color Adjustment 1 2.2: "Initial: normal", "Inherited: yes".
         .{ .longhand = .color_scheme, .inherited = true, .initial = Value.kw(.normal), .grammar = .color_scheme },
         .{ .longhand = .direction, .inherited = true, .initial = Value.kw(.ltr), .grammar = .keywords, .keywords = &.{ .ltr, .rtl } },
@@ -857,13 +858,16 @@ fn colorValue(options: ParseOptions, stream: *Stream, def: *const Info) ?Value {
         }
         return .{ .color = .{ .rgba = c } };
     } else |_| {}
-    // A <system-color> (CSS Color 4 6.2), its color the light palette's
-    // (stated: color-scheme is a later batch).
+    // A <system-color> (CSS Color 4 6.2): kept as the keyword, resolved
+    // against the element's used color scheme when it is computed.
     if (t.token_type == .ident) {
-        if (color_mod.ColorParser.parseWithoutContext(t.value, options.allocator)) |fc| {
+        const escaped = std.mem.indexOfScalar(u8, t.value, '\\') != null;
+        const decoded = if (escaped) tokenizer_mod.decode(options.allocator, t.value) catch return null else t.value;
+        defer if (escaped) options.allocator.free(decoded);
+        if (color_mod.SystemColor.parse(decoded)) |system| {
             _ = stream.next();
-            return namedColor(options, t.value, fc.quantize()) catch null;
-        } else |_| {}
+            return .{ .color = .{ .system = system } };
+        }
     }
     return null;
 }
@@ -1518,6 +1522,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
             .current => try out.appendSlice(allocator, "currentcolor"),
             .rgba => |rgba| try values.serializeRgba(rgba, out, allocator),
             .named => |n| try out.appendSlice(allocator, n.name.bytes),
+            .system => |system| try out.appendSlice(allocator, system.keyword()),
         },
         .display => |d| try d.serialize(out, allocator),
         .text_transform => |t| try t.serialize(out, allocator),

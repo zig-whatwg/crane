@@ -673,6 +673,10 @@ const Resolution = struct {
     active: *Active,
     key: Key,
     root_font_size: f64 = 16,
+    /// The page color scheme (CSS Color Adjustment 1 2.1) and the user's
+    /// preferred one, found once per style read.
+    page_color_scheme: css.color_scheme.Scheme = .light,
+    preferred_color_scheme: css.color_scheme.Scheme = .light,
     matched: std.ArrayList(Matched) = .empty,
     candidates: std.ArrayList(u32) = .empty,
 
@@ -703,6 +707,13 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
         .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slot_version, .singletons = singletonKey(document) },
     };
     defer res.deinit();
+    // CSS Color Adjustment 1 2.1: "the page color scheme is determined by
+    // finding the used color scheme, given the preferred color scheme and
+    // the page's supported color schemes". The preference is the host's, as
+    // prefers-color-scheme reads it; a change to it moves the media values,
+    // and with them the generation every cached style is keyed on.
+    res.preferred_color_scheme = if (active.media.prefers_color_scheme == .dark) .dark else .light;
+    res.page_color_scheme = css.color_scheme.used(engine.page_color_schemes, res.preferred_color_scheme);
 
     // The flat-tree lineage, the element first.
     var lineage: std.ArrayList(LineageEntry) = .empty;
@@ -792,6 +803,8 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         .viewport_width = res.active.media.width,
         .viewport_height = res.active.media.height,
         .is_root = is_root and pseudo == null,
+        .page_color_scheme = res.page_color_scheme,
+        .preferred_color_scheme = res.preferred_color_scheme,
     }, res.matched.items);
 }
 
