@@ -948,6 +948,16 @@ pub const Manager = struct {
         self.registry.removeEnvironment(environment);
     }
 
+    /// The environment `id`'s page entered the back/forward cache, or is
+    /// shown again (`Registry.setEnvironmentCached`): from its page's thread,
+    /// at the cache's store and restore steps (realm.zig).
+    pub fn environmentCached(self: *Manager, id: u64, cached: bool) void {
+        self.lock();
+        defer self.unlock();
+        const environment = self.registry.findEnvironment(id) orelse return;
+        self.registry.setEnvironmentCached(environment, cached);
+    }
+
     /// Clear-Site-Data's "storage" type for the serialized origin `origin`
     /// (Clear Site Data 4.2.5 step 4; the Browser's handler,
     /// src/browser/clear_site_data.zig): the origin's registrations are

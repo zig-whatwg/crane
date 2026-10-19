@@ -1120,6 +1120,28 @@ pub fn environmentEnded(realm: runtime.Context) void {
     RealmEnvironment.ofEndpoint(endpoint).end();
 }
 
+/// The back/forward cache keeps `realm`'s page (dom.bfcache store step, on
+/// the page's thread): its environment is using no registration while it is
+/// kept (Registry.setEnvironmentCached says why). Installed by
+/// ServiceWorkerContainer at process start.
+pub fn environmentStored(realm: runtime.Context) void {
+    environmentCached(realm, true);
+}
+
+/// The back/forward cache shows `realm`'s page again (dom.bfcache restore
+/// step): its environment uses its registration again.
+pub fn environmentRestored(realm: runtime.Context) void {
+    environmentCached(realm, false);
+}
+
+fn environmentCached(realm: runtime.Context, cached: bool) void {
+    const manager = Manager.existingOf(realm) orelse return;
+    const endpoint = manager.endpointOf(realm) orelse return;
+    const environment = RealmEnvironment.ofEndpoint(endpoint);
+    if (environment.ended) return;
+    manager.environmentCached(environment.id, cached);
+}
+
 // ============================================================================
 // ServiceWorkerContainer
 // ============================================================================

@@ -122,7 +122,10 @@ const Recorder = struct {
             for (self.log.items) |line| self.allocator.free(line);
             self.log.clearRetainingCapacity();
         }
-        if (self.log.items.len != expected.len) {
+        const same = self.log.items.len == expected.len and for (expected, self.log.items) |e, got| {
+            if (!std.mem.eql(u8, e, got)) break false;
+        } else true;
+        if (!same) {
             std.debug.print("log:\n", .{});
             for (self.log.items) |line| std.debug.print("  {s}\n", .{line});
         }
@@ -554,6 +557,93 @@ test "unregister resolves true, and with no client the registration is cleared" 
     try registry.scheduleJob(again);
     try testing.expect((try recorder.runQueuedJobs(&registry)) == null);
     try recorder.expectLog(&.{"1: resolve false"});
+}
+
+/// A registration at https://example.com/ with an active worker, and two
+/// windows of the origin: `page` (uncontrolled) and `kept`, controlled by the
+/// active worker. The log is empty.
+const KeptFixture = struct {
+    page: *reg.Environment,
+    kept: *reg.Environment,
+    worker_id: u64,
+
+    fn make(recorder: *Recorder, registry: *Registry) !KeptFixture {
+        const page = try addWindow(registry, "https://example.com/page.html");
+        const kept = try addWindow(registry, "https://example.com/kept.html");
+        try registerJob(registry, page, "https://example.com/sw.js", "https://example.com/", 1);
+        var plan = (try recorder.runQueuedJobs(registry)).?;
+        try answerFetch(registry, &plan, "x", true);
+        const worker_id = recorder.started.items[0];
+        try registry.workerEvaluated(worker_id, true, true);
+        try registry.lifecycleEventDone(recorder.lifecycle.items[0].op, false);
+        try registry.lifecycleEventDone(recorder.lifecycle.items[1].op, false);
+        registry.setActiveWorker(kept, registry.findWorker(worker_id).?);
+        for (recorder.log.items) |line| testing.allocator.free(line);
+        recorder.log.clearRetainingCapacity();
+        return .{ .page = page, .kept = kept, .worker_id = worker_id };
+    }
+
+    fn unregister(self: KeptFixture, recorder: *Recorder, registry: *Registry, promise: u64) !void {
+        try registry.scheduleJob(try registry.createJob(.{
+            .job_type = .unregister,
+            .storage_key = "https://example.com",
+            .scope_url = "https://example.com/",
+            .client = .{ .environment = self.page.id, .promise = promise },
+            .referrer = self.page.creation_url,
+        }));
+        try testing.expect((try recorder.runQueuedJobs(registry)) == null);
+    }
+};
+
+/// "<environment>: worker <id> redundant", for an expected log.
+const RedundantLines = struct {
+    buffers: [2][64]u8,
+
+    fn of(self: *RedundantLines, environment: u64, worker_id: u64) []const u8 {
+        const index: usize = @intCast(environment - 1);
+        return std.fmt.bufPrint(&self.buffers[index], "{d}: worker {d} redundant", .{ environment, worker_id }) catch unreachable;
+    }
+};
+
+test "a client the back/forward cache keeps is not using its registration: unregister clears it, and the kept client hears the clear" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 14);
+    defer registry.deinit();
+    const fixture = try KeptFixture.make(&recorder, &registry);
+    registry.setEnvironmentCached(fixture.kept, true);
+    try fixture.unregister(&recorder, &registry, 2);
+    // Cleared at once: both windows hear the active worker go - the kept one
+    // cannot answer, and is evicted (realm.zig deliver).
+    var lines: RedundantLines = undefined;
+    try recorder.expectLog(&.{ "1: resolve true", "1: active = 0", "2: active = 0", lines.of(1, fixture.worker_id), lines.of(2, fixture.worker_id) });
+}
+
+test "a controlled client entering the back/forward cache after unregister clears the registration" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 16);
+    defer registry.deinit();
+    const fixture = try KeptFixture.make(&recorder, &registry);
+    try fixture.unregister(&recorder, &registry, 2);
+    try recorder.expectLog(&.{"1: resolve true"});
+    // Kept now: no client uses it, and it is unregistered - cleared.
+    registry.setEnvironmentCached(fixture.kept, true);
+    var lines: RedundantLines = undefined;
+    try recorder.expectLog(&.{ "1: active = 0", "2: active = 0", lines.of(1, fixture.worker_id), lines.of(2, fixture.worker_id) });
+}
+
+test "a restored client is using its registration again: unregister leaves it" {
+    var recorder: Recorder = .{ .allocator = testing.allocator };
+    defer recorder.deinit();
+    var registry = Registry.init(testing.allocator, recorder.effects(), 17);
+    defer registry.deinit();
+    const fixture = try KeptFixture.make(&recorder, &registry);
+    registry.setEnvironmentCached(fixture.kept, true);
+    registry.setEnvironmentCached(fixture.kept, false);
+    try fixture.unregister(&recorder, &registry, 2);
+    try recorder.expectLog(&.{"1: resolve true"});
+    try testing.expect(registry.findWorker(fixture.worker_id) != null);
 }
 
 test "an environment that ends while it is controlled lets a waiting worker activate" {

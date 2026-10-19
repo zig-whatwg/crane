@@ -236,6 +236,10 @@ pub const Environment = struct {
     secure_context: bool = true,
     execution_ready: bool = true,
     discarded: bool = false,
+    /// A window client whose page the back/forward cache keeps
+    /// (`setEnvironmentCached`): it is using no registration until it is
+    /// shown again.
+    cached: bool = false,
     /// Its active service worker (a counted reference): it is controlled.
     active_worker: ?*Worker = null,
     /// A window client's frame type and document state, as last reported.
@@ -762,11 +766,14 @@ pub const Registry = struct {
         }
     }
 
-    /// Whether some client other than `except` is using `registration`.
+    /// Whether some client other than `except` is using `registration`. A
+    /// client whose page the back/forward cache keeps is not
+    /// (`setEnvironmentCached`).
     fn hasClientUsing(self: *const Registry, registration: *const Registration, except: ?*const Environment) bool {
         for (self.environments.items) |environment| {
             if (except) |e| if (environment == e) continue;
             if (!environment.kind.isClient()) continue;
+            if (environment.cached) continue;
             const worker = environment.active_worker orelse continue;
             if (worker.registration == registration) return true;
         }
@@ -2056,6 +2063,38 @@ pub const Registry = struct {
         if (isUnregistered(registration)) self.tryClearRegistration(registration);
         // 6. Try Activate.
         self.tryActivate(registration) catch {};
+    }
+
+    /// `environment`'s page entered the back/forward cache (`cached`), or is
+    /// shown again. Stated deviation: the spec has no back/forward cache
+    /// case - a controlled client is "using" its registration (2.5) - and a
+    /// cached page would keep an unregistered registration, and a waiting
+    /// worker, waiting for as long as it stays cached. Chrome's model, by
+    /// golden rule 2's three-way split (the integrator's ruling, lane
+    /// sw1-b10): a client entering the cache leaves its version's
+    /// controllees (Chromium ServiceWorkerVersion::
+    /// MoveControlleeToBackForwardCacheMap, which runs OnNoControllees) and
+    /// comes back when restored (RestoreControlleeFromBackForwardCacheMap).
+    /// So a cached client blocks neither Clear Registration nor Activate, and
+    /// what those post to it - its registration's slots, its worker going
+    /// redundant - is a delivery the cached page cannot answer: it is
+    /// evicted (realm.zig deliver; Chromium's ServiceWorkerVersion::Doom ->
+    /// ServiceWorkerClient::NotifyControllerLost, kServiceWorkerUnregistration,
+    /// and kServiceWorkerVersionActivation). Firefox evicts at unregister
+    /// itself (Gecko ServiceWorkerUnregisterJob::Unregister ->
+    /// EvictFromBFCache); Safari restores the page. back-forward-cache/
+    /// service-worker-unregister.https.html, which unregisters while the test
+    /// page is still controlled: Chrome FAIL, Firefox PASS, Safari FAIL
+    /// (wpt.fyi 23b0b89b1a) - it fails here as in Chrome.
+    pub fn setEnvironmentCached(self: *Registry, environment: *Environment, cached: bool) void {
+        if (environment.cached == cached) return;
+        environment.cached = cached;
+        if (!cached) return;
+        // Leaving the controllees runs what a client's unload runs for its
+        // registration (Chromium's OnNoControllees): Try Clear Registration
+        // if it is unregistered, Try Activate.
+        const worker = environment.active_worker orelse return;
+        self.handleClientUnload(worker.registration);
     }
 
     // ------------------------------------------------------------------
