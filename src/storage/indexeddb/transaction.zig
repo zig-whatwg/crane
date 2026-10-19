@@ -27,6 +27,7 @@ const IDBDatabase = @import("database.zig").IDBDatabase;
 const IDBObjectStore = @import("object_store.zig").IDBObjectStore;
 const IDBRequest = @import("request.zig").IDBRequest;
 const IDBError = @import("errors.zig").IDBError;
+const server_mod = @import("server.zig");
 
 /// Transaction mode
 /// https://w3c.github.io/IndexedDB/#transaction-mode
@@ -85,6 +86,14 @@ pub const IDBTransaction = struct {
     rollback_version: u64 = 0,
     executing_request: bool = false,
     started: bool = false,
+    /// Its record in its connection's server's scheduler (ED 2.7.2), while
+    /// unfinished; null for a standalone database's transaction.
+    server_id: ?server_mod.Id = null,
+    /// The scheduler let it start (it stays started).
+    server_started: bool = false,
+    /// Tells its owner it may be able to start (`serverNote`). Set by the
+    /// owner of the transaction's task while that task lives.
+    wake_hook: ?WakeHook = null,
 
     /// Transaction mode
     mode: IDBTransactionMode,
@@ -109,6 +118,37 @@ pub const IDBTransaction = struct {
     onabort: ?*const fn (*Self) void,
     oncomplete: ?*const fn (*Self) void,
     onerror: ?*const fn (*Self) void,
+
+    pub const WakeHook = struct {
+        context: *anyopaque,
+        call: *const fn (context: *anyopaque) void,
+    };
+
+    /// The server's note for this transaction (its record's client).
+    pub fn serverNote(context: *anyopaque, note: server_mod.Note) void {
+        const self: *Self = @ptrCast(@alignCast(context));
+        if (note != .wake) return;
+        if (self.wake_hook) |hook| hook.call(hook.context);
+    }
+
+    /// ED 4.4 transaction() step 8 / 5.7 step 3: join the scheduler of the
+    /// connection's server, last in creation order. Nothing for a
+    /// standalone database.
+    pub fn register(self: *Self) !void {
+        std.debug.assert(self.server_id == null);
+        const database = self.db.server_database orelse return;
+        self.server_id = try database.server.createTransaction(database, self.db.connection_id, self.mode, self.scope, .{ .context = self, .call = serverNote });
+    }
+
+    /// The transaction finished (committed or aborted, rollback done): it
+    /// leaves the scheduler, which wakes whatever may start now. `publish`
+    /// is an upgrade's committed version.
+    fn finishServerRecord(self: *Self, publish: ?u64) void {
+        const id = self.server_id orelse return;
+        self.server_id = null;
+        const database = self.db.server_database orelse return;
+        database.server.finishTransaction(database, id, publish);
+    }
 
     /// Initialize a new transaction
     pub fn init(
@@ -152,6 +192,9 @@ pub const IDBTransaction = struct {
         std.debug.assert(self.references > 0);
         self.references -= 1;
         if (self.references != 0) return;
+        // A transaction that never finished (its task never ran) must not
+        // hold up the scheduler.
+        self.finishServerRecord(null);
         if (self.rollback_schema) |*schema_map| IDBDatabase.deinitSchema(schema_map, self.allocator);
         if (self.rollback_names) |*names| IDBDatabase.deinitNames(self.allocator, names);
         if (self.owns_scope) {
@@ -193,7 +236,12 @@ pub const IDBTransaction = struct {
     pub fn ensureRollbackSnapshot(self: *Self) !void {
         if (self.rollback_schema != null) return;
         if (self.mode == .readonly) return;
-        var snapshot = try self.db.cloneSchema();
+        // An upgrade may change any store, so it keeps them all; a readwrite
+        // transaction only its scope - another store's records may be
+        // another transaction's, on another thread, while this one runs.
+        self.db.lockSchema();
+        defer self.db.unlockSchema();
+        var snapshot = try self.db.cloneSchemaOf(if (self.mode == .versionchange) null else self.scope);
         errdefer IDBDatabase.deinitSchema(&snapshot, self.allocator);
         const names = if (self.mode == .versionchange) try self.db.cloneConnectionNames() else null;
         self.rollback_schema = snapshot;
@@ -203,6 +251,13 @@ pub const IDBTransaction = struct {
     /// ED 2.7.2: only earlier, unfinished transactions with overlapping
     /// scopes constrain a start. Two readers can run together.
     pub fn canStart(self: *Self) bool {
+        if (self.server_started) return true;
+        if (self.server_id) |id| {
+            const database = self.db.server_database.?;
+            self.server_started = database.server.tryStart(database, id);
+            return self.server_started;
+        }
+        if (self.db.server_database != null) return true;
         for (self.db.transactionQueue().items) |earlier| {
             if (earlier == self) break;
             if (earlier.state == .finished) continue;
@@ -223,6 +278,8 @@ pub const IDBTransaction = struct {
         if (!self.started and self.mode != .versionchange) {
             // A previous writer may have aborted after these handles were
             // made. Their first operation uses the restored canonical data.
+            self.db.lockSchema();
+            defer self.db.unlockSchema();
             var stores = self.object_stores.valueIterator();
             while (stores.next()) |entry| {
                 const store = entry.*;
@@ -288,6 +345,11 @@ pub const IDBTransaction = struct {
             return IDBError.InvalidStateError;
         }
 
+        // The schema map is read under its lock (a readwrite abort on another
+        // thread may swap an entry).
+        self.db.lockSchema();
+        defer self.db.unlockSchema();
+
         // Step 2: Check name is in scope
         var found = self.mode == .versionchange and self.db.schema().contains(name);
         for (self.scope) |scope_name| {
@@ -340,7 +402,9 @@ pub const IDBTransaction = struct {
             return IDBError.InvalidStateError;
         }
 
-        if (self.mode == .versionchange) self.db.publishVersion();
+        // ED 5.7: an upgrade's version becomes the database's when it
+        // commits - in its server, with the scheduler record, under its lock.
+        if (self.mode == .versionchange and self.server_id == null) self.db.publishVersion();
         if (self.rollback_schema) |*schema_map| IDBDatabase.deinitSchema(schema_map, self.allocator);
         self.rollback_schema = null;
         if (self.rollback_names) |*names| IDBDatabase.deinitNames(self.allocator, names);
@@ -352,6 +416,7 @@ pub const IDBTransaction = struct {
         // Step 3: Process pending requests (simplified - synchronous)
         // In a real implementation, this would be async
         self.state = .finished;
+        self.finishServerRecord(if (self.mode == .versionchange) self.db.version else null);
 
         // Fire complete event
         if (self.oncomplete) |handler| {
@@ -381,37 +446,12 @@ pub const IDBTransaction = struct {
         // Step 1: an already finished transaction is unchanged.
         if (self.state == .finished) return;
 
-        // IDB 5.5 step 2: restore schema, records and key generators atomically.
+        // IDB 5.5 step 2: restore schema, records and key generators atomically,
+        // under the schema lock: other threads read the map meanwhile.
         if (self.rollback_schema) |snapshot| {
-            if (self.mode == .versionchange) {
-                var changed = self.db.schema().*;
-                self.db.schema().* = snapshot;
-                self.rollback_schema = null;
-                // 5.8 step 4 restores the connection's own set too.
-                var changed_names = self.db.connection_names;
-                self.db.connection_names = self.rollback_names.?;
-                self.rollback_names = null;
-                IDBDatabase.deinitNames(self.allocator, &changed_names);
-                // 5.8 steps 5-6 restore every associated handle by definition
-                // identity, including handles retired by deletion/recreation.
-                var handles = self.object_stores.valueIterator();
-                while (handles.next()) |handle| self.rollbackStoreHandle(handle.*);
-                for (self.retired_stores.items) |handle| self.rollbackStoreHandle(handle);
-                IDBDatabase.deinitSchema(&changed, self.allocator);
-            } else {
-                // Disjoint scopes may commit independently. Restore only this
-                // transaction's stores, preserving other committed changes.
-                var backup = snapshot;
-                for (self.scope) |name| {
-                    const live = self.db.schema().getEntry(name) orelse continue;
-                    const previous = backup.getEntry(name) orelse continue;
-                    std.mem.swap(@import("database.zig").ObjectStoreMetadata, live.value_ptr, previous.value_ptr);
-                    live.key_ptr.* = live.value_ptr.name;
-                    previous.key_ptr.* = previous.value_ptr.name;
-                }
-                self.rollback_schema = null;
-                IDBDatabase.deinitSchema(&backup, self.allocator);
-            }
+            self.db.lockSchema();
+            defer self.db.unlockSchema();
+            self.restoreSnapshot(snapshot);
         }
 
         // ED 5.8.3: version changes belong to every upgrade, including an
@@ -425,6 +465,40 @@ pub const IDBTransaction = struct {
         // Native notification; the binding queues the DOM abort event (step 7).
         if (self.onabort) |handler| {
             handler(self);
+        }
+        // Rolled back: only now may another agent see the database.
+        self.finishServerRecord(null);
+    }
+
+    fn restoreSnapshot(self: *Self, snapshot: IDBDatabase.Schema) void {
+        if (self.mode == .versionchange) {
+            var changed = self.db.schema().*;
+            self.db.schema().* = snapshot;
+            self.rollback_schema = null;
+            // 5.8 step 4 restores the connection's own set too.
+            var changed_names = self.db.connection_names;
+            self.db.connection_names = self.rollback_names.?;
+            self.rollback_names = null;
+            IDBDatabase.deinitNames(self.allocator, &changed_names);
+            // 5.8 steps 5-6 restore every associated handle by definition
+            // identity, including handles retired by deletion/recreation.
+            var handles = self.object_stores.valueIterator();
+            while (handles.next()) |handle| self.rollbackStoreHandle(handle.*);
+            for (self.retired_stores.items) |handle| self.rollbackStoreHandle(handle);
+            IDBDatabase.deinitSchema(&changed, self.allocator);
+        } else {
+            // Disjoint scopes may commit independently. Restore only this
+            // transaction's stores, preserving other committed changes.
+            var backup = snapshot;
+            for (self.scope) |name| {
+                const live = self.db.schema().getEntry(name) orelse continue;
+                const previous = backup.getEntry(name) orelse continue;
+                std.mem.swap(@import("database.zig").ObjectStoreMetadata, live.value_ptr, previous.value_ptr);
+                live.key_ptr.* = live.value_ptr.name;
+                previous.key_ptr.* = previous.value_ptr.name;
+            }
+            self.rollback_schema = null;
+            IDBDatabase.deinitSchema(&backup, self.allocator);
         }
     }
 

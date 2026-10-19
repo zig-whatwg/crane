@@ -148,6 +148,15 @@ pub const BlockerQuery = *const fn (environment: runtime.Context) ?Blocked;
 /// is kept - an open WebSocket is failed.
 pub const StoreStep = *const fn (environment: runtime.Context) void;
 
+/// A feature's owner's step for a kept document shown again (HTML
+/// "reactivate"), for its realm, once the cache has resumed its tasks and
+/// timers: what the owner told others the page left, it now undoes - a
+/// service worker client counts as its registration's again (Chromium's
+/// ServiceWorkerClient restore, RestoreControlleeFromBackForwardCacheMap).
+/// The twin of `StoreStep`. Never run for a page that leaves the cache to be
+/// destroyed.
+pub const RestoreStep = *const fn (environment: runtime.Context) void;
+
 const max_owner_steps = 8;
 
 /// The owners' queries and steps, installed at process start.
@@ -156,6 +165,8 @@ const OwnerSteps = struct {
     blocker_count: usize = 0,
     store_steps: [max_owner_steps]StoreStep = undefined,
     store_step_count: usize = 0,
+    restore_steps: [max_owner_steps]RestoreStep = undefined,
+    restore_step_count: usize = 0,
 };
 
 // process-wide: function pointers the feature owners (LockManager, Worker, SharedWorker, WebSocket) install once at process start (crane.Process), the same for every Browser and thread
@@ -183,6 +194,18 @@ pub fn installStoreStep(step: StoreStep) void {
     if (owner_steps.store_step_count == max_owner_steps) return;
     owner_steps.store_steps[owner_steps.store_step_count] = step;
     owner_steps.store_step_count += 1;
+}
+
+/// Install `step` (once, at process start). Idempotent.
+pub fn installRestoreStep(step: RestoreStep) void {
+    process_start.assertInstalling();
+    for (owner_steps.restore_steps[0..owner_steps.restore_step_count]) |existing| {
+        if (existing == step) return;
+    }
+    std.debug.assert(owner_steps.restore_step_count < max_owner_steps);
+    if (owner_steps.restore_step_count == max_owner_steps) return;
+    owner_steps.restore_steps[owner_steps.restore_step_count] = step;
+    owner_steps.restore_step_count += 1;
 }
 
 /// Parts 2 and 3 for `document`, the active document of a navigable whose
@@ -217,6 +240,11 @@ pub fn isKept(document: *runtime.Instance) bool {
 /// Unload step 18 for a kept document: the store steps, for its realm.
 pub fn runStoreSteps(environment: runtime.Context) void {
     for (owner_steps.store_steps[0..owner_steps.store_step_count]) |step| step(environment);
+}
+
+/// The restore steps, for a kept document's realm shown again.
+fn runRestoreSteps(environment: runtime.Context) void {
+    for (owner_steps.restore_steps[0..owner_steps.restore_step_count]) |step| step(environment);
 }
 
 // ============================================================================
@@ -320,10 +348,11 @@ pub fn take(traversable: *anyopaque, document: *const anyopaque) ?KeptPage {
     return impl.take(traversable, document);
 }
 
-/// A taken page is active again (see Cache.resume_page), then HTML
-/// "reactivate" for its document.
+/// A taken page is active again (see Cache.resume_page), the owners'
+/// restore steps run for its realm, then HTML "reactivate" for its document.
 pub fn reactivate(page: *const KeptPage) void {
     if (cache) |impl| impl.resume_page(page);
+    runRestoreSteps(page.realm);
     if (implementation) |impl| impl.reactivate(page.document);
 }
 

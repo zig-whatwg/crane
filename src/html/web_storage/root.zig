@@ -28,6 +28,10 @@ pub const StorageError = web_storage.StorageError;
 /// supplement of its scope (docs/instances.md).
 pub const UserAgentStorage = @import("storage").UserAgentStorage;
 
+/// What the getters find a storage area by: the environment's storage key
+/// (origin, top-level site, has cross-site ancestor).
+pub const StorageKey = @import("storage").StorageKey;
+
 // Re-export getter functions
 pub const getLocalStorage = web_storage.getLocalStorage;
 pub const getSessionStorage = web_storage.getSessionStorage;

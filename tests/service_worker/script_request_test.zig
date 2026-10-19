@@ -98,3 +98,29 @@ test "an imported module's request: serviceworker, cors, omit, no Service-Worker
     try testing.expect(request.service_workers_mode == .none);
     try testing.expect(request.header_list.getFirstValue("Service-Worker") == null);
 }
+
+/// A reporter that counts what it is handed.
+const CountingReporter = struct {
+    violations: usize = 0,
+
+    fn report(context: *anyopaque, _: *const @import("fetch").internal.CspViolation) void {
+        const self: *CountingReporter = @ptrCast(@alignCast(context));
+        self.violations += 1;
+    }
+};
+
+test "a service worker's importScripts() request reports its CSP violations to the reporter it is given (its own global's)" {
+    var counting: CountingReporter = .{};
+    const request = try script_fetch.serviceWorkerScriptRequest(testing.allocator, "https://b.example/lib.js", .{
+        .kind = .imported_script,
+        .origin = "https://a.example",
+        .csp_violation_reporter = .{ .context = &counting, .report = &CountingReporter.report },
+    });
+    defer request.deinit();
+    const reporter = request.csp_violation_reporter orelse return error.TestUnexpectedResult;
+    try testing.expect(reporter.context == @as(*anyopaque, &counting));
+    // And none when none is given (the job thread's fetches).
+    const plain = try script_fetch.serviceWorkerScriptRequest(testing.allocator, "https://a.example/sw.js", .{ .kind = .main_script, .origin = "https://a.example" });
+    defer plain.deinit();
+    try testing.expect(plain.csp_violation_reporter == null);
+}

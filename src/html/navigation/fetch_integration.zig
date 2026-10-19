@@ -174,6 +174,13 @@ pub const NavigationFetchOptions = struct {
     /// "blob"); null: every blob URL is a network error.
     blob_url_store: ?*anyopaque = null,
 
+    /// For a frame's navigation to a blob: URL, the storage key of the
+    /// environment its blob is obtained for - its reserved environment
+    /// (dom.blob_partition.nestedStorageKey), serialized. BORROWED; the
+    /// request takes a copy. A top-level navigation (destination "document")
+    /// needs none: it obtains its blob unchecked.
+    blob_storage_key: ?[]const u8 = null,
+
     /// The network context of the navigable's Browser (BORROWED): the
     /// connections and TLS options its fetch uses. Null: the defaults.
     network: ?*fetch.network.NetworkContext = null,
@@ -385,15 +392,15 @@ pub fn navigationRequest(
         // environment - for a navigation, its reserved client, whose creation
         // URL is this blob URL: URL's origin of a blob URL is its entry's
         // environment's origin, the creator's, which the blob URL serializes.
-        // A top-level navigation ("top-level-navigation") obtains it with no
-        // partition check at all. Crane's store compares the request's origin
-        // with the entry's, so the request carries that origin: the store
-        // answers a navigation to a live entry whatever the source document's
-        // origin (the creator's blob reaches a frame a cross-origin document
-        // navigated), and a revoked entry stays a network error. Stated: no
-        // storage partitioning by top-level site.
+        // The request carries that origin. A top-level navigation
+        // ("top-level-navigation") obtains the blob with no partition check
+        // at all; a frame's obtains it only when its reserved environment's
+        // storage key - `blob_storage_key` - equals the entry's (File API
+        // 8.3.2), so a frame of another partition gets a network error
+        // (FileAPI/BlobURL/cross-partition-navigation.https.html).
         internal_request.setOrigin(blob_origin) catch return NavigationFetchError.OutOfMemory;
     }
+    if (options.blob_storage_key) |key| internal_request.setBlobStorageKey(key) catch return NavigationFetchError.OutOfMemory;
 
     // The cookie store its fetch sends from and stores to.
     internal_request.cookie_jar = options.cookie_jar;

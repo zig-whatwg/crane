@@ -1,0 +1,16 @@
+# Architecture: A shared store releases an ended agent's records only after its rollback
+
+**Date**: 2026-10-19
+**Lesson**: When storage several agents share outlives an agent that was changing it, the records that let the other agents proceed - its place in a queue, its open connection, its transaction - must be released only after the ended agent's rollback has restored what it changed, never at the moment its end is noticed.
+
+**Why**: Teardown runs in no fixed order. A worker's end frees its IDBFactory, its connections and its transaction tasks in whatever order its loop and wrapper cache reach them, and the rollback lives in exactly one of those (the transaction task's abort). Releasing the queue entry or the connection first lets another agent - on another thread - open the database and read a schema the rollback has not yet restored, or write into a store the rollback is about to overwrite. With per-agent storage this order never mattered: whatever saw the half-done upgrade was being torn down too.
+
+**What Happened**: Lane idbshare1 moved IndexedDB's connection queue, connection set and transaction scheduler from each IDBFactory impl into one IDBServer per Browser (a BrowserScope supplement). The first sketch unlinked a dying agent from the server in its factory's teardown. Walking IndexedDB/worker-termination-aborts-upgrade.window.js through it showed the page's queued open could reach `upgradeneeded` - and list the worker's `should-not-be-created` store in `objectStoreNames` - before the worker's upgrade transaction was aborted, because the factory's end and the transaction task's end are separate wrappers' ends. Even "the scheduler will make the page's upgrade wait for the worker's transaction" was not enough: `upgradeneeded` fires (and script mutates the schema) before the page's upgrade transaction is scheduled.
+
+**Fix**: Each record is removed by its own object's end, and each removal is ordered after the rollback it could expose:
+- a transaction record finishes at the END of the backend commit or abort, after the schema, records and version are restored (`IDBTransaction.finishServerRecord`);
+- a connection whose agent ended (or that closed) stays in the set, close-pending, until its last transaction record finishes;
+- an open request withdrawn mid-upgrade keeps the queue's head, abandoned, until its upgrade transaction's record finishes - only then does the next request run (`IDBServer.withdraw`, `finishTransaction`).
+Tests: tests/storage/indexeddb_server_test.zig ("a request withdrawn mid-upgrade keeps the head until its upgrade is rolled back") and crane/ids-worker-terminated-mid-upgrade.html. WebKit reaches the same order another way: its UniqueIDBDatabase owns the rollback (`abortTransaction` restores `originalDatabaseInfo`), so `connectionClosedFromClient` aborts the closing connection's transactions in the same server step that removes it, and `handleDatabaseOperations` takes no next open request while `m_versionChangeTransaction` exists. Crane's rollback snapshot lives in the agent's native transaction, so the server must wait for it instead.
+
+**Takeaway**: **When an agent's end can be noticed before its rollback runs, tie the release of every record other agents wait on to the rollback's completion, not to the end - a shared store makes teardown order observable.**

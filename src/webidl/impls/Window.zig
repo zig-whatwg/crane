@@ -59,7 +59,6 @@ const StorageImpl = @import("Storage.zig");
 // IndexedDB types for window.indexedDB
 const storage = @import("storage");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
-const IDBFactoryBackend = storage.indexeddb.IDBFactory;
 
 // Cache Storage types for window.caches
 // TODO: Add service_worker module to impls in build.zig to enable CacheStorage
@@ -206,11 +205,15 @@ pub const InternalState = struct {
     /// read undefined.
     local_storage_backend: ?*WebStorage = null,
     session_storage_backend: ?*WebStorage = null,
+    /// The settings object's storage key for non-storage purposes,
+    /// serialized (storage.StorageKey.serialize): computed once, on first
+    /// use, for the environment the Window's document is
+    /// (`settingsStorageKey`), and dropped when its document changes. OWNED.
+    storage_key: ?[]u8 = null,
 
     /// IndexedDB factory (lazily created)
     /// IndexedDB spec: window.indexedDB getter
     indexeddb_factory: ?*runtime.Instance = null,
-    indexeddb_backend: ?*IDBFactoryBackend = null,
 
     /// Service Workers 5.3: this global's CacheStorage, made on first use
     /// and traced for its whole lifetime.
@@ -326,6 +329,9 @@ pub const InternalState = struct {
         // on a loop that may already be gone.
         self.idle.releaseCallbacks(self.allocator);
 
+        if (self.storage_key) |key| self.allocator.free(key);
+        self.storage_key = null;
+
         // Clean up storage backends
         if (self.local_storage_backend) |storage_backend| {
             storage_backend.deinit();
@@ -335,14 +341,6 @@ pub const InternalState = struct {
             storage_backend.deinit();
             self.allocator.destroy(storage_backend);
         }
-
-        // NOTE: Do NOT deinit indexeddb_backend here!
-        // The backend is owned by the IDBFactory instance (indexeddb_factory),
-        // which will be cleaned up via wrapper_cache.deinit → IDBFactory.deinit.
-        // If we deinit the backend here AND the IDBFactory also deinits it,
-        // we get a double-free. The backend pointer is cached here only for
-        // quick access, not for ownership.
-        self.indexeddb_backend = null;
 
         if (self.cache_storage) |*caches| caches.edge.release(caches.owner);
 
@@ -503,6 +501,7 @@ pub fn installHooks() void {
         .prohibits_mixed_security_contexts = &settingsProhibitsMixedSecurityContexts,
         .top_level_site = &settingsTopLevelSite,
         .top_level_origin = &settingsTopLevelOrigin,
+        .storage_key = &settingsStorageKey,
     });
 }
 
@@ -764,6 +763,88 @@ fn settingsTopLevelSite(instance: *runtime.Instance) error{OutOfMemory}!?[]u8 {
     };
 }
 
+/// Storage "obtain a storage key for non-storage purposes" for this window's
+/// environment settings object, serialized (storage.StorageKey.serialize):
+/// its origin; its top-level origin - the top-level traversable's active
+/// window's, as `settingsTopLevelSite` walks to it - obtained as a site,
+/// "null" when opaque; and HTML's "has cross-site ancestor"
+/// (`hasCrossSiteAncestor`). The browsers' key, not the Storage Standard's
+/// origin-only text (golden rule 2: storage.StorageKey says why). A popup is
+/// a top-level traversable: its own origin's site, no cross-site ancestor -
+/// so an about:blank popup a third-party frame opens is not that frame's
+/// partition (localstorage-about-blank-3P-iframe-opens-3P-window). An
+/// about:blank or srcdoc document has its creator's origin, and so its
+/// container's site.
+///
+/// Computed once per environment (its top-level origin and ancestors are
+/// fixed while its document lives) and kept on the window until its
+/// document changes: BORROWED. Null when the window has no state.
+fn settingsStorageKey(instance: *runtime.Instance) error{OutOfMemory}!?[]const u8 {
+    const internal = getInternal(instance) orelse return null;
+    if (internal.storage_key) |key| return key;
+    const allocator = internal.allocator;
+    const origin = effectiveOrigin(instance, internal);
+    // The top-level origin as a site; an opaque one, or one with no host, is
+    // "null" (storage.StorageKey: no identity, never a storage partition).
+    const site = (try settingsTopLevelSite(instance)) orelse try instance.ctx.allocator.dupe(u8, "null");
+    defer instance.ctx.allocator.free(site);
+    const key = storage.StorageKey.initBorrowed(if (origin.len == 0) "null" else origin, site, try hasCrossSiteAncestor(instance));
+    internal.storage_key = try key.serialize(allocator);
+    return internal.storage_key;
+}
+
+/// HTML 8.1.3.2, a window's environment settings object's "has cross-site
+/// ancestor" (whatwg/html PR 11133), with its recursion unrolled:
+/// "1. If window's navigable's parent is null, then return false. 2-3. If
+/// parentDocument's relevant settings object's has cross-site ancestor is
+/// true, then return true. 4. If parentDocument's origin is not same site
+/// with window's associated Document's origin, then return true. 5. Return
+/// false." - true exactly when some window on the way up to the top-level
+/// one is cross-site with its parent. Bounded, as the other parent walks.
+fn hasCrossSiteAncestor(instance: *runtime.Instance) error{OutOfMemory}!bool {
+    var window = instance;
+    var depth: usize = 0;
+    while (depth < 64) : (depth += 1) {
+        const internal = getInternal(window) orelse return false;
+        const parent = parentWindowOf(internal) orelse return false;
+        const parent_internal = getInternal(parent) orelse return false;
+        if (!try sameSiteWindows(parent, parent_internal, window, internal)) return true;
+        window = parent;
+    }
+    // A cycle is a bug, not an ancestor chain: the answer that shares less.
+    return true;
+}
+
+/// HTML "same site" for two windows' documents' origins: two opaque origins
+/// only when they are one origin (one record - dom.origin_record), two tuple
+/// origins when their sites are equal (HTML "obtain a site": scheme and
+/// registrable domain), an opaque and a tuple origin never.
+fn sameSiteWindows(a: *runtime.Instance, a_internal: *InternalState, b: *runtime.Instance, b_internal: *InternalState) error{OutOfMemory}!bool {
+    const a_origin = effectiveOrigin(a, a_internal);
+    const b_origin = effectiveOrigin(b, b_internal);
+    const a_opaque = a_origin.len == 0 or std.mem.eql(u8, a_origin, "null");
+    const b_opaque = b_origin.len == 0 or std.mem.eql(u8, b_origin, "null");
+    if (a_opaque or b_opaque) {
+        if (!(a_opaque and b_opaque)) return false;
+        const a_record = @import("dom").global_settings.originRecordOf(a) orelse return false;
+        return @import("dom").global_settings.originRecordOf(b) == a_record;
+    }
+    if (std.mem.eql(u8, a_origin, b_origin)) return true;
+    const allocator = a.ctx.allocator;
+    const site_of = @import("html").agent_clusters.siteOf;
+    const a_site = site_of(allocator, a_origin) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return false,
+    };
+    defer allocator.free(a_site);
+    const b_site = site_of(allocator, b_origin) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return false,
+    };
+    defer allocator.free(b_site);
+    return std.ascii.eqlIgnoreCase(a_site, b_site);
+}
+
 /// Permissions 5.1 step 5: the top-level traversable's active document's
 /// origin. Use the settings origin, including inherited about:blank origins.
 fn settingsTopLevelOrigin(instance: *runtime.Instance) error{OutOfMemory}!?[]u8 {
@@ -791,42 +872,14 @@ fn settingsCrossOriginIsolated(instance: *runtime.Instance) bool {
     return internal.browsing_context.isCrossOriginIsolated();
 }
 
-/// This window's IDBFactory, made on first use.
+/// This window's IDBFactory, made on first use. Its databases are the
+/// Browser's (the IndexedDB server, a BrowserScope supplement), shared with
+/// every same-origin frame, worker and tab of the Browser.
 fn settingsIndexedDB(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Return cached instance if available
-    if (internal.indexeddb_factory) |factory_instance| {
-        return factory_instance;
-    }
-
-    // Create the backend IDBFactory. Until the factory takes it over below,
-    // it is this call's: the errdefers release it - once. (The factory's
-    // failure path used to free it too, and then the errdefer freed it again:
-    // a double free on every failed allocation of IDBFactory.init.)
-    const backend = internal.allocator.create(IDBFactoryBackend) catch return error.OutOfMemory;
-    errdefer internal.allocator.destroy(backend);
-
-    backend.* = IDBFactoryBackend.init(internal.allocator);
-    errdefer backend.deinit();
-    backend.setStorageKey(internal.origin);
-
-    // Create the WebIDL IDBFactory instance
-    const factory_instance = interfaces.IDBFactory.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
-
-    // Set the backend in the factory's internal state
-    const factory_state = factory_instance.getState(interfaces.IDBFactory.State);
-    if (factory_state.own._internal) |factory_internal| {
-        // The IDBFactory impl creates its own backend, so we need to replace it
-        factory_internal.factory.deinit();
-        internal.allocator.destroy(factory_internal.factory);
-        factory_internal.factory = backend;
-    }
-
-    // Cache both
-    internal.indexeddb_backend = backend;
+    if (internal.indexeddb_factory) |factory_instance| return factory_instance;
+    const factory_instance = try interfaces.IDBFactory.init(internal.allocator, instance.ctx);
     internal.indexeddb_factory = factory_instance;
-
     return factory_instance;
 }
 
@@ -1092,6 +1145,9 @@ pub fn setDocument(instance: *runtime.Instance, document: *runtime.Instance) voi
         internal.idle.ended = false;
     };
     internal.document = document;
+    // A new document is a new environment: its storage key is computed anew.
+    if (internal.storage_key) |key| internal.allocator.free(key);
+    internal.storage_key = null;
     _ = @import("dom").custom_elements.ensureGlobalRegistry(document) catch {};
     // A Window's associated Document is its browsing context's active
     // document while the Window is that context's active window.
@@ -1805,12 +1861,15 @@ pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instanc
 
     // Storage "obtain a session storage bottle map": the session storage
     // shed is the top-level traversable's, and in it the storage key - the
-    // origin - picks the shelf. So every same-origin document of one tab
-    // shares it: a frame and its parent, and the Windows a frame's
-    // navigations make one after another. Keyed on the browsing context
-    // itself, as it was, each frame had its own. Not modelled, stated: a
-    // popup's traversable starting with a copy of its opener's shed.
+    // origin, the top-level site and the has-cross-site-ancestor bit
+    // (`settingsStorageKey`) - picks the shelf. So every same-origin,
+    // same-partition document of one tab shares it: a frame and its parent,
+    // and the Windows a frame's navigations make one after another; the
+    // origin framed under another top-level site does not. A popup's
+    // traversable starts with a copy of its opener's shed
+    // (`newTopLevelTraversable`).
     const context_id = internal.browsing_context.getTop().id;
+    const key = (try @import("dom").global_settings.storageKeyForNonStoragePurposesOf(instance)) orelse return error.SecurityError;
 
     // The shed is the Browser's (its scope's supplement): a realm no Browser
     // made has none - "the user agent is configured to not allow" storage.
@@ -1820,7 +1879,7 @@ pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instanc
     const backend = internal.allocator.create(WebStorage) catch return error.OutOfMemory;
     errdefer internal.allocator.destroy(backend);
 
-    backend.* = getSessionStorageBackend(internal.allocator, user_agent_storage, context_id, effectiveOrigin(instance, internal)) catch |err| {
+    backend.* = getSessionStorageBackend(internal.allocator, user_agent_storage, context_id, key) catch |err| {
         // Note: errdefer above handles cleanup, just return the error
         return switch (err) {
             web_storage.StorageError.SecurityError => error.SecurityError,
@@ -1866,12 +1925,15 @@ pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance 
     // scope's supplement), never another Browser's. A realm no Browser made
     // has none: "the user agent is configured to not allow" storage.
     const user_agent_storage = @import("dom").browser_state.userAgentStorageOf(instance.ctx) orelse return error.SecurityError;
+    // Its shelf is the storage key's (`settingsStorageKey`): one origin
+    // framed under two top-level sites has two areas, as in every browser.
+    const key = (try @import("dom").global_settings.storageKeyForNonStoragePurposesOf(instance)) orelse return error.SecurityError;
 
-    // Create the backend storage for this origin
+    // Create the backend storage for this storage key
     const backend = internal.allocator.create(WebStorage) catch return error.OutOfMemory;
     errdefer internal.allocator.destroy(backend);
 
-    backend.* = getLocalStorageBackend(internal.allocator, user_agent_storage, effectiveOrigin(instance, internal)) catch |err| {
+    backend.* = getLocalStorageBackend(internal.allocator, user_agent_storage, key) catch |err| {
         // The errdefer above destroys the block. Destroyed here as well, every
         // read in an opaque origin (SecurityError: a sandboxed frame without
         // allow-same-origin) freed it twice.
@@ -3221,8 +3283,12 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     const target_str: []const u8 = if (given_target.len == 0) "_blank" else given_target;
 
     // Steps 6-12: tokenize the features; noreferrer implies noopener.
+    // "Get noopener for window open" step 1: a blob URL whose creator is not
+    // same site with sourceDocument's top-level origin forces noopener
+    // (dom.blob_partition.forcesNoopener).
     const window_features = WindowFeatures.parse(if (features.wasPassed()) features.getValue().asSlice() else "");
-    const noopener = window_features.noopener or window_features.noreferrer;
+    const blob_noopener = if (url_record) |u| @import("dom").blob_partition.forcesNoopener(instance, u) else false;
+    const noopener = blob_noopener or window_features.noopener or window_features.noreferrer;
     // Steps 11-12: "Let referrerPolicy be the empty string. If noreferrer is
     // true, then set noopener to true and set referrerPolicy to
     // "no-referrer"."

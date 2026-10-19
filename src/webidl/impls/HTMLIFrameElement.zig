@@ -1825,12 +1825,21 @@ fn startFetch(record: *Navigation) void {
         // checks it (frame-src: 'self' does not match blob:) - and its
         // violations reported to the source document's global. Fetched now,
         // while the blob URL's entry is the one the navigation was given.
+        // A frame's blob is obtained for its reserved environment, by its
+        // storage key (`reservedBlobStorageKey`); a top-level navigation's
+        // is not checked.
+        const blob_storage_key = if (destination == .document) null else reservedBlobStorageKey(allocator, record.integration, url) catch {
+            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+            return queueNavigationTask(record.integration, record.id, &runCommit);
+        };
+        defer if (blob_storage_key) |key| allocator.free(key);
         const request = navigation_fetch.navigationRequest(allocator, url, .{
             .destination = destination,
             .mode = .navigate,
             .redirect = .follow,
             // The blob URL store the entry is in: the Browser's.
             .blob_url_store = blobURLStoreOf(record.integration),
+            .blob_storage_key = blob_storage_key,
             .referrer = record.referrer,
             .referrer_policy = record.referrer_policy,
             .policy_container = if (record.initiator_policy_container) |*container| container else null,
@@ -2608,6 +2617,26 @@ fn ancestorOriginOf(origin: []const u8) @import("csp").directives.frame_ancestor
     else
         null;
     return .{ .scheme = origin[0..sep], .host = authority[0..host_end], .port = port };
+}
+
+/// "Get an element's noopener" step 3 for an element of `document` and
+/// `url`: the relevant settings object is the document's window's.
+fn blobForcesNoopener(document: *runtime.Instance, url: []const u8) bool {
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return false;
+    return dom_module.blob_partition.forcesNoopener(window, url);
+}
+
+/// The storage key, serialized, of the reserved environment a frame's
+/// navigation to the blob URL `url` fetches for: the blob URL's origin,
+/// under its container document's environment (dom.blob_partition). OWNED
+/// (`allocator`); null when the container has no storage key (no window,
+/// or a realm no Browser made) - the blob is then not obtained.
+fn reservedBlobStorageKey(allocator: std.mem.Allocator, integration: *IFrameIntegration, url: []const u8) error{OutOfMemory}!?[]u8 {
+    const origin = dom_module.blob_partition.blobURLOrigin(url) orelse return null;
+    const document = containerDocumentOf(integration) orelse return null;
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return null;
+    const container_key = (try dom_module.global_settings.storageKeyForNonStoragePurposesOf(window)) orelse return null;
+    return try dom_module.blob_partition.nestedStorageKey(allocator, container_key, origin);
 }
 
 /// Fetch "determine the network partition key" for a top-level
@@ -4081,11 +4110,14 @@ fn followHyperlink(subject: *runtime.Instance, user_involvement: dom_module.navi
     const url = (dom_module.encoding_parse.encodingParseAndSerialize(document, href.asSlice()) catch null) orelse return;
     defer document.ctx.allocator.free(url);
 
-    // Step 6: "get an element's noopener".
+    // Step 6: "get an element's noopener" - steps 1-2 from its link types,
+    // step 3 for a blob URL whose creator is not same site with the
+    // element's top-level origin (dom.blob_partition.forcesNoopener).
     const rel = interfaces.Element.call_getAttribute(subject, runtime.DOMString.initInterned("rel")) catch null;
     const rel_value: []const u8 = if (rel) |r| r.asSlice() else "";
     const noopener = hasLinkType(rel_value, "noopener") or hasLinkType(rel_value, "noreferrer") or
-        (!hasLinkType(rel_value, "opener") and std.ascii.eqlIgnoreCase(target, "_blank"));
+        (!hasLinkType(rel_value, "opener") and std.ascii.eqlIgnoreCase(target, "_blank")) or
+        blobForcesNoopener(document, url);
 
     // Step 11's referrerPolicy: subject's hyperlink referrer policy -
     // "no-referrer" when its link types include noreferrer, else the current

@@ -9,11 +9,49 @@ const process_start = @import("process_start.zig");
 const engine = @import("engine");
 
 pub const FactorySteps = struct {
-    register: *const fn (*runtime.Instance, *runtime.Instance, []const u8, []const u8) anyerror!void,
-    unregister: *const fn (*runtime.Instance, *runtime.Instance) void,
-    advance: *const fn (*runtime.Instance, []const u8, []const u8) void,
+    /// Run the factory's open requests that wait on an upgrade transaction
+    /// of this agent finishing (its success/error task).
     wake_transactions: ?*const fn (*runtime.Instance) void = null,
 };
+
+/// The Browser's IndexedDB server (a BrowserScope supplement) for `realm`,
+/// made on first use; null for a realm with no Browser scope.
+pub fn serverOf(realm: runtime.Context) ?*storage.indexeddb.IDBServer {
+    const scope = realm.browserScope() orelse return null;
+    return scope.of(storage.indexeddb.IDBServer) catch null;
+}
+
+/// `realm`'s agent as a server record's endpoint: this thread, a reference
+/// to the realm's task sink for notes from other threads, and the realm
+/// itself, whose end closes its connections. Call on the realm's own
+/// thread; the reference passes to the record.
+pub fn endpointOf(realm: runtime.Context) storage.indexeddb.server.Endpoint {
+    const sink: ?*runtime.TaskSink = if (realm.task_sink) |s| s.retain() else null;
+    return .{ .thread = std.Thread.getCurrentId(), .sink = sink, .ops = if (sink != null) &sink_ops else null, .environment = realm };
+}
+
+/// IndexedDB's unloading document cleanup step (dom.unloading_cleanup): the
+/// connections made in `environment` are closed (IndexedDB 2.? connection:
+/// "If the execution context where the connection was created is destroyed
+/// ... the connection is closed"). Its Browser's server only; one never
+/// made has nothing to close.
+pub fn environmentEnded(environment: runtime.Context) void {
+    const scope = environment.browserScope() orelse return;
+    const server = scope.existing(storage.indexeddb.IDBServer) orelse return;
+    server.closeEnvironment(environment);
+}
+
+const sink_ops: storage.indexeddb.server.SinkOps = .{ .post = postToSink, .release = releaseSink };
+
+fn postToSink(sink: *anyopaque, task: storage.indexeddb.server.Task) bool {
+    const target: *runtime.TaskSink = @ptrCast(@alignCast(sink));
+    return target.post(.{ .run = task.run, .drop = task.drop, .data = task.data });
+}
+
+fn releaseSink(sink: *anyopaque) void {
+    const target: *runtime.TaskSink = @ptrCast(@alignCast(sink));
+    target.release();
+}
 pub const RequestSteps = struct {
     set_pending: *const fn (*runtime.Instance) void,
     set_source: *const fn (*runtime.Instance, ?*runtime.Instance) void,
@@ -23,21 +61,13 @@ pub const RequestSteps = struct {
     complete: *const fn (*runtime.Instance, runtime.JSValue, ?*runtime.Instance) anyerror!void,
     set_transaction: *const fn (*runtime.Instance, ?*runtime.Instance) void,
 };
-pub const OpenRequestSteps = struct {
-    /// Transfer the backend request to its wrapper.
-    attach: *const fn (*runtime.Instance, *storage.indexeddb.IDBOpenDBRequest) void,
-};
 pub const DatabaseSteps = struct {
-    close_if_ready: *const fn (*runtime.Instance) void,
     is_closing: *const fn (*runtime.Instance) bool,
     set_factory: *const fn (*runtime.Instance, *runtime.Instance) void,
     /// Transfer the backend connection to its wrapper.
     attach: *const fn (*runtime.Instance, *storage.indexeddb.IDBDatabase) anyerror!void,
     begin_upgrade: *const fn (*runtime.Instance) anyerror!*runtime.Instance,
     end_upgrade: *const fn (*runtime.Instance) void,
-    register_transaction: ?*const fn (*runtime.Instance, *runtime.Instance) anyerror!void = null,
-    remove_transaction: ?*const fn (*runtime.Instance, *runtime.Instance) void = null,
-    wake_transactions: ?*const fn (*runtime.Instance) void = null,
     transaction_finished: ?*const fn (*runtime.Instance) void = null,
 };
 pub const StoreSteps = struct {
@@ -86,7 +116,6 @@ pub const TransactionSteps = struct {
     enqueue: ?*const fn (*runtime.Instance, *runtime.Instance, Operation, ?*runtime.Instance) anyerror!*runtime.Instance = null,
     enqueue_internal: ?*const fn (*runtime.Instance, *runtime.Instance, Operation) anyerror!void = null,
     outcome: ?*const fn (*runtime.Instance) ?bool = null,
-    wake: ?*const fn (*runtime.Instance) void = null,
 };
 
 /// Owned arguments accepted by ED 5.6. Cursor writes hold native ownership
@@ -141,18 +170,6 @@ pub fn transactionOutcome(transaction: *runtime.Instance) ?bool {
     const outcome = (transactions orelse return null).outcome orelse return null;
     return outcome(transaction);
 }
-pub fn registerDatabaseTransaction(database: *runtime.Instance, transaction: *runtime.Instance) !void {
-    const register = (databases orelse return error.NotSupported).register_transaction orelse return error.NotSupported;
-    try register(database, transaction);
-}
-pub fn removeDatabaseTransaction(database: *runtime.Instance, transaction: *runtime.Instance) void {
-    const remove = (databases orelse return).remove_transaction orelse return;
-    remove(database, transaction);
-}
-pub fn wakeDatabaseTransactions(database: *runtime.Instance) void {
-    const wake = (databases orelse return).wake_transactions orelse return;
-    wake(database);
-}
 pub fn databaseTransactionFinished(database: *runtime.Instance) void {
     const finished = (databases orelse return).transaction_finished orelse return;
     finished(database);
@@ -160,10 +177,6 @@ pub fn databaseTransactionFinished(database: *runtime.Instance) void {
 pub fn wakeFactoryTransactions(factory: *runtime.Instance) void {
     const wake = (factories orelse return).wake_transactions orelse return;
     wake(factory);
-}
-pub fn wakeTransaction(transaction: *runtime.Instance) void {
-    const wake = (transactions orelse return).wake orelse return;
-    wake(transaction);
 }
 pub fn executeRequest(source: *runtime.Instance, request: *runtime.Instance, operation: *Operation) !void {
     if (operation.cursor_write) |write| {
@@ -382,8 +395,6 @@ var factories: ?FactorySteps = null;
 
 // process-wide: hook table written once at process start by IDBRequest.installHooks (B0); comptime in B9
 var requests: ?RequestSteps = null;
-// process-wide: hook table written once at process start by IDBOpenDBRequest.installHooks (B0); comptime in B9
-var open_requests: ?OpenRequestSteps = null;
 // process-wide: hook table written once at process start by IDBDatabase.installHooks (B0); comptime in B9
 var databases: ?DatabaseSteps = null;
 // process-wide: hook table written once at process start by IDBTransaction.installHooks (B0); comptime in B9
@@ -429,10 +440,6 @@ pub fn installRequests(steps: RequestSteps) void {
     process_start.assertInstalling();
     requests = steps;
 }
-pub fn installOpenRequests(steps: OpenRequestSteps) void {
-    process_start.assertInstalling();
-    open_requests = steps;
-}
 pub fn installDatabases(steps: DatabaseSteps) void {
     process_start.assertInstalling();
     databases = steps;
@@ -447,9 +454,6 @@ pub fn completeRequest(instance: *runtime.Instance, result: runtime.JSValue, exc
 }
 pub fn setRequestTransaction(instance: *runtime.Instance, transaction: ?*runtime.Instance) void {
     (requests orelse return).set_transaction(instance, transaction);
-}
-pub fn attachOpenRequest(instance: *runtime.Instance, request: *storage.indexeddb.IDBOpenDBRequest) void {
-    (open_requests orelse @panic("IDBOpenDBRequest hooks missing")).attach(instance, request);
 }
 pub fn attachDatabase(instance: *runtime.Instance, database: *storage.indexeddb.IDBDatabase) !void {
     try (databases orelse return error.NotSupported).attach(instance, database);
@@ -686,22 +690,10 @@ pub fn installFactories(steps: FactorySteps) void {
     process_start.assertInstalling();
     factories = steps;
 }
-pub fn registerConnection(factory: *runtime.Instance, connection: *runtime.Instance, origin: []const u8, name: []const u8) !void {
-    try (factories orelse return error.NotSupported).register(factory, connection, origin, name);
-}
-pub fn unregisterConnection(factory: *runtime.Instance, connection: *runtime.Instance) void {
-    (factories orelse return).unregister(factory, connection);
-}
-pub fn advanceConnectionQueue(factory: *runtime.Instance, origin: []const u8, name: []const u8) void {
-    (factories orelse return).advance(factory, origin, name);
-}
 pub fn setDatabaseFactory(connection: *runtime.Instance, factory: *runtime.Instance) void {
     (databases orelse return).set_factory(connection, factory);
 }
 
-pub fn closeConnectionIfReady(connection: *runtime.Instance) void {
-    (databases orelse return).close_if_ready(connection);
-}
 pub fn connectionIsClosing(connection: *runtime.Instance) bool {
     return (databases orelse return true).is_closing(connection);
 }
