@@ -1318,8 +1318,10 @@ fn createWindowBoundToGlobal(
 /// Enables `window.frames[0]`, `window[0]`, etc. to access child browsing contexts.
 ///
 /// Per HTML spec §7.4.3.1 (WindowProxy [[GetOwnProperty]]):
-/// - Numeric indices return the corresponding child browsing context's Window
-/// - Returns undefined if index >= children.length
+/// - Numeric indices return the WindowProxy of the corresponding one of the
+///   Window's document-tree child navigables (a shadow tree's are not among
+///   them)
+/// - Returns undefined if index >= their number (window.length)
 ///
 /// This callback is registered on the global object template for child contexts.
 ///
@@ -1327,12 +1329,14 @@ fn createWindowBoundToGlobal(
 /// When an iframe is inserted into the DOM, a BrowsingContext is created but the
 /// V8 context and Window instance are NOT created until needed. This getter triggers
 /// the creation of the V8 child context when frames[index] is accessed and the
-/// child browsing context exists but doesn't have an active Window yet.
+/// child browsing context exists but doesn't have an active Window yet. It reaches
+/// Window only through its generated interface, and the container through the
+/// dom.child_navigables hook its owner installs.
 pub fn windowIndexedPropertyGetter(
     index: u32,
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) v8.Intercepted {
-    const WindowImpl = @import("impls").Window;
+    const interfaces = @import("interfaces");
     const template_registry = @import("template_registry.zig");
     const conv = @import("conversions.zig");
 
@@ -1376,78 +1380,29 @@ pub fn windowIndexedPropertyGetter(
 
     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
 
-    // First try to get an existing child Window via Window.call_item
-    var result = WindowImpl.call_item(instance, index) catch {
-        // Error - let V8 handle normal lookup
-        return .kNo;
-    };
+    // HTML 7.2.3.1 WindowProxy [[GetOwnProperty]] step 2: index is in the
+    // Window's document-tree child navigables, and the result is the
+    // index-th one's active WindowProxy. Window's own indexed getter answers
+    // from that list (interfaces.Window.call_item), and null when the
+    // child's Window is not made yet.
+    var result = interfaces.Window.call_item(instance, index) catch return .kNo;
 
-    // If result is null, check if we need to lazily create the child context
-    // This happens when an iframe is in the DOM but contentWindow hasn't been accessed yet
+    // A child navigable whose Window script has not asked for yet: its
+    // container makes it (its navigable's realm under this window's, its
+    // Window and initial document - dom.child_navigables.window), indexed in
+    // the same document-tree list, never the browsing context's raw children
+    // - which also hold a shadow tree's navigables, at indices script must
+    // not see (Codex row 81 Q8).
     if (result == null) {
-        const internal = WindowImpl.getInternal(instance) orelse return .kNo;
-
-        // First check if a browsing context exists at this index
-        const children = internal.browsing_context.children.items;
-        if (index < children.len) {
-            const child_bc = children[index];
-
-            // Child browsing context exists but no Window: its container
-            // makes its navigable's realm (engine.createWindowRealm with this
-            // window's realm as the parent), Window and initial document.
-            if (child_bc.getActiveWindow() == null) {
-                result = @import("dom").child_navigables.window(@ptrCast(child_bc));
-            }
-        } else {
-            // No browsing context exists yet - the iframe hasn't had its browsing context
-            // initialized. This can happen if the iframe was created in JavaScript and
-            // frames[index] is accessed before contentWindow was accessed on the iframe.
-            //
-            // To handle this, we need to:
-            // 1. Find the Nth iframe element in the document
-            // 2. Trigger its contentWindow creation (which initializes its browsing context)
-            // 3. Retry the lookup
-            //
-            // We can access the document via the Window instance and enumerate iframes.
-            const HTMLIFrameElementImpl = @import("impls").HTMLIFrameElement;
-            const interfaces = @import("interfaces");
-
-            // Try to get the document from Window's internal state first
-            var doc: ?*runtime.Instance = internal.document;
-
-            // If no document yet, try to get it via the Window.document getter
-            // This works because the document is set on the global object even during parsing
-            if (doc == null) {
-                doc = WindowImpl.get_document(instance) catch null;
-            }
-
-            if (doc) |document| {
-                // Get all iframe elements using getElementsByTagName
-                const iframe_tag = runtime.DOMString.initInterned("iframe");
-                const iframes = interfaces.Document.call_getElementsByTagName(document, iframe_tag) catch {
-                    return .kNo; // Can't access iframes
-                };
-                // The list is this lookup's alone - script never sees it, so
-                // no wrapper will ever free it - and it is live: it holds the
-                // document (a counted reference, and an edge waiting in the
-                // wrapper cache for a wrapper that never comes). Let it go on
-                // every path (refcount 5h, lane rc5).
-                const iframes_generation = runtime.SlabAllocator.generationOf(iframes);
-                defer iframes.releaseIfUnwrapped(iframes_generation);
-
-                // Check if we have enough iframes in the DOM
-                const iframe_count = interfaces.HTMLCollection.get_length(iframes) catch 0;
-                if (index < iframe_count) {
-                    // Get the Nth iframe and access its contentWindow to trigger initialization
-                    if (interfaces.HTMLCollection.call_item(iframes, index) catch null) |iframe_elem| {
-                        // This call triggers IFrameIntegration.ensureBrowsingContext
-                        _ = HTMLIFrameElementImpl.get_contentWindow(iframe_elem) catch null;
-
-                        // Now retry - the child should exist
-                        result = WindowImpl.call_item(instance, index) catch null;
-                    }
-                }
-            }
+        const document = (interfaces.Window.get_document(instance) catch null) orelse return .kNo;
+        var children = @import("dom").navigables.childNavigablesOf(document, std.heap.c_allocator);
+        defer children.deinit(std.heap.c_allocator);
+        if (index < children.items.len) {
+            const child_bc = children.items[index].browsing_context;
+            result = if (child_bc.getActiveWindow()) |window|
+                @ptrCast(@alignCast(window))
+            else
+                @import("dom").child_navigables.window(@ptrCast(child_bc));
         }
     }
 

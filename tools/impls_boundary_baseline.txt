@@ -17,12 +17,9 @@ src/html/dom_tree_adapter.zig DocumentType.getInternal 1
 src/html/event_utils.zig ErrorEvent.createErrorEvent 1
 src/html/full.zig impls.@import 1
 src/lib_exports.zig impls.@import 1
-src/runtime/engines/v8/context_manager.zig HTMLIFrameElement.get_contentWindow 1
 src/runtime/engines/v8/context_manager.zig Node.getInternalState 1
-src/runtime/engines/v8/context_manager.zig Window.call_item 2
-src/runtime/engines/v8/context_manager.zig Window.getInternal 4
+src/runtime/engines/v8/context_manager.zig Window.getInternal 3
 src/runtime/engines/v8/context_manager.zig Window.getNamedProperty 1
-src/runtime/engines/v8/context_manager.zig Window.get_document 1
 src/runtime/engines/v8/context_manager.zig Window.hasNamedProperty 1
 src/runtime/engines/v8/context_manager.zig Window.setBoundV8Global 2
 src/runtime/engines/v8/conversions.zig Window.getBoundV8Global 1
