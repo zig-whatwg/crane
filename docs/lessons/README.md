@@ -515,6 +515,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [An empty link target uses the base target](spec-compliance-an-empty-link-target-uses-the-base-target.md) - Isolate target selection from URL resolution before changing a base-element failure.
 - [Freeze base URLs at mutation time](spec-compliance-freeze-base-urls-at-mutation-time.md) - Store the state the algorithm requires; pin mutation counts without production instrumentation.
 - [Radio Tab Order Is Not General Focusability](spec-compliance-radio-tab-order-is-not-general-focusability.md) - Keep Tab eligibility separate from general focusability and focus designation.
+- [A deferred pipe write is part of shutdown](spec-compliance-a-deferred-pipe-write-is-part-of-shutdown.md) - Include queued chunks in pipe shutdown and realm-drop cleanup.
 
 ### Codegen
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
