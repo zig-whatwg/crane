@@ -1137,6 +1137,24 @@ fn colorSchemeValue(options: ParseOptions, stream: *Stream) Allocator.Error!?Val
     return .{ .color_scheme = .{ .text = try SharedText.create(allocator, out.items), .support = support } };
 }
 
+/// The color scheme support `text` names when it is a valid color-scheme
+/// value - `Support.none` for `normal` - or null when it is not one: HTML
+/// 4.2.5.1 step 2 for a color-scheme meta's content ("parse a list of
+/// component values" given it, then "if parsed is a valid CSS
+/// 'color-scheme' property value"). A CSS-wide keyword is no color scheme
+/// value there: Firefox 144 and Safari 27.0.1 skip a meta whose content is
+/// `inherit` for the next one, Chrome 151 stops at it (lane style4 probe).
+pub fn parseColorSchemeSupport(allocator: Allocator, text: []const u8) Allocator.Error!?color_scheme_mod.Support {
+    var stream = Stream.init(text);
+    const value = (try colorSchemeValue(.{ .allocator = allocator }, &stream)) orelse return null;
+    defer value.release();
+    if (!stream.atEnd()) return null;
+    return switch (value) {
+        .color_scheme => |c| c.support,
+        else => color_scheme_mod.Support.none,
+    };
+}
+
 fn fontFamilyValue(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
     var out: std.ArrayList(u8) = .empty;
     defer out.deinit(options.allocator);
@@ -1801,6 +1819,41 @@ test "color-scheme: normal, or light, dark and custom idents with only first or 
     try expectInvalid("color-scheme", "");
     try expectInvalid("color-scheme", "light 1");
     try expectInvalid("color-scheme", "\"light\"");
+}
+
+test "a color-scheme meta's content: a whole color-scheme value, CSS-wide keywords not" {
+    // HTML 4.2.5.1 step 2.2: "If parsed is a valid CSS 'color-scheme'
+    // property value". Chrome 151, Firefox 144 and Safari 27.0.1 alike:
+    // whitespace around is fine, `dark !important` is invalid; `inherit`
+    // is invalid in Firefox and Safari (Chrome takes it as valid).
+    const Case = struct { []const u8, ?color_scheme_mod.Support.First };
+    const cases = [_]Case{
+        .{ "  dark  ", .dark },
+        .{ "light dark", .light },
+        .{ "normal", .none },
+        .{ "foo", .none },
+        .{ "dark !important", null },
+        .{ "inherit", null },
+        .{ "initial", null },
+        .{ "", null },
+        .{ ",,invalid", null },
+        .{ "light,dark", null },
+        .{ "light only dark", null },
+    };
+    for (cases) |case| {
+        const support = try parseColorSchemeSupport(testing.allocator, case[0]);
+        if (case[1]) |first| {
+            testing.expectEqual(first, support.?.first) catch |err| {
+                std.debug.print("{s}\n", .{case[0]});
+                return err;
+            };
+        } else {
+            testing.expect(support == null) catch |err| {
+                std.debug.print("{s}\n", .{case[0]});
+                return err;
+            };
+        }
+    }
 }
 
 test "color-scheme names the color scheme support its schemes make" {

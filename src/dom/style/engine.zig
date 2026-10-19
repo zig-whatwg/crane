@@ -651,6 +651,52 @@ fn shadowDepth(root: *NodeBase) u16 {
     return depth;
 }
 
+/// HTML 4.2.5.1, "to obtain a page's supported color-schemes": the first
+/// meta element in tree order that is in a document tree, has a name that
+/// is an ASCII case-insensitive match for "color-scheme" and a content
+/// attribute that parses as a color-scheme value names them (`Support.none`
+/// for `normal`); none, null (`Support.none`). The walk follows the
+/// document's children only, so a shadow tree's meta elements and a
+/// template's contents are not candidates (not in a document tree); and only
+/// an HTML meta element (an SVG-namespace "meta" is not one: Chrome 151,
+/// Firefox 144 and Safari 27.0.1 ignore it).
+fn pageColorSchemes(allocator: Allocator, document: *runtime.Instance) Error!css.color_scheme.Support {
+    const root = instance_bridge.getNodeBase(document) orelse return .none;
+    var next: ?*NodeBase = root.first_child;
+    while (next) |node| {
+        if (node.node_type == NodeBase.ELEMENT_NODE) if (instanceOf(node)) |element| if (colorSchemeMetaContent(element)) |content| {
+            if (try css.properties.parseColorSchemeSupport(allocator, content)) |support| return support;
+        };
+        // Preorder: the first child, else the next sibling of the nearest
+        // inclusive ancestor that has one.
+        if (node.first_child) |child| {
+            next = child;
+            continue;
+        }
+        var current = node;
+        next = while (true) {
+            if (current.next_sibling) |sibling| break sibling;
+            const parent = current.parent_node orelse break null;
+            if (parent == root) break null;
+            current = parent;
+        };
+    }
+    return .none;
+}
+
+/// Step 1's candidate test for one element: its content attribute's value,
+/// when it is an HTML meta element named color-scheme with one.
+fn colorSchemeMetaContent(element: *runtime.Instance) ?[]const u8 {
+    const data = element_data.of(element) orelse return null;
+    const ns = data.namespaceSlice() orelse return null;
+    if (!std.mem.eql(u8, ns, html_namespace)) return null;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "meta")) return null;
+    const name = data.findAttribute(null, "name") orelse return null;
+    if (!std.ascii.eqlIgnoreCase(name.value, "color-scheme")) return null;
+    const content = data.findAttribute(null, "content") orelse return null;
+    return content.value;
+}
+
 /// The document's singleton states, by address and generation.
 fn singletonKey(document: *runtime.Instance) [5]u64 {
     var key: [5]u64 = .{0} ** 5;
@@ -713,6 +759,10 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
     // prefers-color-scheme reads it; a change to it moves the media values,
     // and with them the generation every cached style is keyed on.
     res.preferred_color_scheme = if (active.media.prefers_color_scheme == .dark) .dark else .light;
+    if (engine.page_color_schemes_dirty) {
+        engine.page_color_schemes = try pageColorSchemes(engine.allocator, document);
+        engine.page_color_schemes_dirty = false;
+    }
     res.page_color_scheme = css.color_scheme.used(engine.page_color_schemes, res.preferred_color_scheme);
 
     // The flat-tree lineage, the element first.
