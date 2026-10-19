@@ -502,9 +502,12 @@ pub fn fetchClassicWorkerImportedScript(ctx: runtime.Context, url: []const u8) e
 
     if (response.response_type == .@"error") return error.NetworkError;
     if (response.status < 200 or response.status >= 300) return error.NetworkError;
-    const body = if (response.body) |b| b.data.items else return error.NetworkError;
     const content_type = response.header_list.getFirstValue("content-type") orelse "";
     if (!module_script.isJavaScriptMimeType(content_type)) return error.NetworkError;
+    // HTML "fetch a classic worker-imported script" steps 7-8: a
+    // successful empty response supplies zero body bytes. Fetch represents
+    // that as no Body allocation; it is not a failed body consumption.
+    const body = if (response.body) |b| b.data.items else "";
 
     // "Let sourceText be the result of UTF-8 decoding bodyBytes": a leading
     // BOM goes; the engine replaces what is not UTF-8.
@@ -733,6 +736,8 @@ pub const WorkerHost = struct {
 
     /// Worker type (classic or module)
     worker_type: WorkerType,
+    /// By-value options for this worker's initial module script graph.
+    module_fetch_options: workers.ModuleFetchOptions = .{},
 
     /// The worker global scope's policy container: a new one until "run a
     /// worker" gives it the one "initialize a worker global scope's policy
@@ -911,6 +916,7 @@ pub const WorkerHost = struct {
             .agent_host = html_core.agent_host.AgentHost.init(allocator),
             .script_url = "",
             .worker_type = start.worker_type,
+            .module_fetch_options = start.module_fetch_options,
             .policy_container = fetch_mod.internal.PolicyContainer.init(allocator),
             .timer = thread.loop.timerInterface(),
             .event_loop = thread.loop.eventLoop(),
@@ -1476,7 +1482,26 @@ pub const WorkerHost = struct {
         if (!module_script.supported) return false;
         if (!self.runsTasks()) return false;
 
-        const env = self.moduleEnvironment() orelse return false;
+        var env = self.moduleEnvironment() orelse return false;
+        if (self.service == null) {
+            // HTML "fetch a worklet/module worker script graph" step 1:
+            // credentials belong to the root script and its descendants.
+            env.fetch_options.credentials_mode = switch (self.module_fetch_options.credentials) {
+                .omit => .omit,
+                .same_origin => .same_origin,
+                .include => .include,
+            };
+            env.fetch_options.referrer_policy = self.module_fetch_options.response_referrer_policy;
+            env.static_referrer_policy = self.module_fetch_options.static_referrer_policy;
+            env.script_destination = if (self.shared != null) .sharedworker else .worker;
+            // Intentional browser majority: Firefox and WebKit use the
+            // worker's own origin/CSP client for static descendants, while
+            // Chromium follows the older outside-settings spec. Keep this
+            // realm's reporters too; no creating-thread pointer is needed.
+            // https://github.com/whatwg/html/issues/9571
+            // Firefox: https://bugzilla.mozilla.org/show_bug.cgi?id=1841363#c3
+            // WebKit: https://github.com/whatwg/html/issues/9571#issuecomment-1717229344
+        }
         const graph = module_script.moduleWorkerScriptGraph(&env, url, self.script_url, source) orelse return false;
         if (graph.error_to_rethrow != null) return false;
 
@@ -2357,6 +2382,13 @@ const SharedConnect = struct {
         }) catch return self.fireError();
         defer fetched.deinit();
 
+        // Save enum values before moving the response's policy container.
+        const module_fetch_options: workers.ModuleFetchOptions = .{
+            .credentials = self.credentials,
+            .response_referrer_policy = if (fetched.policy_container) |policy| policy.referrer_policy else .empty,
+            .static_referrer_policy = if (creatorPolicyContainer(self.owner_realm)) |policy| policy.referrer_policy else .empty,
+        };
+
         // The global scope's policy container, from the response - or the
         // creator's, for a data: or blob: script. Fails closed: a clone that
         // cannot be made is the start's failure, never a worker without its
@@ -2366,6 +2398,7 @@ const SharedConnect = struct {
             .source = fetched.source,
             .script_url = fetched.final_url,
             .worker_type = self.worker_type,
+            .module_fetch_options = module_fetch_options,
             // 8. The global scope's name (its SharedScope has it too).
             .name = self.name,
             .policy_container = policy_container,
@@ -2830,9 +2863,11 @@ const WorkerModules = struct {
             // (its import() rejects, HostLoadImportedModule step 2), so its
             // modules are "serviceworker" requests (Chrome; Safari at
             // install - soft-update-fetch-metadata's module case, wpt.fyi
-            // 23b0b89b1a). Not modelled, stated: a dedicated or shared
-            // worker's static imports stay "script" - its environment also
-            // serves import(), whose destination is "script".
+            // 23b0b89b1a). For dedicated/shared workers this default serves
+            // import(); executeModuleScript sets "worker"/"sharedworker"
+            // for the initial static graph (HTML fetch-module-worker-graph
+            // step 1's destination; Gecko TYPE_INTERNAL_WORKER_STATIC_MODULE
+            // and WebKit WorkerModuleScriptLoader::load do the same).
             .script_destination = if (self.service != null) .serviceworker else .script,
         };
     }
@@ -3051,6 +3086,8 @@ pub const WorkerStart = struct {
     /// (copied).
     script_url: []const u8,
     worker_type: WorkerType,
+    /// The module graph's options, copied as enum values only.
+    module_fetch_options: workers.ModuleFetchOptions = .{},
     /// options["name"]. BORROWED (copied).
     name: []const u8,
     /// The global scope's policy container, as "initialize a worker global
@@ -3161,6 +3198,7 @@ const ThreadHost = struct {
         source: []u8,
         script_url: []u8,
         worker_type: WorkerType,
+        module_fetch_options: workers.ModuleFetchOptions,
         name: []u8,
         policy_container: ?fetch_mod.internal.PolicyContainer,
         cookie_jar: ?*CookieJar,
@@ -3211,6 +3249,7 @@ const ThreadHost = struct {
                 .source = source,
                 .script_url = script_url,
                 .worker_type = start.worker_type,
+                .module_fetch_options = start.module_fetch_options,
                 .name = name,
                 .policy_container = start.policy_container,
                 .cookie_jar = start.cookie_jar,
