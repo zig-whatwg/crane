@@ -497,6 +497,7 @@ pub fn installHooks() void {
         .cookie_jar = &settingsCookieJar,
         .policy_container = &settingsPolicyContainer,
         .referrer_source = &settingsReferrerSource,
+        .cookie_url = &settingsCookieUrl,
         .reporting = &settingsReporting,
         .fetch_group = &settingsFetchGroup,
         .prohibits_mixed_security_contexts = &settingsProhibitsMixedSecurityContexts,
@@ -669,6 +670,41 @@ fn settingsReferrerSource(instance: *runtime.Instance) ?[]const u8 {
         source = parent_url;
     }
     return source;
+}
+
+/// The cookie URL (dom.global_settings.cookieUrlOf): the realm's creation
+/// URL - its document's URL when it was made, never a same-document change's
+/// - walked to the parent's for an about:blank or about:srcdoc document, as
+/// Blink (DocumentInit::GetCookieUrl, the owner document's) and WebKit
+/// (initSecurityContext, the owner document's cookieURL) inherit it. A
+/// top-level about:blank has no creator here: its own, cookie-averse URL.
+fn settingsCookieUrl(instance: *runtime.Instance) ?[]const u8 {
+    var window = instance;
+    var depth: usize = 0;
+    while (depth < 64) : (depth += 1) {
+        // A window whose realm recorded no URL shows its initial
+        // about:blank document (Document.get_URL answers so).
+        const url = window.ctx.creationUrl() orelse window.ctx.documentUrl() orelse "about:blank";
+        if (!inheritsCookieUrl(url)) return url;
+        const internal = getInternal(window) orelse return url;
+        const navigable = navigableOf(window, internal) orelse return url;
+        const parent = navigable.parent orelse return url;
+        const active = parent.getActiveWindow() orelse return url;
+        window = @ptrCast(@alignCast(active));
+    }
+    return null;
+}
+
+/// about:blank and about:srcdoc, with any query or fragment: the documents
+/// whose cookie URL is their creator's.
+fn inheritsCookieUrl(url: []const u8) bool {
+    inline for (.{ "about:blank", "about:srcdoc" }) |prefix| {
+        if (std.ascii.startsWithIgnoreCase(url, prefix)) {
+            const rest = url[prefix.len..];
+            if (rest.len == 0 or rest[0] == '#' or rest[0] == '?') return true;
+        }
+    }
+    return false;
 }
 
 fn settingsIsSecureContext(instance: *runtime.Instance) bool {
