@@ -234,3 +234,18 @@ test "two threads: the window thread connects and drops owners while a worker th
     try testing.expectEqual(@as(usize, 0), manager.count());
     try testing.expect(worker.asked > 0);
 }
+
+test "hasOwner answers for a Document in a shared worker's owner set, and stops once it leaves" {
+    const sink = try runtime.TaskSink.create(testing.allocator);
+    defer sink.release();
+    var manager = SharedWorkerManager.init(testing.allocator);
+    defer manager.deinit();
+    const link = try makeLink(sink);
+    defer link.release();
+    try testing.expect(!manager.hasOwner(&document_a));
+    try manager.add(key, classic, link, &host_data, &document_a);
+    try testing.expect(manager.hasOwner(&document_a));
+    try testing.expect(!manager.hasOwner(&document_b));
+    _ = manager.removeOwner(&document_a, null);
+    try testing.expect(!manager.hasOwner(&document_a));
+}

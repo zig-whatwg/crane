@@ -81,6 +81,22 @@ pub const WorkerRegistry = struct {
         if (found) link.release();
     }
 
+    /// Whether a registered worker owned by `realm` has not ended: the
+    /// back/forward cache keeps no page with one (a stated phase B limit -
+    /// Chrome freezes a cached page's dedicated workers). A snapshot: a
+    /// worker may start or end as soon as the lock drops; the cache decides
+    /// at unload, on the realm's own thread, which is the only thread that
+    /// starts that realm's workers.
+    pub fn ownsAny(self: *WorkerRegistry, realm: *const anyopaque) bool {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        for (self.links.items) |link| {
+            if (link.owner_realm != realm) continue;
+            if (link.state.load(.acquire) != .ended) return true;
+        }
+        return false;
+    }
+
     /// How many workers are registered.
     pub fn count(self: *WorkerRegistry) usize {
         std.Io.Threaded.mutexLock(&self.mutex);

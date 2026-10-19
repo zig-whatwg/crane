@@ -341,6 +341,21 @@ pub fn destroyWindowDocuments(bc: *BrowsingContext) void {
     bc.collectDescendants(std.heap.page_allocator, &tree) catch {};
     for (tree.items) |navigable| {
         const window: *runtime.Instance = @ptrCast(@alignCast(navigable.getActiveWindow() orelse continue));
+        // A document its unload kept for the back/forward cache is not
+        // destroyed (unload step 20): its unload step 18 runs only the store
+        // steps - an open WebSocket is failed - and the other unloading
+        // document cleanup steps run when the cache lets it go (its realm's
+        // end). Stated deviation from HTML, which runs every cleanup step at
+        // every unload: Blink runs them at ExecutionContext::ContextDestroyed,
+        // when the document is destroyed and never when it is frozen into
+        // the cache, and WebKit keeps the page's objects alive in its
+        // CachedFrame (history/CachedFrame.cpp) until it leaves the cache.
+        if (navigable.getActiveDocument()) |active| {
+            if (@import("bfcache.zig").isKept(@ptrCast(@alignCast(active)))) {
+                @import("bfcache.zig").runStoreSteps(window.ctx);
+                continue;
+            }
+        }
         // "Destroy a document" step 2, "abort a document" step 2: the
         // fetches its script started are canceled, firing nothing.
         document_fetches.abortAll(window.ctx);

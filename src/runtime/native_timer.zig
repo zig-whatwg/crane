@@ -86,10 +86,17 @@ const Entry = struct {
     id: TimerId,
     /// Absolute monotonic deadline in nanoseconds. Monotonic, NOT wall clock: a
     /// wall-clock deadline moves under an NTP step and the timer fires early or
-    /// never. i128 to match clock.monotonicNanos().
+    /// never. i128 to match the monotonic clock's nanoseconds (`nowNs`).
     deadline_ns: i128,
     cancelled: bool,
 };
+
+/// The monotonic clock every deadline here is read against, in one place:
+/// arming, polling, the next deadline and a suspension's remaining wait
+/// (`remainingMs`).
+fn nowNs() i128 {
+    return clock.monotonicNanos();
+}
 
 pub const NativeTimerManager = struct {
     const Self = @This();
@@ -158,7 +165,7 @@ pub const NativeTimerManager = struct {
             .user_data = user_data,
             .drop = drop,
             .id = id,
-            .deadline_ns = clock.monotonicNanos() + @as(i128, @intCast(ms)) * std.time.ns_per_ms,
+            .deadline_ns = nowNs() + @as(i128, @intCast(ms)) * std.time.ns_per_ms,
             .cancelled = false,
         };
 
@@ -213,7 +220,7 @@ pub const NativeTimerManager = struct {
         if (!self.initialized) return false;
         self.callback_invoked = false;
 
-        const now = clock.monotonicNanos();
+        const now = nowNs();
 
         // Snapshot the due ids before invoking anything: a callback may schedule or
         // cancel timers, which would invalidate an in-flight iterator.
@@ -304,7 +311,29 @@ pub const NativeTimerManager = struct {
         .setTimeout = setTimeoutVTable,
         .setTimeoutOwned = setTimeoutOwnedVTable,
         .clearTimeout = clearTimeoutVTable,
+        .remainingMs = remainingMsVTable,
     };
+
+    fn remainingMsVTable(ctx: *anyopaque, id: TimerId) ?u64 {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        return self.remainingMs(id);
+    }
+
+    /// How long until the pending timer `id` is due, in whole milliseconds
+    /// rounded up, 0 when it is due already; null for an id that fired, was
+    /// cancelled, or was never this manager's. What a suspension keeps of a
+    /// timer (the back/forward cache: WebKit's SuspendableTimer saves its
+    /// next-fire interval the same way, m_savedNextFireInterval).
+    pub fn remainingMs(self: *Self, id: TimerId) ?u64 {
+        if (!self.initialized or id == 0) return null;
+        // A fired timer left the map before its callback ran (`pollEach`).
+        const entry = self.timers.get(id) orelse return null;
+        if (entry.cancelled) return null;
+        const now = nowNs();
+        if (entry.deadline_ns <= now) return 0;
+        const left_ns: u128 = @intCast(entry.deadline_ns - now);
+        return @intCast((left_ns + std.time.ns_per_ms - 1) / std.time.ns_per_ms);
+    }
 
     fn setTimeoutVTable(ctx: *anyopaque, ms: u64, callback: TimerCallback, user_data: ?*anyopaque) TimerId {
         const self: *Self = @ptrCast(@alignCast(ctx));
@@ -330,7 +359,7 @@ pub const NativeTimerManager = struct {
     pub fn getNextTimerDeadline(self: *Self) ?u64 {
         if (!self.initialized) return null;
 
-        const now = clock.monotonicNanos();
+        const now = nowNs();
         var min_due_in: ?u64 = null;
 
         var iter = self.timers.iterator();

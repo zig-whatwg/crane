@@ -91,6 +91,24 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 pub fn installHooks() void {
     web_locks.lock_managers.install(.{ .of = lockManagerOf });
     dom.unloading_cleanup.install(&endEnvironment);
+    dom.bfcache.installBlocker(&blocksBfcache);
+}
+
+/// dom.bfcache: an environment that holds a lock or waits for one makes its
+/// document unsalvageable with "lock" - what its unloading cleanup step
+/// (`endEnvironment`) records at unload step 18 - here, before pagehide, so
+/// a page that will not be kept says so in pagehide.persisted (false), as
+/// Chrome and Firefox do: web-locks/bfcache/contention.https.window.js
+/// (shouldBeCached false) passes in both on wpt.fyi 23b0b89b1a.
+fn blocksBfcache(realm: runtime.Context) ?dom.bfcache.Blocked {
+    const scope = realm.browser_scope orelse return null;
+    const registry = scope.existing(web_locks.Registry) orelse return null;
+    const client = registry.clientOf(realm) orelse return null;
+    if (registry.ended(client)) return null;
+    // The LockManager is the realm's, held until it ends: alive here.
+    const instance: *runtime.Instance = @ptrCast(@alignCast(client.owner));
+    const internal = getInternal(instance) orelse return null;
+    return if (internal.records.items.len > 0) .{ .reason = .lock } else null;
 }
 
 /// Initialize instance (creates the instance)

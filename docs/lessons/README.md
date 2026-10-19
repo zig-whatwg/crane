@@ -329,6 +329,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Build URL replacements before releasing old fields](architecture-build-url-replacements-before-releasing-old-fields.md) - Reuse a failure-safe constructor, then swap; do not partially destroy an object while constructing its replacement.
 - [Focus selectors must not run style-dependent focus fixup](architecture-focus-selectors-must-not-run-style-dependent-focus-fixup.md) - Separate the stored designation from style-dependent validation.
 - [Abort a job by marking it, not by freeing it](architecture-abort-a-job-by-marking-it-not-freeing-it.md) - An outside abort settles and marks; the job's own resume points finish it. List every pointer to the job (waiters, ops, queued tasks) before freeing anything.
+- [A kept page runs only store steps at unload - the cleanup steps run when it is destroyed](architecture-a-kept-page-runs-only-store-steps-the-cleanup-steps-run-at-its-destroy.md) - When a lifecycle gains a state between two steps that used to coincide, re-read every hook that ran at both: decide for each whether it belongs to the leaving or to the end.
+- [A cached realm is attached, so the engine's detached-realm guard misses it](architecture-a-cached-realm-is-attached-so-the-detached-realm-guard-misses-it.md) - A realm that may not run script but is not detached needs its own check wherever script is entered - grep every path that enters a realm without a document-tagged task.
 
 ### Spec Compliance
 - [A subclass's copy of an event concept hides what dispatch does to it](spec-compliance-a-subclass-copy-of-an-event-concept-hides-dispatch.md) - A concept the base algorithm reads and writes has one home, the base's state; a subclass attribute that names it reads it there, never a copy of its own.
@@ -815,3 +817,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [A Waiting Sweep Launcher Keeps Its Build Slot](workflow-a-waiting-sweep-launcher-keeps-its-build-slot.md) - Runtime runner tokens do not release the build slot of a waiting launcher.
 - [Native Build Output Needs a Pipe Too](workflow-native-build-output-needs-a-pipe-too.md) - Preserve positional-writer output through a pipe; quote retained evidence only.
 - [Download one browser's individual WPT report](workflow-wpt-fyi-individual-test-reports.md) - Compare individual statuses and messages from the aligned run's results directory without downloading its whole report.
+- [A Debug check runs in the ReleaseSafe runner - keep it lock-free on hot paths](workflow-a-debug-check-runs-in-the-release-runner-keep-it-off-locks.md) - Treat a Debug check in Crane code as production code for cost: it runs in the runner every measurement uses. And profile before attributing a cost-page difference to a change.

@@ -285,7 +285,139 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     @import("dom").unloading_cleanup.install(&makeDisappearIn);
+    @import("dom").bfcache.installStoreStep(&failForBfcache);
 }
+
+/// dom.bfcache's store step: the back/forward cache keeps `realm`'s
+/// document, so each of its sockets still CONNECTING or OPEN is failed
+/// ("fail the WebSocket connection") and the document stays salvageable; the
+/// socket's error and close events wait for the page's restore, in a task of
+/// its document (its group on the event loop). A socket already CLOSING -
+/// one closed in pagehide - is left to finish.
+///
+/// Golden rule 2 as refined: HTML's unloading document cleanup step 2 makes
+/// a document with an affected WebSocket unsalvageable ("websocket"), which
+/// is long-standing text; the change to fail the socket and keep the page -
+/// whatwg/html#12085, PR whatwg/html#12349 with whatwg/websockets#74 - is
+/// open, not merged, so no newer spec is involved, and the browsers'
+/// majority decides. Chrome (149, blink-dev "Disconnect WebSockets on
+/// BFCache entry") and Safari cache such a page with the socket failed;
+/// Firefox follows HTML. wpt.fyi 23b0b89b1a (Chrome 155, Firefox 158,
+/// Safari 27): back-forward-cache-closes-open-websocket-connection.tentative
+/// PASS/FAIL/PASS, back-forward-cache-with-open-websocket-connection (not
+/// cached, "websocket") FAIL/PASS/FAIL. Positions: mozilla/standards-
+/// positions#1390 (leaning positive), WebKit/standards-positions#648 (open).
+fn failForBfcache(realm: runtime.Context) void {
+    var i = live_sockets.items.len;
+    while (i > 0) {
+        i -= 1;
+        if (i >= live_sockets.items.len) continue;
+        const socket = live_sockets.items[i];
+        if (socket.ctx != realm) continue;
+        const internal = getInternal(socket) orelse continue;
+        if (internal.pump_done) continue;
+        const connection = internal.connection orelse continue;
+        if (connection.state != .CONNECTING and connection.state != .OPEN) continue;
+        connection.fail();
+        // The pump stops here: what it would fire waits for the page.
+        if (internal.poll) |token| {
+            token.detach();
+            internal.poll = null;
+        }
+        BfcacheClose.queue(socket);
+    }
+}
+
+/// Whether `socket`'s Window belongs to a page the back/forward cache keeps.
+fn pageIsCached(socket: *runtime.Instance) bool {
+    const window = relevantGlobal(socket) orelse return false;
+    if (window.stateAs(interfaces.Window.State) == null) return false;
+    return @import("dom").bfcache.holds(window);
+}
+
+/// The close task of a socket `failForBfcache` failed: the steps of the
+/// task WebSockets § 4 queues when "the WebSocket connection is closed",
+/// queued on the socket's document (a global task of its Window), so it runs
+/// once the page is restored, or is dropped when the page is evicted.
+const BfcacheClose = struct {
+    socket: *runtime.Instance,
+    generation: u64,
+
+    fn queue(socket: *runtime.Instance) void {
+        const loop = socket.ctx.getOptionalEventLoop() orelse return dropHold(socket);
+        const window = relevantGlobal(socket) orelse return dropHold(socket);
+        const self = std.heap.c_allocator.create(BfcacheClose) catch return dropHold(socket);
+        self.* = .{ .socket = socket, .generation = runtime.SlabAllocator.generationOf(socket) };
+        loop.queueTask(.{
+            .callback = &run,
+            .context = self,
+            .drop = &drop,
+            .document = window,
+            .document_generation = runtime.SlabAllocator.generationOf(window),
+        });
+    }
+
+    fn live(self: *const BfcacheClose) ?*runtime.Instance {
+        if (runtime.SlabAllocator.generationOf(self.socket) != self.generation) return null;
+        return self.socket;
+    }
+
+    fn run(data: ?*anyopaque) void {
+        const self: *BfcacheClose = @ptrCast(@alignCast(data orelse return));
+        defer std.heap.c_allocator.destroy(self);
+        const socket = self.live() orelse return;
+        // Its document's task: it runs only once the page is restored.
+        @import("dom").bfcache.assertNotCached(socket.ctx);
+        engine.runTaskInRealm(socket.ctx, steps, self) catch {};
+    }
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *BfcacheClose = @ptrCast(@alignCast(data orelse return));
+        const socket = self.live() orelse return;
+        const internal = getInternal(socket) orelse return;
+        if (internal.pump_done) return;
+        internal.pump_done = true;
+        const connection = internal.connection orelse return releasePendingActivity(socket);
+        // Read before any event: a listener may drop the connection.
+        var reason_buffer: [@import("websocket").connection.max_close_payload]u8 = undefined;
+        const reason = connection.close_reason orelse "";
+        const n = @min(reason.len, reason_buffer.len);
+        @memcpy(reason_buffer[0..n], reason[0..n]);
+        const outcome: CloseOutcome = .{
+            .was_clean = connection.close_was_clean,
+            .code = connection.close_code orelse 1006,
+            .reason = reason_buffer[0..n],
+        };
+        const failed = connection.failed;
+        // 1. The ready state is CLOSED.
+        connection.state = .CLOSED;
+        syncState(socket);
+        // 2. If it was failed (`failForBfcache`), error.
+        if (failed) {
+            fireSimpleEvent(socket, "error");
+            // Script ran: the socket may be gone.
+            if (self.live() == null) return;
+        }
+        // 3. close.
+        fireCloseEvent(socket, outcome);
+        if (self.live() == null) return;
+        releasePendingActivity(socket);
+    }
+
+    /// Never run: its page left the cache (or the loop ended). No script:
+    /// the socket's hold on its wrapper goes, if it is still there.
+    fn drop(data: ?*anyopaque) void {
+        const self: *BfcacheClose = @ptrCast(@alignCast(data orelse return));
+        defer std.heap.c_allocator.destroy(self);
+        const socket = self.live() orelse return;
+        dropHold(socket);
+    }
+
+    fn dropHold(socket: *runtime.Instance) void {
+        if (getInternal(socket)) |internal| internal.pump_done = true;
+        releasePendingActivity(socket);
+    }
+};
 
 /// End the pending-activity hold the constructor took, once.
 fn releasePendingActivity(instance: *runtime.Instance) void {
@@ -498,8 +630,15 @@ fn pump(token: *PollToken, instance: *runtime.Instance) bool {
         if (after_message.pump_done) return false;
     }
 
-    // 5. The WebSocket connection is closed: the close task.
+    // 5. The WebSocket connection is closed: the close task - for a page the
+    // back/forward cache keeps (a socket it closed in pagehide finishes its
+    // closing handshake while the page is cached), queued on its document,
+    // to run once it is restored.
     if (connection.closed) {
+        if (pageIsCached(instance)) {
+            BfcacheClose.queue(instance);
+            return false;
+        }
         finishClose(token, instance, internal);
         return false;
     }

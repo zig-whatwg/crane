@@ -1036,6 +1036,10 @@ fn joinLiveNavigables(integration: *IFrameIntegration) void {
 
 /// IFrameIntegration's `deinit_callback`.
 fn leaveLiveNavigables(integration: *IFrameIntegration) void {
+    // Its traversable goes: so do the pages its back/forward cache keeps.
+    // (Normally gone already: its page's end evicted them while its realm
+    // and loop lived - Browser.navigate, Browser.deinit.)
+    evictCachedPagesOf(integration);
     for (live_navigables.items, 0..) |existing, i| {
         if (existing == integration) {
             _ = live_navigables.swapRemove(i);
@@ -2146,9 +2150,14 @@ fn runCommit(context: ?*anyopaque) void {
     // around it, made relative to the new document's time origin when its
     // navigation timing entry is created.
     const unload_start = fetch_mod.algorithms.http_fetch.getCurrentTimeMs();
-    if (!unloadActiveDocument(integration, if (swap) |*step| step else null)) return endLoadDelay(integration);
+    // The back/forward cache may keep the displayed page (unload step 5).
+    var kept: ?KeptDocument = null;
+    if (!unloadActiveDocument(integration, if (swap) |*step| step else null, &kept)) return endLoadDelay(integration);
     const unload_end = fetch_mod.algorithms.http_fetch.getCurrentTimeMs();
-    if (integration.state == .discarded or integration.browsing_context == null) return;
+    if (integration.state == .discarded or integration.browsing_context == null) {
+        if (kept) |page| destroyKeptDocument(integration, page);
+        return;
+    }
 
     // "Create and initialize a Document object" steps 5-7: the realm the new
     // document goes in - the active one, or a new Window's around the same
@@ -2169,7 +2178,13 @@ fn runCommit(context: ?*anyopaque) void {
     // new document's agent cluster, decided before its realm is chosen and
     // any of its script runs.
     obtainAgentCluster(integration, record, response, new_origin);
-    integration.realmForDocument(new_origin) catch |err| {
+    if (kept) |page| {
+        // The kept page keeps its realm: the new document's is a new one.
+        if (!keepAndReplaceRealm(integration, page, new_origin)) {
+            log.warn("[navigation] no realm for {s}", .{record.url});
+            return endLoadDelay(integration);
+        }
+    } else integration.realmForDocument(new_origin) catch |err| {
         log.warn("[navigation] no realm for {s}: {s}", .{ record.url, @errorName(err) });
         return endLoadDelay(integration);
     };
@@ -2631,15 +2646,19 @@ fn documentBaseUrl(document: *runtime.Instance, allocator: std.mem.Allocator) ?[
 /// with the pageswap event `page_swap` names fired at it first. False when
 /// the realm is gone, or the pageswap event's listeners took the navigable
 /// or its document away.
-fn unloadActiveDocument(integration: *IFrameIntegration, page_swap: ?*const PageSwapStep) bool {
+///
+/// `kept` is set when the unload kept the document for the back/forward
+/// cache (dom.bfcache): it was not destroyed, and the caller hands it and
+/// its realm to the cache - or destroys it.
+fn unloadActiveDocument(integration: *IFrameIntegration, page_swap: ?*const PageSwapStep, kept: *?KeptDocument) bool {
     const ctx = navigableContext(integration) orelse return false;
     var unloaded = true;
-    if (!inRealm(ctx, unloadActive, .{ integration, page_swap, &unloaded })) return false;
+    if (!inRealm(ctx, unloadActive, .{ integration, page_swap, &unloaded, kept })) return false;
     return unloaded;
 }
 
-fn unloadActive(integration: *IFrameIntegration, page_swap: ?*const PageSwapStep, unloaded: *bool) void {
-    if (activeDocumentOf(integration)) |old| unloaded.* = unloadDocumentAndDescendantsSwapping(old, integration, page_swap);
+fn unloadActive(integration: *IFrameIntegration, page_swap: ?*const PageSwapStep, unloaded: *bool, kept: *?KeptDocument) void {
+    if (activeDocumentOf(integration)) |old| unloaded.* = unloadDocumentAndDescendantsKeeping(old, integration, page_swap, kept);
 }
 
 /// "Deactivate a document for a cross-document navigation" step 5.1's
@@ -2744,6 +2763,13 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
     defer if (computed) |o| integration.allocator.free(o);
     const origin: []const u8 = record.target_origin orelse computed orelse "null";
     const document_state = recordInHistory(integration, record, final_url, origin);
+    // Whether the back/forward cache may keep the document this response
+    // makes, should a navigation leave it (`mayKeepInBfcache`).
+    if (document_state) |state| {
+        if (integration.browsing_context) |bc| {
+            if (bc.jointHistory() catch null) |history| history.setKeepableResponse(state, keepableResponse(record, response, final_url));
+        }
+    }
     if (record.history_policy_container) |*container| {
         if (document_state) |state| {
             if (integration.browsing_context) |bc| {
@@ -2811,7 +2837,12 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
     // A push cleared the traversable's forward session history, other
     // navigables' entries with it: their navigation APIs dispose of them.
     if (record.traversal_entry == 0 and record.history_handling == .push) {
-        if (integration.browsing_context) |bc| dom_module.navigation_api.entriesRemoved(@ptrCast(bc.getTop()));
+        if (integration.browsing_context) |bc| {
+            dom_module.navigation_api.entriesRemoved(@ptrCast(bc.getTop()));
+            // HTML "clear the forward session history" destroys each removed
+            // entry's document: the cached ones among them go.
+            pruneCachedPages(integration, bc.getTop());
+        }
     }
     finishParserlessNavigation(integration);
 }
@@ -3000,6 +3031,9 @@ fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []con
     for (live_navigables.items) |integration| {
         const bc = integration.browsing_context orelse continue;
         if (@as(*anyopaque, @ptrCast(bc)) != browsing_context_ptr) continue;
+        // The entry's document is kept in the back/forward cache: shown
+        // again, with no fetch.
+        if (restoreFromBfcache(integration, bc, entry_id, from_entry_id)) return;
         // A srcdoc entry's document takes its container document's base URL
         // as its about base URL. Deviation, stated: the spec restores the one
         // the entry's document state recorded when it was first navigated to;
@@ -3030,6 +3064,15 @@ fn unloadDocumentAndDescendants(document: *runtime.Instance, integration: *IFram
     _ = unloadDocumentAndDescendantsSwapping(document, integration, null);
 }
 
+/// `unloadDocumentAndDescendantsSwapping` for a navigation away from
+/// `document`: the back/forward cache may keep it (unload step 5's
+/// intendToKeepInBfcache: `mayKeepInBfcache`, then dom.bfcache.mayKeep).
+/// `kept` is set when it did: the document is unloaded, not destroyed, and
+/// its history entry still has it.
+fn unloadDocumentAndDescendantsKeeping(document: *runtime.Instance, integration: *IFrameIntegration, page_swap: ?*const PageSwapStep, kept: *?KeptDocument) bool {
+    return unloadDocumentTree(document, integration, page_swap, kept);
+}
+
 /// `unloadDocumentAndDescendants` with firePageSwapSteps: the pageswap event
 /// `page_swap` names, fired at `document` after its descendants have
 /// unloaded and before it does (step 6.1). False when that event's
@@ -3040,8 +3083,20 @@ fn unloadDocumentAndDescendants(document: *runtime.Instance, integration: *IFram
 /// none is salvageable without a bfcache), and then so are the navigables
 /// of `document`'s iframes (`destroyChildNavigables`).
 fn unloadDocumentAndDescendantsSwapping(document: *runtime.Instance, integration: *IFrameIntegration, page_swap: ?*const PageSwapStep) bool {
+    return unloadDocumentTree(document, integration, page_swap, null);
+}
+
+/// The unload of `unloadDocumentAndDescendantsSwapping`, keeping `document`
+/// for the back/forward cache when `kept` is given and it may be kept.
+fn unloadDocumentTree(document: *runtime.Instance, integration: *IFrameIntegration, page_swap: ?*const PageSwapStep, kept: ?*?KeptDocument) bool {
     var documents = dom_module.navigables.inclusiveDescendantDocuments(document, integration.allocator);
     defer documents.deinit(integration.allocator);
+    // Unload step 5, before any of the tree's handlers run: the user agent
+    // intends to keep `document` - the navigable's part, then its features'
+    // and its own (dom.bfcache.mayKeep, which records the reasons of what
+    // keeps it out, so pagehide reports persisted false).
+    const offer = kept != null and mayKeepInBfcache(integration, document, documents.items.len) and dom_module.bfcache.mayKeep(document);
+    const generation = runtime.SlabAllocator.generationOf(document);
     // "Unload" step 19 for a top-level traversable's document: "build not
     // restored reasons for a top-level traversable and its descendants",
     // read now, while every document of the tree is fully active, and
@@ -3064,16 +3119,31 @@ fn unloadDocumentAndDescendantsSwapping(document: *runtime.Instance, integration
         if (i == 0) if (page_swap) |step| {
             if (!firePageSwapAt(entry.document, entry.generation, integration, step)) return false;
         };
+        // The intent is given right before the unload that consumes it -
+        // after pageswap, whose listeners may end this unload early.
+        if (i == 0 and offer) dom_module.bfcache.intendToKeep(entry.document);
         document_lifecycle.unload(entry.document);
-        // Not kept for traversal (no bfcache): an entry that held it will be
+        // A document the back/forward cache keeps stays its entry's; any
+        // other is not kept for traversal: an entry that held it will be
         // repopulated by a navigation.
+        if (i == 0 and offer and dom_module.bfcache.isKept(entry.document)) continue;
         if (integration.browsing_context) |bc| {
             if (bc.getTop().joint_history) |history| history.forgetDocument(@ptrCast(entry.document));
         }
     }
+    // Step 18 for each document: the unloading document cleanup steps - or,
+    // for a kept one, only the store steps (dom.navigables).
     if (integration.browsing_context) |bc| dom_module.navigables.destroyWindowDocuments(bc);
     reasons.finish(integration);
     destroyChildNavigables(integration);
+    if (kept) |out| {
+        if (offer and runtime.SlabAllocator.generationOf(document) == generation and dom_module.bfcache.isKept(document)) {
+            const window: ?*runtime.Instance = if (integration.browsing_context) |bc| (if (bc.getActiveWindow()) |w| @as(*runtime.Instance, @ptrCast(@alignCast(w))) else null) else null;
+            const page: KeptDocument = .{ .document = document, .generation = generation, .window = window orelse document, .window_generation = if (window) |w| runtime.SlabAllocator.generationOf(w) else 0 };
+            // No window to keep it with: destroyed as it would have been.
+            if (window == null) destroyKeptDocument(integration, page) else out.* = page;
+        }
+    }
     return true;
 }
 
@@ -4777,6 +4847,391 @@ fn newDocumentIsSecureContext(has_parent: bool, upstream: bool, new_origin: html
     return fetch_mod.mixed_content.isOriginAuthenticated(allocator, serialized) catch false;
 }
 
+// ============================================================================
+// The back/forward cache (lane bfcache-b, phase B): keeping a top-level
+// traversable's page when a navigation leaves it, and showing it again when
+// a traversal comes back. The cache itself is the browser layer's
+// (src/browser/back_forward_cache.zig), reached through dom.bfcache.
+// ============================================================================
+
+/// A document whose unload kept it for the back/forward cache, and its
+/// Window, each with its slab generation then.
+const KeptDocument = struct {
+    document: *runtime.Instance,
+    generation: u64,
+    window: *runtime.Instance,
+    window_generation: u64,
+};
+
+/// The navigable's part of unload step 5's intendToKeepInBfcache (the rest
+/// is dom.bfcache.mayKeep): Blink's eligibility for a main frame
+/// (BackForwardCacheImpl::CanStoreDocument / PopulateReasonsForMainDocument),
+/// within phase B's limit.
+///
+/// - A top-level traversable Crane made: a popup (no container). Phase B's
+///   stated limit: the host's own page is never unloaded by a navigation.
+/// - Alone in its browsing context group: no opener, and no other
+///   top-level browsing context in its group (Blink's browsing instance
+///   swap with no "related active contents"). Nothing outside the page can
+///   then hold its WindowProxy, so the new document's new one is unseen.
+/// - No child navigables: frames inside a kept page are phase C's.
+/// - Its document came from a GET of an HTTP(S) URL answered 200
+///   (`keepableResponse`, recorded at its commit).
+/// - Its Browser's cache keeps pages (BrowserConfig.back_forward_cache_size).
+///
+/// Unload listeners do not keep a page out: HTML leaves the choice to the
+/// user agent, and Chrome and Safari keep such a page (back-forward-cache/
+/// events.html "unload": PASS in Chrome 155 and Safari 27, PRECONDITION_FAILED
+/// in Firefox 158 and Edge 155, wpt.fyi 23b0b89b1a) - its unload event never
+/// fires (step 12: salvageable).
+fn mayKeepInBfcache(integration: *IFrameIntegration, document: *runtime.Instance, tree_size: usize) bool {
+    if (integration.iframe_element != null) return false;
+    const bc = integration.browsing_context orelse return false;
+    if (bc.parent != null or bc.is_closed or bc.orphaned) return false;
+    if (tree_size != 1 or bc.children.items.len != 0) return false;
+    if (bc.opener != null and !bc.disowned) return false;
+    if (!aloneInGroup(bc)) return false;
+    const realm = navigableContext(integration) orelse return false;
+    if (!dom_module.bfcache.cacheEnabled(realm)) return false;
+    const history = bc.joint_history orelse return false;
+    const state = history.documentStateOf(@ptrCast(document)) orelse return false;
+    return history.keepableResponse(state);
+}
+
+/// Whether `bc`, a top-level browsing context, is the only top-level one
+/// of its browsing context group in its Browser.
+fn aloneInGroup(bc: *html_core.BrowsingContext) bool {
+    const navigables = bc.navigables orelse return false;
+    for (navigables.contexts()) |other| {
+        if (other == bc or other.orphaned or other.is_closed) continue;
+        if (other.parent != null) continue;
+        if (other.virtual_group_id == bc.virtual_group_id) return false;
+    }
+    return true;
+}
+
+/// Whether the document `response` makes for `record` may be kept: a GET -
+/// no POST resource - of an HTTP(S) URL, answered 200 (not a network error).
+fn keepableResponse(record: *const Navigation, response: *const navigation_fetch.NavigationFetchResult, final_url: []const u8) bool {
+    if (record.post_body != null) return false;
+    if (record.srcdoc != null or record.javascript_url != null) return false;
+    if (response.is_network_error or response.status != 200) return false;
+    const scheme = navigate_steps.schemeOf(final_url);
+    return std.mem.eql(u8, scheme, "http") or std.mem.eql(u8, scheme, "https");
+}
+
+/// What a kept page needs back on its navigable when it is restored - the
+/// integration's record of its realm - and to evict it. OWNED by the cache's
+/// entry (dom.bfcache.KeptPage.data).
+const KeptRecord = struct {
+    allocator: std.mem.Allocator,
+    integration: *IFrameIntegration,
+    /// The integration's Window origin for its realms (`window_origin`).
+    window_origin: ?[]u8 = null,
+    /// The WindowProxy record's document origin, its host owned here.
+    document_origin: Origin = Origin.createOpaque(),
+    document_origin_host: ?[]u8 = null,
+    /// The last commit's URL and content type.
+    loaded_url: ?[]u8 = null,
+    loaded_content_type: ?[]u8 = null,
+
+    /// The integration's record as it is now, copied; null out of memory.
+    fn capture(integration: *IFrameIntegration) ?*KeptRecord {
+        return captureOrFail(integration) catch null;
+    }
+
+    fn captureOrFail(integration: *IFrameIntegration) error{OutOfMemory}!*KeptRecord {
+        const allocator = integration.allocator;
+        const self = try allocator.create(KeptRecord);
+        self.* = .{ .allocator = allocator, .integration = integration };
+        errdefer self.destroy();
+        self.window_origin = if (integration.window_origin) |o| try allocator.dupe(u8, o) else null;
+        if (integration.window_proxy) |proxy| self.document_origin = proxy.document_origin;
+        if (!self.document_origin.is_opaque and self.document_origin.host.len > 0) {
+            const host = try allocator.dupe(u8, self.document_origin.host);
+            self.document_origin_host = host;
+            self.document_origin.host = host;
+        }
+        self.loaded_url = if (integration.loaded_url) |u| try allocator.dupe(u8, u) else null;
+        self.loaded_content_type = if (integration.loaded_content_type) |t| try allocator.dupe(u8, t) else null;
+        return self;
+    }
+
+    /// Put the record back on its integration, which takes what it owns.
+    fn apply(self: *KeptRecord) void {
+        const integration = self.integration;
+        integration.setWindowOrigin(self.window_origin) catch {};
+        if (integration.document_origin_host) |old| integration.allocator.free(old);
+        integration.document_origin_host = self.document_origin_host;
+        self.document_origin_host = null;
+        if (integration.window_proxy) |*proxy| proxy.setDocumentOrigin(self.document_origin);
+        if (integration.loaded_url) |old| integration.allocator.free(old);
+        integration.loaded_url = self.loaded_url;
+        self.loaded_url = null;
+        if (integration.loaded_content_type) |old| integration.allocator.free(old);
+        integration.loaded_content_type = self.loaded_content_type;
+        self.loaded_content_type = null;
+    }
+
+    fn destroy(self: *KeptRecord) void {
+        if (self.window_origin) |o| self.allocator.free(o);
+        if (self.document_origin_host) |h| self.allocator.free(h);
+        if (self.loaded_url) |u| self.allocator.free(u);
+        if (self.loaded_content_type) |t| self.allocator.free(t);
+        self.allocator.destroy(self);
+    }
+};
+
+const kept_page_steps: dom_module.bfcache.PageSteps = .{ .evict = &evictKeptPage };
+
+/// The page `kept` - the navigable's active document a navigation's unload
+/// kept, its Window and its realm, `realm` - goes to the back/forward cache,
+/// with the integration's record of it. The realm is never detached: its
+/// global stays attached to its own WindowProxy. Not stored (the cache is
+/// full of pages being evicted, out of memory): evicted at once.
+///
+/// The realm stays a child of its opener's realm (WindowRealmOptions.parent),
+/// so that page's end would end it: Browser.navigate and Browser.deinit evict
+/// every cached page first.
+fn storeKeptPage(integration: *IFrameIntegration, kept: KeptDocument, realm: runtime.Context, record: *KeptRecord) void {
+    const bc = integration.browsing_context orelse {
+        record.destroy();
+        return destroyKeptDocumentAndRealm(kept, realm);
+    };
+    const history = bc.joint_history;
+    const state = if (history) |h| h.documentStateOf(@ptrCast(kept.document)) else null;
+    const page: dom_module.bfcache.KeptPage = .{
+        .traversable = @ptrCast(bc),
+        .document_state = state orelse 0,
+        .document = kept.document,
+        .document_generation = kept.generation,
+        .window = kept.window,
+        .window_generation = kept.window_generation,
+        .realm = realm,
+        .data = record,
+        .steps = &kept_page_steps,
+    };
+    if (state == null or !dom_module.bfcache.store(page)) evictKeptPage(&page);
+}
+
+/// HTML "create and initialize a Document object" steps 5-7 when the
+/// navigable's active document was kept: a new realm, whose global object is
+/// a new Window and whose global this binding is a NEW WindowProxy
+/// (engine.GlobalThis.new_window_proxy) - the kept realm keeps its own, its
+/// global attached, so its script (`window`, `self`, closures over the
+/// global) still reaches its own Window when it is restored. HTML's browsing
+/// context group switch gives a navigation a new top-level browsing context
+/// and WindowProxy the same way, and Blink's back/forward cache swaps the
+/// browsing instance - a new RenderFrameHost with a WindowProxyManager of its
+/// own - for exactly this. Nothing else holds the old WindowProxy: the page
+/// is alone in its browsing context group (`mayKeepInBfcache`).
+fn keepAndReplaceRealm(integration: *IFrameIntegration, kept: KeptDocument, new_origin: html_core.Origin) bool {
+    const old: runtime.Context = @ptrCast(@alignCast(integration.context_cleanup_data orelse return false));
+    const browsing_context = integration.browsing_context orelse return false;
+    const allocator = integration.allocator;
+    const parent: runtime.Context = @ptrCast(@alignCast(integration.parent_realm orelse {
+        destroyKeptDocument(integration, kept);
+        return replaceRealm(integration, new_origin);
+    }));
+    const record = KeptRecord.capture(integration) orelse {
+        destroyKeptDocument(integration, kept);
+        return replaceRealm(integration, new_origin);
+    };
+    const origin_copy: ?[]u8 = if (integration.window_origin) |o| allocator.dupe(u8, o) catch {
+        record.destroy();
+        destroyKeptDocument(integration, kept);
+        return replaceRealm(integration, new_origin);
+    } else null;
+    defer if (origin_copy) |o| allocator.free(o);
+    const secure_context = newDocumentIsSecureContext(false, parent.secure_context, new_origin, allocator);
+    _ = integration.releaseCurrentRealm() orelse {
+        record.destroy();
+        return false;
+    };
+    if (attachRealm(integration, parent, browsing_context, origin_copy, .new_window_proxy, secure_context, allocator) == null) {
+        // No new realm: the kept page goes, as an unkept one would have.
+        record.destroy();
+        destroyKeptDocumentAndRealm(kept, old);
+        return false;
+    }
+    storeKeptPage(integration, kept, old, record);
+    return true;
+}
+
+/// A kept document that will not be cached after all: destroyed now (HTML
+/// "destroy" - unload step 20, which its unload skipped), its history entry
+/// let go of it, and its window's cleanup steps run. Its realm is still the
+/// integration's: a later replacement ends it as usual.
+fn destroyKeptDocument(integration: *IFrameIntegration, kept: KeptDocument) void {
+    if (runtime.SlabAllocator.generationOf(kept.document) != kept.generation) return;
+    if (integration.browsing_context) |bc| {
+        if (bc.getTop().joint_history) |history| history.forgetDocument(@ptrCast(kept.document));
+    }
+    document_lifecycle.destroy(kept.document);
+    dom_module.window_documents.destroyed(kept.document.ctx);
+}
+
+/// A kept document whose realm left the integration and will not be
+/// cached: destroyed, and its realm ended (`evictKeptPage` without a page).
+fn destroyKeptDocumentAndRealm(kept: KeptDocument, realm: runtime.Context) void {
+    if (!realm.hasEngine()) return;
+    if (runtime.SlabAllocator.generationOf(kept.document) == kept.generation) document_lifecycle.destroy(kept.document);
+    engine.destroyWindowRealm(realm, .global_detached);
+}
+
+/// dom.bfcache.PageSteps.evict: a cached page leaves the back/forward cache
+/// for good, from a task (the cache dropped its tasks already). HTML
+/// "destroy a document": the document is destroyed and its history entry
+/// lets go of it (a traversal to it fetches it again); then its realm ends
+/// (engine.destroyWindowRealm .global_detached): its WindowProxy was never
+/// handed on and nothing outside the page holds it, so the adapter ends it
+/// at once rather than detaching it for the collector - which runs every
+/// unloading document cleanup step for it (its Window's end), the ones its
+/// store skipped. A realm its opener's end already ended leaves only the
+/// record.
+fn evictKeptPage(page: *const dom_module.bfcache.KeptPage) void {
+    const record: *KeptRecord = @ptrCast(@alignCast(page.data));
+    const integration = record.integration;
+    record.destroy();
+    if (!page.realm.hasEngine()) return;
+    if (runtime.SlabAllocator.generationOf(page.document) == page.document_generation) {
+        // The traversable is still this integration's (its close evicts its
+        // pages before it goes): its history lets go of the document.
+        if (integration.browsing_context) |bc| {
+            if (@as(*anyopaque, @ptrCast(bc)) == page.traversable) {
+                if (bc.joint_history) |history| history.forgetDocument(@ptrCast(page.document));
+            }
+        }
+        document_lifecycle.destroy(page.document);
+    }
+    engine.destroyWindowRealm(page.realm, .global_detached);
+}
+
+/// Every page `integration`'s traversable keeps in the cache goes now.
+fn evictCachedPagesOf(integration: *IFrameIntegration) void {
+    if (integration.iframe_element != null) return;
+    const bc = integration.browsing_context orelse return;
+    const realm = navigableContext(integration) orelse return;
+    dom_module.bfcache.evictTraversable(realm, @ptrCast(bc));
+}
+
+/// After a push cleared the forward history of `top`: the pages kept for
+/// entries that are gone go.
+fn pruneCachedPages(integration: *IFrameIntegration, top: *html_core.BrowsingContext) void {
+    const history = top.joint_history orelse return;
+    const realm = navigableContext(integration) orelse return;
+    dom_module.bfcache.prune(realm, @ptrCast(top), @ptrCast(history), &historyHasState);
+}
+
+fn historyHasState(context: *anyopaque, document_state: u64) bool {
+    const history: *html_core.navigation.joint_history.JointHistory = @ptrCast(@alignCast(context));
+    return history.hasDocumentState(document_state);
+}
+
+/// HTML "apply the history step" for a traversal whose target entry's
+/// document the back/forward cache keeps (step 12: its document is not null,
+/// so nothing is fetched): the displayed document is unloaded - kept in its
+/// turn when it may be, or destroyed - the cached one becomes the active
+/// document again with its own Window and realm ("make active"), and it is
+/// reactivated ("update document for history step application" step 9):
+/// its timers and tasks resume, and pageshow fires, persisted. False when
+/// the cache does not hold the entry's document: the caller fetches it.
+///
+/// The navigation API's reactivation (its entries, dispose) and pagereveal
+/// are phase C's.
+fn restoreFromBfcache(integration: *IFrameIntegration, bc: *html_core.BrowsingContext, entry_id: u64, from_entry_id: u64) bool {
+    if (integration.iframe_element != null) return false;
+    const history = bc.joint_history orelse return false;
+    const entry = history.entryById(entry_id) orelse return false;
+    const target_document = entry.document orelse return false;
+    if (target_document == bc.getActiveDocument()) return false;
+    const page = dom_module.bfcache.take(@ptrCast(bc), target_document) orelse return false;
+    const record: *KeptRecord = @ptrCast(@alignCast(page.data));
+
+    // Script runs below (pageswap, pagehide): the integration stays.
+    integration.busy += 1;
+    defer finishBusy(integration);
+    // The traversal replaces any navigation in flight.
+    abandonNavigationsOf(integration);
+    integration.ongoing_navigation = .none;
+
+    // "Deactivate a document for a cross-document navigation": pageswap,
+    // then "unload a document and its descendants" - the displayed page
+    // may be kept in its turn (navigate-history-back-bfcache.html needs B
+    // kept as well as A).
+    var swap = pageSwapOfTraversal(integration, entry_id);
+    defer if (swap) |*step| step.deinit();
+    var kept: ?KeptDocument = null;
+    const unloaded = unloadActiveDocument(integration, if (swap) |*step| step else null, &kept);
+    if (!unloaded or integration.state == .discarded or integration.browsing_context == null) {
+        if (kept) |leaving| destroyKeptDocument(integration, leaving);
+        // The page cannot be shown here any more: it goes.
+        dom_module.bfcache.evictTaken(&page);
+        return true;
+    }
+    // The leaving page's realm leaves the integration: cached, or ended.
+    const leaving_record: ?*KeptRecord = if (kept != null) KeptRecord.capture(integration) else null;
+    const leaving_realm: ?runtime.Context = if (integration.releaseCurrentRealm()) |data| @as(runtime.Context, @ptrCast(@alignCast(data))) else null;
+
+    // "Make active": the cached document, its Window and its realm are the
+    // navigable's again - its own WindowProxy, never detached.
+    integration.setRealmContext(
+        page.realm.engine_ctx,
+        @ptrCast(page.realm),
+        @ptrCast(page.realm),
+        @ptrCast(page.realm),
+        createDocumentForIframe,
+        iframeContextCleanup,
+        parseHtmlForIframe,
+    );
+    record.apply();
+    bc.setActiveDocument(@ptrCast(page.document), @ptrCast(page.window));
+
+    if (leaving_realm) |realm| {
+        if (kept) |leaving| {
+            if (leaving_record) |kept_record| storeKeptPage(integration, leaving, realm, kept_record) else destroyKeptDocumentAndRealm(leaving, realm);
+        } else {
+            // Not kept: its document was destroyed by its unload. Its
+            // WindowProxy is its own, handed on to nobody, so the realm ends
+            // at once - as Blink destroys the RenderFrameHost of a page that
+            // cannot enter the cache when the traversal commits. Stated: an
+            // openee the leaving page made since holds a WindowProxy that
+            // reaches nothing from here on.
+            engine.destroyWindowRealm(realm, .global_detached);
+        }
+    }
+
+    // "Update document for history step application" step 7: the navigation
+    // API's activation, a traverse from the entry the traversal left.
+    const previous = if (history.entryById(from_entry_id)) |from| history.snapshot(from) catch null else null;
+    history.recordActivation(entry_id, .traverse, previous) catch {};
+
+    // Step 9: "reactivate" - its tasks and timers resume, then pageshow.
+    dom_module.bfcache.reactivate(&page);
+    record.destroy();
+    return true;
+}
+
+/// "Fire the pageswap event" for a traversal to the entry `entry_id`: its
+/// navigation type "traverse"; the activation when the target's origin is
+/// the displayed document's.
+fn pageSwapOfTraversal(integration: *IFrameIntegration, entry_id: u64) ?PageSwapStep {
+    const bc = integration.browsing_context orelse return null;
+    const history = bc.joint_history orelse return null;
+    const entry = history.entryById(entry_id) orelse return null;
+    const target = history.snapshot(entry) catch return null;
+    const displayed_window: ?*runtime.Instance = if (bc.getActiveWindow()) |w| @ptrCast(@alignCast(w)) else null;
+    const displayed_origin = originOfWindow(displayed_window, integration.allocator) catch null;
+    defer if (displayed_origin) |o| integration.allocator.free(o);
+    const same_origin = if (displayed_origin) |o| !std.mem.eql(u8, o, "null") and std.mem.eql(u8, o, entry.origin) else false;
+    return .{
+        .allocator = history.allocator,
+        .target = target,
+        .navigation_type = .traverse,
+        .has_activation = same_origin,
+    };
+}
+
 /// dom.auxiliary_navigables: HTML "definitely close" the top-level
 /// traversable whose active window is `window`; false when `window` is not a
 /// top-level traversable's.
@@ -4857,6 +5312,9 @@ fn definitelyCloseTraversable(window: *runtime.Instance) bool {
         return true;
     };
     abandonNavigationsOf(made);
+    // "Destroy a top-level traversable" destroys every session history
+    // entry's document: the pages its back/forward cache keeps go first.
+    evictCachedPagesOf(made);
     unloadDocumentAndDescendants(active, made);
     // "Destroy a document and its descendants", children first.
     var i = documents.items.len;
