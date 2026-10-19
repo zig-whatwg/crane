@@ -82,6 +82,11 @@ pub const ClassicScript = struct {
     muted_errors: bool,
     /// Prepare step 25's value, retained across fetching and attribute changes.
     credentials_mode: @import("fetch").internal.CredentialsMode = .same_origin,
+    /// Where an inline script's source text starts in its document, when the
+    /// parser prepared it (`State.start`); `.{}` otherwise. Not the spec's:
+    /// Blink's ClassicScript and ScriptSourceCode keep the same TextPosition,
+    /// so what the script throws reports its document's lines.
+    start: engine.SourcePosition = .{},
 
     pub fn init(source: []const u8, base: []const u8) ClassicScript {
         return .{
@@ -172,6 +177,15 @@ pub const State = struct {
     /// tag and by the Trusted Types-aware setters; owned.
     script_text: ScriptText = .{},
 
+    /// Where the element's source text starts in its document - the HTML
+    /// parser's position after its start tag, 1-based - set by the parser
+    /// when it creates the element (`parserPosition`); null for one no HTML
+    /// parser position is known for. Read only when the parser prepares the
+    /// element (its parser document set): Blink's HTMLParserScriptRunner
+    /// hands PrepareScript the same TextPosition, and every other
+    /// preparation MinimumPosition.
+    start: ?engine.SourcePosition = null,
+
     pub fn init(allocator: std.mem.Allocator) State {
         return .{
             .allocator = allocator,
@@ -227,6 +241,17 @@ pub const State = struct {
         return owned;
     }
 };
+
+/// The HTML parser's position in `document`'s input: the 1-based line and
+/// column of the next character it reads - right after the start tag it is
+/// creating an element for, when asked from the tree builder's node-created
+/// callback. Null when no parser is parsing `document`. Blink's
+/// ScriptableDocumentParser::GetTextPosition; WebKit's textPosition.
+pub fn parserPosition(document: *runtime.Instance) ?engine.SourcePosition {
+    const stream = @import("dom").document_internals.getInputStreamManager(document) orelse return null;
+    const tokenizer = stream.tokenizer orelse return null;
+    return .{ .line = tokenizer.input.line, .column = tokenizer.input.column };
+}
 
 /// What HTMLScriptElement supplies: an HTML script element's state, or null
 /// for any other object.

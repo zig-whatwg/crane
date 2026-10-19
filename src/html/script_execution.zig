@@ -219,6 +219,13 @@ pub fn prepareScriptElement(
     // Step 3: Set el's parser document to null
     state.parser_document = null;
 
+    // Where an inline script's text starts in its document, for what it
+    // throws and a CSP violation to report: the parser's position after its
+    // start tag, when the parser prepares it - none otherwise (Blink's
+    // HTMLParserScriptRunner passes PrepareScript the parser's TextPosition,
+    // every other caller MinimumPosition).
+    const start: ?engine.SourcePosition = if (parser_document != null) state.start else null;
+
     // Step 4: If parser document is non-null and el does not have an async attribute,
     // then set el's force async to true
     if (parser_document != null and !hasAsyncAttribute(script_element)) {
@@ -302,19 +309,21 @@ pub fn prepareScriptElement(
         // Content Security Policy? algorithm returns "Blocked" when given
         // el, "script", and source text, then return" (CSP 4.2.3; nonces,
         // hashes and 'strict-dynamic' are csp.inline_check's).
-        if (node_document) |doc| {
+        if (node_document != null) {
             // CSP 6.7.3.1 "Is element nonceable?": one with a nonce
             // attribute; step 2's scan of a script's attributes for
             // "<script" and the like is csp_violations.shouldBlockInline's.
             // Not modelled, stated: step 3's duplicate-attribute parse error.
+            // A violation reports the script's start in its document when no
+            // script is running - the parser blocking it (Blink's
+            // ContentSecurityPolicy::AllowInline context line;
+            // blockeduri-inline.html 15:9, all three browsers).
             const nonce = getNonceAttribute(script_element);
-            if (!document_scripts.inlineScriptAllowedByCsp(
-                doc,
-                script_element,
-                source_text,
-                if (nonce.len > 0) nonce else null,
-                parser_document != null,
-            )) {
+            if (dom.csp_violations.shouldBlockInline(script_element, .script, source_text, .{
+                .nonce = if (nonce.len > 0) nonce else null,
+                .parser_inserted = parser_document != null,
+                .position = if (start) |at| .{ .line = at.line, .column = at.column } else null,
+            })) {
                 log.debug("CSP blocked inline script", .{});
                 return false;
             }
@@ -529,6 +538,7 @@ pub fn prepareScriptElement(
                     documentUrl(doc, script_element);
                 var script = ClassicScript.init(source_text, script_base_url);
                 script.credentials_mode = credentials_mode;
+                script.start = start orelse .{};
 
                 // Step 34.2.2: Mark as ready
                 state.result = .{ .script = script };
@@ -554,7 +564,7 @@ pub fn prepareScriptElement(
                 // script has no dependencies or synchronously results in a
                 // parse error, we won't proceed to execute the script element
                 // synchronously" - which step 35's scheduling below does.
-                if (prepareInlineModuleScript(script_element, doc, source_text, base_url))
+                if (prepareInlineModuleScript(script_element, doc, source_text, start orelse .{}, base_url))
                     return handleScriptSchedulingOf(allocator, script_element, parser_document, script_type, .fetching);
             },
             .importmap => {
@@ -1417,7 +1427,15 @@ fn runClassicScript(script_element: *runtime.Instance, document: *runtime.Instan
     // The resource name errors report as their filename: the script's URL for
     // an external script (its base URL), the document's URL for an inline one.
     const url = if (from_external) script.base_url else documentUrl(document, script_element);
-    runClassicScriptText(script_element, document, source, url, script.base_url, script.muted_errors, script.credentials_mode);
+    // An inline script's text is embedded in its document: what it reports,
+    // it reports at its document lines. An external one is its own resource.
+    const text: engine.ScriptSource = if (from_external) .{ .utf8 = source } else .{ .embedded = .{ .utf8 = source, .start = script.start } };
+    runClassicScriptSource(script_element, document, text, url, script.base_url, script.muted_errors, script.credentials_mode);
+}
+
+/// `runClassicScriptSource` for text that is a resource of its own.
+fn runClassicScriptText(element: *runtime.Instance, document: *runtime.Instance, source: []const u8, url: []const u8, base_url: []const u8, muted: bool, credentials_mode: fetch.internal.CredentialsMode) void {
+    runClassicScriptSource(element, document, .{ .utf8 = source }, url, base_url, muted, credentials_mode);
 }
 
 /// "Create a classic script" from `source` with `base_url`, and "run a classic
@@ -1429,7 +1447,7 @@ fn runClassicScript(script_element: *runtime.Instance, document: *runtime.Instan
 /// resource name, the filename of what it throws.
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-classic-script
-fn runClassicScriptText(element: *runtime.Instance, document: *runtime.Instance, source: []const u8, url: []const u8, base_url: []const u8, muted: bool, credentials_mode: fetch.internal.CredentialsMode) void {
+fn runClassicScriptSource(element: *runtime.Instance, document: *runtime.Instance, source: engine.ScriptSource, url: []const u8, base_url: []const u8, muted: bool, credentials_mode: fetch.internal.CredentialsMode) void {
     const realm = element.ctx;
     // Create-classic step 1 sanitizes a muted script's import base, while
     // its resource name remains the response URL for error reporting.
@@ -1440,7 +1458,7 @@ fn runClassicScriptText(element: *runtime.Instance, document: *runtime.Instance,
     const import_base_url = if (muted) "about:blank" else base_url;
     const host_defined: ?*anyopaque = if (classicScriptRecord(document, import_base_url, element, credentials_mode)) |record| &record.script else null;
     var host = ClassicScriptReport{ .realm = realm, .muted = muted };
-    engine.runClassicScript(realm, .{ .utf8 = source }, url, host_defined, .{
+    engine.runClassicScript(realm, source, url, host_defined, .{
         .report = reportClassicScriptError,
         .host = &host,
     }) catch |err| switch (err) {
@@ -2334,13 +2352,16 @@ fn prepareExternalModuleScript(script_element: *runtime.Instance, document: *run
 /// Prepare step 34 "module": fetch an inline module script graph.
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#fetch-an-inline-module-script-graph
-fn prepareInlineModuleScript(script_element: *runtime.Instance, document: *runtime.Instance, source: []const u8, base_url: []const u8) bool {
+/// `start` is where `source` starts in the document (prepare's `start`).
+fn prepareInlineModuleScript(script_element: *runtime.Instance, document: *runtime.Instance, source: []const u8, start: engine.SourcePosition, base_url: []const u8) bool {
     setResult(script_element, .null);
     const env = moduleEnvironment(script_element, document) orelse return false;
 
     // Step 1: create a JavaScript module script - a parse error is kept on it.
     // (Where the engine has no modules there is none: the result stays null.)
-    const script = module_script.createJavaScriptModuleScript(&env, source, .{}, base_url) catch return false;
+    // Its text is embedded in the document: what it throws reports the
+    // document's lines (evaluation-error-5.html).
+    const script = module_script.createJavaScriptModuleScript(&env, source, start, base_url) catch return false;
 
     // Owned by the document from here on, like every fetched module script.
     // Its key is its address: unique in the map, which holds every inline
