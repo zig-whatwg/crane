@@ -1264,7 +1264,7 @@ const OnceState = enum(u8) { uninitialized, initializing, done };
 var stderr_state: std.atomic.Value(OnceState) = .init(.uninitialized);
 
 fn initStderrSink() void {
-    stderr_writer = std.Io.File.stderr().writer(host.io(), &stderr_buffer);
+    stderr_writer = output.logWriter(std.Io.File.stderr(), host.io(), &stderr_buffer);
     stderr_sink = .{ .w = &stderr_writer.interface };
 }
 

@@ -5,6 +5,8 @@
 and every `std.debug.print` - even a raw `write(2, ...)`. The same command
 piped (`2>&1 | cat > run.log`) keeps them all.
 
+**Status** (2026-10-19, lane leaks6): fixed at the root. The runner's stderr sink is `output.logWriter`, a STREAMING File.Writer (`writerStreaming`), so it writes at the file's shared offset whatever its stderr is; two runner processes redirected into one regular file keep both outputs (tests/wpt_runner/output.zig's tests pin it, with the positional writer as the control). Piping the runner's output is no longer required; it is still harmless. Runners built before this commit still overwrite.
+
 **Why**: the runner writes its report through a 256 KB buffered
 `std.Io.File` writer. On a regular file that writer runs in positional mode:
 it `pwrite`s from its own offset, starting at 0, so when it flushes it

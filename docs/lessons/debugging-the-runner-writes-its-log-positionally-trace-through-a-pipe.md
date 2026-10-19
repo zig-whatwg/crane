@@ -8,6 +8,8 @@ from a scratch trace - lands at the shared offset and is overwritten by the
 runner's next write. Redirect the runner through a pipe (`2>&1 | cat > log`),
 where positional writes are impossible, and every line survives.
 
+**Status** (2026-10-19, lane leaks6): fixed at the root. The runner's stderr sink is `output.logWriter`, a STREAMING File.Writer (`writerStreaming`), so it writes at the file's shared offset whatever its stderr is; two runner processes redirected into one regular file keep both outputs (tests/wpt_runner/output.zig's tests pin it, with the positional writer as the control). Piping the runner's output is no longer required; it is still harmless. Runners built before this commit still overwrite.
+
 **Why**: `> log 2>&1` gives stdout and stderr one open file description. A
 streaming writer appends after the other writer's bytes; a positional one
 writes where it thinks the file ends, on top of them.
