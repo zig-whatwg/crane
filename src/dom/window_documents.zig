@@ -24,7 +24,18 @@ pub const Implementation = struct {
     /// setTimeout and setInterval returned that are neither cleared nor
     /// done - in `allocator`'s memory, OWNED by the caller.
     active_timer_handles: *const fn (realm: runtime.Context, allocator: std.mem.Allocator) error{OutOfMemory}![]runtime.TimerId,
+    /// `realm`'s window's document is kept in the back/forward cache: each
+    /// timer of its map of active timers stops, keeping how long it still
+    /// had to wait, and its animation frame callbacks wait without a frame
+    /// being scheduled for them.
+    suspend_timers: *const fn (realm: runtime.Context) void = &noTimers,
+    /// The document is reactivated: each suspended timer waits what it still
+    /// had to - HTML "reactivate" step 2 shifts each by the suspension's
+    /// length - and its animation frame callbacks may run again.
+    resume_timers: *const fn (realm: runtime.Context) void = &noTimers,
 };
+
+fn noTimers(_: runtime.Context) void {}
 
 var implementation: ?Implementation = null;
 
@@ -40,6 +51,21 @@ pub fn install(impl: Implementation) void {
 pub fn destroyed(realm: runtime.Context) void {
     const impl = implementation orelse return;
     impl.destroyed(realm);
+}
+
+/// The back/forward cache keeps `realm`'s window's document (see
+/// Implementation.suspend_timers). Nothing without an installed
+/// implementation.
+pub fn suspendTimers(realm: runtime.Context) void {
+    const impl = implementation orelse return;
+    impl.suspend_timers(realm);
+}
+
+/// HTML "reactivate" step 2 for `realm`'s window (see
+/// Implementation.resume_timers).
+pub fn resumeTimers(realm: runtime.Context) void {
+    const impl = implementation orelse return;
+    impl.resume_timers(realm);
 }
 
 /// HTML "unload a document" step 16: "the result of getting the keys for the

@@ -706,8 +706,9 @@ pub const EventLoop = struct {
         if (self.sink.hasPosted()) return true;
         // A worker this loop owns is running: it may post at any time.
         if (self.sink.sourceCount() > 0) return true;
-        // A window waiting for an idle period: one will start.
-        if (self.idle_requests.items.len > 0) return true;
+        // A window waiting for an idle period: one will start - unless it is
+        // a page the back/forward cache keeps.
+        if (self.idleRequestsRunnable()) return true;
         // A fetch in flight will queue a task when it ends.
         if (self.fetches) |fetches| if (fetches.inFlight() > 0) return true;
         if (self.timer_manager) |mgr| {
@@ -766,7 +767,7 @@ pub const EventLoop = struct {
     /// for each same-loop window, "start an idle period" with
     /// computeDeadline. Whether one started.
     fn startIdlePeriod(self: *Self, now: i64) bool {
-        if (self.idle_requests.items.len == 0) return false;
+        if (!self.idleRequestsRunnable()) return false;
         // A runnable task: not idle. Tasks waiting for their documents are
         // not runnable ("has no runnable task").
         if (self.runnableQueued()) return false;
@@ -786,8 +787,42 @@ pub const EventLoop = struct {
         var requests = self.idle_requests;
         self.idle_requests = .empty;
         defer requests.deinit(self.allocator);
-        for (requests.items) |request| request.start(request.realm, period);
+        for (requests.items) |request| {
+            // A cached page's window keeps asking: its idle callbacks run in
+            // an idle period after its restore, not into a page that cannot
+            // run script (its "invoke idle callbacks" task names no document).
+            if (self.idleRequestSuspended(request)) {
+                self.idle_requests.append(self.allocator, request) catch {};
+                continue;
+            }
+            request.start(request.realm, period);
+        }
         return true;
+    }
+
+    /// Whether a window that asked for an idle period may get one: any that
+    /// is not a page the back/forward cache keeps.
+    fn idleRequestsRunnable(self: *const Self) bool {
+        for (self.idle_requests.items) |request| {
+            if (!self.idleRequestSuspended(request)) return true;
+        }
+        return false;
+    }
+
+    /// Whether `request` is of a window whose document this loop holds
+    /// suspended (`suspendDocument`): only read while a group exists.
+    fn idleRequestSuspended(self: *const Self, request: IdleRequest) bool {
+        if (self.suspended.items.len == 0) return false;
+        if (!request.realm.hasEngine()) return false;
+        const record = request.realm.getRealm() orelse return false;
+        const global = record.global_object orelse return false;
+        for (self.suspended.items) |group| {
+            if (group.resumed) continue;
+            if (group.window) |window| {
+                if (window == @as(*anyopaque, @ptrCast(global))) return true;
+            }
+        }
+        return false;
     }
 
     /// Whether a new idle period may start at `now`: the current one has
@@ -804,7 +839,7 @@ pub const EventLoop = struct {
     /// How long until a waiting window's idle period can start (ms), when
     /// one is waiting.
     fn idleWaitMs(self: *Self, now: i64) ?u64 {
-        if (self.idle_requests.items.len == 0) return null;
+        if (!self.idleRequestsRunnable()) return null;
         const at = @max(self.idle_blocked_until_ns, self.idle_period_end_ns);
         if (at <= now) return 0;
         return @intCast(@divTrunc(at - now + std.time.ns_per_ms - 1, std.time.ns_per_ms));
