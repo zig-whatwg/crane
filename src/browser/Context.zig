@@ -957,7 +957,7 @@ fn scheduleTimer(timer: TimerInterface, wrapper: *WindowTimerCallback, delay_ms:
     }
     wrapper.getData().id = id;
     wrapper.getData().current_timer_id = id;
-    wrapper.getData().due_ms = platform.monotonicMillis() + @as(i64, @intCast(delay_ms));
+    wrapper.getData().due_ms = dueAt(delay_ms);
     map.put(id, wrapper) catch {
         // Untracked, it could never be cleared or cleaned up. Cancel before
         // freeing: a scheduled timer holds the wrapper.
@@ -966,6 +966,15 @@ fn scheduleTimer(timer: TimerInterface, wrapper: *WindowTimerCallback, delay_ms:
         return null;
     };
     return id;
+}
+
+/// When a run armed now for `delay_ms` comes due (platform.monotonicMillis):
+/// 0 for no delay - due at once, whenever it is suspended - so that a burst
+/// of setTimeout(0) reads no clock (the event-loop cost page,
+/// crane/bfa-cost-timers.html).
+fn dueAt(delay_ms: u64) i64 {
+    if (delay_ms == 0) return 0;
+    return platform.monotonicMillis() + @as(i64, @intCast(delay_ms));
 }
 
 /// Unregister a timer context (cancels and destroys it)
@@ -1275,7 +1284,7 @@ fn intervalHandler(data: *WindowTimerData) void {
             if (new_timer_id != 0) {
                 // The id script holds stays the key; only the pending run changes.
                 data.current_timer_id = new_timer_id;
-                data.due_ms = platform.monotonicMillis() + @as(i64, @intCast(delay));
+                data.due_ms = dueAt(delay);
                 return;
             }
         }
@@ -2650,6 +2659,16 @@ fn anyAnimationFrameRunnable(state: *const AnimationFrameState) bool {
 fn realmIsCached(realm: runtime.Context) bool {
     if (!realm.hasEngine()) return false;
     const window = realmWindow(realm) orelse return false;
+    return windowIsCached(realm, window);
+}
+
+/// Whether `window`, `realm`'s, is a cached page's - asked of the realm's
+/// event loop first, where a cached page always has its suspended task
+/// group: a realm on no Browser loop, or on one with none, has no cached
+/// page (and its Window is not read).
+fn windowIsCached(realm: runtime.Context, window: *runtime.Instance) bool {
+    const loop = @import("event_loop.zig").EventLoop.of(realm) orelse return false;
+    if (loop.suspended.items.len == 0) return false;
     return dom_mod.bfcache.holds(window);
 }
 
@@ -2662,7 +2681,7 @@ fn animationFrameRealmIsTerminal(realm: runtime.Context) bool {
     if (!realm.hasEngine()) return true;
     const window = realmWindow(realm) orelse return true;
     if (instance_lifecycle.isCleanupStarted(window)) return true;
-    const navigable = realmNavigable(realm, window) orelse return !dom_mod.bfcache.holds(window);
+    const navigable = realmNavigable(realm, window) orelse return !windowIsCached(realm, window);
     if (navigable.is_closed or navigable.orphaned) return true;
     if (navigable.active_document) |ptr| {
         const document: *runtime.Instance = @ptrCast(@alignCast(ptr));
@@ -2680,7 +2699,7 @@ fn animationFrameTargetReplaced(entry: AnimationFrameEntry) bool {
     if (runtime.SlabAllocator.generationOf(target) != entry.target_document_generation) return true;
     const window = realmWindow(entry.realm) orelse return true;
     // A cached page's map stays its document's (`animationFrameRealmIsTerminal`).
-    const navigable = realmNavigable(entry.realm, window) orelse return !dom_mod.bfcache.holds(window);
+    const navigable = realmNavigable(entry.realm, window) orelse return !windowIsCached(entry.realm, window);
     // A temporarily unassigned active document is deferred. A different
     // document is a permanent replacement of this entry's target map.
     const active = navigable.active_document orelse return false;

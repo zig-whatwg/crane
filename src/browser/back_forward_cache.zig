@@ -382,6 +382,13 @@ fn hookEvictTaken(page: *const KeptPage) void {
 }
 
 fn hookHolds(object: *const anyopaque) bool {
+    // The fast answer, with no lock: every page the cache holds has its
+    // task group on its Browser's loop (`store`), so a loop with none
+    // holds no page. Asked on the hot paths - a timer's run, a frame.
+    const instance: *const runtime.Instance = @ptrCast(@alignCast(object));
+    if (EventLoop.of(instance.ctx)) |loop| {
+        if (loop.suspended.items.len == 0) return false;
+    }
     const cache = cacheOfObject(object) orelse return false;
     return cache.holds(object);
 }
