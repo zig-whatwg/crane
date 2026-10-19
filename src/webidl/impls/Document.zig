@@ -154,6 +154,11 @@ pub const InternalState = struct {
 
     /// Document ready state
     ready_state: enums.DocumentReadyState,
+    /// HTML lastModified: the exact source timestamp, used only when known.
+    /// Keep the tag in the boolean padding: ?WallTime raises this state from
+    /// the arena's 2048-byte class to 4096 bytes (measured on row 76).
+    last_modified: @import("platform").WallTime = .{ .ns_since_epoch = 0 },
+    last_modified_known: bool = false,
     /// HTML "page showing": set when pageshow fires at the end of loading.
     page_showing: bool = false,
     /// HTML "completely loaded": "completely finish loading" has run.
@@ -1042,14 +1047,25 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // new browsing context and document" step 15: the active sandboxing flag
     // set the navigation (or the creation flags) gave it - empty otherwise.
     if (@hasField(@TypeOf(args), "sandboxing_flags")) internal.active_sandboxing_flags = args.sandboxing_flags;
+    // HTML 3.1.5: a non-navigation document starts complete; navigation's
+    // "create and initialize a Document" step 9 starts it loading.
+    if (@hasField(@TypeOf(args), "ready_state")) internal.ready_state = args.ready_state;
+    if (@hasField(@TypeOf(args), "last_modified")) {
+        const last_modified: ?@import("platform").WallTime = args.last_modified;
+        if (last_modified) |time| {
+            internal.last_modified = time;
+            internal.last_modified_known = true;
+        }
+    }
 }
 
 /// What a Document is given at construction (`initWith`): `origin`, the
 /// record of the document whose origin it takes (BORROWED - the document
 /// retains it), or null for an origin of its own; `sandboxing_flags`, its
 /// active sandboxing flag set (a `dom.sandboxing.SandboxingFlagSet`), empty
-/// when not given.
-pub const construction_args = .{ "origin", "sandboxing_flags" };
+/// when not given; `ready_state`, its initial HTML readiness; and
+/// `last_modified`, the source's optional platform.WallTime (null: unknown).
+pub const construction_args = .{ "origin", "sandboxing_flags", "ready_state", "last_modified" };
 
 /// dom.target_element: `document`'s target element, or null once the
 /// element it names has been freed.
@@ -1148,6 +1164,9 @@ fn cloningSteps(node: *runtime.Instance, copy: *runtime.Instance, subtree: bool)
     try shareOriginInto(target, node);
     target.doc_type = source.doc_type;
     target.mode = source.mode;
+    // HTML 3.1.5: cloning creates a non-navigation document. Readiness and
+    // a source modification time are not among DOM clone step 3.1's copies.
+    target.ready_state = ._complete_;
     // DOM clone step 3.1 also copies "allow declarative shadow roots"
     // (dom/nodes/Node-cloneNode-document-allow-declarative-shadow-roots).
     target.allow_declarative_shadow_roots = source.allow_declarative_shadow_roots or source.default_view != null;
@@ -1217,7 +1236,7 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 /// Spec: https://dom.spec.whatwg.org/#dom-document-document
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     const origin: ?*OriginRecord = if (globalOfRealm(ctx)) |global| try @import("dom").global_settings.shareableOriginOf(global) else null;
-    const instance = try Document.initWith(ctx.allocator, ctx, .{ .origin = origin });
+    const instance = try Document.initWith(ctx.allocator, ctx, .{ .origin = origin, .ready_state = ._complete_ });
     errdefer Document.deinit(instance);
 
     // Set default values
@@ -1798,10 +1817,17 @@ fn utf8DecodeLossy(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
 /// Format: "MM/DD/YYYY hh:mm:ss" (local time)
 /// Note: Returns current time as default when actual modification time is unavailable
 pub fn get_lastModified(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    // In non-browser environment, return a sensible default
-    // Per spec, return "01/01/1970 00:00:00" if the real date is not available
-    return runtime.DOMString.initInterned("01/01/1970 00:00:00");
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const platform = @import("platform");
+    // HTML lastModified: when the source's modification time is not known,
+    // use the current time on each read. Blink Document::lastModified follows
+    // this same source-or-now, local-calendar, numeric-format sequence:
+    // https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/dom/document.cc
+    const time = if (internal.last_modified_known) internal.last_modified else platform.wallNow();
+    return runtime.DOMString.initOwned(try @import("dom").document_last_modified.format(
+        instance.ctx.allocator,
+        platform.localDateTime(time),
+    ));
 }
 
 /// Getter for readyState

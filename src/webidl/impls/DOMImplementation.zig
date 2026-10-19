@@ -199,7 +199,7 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
     const document = try interfaces.XMLDocument.initWith(
         allocator,
         ctx,
-        .{ .origin = try associatedOrigin(internal) },
+        .{ .origin = try associatedOrigin(internal), .ready_state = ._complete_ },
     );
     errdefer interfaces.XMLDocument.deinit(document);
 
@@ -286,7 +286,7 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
     const doc = try interfaces.Document.initWith(
         allocator,
         ctx,
-        .{ .origin = try associatedOrigin(internal) },
+        .{ .origin = try associatedOrigin(internal), .ready_state = ._complete_ },
     );
     errdefer interfaces.Document.deinit(doc);
 

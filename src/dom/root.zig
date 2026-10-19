@@ -189,6 +189,7 @@ pub const range_mutations = @import("range_mutations.zig");
 pub const slot_helpers = @import("slot_helpers.zig");
 pub const cookie_change_event = @import("cookie_change_event.zig");
 pub const document_internals = @import("document_internals.zig");
+pub const document_last_modified = @import("document_last_modified.zig");
 /// The CSSOM's model: what CSSStyleSheet, CSSRuleList and the CSSRule
 /// objects wrap.
 /// The style engine: cascade and computed style (src/dom/style/).
