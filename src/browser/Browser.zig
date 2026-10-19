@@ -284,6 +284,9 @@ pub const Browser = struct {
             },
             .accept_insecure_certs = config.accept_insecure_certs,
         });
+        // What a response's Clear-Site-Data header clears: this Browser's
+        // state, never another's (src/browser/clear_site_data.zig).
+        (try scope.of(@import("fetch").network.NetworkContext)).site_data = @import("clear_site_data.zig").clearerFor(scope);
 
         // Allocate browser struct
         const browser = try allocator.create(Browser);

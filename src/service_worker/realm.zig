@@ -316,6 +316,7 @@ pub const RealmEnvironment = struct {
                     .invalid_state_error => try engine.createDOMException(self.realm, "InvalidStateError", m.message),
                     .invalid_access_error => try engine.createDOMException(self.realm, "InvalidAccessError", m.message),
                     .not_supported_error => try engine.createDOMException(self.realm, "NotSupportedError", m.message),
+                    .abort_error => try engine.createDOMException(self.realm, "AbortError", m.message),
                 };
                 defer exception.release();
                 try engine.rejectPromise(&capability, exception.borrow());
@@ -1102,6 +1103,7 @@ fn rejected(realm: runtime.Context, kind: registry_mod.ErrorKind, message: []con
         .invalid_state_error => try engine.createDOMException(realm, "InvalidStateError", message),
         .invalid_access_error => try engine.createDOMException(realm, "InvalidAccessError", message),
         .not_supported_error => try engine.createDOMException(realm, "NotSupportedError", message),
+        .abort_error => try engine.createDOMException(realm, "AbortError", message),
     };
     defer exception.release();
     return (try engine.createRejectedPromise(realm, exception.borrow())).take();

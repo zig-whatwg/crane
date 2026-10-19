@@ -10,3 +10,5 @@
 **Fix**: Test the response type for a network error, then the INTERNAL response for the status: `if (response.response_type == .@"error") return response; const internal = response.internal orelse response; if (isNetworkError(internal)) return response;`. Read the URL from the internal response as well. The Mixed Content and MIME/nosniff checks beside it still start with `isNetworkError(response)`, so they skip a worker's opaque response (listed as a follow-up).
 
 **Takeaway**: **A response check in main fetch reads the internal response: an opaque filtered one (a service worker's) has status 0 on the outside, which `isNetworkError` takes for a network error.**
+
+**Status** (2026-10-18, lane sw1-b8): the Mixed Content and MIME/nosniff checks now read the internal response too (`blockedByMixedContent`, `blockedByMime`; tests/fetch/sw1b8_opaque_checks_test.zig). All three step-20 checks start the same way.

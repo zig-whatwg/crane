@@ -592,12 +592,26 @@ fn integrityError(response: *InternalResponse) *InternalResponse {
     return response;
 }
 
-/// Main fetch step 20's Mixed Content response check. Fail closed even if
-/// URL authentication cannot allocate: clearing the response needs none.
+/// Main fetch step 20's Mixed Content response check ("should
+/// internalResponse to request be blocked as mixed content"). Fail closed
+/// even if URL authentication cannot allocate: clearing the response needs
+/// none.
 fn blockedByMixedContent(request: *const InternalRequest, response: *InternalResponse) *InternalResponse {
-    if (isNetworkError(response)) return response;
-    const response_url = response.url() orelse request.currentUrl();
+    // Step 20 reads internalResponse (step 15: the response itself, or its
+    // internal response). Not `isNetworkError(response)`: an opaque filtered
+    // response a service worker answered with has status 0 and no URL
+    // outside - its internal response has both (blockedByCsp, and the
+    // lesson debugging-main-fetch-is-network-error-reads-an-opaque-...).
+    if (response.response_type == .@"error") return response;
+    const internal = response.internal orelse response;
+    if (isNetworkError(internal)) return response;
+    const response_url = internal.url() orelse request.currentUrl();
     if (!(mixed_content.shouldBlockResponse(request, response_url) catch true)) return response;
+    // The internal response goes first: a network error has none.
+    if (response.internal) |kept| {
+        response.internal = null;
+        kept.deinit();
+    }
     // A network error hides the same data as the opaque filter (URL list,
     // status/message, headers and body), but has type "error". Reuse its
     // allocation-free clearing rather than risk returning data on OOM.
@@ -660,10 +674,16 @@ fn blockedByCsp(request: *const InternalRequest, response: *InternalResponse) *I
 /// its MIME type" or "... due to nosniff" says blocked - a network error in
 /// its place (`response` let go).
 fn blockedByMime(request: *const InternalRequest, response: *InternalResponse) *InternalResponse {
-    if (isNetworkError(response)) return response;
+    // Step 20 reads internalResponse: an opaque filtered response a service
+    // worker answered with has status 0 and an empty header list outside -
+    // its `Content-Type` and `X-Content-Type-Options` are its internal
+    // response's (as blockedByMixedContent).
+    if (response.response_type == .@"error") return response;
+    const internal = response.internal orelse response;
+    if (isNetworkError(internal)) return response;
     const allocator = response.allocator;
-    const blocked = (mime_blocking.blockedDueToMimeType(allocator, request.destination, &response.header_list) catch false) or
-        (mime_blocking.blockedDueToNosniff(allocator, request.destination, &response.header_list) catch false);
+    const blocked = (mime_blocking.blockedDueToMimeType(allocator, request.destination, &internal.header_list) catch false) or
+        (mime_blocking.blockedDueToNosniff(allocator, request.destination, &internal.header_list) catch false);
     if (!blocked) return response;
     const network_error = internal_response.networkError(allocator) catch return response;
     response.deinit();

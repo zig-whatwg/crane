@@ -183,14 +183,16 @@ pub const GlobalType = enum {
             // https whatever the file's name says (WptServer.buildTestUrl).
             .serviceworker => true,
             // The module workers: `wpt serve` generates the
-            // `.any.worker-module.html` / `.any.sharedworker-module.html`
-            // wrappers, whose worker imports testharness.js and the test as
-            // modules; a module Worker and a module SharedWorker run the
-            // graph (crane/script-module-workers.html). A module service
-            // worker's wrapper has not been measured yet.
+            // `.any.worker-module.html` / `.any.sharedworker-module.html` /
+            // `.any.serviceworker-module.html` wrappers, whose worker imports
+            // testharness.js and the test as modules; a module Worker and a
+            // module SharedWorker run the graph (crane/script-module-workers.html),
+            // and a module service worker's registration ({type: "module"})
+            // runs it with the classic one's plumbing above (lane sw1-b8: it
+            // was left off untried in e1acbff5d49, never for a crash or hang).
             .worker_module => true,
             .sharedworker_module => true,
-            .serviceworker_module => false,
+            .serviceworker_module => true,
             // All ShadowRealm variants not implemented
             .shadowrealm,
             .shadowrealm_in_window,
@@ -1279,11 +1281,11 @@ test "GlobalType.fromString: the module worker globals" {
     try std.testing.expectEqualStrings("dedicatedworker-module", GlobalType.worker_module.toString());
     try std.testing.expectEqualStrings("sharedworker-module", GlobalType.sharedworker_module.toString());
     try std.testing.expectEqualStrings("serviceworker-module", GlobalType.serviceworker_module.toString());
-    // Run where the plumbing exists: a module Worker and a module
-    // SharedWorker; a service worker has no registration yet.
+    // Run where the plumbing exists: a module Worker, a module SharedWorker
+    // and a module service worker.
     try std.testing.expect(GlobalType.worker_module.isImplemented());
     try std.testing.expect(GlobalType.sharedworker_module.isImplemented());
-    try std.testing.expect(!GlobalType.serviceworker_module.isImplemented());
+    try std.testing.expect(GlobalType.serviceworker_module.isImplemented());
 }
 
 test "parseAnyJs: a file of module worker globals gets those globals, not the defaults" {
@@ -1583,14 +1585,15 @@ test "GlobalType.isImplemented - the dedicated worker runs" {
     try std.testing.expect(GlobalType.window.isImplemented());
 }
 
-test "GlobalType.isImplemented - the service worker runs; the shared worker and the module service worker stay off" {
+test "GlobalType.isImplemented - the classic and module service workers run; the shared worker stays off" {
     // The service worker's variant registers its test script and reads its
     // results back over ServiceWorker.postMessage and Client.postMessage
     // (lane sw1-b2, granted): on a sample of 87 files it added 1,517 passing
-    // subtests and blocked nothing new. A module service worker and a shared
-    // worker still lack what their wrappers need.
+    // subtests and blocked nothing new. The module service worker's wrapper
+    // registers it with {type: "module"} over the same plumbing (lane
+    // sw1-b8, granted). A shared worker still lacks what its wrapper needs.
     try std.testing.expect(GlobalType.serviceworker.isImplemented());
-    try std.testing.expect(!GlobalType.serviceworker_module.isImplemented());
+    try std.testing.expect(GlobalType.serviceworker_module.isImplemented());
     try std.testing.expect(!GlobalType.sharedworker.isImplemented());
 }
 
@@ -1863,7 +1866,7 @@ test "META global: each single global" {
     try expectAnyGlobals("// META: global=sharedworker-module\n", &.{"sharedworker-module"});
     try expectAnyRuns("// META: global=sharedworker-module\n", &.{"sharedworker-module"});
     try expectAnyGlobals("// META: global=serviceworker-module\n", &.{"serviceworker-module"});
-    try expectAnyRuns("// META: global=serviceworker-module\n", &.{});
+    try expectAnyRuns("// META: global=serviceworker-module\n", &.{"serviceworker-module"});
     // worker-module has no longhand; its URL is the dedicated module
     // worker's (.any.worker-module.html).
     try expectAnyGlobals("// META: global=worker-module\n", &.{"dedicatedworker-module"});

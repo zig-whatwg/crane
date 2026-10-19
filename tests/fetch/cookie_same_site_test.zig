@@ -70,6 +70,30 @@ test "a cross-site redirect taints a request that returns to its original site" 
     try expectHeader(request, "default=1; none=1");
 }
 
+test "a service worker's copy of a hop after a cross-site redirect stays cross-site (dropped_urls_site)" {
+    // The copy keeps only its current hop (service_worker manager
+    // copyRequestForWorker); what the dropped hops made of its site is
+    // `dropped_urls_site`. same-site-cookies.https.html's "same-origin,
+    // window.open with passthrough and cross-site redirect": the
+    // passthrough's fetch(event.request) must not send Strict cookies.
+    const allocator = std.testing.allocator;
+    var jar = CookieJar.init(allocator);
+    defer jar.deinit();
+    try seed(&jar, "https://example.com/");
+    const request = try Request.init(allocator, "https://example.com/end");
+    defer request.deinit();
+    request.cookie_jar = &jar;
+    try request.setOrigin("https://example.com");
+    request.mode = .navigate;
+    request.main_frame_navigation = true;
+    request.dropped_urls_site = .cross_site;
+    // A safe top-level navigation: Lax, not Strict.
+    try expectHeader(request, "lax=1; default=1; none=1");
+    // A same-site dropped hop leaves it same-site.
+    request.dropped_urls_site = .same_site;
+    try expectHeader(request, "strict=1; lax=1; default=1; none=1");
+}
+
 test "safe cross-site top-level navigations send Lax cookies but nested ones do not" {
     const allocator = std.testing.allocator;
     var jar = CookieJar.init(allocator);

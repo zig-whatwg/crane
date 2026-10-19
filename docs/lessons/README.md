@@ -325,6 +325,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A per-name query can still scan every node](architecture-a-per-name-query-can-still-scan-every-node.md) - Allocation-free named queries must also avoid walking the document before ordinary property reads.
 - [Build URL replacements before releasing old fields](architecture-build-url-replacements-before-releasing-old-fields.md) - Reuse a failure-safe constructor, then swap; do not partially destroy an object while constructing its replacement.
 - [Focus selectors must not run style-dependent focus fixup](architecture-focus-selectors-must-not-run-style-dependent-focus-fixup.md) - Separate the stored designation from style-dependent validation.
+- [Abort a job by marking it, not by freeing it](architecture-abort-a-job-by-marking-it-not-freeing-it.md) - An outside abort settles and marks; the job's own resume points finish it. List every pointer to the job (waiters, ops, queued tasks) before freeing anything.
 
 ### Spec Compliance
 - [A subclass's copy of an event concept hides what dispatch does to it](spec-compliance-a-subclass-copy-of-an-event-concept-hides-dispatch.md) - A concept the base algorithm reads and writes has one home, the base's state; a subclass attribute that names it reads it there, never a copy of its own.
@@ -756,6 +757,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Check the delivered policy before CSP enforcement](debugging-check-the-delivered-policy-before-csp-enforcement.md) - Verify actual response headers before changing policy enforcement.
 - [Console Label Insertion Must Roll Back on OOM](debugging-console-label-insertion-must-roll-back-on-oom.md) - Failed owned-key allocation must leave the map without the new borrowed entry.
 - [Worker report tests can fail before reporting](debugging-worker-report-tests-can-fail-before-reporting.md) - Trace harness prerequisites to the request producer; supplying a missing input makes inert options observable.
+- [A WPT that waits for a frame's message after its load event may have missed it](debugging-a-wpt-that-waits-for-a-message-after-load-may-have-missed-it.md) - A hang waiting for a frame's message is often an ordering bug, not a missing message: record when it arrived relative to the load, and buffer it to find what else fails.
 
 ### Workflow
 - [wpt.fyi's search answers 0/0 for browsers it has no aligned run of - read the runs' raw reports](workflow-wpt-fyi-search-hides-subtests-read-the-runs-raw-report.md) - For a browser-behaviour ruling, read the aligned stable runs' raw report.json - subtest status and message per browser - never the search endpoint's file counts.
