@@ -49,7 +49,6 @@ pub fn call_query(instance: *runtime.Instance, permissionDesc: runtime.JSValue) 
         return (try engine.createRejectedPromise(realm, exception.value)).take();
     }
     const descriptor = conversion.result.?;
-    const state = queryState(realm, descriptor);
 
     // Step 7. Both this owned capability and the returned owned promise must
     // survive until the caller / the queued task takes its respective part.
@@ -63,7 +62,6 @@ pub fn call_query(instance: *runtime.Instance, permissionDesc: runtime.JSValue) 
         .realm = realm,
         .capability = capability,
         .descriptor = descriptor,
-        .state = state,
     };
     // Step 8: create the status in the task, so no native platform object is
     // held across turns. enqueue takes the record, including on queue drop.
@@ -115,16 +113,13 @@ fn relevantGlobal(realm: runtime.Context) ?*runtime.Instance {
     return @ptrCast(@alignCast(record.global_object orelse return null));
 }
 
-fn queryState(realm: runtime.Context, descriptor: permissions.PermissionDescriptor) permissions.PermissionState {
-    // Permission state 5.1 step 2: read the relevant settings object's
-    // secure-context flag; no serialized-origin or URL approximation.
-    const global = relevantGlobal(realm);
-    const secure = if (global) |g| if (dom.global_settings.of(g)) |settings| settings.is_secure_context(g) else false else false;
+fn queryState(secure: bool, descriptor: permissions.PermissionDescriptor) permissions.PermissionState {
     // Step 4. TODO(permissions-policy): documents do not yet receive their
     // header/iframe/inherited policy. Treat them as allowed, as the media
     // element implementation does, until the owning Document hook lands.
-    // Steps 5-7 await the Browser's permission store (platform recipes 8).
-    // Step 8. TODO(platform recipes step 8): once step 7 supplies Requester,
+    // Steps 5-7 are the status's construction: it reads and subscribes to
+    // the Browser's overrides atomically with its generated permission key.
+    // Step 8. TODO(platform recipes step 7): once it supplies Requester,
     // use platform.platformPermissionState(browser,
     // &html.platform_state.requester(realm, id), &descriptor) inside
     // if (platform.capabilities.os_permissions != .unsupported).
@@ -132,14 +127,33 @@ fn queryState(realm: runtime.Context, descriptor: permissions.PermissionDescript
     return permissions.query.resultState(descriptor.name, state);
 }
 
+/// Permissions 5.1 step 5 and each feature's key generator. A missing or
+/// opaque top-level origin has no representable key yet; never collapse
+/// distinct opaque origins into the serialized string "null".
+fn permissionKey(realm: runtime.Context, global: *runtime.Instance, settings: dom.global_settings.Settings, descriptor: permissions.PermissionDescriptor) error{OutOfMemory}!?[]u8 {
+    const origin_of = settings.top_level_origin orelse return null;
+    const top = (try origin_of(global)) orelse return null;
+    if (descriptor.name != .storage_access) return top;
+    defer realm.allocator.free(top);
+    // Storage Access 4: a (top-level site, requester site) pair, rather
+    // than the default permission key's top-level origin.
+    const origin = settings.origin(global) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else null;
+    defer realm.allocator.free(origin);
+    const sites = @import("html").agent_clusters;
+    const top_site = sites.siteOf(realm.allocator, top) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else null;
+    defer realm.allocator.free(top_site);
+    const requester_site = sites.siteOf(realm.allocator, origin) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else null;
+    defer realm.allocator.free(requester_site);
+    return try std.mem.concat(realm.allocator, u8, &.{ top_site, "\x00", requester_site });
+}
+
 /// The feature task owns only a capability, its existing runtime Context,
-/// and value copies of the descriptor and state. It holds no Instance.
+/// and a value copy of the descriptor. It holds no Instance.
 const QueryTask = struct {
     allocator: std.mem.Allocator,
     realm: runtime.Context,
     capability: engine.PromiseCapability,
     descriptor: permissions.PermissionDescriptor,
-    state: permissions.PermissionState,
 
     fn run(data: ?*anyopaque) void {
         const self: *QueryTask = @ptrCast(@alignCast(data.?));
@@ -155,12 +169,29 @@ const QueryTask = struct {
 
     fn steps(data: ?*anyopaque) void {
         const self: *QueryTask = @ptrCast(@alignCast(data.?));
+        // Query step 8.3 runs in the task, not when query() was called:
+        // an override can change while the promise is waiting in the queue.
+        // Permission state 5.1 step 2: read the settings' secure-context
+        // flag once for both the key and fallback. The Window hook computes
+        // it from the document and ancestors; never cache it across tasks.
+        const global = relevantGlobal(self.realm);
+        const settings = if (global) |g| dom.global_settings.of(g) else null;
+        const secure = if (settings) |s| s.is_secure_context(global.?) else false;
+        var key = if (secure) permissionKey(self.realm, global.?, settings.?, self.descriptor) catch {
+            engine.rejectPromise(&self.capability, runtime.JSValue.fromStringRef("Permission query allocation failed")) catch {};
+            return;
+        } else null;
+        defer if (key) |owned| self.allocator.free(owned);
         // 8.1-8.3 and 6.3.1: EventTarget construction, [[query]], name and
         // the computed state, all in the Permissions object's relevant realm.
         const status = interfaces.PermissionStatus.initWith(self.allocator, self.realm, .{
             .permission_descriptor = self.descriptor,
-            .permission_state = self.state,
-        }) catch return;
+            .permission_state = queryState(secure, self.descriptor),
+            .permission_key_owner = &key,
+        }) catch {
+            engine.rejectPromise(&self.capability, runtime.JSValue.fromStringRef("Permission status allocation failed")) catch {};
+            return;
+        };
         // 8.4. resolvePromise uses the wrapper in the promise's realm.
         engine.resolvePromise(&self.capability, .{ .instance = status }) catch {};
     }
