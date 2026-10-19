@@ -169,7 +169,11 @@ fn insertionSteps(node: *NodeBase) void {
 /// HTML's script children changed steps: "1. If the script element is not
 /// connected, then return. 2. Run the script HTML element post-connection
 /// steps" - which prepare a script that is not parser-inserted.
-fn childrenChangedSteps(node: *NodeBase) void {
+fn childrenChangedSteps(node: *NodeBase, change: dom_module.mutation.ChildrenChange) void {
+    // As for HTML scripts (DOM 808/1261, HTML 10188/4354), skip removal.
+    // WebKit SVGScriptElement::childrenChanged delegates to ScriptElement,
+    // whose childrenChanged requires childChange.isInsertion().
+    if (change == .removed) return;
     if (!node.is_connected) return;
     const instance = svgScriptOf(node) orelse return;
     @import("html").script_execution.svgScriptInsertionOrChildrenChanged(instance.ctx.allocator, instance);

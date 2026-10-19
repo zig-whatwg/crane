@@ -305,7 +305,7 @@ fn removingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
 
 /// "The element's children changed steps run." Called for every parent
 /// whose children change.
-fn childrenChangedSteps(parent: *NodeBase) void {
+fn childrenChangedSteps(parent: *NodeBase, _: dom_module.mutation.ChildrenChange) void {
     if (parent.node_type != 1) return;
     const instance = styleOf(parent) orelse return;
     const internal = getInternal(instance) orelse return;

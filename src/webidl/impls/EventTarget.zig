@@ -71,15 +71,6 @@ pub const EventListenerRecord = struct {
     /// compare: a deactivated and re-activated handler is a NEW listener, and
     /// a dispatch already under way must not mistake one for the other.
     handler_serial: u32 = 0,
-
-    /// This event handler's value is an "internal raw uncompiled handler"
-    /// (HTML 8.1.8.1): its content attribute was set while the element's
-    /// document had no browsing context, and the event handler map has no
-    /// value for it until "getting the current value of the event handler"
-    /// compiles it (`currentHandlerValue`). Its body is the element's content
-    /// attribute - any change to which reruns the attribute change steps - so
-    /// the record holds no copy of it.
-    raw_uncompiled: bool = false,
 };
 
 /// Internal state for EventTarget implementation
@@ -98,16 +89,16 @@ pub const InternalState = struct {
 
     /// HTML "event handler map" (§8.1.8.1): the event handlers whose target
     /// this is, by event type ("click" for onclick). Created with the first
-    /// one - most targets never have any. A value is the handler as the
-    /// binding converted it (HandlerValue), so that EventHandler,
-    /// OnErrorEventHandler and OnBeforeUnloadEventHandler share the map. The
-    /// keys are the IDL attributes' literal event types.
+    /// one - most targets never have any. A value is either owned raw source
+    /// or the handler as the binding converted it (HandlerValue), so that
+    /// EventHandler, OnErrorEventHandler and OnBeforeUnloadEventHandler share it. The
+    /// keys borrow the activated listener's owned event type string.
     ///
     /// The map owns each value: the binding hands the setter's argument over
     /// as it is, and `setEventHandler` releases a value it replaces or clears,
     /// `deinitEx` the rest. A value is a handle to a function in some page,
     /// and one never released kept that page alive for the process.
-    event_handler_map: ?*std.StringHashMapUnmanaged(HandlerValue) = null,
+    event_handler_map: ?*std.StringHashMapUnmanaged(HandlerEntry) = null,
 
     /// Set on an entry made lazily (`lazyInternal`), for an EventTarget whose
     /// impl never ran EventTarget's init - and so never runs its deinit,
@@ -150,11 +141,9 @@ pub const InternalState = struct {
             self.allocator.destroy(list);
         }
         if (self.event_handler_map) |map| {
-            // Without an agent there is nothing to release into.
-            if (release_engine_values) {
-                var values = map.valueIterator();
-                while (values.next()) |value| value.release();
-            }
+            // Raw source is native memory even after the engine has ended.
+            var values = map.valueIterator();
+            while (values.next()) |value| value.release(self.allocator, release_engine_values);
             map.deinit(self.allocator);
             self.allocator.destroy(map);
             self.event_handler_map = null;
@@ -727,13 +716,11 @@ pub fn activateEventHandler(instance: *runtime.Instance, event_type: []const u8)
     const internal = getInternalFromRegistry(instance) orelse return;
     const list = try internal.ensureEventListenerList();
 
-    // Step 3: If eventHandler's listener is not null, then return. Its
-    // value was just set, so it is no longer a raw uncompiled handler.
+    // Step 3: If eventHandler's listener is not null, then return.
     for (list.toSliceMut()) |*existing| {
         if (existing.event_handler and !existing.removed and
             std.mem.eql(u8, existing.type.asSlice(), event_type))
         {
-            existing.raw_uncompiled = false;
             return;
         }
     }
@@ -744,8 +731,10 @@ pub fn activateEventHandler(instance: *runtime.Instance, event_type: []const u8)
     var serial = next_handler_serial.fetchAdd(1, .monotonic);
     // 0 means "no handler": a wrapped counter skips it.
     if (serial == 0) serial = next_handler_serial.fetchAdd(1, .monotonic);
+    var owned_type = try runtime.DOMString.initDupe(internal.allocator, event_type);
+    errdefer owned_type.deinit(internal.allocator);
     try list.append(.{
-        .type = try runtime.DOMString.initDupe(internal.allocator, event_type),
+        .type = owned_type,
         .callback = null,
         .passive = defaultPassiveValue(event_type, instance),
         .event_handler = true,
@@ -785,7 +774,7 @@ pub fn eraseAllEventListenersAndHandlers(target: *runtime.Instance) void {
     // does its listener, which step 2 removes with the rest.
     if (internal.event_handler_map) |map| {
         var values = map.valueIterator();
-        while (values.next()) |value| value.release();
+        while (values.next()) |value| value.release(internal.allocator, true);
         map.clearRetainingCapacity();
     }
     // Step 2: DOM "remove all event listeners" - for each listener, "remove
@@ -803,12 +792,9 @@ pub fn eraseAllEventListenersAndHandlers(target: *runtime.Instance) void {
     }
 }
 
-/// "Getting the current value of the event handler" (HTML §8.1.8.1) for
-/// `target`'s handler for `event_type`: its value, or null. A handler whose
-/// content attribute was set in a document with a browsing context was
-/// compiled then (Element's event handler content attribute steps); one set
-/// in a document with none is a raw uncompiled handler, compiled here
-/// (`currentHandlerValue`).
+/// "Getting the current value of the event handler" (HTML §8.1.8.1):
+/// compile a raw content-attribute handler on first use, in the target's
+/// current document, or return the already compiled value.
 pub fn eventHandler(comptime Handler: type, target: *runtime.Instance, event_type: []const u8) Handler {
     const address = (currentHandlerValue(target, event_type) orelse return null).address;
     // The address is the function's Global (conversions.zig stores it
@@ -831,7 +817,7 @@ pub fn setEventHandler(comptime Handler: type, target: *runtime.Instance, event_
     // given eventTarget and name."
     const handler = value orelse {
         if (internal.event_handler_map) |map| {
-            if (map.fetchRemove(event_type)) |old| old.value.release();
+            if (map.fetchRemove(event_type)) |old| old.value.release(internal.allocator, true);
         }
         deactivateEventHandler(target, event_type);
         return;
@@ -840,45 +826,43 @@ pub fn setEventHandler(comptime Handler: type, target: *runtime.Instance, event_
     // The map takes the binding's value over from here.
     var address: usize = undefined;
     @memcpy(std.mem.asBytes(&address), std.mem.asBytes(&handler));
-    const handler_value: HandlerValue = .{
+    const handler_value: HandlerEntry = .{ .compiled = .{
         .callback = engine.takeCallbackFunction(@ptrFromInt(address)),
         .address = address,
-    };
+    } };
+    errdefer handler_value.release(internal.allocator, true);
+    try storeHandlerEntry(target, internal, event_type, handler_value);
+}
+
+/// Take ownership only after every fallible allocation succeeds. Keys borrow
+/// the listener's string, never an attribute-name buffer. Replacing a value
+/// preserves the listener's position and releases exactly the old value.
+fn storeHandlerEntry(target: *runtime.Instance, internal: *InternalState, event_type: []const u8, entry: HandlerEntry) !void {
     const map = internal.event_handler_map orelse blk: {
-        const created = internal.allocator.create(std.StringHashMapUnmanaged(HandlerValue)) catch |err| {
-            handler_value.release();
-            return err;
-        };
+        const created = try internal.allocator.create(std.StringHashMapUnmanaged(HandlerEntry));
         created.* = .empty;
         internal.event_handler_map = created;
         break :blk created;
     };
-    const old = map.fetchPut(internal.allocator, event_type, handler_value) catch |err| {
-        handler_value.release();
-        return err;
-    };
-    if (old) |replaced| replaced.value.release();
+    try map.ensureUnusedCapacity(internal.allocator, 1);
     try activateEventHandler(target, event_type);
+    const listener = handlerListener(internal, event_type) orelse unreachable;
+    const slot = map.getOrPutAssumeCapacity(listener.type.asSlice());
+    if (slot.found_existing) slot.value_ptr.release(internal.allocator, true);
+    slot.value_ptr.* = entry;
 }
 
 fn getHandlerAddress(target: *runtime.Instance, event_type: []const u8) ?usize {
     return (currentHandlerValue(target, event_type) orelse return null).address;
 }
 
-/// The event handler content attribute change steps 5.2-5.6 (HTML 8.1.8.1)
-/// for an element whose node document has no browsing context: "Set
-/// eventHandler's value to the internal raw uncompiled handler" - the value
-/// the map held is released, the listener marked raw - then "activate an
-/// event handler given eventTarget and name". Nothing is compiled: scripting
-/// is disabled for that document, and the handler is compiled the first
-/// time its value is needed in a document where it is not.
-fn setRawEventHandler(target: *runtime.Instance, event_type: []const u8) anyerror!void {
+/// Content attribute change steps 5.2-5.6: store an owned raw body and
+/// location and activate the handler, without compiling or running script.
+fn setRawEventHandler(target: *runtime.Instance, event_type: []const u8, source: dom_module.event_handlers.RawSource) anyerror!void {
     const internal = getInternalFromRegistry(target) orelse return error.InvalidStateError;
-    if (internal.event_handler_map) |map| {
-        if (map.fetchRemove(event_type)) |old| old.value.release();
-    }
-    try activateEventHandler(target, event_type);
-    if (handlerListener(internal, event_type)) |record| record.raw_uncompiled = true;
+    const entry: HandlerEntry = .{ .raw = try source.clone(internal.allocator) };
+    errdefer entry.release(internal.allocator, true);
+    try storeHandlerEntry(target, internal, event_type, entry);
 }
 
 /// `internal`'s event handler listener for `event_type`, if activated.
@@ -892,12 +876,12 @@ fn handlerListener(internal: *InternalState, event_type: []const u8) ?*EventList
 
 /// "Getting the current value of the event handler" (HTML 8.1.8.1) given
 /// `target` and `event_type`: the map's value - or, for an internal raw
-/// uncompiled handler, step 1: compile it now (`dom.event_handlers.compileRaw`,
+/// uncompiled handler, step 3: compile it now (`dom.event_handlers.compileRaw`,
 /// which the content attribute's owner installs), which sets the value to the
 /// function or - for a body that does not parse - reports the syntax error
 /// and leaves it null ("This does not deactivate the event handler"). A
 /// handler whose document still has no browsing context stays raw and is
-/// null for now (step 1.2: "If scripting is disabled for document, then
+/// null for now (step 3.2: "If scripting is disabled for document, then
 /// return null").
 ///
 /// The handler stops being raw BEFORE it is compiled: compiling reports
@@ -905,23 +889,30 @@ fn handlerListener(internal: *InternalState, event_type: []const u8) ?*EventList
 /// run script that reads this handler again, and that read must find it
 /// settled rather than compile it a second time.
 fn currentHandlerValue(target: *runtime.Instance, event_type: []const u8) ?HandlerValue {
-    if (eventHandlerValue(target, event_type)) |value| return value;
     const internal = getInternalFromRegistry(target) orelse return null;
-    const record = handlerListener(internal, event_type) orelse return null;
-    if (!record.raw_uncompiled) return null;
-    record.raw_uncompiled = false;
-    switch (dom_module.event_handlers.compileRaw(target, event_type)) {
-        .settled => {},
-        .scripting_disabled => {
-            // Still raw. The list may have changed under the call: find the
-            // listener again.
-            if (getInternalFromRegistry(target)) |now| {
-                if (handlerListener(now, event_type)) |again| again.raw_uncompiled = true;
+    const map = internal.event_handler_map orelse return null;
+    const entry = map.get(event_type) orelse return null;
+    switch (entry) {
+        .compiled => |value| return value,
+        .raw => |source| {
+            // Step 3.7.1: null before compilation can report an error and
+            // re-enter the getter. Keep the listener and its position. The
+            // source is ours during reentrancy, even if the attribute changes.
+            const allocator = internal.allocator;
+            const removed = map.fetchRemove(event_type).?;
+            switch (dom_module.event_handlers.compileRaw(target, event_type, source)) {
+                .scripting_disabled => {
+                    // Step 3.2 runs no script: the map/listener are unchanged,
+                    // and removal left capacity for this exact entry.
+                    map.putAssumeCapacity(removed.key, entry);
+                    return null;
+                },
+                .settled => source.deinit(allocator),
             }
-            return null;
+            // Compilation may have changed the map (or erased the target).
+            return eventHandlerValue(target, event_type);
         },
     }
-    return eventHandlerValue(target, event_type);
 }
 
 fn setHandlerAddress(target: *runtime.Instance, event_type: []const u8, address: ?usize) anyerror!void {
@@ -953,12 +944,28 @@ const HandlerValue = struct {
     }
 };
 
+/// An event handler map owns either a compiled callback or its raw source.
+const HandlerEntry = union(enum) {
+    compiled: HandlerValue,
+    raw: dom_module.event_handlers.RawSource,
+
+    fn release(self: HandlerEntry, allocator: std.mem.Allocator, engine_alive: bool) void {
+        switch (self) {
+            .compiled => |value| if (engine_alive) value.release(),
+            .raw => |source| source.deinit(allocator),
+        }
+    }
+};
+
 /// `target`'s event handler map entry for `event_type`, for the getter and
 /// for dispatch.
 fn eventHandlerValue(target: *runtime.Instance, event_type: []const u8) ?HandlerValue {
     const internal = getInternalFromRegistry(target) orelse return null;
     const map = internal.event_handler_map orelse return null;
-    return map.get(event_type);
+    return switch (map.get(event_type) orelse return null) {
+        .compiled => |value| value,
+        .raw => null,
+    };
 }
 
 /// Operation: addEventListener
