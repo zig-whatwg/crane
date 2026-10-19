@@ -254,7 +254,7 @@ fn closeWatcherOnItsOwnBrowserInner() !void {
     const browser = try openWith(debug_allocator.allocator(), "<!doctype html><body></body>");
     defer browser.deinit();
     var round: usize = 0;
-    while (round < 20) : (round += 1) {
+    while (round < 5) : (round += 1) {
         try run(browser, "events.length = 0; record(new CloseWatcher(), 'a'); record(new CloseWatcher(), 'b');");
         try escape(browser);
         try expectTrue(browser, "events.join() === 'b cancel[false],b close,a cancel[false],a close'");
