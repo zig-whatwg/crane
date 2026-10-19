@@ -2,20 +2,27 @@
 
 **Date**: 2026-10-19
 **Lesson**: The WPT runner is ReleaseSafe, but Crane's own modules keep Debug's builtin.mode
-(tests/wpt_runner/build_mode.zig), so `std.debug.runtime_safety` checks in Crane code run in every WPT
-measurement. A "Debug-only" assertion that takes a lock on a hot path shows up in the cost pages.
+(tests/wpt_runner/build_mode.zig), so every `std.debug.runtime_safety` check in Crane code runs in every
+WPT measurement, cost pages included. A "Debug-only" check is production code for cost.
 
-**Why**: The assertion that no timer runs for a cached page asked the Browser's back/forward cache,
-which it reached through BrowserScope.existing - a mutex and a scan of the scope's supplements - on every
-timer fire. setTimeout(0) bursts measured 4-9% slower (crane/bfa-cost-timers.html, 7 alternating pairs).
+**Why**: It is easy to put an assertion that takes a lock on a hot path in the belief that it costs
+nothing outside Debug builds. In this repository the runner every A/B uses is, for Crane's code, a Debug
+build with optimizations.
 
-**What Happened**: The first cost-page round (lane bfcache-b) passed the task page and failed the timer
-page by more than the 3% bar; the second confirmed it. Two costs were on the path: the assertion's lock,
-and a clock read per scheduled timer for its due time.
+**What Happened**: Lane bfcache-b asserted, on every window timer's run, that the timer's page was not in
+the back/forward cache. The check reached the Browser's cache through BrowserScope.existing - a mutex and a
+scan of the scope's supplements. The setTimeout(0) burst cost page (crane/bfa-cost-timers.html) measured
+4-8% slower than base in 7 alternating pairs. Removing the assertion (holdIfInactive already guards that
+path), the clock read per scheduled timer and two new fields of the timer record (a suspension now asks
+the native timer for its remaining wait, as WebKit's SuspendableTimer does) brought the 20k frame burst
+back to parity (pairwise 0.991); the 50k burst stayed ~4.8% slower, and a `sample` profile of 39 runs
+found the timer path's inclusive samples equal within 1% (the hot spot, NativeTimerManager.arm, is the
+same in both) - so not every cost-page difference is attributable to work a change adds.
 
-**Fix**: The cache answers "holds?" first from the event loop the caller already has (a page in the cache
-always has a suspended task group there, so a loop with none holds no page: no lock), and a timer armed
-with no delay records no due time (it is due at once whenever it is suspended), so a burst reads no clock.
+**Fix**: The cache answers "holds?" first from the event loop the caller already has (a cached page
+always has a suspended task group there: no lock when there is none); no assertion on the timer task
+path; remaining waits read from the native timer at suspend time. Measure, then profile the runner's
+CHILD process (`pgrep -P <runner>`): the parent only waits.
 
-**Takeaway**: **Treat a Debug check in Crane code as production code for cost: it runs in the runner every
-measurement uses.**
+**Takeaway**: **Treat a Debug check in Crane code as production code for cost: it runs in the runner
+every measurement uses. And profile before attributing a cost-page difference to a change.**
