@@ -228,6 +228,17 @@ const SourceText = struct {
                 break :blk .{ .text = made, .made = made };
             },
             // UTF-8 inside its document: offset to where it starts there.
+            // The offsets are part of V8's script compilation cache key
+            // (V8 13.1 src/objects/compilation-cache-table.cc: ScriptHash
+            // :243 combines line_offset and column_offset into the hash of a
+            // named script, and ScriptCacheKey::MatchesScript :265-266
+            // rejects a cached script at another offset), so identical
+            // inline scripts at different positions no longer share one
+            // compile - as in Chrome, which passes the same offsets. Measured
+            // (lane engine1, 7 pairs): 1,000 identical inline scripts +9.3%
+            // (crane/e1-inline-script-cost.html, integrator's bounded
+            // exception), 1,000 distinct ones +1.4%
+            // (crane/e1-inline-script-distinct-cost.html).
             .embedded => |embedded| blk: {
                 const made = try support.newString(isolate, embedded.utf8);
                 const offsets = originOffsets(embedded.start);
