@@ -251,9 +251,9 @@ pub const FetchOptions = struct {
     parser_inserted: bool = false,
     render_blocking: bool = false,
     referrer_policy: fetch.internal.ReferrerPolicy = .empty,
-    /// The script fetch options' credentials mode: "same-origin" for every
-    /// module graph but a worklet's, whose WorkletOptions name it (HTML
-    /// "fetch a worklet/module worker script graph" step 1).
+    /// The script fetch options' credentials mode: "same-origin" by
+    /// default; WorkerOptions or WorkletOptions supplies it for those
+    /// graphs (HTML "fetch a worklet/module worker script graph" step 1).
     credentials_mode: fetch.internal.CredentialsMode = .same_origin,
     /// The fetch priority: a modulepreload link's fetchpriority attribute;
     /// "auto" otherwise (and for every descendant).
@@ -287,10 +287,15 @@ pub const Environment = struct {
     /// - "fetch the descendants of a module script" gets the descendant
     /// script fetch options from the referrer script's - its descendants'.
     fetch_options: FetchOptions = .{},
+    /// The initial worker graph's creating-side referrer-policy default,
+    /// used only by synchronous static requests with empty script options.
+    /// This is not copied into module records: a later import() uses its
+    /// own environment and the worker's policy. Response headers win.
+    static_referrer_policy: fetch.internal.ReferrerPolicy = .empty,
     /// The destination of a JavaScript module's request: "script", or a
-    /// worklet's destination type (HTML "fetch a worklet script graph"; a
-    /// JSON or CSS module's is still "json" or "style", HTML "fetch a single
-    /// module script" step 1).
+    /// worker/worklet's destination type (HTML "fetch a worklet/module
+    /// worker script graph"). A JSON or CSS module's is still "json" or
+    /// "style" (HTML "fetch a single module script" step 1).
     script_destination: fetch.internal.Destination = .script,
     /// Borrowed for a synchronous fetch. Empty means the client referrer;
     /// an imported script otherwise uses the referencing script's base URL.
@@ -594,7 +599,7 @@ fn fetchAndCreate(env: *const Environment, url: []const u8, module_type: ModuleT
     if (options.nonce.len > 0) request.setCryptographicNonceMetadata(options.nonce) catch return null;
     request.setIntegrityMetadata(options.integrity) catch return null;
     request.parser_metadata = if (options.parser_inserted) .parser_inserted else .not_parser_inserted;
-    request.referrer_policy = options.referrer_policy;
+    request.referrer_policy = if (options.referrer_policy != .empty) options.referrer_policy else env.static_referrer_policy;
     request.render_blocking = options.render_blocking;
     request.destination = module_type.fetchDestination(env.script_destination);
     request.initiator_type = .script;

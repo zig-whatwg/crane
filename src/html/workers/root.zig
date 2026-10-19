@@ -31,6 +31,7 @@ pub const WorkerOwner = types.WorkerOwner;
 pub const WorkerData = types.WorkerData;
 pub const HttpsState = types.HttpsState;
 pub const WorkerError = types.WorkerError;
+pub const ModuleFetchOptions = @import("module_fetch_options.zig").ModuleFetchOptions;
 
 // Worker Location
 pub const worker_location = @import("worker_location.zig");

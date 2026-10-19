@@ -351,6 +351,14 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     };
     defer fetched.deinit();
 
+    // Capture only enum values before workerPolicyContainer takes the
+    // response's container. No creating-thread settings cross the thread.
+    const module_fetch_options: workers.ModuleFetchOptions = .{
+        .credentials = credentials,
+        .response_referrer_policy = if (fetched.policy_container) |policy| policy.referrer_policy else .empty,
+        .static_referrer_policy = if (worker_host.creatorPolicyContainer(ctx)) |policy| policy.referrer_policy else .empty,
+    };
+
     // "Initialize a worker global scope's policy container", from the
     // response - or this realm's global's, for a data: or blob: script. It
     // fails closed: a clone of this realm's container that cannot be made
@@ -365,6 +373,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
         .source = fetched.source,
         .script_url = fetched.final_url,
         .worker_type = worker_type,
+        .module_fetch_options = module_fetch_options,
         .name = name,
         .policy_container = policy_container,
         // The worker shares its creator's cookie jar - the user agent's.
