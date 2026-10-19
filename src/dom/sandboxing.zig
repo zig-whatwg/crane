@@ -207,6 +207,12 @@ fn fromAllowed(allowed: Allowed) SandboxingFlagSet {
 /// supported in the meta element") and which is never in a response's list.
 /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#csp-derived-sandboxing-flags
 pub fn cspDerivedSandboxingFlags(csp_list: *const csp.CSPList) SandboxingFlagSet {
+    // A list that could not record a policy - or CSPList.unavailable, for a
+    // container that cannot be found - fails closed: every flag a sandbox
+    // directive can set, as `sandbox` with no keyword (and as
+    // csp.directives.sandbox's getCombinedSandboxFlags answers it). Its
+    // policies alone said "no sandbox" (lane leaks6).
+    if (csp_list.blocksEverything()) return parseSandboxingDirective("");
     var result: SandboxingFlagSet = .empty;
     // 2. "For each policy in cspList":
     for (csp_list.policies.items) |*policy| {

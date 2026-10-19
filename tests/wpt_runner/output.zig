@@ -254,3 +254,56 @@ test "concurrent shards do not interleave within a line" {
     }
     try std.testing.expectEqual(@as(usize, shards * per_shard), lines);
 }
+
+/// The runner's log writer for `file` (its stderr): STREAMING, never
+/// positional. A Zig File.Writer from `file.writer` writes positionally -
+/// pwrite from an offset of its own, starting at 0 - whenever the file is a
+/// seekable regular file, so every runner process redirected into one log
+/// (a sweep's chunks, a supervisor's shards, `>> log` included: pwrite's
+/// offset beats O_APPEND on macOS) rewrote it from byte 0, and only the last
+/// process's output survived - its leaked: and leaked-by-file: lines with
+/// it (lane leaks6). Streaming writes go at the file's shared offset, as
+/// they do into a pipe.
+pub fn logWriter(file: std.Io.File, io: std.Io, buffer: []u8) std.Io.File.Writer {
+    return file.writerStreaming(io, buffer);
+}
+
+test "two runners logging into one regular file keep both outputs: the log writer streams" {
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    // One open file shared by two writers: what two processes started with
+    // the same `> sweep.log` redirect each hold.
+    const file = try tmp.dir.createFile(io, "sweep.log", .{ .read = true });
+    defer file.close(io);
+    var first_buffer: [64]u8 = undefined;
+    var first = logWriter(file, io, &first_buffer);
+    try first.interface.writeAll("first runner: leaked-by-file: total 2\n");
+    try first.interface.flush();
+    var second_buffer: [64]u8 = undefined;
+    var second = logWriter(file, io, &second_buffer);
+    try second.interface.writeAll("second runner\n");
+    try second.interface.flush();
+    var read_buffer: [128]u8 = undefined;
+    const len = try file.readPositionalAll(io, &read_buffer, 0);
+    try std.testing.expectEqualStrings("first runner: leaked-by-file: total 2\nsecond runner\n", read_buffer[0..len]);
+}
+
+test "the positional writer the runner used overwrote an earlier runner's log (the control)" {
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const file = try tmp.dir.createFile(io, "sweep.log", .{ .read = true });
+    defer file.close(io);
+    var first_buffer: [64]u8 = undefined;
+    var first = file.writer(io, &first_buffer);
+    try first.interface.writeAll("first runner: leaked-by-file: total 2\n");
+    try first.interface.flush();
+    var second_buffer: [64]u8 = undefined;
+    var second = file.writer(io, &second_buffer);
+    try second.interface.writeAll("second runner\n");
+    try second.interface.flush();
+    var read_buffer: [128]u8 = undefined;
+    const len = try file.readPositionalAll(io, &read_buffer, 0);
+    try std.testing.expect(std.mem.startsWith(u8, read_buffer[0..len], "second runner\n"));
+}

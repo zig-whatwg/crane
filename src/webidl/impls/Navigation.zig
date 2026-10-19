@@ -525,7 +525,12 @@ pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString, option
         if (o.state) |value| {
             switch (try serializeState(instance, internal, value)) {
                 .serialized => |serialized| state = serialized,
-                .threw => |reason| return earlyErrorWith(instance, reason),
+                // The thrown value is ours (OWNED, from completionOf): the
+                // early error result's promises hold it from here.
+                .threw => |reason| {
+                    defer reason.release();
+                    return earlyErrorWith(instance, reason);
+                },
             }
         }
     }
@@ -587,7 +592,11 @@ pub fn call_reload(instance: *runtime.Instance, options: webidl.Opt(dictionaries
                     state = serialized;
                     state_given = true;
                 },
-                .threw => |reason| return earlyErrorWith(instance, reason),
+                // As in navigate(): ours, released once the promises hold it.
+                .threw => |reason| {
+                    defer reason.release();
+                    return earlyErrorWith(instance, reason);
+                },
             }
         }
     }
@@ -2308,19 +2317,28 @@ fn ownerOf(event: *runtime.Instance) ?EventOwner {
 
 /// dom.navigation_api: intercept(options) steps 4.2-9.
 fn interceptHook(event: *runtime.Instance, options: dom.navigation_api.InterceptOptions) anyerror!void {
+    // The handlers are the binding's hand-over (OWNED by this call, whatever
+    // happens): taken now, so that every throw below releases them - a
+    // throw before they were taken kept both Globals (lane leaks6).
+    var precommit: ?engine.CallbackFunction = if (options.precommit_handler) |h| engine.takeCallbackFunction(h) else null;
+    errdefer if (precommit) |p| p.release();
+    var handler: ?engine.CallbackFunction = if (options.handler) |h| engine.takeCallbackFunction(h) else null;
+    errdefer if (handler) |h| h.release();
     const owner = ownerOf(event) orelse return error.InvalidStateError;
     const record = owner.record;
     const allocator = owner.internal.allocator;
     // 4.2: "Append options["precommitHandler"] to this's navigation precommit
     // handler list."
-    if (options.precommit_handler) |handler| {
-        try record.precommit_handlers.append(allocator, engine.takeCallbackFunction(handler));
+    if (precommit) |p| {
+        try record.precommit_handlers.append(allocator, p);
+        precommit = null;
     }
     // 5. Assert: none or intercepted. 6.
     record.interception_state = .intercepted;
     // 7.
-    if (options.handler) |handler| {
-        try record.handlers.append(allocator, engine.takeCallbackFunction(handler));
+    if (handler) |h| {
+        try record.handlers.append(allocator, h);
+        handler = null;
     }
     // 8-9. A later value overrides an earlier one (the warning is optional).
     if (options.focus_reset) |f| record.focus_reset = f;
@@ -2390,10 +2408,14 @@ fn redirectHook(event: *runtime.Instance, args: *const dom.navigation_api.Redire
 /// dom.navigation_api: NavigationPrecommitController's addHandler() steps
 /// 2-4.
 fn addHandlerHook(event: *runtime.Instance, handler: *const anyopaque) anyerror!void {
+    // The binding's hand-over, OWNED by this call: taken first, so that a
+    // throw releases it (each one kept the argument's Global - lane leaks6).
+    const callback = engine.takeCallbackFunction(handler);
+    errdefer callback.release();
     const owner = ownerOf(event) orelse return error.InvalidStateError;
     try sharedChecksOf(owner);
     if (owner.record.interception_state != .intercepted) return error.InvalidStateError;
-    try owner.record.handlers.append(owner.internal.allocator, engine.takeCallbackFunction(handler));
+    try owner.record.handlers.append(owner.internal.allocator, callback);
 }
 
 // ============================================================================

@@ -3175,6 +3175,13 @@ const CloseTask = struct {
         engine.runTaskInRealm(task.window.ctx, steps, task.window) catch {};
     }
 
+    /// The task never ran: its realm's timers ended with it armed - the
+    /// popup, or the whole Browser, went first.
+    fn drop(data: ?*anyopaque) void {
+        const task: *CloseTask = @ptrCast(@alignCast(data orelse return));
+        task.allocator.destroy(task);
+    }
+
     fn steps(data: ?*anyopaque) void {
         const window: *runtime.Instance = @ptrCast(@alignCast(data orelse return));
         // "Definitely close" is the navigable machinery's, HTMLIFrameElement's,
@@ -3189,6 +3196,12 @@ fn queueDefinitelyClose(window: *runtime.Instance) void {
     const timer = window.ctx.getOptionalTimer() orelse return;
     const task = window.ctx.allocator.create(CloseTask) catch return;
     task.* = .{ .window = window, .generation = runtime.SlabAllocator.generationOf(window), .allocator = window.ctx.allocator };
+    // Owned by the timer: a task its realm's end drops is freed then. With a
+    // plain timer, a popup closed just before its Browser ended leaked this
+    // task - lane httpcache1's one intermittent allocation (lane leaks6;
+    // docs/lessons/architecture-a-task-queued-on-a-loop-that-never-runs-again-leaks-its-data.md).
+    if (timer.setTimeoutOwned(0, CloseTask.run, task, CloseTask.drop) != 0) return;
+    // A timer that cannot promise the drop: the plain one, as before.
     if (timer.setTimeout(0, CloseTask.run, task) == 0) task.allocator.destroy(task);
 }
 

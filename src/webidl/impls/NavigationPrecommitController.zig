@@ -20,6 +20,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const dom = @import("dom");
+const engine = @import("engine");
 const same_object = @import("same_object.zig");
 const NavigationPrecommitController = interfaces.NavigationPrecommitController;
 
@@ -87,9 +88,19 @@ fn create(realm: runtime.Context, event: *runtime.Instance) anyerror!*runtime.In
 /// addHandler(handler): steps 2-4 are the navigation's (see the file
 /// comment); step 1 is an assertion.
 pub fn call_addHandler(instance: *runtime.Instance, handler: callbacks.NavigationInterceptHandler) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const event = internal.event orelse return error.InvalidStateError;
+    // The binding hands `handler` over: the navigation's steps take it on
+    // every path, and a throw before them releases it.
+    const event = eventOf(instance) orelse {
+        engine.takeCallbackFunction(@ptrCast(handler)).release();
+        return error.InvalidStateError;
+    };
     try dom.navigation_api.addHandler(event, @ptrCast(handler));
+}
+
+/// The NavigateEvent this controller was made for, while it has one.
+fn eventOf(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    return internal.event;
 }
 
 /// redirect(url, options): steps 2-12 are the navigation's (see the file
