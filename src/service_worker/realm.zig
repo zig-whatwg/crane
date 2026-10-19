@@ -251,7 +251,15 @@ pub const RealmEnvironment = struct {
         // -clients-claim pass in Chrome 155 and Firefox 158, wpt.fyi
         // 23b0b89b1a). Every delivery here would run the page's script, so
         // every one evicts; the delivery is dropped (its owner frees it).
-        if (cachedWindowOf(self.realm)) |window| return dom.bfcache.evict(window, null);
+        if (cachedWindowOf(self.realm)) |window| {
+            // Except a registration's update via cache mode: a native field of
+            // its object's state, set with no engine call, no script, event
+            // or promise - nothing runs in the cached realm, so nothing needs
+            // evicting it (a kept realm is attached: the engine's
+            // detached-realm guard would not catch a call, so make none).
+            if (delivery.* == .update_via_cache) return self.setUpdateViaCache(delivery.update_via_cache.registration, delivery.update_via_cache.mode);
+            return dom.bfcache.evict(window, null);
+        }
         self.delivering += 1;
         defer {
             self.delivering -= 1;
@@ -352,12 +360,7 @@ pub const RealmEnvironment = struct {
             },
             // The registration's update via cache mode changed (Update step
             // 9, Install step 3): what its object's getter returns.
-            .update_via_cache => |m| {
-                const entry = self.registrationEntry(m.registration) orelse return;
-                // The object's impl owns `data`: gone with the object.
-                if (entry.object.live() == null) return;
-                entry.data.update_via_cache = m.mode;
-            },
+            .update_via_cache => |m| self.setUpdateViaCache(m.registration, m.mode),
             // Install step 9.2: updatefound at the registration's objects.
             .update_found => |m| {
                 const entry = self.registrationEntry(m.registration) orelse return;
@@ -595,6 +598,15 @@ pub const RealmEnvironment = struct {
     fn workerEntry(self: *RealmEnvironment, worker_id: u64) ?*WorkerEntry {
         for (self.workers.items) |*entry| if (entry.worker_id == worker_id) return entry;
         return null;
+    }
+
+    /// The registration's update via cache mode changed: what its object's
+    /// getter returns. A native field write only.
+    fn setUpdateViaCache(self: *RealmEnvironment, registration_id: u64, mode: registry_mod.UpdateViaCache) void {
+        const entry = self.registrationEntry(registration_id) orelse return;
+        // The object's impl owns `data`: gone with the object.
+        if (entry.object.live() == null) return;
+        entry.data.update_via_cache = mode;
     }
 
     fn registrationEntry(self: *RealmEnvironment, registration_id: u64) ?*RegistrationEntry {
