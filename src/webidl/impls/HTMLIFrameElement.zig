@@ -1635,6 +1635,21 @@ fn startFetch(record: *Navigation) void {
             dom_module.navigables.containerKind(@ptrCast(@alignCast(element_ptr))) orelse .iframe
         else
             null;
+        // Fetch "determine the network partition key" given the request's
+        // reserved client: a child navigable's has its parent environment's
+        // top-level origin ("create navigation params by fetching"), so the
+        // container document's top-level site. A top-level navigation's
+        // stays null (its key would follow each hop's URL): it bypasses the
+        // partitioned stores, the HTTP cache among them.
+        // Out of memory leaves it null: the request then shares nothing.
+        var partition_allocator: std.mem.Allocator = allocator;
+        const partition_key: ?[]u8 = key: {
+            const container_document = containerDocumentOf(record.integration) orelse break :key null;
+            const container_window = windowOfRealm(container_document.ctx) orelse break :key null;
+            partition_allocator = container_window.ctx.allocator;
+            break :key dom_module.global_settings.topLevelSiteOf(container_window) catch null;
+        };
+        defer if (partition_key) |key| partition_allocator.free(key);
         const request = navigation_fetch.navigationRequest(allocator, url, .{
             .destination = if (container_kind) |kind| switch (kind) {
                 .iframe => .iframe,
@@ -1642,6 +1657,7 @@ fn startFetch(record: *Navigation) void {
                 .object => .object,
                 .embed => .embed,
             } else .document,
+            .network_partition_key = partition_key,
             .mode = .navigate,
             // Step 3: redirect mode "manual" - the navigation follows each
             // redirect itself (step 21, `followManualRedirect`), so every
