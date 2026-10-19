@@ -102,8 +102,9 @@ test "a Document's scripts are reached through document_scripts.of, and currentS
     const current = (try interfaces.Document.get_currentScript(document)) orelse return error.NoCurrentScript;
     try testing.expect(current.htmlscript_element == script);
 
-    // Scripting is enabled by default, and nothing blocks scripts yet.
-    try testing.expect(dom.document_scripts.scriptingEnabled(document));
+    // HTML 8.1.3.4: no browsing context means scripting is disabled
+    // (row 77 Q4/Q11). Nothing blocks scripts on a stylesheet yet.
+    try testing.expect(!dom.document_scripts.scriptingEnabled(document));
     try testing.expect(!dom.document_scripts.hasStyleSheetBlockingScripts(document));
     // No CSP: every inline script is allowed. (An external script's CSP
     // check is main fetch step 7's, on the request.)

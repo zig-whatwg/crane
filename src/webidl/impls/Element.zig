@@ -2485,162 +2485,39 @@ pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
 // Event handler content attributes (HTML §8.1.8.1)
 // =============================================================================
 
-/// The attribute change steps that synchronize event handler content
-/// attributes with event handlers.
-///
-/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-attributes
-/// "1. If namespace is not null, or localName is not the name of an event
-///  handler content attribute on element, then return.
-///  2. Let eventTarget be the result of determining the target of an event
-///  handler given element and localName.
-///  3. If value is null, then deactivate an event handler given eventTarget and
-///  localName.
-///  4. Otherwise: ... set eventHandler's value to the internal raw uncompiled
-///  handler value/location."
-///
-/// Nothing did this before, so `<body onload="...">` - and every `onload=`,
-/// `onerror=`, `onclick=` attribute on any element - never ran. Pages that
-/// start their tests from `<body onload>` (all of encoding/legacy-mb-*) waited
-/// out the harness timeout on every variant.
-///
-/// Deviation, stated: the spec keeps the value as an internal raw uncompiled
-/// handler and compiles it the first time the handler's current value is
-/// needed. For an element whose document has a browsing context this compiles
-/// it here, at attribute-change time: Crane's handler maps hold a compiled
-/// function under a pointer tag, and all four tag values are taken. What that
-/// changes: a syntax error surfaces when the attribute is set rather than when
-/// the event first fires, and the scope chain captures the element's document
-/// at set time. The function is otherwise the spec's: same name, same
-/// parameters, same object environments, and it is assigned through the event
-/// handler IDL attribute, so getters, dispatch and removal all see one handler.
-///
-/// An element whose document has NO browsing context - a template's
-/// contents, the inert document of a sanitizing fragment parse, DOMParser's -
-/// gets the spec's raw uncompiled handler (`rawEventHandlerSteps`): scripting
-/// is disabled there, so its current value is null, and once the element is
-/// adopted into a document with a browsing context the first read or dispatch
-/// compiles it there (`compileRawEventHandler`). Compiling at adoption would
-/// run script (error reports, the IDL setter) in the middle of insertion.
+/// HTML 8.1.8.1 content attribute change steps: retain raw source until first
+/// use. WebKit's JSLazyEventListener likewise keeps source and location
+/// separately from the attribute until initializeJSFunction.
 fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []const u8, value: ?[]const u8) void {
-    // Step 1: only unnamespaced "on..." attributes of HTML elements. Whether
-    // the name really is an event handler of the target is checked below,
-    // against the target's own IDL attributes.
+    // Step 1: the caller has checked the null attribute namespace.
     if (!std.mem.startsWith(u8, local_name, "on") or local_name.len <= 2) return;
     const internal = getInternal(instance) orelse return;
     const ns = if (internal.data.namespace_uri) |n| n.asSlice() else return;
     if (!std.mem.eql(u8, ns, "http://www.w3.org/1999/xhtml")) return;
-
-    // Step 2: determining the target of an event handler.
-    const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return;
-    const element_name = internal.data.local_name.asSlice();
-    const forwards_to_window = (std.mem.eql(u8, element_name, "body") or std.mem.eql(u8, element_name, "frameset")) and
+    const window_reflecting = (instance.stateAs(interfaces.HTMLBodyElement.State) != null or
+        instance.stateAs(interfaces.HTMLFrameSetElement.State) != null) and
         dom.event_handlers.isWindowReflecting(local_name);
+    if (!global_event_handler_names.has(local_name) and !window_reflecting) return;
 
-    // A document with no browsing context: a window-reflecting handler has
-    // no target (determining the target, step 3: its document is not an
-    // active document), and the element's own is a raw uncompiled handler.
-    const window = (interfaces.Document.get_defaultView(document) catch null) orelse {
-        if (!forwards_to_window) rawEventHandlerSteps(instance, local_name, value);
-        return;
-    };
-    // A document sandboxed without allow-scripts: "getting the current value
-    // of the event handler" step 1.2 returns null while "document's active
-    // sandboxing flag set has its sandboxed scripts browsing context flag
-    // set", so nothing is compiled. The element's own handler is the spec's
-    // internal raw uncompiled handler (it compiles only once the element is
-    // in a document that runs script); a window-reflecting one is never set.
-    if (dom.document_scripts.scriptsSandboxed(document)) {
-        if (!forwards_to_window) rawEventHandlerSteps(instance, local_name, value);
-        return;
-    }
-    const target: *runtime.Instance = if (forwards_to_window) window else instance;
-    _ = compileEventHandlerAttribute(instance, document, target, forwards_to_window, local_name, value);
-}
-
-/// Steps 1-5 of the attribute change steps with the handler compiled now
-/// (see the deviation above), for `instance`'s attribute `local_name` whose
-/// handler's target is `target` - the element, or its document's window for
-/// a body's window-reflecting handler. False when the name is not an event
-/// handler of the target's, or no engine stands behind the realm.
-fn compileEventHandlerAttribute(
-    instance: *runtime.Instance,
-    document: *runtime.Instance,
-    target: *runtime.Instance,
-    forwards_to_window: bool,
-    local_name: []const u8,
-    value: ?[]const u8,
-) bool {
-    // The settings object is the document's (step 3.5), and the handler is
-    // compiled and set in its realm. A realm with no engine behind it (a DOM
-    // unit test) runs no script, so there is no handler to compile: every
-    // engine error below leaves the content attribute a plain attribute.
-    const realm = document.ctx;
-    const target_value: runtime.JSValue = .{ .instance = target };
-
-    // "localName is the name of an event handler content attribute on
-    // element": the target exposes an event handler IDL attribute of that name.
-    if (!(engine.hasProperty(realm, target_value, local_name) catch return false)) return false;
-
-    // Step 3: deactivate. The IDL attribute set to null clears the handler.
+    // Steps 2-3: determine the target; an inactive body's reflecting
+    // handler has none. Removing an attribute deactivates its listener.
+    const target = dom.event_handlers.determineTarget(instance, local_name) orelse return;
+    const event_type = dom.event_handlers.eventTypeOf(local_name);
     const body = value orelse {
-        engine.setProperty(realm, target_value, local_name, runtime.JSValue.jsNull) catch {};
-        return true;
+        dom.event_handlers.set(typedefs.EventHandler, target, event_type, null) catch {};
+        return;
     };
-
-    // Step 5.1: "If the Should element's inline behavior be blocked by
-    // Content Security Policy? algorithm returns "Blocked" when executed upon
-    // element, "script attribute", and value, then return." The handler is
-    // not compiled, and its value stays what it was.
-    if (dom.csp_violations.shouldBlockInline(instance, .script_attribute, body, .{})) return true;
-
-    // Getting the current value of the event handler, step 3: the function,
-    // compiled in the settings object's realm. Its scope (3.9) is the global
-    // environment, then - for an element's handler - the document, optional
-    // form owner and element itself; a Window's handler (a body's onload)
-    // gets none. Step 3.5 takes a form owner only for HTML 4.10.2's
-    // form-associated category: listed elements (including FACE) plus img.
-    // Accepted feature cost (2026-10-17, seven ReleaseSafe pairs): 20k
-    // button-in-form compilations 256.9 -> 267.3 ms (+4.05%). Feature-free
-    // paths stay within 3%: div -1.15%, parser +0.38%, document.write -0.16%,
-    // onclick IDL +1.28%. FOLLOW-UP for the forms owner after row 52:
-    // store/reset the spec's form owner instead of walking ancestors here.
-    // The script's URL is the document's (OWNED: the getter's copy).
-    const url = interfaces.Document.get_URL(document) catch return true;
+    // Step 5.1: a CSP-blocked replacement leaves the OLD handler value.
+    if (dom.csp_violations.shouldBlockInline(instance, .script_attribute, body, .{})) return;
+    const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return;
+    const url = interfaces.Document.get_URL(document) catch return;
     defer document.ctx.allocator.free(url);
-    const source: engine.EventHandlerSource = .{
-        .body = body,
-        .name = local_name,
-        .url = url,
-        // Where the attribute is, for errors: not recorded.
-        .lineno = 0,
-        .parameters = if (forwards_to_window and std.mem.eql(u8, local_name, "onerror")) .onerror else .event,
-        .document = if (forwards_to_window) null else document,
-        .form_owner = if (!forwards_to_window and
-            (@import("html").form_associated.isListed(instance) or instance.stateAs(interfaces.HTMLImageElement.State) != null))
-            @import("html").form_associated.formOwner(instance)
-        else
-            null,
-        .element = if (forwards_to_window) null else instance,
-    };
-    // Step 3.7: a body that does not parse is reported for the settings
-    // object's global (the reporter), and leaves the handler null.
-    const compiled = engine.compileEventHandler(realm, &source, .{ .report = reportException, .host = realm }) catch return true;
-    const function = compiled orelse {
-        engine.setProperty(realm, target_value, local_name, runtime.JSValue.jsNull) catch {};
-        return true;
-    };
-    defer function.release();
-
-    // Step 3.12: the handler's value is the function - through the IDL
-    // attribute, which stores it exactly as `element.onload = fn` would.
-    engine.setProperty(realm, target_value, local_name, function.value) catch {};
-    return true;
+    // Steps 5.2-5.6: the map copies body/location and activates the listener.
+    dom.event_handlers.setRaw(target, event_type, .{ .body = body, .url = url }) catch {};
 }
 
-/// The names of the event handler content attributes every HTML element
-/// has: GlobalEventHandlers' attribute members, which HTMLElement includes
-/// (HTML 8.1.8.2). A body's or frameset's WindowEventHandlers are its
-/// window's, and with no browsing context they have no target.
+/// Check content-attribute names natively, without wrapping the element or
+/// consulting a script property.
 const global_event_handler_names = blk: {
     @setEvalBranchQuota(20_000);
     const decls = @typeInfo(mixins.GlobalEventHandlers).@"struct".decls;
@@ -2654,62 +2531,55 @@ const global_event_handler_names = blk: {
     break :blk std.StaticStringMap(void).initComptime(names[0..count]);
 };
 
-/// Steps 1-5 of the attribute change steps for an element whose document
-/// has no browsing context: step 3's deactivation for a removed attribute,
-/// else step 5 - the CSP check against that document, then the handler's
-/// value is "the internal raw uncompiled handler", activated
-/// (dom.event_handlers.setRaw). Nothing is compiled, and no script can run:
-/// the name is checked against the attribute list natively, not through the
-/// element's IDL attributes, which would wrap the element.
-fn rawEventHandlerSteps(instance: *runtime.Instance, local_name: []const u8, value: ?[]const u8) void {
-    if (!global_event_handler_names.has(local_name)) return;
-    const event_type = dom.event_handlers.eventTypeOf(local_name);
-    const body = value orelse {
-        // Step 3: deactivate - the map's value and the listener go.
-        dom.event_handlers.set(typedefs.EventHandler, instance, event_type, null) catch {};
-        return;
-    };
-    // Step 5.1, against the element's document's policies.
-    if (dom.csp_violations.shouldBlockInline(instance, .script_attribute, body, .{})) return;
-    dom.event_handlers.setRaw(instance, event_type) catch {};
-}
+/// Getting the current value, step 3. EventTarget owns `raw` during this
+/// call, with its value already null to make a syntax-error reporter's
+/// reentrant getter safe. Failure never deactivates the listener.
+fn compileRawEventHandler(target: *runtime.Instance, event_type: []const u8, raw: dom.event_handlers.RawSource) dom.event_handlers.RawCompile {
+    // Step 3.1: a Window handler has no element, even when a body/frameset
+    // supplied its source. Use the Window's current associated document.
+    const is_window = target.stateAs(interfaces.Window.State) != null;
+    const document = (if (is_window)
+        interfaces.Window.get_document(target) catch null
+    else
+        interfaces.Node.get_ownerDocument(target) catch null) orelse return .scripting_disabled;
+    // Step 3.2: retain raw source while scripting is disabled.
+    if (!dom.document_scripts.scriptingEnabled(document)) return .scripting_disabled;
 
-/// "Getting the current value of the event handler" step 1 for a raw
-/// uncompiled handler of `target`'s (dom.event_handlers.compileRaw): step 1.2,
-/// "if scripting is disabled for document, then return null" - with no
-/// browsing context it stays raw - then the body, which is the content
-/// attribute (any change to it reruns the attribute change steps), compiled
-/// in the element's current document and set as the value.
-///
-/// Deviation, stated: the CSP check (attribute change step 5.1) runs again
-/// here, against the document the element is in now. The spec runs it only
-/// when the attribute is set - against a document with no browsing context,
-/// whose policies are empty - so an element parsed into a template or an
-/// inert fragment and adopted into a page whose policy forbids inline
-/// handlers would run its handler. Blink checks the window's policy for a
-/// template document's element (its execution context is the window's,
-/// Document::AllowInlineEventHandler), which this matches.
-fn compileRawEventHandler(target: *runtime.Instance, event_type: []const u8) dom.event_handlers.RawCompile {
-    // The content attribute: "on" and the event type, lowercased (the four
-    // legacy WebKit types are mixed-case; every handler name is lowercase).
     var name_buffer: [64]u8 = undefined;
     if (event_type.len + 2 > name_buffer.len) return .settled;
     @memcpy(name_buffer[0..2], "on");
     const local_name = name_buffer[0 .. event_type.len + 2];
     _ = std.ascii.lowerString(local_name[2..], event_type);
 
-    const document = (interfaces.Node.get_ownerDocument(target) catch null) orelse return .scripting_disabled;
-    if ((interfaces.Document.get_defaultView(document) catch null) == null) return .scripting_disabled;
-    // Step 1.2's other half: "or document's active sandboxing flag set has
-    // its sandboxed scripts browsing context flag set, then return null."
-    if (dom.document_scripts.scriptsSandboxed(document)) return .scripting_disabled;
-    const internal = getInternal(target) orelse return .settled;
-    // The body, copied: compiling reports errors, and the script that runs
-    // can change the attribute under a borrowed slice.
-    const attribute = dom.element_data.getAttributeByNamespaceAndLocalName(&internal.data, null, local_name) orelse return .settled;
-    const body = target.ctx.allocator.dupe(u8, attribute.value) catch return .settled;
-    defer target.ctx.allocator.free(body);
-    _ = compileEventHandlerAttribute(target, document, target, false, local_name, body);
+    // Browser deviation retained: Blink's AllowInlineEventHandler checks
+    // the receiving window's policy for an inert/template document's
+    // element. Re-check that policy on first use after adoption.
+    if (!is_window and dom.csp_violations.shouldBlockInline(target, .script_attribute, raw.body, .{})) return .settled;
+
+    // Steps 3.3-3.6: source/location are stored; form owner and settings
+    // belong to the target NOW, not at attribute assignment.
+    const realm = document.ctx;
+    const source: engine.EventHandlerSource = .{
+        .body = raw.body,
+        .name = local_name,
+        .url = raw.url,
+        .lineno = raw.lineno,
+        .parameters = if (is_window and std.mem.eql(u8, local_name, "onerror")) .onerror else .event,
+        .document = if (is_window) null else document,
+        .form_owner = if (!is_window and
+            (@import("html").form_associated.isListed(target) or target.stateAs(interfaces.HTMLImageElement.State) != null))
+            @import("html").form_associated.formOwner(target)
+        else
+            null,
+        .element = if (is_window) null else target,
+    };
+    // Step 3.7: the adapter reports parse errors in the document's realm.
+    // Do not call the null IDL setter: it removes the listener's position.
+    const compiled = engine.compileEventHandler(realm, &source, .{ .report = reportException, .host = realm }) catch return .settled;
+    const function = compiled orelse return .settled;
+    defer function.release();
+    // Step 3.12: existing IDL conversion transfers the compiled callback.
+    engine.setProperty(realm, .{ .instance = target }, local_name, function.value) catch {};
     return .settled;
 }
 

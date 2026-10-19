@@ -523,6 +523,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [Selected text keeps its rendering context](spec-compliance-selected-text-keeps-its-rendering-context.md) - Preserve surrounding whitespace/casing context and map source offsets through transformation.
 - [Normalize XML input after Trusted Types](spec-compliance-domparser-normalizes-xml-input-after-trusted-types.md) - Put scalar conversion at the parser input boundary, preserving DOMString elsewhere.
 - [Share HTTP date parsing with source metadata](spec-compliance-share-http-date-parsing-with-source-metadata.md) - Reuse the protocol parser, test existing callers and check narrower timestamp conversions.
+- [Raw event handlers own their source](spec-compliance-raw-event-handlers-own-their-source.md) - Retain the stored source; the current attribute can differ after CSP rejection or body replacement.
+- [Child removal does not prepare a script](spec-compliance-child-removal-does-not-prepare-a-script.md) - Carry the mutation reason so removal differs from insertion without changing style updates.
+- [A failed stylesheet can still have a sheet](spec-compliance-a-failed-stylesheet-can-still-have-a-sheet.md) - Rejecting CSS bytes does not necessarily remove the CSSOM sheet.
 
 ### Codegen
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
@@ -812,3 +815,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [A queued remote job builds the mirror as its slot finds it](workflow-a-queued-remote-job-builds-the-mirror-as-its-slot-finds-it.md) - Before its slot comes, a queued job's mirror is still yours to update - sync it instead of resubmitting; after, never touch it.
 - [A Waiting Sweep Launcher Keeps Its Build Slot](workflow-a-waiting-sweep-launcher-keeps-its-build-slot.md) - Runtime runner tokens do not release the build slot of a waiting launcher.
 - [Native Build Output Needs a Pipe Too](workflow-native-build-output-needs-a-pipe-too.md) - Preserve positional-writer output through a pipe; quote retained evidence only.
+- [Download one browser's individual WPT report](workflow-wpt-fyi-individual-test-reports.md) - Compare individual statuses and messages from the aligned run's results directory without downloading its whole report.

@@ -18,6 +18,7 @@
 //! fetch algorithm whichever way the network is waited for.
 
 const std = @import("std");
+const platform = @import("platform");
 const Allocator = std.mem.Allocator;
 const internal_response = @import("../internal/response.zig");
 const InternalResponse = internal_response.InternalResponse;
@@ -273,7 +274,25 @@ pub const FetchJob = struct {
             self.request.header_list.append("Accept", acceptValue(self.request)) catch return FetchError.OutOfMemory;
         }
 
-        // Step 13: main fetch - for every scheme. Its step 12 decides
+        // TODO(step 13: WebDriver BiDi emulated language).
+        // Step 14: supply a default only when the caller supplied none,
+        // including an explicitly empty value. Use the most preferred tag
+        // alone, without disclosing the rest of the platform's language list.
+        if (!self.request.header_list.contains("Accept-Language")) {
+            const languages: ?[]platform.Str = platform.preferredLanguages(self.allocator) catch |err| switch (err) {
+                error.OutOfMemory => return FetchError.OutOfMemory,
+                else => null, // A platform without preferences may omit this default.
+            };
+            if (languages) |preferred| {
+                defer self.allocator.free(preferred);
+                defer for (preferred) |language| self.allocator.free(language.slice());
+                if (preferred.len > 0) {
+                    self.request.header_list.append("Accept-Language", preferred[0].slice()) catch return FetchError.OutOfMemory;
+                }
+            }
+        }
+
+        // Step 17: main fetch - for every scheme. Its step 12 decides
         // between scheme fetch (data:, about:, blob:, with the tainting and
         // filtering that come with it) and HTTP fetch, and turns any other
         // scheme into a network error; step 20 gives HEAD a null body. A

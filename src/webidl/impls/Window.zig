@@ -2051,9 +2051,25 @@ fn windowPostMessageSteps(instance: *runtime.Instance, message: runtime.JSValue,
     else
         "null";
 
+    // Step 8.2 carries the actual origin, including an opaque origin's
+    // identity. Keep it before StructuredSerialize can run script; the
+    // posted task owns this reference until delivery, drop or teardown.
+    // The record stays on this Browser's window-agent thread.
+    const origin_record = if (source_window) |sw| settingsOriginRecord(sw) else null;
+    if (origin_record) |record| {
+        try record.resolve(source_origin);
+        _ = record.retain();
+    }
+    errdefer if (origin_record) |record| record.release();
+
     // Steps 3-5.
     const target_origin = try TargetOrigin.resolve(allocator, instance, targetOrigin, source_window, source_origin);
     errdefer target_origin.deinit(allocator);
+
+    // The transfer-list path still uses the serialization. Copy it before
+    // serialization can run a getter that navigates the sending Window.
+    const origin = try allocator.dupe(u8, source_origin);
+    errdefer allocator.free(origin);
 
     // Steps 6-7: StructuredSerializeWithTransfer(message, transfer). Rethrow
     // any exceptions - which the serializer has already thrown, as the
@@ -2088,9 +2104,6 @@ fn windowPostMessageSteps(instance: *runtime.Instance, message: runtime.JSValue,
         try SerializedMessage.serialize(serialize_realm, allocator, message);
     errdefer serialized.deinit(allocator);
 
-    const origin = try allocator.dupe(u8, source_origin);
-    errdefer allocator.free(origin);
-
     const posted = try allocator.create(PostedMessage);
     posted.* = .{
         .allocator = allocator,
@@ -2098,6 +2111,7 @@ fn windowPostMessageSteps(instance: *runtime.Instance, message: runtime.JSValue,
         .target_generation = runtime.SlabAllocator.generationOf(instance),
         .target_origin = target_origin,
         .origin = origin,
+        .origin_record = origin_record,
         .source = source_window,
         .source_generation = if (source_window) |sw| runtime.SlabAllocator.generationOf(sw) else 0,
         .message = serialized,
@@ -2228,7 +2242,7 @@ const SerializedMessage = union(enum) {
     }
 
     /// Step 8.4, into `realm`. The value is OWNED - a string, or the
-    /// engine's - and `createPostMessageEvent` takes it.
+    /// engine's - and fireMessageEvent releases it after construction.
     fn deserialize(self: *SerializedMessage, realm: runtime.Context) !runtime.JSValue {
         switch (self.*) {
             .undefined => return runtime.JSValue.jsUndefined,
@@ -2261,7 +2275,8 @@ const SerializedMessage = union(enum) {
         self.* = .undefined;
     }
 
-    /// Release a deserialized value that no event took.
+    /// Release a deserialized value after an event has kept its own copy,
+    /// or when construction failed.
     fn release(allocator: Allocator, value: runtime.JSValue) void {
         switch (value) {
             .string => |s| if (s.owned) allocator.free(s.data),
@@ -2288,6 +2303,8 @@ const PostedMessage = struct {
     target_origin: TargetOrigin,
     /// Step 8.2: the serialization of the incumbent's origin. Owned.
     origin: []const u8,
+    /// Step 8.2's actual origin; one reference owned by this queued task.
+    origin_record: ?*@import("dom").origin_record.OriginRecord,
     /// Step 8.3: the incumbent's window.
     source: ?*runtime.Instance,
     source_generation: u64,
@@ -2296,6 +2313,7 @@ const PostedMessage = struct {
     fn destroy(self: *PostedMessage) void {
         self.target_origin.deinit(self.allocator);
         self.allocator.free(self.origin);
+        if (self.origin_record) |record| record.release();
         self.message.deinit(self.allocator);
         self.allocator.destroy(self);
     }
@@ -2346,12 +2364,12 @@ fn deliverPostedMessage(data: ?*anyopaque) void {
 
     // Steps 8.4-8.5. A value that will not deserialize is a messageerror.
     const message = posted.message.deserialize(target.ctx) catch {
-        fireMessageEvent(target, "messageerror", runtime.JSValue.jsUndefined, posted.origin, source);
+        fireMessageEvent(target, "messageerror", runtime.JSValue.jsUndefined, posted.origin, posted.origin_record, source);
         return;
     };
 
     // Step 8.7.
-    fireMessageEvent(target, "message", message, posted.origin, source);
+    fireMessageEvent(target, "message", message, posted.origin, posted.origin_record, source);
 }
 
 /// Steps 8.4-8.7 for `message`, posted with a transfer list, in `target`'s
@@ -2410,13 +2428,22 @@ fn fireTransferEvent(target: *runtime.Instance, event_type: []const u8, data: ru
     event.releaseIfUnwrapped(generation);
 }
 
-/// Fire `event_type` at `target` as a MessageEvent that takes `data`.
-fn fireMessageEvent(target: *runtime.Instance, event_type: []const u8, data: runtime.JSValue, origin: []const u8, source: ?*runtime.Instance) void {
-    const MessageEventImpl = @import("MessageEvent.zig");
-    const event = MessageEventImpl.createPostMessageEvent(target.ctx.allocator, target.ctx, event_type, data, origin, source) catch {
-        SerializedMessage.release(target.ctx.allocator, data);
-        return;
-    };
+/// Steps 8.4 and 8.7: fire a UA MessageEvent with the sender's actual origin.
+/// Takes `data`; the event retains its own value and origin reference.
+fn fireMessageEvent(target: *runtime.Instance, event_type: []const u8, data: runtime.JSValue, origin: []const u8, origin_record: ?*@import("dom").origin_record.OriginRecord, source: ?*runtime.Instance) void {
+    defer SerializedMessage.release(target.ctx.allocator, data);
+    const event = interfaces.MessageEvent.initWith(target.ctx.allocator, target.ctx, .{
+        .message_type = runtime.DOMString.initInterned(event_type),
+        .message_init = dictionaries.MessageEventInit{
+            .base = .{},
+            .data = data,
+            // The record supplies its serialization. Keep a string only
+            // when the sending Window had no associated origin record.
+            .origin = if (origin_record != null) "" else origin,
+            .source = if (source) |sw| typedefs.MessageEventSource{ .window_proxy = @ptrCast(sw) } else null,
+        },
+        .message_origin_record = origin_record,
+    }) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
 
     _ = @import("dom").fire_event.dispatchTrusted(target, event) catch {};
