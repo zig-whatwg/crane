@@ -280,6 +280,12 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     // The blob URL store a blob: request's blob is obtained from: the
     // global's Browser's (its realm's scope).
     client.request.blob_url_store = @ptrCast(@import("browser_state.zig").blobURLStoreOf(global.ctx));
+    // What a blob: request obtains its blob for (Fetch scheme fetch "blob"
+    // steps 3-5): the settings object's storage key, BORROWED from the
+    // global; and, for a top-level Window, its creation URL - a fetch of it
+    // is "top-level-self-fetch".
+    client.request.storage_key = try serializedStorageKeyOf(global);
+    if (isTopLevelWindow(global)) client.request.top_level_creation_url = global.ctx.creationUrl();
     client.request.network = @import("browser_state.zig").networkOf(global.ctx);
     // The policy container "populate request from client" step 3 clones.
     if (settings.policy_container) |container_of| client.request.policy_container = container_of(global);
@@ -295,6 +301,14 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     client.request.service_worker = @import("service_worker_clients.zig").routeForGlobal(global);
     client.request.integrity_violation_reporter = @import("sri_reporting.zig").reporterFor(global);
     return client;
+}
+
+/// Whether `global` is a Window whose navigable is a top-level traversable
+/// (its browsing context has no parent).
+fn isTopLevelWindow(global: *runtime.Instance) bool {
+    if (!std.mem.eql(u8, global.vtable.name, "Window")) return false;
+    const context = @import("browser_state.zig").browsingContextOf(global) orelse return false;
+    return context.parent == null;
 }
 
 /// A Window and a WorkerGlobalScope - with room to spare for the next kind.

@@ -3308,8 +3308,12 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     const target_str: []const u8 = if (given_target.len == 0) "_blank" else given_target;
 
     // Steps 6-12: tokenize the features; noreferrer implies noopener.
+    // "Get noopener for window open" step 1: a blob URL whose creator is not
+    // same site with sourceDocument's top-level origin forces noopener
+    // (dom.blob_partition.forcesNoopener).
     const window_features = WindowFeatures.parse(if (features.wasPassed()) features.getValue().asSlice() else "");
-    const noopener = window_features.noopener or window_features.noreferrer;
+    const blob_noopener = if (url_record) |u| @import("dom").blob_partition.forcesNoopener(instance, u) else false;
+    const noopener = blob_noopener or window_features.noopener or window_features.noreferrer;
     // Steps 11-12: "Let referrerPolicy be the empty string. If noreferrer is
     // true, then set noopener to true and set referrerPolicy to
     // "no-referrer"."

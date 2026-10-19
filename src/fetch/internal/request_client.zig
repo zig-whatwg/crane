@@ -40,6 +40,14 @@ pub const RequestClient = struct {
     /// The user agent's blob URL store (a `file.BlobURLStore`), as the
     /// settings object reaches it: its Browser's. BORROWED, as the jar is.
     blob_url_store: ?*anyopaque = null,
+    /// The settings object's storage key for non-storage purposes,
+    /// serialized (storage.StorageKey.serialize): what a blob: request
+    /// obtains its blob for. BORROWED for the call.
+    storage_key: ?[]const u8 = null,
+    /// The settings object's creation URL when its global is a top-level
+    /// Window (its navigable's parent is null): scheme fetch "blob" step 5's
+    /// "top-level-self-fetch". BORROWED for the call; null otherwise.
+    top_level_creation_url: ?[]const u8 = null,
     /// The network context of the settings object's Browser. BORROWED, as
     /// the jar is.
     network: ?*request_mod.NetworkContext = null,
@@ -70,6 +78,10 @@ pub const RequestClient = struct {
 /// its source, and gives the request the client's cookie jar - neither is a
 /// step of the algorithm, but both read the client, which only the caller
 /// can reach.
+fn isBlobUrl(url: []const u8) bool {
+    return std.ascii.startsWithIgnoreCase(url, "blob:");
+}
+
 pub fn populateRequestFromClient(request: *InternalRequest, client: RequestClient) !void {
     // 1. If request's traversable for user prompts is "client": set it to
     //    "no-traversable", then to the client's global's navigable's
@@ -120,6 +132,19 @@ pub fn populateRequestFromClient(request: *InternalRequest, client: RequestClien
     // client's Browser's, never another Browser's.
     if (request.blob_url_store == null) request.blob_url_store = client.blob_url_store;
 
+    // Scheme fetch "blob" steps 3-5, taken now - only a blob: request reads
+    // them, so no other request copies anything: the environment's storage
+    // key, and whether the client is a top-level Window fetching its own
+    // creation URL (a blob URL never redirects).
+    if (isBlobUrl(request.currentUrl())) {
+        if (request.blob_storage_key == null) {
+            if (client.storage_key) |key| try request.setBlobStorageKey(key);
+        }
+        if (client.top_level_creation_url) |creation_url| {
+            if (std.mem.eql(u8, creation_url, request.currentUrl())) request.blob_top_level_self_fetch = true;
+        }
+    }
+
     // Fetch determine the network partition key: (top-level site, null).
     if (request.network_partition_key == null) {
         if (client.top_level_site) |site| request.network_partition_key = try request.allocator.dupe(u8, site);
@@ -161,6 +186,37 @@ test "populate request from client: traversable, origin, referrer and jar" {
     try std.testing.expectEqualStrings("https://example.com", request.origin.origin);
     try std.testing.expectEqualStrings("https://example.com/page", request.referrer.url);
     try std.testing.expect(request.cookie_jar == &jar);
+}
+
+test "populate request from client: only a blob: request takes the storage key, and a top-level self-fetch is recognised" {
+    const allocator = std.testing.allocator;
+    const key = "https://a.test https://a.test 0";
+    const client: RequestClient = .{ .origin = "https://a.test", .storage_key = key, .top_level_creation_url = "blob:https://a.test/1" };
+
+    const other = try InternalRequest.init(allocator, "https://a.test/x");
+    defer other.deinit();
+    try populateRequestFromClient(other, client);
+    try std.testing.expect(other.blob_storage_key == null);
+    try std.testing.expect(!other.blob_top_level_self_fetch);
+
+    const self_fetch = try InternalRequest.init(allocator, "blob:https://a.test/1");
+    defer self_fetch.deinit();
+    try populateRequestFromClient(self_fetch, client);
+    try std.testing.expectEqualStrings(key, self_fetch.blob_storage_key.?);
+    try std.testing.expect(self_fetch.blob_top_level_self_fetch);
+
+    const another_blob = try InternalRequest.init(allocator, "blob:https://a.test/2");
+    defer another_blob.deinit();
+    try populateRequestFromClient(another_blob, client);
+    try std.testing.expectEqualStrings(key, another_blob.blob_storage_key.?);
+    try std.testing.expect(!another_blob.blob_top_level_self_fetch);
+
+    // A clone carries both.
+    const copy = try self_fetch.clone();
+    defer copy.deinit();
+    try std.testing.expectEqualStrings(key, copy.blob_storage_key.?);
+    try std.testing.expect(copy.blob_storage_key.?.ptr != self_fetch.blob_storage_key.?.ptr);
+    try std.testing.expect(copy.blob_top_level_self_fetch);
 }
 
 test "populate request from client: a worker has no traversable, an opaque origin no referrer" {

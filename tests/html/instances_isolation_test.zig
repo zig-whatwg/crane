@@ -33,6 +33,8 @@ const UserAgentStorage = web_storage.UserAgentStorage;
 const origin = "http://inst3.test";
 /// Its first-party storage key.
 const storage_key = web_storage.StorageKey.initBorrowed(origin, origin, false);
+/// The same key serialized, as the blob URL store and a request hold it.
+const serialized_key = origin ++ " " ++ origin ++ " 0";
 const page_url = "http://inst3.test/page.html";
 
 /// Run `function` with `args` on a thread of its own, and return its error.
@@ -170,15 +172,16 @@ fn makeBlobURL(scope: *runtime.BrowserScope, url: *[]u8) !void {
     const store = try scope.of(file.BlobURLStore);
     const blob = try file.BlobData.init(testing.allocator, "hello", "text/plain");
     defer blob.deinit();
-    url.* = try store.createObjectURL(blob, origin, null);
+    url.* = try store.createObjectURL(blob, serialized_key, null);
 }
 
-/// Scheme fetch "blob" of `url`, for a request of `origin` whose client's
-/// Browser is `scope`'s: `expected` is its body, or null for a network error.
+/// Scheme fetch "blob" of `url`, for a request of `origin` (its first-party
+/// storage key) whose client's Browser is `scope`'s: `expected` is its body, or null for a network error.
 fn fetchBlob(scope: *runtime.BrowserScope, url: []const u8, expected: ?[]const u8) !void {
     const request = try fetch.internal.InternalRequest.init(testing.allocator, url);
     defer request.deinit();
     try request.setOrigin(origin);
+    try request.setBlobStorageKey(serialized_key);
     request.blob_url_store = try scope.of(file.BlobURLStore);
     switch (try fetch.algorithms.scheme_fetch.schemeFetchRequest(testing.allocator, request)) {
         .response => |response| {
@@ -224,7 +227,7 @@ fn blobURLsResolveInTheirBrowserOnly() !void {
         const store = try other.of(file.BlobURLStore);
         const blob = try file.BlobData.init(testing.allocator, "other", "text/plain");
         defer blob.deinit();
-        other_url = try store.createObjectURL(blob, origin, null);
+        other_url = try store.createObjectURL(blob, serialized_key, null);
     }
     defer testing.allocator.free(other_url);
     var buffer: [256]u8 = undefined;

@@ -401,6 +401,21 @@ pub const InternalRequest = struct {
     /// made, for which every blob URL is a network error.
     blob_url_store: ?*anyopaque = null,
 
+    /// For a blob: request, the storage key for non-storage purposes of the
+    /// environment it obtains its blob for (Fetch scheme fetch "blob" step
+    /// 3, "determining the environment"), serialized
+    /// (storage.StorageKey.serialize): its client's ("populate request from
+    /// client"), or the reserved environment a navigation or a worker's
+    /// script fetch names. OWNED. Null: no environment, so no blob URL entry
+    /// is obtained - unless the request is a top-level navigation or
+    /// self-fetch (File API 8.3.2: a missing partition is not a shared one).
+    blob_storage_key: ?[]u8 = null,
+
+    /// Scheme fetch "blob" step 5: the request's client is a top-level
+    /// Window whose creation URL equals the request's URL - "top-level-self-
+    /// fetch", which obtains the blob unchecked.
+    blob_top_level_self_fetch: bool = false,
+
     /// The network context of the request's client's Browser
     /// (fetch.network.NetworkContext; "populate request from client" -
     /// BORROWED, the Browser outlives every fetch): the connections its
@@ -594,9 +609,18 @@ pub const InternalRequest = struct {
         return request;
     }
 
+    /// Set `blob_storage_key` to a copy of `key` (a serialized storage key),
+    /// releasing one it replaces.
+    pub fn setBlobStorageKey(self: *Self, key: []const u8) !void {
+        const copy = try self.allocator.dupe(u8, key);
+        if (self.blob_storage_key) |old| self.allocator.free(old);
+        self.blob_storage_key = copy;
+    }
+
     /// Deinitialize the request.
     pub fn deinit(self: *Self) void {
         if (self.network_partition_key) |key| self.allocator.free(key);
+        if (self.blob_storage_key) |key| self.allocator.free(key);
         self.allocator.free(self.method);
         self.header_list.deinit();
 
@@ -817,6 +841,8 @@ pub const InternalRequest = struct {
     fn cloneShallow(self: *Self) !*Self {
         const partition = if (self.network_partition_key) |key| try self.allocator.dupe(u8, key) else null;
         errdefer if (partition) |key| self.allocator.free(key);
+        const blob_storage_key = if (self.blob_storage_key) |key| try self.allocator.dupe(u8, key) else null;
+        errdefer if (blob_storage_key) |key| self.allocator.free(key);
         const method = try self.allocator.dupe(u8, self.method);
         errdefer self.allocator.free(method);
         var cloned_headers = try self.header_list.clone(self.allocator);
@@ -847,6 +873,8 @@ pub const InternalRequest = struct {
             .network_partition_key = partition,
             .cookie_jar = self.cookie_jar,
             .blob_url_store = self.blob_url_store,
+            .blob_storage_key = blob_storage_key,
+            .blob_top_level_self_fetch = self.blob_top_level_self_fetch,
             .network = self.network,
             .csp_violation_reporter = self.csp_violation_reporter,
             .timing_reporter = self.timing_reporter,

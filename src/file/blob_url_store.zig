@@ -13,8 +13,11 @@
 //! ## Store Semantics
 //!
 //! Per spec §8:
-//! - Each origin has its own blob URL store
-//! - URLs are valid only within the creating origin
+//! - One store for the user agent - here, for each Browser
+//! - A blob URL is used only from an environment whose storage key equals its
+//!   creator's (File API 8.3.2): the same origin, under the same top-level
+//!   site, with the same has-cross-site-ancestor bit - except by a top-level
+//!   navigation or a top-level self-fetch
 //! - URLs are revoked when their entry is removed
 //! - URLs can be revoked manually or when document unloads
 //!
@@ -40,7 +43,12 @@ pub const BlobURLEntry = struct {
     /// may be collected first.
     blob: *BlobData,
 
-    /// The origin that created this URL
+    /// The storage key for non-storage purposes of the environment that
+    /// created this URL, serialized (`BlobURLStore`'s doc). OWNED.
+    storage_key: []const u8,
+
+    /// The origin that created this URL: the key's origin part, a slice of
+    /// `storage_key`.
     origin: []const u8,
 
     /// The entry's environment: the settings object that was current when the
@@ -71,6 +79,11 @@ pub const BlobURLEntry = struct {
 /// fetches it - docs/instances.md), so every method takes `mutex`, and
 /// `resolve` hands out a reference of the caller's own, which a revoke on
 /// another thread cannot free under it.
+///
+/// Storage keys arrive serialized ("<origin> <top-level site> <0|1>",
+/// storage.StorageKey.serialize - this module does not import storage): the
+/// form is canonical, so equal keys are equal bytes, and the origin is the
+/// text before the first space.
 pub const BlobURLStore = struct {
     /// Protects `entries` and `prng`; held for one store operation, never
     /// across a call out of this file.
@@ -117,15 +130,28 @@ pub const BlobURLStore = struct {
         while (it.next()) |entry| {
             // Free the UUID key
             self.allocator.free(entry.key_ptr.*);
-            // Free the origin
-            if (entry.value_ptr.origin.len > 0) {
-                self.allocator.free(@constCast(entry.value_ptr.origin));
-            }
+            // Free the storage key (the origin is a slice of it)
+            self.allocator.free(@constCast(entry.value_ptr.storage_key));
             // The entry's reference to its blob's data.
             entry.value_ptr.blob.deinit();
         }
         self.entries.deinit();
     }
+
+    /// Who asks for a blob URL's blob: File API "obtain a blob object"'s
+    /// environment, or one of the two strings it takes instead.
+    pub const Access = union(enum) {
+        /// An environment, by its storage key for non-storage purposes,
+        /// serialized: File API 8.3.2 "check for same-partition blob URL
+        /// usage" lets it obtain only an entry made under an equal key.
+        environment: []const u8,
+        /// "top-level-navigation" (Fetch scheme fetch "blob" step 6.1: the
+        /// request's destination is "document"): not checked.
+        top_level_navigation,
+        /// "top-level-self-fetch" (step 6.2: a top-level Window fetching its
+        /// own creation URL): not checked.
+        top_level_self_fetch,
+    };
 
     /// Create a new blob URL for the given blob.
     ///
@@ -135,13 +161,18 @@ pub const BlobURLStore = struct {
     /// 3. Add entry to store
     /// 4. Return the URL
     ///
+    /// `storage_key` is the current settings object's storage key for
+    /// non-storage purposes, serialized; its origin part is the URL's.
+    ///
     /// Returns the full blob URL string (caller owns memory).
     /// Returns `[]u8`: the caller OWNS the returned URL and must free it. The store
-    /// keeps `uuid` and `owned_origin`, not this string. The mutable slice says so in
+    /// keeps `uuid` and its copy of the key, not this string. The mutable slice says so in
     /// the type, which is what lets `DOMString.initOwned` accept it.
-    pub fn createObjectURL(self: *BlobURLStore, blob: *BlobData, origin: []const u8, environment: ?*const anyopaque) ![]u8 {
+    pub fn createObjectURL(self: *BlobURLStore, blob: *BlobData, storage_key: []const u8, environment: ?*const anyopaque) ![]u8 {
         std.Io.Threaded.mutexLock(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        const origin = originOfKey(storage_key);
+
         // Generate UUID
         const uuid = try self.generateUUID();
         errdefer self.allocator.free(uuid);
@@ -150,9 +181,9 @@ pub const BlobURLStore = struct {
         const url = try std.fmt.allocPrint(self.allocator, "blob:{s}/{s}", .{ origin, uuid });
         errdefer self.allocator.free(url);
 
-        // Copy origin for storage
-        const owned_origin = try self.allocator.dupe(u8, origin);
-        errdefer self.allocator.free(owned_origin);
+        // Copy the key for storage; the origin is a slice of the copy.
+        const owned_key = try self.allocator.dupe(u8, storage_key);
+        errdefer self.allocator.free(owned_key);
 
         // Store the entry. It holds the blob for as long as it is in the
         // store: a reference of its own, which revoking releases - taken
@@ -160,7 +191,8 @@ pub const BlobURLStore = struct {
         try self.entries.ensureUnusedCapacity(1);
         self.entries.putAssumeCapacity(uuid, .{
             .blob = blob.retain(),
-            .origin = owned_origin,
+            .storage_key = owned_key,
+            .origin = owned_key[0..origin.len],
             .environment = environment,
             .valid = true,
         });
@@ -168,19 +200,41 @@ pub const BlobURLStore = struct {
         return url;
     }
 
-    /// Revoke a blob URL.
+    /// Revoke a blob URL, for the current settings object whose storage key
+    /// for non-storage purposes is `storage_key` (serialized).
     ///
+    /// File API 8.4 revokeObjectURL steps 3-7: "Let entry be urlRecord's blob
+    /// URL entry. If entry is null, then return. Let isAuthorized be the
+    /// result of checking for same-partition blob URL usage with entry and
+    /// the current settings object. If isAuthorized is false, then return.
+    /// Remove an entry from the Blob URL Store for url." So another
+    /// partition's - or another origin's - revoke silently does nothing
+    /// (FileAPI/url/cross-global-revoke.sub.html, all three browsers 3/3).
     /// File API §8.2, remove an entry: serialize the URL WITH its fragment,
     /// then remove that exact key. A URL with a fragment revokes no entry.
-    pub fn revokeObjectURL(self: *BlobURLStore, url: []const u8) void {
+    pub fn revokeObjectURL(self: *BlobURLStore, url: []const u8, storage_key: []const u8) void {
         std.Io.Threaded.mutexLock(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         // Extract UUID from URL (after last '/')
         const uuid = self.extractUUID(url) orelse return;
         const entry = self.entries.get(uuid) orelse return;
         if (!matchesEntryURL(url, uuid, entry.origin)) return;
+        if (!std.mem.eql(u8, entry.storage_key, storage_key)) return;
 
         self.removeEntry(uuid);
+    }
+
+    /// Whether `url` (serialized, fragment excluded or not) names a live
+    /// entry: "url's blob URL entry is not null", which HTML's noopener steps
+    /// ask before comparing the entry's environment's origin - the URL's
+    /// own - with the source's top-level origin.
+    pub fn hasEntry(self: *BlobURLStore, url: []const u8) bool {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        const key = url[0 .. std.mem.indexOfScalar(u8, url, '#') orelse url.len];
+        const uuid = self.extractUUID(key) orelse return false;
+        const entry = self.entries.get(uuid) orelse return false;
+        return entry.valid and matchesEntryURL(key, uuid, entry.origin);
     }
 
     /// Remove every entry whose environment is `environment`, releasing each
@@ -216,27 +270,31 @@ pub const BlobURLStore = struct {
         }
     }
 
-    /// Remove the entry keyed by `uuid`: its key, its origin and its
-    /// reference to its blob's data. Called with `mutex` held.
+    /// Remove the entry keyed by `uuid`: its key, its storage key (and
+    /// origin) and its reference to its blob's data. Called with `mutex`
+    /// held.
     fn removeEntry(self: *BlobURLStore, uuid: []const u8) void {
         const kv = self.entries.fetchRemove(uuid) orelse return;
         self.allocator.free(kv.key);
-        if (kv.value.origin.len > 0) self.allocator.free(@constCast(kv.value.origin));
+        self.allocator.free(@constCast(kv.value.storage_key));
         // The entry's reference to its blob's data: the last one frees it
         // when the Blob object has already been collected.
         kv.value.blob.deinit();
     }
 
-    /// Resolve a blob URL to its associated blob.
+    /// Resolve a blob URL to its associated blob, for `access`.
     ///
     /// File API §8.3, resolve a blob URL: step 3 serializes with the exclude
-    /// fragment flag; step 4 looks up the complete resulting URL key. The
-    /// existing caller-origin check then authorizes access to the data.
+    /// fragment flag; step 4 looks up the complete resulting URL key. Then
+    /// "obtain a blob object" given the entry and `access`: an environment
+    /// obtains it only when "check for same-partition blob URL usage" holds -
+    /// its storage key equals the entry's - and a top-level navigation or
+    /// self-fetch always does.
     ///
     /// RETAINED: the caller holds a reference of its own and releases it
     /// (`deinit`) when done with the bytes. A borrowed pointer could be freed
     /// by a revoke on another thread before the caller had copied them.
-    pub fn resolve(self: *BlobURLStore, url: []const u8, requesting_origin: []const u8) ?*BlobData {
+    pub fn resolve(self: *BlobURLStore, url: []const u8, access: Access) ?*BlobData {
         std.Io.Threaded.mutexLock(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         // Step 3. Input is a serialized URL; the first '#' begins its
@@ -249,9 +307,10 @@ pub const BlobURLStore = struct {
         // BlobUrlRegistry::GetBlobFromUrl does after ClearUrlFragment.
         if (!matchesEntryURL(key, uuid, entry.origin)) return null;
 
-        // Verify origin matches (same-origin policy)
-        if (!std.mem.eql(u8, entry.origin, requesting_origin)) {
-            return null;
+        // "Obtain a blob object" steps 1-3.
+        switch (access) {
+            .environment => |storage_key| if (!std.mem.eql(u8, entry.storage_key, storage_key)) return null,
+            .top_level_navigation, .top_level_self_fetch => {},
         }
 
         if (!entry.valid) {
@@ -307,6 +366,12 @@ pub const BlobURLStore = struct {
         return url[last_slash + 1 ..];
     }
 
+    /// The origin part of a serialized storage key: the text before its
+    /// first space (all of it, for a bare origin).
+    fn originOfKey(storage_key: []const u8) []const u8 {
+        return storage_key[0 .. std.mem.indexOfScalar(u8, storage_key, ' ') orelse storage_key.len];
+    }
+
     /// UUIDs are unique, but a matching suffix alone is not a matching URL.
     /// The rest of the generated key is "blob:" + the stored origin + "/".
     fn matchesEntryURL(url: []const u8, uuid: []const u8, origin: []const u8) bool {
@@ -330,13 +395,13 @@ test "BlobURLStore - createObjectURL and resolve" {
     try std.testing.expect(std.mem.startsWith(u8, url, "blob:https://example.com/"));
 
     // Should resolve from same origin - a reference of the caller's own
-    const resolved = store.resolve(url, "https://example.com");
+    const resolved = store.resolve(url, .{ .environment = "https://example.com" });
     try std.testing.expect(resolved != null);
     defer resolved.?.deinit();
     try std.testing.expectEqualStrings("Hello", resolved.?.bytes);
 
     // Should not resolve from different origin
-    const cross_origin = store.resolve(url, "https://other.com");
+    const cross_origin = store.resolve(url, .{ .environment = "https://other.com" });
     try std.testing.expect(cross_origin == null);
 }
 
@@ -373,14 +438,14 @@ test "BlobURLStore - revokeObjectURL" {
     defer allocator.free(url);
 
     // Should resolve before revocation
-    const before = store.resolve(url, "https://example.com") orelse return error.TestExpectedEntry;
+    const before = store.resolve(url, .{ .environment = "https://example.com" }) orelse return error.TestExpectedEntry;
     before.deinit();
 
     // Revoke
-    store.revokeObjectURL(url);
+    store.revokeObjectURL(url, "https://example.com");
 
     // Should not resolve after revocation
-    try std.testing.expect(store.resolve(url, "https://example.com") == null);
+    try std.testing.expect(store.resolve(url, .{ .environment = "https://example.com" }) == null);
 }
 
 /// std.testing.allocator, except that freed memory reads back as 0xAA in
@@ -434,7 +499,7 @@ test "BlobURLStore - an entry holds its blob after the Blob lets go of it" {
     // The Blob object is collected: its reference goes.
     blob.deinit();
 
-    const resolved = store.resolve(url, "https://example.com") orelse return error.TestExpectedEntry;
+    const resolved = store.resolve(url, .{ .environment = "https://example.com" }) orelse return error.TestExpectedEntry;
     try std.testing.expectEqual(source.len, resolved.bytes.len);
     try std.testing.expectEqualStrings(source, resolved.bytes);
     try std.testing.expectEqualStrings("text/javascript", resolved.mime_type);
@@ -442,8 +507,8 @@ test "BlobURLStore - an entry holds its blob after the Blob lets go of it" {
 
     // Revoking drops the entry's reference, the last one: the data is freed
     // (std.testing.allocator fails the test on a leak).
-    store.revokeObjectURL(url);
-    try std.testing.expect(store.resolve(url, "https://example.com") == null);
+    store.revokeObjectURL(url, "https://example.com");
+    try std.testing.expect(store.resolve(url, .{ .environment = "https://example.com" }) == null);
 }
 
 test "BlobURLStore - deinit releases the entries it still holds" {
@@ -475,12 +540,12 @@ test "BlobURLStore - two URLs for one blob hold it independently" {
     defer allocator.free(url2);
     blob.deinit();
 
-    store.revokeObjectURL(url1);
-    const resolved = store.resolve(url2, "https://example.com") orelse return error.TestExpectedEntry;
+    store.revokeObjectURL(url1, "https://example.com");
+    const resolved = store.resolve(url2, .{ .environment = "https://example.com" }) orelse return error.TestExpectedEntry;
     try std.testing.expectEqual(@as(usize, 6), resolved.bytes.len);
     try std.testing.expectEqualStrings("shared", resolved.bytes);
     resolved.deinit();
-    store.revokeObjectURL(url2);
+    store.revokeObjectURL(url2, "https://example.com");
 }
 
 test "BlobURLStore - an environment's entries go when it ends, and no one else's" {
@@ -507,16 +572,16 @@ test "BlobURLStore - an environment's entries go when it ends, and no one else's
     blob.deinit();
 
     store.removeEntriesFor(&page_a);
-    try std.testing.expect(store.resolve(url_a1, "https://example.com") == null);
-    try std.testing.expect(store.resolve(url_a2, "https://example.com") == null);
-    const kept = store.resolve(url_b, "https://example.com") orelse return error.TestExpectedEntry;
+    try std.testing.expect(store.resolve(url_a1, .{ .environment = "https://example.com" }) == null);
+    try std.testing.expect(store.resolve(url_a2, .{ .environment = "https://example.com" }) == null);
+    const kept = store.resolve(url_b, .{ .environment = "https://example.com" }) orelse return error.TestExpectedEntry;
     try std.testing.expectEqualStrings("page data", kept.bytes);
     kept.deinit();
 
     // The last entry's end frees the data (std.testing.allocator fails the
     // test on a leak or a second free).
     store.removeEntriesFor(&page_b);
-    try std.testing.expect(store.resolve(url_b, "https://example.com") == null);
+    try std.testing.expect(store.resolve(url_b, .{ .environment = "https://example.com" }) == null);
     try std.testing.expectEqual(@as(usize, 0), store.entries.count());
 }
 
@@ -536,14 +601,14 @@ test "BlobURLStore - a URL revoked before its environment ends is released once"
     blob.deinit();
 
     // Revoking works as it always has: that URL is gone, the other resolves.
-    store.revokeObjectURL(revoked);
-    try std.testing.expect(store.resolve(revoked, "https://example.com") == null);
-    const still = store.resolve(live, "https://example.com") orelse return error.TestExpectedEntry;
+    store.revokeObjectURL(revoked, "https://example.com");
+    try std.testing.expect(store.resolve(revoked, .{ .environment = "https://example.com" }) == null);
+    const still = store.resolve(live, .{ .environment = "https://example.com" }) orelse return error.TestExpectedEntry;
     still.deinit();
 
     // The environment's end then takes only what is left.
     store.removeEntriesFor(&page);
-    try std.testing.expect(store.resolve(live, "https://example.com") == null);
+    try std.testing.expect(store.resolve(live, .{ .environment = "https://example.com" }) == null);
     try std.testing.expectEqual(@as(usize, 0), store.entries.count());
 
     // An environment with no entries left, or none ever, is a no-op.
@@ -557,7 +622,7 @@ test "BlobURLStore - invalid URL" {
     defer store.deinit();
 
     // Should return null for invalid URLs
-    try std.testing.expect(store.resolve("not-a-blob-url", "https://example.com") == null);
-    try std.testing.expect(store.resolve("blob:", "https://example.com") == null);
-    try std.testing.expect(store.resolve("blob:https://example.com/", "https://example.com") == null);
+    try std.testing.expect(store.resolve("not-a-blob-url", .{ .environment = "https://example.com" }) == null);
+    try std.testing.expect(store.resolve("blob:", .{ .environment = "https://example.com" }) == null);
+    try std.testing.expect(store.resolve("blob:https://example.com/", .{ .environment = "https://example.com" }) == null);
 }

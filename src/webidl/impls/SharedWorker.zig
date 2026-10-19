@@ -160,11 +160,14 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     instance.getState(State).own._internal = internal;
     internal.port_edge.hold(instance, outside_port);
 
-    // 9. outsideStorageKey: obtain a storage key for non-storage purposes,
-    // given outsideSettings - its origin, here, serialized (Crane has no
-    // storage partitioning, so the key is the origin).
+    // The constructor origin: the outside settings' origin, serialized.
     const origin = try outsideSettingsOrigin(instance, allocator, base_url);
     defer allocator.free(origin);
+    // 9. outsideStorageKey: obtain a storage key for non-storage purposes,
+    // given outsideSettings - its origin, top-level site and
+    // has-cross-site-ancestor bit (dom.global_settings), serialized and
+    // BORROWED from the global; a global with none is keyed by its origin.
+    const outside_storage_key = (try outsideSettingsStorageKey(instance)) orelse origin;
 
     // 5, the URL parser's blob step: "If url's scheme is "blob", set url's
     // blob URL entry to the result of resolving the blob URL url" - now,
@@ -175,7 +178,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     var blob_entry = try workers.script_fetch.captureBlobScript(
         allocator,
         url_record,
-        origin,
+        outside_storage_key,
         @ptrCast(@import("dom").browser_state.blobURLStoreOf(ctx)),
         worker_options.worker_type,
     );
@@ -194,6 +197,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
         .owner_realm = ctx,
         .url = url_record,
         .origin = origin,
+        .storage_key = outside_storage_key,
         .name = worker_options.name,
         .worker_type = worker_options.worker_type,
         .credentials = worker_options.credentials,
@@ -356,6 +360,15 @@ fn outsideSettingsOrigin(instance: *runtime.Instance, allocator: std.mem.Allocat
         }
     };
     return serializedOriginOf(allocator, api_base_url);
+}
+
+/// The outside settings' storage key for non-storage purposes, serialized
+/// (dom.global_settings): BORROWED from `instance`'s relevant global, which
+/// outlives the constructor; null where its kind keeps none.
+fn outsideSettingsStorageKey(instance: *runtime.Instance) error{OutOfMemory}!?[]const u8 {
+    const record = instance.ctx.getRealm() orelse return null;
+    const object = record.global_object orelse return null;
+    return @import("dom").global_settings.serializedStorageKeyOf(@ptrCast(@alignCast(object)));
 }
 
 /// The outside settings' origin, serialized: the origin of `api_base_url`,

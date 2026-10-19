@@ -17,17 +17,17 @@ test "Blob URL resolution excludes fragments while revocation keeps them" {
     for ([_][]const u8{ "#", "#part", "#part/path?query#again", uuid_fragment }) |fragment| {
         const decorated = try std.mem.concat(allocator, u8, &.{ url, fragment });
         defer allocator.free(decorated);
-        const resolved = store.resolve(decorated, origin) orelse return error.TestExpectedEntry;
+        const resolved = store.resolve(decorated, .{ .environment = origin }) orelse return error.TestExpectedEntry;
         defer resolved.deinit();
         try std.testing.expectEqualStrings("kept", resolved.bytes);
-        store.revokeObjectURL(decorated);
-        const still_live = store.resolve(url, origin) orelse return error.TestExpectedEntry;
+        store.revokeObjectURL(decorated, origin);
+        const still_live = store.resolve(url, .{ .environment = origin }) orelse return error.TestExpectedEntry;
         still_live.deinit();
     }
     for ([_][]const u8{ "?query", "?query#fragment", "/other" }) |suffix| {
         const changed = try std.mem.concat(allocator, u8, &.{ url, suffix });
         defer allocator.free(changed);
-        const result = store.resolve(changed, origin);
+        const result = store.resolve(changed, .{ .environment = origin });
         defer if (result) |data| data.deinit();
         try std.testing.expect(result == null);
     }
@@ -46,11 +46,11 @@ test "Blob URL lookup and revocation match the URL prefix as well as UUID" {
     for ([_][]const u8{ "blob:https://other.invalid/", "blob:https://example.com/extra/" }) |prefix| {
         const changed = try std.mem.concat(allocator, u8, &.{ prefix, uuid });
         defer allocator.free(changed);
-        const result = store.resolve(changed, origin);
+        const result = store.resolve(changed, .{ .environment = origin });
         defer if (result) |data| data.deinit();
         try std.testing.expect(result == null);
-        store.revokeObjectURL(changed);
-        const still_live = store.resolve(url, origin) orelse return error.TestExpectedEntry;
+        store.revokeObjectURL(changed, origin);
+        const still_live = store.resolve(url, .{ .environment = origin }) orelse return error.TestExpectedEntry;
         still_live.deinit();
     }
 }

@@ -2131,9 +2131,13 @@ pub const SharedWorkerRequest = struct {
     owner_realm: runtime.Context,
     /// urlRecord, serialized. BORROWED for the call.
     url: []const u8,
-    /// outsideStorageKey, and the constructor origin: the outside settings'
-    /// origin, serialized. BORROWED for the call.
+    /// The constructor origin: the outside settings' origin, serialized.
+    /// BORROWED for the call.
     origin: []const u8,
+    /// outsideStorageKey: the outside settings' storage key for non-storage
+    /// purposes, serialized (storage.StorageKey.serialize) - what the
+    /// manager matches a running worker by. BORROWED for the call.
+    storage_key: []const u8,
     /// options["name"], ["type"], ["credentials"] and ["extendedLifetime"].
     /// `name` BORROWED.
     name: []const u8,
@@ -2176,6 +2180,8 @@ pub fn connectSharedWorker(request: SharedWorkerRequest) !void {
     errdefer allocator.free(url);
     const origin = try allocator.dupe(u8, request.origin);
     errdefer allocator.free(origin);
+    const storage_key = try allocator.dupe(u8, request.storage_key);
+    errdefer allocator.free(storage_key);
     const name = try allocator.dupe(u8, request.name);
     errdefer allocator.free(name);
     task.* = .{
@@ -2185,6 +2191,7 @@ pub fn connectSharedWorker(request: SharedWorkerRequest) !void {
         .owner_realm = request.owner_realm,
         .url = url,
         .origin = origin,
+        .storage_key = storage_key,
         .name = name,
         .worker_type = request.worker_type,
         .credentials = request.credentials,
@@ -2274,6 +2281,8 @@ const SharedConnect = struct {
     owner_realm: runtime.Context,
     url: []const u8,
     origin: []const u8,
+    /// outsideStorageKey (SharedWorkerRequest.storage_key). OWNED.
+    storage_key: []const u8,
     name: []const u8,
     worker_type: WorkerType,
     credentials: workers.RequestCredentials,
@@ -2312,6 +2321,7 @@ const SharedConnect = struct {
         if (self.blob_entry) |*entry| entry.deinit();
         self.allocator.free(self.url);
         self.allocator.free(self.origin);
+        self.allocator.free(self.storage_key);
         self.allocator.free(self.name);
         self.allocator.destroy(self);
     }
@@ -2322,7 +2332,10 @@ const SharedConnect = struct {
 
     fn connect(self: *SharedConnect) void {
         const manager = SharedWorkerManager.of(self.owner_realm) orelse return self.fireError();
-        const key: SharedWorkerManager.Key = .{ .storage_key = self.origin, .url = self.url, .name = self.name };
+        // outsideStorageKey: the full key, so a creator under another
+        // top-level site (or with a cross-site ancestor) never joins this
+        // partition's worker - Chromium and Gecko key shared workers so.
+        const key: SharedWorkerManager.Key = .{ .storage_key = self.storage_key, .url = self.url, .name = self.name };
         // 1-2. workerGlobalScope: the scope whose constructor storage key
         // equals outsideStorageKey, whose closing flag is false, whose
         // constructor URL equals urlRecord and whose name equals

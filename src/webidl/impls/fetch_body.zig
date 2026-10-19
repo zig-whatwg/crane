@@ -96,11 +96,17 @@ pub fn installBlobURLResolver() void {
 
 /// "Obtain a blob object" for scheme fetch: the blob `url` names in `store` -
 /// the request's client's Browser's blob URL store - if its entry is live
-/// and was made by `origin` (the store's same-origin check), copied - its
-/// bytes and type.
-fn resolveBlobURL(store: *anyopaque, allocator: std.mem.Allocator, url: []const u8, origin: []const u8) error{OutOfMemory}!?fetch.algorithms.scheme_fetch.ResolvedBlob {
-    const blob_url_store: *@import("file").BlobURLStore = @ptrCast(@alignCast(store));
-    const data = blob_url_store.resolve(url, origin) orelse return null;
+/// and `access` may obtain it (File API 8.3.2: an environment whose storage
+/// key equals the entry's, or a top-level navigation or self-fetch), copied
+/// - its bytes and type.
+fn resolveBlobURL(store: *anyopaque, allocator: std.mem.Allocator, url: []const u8, access: fetch.algorithms.scheme_fetch.BlobAccess) error{OutOfMemory}!?fetch.algorithms.scheme_fetch.ResolvedBlob {
+    const BlobURLStore = @import("file").BlobURLStore;
+    const blob_url_store: *BlobURLStore = @ptrCast(@alignCast(store));
+    const data = blob_url_store.resolve(url, switch (access) {
+        .environment => |key| BlobURLStore.Access{ .environment = key },
+        .top_level_navigation => .top_level_navigation,
+        .top_level_self_fetch => .top_level_self_fetch,
+    }) orelse return null;
     // The store hands out a reference of our own: a revoke on another thread
     // cannot free the bytes while they are copied.
     defer data.deinit();
