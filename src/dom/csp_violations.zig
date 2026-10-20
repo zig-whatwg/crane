@@ -124,13 +124,13 @@ pub fn shouldBlockInline(
         // 3.1.2-3.1.7. A violation of the effective directive for inline
         // checks, its resource "inline", its element the element, a sample
         // when the directive asks for one - reported.
-        if (window) |w| reportViolation(w, &.{
+        if (window) |w| reportViolationAt(w, &.{
             .policy = policy,
             .effective_directive = csp.inline_check.effectiveDirectiveForInlineCheck(inline_type),
             .resource = .@"inline",
             .element = element,
             .sample = csp.violation_events.sampleFor(directive, source),
-        });
+        }, matching.position);
         // 3.1.8. "If policy's disposition is "enforce", then set result to
         // "Blocked"."
         if (policy.disposition == .enforce) blocked = true;
@@ -315,7 +315,15 @@ pub const GuardedReporter = struct {
 /// Report `violation` of `global`'s policy: §5.5 steps 1-3, the event in a
 /// queued task. Nothing is reported when the task cannot be made.
 pub fn reportViolation(global: *runtime.Instance, violation: *const Violation) void {
-    queueViolationTask(global, violation) catch |err| {
+    reportViolationAt(global, violation, null);
+}
+
+/// `reportViolation`, for an element's inline content that starts at
+/// `position` in the global's document: the violation's location when no
+/// script is running (§2.4.1 step 2 finds none) - the parser blocking a
+/// `<script>` or `<style>` it made.
+fn reportViolationAt(global: *runtime.Instance, violation: *const Violation, position: ?csp.inline_check.Position) void {
+    queueViolationTask(global, violation, position) catch |err| {
         log.debug("securitypolicyviolation not queued: {s}", .{@errorName(err)});
     };
 }
@@ -663,7 +671,7 @@ fn windowDocument(global: *runtime.Instance) ?*runtime.Instance {
 }
 
 /// §5.5 steps 1-3: copy what the event needs, then queue the task.
-fn queueViolationTask(global: *runtime.Instance, violation: *const Violation) !void {
+fn queueViolationTask(global: *runtime.Instance, violation: *const Violation, position: ?csp.inline_check.Position) !void {
     const allocator = global.ctx.allocator;
     const task = try allocator.create(ViolationTask);
     task.* = .{
@@ -748,13 +756,24 @@ fn queueViolationTask(global: *runtime.Instance, violation: *const Violation) !v
     // the global, set violation's source file, line number, and column
     // number accordingly" - the script running in the global's agent, now,
     // as the violation is made.
-    if (global.ctx.agent) |agent| {
-        if (engine.runningScriptLocation(agent, allocator) catch null) |location| {
-            defer location.deinit(allocator);
-            task.source_file = try csp.violation_events.sourceFileForReports(allocator, location.url);
-            task.line_number = location.line;
-            task.column_number = location.column;
-        }
+    const running: ?engine.ScriptLocation = if (global.ctx.agent) |agent| engine.runningScriptLocation(agent, allocator) catch null else null;
+    if (running) |location| {
+        defer location.deinit(allocator);
+        task.source_file = try csp.violation_events.sourceFileForReports(allocator, location.url);
+        task.line_number = location.line;
+        task.column_number = location.column;
+    } else if (position) |at| {
+        // No script is running: the parser is blocking an element it made.
+        // The violation is located where the element's content starts in
+        // the document - Blink's SourceLocation::Capture, which takes the
+        // stack when script runs and else the context URL and line it is
+        // given (ContentSecurityPolicy::AllowInline's). All three browsers
+        // report it (blockeduri-inline.html 15:9;
+        // targeting-for-inline-script-without-nonce.html 20:21;
+        // targeting-for-inline-style.html 20:20).
+        task.source_file = try csp.violation_events.sourceFileForReports(allocator, url);
+        task.line_number = at.line;
+        task.column_number = at.column;
     }
 
     // 3. "Queue a task": on the global's event loop - a window's, or a

@@ -1455,27 +1455,9 @@ fn documentTreeChildNavigables(instance: *runtime.Instance, internal: *InternalS
         const raw = navigable.getActiveDocument() orelse return .empty;
         break :blk @as(*runtime.Instance, @ptrCast(@alignCast(raw)));
     };
-    const children = @import("dom").navigables.childNavigablesOf(document, allocator);
-    // Golden rule 2 (row 81 Q15, 2026-10-19): step 3's tree-order wording
-    // arrived with the navigables cleanup (whatwg/html#1336, 2022), with no
-    // browser adoption or demonstrated lag. WPT indexed-browsing-contexts-01
-    // still asserts "The child browsing contexts must be sorted in the order
-    // that their containers were inserted into the Document." Aligned stable
-    // Chrome 6244643405824000, Firefox 6213611998674944 and Safari
-    // 6209999629189120 all pass it. Re-check if the spec or test changes.
-    // Like WebKit FrameTree::scopedChild, filter membership while preserving
-    // the parent's frame-list order. Reorder in place; no new holder or list.
-    var next: usize = 0;
-    for (navigable.children.items) |child| {
-        if (next == children.items.len) break;
-        for (children.items[next..], next..) |entry, index| {
-            if (entry.browsing_context != child) continue;
-            std.mem.swap(@import("dom").navigables.ChildNavigable, &children.items[next], &children.items[index]);
-            next += 1;
-            break;
-        }
-    }
-    return children;
+    // Membership and order: dom.navigables (the engine adapter's indexed
+    // interceptor walks the same list).
+    return @import("dom").navigables.documentTreeChildNavigables(navigable, document, allocator);
 }
 
 /// Getter for length - Number of document-tree child navigables.

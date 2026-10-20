@@ -24,6 +24,7 @@
 
 const std = @import("std");
 const engine = @import("engine");
+const runtime = @import("runtime");
 
 const ffi = @import("ffi.zig");
 const js_scope = @import("js_scope.zig");
@@ -80,9 +81,39 @@ const CallbackRealm = struct {
     /// html/semantics/scripting-1/the-script-element/execution-timing/083.html
     /// passes in Chrome 155, Firefox 157 and Safari 27. A worker's realm, or
     /// a realm the context manager does not host, is always runnable here.
+    ///
+    /// Nor when the Window's associated Document has been destroyed but its
+    /// realm is not detached yet: "destroy a child navigable" destroys the
+    /// frame's document at once (step 5) and ends its realm at a task of
+    /// its own (dom.navigables.queueRemovedFrameRealmEnd), and in between a
+    /// callback of the frame - a NodeFilter its script made for a parent
+    /// document's iterator - must not run. Blink's IsCallbackFunctionRunnable
+    /// refuses it the same way: the frame's ExecutionContext is destroyed
+    /// (IsContextDestroyed) as the frame detaches. HTML "prepare to run
+    /// script" with a Window whose Document is not fully active; WebIDL "call
+    /// a user object's operation" step 7. dom/traversal/TreeWalker-acceptNode-
+    /// filter-cross-realm-null-browsing-context.html: Chrome 155 and Firefox
+    /// 158 pass, Safari 27 fails. Only a document that can never be fully
+    /// active again (dom.document_activity `.gone`) is refused: a page the
+    /// back/forward cache keeps (`.inactive`) is the cached-realm lesson's,
+    /// for its phase C.
     fn runnable(self: CallbackRealm) bool {
         const realm = self.realm orelse return true;
-        return !protocol_realms.isDetached(realm);
+        if (protocol_realms.isDetached(realm)) return false;
+        // Only a frame's realm stays attached after its document is
+        // destroyed (its end is a task of its own); a top-level page's realm
+        // ends or detaches with its document. (The activity check walks the
+        // Browser's navigables: keep it off every top-level callback.)
+        if (!protocol_realms.isAttachedFrame(realm)) return true;
+        // A realm no Browser made (WindowRealmOptions.browser_scope unset:
+        // the engine's own tests) has no document state to consult - its
+        // Window belongs to no navigable. (Not browserScope(), which falls
+        // back to the process's standalone scope.)
+        if (realm.browser_scope == null) return true;
+        const record = realm.getRealm() orelse return true;
+        const global: *engine.Instance = @ptrCast(@alignCast(record.global_object orelse return true));
+        if (global.stateAs(@import("interfaces").Window.State) == null) return true;
+        return @import("dom").document_activity.activity(global, runtime.SlabAllocator.generationOf(global)) != .gone;
     }
 
     /// "Clean up after running script".

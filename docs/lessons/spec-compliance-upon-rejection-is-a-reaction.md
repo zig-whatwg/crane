@@ -9,4 +9,6 @@
 
 **Fix**: worker_host.runModuleScript turns a `.report` into `engine.createRejectedPromise` and reacts to it exactly as to a pending top-level-await promise (lane/scripts e1acbff5d).
 
+**Status (2026-10-19, lane engine1)**: the Window host now does the same. The open question above had an answer: its synchronous report ran inside the prepare scope with no V8 call on the stack, so each error listener's call returned to call depth 0 and V8's kAuto policy checkpointed after it - the first listener's microtasks ran before the second listener (microtasks/checkpoint-after-window-onerror-module.html; the worker variant passed). script_execution.runModuleScript reacts to a rejected promise like the worker, and the V8 adapter runs every host reaction step inside prepareToRunScript / cleanUpAfterRunningScript of its realm (HostEnqueuePromiseJob; engine.PromiseReactionSteps). When a window and a worker implement one algorithm, diff their shapes.
+
 **Takeaway**: **Where the spec says "upon fulfillment" or "upon rejection", react to a promise - even one you know is settled - so the step lands behind the microtasks already queued.**

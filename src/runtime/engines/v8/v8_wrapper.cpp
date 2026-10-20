@@ -11497,6 +11497,15 @@ bool v8_Isolate_HasJavaScriptOnStack(Isolate* isolate) {
 /// `scopes` may be the wrapper cache's own handles, held WEAKLY: each is read
 /// into a Local before anything here allocates, and an empty one fails the
 /// compile (as a body that does not compile does, with no error to report).
+/// The body is compiled at `line_offset` / `column_offset` (0-based: the
+/// engine protocol's SourcePosition less one) in a resource named
+/// `resource_name` (null: none) - the document's URL - so what it throws and
+/// a violation inside it report the document's URL and line, as Blink's
+/// JSEventHandlerForContentAttribute compiles with the handler's
+/// TextPosition. No host-defined options: the function has no
+/// [[ScriptOrModule]], and an import() in it names no referrer
+/// (ProtocolHostImportModuleDynamically reads only those).
+///
 /// Returns the function (Global<Value>*, caller owns), or nullptr with
 /// `*out_error` set (v8_FreeErrorInfo; its `exception` is the SyntaxError)
 /// when the body does not parse.
@@ -11510,6 +11519,10 @@ Global<Value>* v8_CompileEventHandlerWithParameters(
     int parameter_count,
     Global<Object>** scopes,
     int scope_count,
+    const char* resource_name,
+    int resource_name_len,
+    int line_offset,
+    int column_offset,
     V8ErrorInfo** out_error
 ) {
     Isolate* isolate = Isolate::GetCurrent();
@@ -11546,7 +11559,14 @@ Global<Value>* v8_CompileEventHandlerWithParameters(
 
     std::vector<Local<Object>> extensions(extensions_storage, extensions_storage + extension_count);
 
-    ScriptCompiler::Source source(source_text);
+    Local<Value> origin_name = String::Empty(isolate);
+    if (resource_name && resource_name_len > 0) {
+        Local<String> named;
+        if (!String::NewFromUtf8(isolate, resource_name, NewStringType::kNormal, resource_name_len).ToLocal(&named)) return nullptr;
+        origin_name = named;
+    }
+    ScriptOrigin origin(origin_name, line_offset, column_offset);
+    ScriptCompiler::Source source(source_text, origin);
     Local<Function> function;
     if (!ScriptCompiler::CompileFunction(
             ctx, &source, params.size(), params.empty() ? nullptr : params.data(),
@@ -11580,13 +11600,18 @@ static Local<PrimitiveArray> protocolHostDefinedOptions(Isolate* isolate, int ki
 }
 
 /// Compile a classic script with a ScriptOrigin naming `resource_name` (null:
-/// the empty string) and carrying `host_defined` (null: none) - so that an
-/// import() from it names its host script as the referrer. As
+/// the empty string), at `line_offset` / `column_offset` in it (0-based: an
+/// inline script's start in its document, the engine protocol's
+/// SourcePosition less one; the column offset applies to the first line
+/// only), and carrying `host_defined` (null: none) - so that an import()
+/// from it names its host script as the referrer. As
 /// v8_Script_CompileWithOrigin_Safe otherwise.
 V8ScriptCompileResult* v8_Script_CompileWithHostDefined_Safe(
     Global<Context>* context,
     Global<String>* source,
     Global<String>* resource_name,
+    int line_offset,
+    int column_offset,
     void* host_defined
 ) {
     Isolate* isolate = Isolate::GetCurrent();
@@ -11603,7 +11628,7 @@ V8ScriptCompileResult* v8_Script_CompileWithHostDefined_Safe(
 
     Local<Data> host_defined_options;
     if (host_defined) host_defined_options = protocolHostDefinedOptions(isolate, 0, host_defined);
-    ScriptOrigin origin(local_resource_name, 0, 0, false, -1, Local<Value>(), false, false, false, host_defined_options);
+    ScriptOrigin origin(local_resource_name, line_offset, column_offset, false, -1, Local<Value>(), false, false, false, host_defined_options);
 
     TryCatch try_catch(isolate);
     MaybeLocal<Script> maybe_script = Script::Compile(local_context, local_source, &origin);
@@ -11641,6 +11666,8 @@ int v8_Script_RunRethrowingErrors(
     Global<Context>* context,
     Global<String>* source,
     Global<String>* resource_name,
+    int line_offset,
+    int column_offset,
     void* host_defined,
     bool muted_errors
 ) {
@@ -11654,7 +11681,7 @@ int v8_Script_RunRethrowingErrors(
 
     Local<Data> host_defined_options;
     if (host_defined) host_defined_options = protocolHostDefinedOptions(isolate, 0, host_defined);
-    ScriptOrigin origin(local_resource_name, 0, 0, false, -1, Local<Value>(), false, false, false, host_defined_options);
+    ScriptOrigin origin(local_resource_name, line_offset, column_offset, false, -1, Local<Value>(), false, false, false, host_defined_options);
 
     TryCatch try_catch(isolate);
     Local<Script> script;
@@ -11735,12 +11762,16 @@ static void protocolReadHostDefined(Isolate* isolate, Local<Data> options, int* 
 }
 
 /// ECMAScript ParseModule: compile `source` as a module whose ScriptOrigin
-/// names `resource_name` and carries `host_defined` as a module's (kind 1),
+/// names `resource_name`, puts it at `line_offset` / `column_offset` (0-based,
+/// as v8_Script_CompileWithHostDefined_Safe's: an inline module script's
+/// start in its document) and carries `host_defined` as a module's (kind 1),
 /// in `context`. Free with v8_FreeModuleCompileResult; its module is OWNED.
 V8ModuleCompileResult* v8_Module_CompileWithHostDefined_Safe(
     Global<Context>* context,
     Global<String>* source,
     Global<String>* resource_name,
+    int line_offset,
+    int column_offset,
     void* host_defined
 ) {
     Isolate* isolate = Isolate::GetCurrent();
@@ -11756,7 +11787,7 @@ V8ModuleCompileResult* v8_Module_CompileWithHostDefined_Safe(
 
     Local<Data> host_defined_options;
     if (host_defined) host_defined_options = protocolHostDefinedOptions(isolate, 1, host_defined);
-    ScriptOrigin origin(local_name, 0, 0, false, -1, Local<Value>(), false, false, true, host_defined_options);
+    ScriptOrigin origin(local_name, line_offset, column_offset, false, -1, Local<Value>(), false, false, true, host_defined_options);
     ScriptCompiler::Source script_source(local_source, origin);
 
     TryCatch try_catch(isolate);
@@ -12036,7 +12067,21 @@ static MaybeLocal<Promise> ProtocolHostImportModuleDynamically(
     protocolReadHostDefined(isolate, host_defined_options, &kind, &referrer);
     String::Utf8Value specifier_utf8(isolate, specifier);
     // A dynamic import's attributes are (key, value) pairs.
-    char* type_attribute = importTypeAttribute(isolate, context, import_attributes, 2, nullptr);
+    bool has_unsupported_key = false;
+    char* type_attribute = importTypeAttribute(isolate, context, import_attributes, 2, &has_unsupported_key);
+    // HTML HostGetSupportedImportAttributes is « "type" »: an import() whose
+    // attributes name any other key rejects with a TypeError and loads
+    // nothing - the check Blink's HostImportModuleDynamically makes before
+    // its host steps (ModuleRequest::HasInvalidImportAttributeKey, "Invalid
+    // attribute key"); a static import's is parseModule's SyntaxError.
+    // html/semantics/scripting-1/the-script-element/import-attributes/
+    // dynamic-import-with-attributes-argument.any.js: all three browsers
+    // pass with a TypeError.
+    if (has_unsupported_key) {
+        delete[] type_attribute;
+        (void)resolver->Reject(context, Exception::TypeError(String::NewFromUtf8Literal(isolate, "Invalid import attribute key: only \"type\" is supported")));
+        return handle_scope.Escape(resolver->GetPromise());
+    }
     dispatch(
         isolate,
         new Global<Context>(isolate, context),

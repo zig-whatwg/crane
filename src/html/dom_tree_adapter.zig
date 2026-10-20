@@ -391,13 +391,16 @@ pub const DomTreeAdapter = struct {
         }) catch return DomTreeAdapterError.DomOperationFailed;
 
         // A script element - HTML's, or an SVG script - is parser-inserted.
-        if (std.mem.eql(u8, local_name, "script")) dom.script_elements.markParserInserted(element, self.document);
+        if (std.mem.eql(u8, local_name, "script")) {
+            dom.script_elements.markParserInserted(element, self.document);
+            parser_script_execution.recordStartPosition(element, self.document);
+        }
         // "Append each attribute in the given token to element."
         for (tree_node.attributes.toSlice()) |attr| parser_script_execution.appendParsedAttribute(element, attr);
 
         // Capture the token's stylesheet state before connection. A style
         // block also waits for its pop callback before reading its text.
-        if (tree_node.namespace == .html and (std.mem.eql(u8, local_name, "style") or std.mem.eql(u8, local_name, "link"))) dom.style_sheet_owners.createdByParser(element);
+        if (tree_node.namespace == .html and (std.mem.eql(u8, local_name, "style") or std.mem.eql(u8, local_name, "link"))) dom.style_sheet_owners.createdByParser(element, parser_script_execution.styleStart(local_name, self.document));
 
         return element;
     }

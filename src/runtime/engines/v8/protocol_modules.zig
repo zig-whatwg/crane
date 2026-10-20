@@ -111,8 +111,10 @@ fn caughtError(info: ?*ffi.V8ErrorInfo) Error!Owned {
 /// ECMAScript ParseModule(sourceText, realm, hostDefined), as HTML "create a
 /// JavaScript module script" uses it: the record, or the SyntaxError that is
 /// the script's parse error. The module's ScriptOrigin carries `host_defined`,
-/// so that an import() in it names the module as its referrer.
-pub fn parseModule(realm: Context, source: []const u8, url: []const u8, host_defined: ?*anyopaque) Error!engine.ParseResult {
+/// so that an import() in it names the module as its referrer, and `start`'s
+/// offsets, so that what an inline module script throws is reported in its
+/// document's lines.
+pub fn parseModule(realm: Context, source: []const u8, start: engine.SourcePosition, url: []const u8, host_defined: ?*anyopaque) Error!engine.ParseResult {
     const entered = try support.enter(realm);
     defer entered.leave();
     const isolate = entered.isolate;
@@ -123,7 +125,8 @@ pub fn parseModule(realm: Context, source: []const u8, url: []const u8, host_def
     defer if (name) |n| ffi.v8_String_Dispose(n);
     if (url.len > 0) name = try support.newString(isolate, url);
 
-    const compiled = ffi.v8_Module_CompileWithHostDefined_Safe(entered.context(), text, name, host_defined);
+    const offsets = @import("protocol_scripts.zig").originOffsets(start);
+    const compiled = ffi.v8_Module_CompileWithHostDefined_Safe(entered.context(), text, name, offsets.line, offsets.column, host_defined);
     defer ffi.v8_FreeModuleCompileResult(compiled);
     const module = compiled.module orelse return .{ .parse_error = try caughtError(compiled.error_info) };
 

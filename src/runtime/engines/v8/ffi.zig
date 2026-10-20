@@ -3052,9 +3052,11 @@ pub extern fn v8_Isolate_HasJavaScriptOnStack(isolate: *Isolate) bool;
 /// the parameter names given. `scopes` are scope objects, OUTERMOST first
 /// ([document, form owner, element] for an element's handler; none for a
 /// Window's), at most 8; each may be a weak cache handle (read before
-/// anything allocates; an empty one fails the compile). The function is
-/// OWNED (a Global<Value>*); on a SyntaxError null, with `out_error` set
-/// (v8_FreeErrorInfo).
+/// anything allocates; an empty one fails the compile). The body is compiled
+/// in a resource named `resource_name` (the document's URL; len 0: none) at
+/// the 0-based `line_offset` / `column_offset`, with no host-defined options.
+/// The function is OWNED (a Global<Value>*); on a SyntaxError null, with
+/// `out_error` set (v8_FreeErrorInfo).
 pub extern fn v8_CompileEventHandlerWithParameters(
     context: *Context,
     name: [*]const u8,
@@ -3065,18 +3067,24 @@ pub extern fn v8_CompileEventHandlerWithParameters(
     parameter_count: c_int,
     scopes: [*]const ?*Object,
     scope_count: c_int,
+    resource_name: [*]const u8,
+    resource_name_len: c_int,
+    line_offset: c_int,
+    column_offset: c_int,
     out_error: *?*V8ErrorInfo,
 ) ?*Value;
 
 /// Compile a classic script whose ScriptOrigin names `resource_name` (null:
-/// "") and carries `host_defined` (null: none). Free the result with
+/// ""), puts it at the 0-based `line_offset` / `column_offset` (an inline
+/// script's start in its document; the column only on the first line) and
+/// carries `host_defined` (null: none). Free the result with
 /// v8_FreeScriptCompileResult; its script is OWNED.
-pub extern fn v8_Script_CompileWithHostDefined_Safe(context: *Context, source: *String, resource_name: ?*String, host_defined: ?*anyopaque) *V8ScriptCompileResult;
+pub extern fn v8_Script_CompileWithHostDefined_Safe(context: *Context, source: *String, resource_name: ?*String, line_offset: c_int, column_offset: c_int, host_defined: ?*anyopaque) *V8ScriptCompileResult;
 /// HTML "run a classic script" with rethrow errors true: compile and run, and
 /// on an abrupt completion TryCatch::ReThrow (the original message kept).
 /// 0 normal; 1 the exception is pending again; 2 it was muted and cleared;
 /// -1 the isolate is terminating.
-pub extern fn v8_Script_RunRethrowingErrors(context: *Context, source: *String, resource_name: ?*String, host_defined: ?*anyopaque, muted_errors: bool) c_int;
+pub extern fn v8_Script_RunRethrowingErrors(context: *Context, source: *String, resource_name: ?*String, line_offset: c_int, column_offset: c_int, host_defined: ?*anyopaque, muted_errors: bool) c_int;
 
 /// Whether V8's platform is initialized in this process.
 pub extern fn v8_Platform_IsInitialized() bool;
@@ -3094,9 +3102,10 @@ pub extern fn v8_Isolate_SetProtocolPromiseRejectCallback(
 pub extern fn v8_Isolate_ClearProtocolPromiseRejectCallback(isolate: *Isolate) void;
 
 /// ECMAScript ParseModule: compile `source` as a module whose ScriptOrigin
-/// names `resource_name` (null: "") and carries `host_defined` (null: none)
-/// as a module's. Free with v8_FreeModuleCompileResult; its module is OWNED.
-pub extern fn v8_Module_CompileWithHostDefined_Safe(context: *Context, source: *String, resource_name: ?*String, host_defined: ?*anyopaque) *V8ModuleCompileResult;
+/// names `resource_name` (null: ""), puts it at the 0-based `line_offset` /
+/// `column_offset`, and carries `host_defined` (null: none) as a module's.
+/// Free with v8_FreeModuleCompileResult; its module is OWNED.
+pub extern fn v8_Module_CompileWithHostDefined_Safe(context: *Context, source: *String, resource_name: ?*String, line_offset: c_int, column_offset: c_int, host_defined: ?*anyopaque) *V8ModuleCompileResult;
 
 /// The host's answer for one module request during a Link: the resolved
 /// module (the host keeps it), or null. `referrer` is BORROWED for the call.

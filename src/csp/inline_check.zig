@@ -32,6 +32,17 @@ pub const Element = struct {
     nonce: ?[]const u8 = null,
     /// A script element that is parser-inserted.
     parser_inserted: bool = false,
+    /// Where the element's inline content starts in its document, when the
+    /// HTML parser made it - the location a violation reports when no script
+    /// is running (Blink's ContentSecurityPolicy::AllowInline context line,
+    /// WebKit's allowInlineScript contextLine). Not a §6.7.3 input.
+    position: ?Position = null,
+};
+
+/// A 1-based line and column in a document.
+pub const Position = struct {
+    line: u32,
+    column: u32,
 };
 
 /// §6.8.2 Get the effective directive for inline checks.
