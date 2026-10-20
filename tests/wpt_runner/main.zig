@@ -105,6 +105,32 @@ fn wptLogFn(
 
     // Use default implementation for everything else
     std.log.defaultLog(level, scope, format, args);
+
+    // A double free (or a mismatched free) names the file it happened in.
+    // The leak reports at the end are named by printLeaksByFile instead.
+    // Never under the attribution's lock: it is held only around its map,
+    // and the DebugAllocator reports from inside the child's free.
+    if (level == .err and scope == .DebugAllocator and comptime std.mem.indexOf(u8, format, "leaked") == null) {
+        if (attribution) |*a| std.log.defaultLog(.err, .wpt_runner, "the DebugAllocator report above came while running {s}", .{a.currentFile()});
+    }
+}
+
+/// The attribution's summary, before the DebugAllocator's leak reports: one
+/// `leaked-by-file:` line per file, then the total, which must equal the
+/// number of `leaked:` lines that follow. Rendered in page_allocator memory,
+/// which the leak check does not see.
+fn printLeaksByFile(a: *runner_allocator.Attributing) void {
+    const summary = a.summarize(std.heap.page_allocator) catch {
+        print("leaked-by-file: the summary could not be made (out of memory)\n", .{});
+        return;
+    };
+    defer runner_allocator.Attributing.freeSummary(std.heap.page_allocator, summary);
+    var text: std.Io.Writer.Allocating = .init(std.heap.page_allocator);
+    defer text.deinit();
+    runner_allocator.printLeaksByFile(summary, &text.writer) catch return;
+    if (text.written().len == 0) return;
+    print("{s}", .{text.written()});
+    flushOutput();
 }
 
 // The runner's command-line surface and test discovery live in their own
@@ -729,6 +755,7 @@ pub fn executeTests(
         var tally: FileTally = FileTally.start();
         tally.index = discovery.base_index + file_offset;
         deadline.mark(tally.index, test_file.path);
+        if (attribution) |*a| a.enterFile(test_file.path);
         // This file's results are the report's entries from here on. They are
         // streamed BEFORE the journal record: a crash between the two then
         // leaves real results under a CRASH record the supervisor writes, never
@@ -799,6 +826,7 @@ pub fn executeTests(
                 // (the heartbeat) and this process's own (`deadline`).
                 heartbeat.beat();
                 deadline.mark(tally.index, test_file.path);
+                if (attribution) |*a| a.enterFile(test_file.path);
 
                 // How this run is named in the results. Owned rather than
                 // borrowed: a run told apart by both axes at once has no static
@@ -913,6 +941,7 @@ pub fn executeTests(
     // Every file has finished; what follows is the report and the teardown,
     // which the deadline keeps bounding under a label of its own.
     deadline.mark(discovery.base_index + file_count, "(teardown after the last file)");
+    if (attribution) |*a| a.enterFile("(teardown after the last file)");
 
     // Generate output path
     const output_path = try options.reportPath(allocator);
@@ -1235,7 +1264,7 @@ const OnceState = enum(u8) { uninitialized, initializing, done };
 var stderr_state: std.atomic.Value(OnceState) = .init(.uninitialized);
 
 fn initStderrSink() void {
-    stderr_writer = std.Io.File.stderr().writer(host.io(), &stderr_buffer);
+    stderr_writer = output.logWriter(std.Io.File.stderr(), host.io(), &stderr_buffer);
     stderr_sink = .{ .w = &stderr_writer.interface };
 }
 
@@ -1300,6 +1329,15 @@ pub fn main(init: std.process.Init) !void {
 /// (docs/lessons/debugging-a-two-subtest-page-took-37-seconds-to-exit-and.md).
 var gpa_fast: runner_allocator.Fast = .{};
 var gpa_traced: runner_allocator.Traced = .{};
+/// Per-file leak attribution (`runner_allocator.Attributing`), in front of
+/// gpa_fast or gpa_traced under `CRANE_LEAK_FILES=1` (off by default: it
+/// costs about 18% of a run's time): at the run's end it
+/// prints, for each file, the allocations made while it ran that are still
+/// live - the ones the DebugAllocator then reports as `leaked:`. Beside the
+/// two allocators it fronts, and for the same reason: it is this process's
+/// allocator, and the log function reaches it to name the file a double free
+/// was reported in.
+var attribution: ?runner_allocator.Attributing = null;
 
 fn run(init: std.process.Init) !u8 {
     // 0.16 removed std.process.argsAlloc - arguments are no longer process-global.
@@ -1311,8 +1349,16 @@ fn run(init: std.process.Init) !u8 {
     // always do; a violation is an error line in the output
     // ("refcount: ..."). Changes no behaviour.
     if (runner_allocator.wantsTraces(init.minimal.environ.getPosix("CRANE_REFCOUNT_CHECK"))) @import("dom").refcount.enableTreeChecks();
-    const allocator = if (want_traces) gpa_traced.allocator() else gpa_fast.allocator();
+    const tracked = if (want_traces) gpa_traced.allocator() else gpa_fast.allocator();
+    if (runner_allocator.wantsAttribution(init.minimal.environ.getPosix("CRANE_LEAK_FILES"))) attribution = runner_allocator.Attributing.init(tracked);
+    const allocator = if (attribution) |*a| a.allocator() else tracked;
     defer {
+        // What is still live now is what the DebugAllocator reports below,
+        // so its file names come first.
+        if (attribution) |*a| {
+            printLeaksByFile(a);
+            a.deinit();
+        }
         // Leak detection still runs; only the traces are gone in the fast case.
         if (want_traces) {
             _ = gpa_traced.deinit();
@@ -1350,10 +1396,11 @@ fn run(init: std.process.Init) !u8 {
 
     if (options.allocator_self_check) {
         const check = runner_allocator.selfCheck();
-        print("allocator self-check ({s}): double free {s}, leak {s}\n", .{
+        print("allocator self-check ({s}): double free {s}, leak {s}, leak {s}\n", .{
             @tagName(builtin.mode),
             if (check.double_free_reported) "reported" else "NOT REPORTED",
             if (check.leak_reported) "reported" else "NOT REPORTED",
+            if (check.leak_attributed) "attributed to its file" else "NOT ATTRIBUTED",
         });
         return if (check.passed()) 0 else 1;
     }

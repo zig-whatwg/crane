@@ -13,6 +13,8 @@ const formatting = @import("formatting.zig");
 const structure = @import("structure.zig");
 const selection_ops = @import("selection_ops.zig");
 const clock = @import("clock");
+const runtime = @import("runtime");
+const dom = @import("dom");
 
 /// Opaque document handle - actual runtime.Instance integration handled at call site
 pub const DocumentHandle = *anyopaque;
@@ -56,7 +58,7 @@ pub fn execCommand(
     };
 
     // Step 2: Get or create editor state for this document
-    const editor_state = getOrCreateEditorState(allocator, document);
+    const editor_state = try getOrCreateEditorState(allocator, document);
     _ = editor_state;
 
     // Step 3: Check if command is enabled
@@ -158,7 +160,10 @@ fn executeCommandImpl(
 /// 5. Push entry to redo stack
 /// 6. Return true
 fn executeUndo(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
-    const editor_state = getOrCreateEditorState(allocator, document);
+    return executeUndoIn(allocator, document, try getOrCreateEditorState(allocator, document));
+}
+
+fn executeUndoIn(allocator: std.mem.Allocator, document: DocumentHandle, editor_state: *EditorState) !CommandResult {
 
     // Check if undo is available
     if (!editor_state.undo_manager.canUndo()) {
@@ -186,7 +191,10 @@ fn executeUndo(allocator: std.mem.Allocator, document: DocumentHandle) !CommandR
 /// 5. Push entry to undo stack
 /// 6. Return true
 fn executeRedo(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
-    const editor_state = getOrCreateEditorState(allocator, document);
+    return executeRedoIn(allocator, document, try getOrCreateEditorState(allocator, document));
+}
+
+fn executeRedoIn(allocator: std.mem.Allocator, document: DocumentHandle, editor_state: *EditorState) !CommandResult {
 
     // Check if redo is available
     if (!editor_state.undo_manager.canRedo()) {
@@ -314,7 +322,7 @@ fn executeConfigCommand(
     command: Command,
     value: ?[]const u8,
 ) !CommandResult {
-    var editor_state = getOrCreateEditorState(allocator, document);
+    var editor_state = try getOrCreateEditorState(allocator, document);
     const success = editor_state.setConfig(command, value);
     return .{ .success = success };
 }
@@ -328,7 +336,7 @@ pub fn queryCommandEnabled(
     command_name: []const u8,
 ) !bool {
     const command = Command.fromString(command_name) orelse return false;
-    const editor_state = getOrCreateEditorState(allocator, document);
+    const editor_state = try getOrCreateEditorState(allocator, document);
     return editor_state.isCommandEnabled(command);
 }
 
@@ -371,7 +379,7 @@ pub fn queryCommandValue(
     const command = Command.fromString(command_name) orelse return null;
 
     // Check editor state for config commands
-    const editor_state = getOrCreateEditorState(allocator, document);
+    const editor_state = try getOrCreateEditorState(allocator, document);
     if (editor_state.getCommandValue(command)) |value| {
         return value;
     }
@@ -403,52 +411,47 @@ pub fn queryCommandIndeterm(
 // Helper Functions
 // =============================================================================
 
-/// Document to EditorState mapping
-/// In production, this should be stored in the document's internal state
-var document_states: ?std.AutoHashMap(usize, *EditorState) = null;
-
-/// Get or create editor state for a document
-fn getOrCreateEditorState(allocator: std.mem.Allocator, document: DocumentHandle) *EditorState {
-    const doc_addr = @intFromPtr(document);
-
-    // Initialize the map if needed
-    if (document_states == null) {
-        document_states = std.AutoHashMap(usize, *EditorState).init(allocator);
-    }
-
-    // Look up or create state for this document
-    if (document_states.?.get(doc_addr)) |state_ptr| {
-        return state_ptr;
-    }
-
-    // Create new state
-    const new_state = allocator.create(EditorState) catch {
-        // Fallback to static state on allocation failure
-        const Static = struct {
-            var editor_state: ?EditorState = null;
-        };
-        if (Static.editor_state == null) {
-            Static.editor_state = EditorState.init(allocator);
-        }
-        return &Static.editor_state.?;
-    };
+/// The editor state of `document` (a Document instance), made on its first
+/// editing command with `allocator` - the document's own - and kept by the
+/// Document itself (dom.document_internals.editorState), which frees it
+/// with itself through `freeEditorState` (dom.editor_states).
+///
+/// It was a process-global, unlocked map keyed by the document's address,
+/// made with the first caller's allocator and never emptied: a leak per
+/// document, a race between Browsers on two threads, and a stale state for
+/// a new document at a reused address (lane leaks6).
+fn getOrCreateEditorState(allocator: std.mem.Allocator, document: DocumentHandle) error{OutOfMemory}!*EditorState {
+    if (existingEditorState(document)) |existing| return existing;
+    const new_state = try allocator.create(EditorState);
     new_state.* = EditorState.init(allocator);
     new_state.document = document;
-
-    document_states.?.put(doc_addr, new_state) catch {};
-
+    // Not a Document with state: nothing could keep it.
+    if (!dom.document_internals.setEditorState(@ptrCast(@alignCast(document)), new_state)) {
+        new_state.deinit();
+        allocator.destroy(new_state);
+        return error.OutOfMemory;
+    }
     return new_state;
 }
 
-/// Clean up editor state for a document (call when document is destroyed)
-pub fn cleanupEditorState(allocator: std.mem.Allocator, document: DocumentHandle) void {
-    if (document_states) |*states| {
-        const doc_addr = @intFromPtr(document);
-        if (states.fetchRemove(doc_addr)) |kv| {
-            kv.value.deinit();
-            allocator.destroy(kv.value);
-        }
-    }
+/// `document`'s editor state, or null before its first editing command.
+fn existingEditorState(document: DocumentHandle) ?*EditorState {
+    const state_ptr = dom.document_internals.editorState(@ptrCast(@alignCast(document))) orelse return null;
+    return @ptrCast(@alignCast(state_ptr));
+}
+
+/// dom.editor_states: free a Document's editor state, with the document.
+fn freeEditorState(state_ptr: *anyopaque, allocator: std.mem.Allocator) void {
+    const editor_state: *EditorState = @ptrCast(@alignCast(state_ptr));
+    editor_state.deinit();
+    allocator.destroy(editor_state);
+}
+
+/// The editing subsystem's step in a Document's teardown, installed once at
+/// process start by Document's installHooks (the owner of the editing
+/// commands).
+pub fn installHooks() void {
+    dom.editor_states.install(&freeEditorState);
 }
 
 // =============================================================================
@@ -464,7 +467,17 @@ pub fn recordTextOperation(
     inserted_text: ?[]const u8,
     position: usize,
 ) !void {
-    const editor_state = getOrCreateEditorState(allocator, document);
+    return recordTextOperationIn(allocator, try getOrCreateEditorState(allocator, document), command, deleted_text, inserted_text, position);
+}
+
+fn recordTextOperationIn(
+    allocator: std.mem.Allocator,
+    editor_state: *EditorState,
+    command: Command,
+    deleted_text: ?[]const u8,
+    inserted_text: ?[]const u8,
+    position: usize,
+) !void {
     const entry = try history.UndoEntry.initTextOperation(
         allocator,
         command,
@@ -482,7 +495,10 @@ pub fn recordFormatOperation(
     command: Command,
     was_active: bool,
 ) !void {
-    const editor_state = getOrCreateEditorState(allocator, document);
+    return recordFormatOperationIn(allocator, try getOrCreateEditorState(allocator, document), command, was_active);
+}
+
+fn recordFormatOperationIn(allocator: std.mem.Allocator, editor_state: *EditorState, command: Command, was_active: bool) !void {
     const entry = history.UndoEntry.initFormatOperation(allocator, command, was_active);
     try editor_state.undo_manager.push(entry);
 }
@@ -496,7 +512,7 @@ pub fn recordStructureOperation(
     new_html: ?[]const u8,
     position: usize,
 ) !void {
-    const editor_state = getOrCreateEditorState(allocator, document);
+    const editor_state = try getOrCreateEditorState(allocator, document);
 
     var entry = history.UndoEntry{
         .allocator = allocator,
@@ -531,7 +547,7 @@ pub fn recordLinkOperation(
     new_html: ?[]const u8,
     position: usize,
 ) !void {
-    const editor_state = getOrCreateEditorState(allocator, document);
+    const editor_state = try getOrCreateEditorState(allocator, document);
 
     var entry = history.UndoEntry{
         .allocator = allocator,
@@ -565,7 +581,7 @@ pub fn recordContentInsertion(
     inserted_html: []const u8,
     position: usize,
 ) !void {
-    const editor_state = getOrCreateEditorState(allocator, document);
+    const editor_state = try getOrCreateEditorState(allocator, document);
 
     var entry = history.UndoEntry{
         .allocator = allocator,
@@ -587,31 +603,36 @@ pub fn recordContentInsertion(
 
 /// Check if undo is available for a document
 pub fn canUndo(allocator: std.mem.Allocator, document: DocumentHandle) bool {
-    const editor_state = getOrCreateEditorState(allocator, document);
+    _ = allocator;
+    const editor_state = existingEditorState(document) orelse return false;
     return editor_state.undo_manager.canUndo();
 }
 
 /// Check if redo is available for a document
 pub fn canRedo(allocator: std.mem.Allocator, document: DocumentHandle) bool {
-    const editor_state = getOrCreateEditorState(allocator, document);
+    _ = allocator;
+    const editor_state = existingEditorState(document) orelse return false;
     return editor_state.undo_manager.canRedo();
 }
 
 /// Get the number of undo entries for a document
 pub fn getUndoCount(allocator: std.mem.Allocator, document: DocumentHandle) usize {
-    const editor_state = getOrCreateEditorState(allocator, document);
+    _ = allocator;
+    const editor_state = existingEditorState(document) orelse return 0;
     return editor_state.undo_manager.undoCount();
 }
 
 /// Get the number of redo entries for a document
 pub fn getRedoCount(allocator: std.mem.Allocator, document: DocumentHandle) usize {
-    const editor_state = getOrCreateEditorState(allocator, document);
+    _ = allocator;
+    const editor_state = existingEditorState(document) orelse return 0;
     return editor_state.undo_manager.redoCount();
 }
 
 /// Clear undo/redo history for a document
 pub fn clearUndoHistory(allocator: std.mem.Allocator, document: DocumentHandle) void {
-    const editor_state = getOrCreateEditorState(allocator, document);
+    _ = allocator;
+    const editor_state = existingEditorState(document) orelse return;
     editor_state.undo_manager.clear();
 }
 
@@ -627,104 +648,86 @@ test "queryCommandSupported" {
     try std.testing.expect(!queryCommandSupported(""));
 }
 
+// The undo history of one editor state. A Document keeps its own (the
+// integration is tests/html/leaks6_editing_state_leak_test.zig); these run
+// the executor's steps on a state of their own, with a handle no step
+// dereferences for these entries.
+
 test "undo/redo integration" {
     const allocator = std.testing.allocator;
-
-    // Use a dummy document handle
     var dummy: u8 = 0;
     const document: DocumentHandle = &dummy;
+    var editor_state = EditorState.init(allocator);
+    defer editor_state.deinit();
 
     // Initially, undo should not be available
-    try std.testing.expect(!canUndo(allocator, document));
-    try std.testing.expect(!canRedo(allocator, document));
+    try std.testing.expect(!editor_state.undo_manager.canUndo());
+    try std.testing.expect(!editor_state.undo_manager.canRedo());
 
     // Record a formatting operation
-    try recordFormatOperation(allocator, document, .bold, false);
+    try recordFormatOperationIn(allocator, &editor_state, .bold, false);
 
     // Now undo should be available
-    try std.testing.expect(canUndo(allocator, document));
-    try std.testing.expect(!canRedo(allocator, document));
-    try std.testing.expectEqual(@as(usize, 1), getUndoCount(allocator, document));
+    try std.testing.expect(editor_state.undo_manager.canUndo());
+    try std.testing.expect(!editor_state.undo_manager.canRedo());
+    try std.testing.expectEqual(@as(usize, 1), editor_state.undo_manager.undoCount());
 
     // Execute undo
-    const undo_result = try executeUndo(allocator, document);
+    const undo_result = try executeUndoIn(allocator, document, &editor_state);
     try std.testing.expect(undo_result.success);
 
     // Now redo should be available, undo should not
-    try std.testing.expect(!canUndo(allocator, document));
-    try std.testing.expect(canRedo(allocator, document));
-    try std.testing.expectEqual(@as(usize, 1), getRedoCount(allocator, document));
+    try std.testing.expect(!editor_state.undo_manager.canUndo());
+    try std.testing.expect(editor_state.undo_manager.canRedo());
+    try std.testing.expectEqual(@as(usize, 1), editor_state.undo_manager.redoCount());
 
     // Execute redo
-    const redo_result = try executeRedo(allocator, document);
+    const redo_result = try executeRedoIn(allocator, document, &editor_state);
     try std.testing.expect(redo_result.success);
 
     // Back to initial state after redo
-    try std.testing.expect(canUndo(allocator, document));
-    try std.testing.expect(!canRedo(allocator, document));
-
-    // Clean up
-    cleanupEditorState(allocator, document);
+    try std.testing.expect(editor_state.undo_manager.canUndo());
+    try std.testing.expect(!editor_state.undo_manager.canRedo());
 }
 
 test "undo fails when nothing to undo" {
     const allocator = std.testing.allocator;
     var dummy: u8 = 0;
-    const document: DocumentHandle = &dummy;
-
-    // Undo should fail when nothing to undo
-    const result = try executeUndo(allocator, document);
+    var editor_state = EditorState.init(allocator);
+    defer editor_state.deinit();
+    const result = try executeUndoIn(allocator, &dummy, &editor_state);
     try std.testing.expect(!result.success);
-
-    // Clean up
-    cleanupEditorState(allocator, document);
 }
 
 test "redo fails when nothing to redo" {
     const allocator = std.testing.allocator;
     var dummy: u8 = 0;
-    const document: DocumentHandle = &dummy;
-
-    // Redo should fail when nothing to redo
-    const result = try executeRedo(allocator, document);
+    var editor_state = EditorState.init(allocator);
+    defer editor_state.deinit();
+    const result = try executeRedoIn(allocator, &dummy, &editor_state);
     try std.testing.expect(!result.success);
-
-    // Clean up
-    cleanupEditorState(allocator, document);
 }
 
 test "clear undo history" {
     const allocator = std.testing.allocator;
-    var dummy: u8 = 0;
-    const document: DocumentHandle = &dummy;
+    var editor_state = EditorState.init(allocator);
+    defer editor_state.deinit();
 
-    // Record some operations
-    try recordFormatOperation(allocator, document, .bold, false);
-    try recordFormatOperation(allocator, document, .italic, false);
+    try recordFormatOperationIn(allocator, &editor_state, .bold, false);
+    try recordFormatOperationIn(allocator, &editor_state, .italic, false);
+    try std.testing.expectEqual(@as(usize, 2), editor_state.undo_manager.undoCount());
 
-    try std.testing.expectEqual(@as(usize, 2), getUndoCount(allocator, document));
-
-    // Clear history
-    clearUndoHistory(allocator, document);
-
-    try std.testing.expectEqual(@as(usize, 0), getUndoCount(allocator, document));
-    try std.testing.expect(!canUndo(allocator, document));
-
-    // Clean up
-    cleanupEditorState(allocator, document);
+    editor_state.undo_manager.clear();
+    try std.testing.expectEqual(@as(usize, 0), editor_state.undo_manager.undoCount());
+    try std.testing.expect(!editor_state.undo_manager.canUndo());
 }
 
 test "record text operation" {
     const allocator = std.testing.allocator;
-    var dummy: u8 = 0;
-    const document: DocumentHandle = &dummy;
+    var editor_state = EditorState.init(allocator);
+    defer editor_state.deinit();
 
-    // Record a text insertion
-    try recordTextOperation(allocator, document, .insertText, null, "Hello", 0);
-
-    try std.testing.expectEqual(@as(usize, 1), getUndoCount(allocator, document));
-    try std.testing.expect(canUndo(allocator, document));
-
-    // Clean up
-    cleanupEditorState(allocator, document);
+    try recordTextOperationIn(allocator, &editor_state, .insertText, null, "Hello", 0);
+    try std.testing.expectEqual(@as(usize, 1), editor_state.undo_manager.undoCount());
+    try std.testing.expect(editor_state.undo_manager.canUndo());
 }

@@ -557,7 +557,7 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // `invokeCallback` does for the callback's first argument; the wrapper
     // cache owns them from here.
     const array = engine.createSequenceOfPlatformObjects(engine.currentRealm() orelse instance.ctx, records) catch |err| {
-        for (records) |record| runtime.Instance.deinit(record);
+        freeUnwrapped(records);
         return err;
     };
     // OWNED: the binding takes it.
@@ -598,7 +598,7 @@ fn invokeCallback(instance: *runtime.Instance, records: []const *runtime.Instanc
     // The records as a sequence<MutationRecord>. Wrapping hands each to the
     // wrapper cache, which owns them from here.
     const sequence = engine.createSequenceOfPlatformObjects(realm, records) catch |err| {
-        for (records) |record| runtime.Instance.deinit(record);
+        freeUnwrapped(records);
         return err;
     };
     defer sequence.release();
@@ -613,6 +613,16 @@ fn invokeCallback(instance: *runtime.Instance, records: []const *runtime.Instanc
     });
     switch (completion) {
         inline else => |value| value.release(),
+    }
+}
+
+/// After a sequence of `records` could not be made: free the records it did
+/// not wrap. Wrapping goes record by record, and a record wrapped before the
+/// failure is the wrapper cache's, which frees it with its wrapper - freeing
+/// it here too was a double free (lane leaks6).
+fn freeUnwrapped(records: []const *runtime.Instance) void {
+    for (records) |record| {
+        if (!engine.hasWrapper(record)) runtime.Instance.deinit(record);
     }
 }
 

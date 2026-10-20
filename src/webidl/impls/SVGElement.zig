@@ -153,8 +153,11 @@ fn nonceInsertionSteps(node: *dom.NodeBase) void {
     const attribute = dom.element_data.getAttributeByNamespaceAndLocalName(data, null, "nonce") orelse return;
     if (attribute.value.len == 0) return;
     const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return;
-    const container = dom.policy_containers.of(document) orelse return;
-    if (!container.csp_list.contains_header_policy) return;
+    // A list that cannot be read may hold a header policy: hide, as
+    // HTMLElement's nonceConnectionSteps does (lane leaks6).
+    if (dom.policy_containers.of(document)) |container| {
+        if (!container.csp_list.contains_header_policy and !container.csp_list.blocksEverything()) return;
+    }
     if ((interfaces.Document.get_defaultView(document) catch null) == null) return;
     internal.cryptographic_nonce = null;
     defer {

@@ -186,6 +186,15 @@ pub fn hidePopoversUntil(document: *Instance, endpoint: ?*Instance, restore: boo
     try hideStack(state, if (is_hint) state.hint_parent.get() else endpoint, .auto, restore, events);
 }
 
+/// Dialog show steps 8–10 and show-modal steps 17–19 keep their topmost
+/// popover ancestor and close any popovers above it without restoring focus.
+pub fn hidePopoversForDialog(subject: *Instance) !void {
+    const document = try nodeDocument(subject);
+    const state = (try layer.ofDocument(document, false)) orelse return;
+    const ancestor = if (topmostAncestor(state, subject, null)) |entry| entry.node() else null;
+    try hidePopoversUntil(document, ancestor, false, true);
+}
+
 pub fn showPopover(element: *Instance, throw_exceptions: bool, source: ?*Instance) anyerror!void {
     try show(element, throw_exceptions, source, false);
 }

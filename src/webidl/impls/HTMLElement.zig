@@ -954,8 +954,13 @@ fn nonceConnectionSteps(node: *dom.NodeBase) void {
     const attribute = element_data.getAttributeByNamespaceAndLocalName(data, null, "nonce") orelse return;
     if (attribute.value.len == 0) return;
     const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return;
-    const container = dom.policy_containers.of(document) orelse return;
-    if (!container.csp_list.contains_header_policy) return;
+    // Step 2's "CSP list contains a header-delivered Content Security
+    // Policy": a list that cannot be read - no policy container, or an
+    // unenforceable one - may hold one, and hiding is the closed answer
+    // (lane leaks6).
+    if (dom.policy_containers.of(document)) |container| {
+        if (!container.csp_list.contains_header_policy and !container.csp_list.blocksEverything()) return;
+    }
     if ((interfaces.Document.get_defaultView(document) catch null) == null) return;
     // Steps 2.1-2.3: keep the old allocation outside the slot while the
     // attribute-change step clears it, then restore it without copying.

@@ -28,6 +28,9 @@ pub const Entry = struct {
     hiding: bool = false,
     mode: Mode = .manual,
     picker: bool = false,
+    /// Modal membership is independent of a dialog's open attribute and of
+    /// popover visibility (HTML 4.11.4 and 6.3.1).
+    modal: bool = false,
 
     pub fn node(self: *const Entry) ?*runtime.Instance {
         return self.element.get();
@@ -65,6 +68,9 @@ pub const State = struct {
     /// Stable allocated entries: linked MemberHolds must never be moved by
     /// ArrayList growth. Non-showing entries pin synchronous event snapshots.
     entries: std.ArrayListUnmanaged(*Entry) = .empty,
+    /// Non-owning index into the stable entries above. Removal updates this
+    /// before freeing an entry; no modal means a single null check.
+    last_modal: ?*Entry = null,
     showing_popover: bool = false,
     hiding_nesting: usize = 0,
     pointerdown_target: MemberHold = .{},
@@ -90,6 +96,25 @@ pub const State = struct {
         return null;
     }
 
+    pub fn findModal(self: *State, node: *runtime.Instance) ?*Entry {
+        for (self.entries.items) |entry| {
+            if (entry.modal and entry.node() == node) return entry;
+        }
+        return null;
+    }
+
+    pub fn lastModal(self: *State) ?*runtime.Instance {
+        return (self.last_modal orelse return null).node();
+    }
+
+    pub fn addModal(self: *State, node: *runtime.Instance) !*Entry {
+        if (self.findModal(node)) |entry| return entry;
+        const entry = try self.pin(node);
+        entry.modal = true;
+        self.last_modal = entry;
+        return entry;
+    }
+
     /// Keep a node for a synchronous algorithm. Promoting this entry to
     /// showing adds it to the top layer; otherwise it is only a scoped pin.
     pub fn pin(self: *State, node: *runtime.Instance) !*Entry {
@@ -112,6 +137,17 @@ pub const State = struct {
         for (self.entries.items, 0..) |entry, index| {
             if (entry.id != id) continue;
             _ = self.entries.orderedRemove(index);
+            if (self.last_modal == entry) {
+                self.last_modal = null;
+                var remaining = self.entries.items.len;
+                while (remaining != 0) {
+                    remaining -= 1;
+                    if (self.entries.items[remaining].modal) {
+                        self.last_modal = self.entries.items[remaining];
+                        break;
+                    }
+                }
+            }
             if (entry.picker) if (entry.node()) |node| controls.setPickerOpen(node, false) catch {};
             entry.previous_focus.release(self.owner, entry.focusSlot());
             entry.source.release(self.owner, entry.sourceSlot());
@@ -151,6 +187,7 @@ pub const State = struct {
     /// without deinitOwn; the saved-state native test pins the ended realm.
     pub fn releaseAfterRealmEnded(self: *State) void {
         const owner_live = self.owner_at_creation.get() != null;
+        self.last_modal = null;
         self.releaseOrphanHold(&self.pointerdown_target, .{ .name = "top_layer:pointerdown" }, owner_live);
         self.releaseOrphanHold(&self.hint_parent, .{ .name = "top_layer:hint_parent" }, owner_live);
         for (self.entries.items) |entry| {

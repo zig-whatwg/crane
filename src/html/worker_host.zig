@@ -2655,9 +2655,16 @@ pub fn creatorReferrerSource(realm: runtime.Context) ?[]const u8 {
 /// The policy container of the global whose realm is `realm`: the
 /// worker's creator's settings object's.
 pub fn creatorPolicyContainer(realm: runtime.Context) ?*const fetch_mod.internal.PolicyContainer {
-    const record = realm.getRealm() orelse return null;
-    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
-    const settings = @import("dom").global_settings.of(global) orelse return null;
+    // A creator realm whose record, global or settings cannot be found has a
+    // policy container nobody can read: the unavailable one, which blocks
+    // every CSP decision - never null, which a data: or blob: worker took as
+    // "no policy" (lane leaks6). A global that keeps no container (no hook,
+    // or a hook answering null - a Window not yet given a document) is still
+    // null.
+    const unavailable = &fetch_mod.internal.PolicyContainer.unavailable;
+    const record = realm.getRealm() orelse return unavailable;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return unavailable));
+    const settings = @import("dom").global_settings.of(global) orelse return unavailable;
     const container_of = settings.policy_container orelse return null;
     return container_of(global);
 }

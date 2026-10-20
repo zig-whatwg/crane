@@ -95,6 +95,7 @@ pub const script_elements = @import("script_elements.zig");
 pub const activation = @import("activation.zig");
 pub const form_controls = @import("form_controls.zig");
 pub const top_layer = @import("top_layer.zig");
+pub const dialog = @import("dialog.zig");
 pub const form_submission = @import("form_submission.zig");
 pub const form_past_names = @import("form_past_names.zig");
 pub const node_lists = @import("node_lists.zig");
@@ -106,6 +107,7 @@ pub const teardown_sweeps = @import("teardown_sweeps.zig");
 /// its type's sweep for an orphan no deinit reaches.
 pub const orphan_states = @import("orphan_states.zig");
 pub const unloading_cleanup = @import("unloading_cleanup.zig");
+pub const editor_states = @import("editor_states.zig");
 pub const idle_periods = @import("idle_periods.zig");
 pub const document_activity = @import("document_activity.zig");
 /// A Document's back/forward cache state: "make document unsalvageable", its

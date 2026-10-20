@@ -48,7 +48,7 @@ designing a mechanism, not after a theory has failed:
 
 | Question | Where |
 |----------|-------|
-| V8's contract for an API (handles, weak callbacks, embedder roots, CHECKs) | `jsengines/v8/include/*.h` - V8 13.1, local; the doc comments ARE the contract. Source: `jsengines/v8/v8/` (full checkout, local) |
+| V8's contract for an API (handles, weak callbacks, embedder roots, CHECKs) | `jsengines/v8/include/*.h` - V8 13.1 (the linked prebuilt), local; the doc comments ARE the contract. Source: `jsengines/v8/v8/` is a full checkout at a NEWER V8 (14.6 on 2026-10-19): read the linked version with `git -C jsengines/v8/v8 show 13.1.99:<path>` |
 | How a browser binds the DOM to V8 | Blink: `third_party/blink/renderer/bindings/` and `platform/bindings/` (script_wrappable, dom_data_store, the GC controller) in https://github.com/chromium/chromium |
 | The most readable DOM and bindings implementation | WebKit: `Source/WebCore/bindings/js/` (JSNodeCustom.cpp, JSDOMWrapper) and `Source/WebCore/dom/` in https://github.com/WebKit/WebKit |
 | Implementations annotated with the spec's own step numbers | Gecko: `dom/base/`, `dom/bindings/`, `js/src/` via https://searchfox.org |

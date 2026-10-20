@@ -235,7 +235,7 @@ fn runCommand(element: *runtime.Instance) !void {
         if (showing) return;
         const open = try interfaces.HTMLDialogElement.get_open(after);
         if (kind == .show_modal) {
-            if (!open) interfaces.HTMLDialogElement.call_showModal(after) catch {};
+            if (!open) dom.dialog.showModal(after, element) catch {};
         } else if (open) {
             const value = attribute(element, "value");
             defer if (value) |text| element.ctx.allocator.free(text);
@@ -244,14 +244,13 @@ fn runCommand(element: *runtime.Instance) !void {
             else
                 .notPassed();
             switch (kind) {
-                .close => interfaces.HTMLDialogElement.call_close(after, return_value) catch {},
+                .close => dom.dialog.close(after, return_value, element) catch {},
                 .request_close => interfaces.HTMLDialogElement.call_requestClose(after, return_value) catch {},
                 .show_modal => unreachable,
             }
         }
-        // The dialog owner supplies the lifecycle. Its source-bearing
-        // algorithms are a separate prerequisite: these IDL methods do
-        // not accept the command's source element.
+        // TODO(closewatch1, row85 Q3): request-close needs the manager's
+        // source-bearing algorithm; show and close now use the dialog hook.
         return;
     }
     // Steps 5.7-9. Owner interfaces perform popover validity checks. The

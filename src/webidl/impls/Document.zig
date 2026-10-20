@@ -228,6 +228,13 @@ pub const InternalState = struct {
     /// continuing the old document's normal loading steps. A new parser epoch
     /// enables delivery continuations again.
     script_delivery_continuation_suppressed: bool = false,
+    /// The editing subsystem's editor state for this document (its undo
+    /// history and command configuration), made with `allocator` on the
+    /// first editing command and freed with the document
+    /// (dom.editor_states). Opaque here: Document never names the editing
+    /// code. It used to live in a process-global map keyed by the document's
+    /// address that nothing ever emptied (lane leaks6).
+    editor_state: ?*anyopaque = null,
     /// HTML "delay the load event": how many delays are held on this
     /// document's load event (dom.document_lifecycle.delayLoadEvent) - an
     /// object element's fetch, say. Blink's load_event_delay_count_.
@@ -821,6 +828,9 @@ fn policyContainerOf(document: *runtime.Instance) ?*fetch.internal.PolicyContain
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     @import("dom").top_layer.install(.{ .get = &topLayerState });
+    // The editing commands' per-document state is freed with the document
+    // (dom.editor_states): the editing subsystem installs its step.
+    editing.executor.installHooks();
     // Its states left at its Browser's end (Browser.deinit).
     @import("dom").teardown_sweeps.install(.documents, &sweepRemaining);
     // The style engine this document keeps, and the media environment its
@@ -1252,6 +1262,10 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
         }
         releaseNativeGlobalRegistry(internal);
         internal.custom_element_registry.release(instance);
+        if (internal.editor_state) |editor_state| {
+            internal.editor_state = null;
+            @import("dom").editor_states.free(editor_state, internal.allocator);
+        }
         internal.deinit();
     }
     Registry.remove(instance);
@@ -3856,16 +3870,16 @@ pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: ?runtime.D
 }
 
 /// Operation: hasFocus
-/// HTML §6.4.4 - Returns true if document has focus
+/// HTML §6.6.6 - Whether this document is in the focused document chain.
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-hasfocus
-///
-/// In a typical browser context, this checks if the document's browsing context
-/// is focused. Since we're not in a browser, we return true as a sensible default.
 pub fn call_hasFocus(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    // In non-browser environment, default to true (document is considered focused)
-    // TODO: Integrate with browsing context/window focus state when available
-    return true;
+    // Has-focus steps 1-2 start from the node navigable's active document.
+    // A windowless, destroyed or inactive document cannot be on that chain.
+    if (!isFullyActive(instance)) return false;
+    // The method's step is to run the existing has-focus steps. Their
+    // system-focus policy and descent through child navigables are shared
+    // with the focusing implementation.
+    return @import("html").focus.hasFocus(instance);
 }
 
 /// Operation: exitFullscreen
