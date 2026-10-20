@@ -345,6 +345,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A native timer must preserve document task suspension](architecture-a-native-timer-must-preserve-document-task-suspension.md) - Preserve inactive-document delivery and transfer task ownership exactly once.
 
 ### Spec Compliance
+- [Worker module imports use the existing client](spec-compliance-worker-module-imports-use-the-existing-client.md) - When a request field becomes more precise, audit algorithms that used it as a proxy for creation or ownership; preserve the field and fix the classification.
+- [Dataset writes use the null namespace](spec-compliance-dataset-writes-use-the-null-namespace.md) - A browser majority is insufficient evidence when a specification change explains the split and one browser implements the newer algorithm.
 - [Select responsive image sources after the microtask](spec-compliance-srcset-selection-belongs-after-the-microtask.md) - Adding source selection should reuse the image request lifecycle; the source's URL and pixel density must travel together.
 - [Selection Clamping Is a Mutation](spec-compliance-selection-clamping-is-a-mutation.md) - An observable value can depend on mutations that occurred between reads. A getter cannot reconstruct that history.
 - [Recheck Representation Workarounds](spec-compliance-recheck-representation-workarounds.md) - An old limitation comment is a hypothesis to check against today's code.
