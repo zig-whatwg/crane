@@ -1772,7 +1772,24 @@ pub const Manager = struct {
         // this thread, and the storage key a cache source reads.
         var routing: Routing = .{};
         defer routing.deinit(self.allocator);
-        if (request.isNonSubresourceRequest()) {
+        // Handle Fetch 9/10: static worker modules keep the graph's worker
+        // destination, but belong to an existing client, not a new reserved
+        // one. Follow the browsers over the destination-only spec test:
+        // Gecko nsContentUtils::IsNonSubresourceInternalPolicyType excludes
+        // TYPE_INTERNAL_WORKER_STATIC_MODULE; WebKit
+        // WebSWServerConnection::createFetchTask uses the existing controller
+        // when there is no resulting client. All three pass WPT
+        // dedicated-worker-service-worker-interception (0f26972422).
+        // Root worker loads are same-origin and/or have a reservation.
+        const module_client_kind: ?registry_mod.EnvironmentKind = if (request.mode == .cors and request.reserved_client == null)
+            switch (request.destination) {
+                .worker => .dedicated_worker,
+                .sharedworker => .shared_worker,
+                else => null,
+            }
+        else
+            null;
+        if (request.isNonSubresourceRequest() and module_client_kind == null) {
             // 9. A navigation's or a worker's: its reserved client decides.
             const opaque_reserved = request.reserved_client orelse return .network;
             const reserved: *ReservedClient = @ptrCast(@alignCast(opaque_reserved));
@@ -1850,6 +1867,7 @@ pub const Manager = struct {
             self.lock();
             defer self.unlock();
             const environment = self.registry.findEnvironment(client) orelse return .network;
+            if (module_client_kind) |kind| if (environment.kind != kind) return .network;
             const matched = self.registry.handleFetchSubresource(environment) orelse return .network;
             client_id = environment.client_id;
             worker_id = matched.worker.id;
