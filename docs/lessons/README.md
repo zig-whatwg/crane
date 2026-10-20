@@ -9,6 +9,8 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Unload dispatch must guard reentry](architecture-unload-dispatch-must-guard-reentry.md) - Guard the reentered lifecycle operation, while preserving the script action that legitimately caused removal.
+- [Autofocus needs a rendering opportunity without rAF](architecture-autofocus-needs-a-rendering-opportunity-without-raf.md) - Verify both the rendering step and the event that schedules it. A flush call alone cannot wake a document whose first callback depends on the flush.
 - [An inline script is not a resource of its own - carry where its text starts](architecture-an-inline-script-is-not-a-resource-of-its-own.md) - When a report crosses the engine seam with a location, ask where the engine thinks the source starts; text embedded in a larger resource needs its offset carried beside it, or every line it reports is relative to nothing the page can see.
 - [A removed frame's document is destroyed before its realm detaches](architecture-a-removed-frames-document-is-destroyed-before-its-realm-detaches.md) - Two clocks end a frame - its document now, its realm later - and every guard must read the earlier one; a callback check that waits for the realm's detach runs script in a destroyed document.
 - [A handed-over value is the callee's on every path, its throws included](architecture-a-handed-over-value-is-the-callee-s-on-every-path.md) - Ownership transfers at the call, not at the line that stores the value. Take a handed-over value before the first check that can throw, and never clean up after a callee that took it.
@@ -343,6 +345,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [A native timer must preserve document task suspension](architecture-a-native-timer-must-preserve-document-task-suspension.md) - Preserve inactive-document delivery and transfer task ownership exactly once.
 
 ### Spec Compliance
+- [Select responsive image sources after the microtask](spec-compliance-srcset-selection-belongs-after-the-microtask.md) - Adding source selection should reuse the image request lifecycle; the source's URL and pixel density must travel together.
+- [Selection Clamping Is a Mutation](spec-compliance-selection-clamping-is-a-mutation.md) - An observable value can depend on mutations that occurred between reads. A getter cannot reconstruct that history.
+- [Recheck Representation Workarounds](spec-compliance-recheck-representation-workarounds.md) - An old limitation comment is a hypothesis to check against today's code.
 - [A script's base URL is not its name - a redirect changes one and not the other](spec-compliance-a-scripts-base-url-is-not-its-name.md) - When a fix moves a URL to "the right one", list every reader of the field first: a URL that is right for resolution can be a leak as a display name.
 - [A subclass's copy of an event concept hides what dispatch does to it](spec-compliance-a-subclass-copy-of-an-event-concept-hides-dispatch.md) - A concept the base algorithm reads and writes has one home, the base's state; a subclass attribute that names it reads it there, never a copy of its own.
 - [A [LegacyOverrideBuiltIns] getter shadows the unforgeables Crane puts on the prototype](spec-compliance-a-legacyoverridebuiltins-getter-shadows-unforgeables-on-the-prototype.md) - When a [LegacyOverrideBuiltIns] interface gains a named getter, list its [LegacyUnforgeable] members and test that a named element of each name does not shadow it: Crane's binding cannot see them as own properties yet.
@@ -593,6 +598,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A generated import can rest on a typedef an upstream IDL file happens to declare](codegen-a-generated-import-can-rest-on-a-typedef-an-upstream-idl-file-happens-to-declare.md) - When a generated file relies on something being generated, codegen must generate it itself; find out by deleting an upstream file in a test fixture, not by waiting for upstream to delete it.
 
 ### Testing
+- [Progress floors belong to a test revision](testing-progress-floors-belong-to-a-test-revision.md) - A remembered maximum needs the identity of what was measured; a loss needs a durable explanation, not merely another report run.
 - [Compare the test before repairing a pass-count drop](testing-compare-the-test-before-repairing-a-pass-count-drop.md) - A historical pass count is a lead, not a behavioural contract: establish which assertion changed before treating a decrease as an engine regression.
 - [An intermittent leak at a test's end is a task the Browser ended before it ran](testing-an-intermittent-leak-at-a-test-s-end-is-a-task-the-browser-ended-first.md) - When a leak is intermittent at a test's end, end the Browser right after the last step on purpose - a task that loses the race leaks every time.
 - [A WPT file can depend on one engine's loading shortcut](testing-a-wpt-file-can-depend-on-one-engines-loading-shortcut.md) - When two browsers fail an assertion with your message, find out why they fail before you change the mechanism the test is named after - the test may encode one engine's shortcut.
