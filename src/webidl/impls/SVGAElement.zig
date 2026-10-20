@@ -106,17 +106,9 @@ pub fn get_ping(instance: *runtime.Instance) anyerror!runtime.USVString {
     return error.NotImplemented;
 }
 
-/// Getter for rel
-pub fn get_rel(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for relList
-pub fn get_relList(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
+// SVG 2 16.4.1: rel and relList reflect the rel content attribute.
+// The generated interface supplies HTML's reflection steps, SameObject,
+// and PutForwards=value; no own accessor overrides those algorithms.
 
 /// Getter for referrerPolicy
 pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
@@ -133,13 +125,6 @@ pub fn set_download(instance: *runtime.Instance, value: runtime.DOMString) anyer
 
 /// Setter for ping
 pub fn set_ping(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for rel
-pub fn set_rel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
