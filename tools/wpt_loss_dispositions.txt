@@ -42,4 +42,27 @@
 #   wpt.before = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 #   wpt.after = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 #
-# Entries: none.
+# Entries:
+
+[navigation-timing/secure-connection-start-non-zero.https.html]
+generation = 171
+kind = flake
+why = Order-dependent, not code: alone it is 0/1 on both main-911f294506 and main-ab7d57819d (3 runs each, 2026-10-19, integrator); it passes only after a particular shard prefix (feature-queue RUNNER CROSS-FILE STATE). Gen 170 -> 171 shard split changed.
+pair.1 = base 0/1; tip 0/1
+pair.2 = base 0/1; tip 0/1
+pair.3 = base 0/1; tip 0/1
+
+[service-workers/service-worker/navigation-timing-extended.https.html]
+generation = 171
+kind = flake
+why = Timing intermittent proven by Codex row 87 (tmp/plans/codex-wsregress-report.md: three isolated pairs all 1/1 on both runners) and row 97 (5/6 on each runner); fetchStart sometimes equals the handler time.
+pair.1 = base 1/1; tip 1/1
+pair.2 = base 1/1; tip 1/1
+pair.3 = base 1/1; tip 1/1
+
+[websockets/cookies/cross-origin-cookie-set.html]
+generation = 171
+kind = user-ruling
+why = The WebSocket handshake is cross-SITE ({{hosts[alt][www]}}); its Set-Cookie has no SameSite attribute, which is Lax again under the restored Lax-by-default (revert d26c5f1ec8f + 387ac80b403), so a cross-site response may not store it - Chrome's behaviour. It passed only under the reverted None-by-default.
+date = 2026-10-20
+decision = the user chose "Restore Lax-by-default" for cookies without SameSite (Chrome's behaviour; +21 cookies/samesite subtests), in this session's SameSite question
