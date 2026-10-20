@@ -4822,6 +4822,16 @@ fn unloadSteps(data: ?*anyopaque) void {
     const internal = getInternal(document) orelse return;
     const window = (get_defaultView(document) catch null) orelse return;
 
+    // Before step 7: a dismissal handler can remove this document's frame
+    // (including through document.open on its parent), reentering unload.
+    // The original invocation still owns the event dispatch and cleanup.
+    // WebKit FrameLoader::dispatchUnloadEvents likewise returns while a
+    // dismissal event is being dispatched (FrameLoader.cpp); the existing
+    // unload counter covers beforeunload, pagehide, visibilitychange and
+    // unload without adding a second state flag.
+    // https://github.com/WebKit/WebKit/blob/main/Source/WebCore/loader/FrameLoader.cpp
+    if (internal.unload_counter > 0) return;
+
     // Step 7: "Increase eventLoop's termination nesting level by 1"; step 14
     // lowers it after the unload event.
     const termination_nesting = @import("html_core").navigation.termination_nesting;
