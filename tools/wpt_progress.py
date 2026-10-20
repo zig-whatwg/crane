@@ -11,7 +11,8 @@ build step, opens straight from file://.
 The page leads with the gate, because the gate is the decision: 0.1 ships when
 CRASHES AND TIMEOUTS REACH ZERO across the subset. Pass rate is shown, but a
 crash means the engine is unsound while a failing subtest means a feature is
-missing, and only one of those blocks building a product on top.
+missing. Publication additionally requires an explanation for every per-file
+passing-subtest loss, or the explicit --allow-unexplained override.
 """
 import json
 import glob
@@ -211,6 +212,168 @@ def render_exempt(records, worklist):
     below (<code>tools/wpt_gate_exemptions.txt</code>). A listed file that does not block keeps its standing.</div>
   <ol>{''.join(items)}</ol>
 </div>"""
+
+
+LOSS_DISPOSITIONS_FILE = os.path.join(REPO, 'tools', 'wpt_loss_dispositions.txt')
+LOSS_KEYS = {
+    'flake': {'pair.1', 'pair.2', 'pair.3'},
+    'user-ruling': {'date', 'decision'},
+    'upstream-test-change': {'wpt.before', 'wpt.after'},
+}
+
+
+class LossDispositionError(Exception):
+    pass
+
+
+def parse_loss_dispositions(text, worklist):
+    """Strict [path] / key = value entries, keyed by (path, generation).
+
+    Each kind requires its evidence; a typo must never silently accept a loss.
+    Repeating a path is allowed only for a different generation.
+    """
+    out, cur = {}, None
+    common = {'generation', 'kind', 'why'}
+    allowed = common.union(*LOSS_KEYS.values())
+    in_worklist = set(worklist)
+
+    def finish(entry):
+        path, values = entry['path'], entry['values']
+        prefix = f'line {entry["line"]}: [{path}]'
+
+        def error(message):
+            raise LossDispositionError(f'{prefix}: {message}')
+
+        if path not in in_worklist:
+            error('path is not in the worklist')
+        for key in sorted(common):
+            if key not in values:
+                error(f'missing "{key}"')
+        if not re.fullmatch(r'[1-9][0-9]*', values['generation']):
+            error('generation must be a positive integer')
+        generation = int(values['generation'])
+        kind = values['kind']
+        if kind not in LOSS_KEYS:
+            error('kind must be flake, user-ruling or upstream-test-change')
+        required = common | LOSS_KEYS[kind]
+        for key in sorted(required - values.keys()):
+            error(f'missing "{key}" for {kind}')
+        for key in sorted(values.keys() - required):
+            error(f'key "{key}" is not evidence for {kind}')
+        if kind == 'flake':
+            for key in sorted(LOSS_KEYS[kind]):
+                match = re.fullmatch(r'base (\d+)/(\d+); tip (\d+)/(\d+)', values[key])
+                if not match:
+                    error(f'{key} must read "base <passes>/<total>; tip <passes>/<total>"')
+                bp, bt, tp, tt = map(int, match.groups())
+                if bp > bt or tp > tt:
+                    error(f'{key}: passes exceed total')
+        elif kind == 'user-ruling':
+            try:
+                if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', values['date']):
+                    raise ValueError()
+                datetime.date.fromisoformat(values['date'])
+            except ValueError:
+                error('date must be a valid YYYY-MM-DD date')
+        else:
+            for key in LOSS_KEYS[kind]:
+                if not re.fullmatch(r'[0-9a-f]{40}', values[key]):
+                    error(f'{key} must be a full WPT revision (40 lowercase hex digits)')
+            if values['wpt.before'] == values['wpt.after']:
+                error('WPT revisions must be different')
+        identity = path, generation
+        if identity in out:
+            error(f'generation {generation} is listed twice')
+        out[identity] = dict(values)
+
+    for n, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith('#'):
+            continue
+        if line.startswith('['):
+            inner = line[1:-1] if line.endswith(']') else ''
+            if not inner or any(ch in inner for ch in ' \t[]'):
+                raise LossDispositionError(f'line {n}: expected [path], a worklist path in brackets')
+            if cur:
+                finish(cur)
+            cur = {'path': inner, 'line': n, 'values': {}}
+            continue
+        if '=' not in line:
+            raise LossDispositionError(f'line {n}: expected key = value')
+        key, value = (part.strip() for part in line.split('=', 1))
+        if cur is None:
+            raise LossDispositionError(f'line {n}: "{key}" before any [path]')
+        if key not in allowed:
+            raise LossDispositionError(f'line {n}: unknown key "{key}"')
+        if key in cur['values']:
+            raise LossDispositionError(f'line {n}: "{key}" given twice')
+        if not value:
+            raise LossDispositionError(f'line {n}: "{key}" is empty')
+        cur['values'][key] = value
+    if cur:
+        finish(cur)
+    return out
+
+
+def load_loss_dispositions(worklist, path=LOSS_DISPOSITIONS_FILE):
+    try:
+        with open(path) as f:
+            text = f.read()
+    except FileNotFoundError:
+        return {}
+    try:
+        return parse_loss_dispositions(text, worklist)
+    except LossDispositionError as err:
+        sys.exit(f'wpt_progress: {os.path.relpath(path, REPO)}: {err}')
+
+
+def loss_disposition(generation, loss, dispositions):
+    entry = dispositions.get((loss['path'], generation))
+    if entry and entry['kind'] == 'upstream-test-change':
+        # A disposition for different (or unidentified) snapshots explains nothing.
+        if (entry['wpt.before'], entry['wpt.after']) != (loss['before_revision'], loss['after_revision']):
+            return None
+    return entry
+
+
+def unexplained_losses(history, dispositions):
+    """Outstanding file/generation losses; a later generation cannot wash one away."""
+    return [(g['n'], loss) for g in history.get('generations', []) for loss in g.get('losses', [])
+            if loss_disposition(g['n'], loss, dispositions) is None]
+
+
+def render_losses(history, dispositions):
+    generations = history.get('generations', [])
+    latest = generations[-1] if generations else {}
+    current, earlier = [], []
+    for g in reversed(generations):
+        for loss in g.get('losses', []):
+            entry = loss_disposition(g['n'], loss, dispositions)
+            status = ('explained: ' + entry['kind']) if entry else 'UNEXPLAINED'
+            evidence = '; '.join(f'{k}: {v}' for k, v in entry.items()
+                                 if k not in ('kind', 'generation')) if entry else 'No matching disposition.'
+            row = (f'<tr><td>{g["n"]}</td><td><code>{html.escape(loss["path"])}</code></td>'
+                   f'<td class="num">{loss["before"]:,} &rarr; {loss["after"]:,}</td>'
+                   f'<td class="num">&minus;{loss["before"] - loss["after"]:,}</td>'
+                   f'<td class="num">{loss["best"]:,}</td>'
+                   f'<td><b>{html.escape(status)}</b><div class="dim">{html.escape(evidence)}</div></td></tr>')
+            (current if g is latest else earlier).append(row)
+
+    def table(rows):
+        return ('<table><thead><tr><th>Generation</th><th>File</th><th>Passing</th><th>Lost</th>'
+                '<th>Best in snapshot</th><th>Disposition</th></tr></thead><tbody>' +
+                ''.join(rows) + '</tbody></table>')
+
+    missing = latest.get('loss_baseline_missing', [])
+    warning = (f'<p class="dim">Previous per-file counts unavailable for {len(missing):,} files; '
+               'comparison for those files starts with this generation.</p>') if missing else ''
+    return (f'<div class="panel"><h2 class="panelh">Subtests lost since the last generation</h2>'
+            f'<p><b>{len(unexplained_losses(history, dispositions)):,} unexplained subtest losses</b> '
+            '(file/generation entries, including earlier unresolved losses). '
+            'Every loss requires evidence in <code>tools/wpt_loss_dispositions.txt</code>.</p>' +
+            (table(current) if current else '<p>No new per-file pass losses in this generation.</p>') + warning +
+            ('<details><summary>Losses from earlier generations</summary>' + table(earlier) + '</details>'
+             if earlier else '') + '</div>')
 
 # When a variant's query started reaching the page: 71ffd213a (2026-09-22
 # 11:42 -0400) put the navigated URL into location.*. Before it
@@ -1044,21 +1207,74 @@ def subtest_sums(worklist, records):
     return out
 
 
-def record_generation(worklist, records, areas):
-    """Append this generation to HISTORY if anything moved; return the history.
+def prepare_loss_baseline(worklist):
+    """Save a legacy generation's pass map before journal loading replaces STATE.
 
-    The diff is against `last_statuses`, the per-path status map of the previous
-    generation, which is the only full map kept - each generation stores counts
-    plus a few sample paths, not 4,300 entries.
+    Otherwise an interrupted first regeneration could overwrite its only copy
+    of the old counts, and the retry would silently miss that generation's loss.
     """
     try:
         with open(HISTORY) as f:
             history = json.load(f)
+    except FileNotFoundError:
+        return
+    except (OSError, json.JSONDecodeError) as err:
+        sys.exit(f'wpt_progress: cannot read loss history: {err}')
+    if 'last_passes' in history or history.get('last_statuses') is None:
+        return
+    try:
+        with open(STATE) as f:
+            previous = json.load(f)
     except (OSError, json.JSONDecodeError):
+        previous = {}
+    passes, revisions = {}, {}
+    for path in worklist:
+        rec = previous.get(path)
+        if rec is not None and history.get('last_sources', {}).get(path) == record_identity(rec):
+            passes[path] = {'passed': rec.get('passed', 0), 'revision': record_revision(rec, revisions)}
+    history['last_passes'] = passes
+    if history['generations']:
+        history['generations'][-1]['loss_baseline_missing'] = sorted(
+            p for p in worklist if p in history['last_statuses'] and p not in passes)
+    _save_history(history)
+
+
+def record_generation(worklist, records, areas, previous_records=None):
+    """Append this generation to HISTORY if anything moved; return the history.
+
+    Diff the previous generation's per-file statuses and passes. Each generation
+    retains every pass loss; the two full maps are kept only for the latest one.
+    """
+    try:
+        with open(HISTORY) as f:
+            history = json.load(f)
+    except FileNotFoundError:
         history = {'generations': [], 'last_statuses': None}
+    except (OSError, json.JSONDecodeError) as err:
+        sys.exit(f'wpt_progress: cannot read loss history: {err}')
 
     cur = {p: status_of(records.get(p), p) for p in worklist}
     prev = history.get('last_statuses')
+    passes = {p: {'passed': records.get(p, {}).get('passed', 0),
+                  'revision': records.get(p, {}).get('_wpt_revision')} for p in worklist}
+    prev_passes = history.get('last_passes')
+    migrating_passes = prev_passes is None
+    if prev_passes is None and prev is not None:
+        # Migration: only the pre-load state tied to the previous generation is
+        # evidence of its per-file counts. Aggregate sums cannot recover them.
+        prev_passes = {}
+        revisions = {}
+        for p, rec in (previous_records or {}).items():
+            if history.get('last_sources', {}).get(p) == record_identity(rec):
+                prev_passes[p] = {'passed': rec.get('passed', 0), 'revision': record_revision(rec, revisions)}
+    losses = []
+    for path, now in passes.items():
+        before = (prev_passes or {}).get(path)
+        if before and now['passed'] < before['passed']:
+            losses.append({'path': path, 'before': before['passed'], 'after': now['passed'],
+                           'before_revision': before['revision'], 'after_revision': now['revision'],
+                           'best': max(now['passed'], records.get(path, {}).get('_pass_hw', 0))})
+    losses.sort(key=lambda loss: (-(loss['before'] - loss['after']), loss['path']))
     # `prev` was computed under the rule the history records (1 if it records none).
     rule_changed = prev is not None and history.get('gate_rule', 1) != GATE_RULE
     # Where this generation's results came from. `head` is the commit whose results
@@ -1075,7 +1291,7 @@ def record_generation(worklist, records, areas):
         tot.update(c)
     subs = subtest_sums(worklist, records)
     snap = {
-        'n': len(history['generations']) + 1,
+        'n': history['generations'][-1]['n'] + 1 if history['generations'] else 1,
         'at': datetime.datetime.now().isoformat(timespec='seconds'),
         'head': head or checkout,
         'checkout': checkout,
@@ -1094,6 +1310,9 @@ def record_generation(worklist, records, areas):
         'areas': {a: {'run': c['run'], 'blocking': c['gating'], 'clean': c['clean']}
                   for a, c in areas.items()},
         'regenerations': 0,
+        'losses': losses,
+        'loss_baseline_missing': sorted(p for p in worklist if prev is not None and
+                                       p in prev and p not in (prev_passes or {})),
     }
 
     if prev is None:
@@ -1126,7 +1345,9 @@ def record_generation(worklist, records, areas):
             if len(samples[key]) < HISTORY_SAMPLE:
                 samples[key].append(f'{path}  {before} -> {now}')
         last_subs = history['generations'][-1].get('subs') if history['generations'] else None
-        if not moves and subs == last_subs:
+        last_targeted = history['generations'][-1].get('sub_targeted') if history['generations'] else None
+        pass_changed = any(p in (prev_passes or {}) and prev_passes[p] != now for p, now in passes.items())
+        if not moves and subs == last_subs and not pass_changed and snap['sub_targeted'] == last_targeted:
             # Nothing moved - no file changed standing and the subtest sums are
             # the same: not a new generation. Note the regeneration and keep
             # the map as it is. (Subtests that moved inside files that kept their
@@ -1135,8 +1356,11 @@ def record_generation(worklist, records, areas):
                 last = history['generations'][-1]
                 last['regenerations'] = last.get('regenerations', 0) + 1
                 last['regenerated_at'] = snap['at']
+                if migrating_passes:
+                    last['loss_baseline_missing'] = snap['loss_baseline_missing']
             history['last_statuses'] = cur
             history['last_sources'] = idents
+            history['last_passes'] = passes
             history['gate_rule'] = GATE_RULE
             _save_history(history)
             return history
@@ -1147,6 +1371,7 @@ def record_generation(worklist, records, areas):
     history['generations'].append(snap)
     history['last_statuses'] = cur
     history['last_sources'] = idents
+    history['last_passes'] = passes
     history['gate_rule'] = GATE_RULE
     _save_history(history)
     return history
@@ -1526,7 +1751,8 @@ status survives.</p>
 """
 
 
-def render(areas, worklist, records, files, out_path, history=None, shape=None, roadmap=None):
+def render(areas, worklist, records, files, out_path, history=None, shape=None, roadmap=None,
+           dispositions=None):
     tot = collections.Counter()
     for c in areas.values():
         tot.update(c)
@@ -1638,6 +1864,8 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
     now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
 
     history_html = render_history(history) if history else ''
+    losses_html = render_losses(history or {}, dispositions or {})
+    unexplained = len(unexplained_losses(history or {}, dispositions or {}))
     roadmap_html = render_roadmap(roadmap, worklist, records)
     exempt_html = render_exempt(records, worklist)
     doc = f"""<!DOCTYPE html>
@@ -1789,6 +2017,7 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
     <small>{'Zero crashes, timeouts, errors and files with none passing; whole subset run.' if gate_met else
       f'0.1 ships when no file crashes, times out, errors, or passes none of its subtests. {unrun:,} of {total:,} sources not yet run.'}{f' Not counted: {tot["exempt"]:,} exempt (all three browsers intentionally deviate).' if tot['exempt'] else ''}</small>
   </div>
+  <div class="headline">{unexplained:,} unexplained subtest losses</div>
 </div>
 {exempt_html}
 
@@ -1809,6 +2038,8 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
 <h2 class="section">WPT detail</h2>
 
 {subtest_html}
+
+{losses_html}
 
 {history_html}
 
@@ -1856,6 +2087,19 @@ def main():
     out = sys.argv[sys.argv.index('--out') + 1] if '--out' in sys.argv else DEFAULT_OUT
     worklist = load_worklist()
     EXEMPTIONS = load_exemptions(worklist)
+    dispositions = load_loss_dispositions(worklist)
+    if '--rebuild-history' in sys.argv:
+        try:
+            with open(HISTORY) as f:
+                existing = json.load(f)
+        except FileNotFoundError:
+            existing = {}
+        except (OSError, json.JSONDecodeError) as err:
+            sys.exit(f'wpt_progress: cannot read loss history: {err}')
+        if 'last_passes' in existing:
+            sys.exit('wpt_progress: cannot rebuild tracked generation history: this would erase loss evidence')
+    else:
+        prepare_loss_baseline(worklist)
     records, files = load_results()
     shape, rescanned = load_shape(worklist)
     areas, _, model = build(worklist, records, shape)
@@ -1864,13 +2108,15 @@ def main():
         print(f"history rebuilt from per-record timestamps -> {HISTORY}")
     history = record_generation(worklist, records, areas)
     gate_met, gating, run, total, clean = render(
-        areas, worklist, records, files, out, history, shape, load_roadmap())
+        areas, worklist, records, files, out, history, shape, load_roadmap(), dispositions)
 
     tot = collections.Counter()
     for c in areas.values():
         tot.update(c)
     targeted, passing = round(tot['sub_targeted']), round(tot['sub_passing'])
-    print(f"{run:,} of {total:,} sources run  |  {gating:,} blocking  |  {clean:,} clean")
+    unexplained = unexplained_losses(history, dispositions)
+    print(f"{run:,} of {total:,} sources run  |  {gating:,} blocking  |  {clean:,} clean  |  "
+          f"{len(unexplained):,} unexplained subtest losses")
     print(f"subtests: {passing:,} passing of {targeted:,} targeted  "
           f"({passing / targeted * 100 if targeted else 0:.2f}%)  |  "
           f"files clean {clean / total * 100 if total else 0:.2f}%")
@@ -1881,6 +2127,10 @@ def main():
           f"{non_enc_pct:.1f}%  |  mean per-file pass rate {file_mean_pct:.1f}%")
     print('  composition: ' + '  '.join(
         f"{t}={round(tot['sub_t_' + t]):,}/{tot['tier_' + t]}f" for t in TIERS))
+    unknown_revisions = sum(1 for p in worklist if p in records and not records[p].get('_wpt_revision'))
+    if unknown_revisions:
+        print(f'  WPT revision unknown for {unknown_revisions:,} measured files; '
+              'their floors are scoped to the individual journal measurement')
     if rescanned:
         print(f"  (rescanned {rescanned:,} sources -> {ESTIMATES})")
     print('GATE MET' if gate_met else 'gate not met')
@@ -1893,7 +2143,28 @@ def main():
             print(f"history: generation {g['n']}  +{mv.get('unblocked',0)} unblocked  "
                   f"-{mv.get('regressed',0)} regressed  {mv.get('reclassified',0)} reclassified  "
                   f"{mv.get('newly_run_ok',0)+mv.get('newly_run_blocking',0)} newly run")
+        print('Subtests lost since the last generation:')
+        current = [(g['n'], loss) for loss in g.get('losses', [])]
+        outstanding = [(n, loss) for n, loss in unexplained if n != g['n']]
+        for n, loss in current + outstanding:
+            entry = loss_disposition(n, loss, dispositions)
+            status = ('explained: ' + entry['kind'] + ' — ' + entry['why']) if entry else 'UNEXPLAINED'
+            print(f"  generation {n}: {loss['path']}  {loss['before']} -> {loss['after']} "
+                  f"(-{loss['before'] - loss['after']})  {status}")
+        if not current:
+            print('  none in this generation')
+        if g.get('loss_baseline_missing'):
+            print(f"  previous per-file counts unavailable for {len(g['loss_baseline_missing'])} files; "
+                  "their comparison starts here")
     print(f"\nwrote {out}\n  open {out}")
+    if unexplained:
+        if '--allow-unexplained' in sys.argv:
+            print('publication check overridden explicitly by --allow-unexplained; losses remain unexplained')
+        else:
+            print('publication blocked: explain every loss in tools/wpt_loss_dispositions.txt '
+                  'or explicitly pass --allow-unexplained')
+            return 1
+    return 0
 
 
 def _check_gate_rule():
@@ -2206,6 +2477,204 @@ def _check_revision_high_water():
         RESULTS, STATE = saved
 
 
+def _check_subtest_losses():
+    """Balanced changes and OK -> OK drops are losses; rerunning cannot hide them."""
+    import tempfile
+    global HISTORY
+    saved = HISTORY
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            HISTORY = os.path.join(d, 'history.json')
+            wl = ['a.html', 'b.html']
+            recs = {p: {'status': 'OK', 'passed': n, 'failed': 30 - n,
+                        '_wpt_revision': 'a' * 40, '_pass_hw': n} for p, n in zip(wl, (29, 20))}
+            h = record_generation(wl, recs, {})
+            assert h['generations'][-1]['losses'] == []
+            recs['a.html'].update(passed=26, failed=4)
+            recs['b.html'].update(passed=23, failed=7)
+            h = record_generation(wl, recs, {})
+            assert len(h['generations']) == 2, 'balanced pass changes must make a generation'
+            loss = h['generations'][-1]['losses'][0]
+            assert (loss['path'], loss['before'], loss['after']) == ('a.html', 29, 26)
+            assert loss['best'] == 29 and loss['before_revision'] == 'a' * 40
+            h = record_generation(wl, recs, {})
+            assert len(h['generations']) == 2 and len(unexplained_losses(h, {})) == 1
+            recs['b.html'].update(passed=24, failed=6)
+            h = record_generation(wl, recs, {})
+            assert h['generations'][-1]['losses'] == []
+            assert len(unexplained_losses(h, {})) == 1, 'later gains cannot erase an unexplained loss'
+            explained = {('a.html', 2): {'kind': 'user-ruling', 'why': 'approved <reason>',
+                                         'date': '2026-10-20', 'decision': 'keep the correct behavior'}}
+            assert unexplained_losses(h, explained) == []
+            assert len(unexplained_losses(h, {('a.html', 3): explained[('a.html', 2)]})) == 1
+            out = render_losses(h, explained)
+            assert 'Subtests lost since the last generation' in out
+            assert 'a.html' in out and '29' in out and '26' in out
+            assert 'approved &lt;reason&gt;' in out and 'user-ruling' in out
+            assert 'UNEXPLAINED' in render_losses(h, {})
+            recs['a.html'].update(passed=20, failed=0, _wpt_revision='b' * 40, _pass_hw=20)
+            h = record_generation(wl, recs, {})
+            loss = h['generations'][-1]['losses'][0]
+            assert loss['before_revision'] == 'a' * 40 and loss['after_revision'] == 'b' * 40
+            assert loss['best'] == 20, 'best count must belong to the current snapshot'
+            change = {('a.html', h['generations'][-1]['n']): {
+                'kind': 'upstream-test-change', 'why': 'test removed',
+                'wpt.before': 'a' * 40, 'wpt.after': 'b' * 40}}
+            assert loss_disposition(h['generations'][-1]['n'], loss, change)
+            change[('a.html', h['generations'][-1]['n'])]['wpt.before'] = 'c' * 40
+            assert loss_disposition(h['generations'][-1]['n'], loss, change) is None
+            # A denominator-only correction also changes the reported generation.
+            n = len(h['generations'])
+            h = record_generation(wl, recs, {'x': collections.Counter(sub_targeted=60)})
+            assert len(h['generations']) == n + 1
+    finally:
+        HISTORY = saved
+
+
+_LOSS_FIXTURE = """# Three isolated BASE/TIP pairs, recorded for this generation only.
+[a.html]
+generation = 170
+kind = flake
+why = intermittent network timeout; isolated file on the same base and tip
+pair.1 = base 3/4; tip 4/4
+pair.2 = base 4/4; tip 3/4
+pair.3 = base 4/4; tip 4/4
+"""
+
+
+def _check_loss_dispositions():
+    wl = ['a.html']
+    parsed = parse_loss_dispositions(_LOSS_FIXTURE, wl)
+    assert parsed[('a.html', 170)]['kind'] == 'flake'
+    assert parse_loss_dispositions('# no entries\n', wl) == {}
+    assert len(parse_loss_dispositions(_LOSS_FIXTURE + _LOSS_FIXTURE.replace('170', '171'), wl)) == 2
+
+    def invalid(text, needle):
+        try:
+            parse_loss_dispositions(text, wl)
+        except LossDispositionError as err:
+            assert needle in str(err), (needle, str(err))
+            return
+        raise AssertionError('accepted invalid disposition: ' + needle)
+
+    for key in ('generation', 'kind', 'why', 'pair.1', 'pair.2', 'pair.3'):
+        invalid('\n'.join(l for l in _LOSS_FIXTURE.splitlines() if not l.startswith(key + ' =')), 'missing')
+    invalid(_LOSS_FIXTURE + _LOSS_FIXTURE, 'twice')
+    invalid(_LOSS_FIXTURE.replace('170', '0'), 'generation')
+    invalid(_LOSS_FIXTURE.replace('170', '1.5'), 'generation')
+    invalid(_LOSS_FIXTURE.replace('flake', 'maybe'), 'kind')
+    invalid(_LOSS_FIXTURE.replace('pair.1', 'pair.4'), 'key')
+    invalid(_LOSS_FIXTURE.replace('base 3/4; tip 4/4', 'base 5/4; tip 4/4'), 'pair')
+    invalid(_LOSS_FIXTURE.replace('base 3/4; tip 4/4', 'both passed'), 'pair')
+    invalid(_LOSS_FIXTURE.replace('[a.html]', '[other.html]'), 'worklist')
+    invalid(_LOSS_FIXTURE.replace('[a.html]', '[]'), 'path')
+    invalid('why = x\n' + _LOSS_FIXTURE, 'before')
+    invalid(_LOSS_FIXTURE + 'why = again\n', 'twice')
+    ruling = '[a.html]\ngeneration = 2\nkind = user-ruling\nwhy = accepted\ndate = 2026-10-20\ndecision = user chose this behavior\n'
+    assert parse_loss_dispositions(ruling, wl)[('a.html', 2)]['date'] == '2026-10-20'
+    invalid(ruling.replace('2026-10-20', '2026-02-30'), 'date')
+    change = ('[a.html]\ngeneration = 3\nkind = upstream-test-change\nwhy = removed tests\n'
+              'wpt.before = ' + 'a' * 40 + '\nwpt.after = ' + 'b' * 40 + '\n')
+    assert parse_loss_dispositions(change, wl)[('a.html', 3)]['wpt.after'] == 'b' * 40
+    invalid(change.replace('b' * 40, 'a' * 40), 'different')
+    invalid(change.replace('b' * 40, 'unknown'), 'revision')
+
+
+def _check_loss_baseline_migration():
+    """Use the old state only if its source still matches the previous generation."""
+    import tempfile
+    global HISTORY, STATE
+    saved = HISTORY, STATE
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            HISTORY = os.path.join(d, 'h.json')
+            STATE = os.path.join(d, 'state.json')
+            old = {'a.html': {'status': 'OK', 'passed': 29, '_mtime': 1}}
+            current = {'a.html': {'status': 'OK', 'passed': 26, '_mtime': 2}}
+            legacy = {'generations': [{'n': 169, 'subs': {'passed': 29}}],
+                      'last_statuses': {'a.html': 'OK'}, 'gate_rule': GATE_RULE,
+                      'last_sources': {'a.html': record_identity(old['a.html'])}}
+            with open(HISTORY, 'w') as f:
+                json.dump(legacy, f)
+            h = record_generation(['a.html'], current, {}, previous_records=old)
+            assert h['generations'][-1]['n'] == 170
+            assert h['generations'][-1]['losses'][0]['before'] == 29
+            with open(HISTORY, 'w') as f:
+                json.dump(legacy, f)
+            h = record_generation(['a.html'], current, {}, previous_records=current)
+            assert h['generations'][-1]['losses'] == [], 'do not invent previous per-file counts'
+            assert h['generations'][-1]['loss_baseline_missing'] == ['a.html']
+            # Persist the legacy baseline BEFORE load_results replaces STATE.
+            # A failed/aborted first report must not discard the old pass count.
+            with open(HISTORY, 'w') as f:
+                json.dump(legacy, f)
+            with open(STATE, 'w') as f:
+                json.dump(old, f)
+            prepare_loss_baseline(['a.html'])
+            with open(STATE, 'w') as f:
+                json.dump(current, f)
+            prepare_loss_baseline(['a.html'])
+            h = record_generation(['a.html'], current, {})
+            assert h['generations'][-1]['losses'][0]['before'] == 29
+            with open(HISTORY, 'w') as f:
+                f.write('{broken history')
+            try:
+                prepare_loss_baseline(['a.html'])
+            except SystemExit as err:
+                assert 'cannot read loss history' in str(err)
+            else:
+                raise AssertionError('corrupt history silently discarded loss evidence')
+    finally:
+        HISTORY, STATE = saved
+
+
+def _check_loss_exit_status():
+    """The report is reviewable on failure; a no-op rerun still fails; override is explicit."""
+    import tempfile
+    import io
+    import contextlib
+    from unittest.mock import patch
+    with tempfile.TemporaryDirectory() as d:
+        records = {'a.html': {'path': 'a.html', 'status': 'OK', 'passed': 29,
+                             '_mtime': QUERY_REACHES_PAGE + 1, '_wpt_revision': 'a' * 40}}
+        shape = {'a.html': {'v': 0, 'calls': 30, 'loopy': False}}
+        out = os.path.join(d, 'progress.html')
+        with patch.multiple(__name__, HISTORY=os.path.join(d, 'history.json'),
+                            STATE=os.path.join(d, 'state.json'),
+                            load_worklist=lambda: ['a.html'], load_exemptions=lambda *a: {},
+                            load_loss_dispositions=lambda *a: {},
+                            load_results=lambda: (records, []), load_shape=lambda wl: (shape, 0),
+                            load_roadmap=lambda: None, git_head=lambda: 'test'):
+            def run(*args):
+                capture = io.StringIO()
+                with patch.object(sys, 'argv', ['wpt_progress.py', '--out', out, *args]), contextlib.redirect_stdout(capture):
+                    code = main()
+                return code, capture.getvalue()
+            assert run()[0] == 0
+            records['a.html']['passed'] = 26
+            code, console = run()
+            assert code == 1 and '1 unexplained subtest losses' in console
+            assert 'a.html' in console and '29 -> 26' in console and 'UNEXPLAINED' in console
+            with open(out) as f:
+                page = f.read()
+            assert '1 unexplained subtest losses' in page
+            assert page.index('Subtests lost since the last generation') < page.index('Progress by generation')
+            assert run()[0] == 1, 'rerunning must not bypass the gate'
+            code, console = run('--allow-unexplained')
+            assert code == 0 and '1 unexplained subtest losses' in console
+            accepted = {('a.html', 2): {'kind': 'user-ruling', 'why': 'accepted in review',
+                                       'date': '2026-10-20', 'decision': 'retain correct behavior'}}
+            with patch.object(sys.modules[__name__], 'load_loss_dispositions', lambda *a: accepted):
+                code, console = run()
+            assert code == 0 and '0 unexplained subtest losses' in console and 'explained: user-ruling' in console
+            try:
+                run('--rebuild-history', '--allow-unexplained')
+            except SystemExit as err:
+                assert 'erase loss evidence' in str(err)
+            else:
+                raise AssertionError('history rebuild erased tracked losses')
+
+
 if __name__ == '__main__':
     if sys.argv[1:] == ['--self-test']:
         _check_declared_variants()
@@ -2215,6 +2684,10 @@ if __name__ == '__main__':
         _check_history_sources()
         _check_exemptions()
         _check_revision_high_water()
+        _check_subtest_losses()
+        _check_loss_dispositions()
+        _check_loss_baseline_migration()
+        _check_loss_exit_status()
         print('wpt_progress self-test: ok')
     else:
-        main()
+        sys.exit(main())
