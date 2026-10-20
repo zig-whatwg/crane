@@ -224,7 +224,8 @@ QUERY_REACHES_PAGE = 1790091762
 # Bump to rebuild every file's high-water marks from the journals present, when
 # the rule for which runs may raise them changes. 2: pre-fix runs are kept
 # apart (`_sub_hw_pre`) and divided by the fan-out they ran, never mixed in.
-HW_MODEL = 2
+# 3: floors and best passes belong to a WPT revision, never to all snapshots.
+HW_MODEL = 3
 
 # The static shape of each source: how many times the runner fans it out, and -
 # for a file that has never reported a subtest - how many subtests it looks like
@@ -335,6 +336,52 @@ def high_water(rec):
     return after, before
 
 
+def wpt_revision_at(commit):
+    """The WPT gitlink in a measured Crane commit, or None without evidence.
+
+    Do not use today's checkout for old, unlabelled journals: their mtime is not
+    a source revision. Resolved identities are persisted so journal rotation or
+    an unavailable git object cannot detach a floor from its snapshot.
+    """
+    if not commit:
+        return None
+    try:
+        result = subprocess.run(['git', 'ls-tree', commit, '--', 'tests/wpt'], cwd=REPO,
+                                capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    match = re.fullmatch(r'160000 commit ([0-9a-f]{40})\ttests/wpt\n?', result.stdout)
+    return match.group(1) if result.returncode == 0 and match else None
+
+
+def record_revision(rec, cache):
+    """Resolve once per distinct label, keeping unidentified evidence unknown."""
+    revision = rec.get('_wpt_revision')
+    if revision and re.fullmatch(r'[0-9a-f]{40}', revision):
+        return revision
+    commit = commit_of_label(rec.get('_label'))
+    if commit not in cache:
+        cache[commit] = wpt_revision_at(commit)
+    return cache[commit]
+
+
+def merge_result(rec, prev):
+    """Latest measurement wins; only its snapshot may contribute historical floors."""
+    if (prev is not None and not rec.get('_wpt_revision') and
+            record_identity(rec) == record_identity(prev)):
+        # The identical journal may outlive the git objects that identified it.
+        # Preserve its established provenance instead of resetting its floor.
+        rec['_wpt_revision'] = prev.get('_wpt_revision')
+    chosen = rec if prev is None or rec['_mtime'] >= prev.get('_mtime', 0) else prev
+    compatible = (prev is not None and rec.get('_wpt_revision') == prev.get('_wpt_revision') and
+                  (rec.get('_wpt_revision') is not None or record_identity(rec) == record_identity(prev)))
+    contributors = (rec, prev) if compatible else (chosen,)
+    hw = tuple(max(high_water(r)[i] for r in contributors) for i in range(2))
+    best = max(max(r.get('_pass_hw', 0), r.get('passed', 0)) for r in contributors)
+    chosen.update(_sub_hw=hw[0], _sub_hw_pre=hw[1], _pass_hw=best, _hw_model=HW_MODEL)
+    return chosen
+
+
 def load_results():
     """Latest record per path, accumulated across runs.
 
@@ -342,11 +389,11 @@ def load_results():
     merged into a persistent state file and read back from there. A path a run
     did not touch keeps its previous result rather than reverting to unrun.
 
-    Also carries `_sub_hw`, the most subtests any run of that file has EVER
-    reported. A file that reported 40 subtests last week and crashes today still
-    HAS 40, and the journal that saw them is about to be overwritten, so the
-    high-water mark is kept in the state file where it survives. Runs from
-    before `QUERY_REACHES_PAGE` raise `_sub_hw_pre` instead (`high_water`).
+    `_sub_hw` and `_pass_hw` keep the most reported subtests and passes under
+    the latest record's WPT revision. A crash in that snapshot preserves its
+    floor; a new snapshot resets it. Runs before `QUERY_REACHES_PAGE` still
+    raise the separate `_sub_hw_pre` bucket. Unidentified records cannot raise
+    a known snapshot's floor. No current-checkout or timestamp guess is made.
     """
     records = {}
 
@@ -358,14 +405,24 @@ def load_results():
         records = {}
     # High-water marks kept under an older rule are rebuilt from the journals
     # present, and from the record itself (`high_water` counts it).
+    revisions = {}
     for rec in records.values():
         if rec.get('_hw_model') != HW_MODEL:
             rec.pop('_sub_hw', None)
             rec.pop('_sub_hw_pre', None)
+            rec.pop('_pass_hw', None)
             rec['_hw_model'] = HW_MODEL
+        rec['_wpt_revision'] = record_revision(rec, revisions)
+        rec['_pass_hw'] = max(rec.get('_pass_hw', 0), rec.get('passed', 0))
 
     files = journal_files()
     for fn in files:
+        # Provenance is shared by every line in this journal. Stat/resolve once,
+        # rather than repeating filesystem and git work per subtest source.
+        label = label_of_journal(fn)
+        mtime = os.path.getmtime(fn)
+        journal = os.path.basename(fn)
+        revision = record_revision({'_label': label}, revisions)
         for line in open(fn, errors='replace'):
             line = line.strip()
             if not line:
@@ -375,22 +432,19 @@ def load_results():
             except json.JSONDecodeError:
                 continue
             if 'path' in rec:
-                rec['_journal'] = os.path.basename(fn)
+                rec['_journal'] = journal
                 # The run's label: the directory under wpt-results/ ('' for a
                 # journal at its top), which by convention ends in the commit
                 # the run measured (`ab-<sha>`, `sweep-<sha>`, `<lane>-<sha>`).
-                rec['_label'] = label_of_journal(fn)
-                rec['_mtime'] = os.path.getmtime(fn)
+                rec['_label'] = label
+                rec['_mtime'] = mtime
+                rec['_wpt_revision'] = (record_revision(rec, revisions)
+                                        if rec.get('_wpt_revision') else revision)
                 prev = records.get(rec['path'])
-                # The high-water marks rise on ANY journal line, superseding or
-                # not: what a file once declared, it still declares.
-                hw, hw_pre = (max(a, b) for a, b in zip(high_water(rec), high_water(prev)))
                 # Only supersede with something at least as recent, so replaying
-                # an old journal cannot roll the picture backwards.
-                if prev is None or rec['_mtime'] >= prev.get('_mtime', 0):
-                    records[rec['path']] = rec
-                records[rec['path']].update(_sub_hw=hw, _sub_hw_pre=hw_pre,
-                                            _hw_model=HW_MODEL)
+                # an old journal cannot roll the picture backwards. It may raise
+                # a floor only when it measured the same WPT snapshot.
+                records[rec['path']] = merge_result(rec, prev)
 
     os.makedirs(os.path.dirname(STATE), exist_ok=True)
     tmp_path = STATE + '.tmp'
@@ -588,9 +642,9 @@ def subtest_model(worklist, records, shape):
       unknown  it reported nothing and has no countable call site. Contributes
                ZERO rather than a guess, and the file count is disclosed
 
-    `targeted` uses the per-file high-water mark - a file that once reported 40
-    subtests still has 40 even if it crashes today - but `passing` uses only the
-    CURRENT run. Progress is what passes now, not what passed on the best day.
+    `targeted` uses the high-water mark within the latest measured WPT snapshot:
+    40 subtests remain 40 after a crash in that snapshot, but a newer snapshot
+    can remove tests. `passing` uses only the CURRENT run, never the best day.
     """
     model = {}
     for path in worklist:
@@ -1552,8 +1606,9 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
     (2026-09-22) are the exception: <code>location.search</code> was empty, every variant
     run registered the whole set, and such a run is divided by the file's variant count
     ({pre_fix_files:,} file{"s" if pre_fix_files != 1 else ""} still counted that way).
-    A file's target uses the most subtests any run has <em>ever</em> reported for it;
-    its passes use only the current run.</p>
+    A file's target uses the most subtests reported under its latest measured WPT
+    revision; a newer snapshot resets that floor, a crash in the same snapshot
+    preserves it. Its passes use only the current run.</p>
 </div>"""
 
     rows = []
@@ -2077,6 +2132,80 @@ def _check_exemptions():
         EXEMPTIONS = saved
 
 
+def _check_revision_high_water():
+    """A WPT snapshot owns its floors; crashes preserve them, older snapshots do not."""
+    import tempfile
+    global RESULTS, STATE
+    saved = RESULTS, STATE
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            RESULTS, STATE = d, os.path.join(d, 'state.json')
+            path = 'html/events.html'
+
+            def write(name, passed, revision, mtime, status='OK'):
+                fn = os.path.join(d, name + '.jsonl')
+                with open(fn, 'w') as f:
+                    f.write(json.dumps({'path': path, 'status': status, 'passed': passed,
+                                        '_wpt_revision': revision}) + '\n')
+                os.utime(fn, (mtime, mtime))
+
+            mt = QUERY_REACHES_PAGE + 100
+            write('old', 376, 'a' * 40, mt)
+            records, _ = load_results()
+            assert high_water(records[path]) == (376, 0)
+            write('new', 140, 'b' * 40, mt + 1)
+            records, _ = load_results()
+            assert high_water(records[path]) == (140, 0), 'old snapshot inflated current target'
+            assert records[path]['_pass_hw'] == 140
+            write('crash', 0, 'b' * 40, mt + 2, 'CRASH')
+            records, _ = load_results()
+            assert high_water(records[path]) == (140, 0), 'same-snapshot crash lost the floor'
+            assert records[path]['_pass_hw'] == 140
+            # A raw journal has no revision field. Losing access to its git
+            # object on a later regeneration must not erase persisted evidence.
+            write('crash', 0, None, mt + 2, 'CRASH')
+            records, _ = load_results()
+            assert records[path]['_wpt_revision'] == 'b' * 40
+            assert high_water(records[path]) == (140, 0)
+            # Replaying all the older journals must neither raise nor erase the floor.
+            records, _ = load_results()
+            assert high_water(records[path]) == (140, 0)
+            os.remove(os.path.join(d, 'new.jsonl'))
+            records, _ = load_results()
+            assert high_water(records[path]) == (140, 0), 'state must survive journal rotation'
+            write('latest', 8, 'c' * 40, mt + 3)
+            records, _ = load_results()
+            assert high_water(records[path]) == (8, 0) and records[path]['_pass_hw'] == 8
+            # Unidentified evidence is not evidence for a known snapshot.
+            write('unknown', 999, None, mt - 1)
+            records, _ = load_results()
+            assert high_water(records[path]) == (8, 0)
+            # Migration cannot attribute a mixed legacy floor to the last run.
+            with open(STATE, 'w') as f:
+                json.dump({path: dict(records[path], _hw_model=2, _sub_hw=999)}, f)
+            records, _ = load_results()
+            assert high_water(records[path]) == (8, 0)
+            # Keep the pre-query-fix bucket separate within its snapshot.
+            for fn in journal_files():
+                os.remove(fn)
+            os.remove(STATE)
+            write('pre', 280, 'b' * 40, QUERY_REACHES_PAGE - 1)
+            write('post', 140, 'b' * 40, QUERY_REACHES_PAGE + 1)
+            records, _ = load_results()
+            assert high_water(records[path]) == (140, 280)
+            # Unknown snapshots are not interchangeable merely because neither
+            # could be identified. They retain only an identical source's floor.
+            for fn in journal_files():
+                os.remove(fn)
+            os.remove(STATE)
+            write('unknown-old', 376, None, mt)
+            write('unknown-new', 140, None, mt + 1)
+            records, _ = load_results()
+            assert high_water(records[path]) == (140, 0)
+    finally:
+        RESULTS, STATE = saved
+
+
 if __name__ == '__main__':
     if sys.argv[1:] == ['--self-test']:
         _check_declared_variants()
@@ -2085,6 +2214,7 @@ if __name__ == '__main__':
         _check_history_subs()
         _check_history_sources()
         _check_exemptions()
+        _check_revision_high_water()
         print('wpt_progress self-test: ok')
     else:
         main()
