@@ -46,16 +46,16 @@ test "WebSocket cookie classification restricts retrieval and response storage" 
                 .http_only_allowed = true,
                 .same_site_strict_or_lax_allowed = same_site,
             });
-            try std.testing.expectEqual(if (same_site or i >= 2) cookies.StoreResult.stored else cookies.StoreResult.ignored, result);
+            try std.testing.expectEqual(if (same_site or i >= 3) cookies.StoreResult.stored else cookies.StoreResult.ignored, result);
         }
         const value = try cookies.generateCookieHeader(allocator, &source, .{
             .host = "example.com",
             .is_secure = true,
             .is_http = true,
-            .same_site = if (same_site) .strict_or_less else .unset_or_less,
+            .same_site = if (same_site) .strict_or_less else .none,
         });
         defer allocator.free(value);
-        try std.testing.expectEqualStrings(if (same_site) "strict=1; lax=1; default=1; none=1" else "default=1; none=1", value);
-        try std.testing.expectEqual(@as(usize, if (same_site) 4 else 2), response.count());
+        try std.testing.expectEqualStrings(if (same_site) "strict=1; lax=1; default=1; none=1" else "none=1", value);
+        try std.testing.expectEqual(@as(usize, if (same_site) 4 else 1), response.count());
     }
 }

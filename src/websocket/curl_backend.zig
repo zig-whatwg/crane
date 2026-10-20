@@ -430,7 +430,9 @@ pub const CurlWebSocket = struct {
             .is_http = true,
             .is_secure = url.secure,
             // A handshake is a subresource, never a top-level navigation.
-            .same_site = if (same_site) .strict_or_less else .unset_or_less,
+            // A cross-site handshake sends only SameSite=None cookies: a cookie
+            // without SameSite is Lax (Lax-by-default, the user's ruling 2026-10-20).
+            .same_site = if (same_site) .strict_or_less else .none,
         });
         if (value.len == 0) {
             self.allocator.free(value);
