@@ -177,6 +177,16 @@ pub const State = struct {
     /// tag and by the Trusted Types-aware setters; owned.
     script_text: ScriptText = .{},
 
+    /// The URL an external script was REQUESTED from (prepare's parsed src),
+    /// owned here and never replaced by a redirect's: the resource name its
+    /// script is compiled with, so a stack trace or an error's filename
+    /// names what the page asked for, not where a cross-origin redirect led
+    /// (content-security-policy/reporting/post-redirect-stacktrace.https.html:
+    /// Chrome 155 and Firefox 158 pass, Safari 27 leaks the path - Blink
+    /// names a classic script by Resource::Url(), its initial request URL).
+    /// `script_url` - and so the script's base URL - is the response's.
+    request_url: ?[]const u8 = null,
+
     /// Where the element's source text starts in its document - the HTML
     /// parser's position after its start tag, 1-based - set by the parser
     /// when it creates the element (`parserPosition`); null for one no HTML
@@ -211,9 +221,11 @@ pub const State = struct {
         if (self.takeExecutionRoot()) |root| root.release();
         if (self.cached_source_text) |text| self.allocator.free(text);
         if (self.script_url) |url| self.allocator.free(url);
+        if (self.request_url) |url| self.allocator.free(url);
         self.script_text.deinit();
         self.cached_source_text = null;
         self.script_url = null;
+        self.request_url = null;
     }
 
     /// Transfer the queue's root to its executor or discard step, exactly once.
@@ -229,6 +241,14 @@ pub const State = struct {
         const owned = try self.allocator.dupe(u8, text);
         if (self.cached_source_text) |old| self.allocator.free(old);
         self.cached_source_text = owned;
+    }
+
+    /// Record the URL an external script is requested from (`request_url`),
+    /// taking a copy the element owns.
+    pub fn setRequestUrl(self: *State, url: []const u8) !void {
+        const owned = try self.allocator.dupe(u8, url);
+        if (self.request_url) |old| self.allocator.free(old);
+        self.request_url = owned;
     }
 
     /// Record the URL an external script comes from, taking a copy the

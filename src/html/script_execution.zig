@@ -417,6 +417,9 @@ pub fn prepareScriptElement(
         // a deferred or async script runs long after this frame has returned.
         const script_url = state.setScriptUrl(parsed_url) catch
             return ScriptExecutionError.OutOfMemory;
+        // And the request URL, which no redirect replaces: the script's
+        // resource name (State.request_url).
+        state.setRequestUrl(parsed_url) catch return ScriptExecutionError.OutOfMemory;
 
         // Prepare 33.7: potentially render-blocking external scripts block
         // before fetching. 33.9: capture the fetch's blocking classification.
@@ -1432,9 +1435,11 @@ fn runClassicScript(script_element: *runtime.Instance, document: *runtime.Instan
     // properly duplicated copy stored in the element's script element state.
     const source = state.cached_source_text orelse return;
 
-    // The resource name errors report as their filename: the script's URL for
-    // an external script (its base URL), the document's URL for an inline one.
-    const url = if (from_external) script.base_url else documentUrl(document, script_element);
+    // The resource name errors and stack traces report: the URL an external
+    // script was requested from - never a redirect's, which would leak where
+    // a cross-origin redirect led (State.request_url; its base URL stays the
+    // response's) - and the document's URL for an inline one.
+    const url = if (from_external) (state.request_url orelse script.base_url) else documentUrl(document, script_element);
     // An inline script's text is embedded in its document: what it reports,
     // it reports at its document lines. An external one is its own resource.
     const text: engine.ScriptSource = if (from_external) .{ .utf8 = source } else .{ .embedded = .{ .utf8 = source, .start = script.start } };
