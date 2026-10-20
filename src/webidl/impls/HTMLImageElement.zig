@@ -115,6 +115,8 @@ const ImageRequest = struct {
     /// The update of the image data this request belongs to
     /// (InternalState.load_generation when it was made).
     generation: u64 = 0,
+    /// HTML 4.8.4.3: the selected source's current pixel density.
+    pixel_density: f64 = 1,
 
     fn available(self: *const ImageRequest) bool {
         return self.state == .partially_available or self.state == .completely_available;
@@ -261,7 +263,7 @@ pub const InternalState = struct {
 /// What "update the image data" found before its microtask: a URL to fetch,
 /// no selected source (step 11), or a selected source that does not parse
 /// (step 13).
-const Selection = enum { fetch, no_source, bad_url };
+const Selection = enum { fetch, no_source, bad_url, select_source };
 
 /// Context for microtask callback that initiates image loading
 /// This is allocated on the heap and freed after the microtask executes
@@ -433,8 +435,8 @@ fn dimensions(instance: *runtime.Instance) struct { u32, u32 } {
     var width: u32 = 0;
     var height: u32 = 0;
     if (availableImage(instance)) |image| {
-        width = image.width;
-        height = image.height;
+        width = densityCorrected(instance, image.width);
+        height = densityCorrected(instance, image.height);
     }
     // Steps 4-5: the attributes, parsed as non-negative integers; an error
     // leaves the natural size.
@@ -454,18 +456,28 @@ pub fn get_height(instance: *runtime.Instance) anyerror!u32 {
 }
 
 /// Getter for naturalWidth: 0 unless the image is available, else its
-/// density-corrected natural width (density 1: the decoded width).
+/// density-corrected natural width.
 /// Spec: https://html.spec.whatwg.org/multipage/embedded-content.html#dom-img-naturalwidth
 pub fn get_naturalWidth(instance: *runtime.Instance) anyerror!u32 {
     const image = availableImage(instance) orelse return 0;
-    return image.width;
+    return densityCorrected(instance, image.width);
 }
 
 /// Getter for naturalHeight
 /// Spec: https://html.spec.whatwg.org/multipage/embedded-content.html#dom-img-naturalheight
 pub fn get_naturalHeight(instance: *runtime.Instance) anyerror!u32 {
     const image = availableImage(instance) orelse return 0;
-    return image.height;
+    return densityCorrected(instance, image.height);
+}
+
+fn densityCorrected(instance: *runtime.Instance, dimension: u32) u32 {
+    const internal = getInternal(instance) orelse return 0;
+    if (internal.current.pixel_density == 1) return dimension;
+    const value = @as(f64, @floatFromInt(dimension)) / internal.current.pixel_density;
+    // HTML permits 0x (infinite natural dimensions) and a zero source size
+    // (infinite density). Bound the former before converting to WebIDL.
+    if (std.math.isNan(value) or value <= 0) return 0;
+    return @intFromFloat(@min(value, @as(f64, @floatFromInt(std.math.maxInt(u32)))));
 }
 
 /// Getter for complete
@@ -579,8 +591,8 @@ fn replacedFacts(instance: *runtime.Instance) ?platform.ReplacedElementFacts {
     };
     if (availableImage(instance)) |image| {
         facts.has_natural_size = true;
-        facts.natural_width = image.width;
-        facts.natural_height = image.height;
+        facts.natural_width = densityCorrected(instance, image.width);
+        facts.natural_height = densityCorrected(instance, image.height);
     }
     if (dimensionAttribute(instance, "width")) |width| {
         facts.has_width_attribute = true;
@@ -721,22 +733,20 @@ fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, old_
     }
 }
 
-/// HTML "update the image data", as far as this engine models it: the
-/// selected source is the src attribute (no srcset or picture source
-/// selection, and no list of available images - stated). After a microtask
+/// HTML "update the image data", as far as this engine models it. After a microtask
 /// (step 8, the spec's "allowing the task that invoked this algorithm to
 /// continue"), a selected source is fetched and its response decoded, or -
 /// with none, or one that does not parse - the current request is broken;
 /// a task then updates the requests and fires load or error. A newer update
 /// cancels an older one (step 9: the generation counter).
 ///
-/// Not modelled, stated: the selected source is parsed when the mutation
-/// happens rather than after the microtask (steps 12-13 run on the URL as
-/// the base URL was then); step 14's "same URL as the pending request"
+/// Not modelled, stated: picture source selection, the list of available
+/// images, and step 14's "same URL as the pending request"
 /// shortcut (the update restarts); the partially available state (the image
 /// is decoded once its whole body has arrived - and then, when its data
 /// ended early or was corrupt after its dimensions, it is a partial image,
-/// completely available).
+/// completely available). Source selection and URL resolution occur after
+/// the microtask, against the then-current attributes and document base URL.
 fn updateTheImageData(instance: *runtime.Instance) void {
     // Step 1: "If element's node document is not fully active", the rest
     // waits until it is - for a document with no browsing context (a
@@ -753,23 +763,10 @@ fn updateTheImageData(instance: *runtime.Instance) void {
     // document becomes fully active again.
     if (!hasBrowsingContext(instance)) return waitForFullyActive(instance);
 
-    // Step 5: the src attribute, when it is not the empty string.
-    const src = attributeValue(instance, "src");
-    const selected = if (src) |value| (if (value.len > 0) value else null) else null;
-    const source = selected orelse {
-        // Step 11: no selected source.
-        startLoad(instance, .no_source, "") catch |err| log.debug("img: the update did not start: {s}", .{@errorName(err)});
-        return;
-    };
-    // Step 12: "encoding-parsing-and-serializing a URL given selected
-    // source, relative to the element's node document".
-    const url = resolveAgainstBaseUrl(instance, source) orelse {
-        // Step 13: failure - the current URL becomes the selected source.
-        startLoad(instance, .bad_url, source) catch |err| log.debug("img: the update did not start: {s}", .{@errorName(err)});
-        return;
-    };
-    defer instance.ctx.allocator.free(url);
-    startLoad(instance, .fetch, url) catch |err| log.debug("img: the load did not start: {s}", .{@errorName(err)});
+    // Steps 8–12: even a plain src is selected and URL-resolved after the
+    // caller's task. A base element inserted in that task affects the URL
+    // (WPT image-base-url.html); a later unrelated insertion does not.
+    startLoad(instance, .select_source, "") catch |err| log.debug("img: the update did not start: {s}", .{@errorName(err)});
 }
 
 /// Whether `element`'s node document has a browsing context: a window, as
@@ -806,12 +803,289 @@ fn adoptingSteps(node: *runtime.Instance, _: ?*runtime.Instance) void {
 /// serialized; owned by the element's context allocator, null when it does
 /// not parse.
 fn resolveAgainstBaseUrl(element: *runtime.Instance, url: []const u8) ?[]const u8 {
-    const base = interfaces.Node.get_baseURI(element) catch return null;
-    defer element.ctx.allocator.free(base);
-    const base_arg = if (base.len > 0) webidl.Opt(runtime.USVString).passed(base) else webidl.Opt(runtime.USVString).notPassed();
-    const parsed = (interfaces.URL.call_static_parse(element, url, base_arg) catch return null) orelse return null;
-    defer runtime.Instance.deinit(parsed);
-    return interfaces.URL.get_href(parsed) catch null;
+    // The shared HTML algorithm supplies both the current base URL and
+    // document character encoding; its result belongs to ctx.allocator.
+    return @import("html").encoding_parse.encodingParseAndSerialize(element, url) catch null;
+}
+
+/// HTML 4.8.4.3.10, "parse a srcset attribute". The iterator borrows its
+/// input and does not allocate: each candidate is used during this update,
+/// before a URL is copied into the existing image request.
+const Srcset = struct {
+    input: []const u8,
+    position: usize = 0,
+
+    const Candidate = struct {
+        url: []const u8,
+        width: ?f64 = null,
+        density: ?f64 = null,
+        height: ?f64 = null,
+        invalid: bool = false,
+
+        fn descriptor(self: *Candidate, text: []const u8) void {
+            if (text.len < 2) {
+                self.invalid = true;
+                return;
+            }
+            const number = text[0 .. text.len - 1];
+            switch (text[text.len - 1]) {
+                'w', 'h' => |unit| {
+                    var value: f64 = 0;
+                    for (number) |c| {
+                        if (!std.ascii.isDigit(c)) {
+                            self.invalid = true;
+                            return;
+                        }
+                        value = @min(value * 10 + @as(f64, @floatFromInt(c - '0')), std.math.floatMax(f64));
+                    }
+                    if (value == 0 or self.density != null or (if (unit == 'w') self.width != null else self.height != null)) {
+                        self.invalid = true;
+                        return;
+                    }
+                    if (unit == 'w') self.width = value else self.height = value;
+                },
+                'x' => {
+                    if (self.width != null or self.height != null or self.density != null or !validFloat(number)) {
+                        self.invalid = true;
+                        return;
+                    }
+                    const value = std.fmt.parseFloat(f64, number) catch {
+                        self.invalid = true;
+                        return;
+                    };
+                    if (value < 0 or !std.math.isFinite(value)) self.invalid = true else self.density = if (value == 0) 0 else value;
+                },
+                else => self.invalid = true,
+            }
+        }
+    };
+
+    fn whitespace(c: u8) bool {
+        return c == ' ' or c == '\t' or c == '\n' or c == '\r' or c == '\x0c';
+    }
+
+    /// HTML "valid floating-point number", not the permissive prefix
+    /// parser: no leading plus, no trailing dot, and a nonempty exponent.
+    fn validFloat(text: []const u8) bool {
+        var p: usize = 0;
+        if (p < text.len and text[p] == '-') p += 1;
+        const integer_start = p;
+        while (p < text.len and std.ascii.isDigit(text[p])) : (p += 1) {}
+        const integer_digits = p - integer_start;
+        if (p < text.len and text[p] == '.') {
+            p += 1;
+            const fraction_start = p;
+            while (p < text.len and std.ascii.isDigit(text[p])) : (p += 1) {}
+            if (p == fraction_start) return false;
+        } else if (integer_digits == 0) return false;
+        if (p < text.len and (text[p] == 'e' or text[p] == 'E')) {
+            p += 1;
+            if (p < text.len and (text[p] == '+' or text[p] == '-')) p += 1;
+            const exponent_start = p;
+            while (p < text.len and std.ascii.isDigit(text[p])) : (p += 1) {}
+            if (p == exponent_start) return false;
+        }
+        return p == text.len;
+    }
+
+    fn next(self: *Srcset) ?Candidate {
+        while (true) {
+            // Steps 4–6: commas delimit candidates only after the URL.
+            while (self.position < self.input.len and (whitespace(self.input[self.position]) or self.input[self.position] == ',')) : (self.position += 1) {}
+            if (self.position == self.input.len) return null;
+            const start = self.position;
+            while (self.position < self.input.len and !whitespace(self.input[self.position])) : (self.position += 1) {}
+            var candidate: Candidate = .{ .url = self.input[start..self.position] };
+            if (candidate.url[candidate.url.len - 1] == ',') {
+                candidate.url = std.mem.trimEnd(u8, candidate.url, ",");
+            } else {
+                // Step 8: descriptor, after-descriptor and in-parens
+                // states; a comma inside parentheses is not a separator.
+                while (self.position < self.input.len) {
+                    while (self.position < self.input.len and whitespace(self.input[self.position])) : (self.position += 1) {}
+                    const descriptor_start = self.position;
+                    var in_parens = false;
+                    while (self.position < self.input.len) : (self.position += 1) {
+                        const c = self.input[self.position];
+                        if (in_parens) {
+                            if (c == ')') in_parens = false;
+                        } else {
+                            if (whitespace(c) or c == ',') break;
+                            if (c == '(') in_parens = true;
+                        }
+                    }
+                    if (self.position > descriptor_start) candidate.descriptor(self.input[descriptor_start..self.position]);
+                    if (self.position < self.input.len and self.input[self.position] == ',') {
+                        self.position += 1;
+                        break;
+                    }
+                }
+            }
+            // Steps 14–15: a future-compatible h descriptor requires w.
+            if (!candidate.invalid and (candidate.height == null or candidate.width != null)) return candidate;
+        }
+    }
+};
+
+const ImageSource = struct { url: []const u8, density: f64 };
+
+/// HTML 4.8.4.3.8/12 followed by 4.8.4.3.7. Choose the smallest density
+/// at least the environment's resolution, otherwise the largest density.
+/// Equal densities keep the first URL (selection step 1). This streaming
+/// choice is equivalent to deduplicating and sorting the entire set.
+fn selectImageSource(instance: *runtime.Instance) ?ImageSource {
+    const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return null;
+    const environment = dom.style.hooks.mediaValues(document);
+    var candidates: Srcset = .{ .input = attributeValue(instance, "srcset") orelse "" };
+    var chosen: ?ImageSource = null;
+    var width_seen = false;
+    var density_one_seen = false;
+    var size: ?f64 = null;
+    while (candidates.next()) |candidate| {
+        width_seen = width_seen or candidate.width != null;
+        density_one_seen = density_one_seen or candidate.density == 1;
+        const density = candidate.density orelse if (candidate.width) |width| blk: {
+            if (size == null) size = sourceSize(instance, environment);
+            break :blk width / size.?;
+        } else 1;
+        considerSource(&chosen, .{ .url = candidate.url, .density = density }, environment.resolution);
+    }
+    if (!width_seen and !density_one_seen) {
+        if (attributeValue(instance, "src")) |src| if (src.len > 0) {
+            considerSource(&chosen, .{ .url = src, .density = 1 }, environment.resolution);
+        };
+    }
+    return chosen;
+}
+
+fn considerSource(chosen: *?ImageSource, candidate: ImageSource, resolution: f64) void {
+    const current = chosen.* orelse {
+        chosen.* = candidate;
+        return;
+    };
+    if (current.density < resolution) {
+        if (candidate.density > current.density) chosen.* = candidate;
+    } else if (candidate.density >= resolution and candidate.density < current.density) chosen.* = candidate;
+}
+
+/// HTML 4.8.4.3.11. Component values, rather than splitting on commas or
+/// spaces, preserve functions, media conditions, comments and escapes.
+/// Numeric expressions remain subject to Crane's CSS capability (the CSS
+/// value grammar currently has no math functions; see row 91's Q4).
+fn sourceSize(instance: *runtime.Instance, environment: dom.style.css.media_queries.MediaValues) f64 {
+    const css = dom.style.css;
+    const text = attributeValue(instance, "sizes") orelse return environment.width;
+    var tokenizer = css.tokenizer.Tokenizer.init(text);
+    var item_start: usize = 0;
+    var last_start: usize = 0;
+    var last_end: usize = 0;
+    while (true) {
+        const token = tokenizer.next();
+        if (token.token_type == .whitespace) continue;
+        if (token.token_type == .comma or token.token_type == .eof) {
+            if (last_end > item_start) {
+                if (sourceSizeValue(instance, text[last_start..last_end], environment)) |size| {
+                    const condition = std.mem.trim(u8, text[item_start..last_start], " \t\n\r\x0c");
+                    if (condition.len == 0) return size;
+                    var condition_tokens = css.tokenizer.Tokenizer.init(condition);
+                    condition_tokens.skipWhitespace();
+                    const first = condition_tokens.next();
+                    if (first.token_type == .eof) return size; // comments only
+                    var query = css.media_queries.MediaQueryList.parse(instance.ctx.allocator, condition) catch return environment.width;
+                    defer query.deinit();
+                    // sizes accepts a media CONDITION, not a media type.
+                    if (query.queries.len == 1 and query.queries[0].media_type == null and query.matches(&environment)) return size;
+                }
+            }
+            if (token.token_type == .eof) return environment.width;
+            item_start = tokenizer.pos;
+            last_end = item_start;
+            continue;
+        }
+        last_start = @intFromPtr(token.value.ptr) - @intFromPtr(text.ptr);
+        // The tokenizer exposes function and '(' separately. Consume the
+        // complete CSS block as one component, including its EOF closure.
+        if (token.token_type == .function) _ = tokenizer.next();
+        if (token.token_type == .function or token.token_type == .left_paren or token.token_type == .left_bracket or token.token_type == .left_brace) {
+            var depth: usize = 1;
+            while (depth > 0) {
+                const nested = tokenizer.next();
+                switch (nested.token_type) {
+                    .left_paren, .left_bracket, .left_brace => depth += 1,
+                    .right_paren, .right_bracket, .right_brace => depth -= 1,
+                    .eof => break,
+                    else => {},
+                }
+            }
+        }
+        last_end = tokenizer.pos;
+    }
+}
+
+fn sourceSizeValue(instance: *runtime.Instance, text: []const u8, environment: dom.style.css.media_queries.MediaValues) ?f64 {
+    const css = dom.style.css;
+    var tokenizer = css.tokenizer.Tokenizer.init(text);
+    const token = tokenizer.next();
+    if (token.isIdent("auto")) {
+        // Step 3.3: no concrete rendered object size in the headless media
+        // environment. Ignore auto and try the following size (Q4).
+        return null;
+    }
+    const value = token.numeric_value orelse return null;
+    if (value < 0 or !std.math.isFinite(value)) return null;
+    if (token.token_type == .number) return if (value == 0) 0 else null;
+    if (token.token_type != .dimension) return null;
+    const unit_text = token.unit orelse return null;
+    const unit_decoded = css.tokenizer.decode(instance.ctx.allocator, unit_text) catch return null;
+    defer instance.ctx.allocator.free(unit_decoded);
+    // As in the media-query evaluator, there are no dynamic toolbars:
+    // small, large and dynamic viewport lengths share this viewport.
+    const viewport_variant = unit_decoded.len > 2 and
+        (std.ascii.toLower(unit_decoded[0]) == 's' or std.ascii.toLower(unit_decoded[0]) == 'l' or std.ascii.toLower(unit_decoded[0]) == 'd') and
+        std.ascii.toLower(unit_decoded[1]) == 'v';
+    const unit = css.LengthUnit.fromString(if (viewport_variant) unit_decoded[1..] else unit_decoded) orelse return null;
+    // Relative units use the media environment's initial font metrics and
+    // viewport, as sizes and media queries require, never element styles.
+    const factor: f64 = switch (unit) {
+        .px => 1,
+        .cm => 96.0 / 2.54,
+        .mm => 96.0 / 25.4,
+        .in => 96,
+        .pt => 96.0 / 72.0,
+        .pc => 16,
+        .Q => 96.0 / 101.6,
+        .em, .rem => environment.font_size,
+        .ex, .ch => environment.font_size / 2,
+        .lh, .rlh => return null, // the media environment has no line-height metric
+        .vw, .vi => environment.width / 100,
+        .vh, .vb => environment.height / 100,
+        .vmin => @min(environment.width, environment.height) / 100,
+        .vmax => @max(environment.width, environment.height) / 100,
+        .percent => return null,
+    };
+    return value * factor;
+}
+
+const SelectedLoad = struct {
+    selection: Selection,
+    url: []const u8,
+    density: f64 = 1,
+    owned_url: bool = false,
+};
+
+fn selectedLoad(instance: *runtime.Instance, selection: Selection, url: []const u8) SelectedLoad {
+    if (selection != .select_source) return .{ .selection = selection, .url = url };
+    // The ordinary src path needs neither candidate parsing nor the media
+    // environment. Its result is still resolved after the microtask.
+    const source: ImageSource = if (attributeValue(instance, "srcset") != null)
+        selectImageSource(instance) orelse return .{ .selection = .no_source, .url = "" }
+    else blk: {
+        const src = attributeValue(instance, "src") orelse return .{ .selection = .no_source, .url = "" };
+        if (src.len == 0) return .{ .selection = .no_source, .url = "" };
+        break :blk .{ .url = src, .density = 1 };
+    };
+    const resolved = resolveAgainstBaseUrl(instance, source.url) orelse return .{ .selection = .bad_url, .url = source.url };
+    return .{ .selection = .fetch, .url = resolved, .density = source.density, .owned_url = true };
 }
 
 /// Setter for src: it reflects the src content attribute
@@ -856,7 +1130,10 @@ fn startLoad(instance: *runtime.Instance, selection: Selection, url_str: []const
     // takes it in UpdateFromElement (delay_until_do_update_from_element_)
     // and holds it through the fetch and the event, so "the end" - which
     // can reach step 8 before the microtask has run - waits for the image.
-    if (selection == .fetch and !isLazy(instance)) {
+    const has_src = if (attributeValue(instance, "src")) |src| src.len > 0 else false;
+    const may_fetch = selection == .fetch or (selection == .select_source and
+        (attributeValue(instance, "srcset") != null or has_src));
+    if (may_fetch and !isLazy(instance)) {
         if (internal.document) |document| internal.delayLoad(document.instance);
     }
 
@@ -910,9 +1187,9 @@ fn breakCurrentRequest(instance: *runtime.Instance, internal: *InternalState) vo
 /// Steps 16-18: abort the pending request; a new image request for
 /// `url`, which is the current request if the current one is unavailable
 /// or broken, else the pending request.
-fn makeImageRequest(instance: *runtime.Instance, internal: *InternalState, url: []const u8, generation: u64) void {
+fn makeImageRequest(instance: *runtime.Instance, internal: *InternalState, url: []const u8, generation: u64, density: f64) void {
     internal.abortPending();
-    var request: ImageRequest = .{ .generation = generation };
+    var request: ImageRequest = .{ .generation = generation, .pixel_density = density };
     request.setUrl(internal.allocator, url);
     if (internal.current.state == .unavailable or internal.current.state == .broken) {
         internal.current.deinit(internal.allocator);
@@ -968,9 +1245,8 @@ fn applyOutcome(instance: *runtime.Instance, internal: *InternalState, generatio
             // "Change the current request's current URL to" the empty string
             // (step 11) or the selected source (step 13).
             internal.current.setUrl(internal.allocator, n.url);
-            // Step 11 fires error only when the element has a src attribute
-            // (or uses srcset or picture, not modelled).
-            if (n.only_with_src) return attributeValue(instance, "src") != null;
+            // Step 11: a src attribute or responsive source set.
+            if (n.only_with_src) return attributeValue(instance, "src") != null or attributeValue(instance, "srcset") != null;
             return true;
         },
     }
@@ -987,15 +1263,17 @@ fn performSynchronousLoad(instance: *runtime.Instance, selection: Selection, url
     }
     defer releaseLoadHold(instance, runtime.SlabAllocator.generationOf(instance), generation);
 
-    var outcome: Outcome = switch (selection) {
+    const selected = selectedLoad(instance, selection, url_str);
+    defer if (selected.owned_url) allocator.free(selected.url);
+    var outcome: Outcome = switch (selected.selection) {
         .no_source, .bad_url => blk: {
             breakCurrentRequest(instance, internal);
-            const url = allocator.dupe(u8, url_str) catch return;
-            break :blk .{ .no_request = .{ .url = url, .only_with_src = selection == .no_source } };
+            const url = allocator.dupe(u8, selected.url) catch return;
+            break :blk .{ .no_request = .{ .url = url, .only_with_src = selected.selection == .no_source } };
         },
         .fetch => blk: {
-            makeImageRequest(instance, internal, url_str, generation);
-            var fetch_result = fetch.webidl.globalFetch(allocator, .{ .url = url_str }, .{});
+            makeImageRequest(instance, internal, selected.url, generation, selected.density);
+            var fetch_result = fetch.webidl.globalFetch(allocator, .{ .url = selected.url }, .{});
             defer fetch_result.deinit();
             // Check generation again after fetch (may have been cancelled during fetch)
             if (internal.load_generation != generation) return;
@@ -1004,6 +1282,7 @@ fn performSynchronousLoad(instance: *runtime.Instance, selection: Selection, url
                 .err => .broken,
             };
         },
+        .select_source => unreachable,
     };
     defer outcome.deinit(allocator);
 
@@ -1026,7 +1305,6 @@ fn loadMicrotaskCallback(data: ?*anyopaque) void {
     const instance = ctx.instance;
     if (runtime.SlabAllocator.generationOf(instance) != ctx.instance_generation) return;
     const generation = ctx.generation;
-    const url_str = ctx.url;
     const allocator = ctx.allocator;
 
     // Step 9: superseded by a newer update.
@@ -1035,29 +1313,32 @@ fn loadMicrotaskCallback(data: ?*anyopaque) void {
         return; // Cancelled
     }
 
-    switch (ctx.selection) {
+    const selected = selectedLoad(instance, ctx.selection, ctx.url);
+    defer if (selected.owned_url) allocator.free(selected.url);
+    switch (selected.selection) {
         // Steps 11 and 13.
         .no_source, .bad_url => {
             breakCurrentRequest(instance, internal);
             internal.complete = true;
-            const url = allocator.dupe(u8, url_str) catch {
+            const url = allocator.dupe(u8, selected.url) catch {
                 queueImageTask(instance, generation, .broken, allocator);
                 return;
             };
-            queueImageTask(instance, generation, .{ .no_request = .{ .url = url, .only_with_src = ctx.selection == .no_source } }, allocator);
+            queueImageTask(instance, generation, .{ .no_request = .{ .url = url, .only_with_src = selected.selection == .no_source } }, allocator);
         },
         .fetch => {
             // Steps 16-18.
-            makeImageRequest(instance, internal, url_str, generation);
+            makeImageRequest(instance, internal, selected.url, generation, selected.density);
             // "In parallel": the image request is fetched without blocking
             // the event loop; its response arrives from the loop's network
             // step (ImageFetch). One that cannot start is an error.
-            startImageFetch(instance, url_str, generation) catch |err| {
+            startImageFetch(instance, selected.url, generation) catch |err| {
                 log.debug("img: the fetch did not start: {s}", .{@errorName(err)});
                 internal.complete = true;
                 queueImageTask(instance, generation, .broken, allocator);
             };
         },
+        .select_source => unreachable,
     }
 }
 
@@ -1250,6 +1531,9 @@ fn startImageFetch(instance: *runtime.Instance, url: []const u8, generation: u64
     defer if (request_owned) request.deinit();
     request.destination = .image;
     request.initiator_type = .img;
+    // HTML update-the-image-data step 23: responsive image requests use
+    // the imageset initiator (distinct from Resource Timing's "img").
+    if (attributeValue(instance, "srcset") != null) request.initiator = .imageset;
     // "Create a potential-CORS request": mode "no-cors" for No CORS,
     // "cors" otherwise; credentials "include", or "same-origin" for
     // Anonymous; the use-URL-credentials flag set.
