@@ -29,6 +29,8 @@
   internal.get_named_cookie = __crane_test_driver_get_named_cookie;
   internal.delete_all_cookies = __crane_test_driver_delete_all_cookies;
   internal.set_permission = __crane_test_driver_set_permission;
+  internal.get_computed_role = __crane_test_driver_get_computed_role;
+  internal.get_computed_label = __crane_test_driver_get_computed_label;
   // A plain function, as upstream's is: tests call it with `new` too.
   window.test_driver.click = function(element) {
     return internal.click(element);

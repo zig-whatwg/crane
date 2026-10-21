@@ -1498,7 +1498,7 @@ pub fn build(b: *std.Build) void {
     const spec_filter = b.option(
         []const u8,
         "spec",
-        "Run tests for a specific spec (infra, webidl, dom, encoding, url, console, streams, mimesniff, or 'all')",
+        "Run tests for a specific spec (infra, webidl, dom, encoding, url, console, streams, mimesniff, wpt_runner, or 'all')",
     );
     const test_selection: TestSelection = .{
         .file = b.option(
@@ -1651,6 +1651,7 @@ pub fn build(b: *std.Build) void {
         "browser",
         "xhr",
         "xml",
+        "wpt_runner",
     };
     if (spec_filter) |spec| {
         var is_valid = false;
@@ -3547,6 +3548,28 @@ pub fn build(b: *std.Build) void {
             run_harness_tests.setCwd(b.path("."));
             test_step.dependOn(&run_harness_tests.step);
         }
+    }
+
+    // Real testdriver commands need the Browser graph; keep this one Debug
+    // native lifetime test separate from the std-only harness modules above.
+    const command_lifetime_test = "tests/wpt_runner/ar3_command_lifetime_test.zig";
+    if ((spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "wpt_runner")) and
+        (test_selection.file == null or std.mem.eql(u8, test_selection.file.?, command_lifetime_test)))
+    {
+        const command_test_imports = [_]std.Build.Module.Import{
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "runtime", .module = testing_graph.runtime },
+            .{ .name = "engine", .module = testing_graph.engine },
+            .{ .name = "interfaces", .module = testing_graph.interfaces },
+            .{ .name = "html", .module = testing_graph.html_core },
+            .{ .name = "html_full", .module = testing_graph.html },
+            .{ .name = "dom", .module = testing_graph.dom },
+            .{ .name = "browser", .module = testing_graph.browser },
+            .{ .name = "cookiestore", .module = testing_graph.cookiestore },
+            .{ .name = "permissions", .module = testing_graph.permissions },
+        };
+        addTestRoot(b, test_step, command_lifetime_test, "ar3-command-lifetime", target, &command_test_imports, true);
     }
 
     // WPT Runner executable for running Web Platform Tests
