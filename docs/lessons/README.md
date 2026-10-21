@@ -9,6 +9,8 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A WebSocket handshake belongs to its transport](architecture-a-websocket-handshake-belongs-to-its-transport.md) - A versioned handshake result is necessary, but only a real negotiated stream establishes the WebSocket.
+- [A streaming codec needs consumption and terminal state](architecture-a-streaming-codec-needs-consumption-and-terminal-state.md) - The codec reports what it consumed and whether it ended; the web algorithm decides what that means.
 - [Unload dispatch must guard reentry](architecture-unload-dispatch-must-guard-reentry.md) - Guard the reentered lifecycle operation, while preserving the script action that legitimately caused removal.
 - [Autofocus needs a rendering opportunity without rAF](architecture-autofocus-needs-a-rendering-opportunity-without-raf.md) - Verify both the rendering step and the event that schedules it. A flush call alone cannot wake a document whose first callback depends on the flush.
 - [An inline script is not a resource of its own - carry where its text starts](architecture-an-inline-script-is-not-a-resource-of-its-own.md) - When a report crosses the engine seam with a location, ask where the engine thinks the source starts; text embedded in a larger resource needs its offset carried beside it, or every line it reports is relative to nothing the page can see.
