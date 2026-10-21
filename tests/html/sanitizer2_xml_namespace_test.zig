@@ -98,7 +98,7 @@ test "XML elements use their matching explicit default namespace" {
     try expectXml(root, "<root xmlns:p=\"urn:one\"><child xmlns=\"urn:one\"/></root>");
 }
 
-test "XML elements preserve a prefix when their namespace matches the inherited default" {
+test "XML elements drop a prefix when their namespace matches the inherited default" {
     var page: fixture.Page = undefined;
     try page.open();
     defer page.close();
@@ -108,7 +108,7 @@ test "XML elements preserve a prefix when their namespace matches the inherited 
     const child = try interfaces.Document.call_createElementNS(page.document, str("urn:one"), str("p:child"), .notPassed());
     _ = try interfaces.Node.call_appendChild(root, child);
     try attribute(child, xmlns, "xmlns:p", "urn:one");
-    try expectXml(root, "<root xmlns=\"urn:one\"><p:child xmlns:p=\"urn:one\"/></root>");
+    try expectXml(root, "<root xmlns=\"urn:one\"><child xmlns:p=\"urn:one\"/></root>");
 }
 
 test "XML prefix bindings restore an ancestor mapping after a shadowing child" {

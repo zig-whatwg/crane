@@ -314,11 +314,13 @@ const Writer = struct {
                     try self.bindings.append(self.allocator, .{ .prefix = attr.local_name, .namespace = attr_ns });
             }
             // XML element steps 11–12: choose a prefix or a default declaration.
-            // Firefox and Safari retain an element's explicit prefix and
-            // an explicit empty default declaration; Chrome drops them.
-            // DOM Parsing is unmaintained: follow the browser majority.
-            // https://wpt.fyi/results/domparsing/XMLSerializer-serializeToString.html?sha=df642c4142
-            if (same(inherited, ns) and prefix == null) {
+            // User ruling, 2026-10-20: follow Chrome's prefix handling,
+            // dropping an explicit element prefix in the inherited default
+            // namespace. Blink MarkupAccumulator::AppendStartTagOpen, step 11:
+            // https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/editing/serializers/markup_accumulator.cc
+            // https://wpt.fyi/results/domparsing/XMLSerializer-serializeToString.html?sha=0f26972422
+            if (same(inherited, ns)) {
+                // The same ruling defers changing explicit empty defaults.
                 ignore_default = if (default_ns) |d| ns != null or !same(nullable(d), ns) else false;
                 prefix = if (same(ns, xml_ns)) "xml" else null;
             } else if (prefix == null and default_ns != null and same(nullable(default_ns.?), ns)) {
