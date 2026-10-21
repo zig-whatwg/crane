@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../compression/"><code>compression/</code></a></li><li aria-current="page"><code>decompression-<wbr>corrupt-<wbr>input.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>decompression-<wbr>corrupt-<wbr>input.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="compression/decompression-corrupt-input.any.js">
-<p class="figures-main"><span class="fg-pass">78</span><span class="fg-of"> / 87</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>9</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">87</span><span class="fg-of"> / 87</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-1d3044b5a8</code>, <span class="nowrap">20 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/1d3044b5a8"><code>1d3044b5a8</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-26bd4bce7e</code>, <span class="nowrap">21 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/26bd4bce7e"><code>26bd4bce7e</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/compression/decompression-corrupt-input.any.js"><code>compression/<wbr>decompression-<wbr>corrupt-<wbr>input.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -34,7 +34,7 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/compression/decompression-corrupt-input.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>26</b> / 29</span></h3>
+<h3 class="run-head"><code>/compression/decompression-corrupt-input.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>29</b> / 29</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-6ec6ece0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the unchanged input for &#39;deflate&#39; should decompress successfully</span></div><a class="self" href="#s-6ec6ece0" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ecef5cb6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">truncating the input for &#39;deflate&#39; should give an error</span></div><a class="self" href="#s-ecef5cb6" aria-label="Link to this subtest">&para;</a></li>
@@ -61,14 +61,14 @@
 <li class="sub s-pass" id="s-f61a397f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">format &#39;gzip&#39; field DATA should be success for 4</span></div><a class="self" href="#s-f61a397f" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-10948542"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">format &#39;gzip&#39; field CRC should be error for 0</span></div><a class="self" href="#s-10948542" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-d399a1c9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">format &#39;gzip&#39; field ISIZE should be error for 1</span></div><a class="self" href="#s-d399a1c9" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6f70cba2"><details><summary><span class="mark">FAIL</span><span class="sub-name">the unchanged input for &#39;brotli&#39; should decompress successfully</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-6f70cba2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-00388f77"><details><summary><span class="mark">FAIL</span><span class="sub-name">truncating the input for &#39;brotli&#39; should give an error</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-00388f77" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-da0cd741"><details><summary><span class="mark">FAIL</span><span class="sub-name">trailing junk for &#39;brotli&#39; should give an error</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-da0cd741" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6f70cba2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the unchanged input for &#39;brotli&#39; should decompress successfully</span></div><a class="self" href="#s-6f70cba2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-00388f77"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">truncating the input for &#39;brotli&#39; should give an error</span></div><a class="self" href="#s-00388f77" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-da0cd741"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">trailing junk for &#39;brotli&#39; should give an error</span></div><a class="self" href="#s-da0cd741" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-7dd9f7a9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the deflate input compressed with dictionary should give an error</span></div><a class="self" href="#s-7dd9f7a9" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/compression/decompression-corrupt-input.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>26</b> / 29</span></h3>
+<h3 class="run-head"><code>/compression/decompression-corrupt-input.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>29</b> / 29</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-1e611cbe"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the unchanged input for &#39;deflate&#39; should decompress successfully</span></div><a class="self" href="#s-1e611cbe" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-2120c190"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">truncating the input for &#39;deflate&#39; should give an error</span></div><a class="self" href="#s-2120c190" aria-label="Link to this subtest">&para;</a></li>
@@ -95,14 +95,14 @@
 <li class="sub s-pass" id="s-1c7da5c7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">format &#39;gzip&#39; field DATA should be success for 4</span></div><a class="self" href="#s-1c7da5c7" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-dcf6c9d7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">format &#39;gzip&#39; field CRC should be error for 0</span></div><a class="self" href="#s-dcf6c9d7" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-19f66a9e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">format &#39;gzip&#39; field ISIZE should be error for 1</span></div><a class="self" href="#s-19f66a9e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a93474f4"><details><summary><span class="mark">FAIL</span><span class="sub-name">the unchanged input for &#39;brotli&#39; should decompress successfully</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-a93474f4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7300437f"><details><summary><span class="mark">FAIL</span><span class="sub-name">truncating the input for &#39;brotli&#39; should give an error</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-7300437f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5cea46d0"><details><summary><span class="mark">FAIL</span><span class="sub-name">trailing junk for &#39;brotli&#39; should give an error</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-5cea46d0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a93474f4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the unchanged input for &#39;brotli&#39; should decompress successfully</span></div><a class="self" href="#s-a93474f4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7300437f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">truncating the input for &#39;brotli&#39; should give an error</span></div><a class="self" href="#s-7300437f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5cea46d0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">trailing junk for &#39;brotli&#39; should give an error</span></div><a class="self" href="#s-5cea46d0" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-a968a57f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the deflate input compressed with dictionary should give an error</span></div><a class="self" href="#s-a968a57f" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/compression/decompression-corrupt-input.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>26</b> / 29</span></h3>
+<h3 class="run-head"><code>/compression/decompression-corrupt-input.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>29</b> / 29</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-70a64a23"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the unchanged input for &#39;deflate&#39; should decompress successfully</span></div><a class="self" href="#s-70a64a23" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-a7b5dd35"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">truncating the input for &#39;deflate&#39; should give an error</span></div><a class="self" href="#s-a7b5dd35" aria-label="Link to this subtest">&para;</a></li>
@@ -129,9 +129,9 @@
 <li class="sub s-pass" id="s-d41b8a49"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">format &#39;gzip&#39; field DATA should be success for 4</span></div><a class="self" href="#s-d41b8a49" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-c94f9fe3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">format &#39;gzip&#39; field CRC should be error for 0</span></div><a class="self" href="#s-c94f9fe3" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-b129f0da"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">format &#39;gzip&#39; field ISIZE should be error for 1</span></div><a class="self" href="#s-b129f0da" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-10c96496"><details><summary><span class="mark">FAIL</span><span class="sub-name">the unchanged input for &#39;brotli&#39; should decompress successfully</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-10c96496" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-31ffc771"><details><summary><span class="mark">FAIL</span><span class="sub-name">truncating the input for &#39;brotli&#39; should give an error</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-31ffc771" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-bc3bf116"><details><summary><span class="mark">FAIL</span><span class="sub-name">trailing junk for &#39;brotli&#39; should give an error</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-bc3bf116" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-10c96496"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the unchanged input for &#39;brotli&#39; should decompress successfully</span></div><a class="self" href="#s-10c96496" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-31ffc771"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">truncating the input for &#39;brotli&#39; should give an error</span></div><a class="self" href="#s-31ffc771" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bc3bf116"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">trailing junk for &#39;brotli&#39; should give an error</span></div><a class="self" href="#s-bc3bf116" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-3f24b5c7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the deflate input compressed with dictionary should give an error</span></div><a class="self" href="#s-3f24b5c7" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>

@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../compression/"><code>compression/</code></a></li><li aria-current="page"><code>decompression-<wbr>extra-<wbr>input.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>decompression-<wbr>extra-<wbr>input.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="compression/decompression-extra-input.any.js">
-<p class="figures-main"><span class="fg-pass">9</span><span class="fg-of"> / 12</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>3</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">12</span><span class="fg-of"> / 12</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-1d3044b5a8</code>, <span class="nowrap">20 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/1d3044b5a8"><code>1d3044b5a8</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-26bd4bce7e</code>, <span class="nowrap">21 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/26bd4bce7e"><code>26bd4bce7e</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/compression/decompression-extra-input.any.js"><code>compression/<wbr>decompression-<wbr>extra-<wbr>input.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -34,30 +34,30 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/compression/decompression-extra-input.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 4</span></h3>
+<h3 class="run-head"><code>/compression/decompression-extra-input.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>4</b> / 4</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-880fd06f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing deflate input with extra pad should still give the output</span></div><a class="self" href="#s-880fd06f" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-bc65aecd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing gzip input with extra pad should still give the output</span></div><a class="self" href="#s-bc65aecd" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-6292b9eb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing deflate-raw input with extra pad should still give the output</span></div><a class="self" href="#s-6292b9eb" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a3c3c055"><details><summary><span class="mark">FAIL</span><span class="sub-name">decompressing brotli input with extra pad should still give the output</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-a3c3c055" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a3c3c055"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing brotli input with extra pad should still give the output</span></div><a class="self" href="#s-a3c3c055" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/compression/decompression-extra-input.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 4</span></h3>
+<h3 class="run-head"><code>/compression/decompression-extra-input.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>4</b> / 4</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-ad7eaebb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing deflate input with extra pad should still give the output</span></div><a class="self" href="#s-ad7eaebb" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-7777810b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing gzip input with extra pad should still give the output</span></div><a class="self" href="#s-7777810b" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-acd8a344"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing deflate-raw input with extra pad should still give the output</span></div><a class="self" href="#s-acd8a344" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8e0090e8"><details><summary><span class="mark">FAIL</span><span class="sub-name">decompressing brotli input with extra pad should still give the output</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-8e0090e8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8e0090e8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing brotli input with extra pad should still give the output</span></div><a class="self" href="#s-8e0090e8" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/compression/decompression-extra-input.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 4</span></h3>
+<h3 class="run-head"><code>/compression/decompression-extra-input.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>4</b> / 4</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-f4888c2a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing deflate input with extra pad should still give the output</span></div><a class="self" href="#s-f4888c2a" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-d43649f9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing gzip input with extra pad should still give the output</span></div><a class="self" href="#s-d43649f9" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-8d52cd88"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing deflate-raw input with extra pad should still give the output</span></div><a class="self" href="#s-8d52cd88" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-02992788"><details><summary><span class="mark">FAIL</span><span class="sub-name">decompressing brotli input with extra pad should still give the output</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-02992788" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-02992788"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing brotli input with extra pad should still give the output</span></div><a class="self" href="#s-02992788" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
