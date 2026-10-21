@@ -9,6 +9,9 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Proxy wrappers need explicit borrowed-receiver security checks](architecture-proxy-wrappers-need-explicit-borrowed-receiver-security-checks.md) - When introducing a Proxy around a platform object, test borrowed getters, setters and methods as well as ordinary access. Origin and brand checks are separate obligations.
+- [Promise lifecycle hooks do not observe every reaction registration](architecture-promise-lifecycle-hooks-do-not-observe-every-reaction-registration.md) - Before using allocation or lifecycle hooks as registration hooks, test legal paths that allocate nothing and return unusual capabilities.
+- [Attach foreground task state before isolate initialization](architecture-attach-foreground-task-state-before-isolate-initialization.md) - A cached dependency is configured at first acquisition, which can occur inside the constructor.
 - [A WebSocket handshake belongs to its transport](architecture-a-websocket-handshake-belongs-to-its-transport.md) - A versioned handshake result is necessary, but only a real negotiated stream establishes the WebSocket.
 - [A streaming codec needs consumption and terminal state](architecture-a-streaming-codec-needs-consumption-and-terminal-state.md) - The codec reports what it consumed and whether it ended; the web algorithm decides what that means.
 - [Unload dispatch must guard reentry](architecture-unload-dispatch-must-guard-reentry.md) - Guard the reentered lifecycle operation, while preserving the script action that legitimately caused removal.
@@ -566,6 +569,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Browser failures need the exact assertion](spec-compliance-browser-failures-need-the-exact-assertion.md) - Read the failing step and engine behavior before inferring a browser-majority rule from file-level counts.
 
 ### Codegen
+- [Unforgeable accessors must be installed on derived instances](codegen-unforgeable-accessors-must-be-installed-on-derived-instances.md) - An inherited WebIDL member still needs explicit instance installation when the engine template does not inherit that property representation.
+- [Constructor arity removes only trailing optional arguments](codegen-constructor-arity-removes-only-trailing-optional-arguments.md) - Test non-trailing optional arguments explicitly; optional, nullable, variadic and overloaded cases alone do not cover the effective-list algorithm.
 - [A named special operation on a [Global] interface is a global function](codegen-a-named-special-operation-on-a-global-is-a-global-function.md) - A supplementary IDL member must not add a script-visible name the browsers lack - on a [Global] interface, a named special operation is a global function that shadows named access.
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
 
@@ -826,6 +831,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Measure a hot struct against allocator size classes](debugging-a-hot-struct-against-allocator-size-classes.md) - Compare the compiled request with its allocation bucket; a 16-byte field can cost 2 KiB.
 
 ### Workflow
+- [V8 first-use queues affect persistent-handle probes](measurement-v8-first-use-queues-affect-persistent-handle-probes.md) - A one-time increase is a hypothesis to explain, not permission to loosen a leak assertion. Use an independent control and identify the allocation.
 - [A sweep chunk with one runner writes an unsharded stream](workflow-a-sweep-chunk-with-one-runner-writes-an-unsharded-stream.md) - A complete file journal does not prove the accompanying subtest stream is complete. Reconcile the passing counts, and check duplicate variants.
 - [Trial an instrumentation mode over the whole worklist before the gate](workflow-trial-an-instrumentation-mode-over-the-whole-worklist-before-the-gate.md) - A runner mode enters the gate sweep only after a full-worklist trial matches an unmodified sweep file for file; compare a generation with the previous one before pushing gh-pages.
 - [Measure the three browsers with a probe page that reports home](workflow-measure-the-three-browsers-with-a-probe-page-that-reports-home.md) - For a value or a phase wpt.fyi cannot show, measure all three browsers with one probe page that reports to a local server - Firefox through `open -n -a`, Safari on chat - and cite the versions and the JSON.
