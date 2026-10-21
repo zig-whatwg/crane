@@ -1109,10 +1109,9 @@ pub fn createHTMLElement(
 /// Create an element the parser met in foreign content - in the SVG or MathML
 /// namespace - with the interface its local name and namespace call for.
 ///
-/// Deviation, stated: of the SVG element interfaces only SVGScriptElement is
-/// made (its `type`, and the script element state it keeps); every other
-/// foreign element is a plain Element (TODO: the rest of SVG's interfaces,
-/// SVGElement for the unknown ones, and MathMLElement).
+/// MathML Core 2.2.3 and 3.2.5 select MathMLElement and MathMLAnchorElement.
+/// Deviation, stated: SVG interfaces other than script and a still use
+/// plain Element (TODO: the rest of SVG and SVGElement for unknown ones).
 pub fn createForeignElement(
     allocator: Allocator,
     ctx: runtime.Context,
@@ -1127,6 +1126,12 @@ pub fn createForeignElement(
     // are still plain Elements (stated: their impls do not chain yet).
     if (namespace == .svg and std.mem.eql(u8, local_name, "a")) {
         return interfaces.SVGAElement.init(allocator, ctx);
+    }
+    if (namespace == .mathml) {
+        return if (std.mem.eql(u8, local_name, "a"))
+            interfaces.MathMLAnchorElement.init(allocator, ctx)
+        else
+            interfaces.MathMLElement.init(allocator, ctx);
     }
     return interfaces.Element.init(allocator, ctx);
 }

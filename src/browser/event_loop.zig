@@ -725,9 +725,9 @@ pub const EventLoop = struct {
     //
     // Crane renders nothing. Its rendering opportunities are the animation
     // frame timer (browser/Context.zig, a timer every 16 ms while frame
-    // callbacks wait), so the timers bound a deadline as the next rendering
-    // opportunity would. Every timer of this loop counts, not only the
-    // windows' maps of active timers: the engine's own and the idle
+    // callbacks or native autofocus candidates wait), so the timers bound a
+    // deadline as the next rendering opportunity would. Every timer counts,
+    // not only the windows' maps of active timers: the engine's own and idle
     // callbacks' timeouts make deadlines earlier, which a user agent may
     // always do ("The user agent is free to end an idle period early").
 

@@ -110,6 +110,7 @@ pub const unloading_cleanup = @import("unloading_cleanup.zig");
 pub const editor_states = @import("editor_states.zig");
 pub const idle_periods = @import("idle_periods.zig");
 pub const document_activity = @import("document_activity.zig");
+pub const document_autofocus = @import("document_autofocus.zig");
 /// A Document's back/forward cache state: "make document unsalvageable", its
 /// bfcache blocking details, and building not restored reasons.
 pub const bfcache = @import("bfcache.zig");
