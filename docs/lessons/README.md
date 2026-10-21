@@ -347,6 +347,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A native timer must preserve document task suspension](architecture-a-native-timer-must-preserve-document-task-suspension.md) - Preserve inactive-document delivery and transfer task ownership exactly once.
 
 ### Spec Compliance
+- [Element reference associations and frozen arrays have different lifetimes](spec-compliance-element-reference-associations-and-frozen-arrays-have-different-lifetimes.md) - A weak association and a strong returned snapshot are different holders; model and test each lifetime independently.
 - [Stream authentication is independent of prompts](spec-compliance-stream-authentication-is-independent-of-prompts.md) - Separate replay eligibility from prompt availability, and compare only browsers that implement the feature.
 - [XML prefix and default declaration rules are independent](spec-compliance-xml-prefix-and-default-declaration-rules-are-independent.md) - A shared branch does not make two observable mechanisms one change; isolate their tests and preserve any deferred behavior.
 - [SVG rel stubs override generated reflection](spec-compliance-svg-rel-stubs-override-generated-reflection.md) - Trace generated accessor selection before adding an implementation; test the existing cache's observable identity and retention when enabling it.
@@ -607,6 +608,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A generated import can rest on a typedef an upstream IDL file happens to declare](codegen-a-generated-import-can-rest-on-a-typedef-an-upstream-idl-file-happens-to-declare.md) - When a generated file relies on something being generated, codegen must generate it itself; find out by deleting an upstream file in a test fixture, not by waiting for upstream to delete it.
 
 ### Testing
+- [WPT testdriver selectors can test the wrong node](testing-wpt-testdriver-selectors-can-test-the-wrong-node.md) - Browser agreement validates the operation that actually ran, not necessarily the operation the test intended.
 - [Missing browser results may mean a test was replaced](testing-missing-browser-results-can-be-replaced-tests.md) - Test identity, observed behavior and implementer intent are three separate pieces of evidence. Keep all three explicit.
 - [Zig warning steps print failed-command footers](testing-zig-warning-steps-print-failed-command-footers.md) - Use the build summary and named test diagnostics to determine success; a command footer is context, not a result.
 - [Sweep streams include single-runner chunks](testing-sweep-streams-include-single-runner-chunks.md) - Equal file counts do not prove equal subtest evidence; verify complete report streams after collecting every chunk.
