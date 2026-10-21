@@ -43,3 +43,6 @@ pub fn set_onvalidationstatuschange(instance: *runtime.Instance, value: EventHan
     if (comptime @hasDecl(ActivationBlockersMixinImpl, "set_onvalidationstatuschange")) return try ActivationBlockersMixinImpl.set_onvalidationstatuschange(instance, value);
     try event_handlers.setValue(EventHandler, instance, "onvalidationstatuschange", value);
 }
+
+/// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+pub const legacy_treat_non_object_as_null = .{"set_onvalidationstatuschange"};

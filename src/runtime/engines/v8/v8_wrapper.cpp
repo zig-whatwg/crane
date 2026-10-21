@@ -6627,7 +6627,8 @@ bool v8_Object_SetAccessorPropertyChecked(
     FunctionCallback getter,
     FunctionCallback setter,
     bool getter_accepts_any_receiver,
-    bool setter_accepts_any_receiver
+    bool setter_accepts_any_receiver,
+    int attributes
 );
 
 bool v8_Object_SetAccessorProperty(
@@ -6637,7 +6638,7 @@ bool v8_Object_SetAccessorProperty(
     FunctionCallback getter,
     FunctionCallback setter
 ) {
-    return v8_Object_SetAccessorPropertyChecked(object, context, name, getter, setter, true, true);
+    return v8_Object_SetAccessorPropertyChecked(object, context, name, getter, setter, true, true, None);
 }
 
 /// v8_Object_SetAccessorProperty with v8_ObjectTemplate_SetAccessorPropertyChecked's
@@ -6650,7 +6651,8 @@ bool v8_Object_SetAccessorPropertyChecked(
     FunctionCallback getter,
     FunctionCallback setter,
     bool getter_accepts_any_receiver,
-    bool setter_accepts_any_receiver
+    bool setter_accepts_any_receiver,
+    int attributes
 ) {
     Isolate* isolate = Isolate::GetCurrent();
     NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
@@ -6701,8 +6703,8 @@ bool v8_Object_SetAccessorPropertyChecked(
     Local<Value> setter_value = setter ? Local<Value>(setter_func) : Undefined(isolate).As<Value>();
 
     PropertyDescriptor desc(getter_value, setter_value);
-    desc.set_enumerable(true);
-    desc.set_configurable(true);
+    desc.set_enumerable((attributes & DontEnum) == 0);
+    desc.set_configurable((attributes & DontDelete) == 0);
 
     // Define the property on the object
     return obj->DefineProperty(ctx, key.As<Name>(), desc).FromMaybe(false);

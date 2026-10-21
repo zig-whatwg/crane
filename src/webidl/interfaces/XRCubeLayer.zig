@@ -213,6 +213,9 @@ pub const XRCubeLayer = struct {
         try event_handlers.setValue(EventHandler, instance, "onredraw", value);
     }
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onredraw"};
+
     /// WebIDL interface types: the interface each interface-typed argument
     /// and attribute value converts to - a TypeError unless the value implements
     /// it (function, argument index - an attribute setter's value is 0 -,

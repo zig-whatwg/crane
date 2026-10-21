@@ -213,6 +213,8 @@ pub const EncodedAudioChunk = struct {
         break :blk @hasDecl(impls.EncodedAudioChunk, "serializationSteps") and @hasDecl(impls.EncodedAudioChunk, "deserializationSteps");
     };
 
+    pub const constructor_required_arguments: usize = 1;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator

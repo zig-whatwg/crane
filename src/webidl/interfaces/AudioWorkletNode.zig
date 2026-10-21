@@ -195,6 +195,8 @@ pub const AudioWorkletNode = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 2;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -229,4 +231,7 @@ pub const AudioWorkletNode = struct {
         if (comptime @hasDecl(AudioWorkletNodeImpl, "set_onprocessorerror")) return try AudioWorkletNodeImpl.set_onprocessorerror(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onprocessorerror", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onprocessorerror"};
 };

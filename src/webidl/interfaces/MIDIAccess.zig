@@ -212,4 +212,7 @@ pub const MIDIAccess = struct {
     pub fn get_sysexEnabled(instance: *runtime.Instance) anyerror!bool {
         return try MIDIAccessImpl.get_sysexEnabled(instance);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onstatechange"};
 };

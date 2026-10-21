@@ -191,4 +191,7 @@ pub const PresentationConnectionList = struct {
         if (comptime @hasDecl(PresentationConnectionListImpl, "set_onconnectionavailable")) return try PresentationConnectionListImpl.set_onconnectionavailable(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onconnectionavailable", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onconnectionavailable"};
 };

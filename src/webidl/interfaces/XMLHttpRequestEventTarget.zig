@@ -275,4 +275,7 @@ pub const XMLHttpRequestEventTarget = struct {
         if (comptime @hasDecl(XMLHttpRequestEventTargetImpl, "set_onloadend")) return try XMLHttpRequestEventTargetImpl.set_onloadend(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onloadend", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onloadstart", "set_onprogress", "set_onabort", "set_onerror", "set_onload", "set_ontimeout", "set_onloadend" };
 };

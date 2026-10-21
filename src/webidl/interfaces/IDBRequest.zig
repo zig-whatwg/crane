@@ -249,4 +249,7 @@ pub const IDBRequest = struct {
         if (comptime @hasDecl(IDBRequestImpl, "set_onerror")) return try IDBRequestImpl.set_onerror(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onsuccess", "set_onerror" };
 };

@@ -182,4 +182,7 @@ pub const CreateMonitor = struct {
         if (comptime @hasDecl(CreateMonitorImpl, "set_ondownloadprogress")) return try CreateMonitorImpl.set_ondownloadprogress(instance, value);
         try event_handlers.setValue(EventHandler, instance, "ondownloadprogress", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_ondownloadprogress"};
 };

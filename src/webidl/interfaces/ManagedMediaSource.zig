@@ -193,6 +193,8 @@ pub const ManagedMediaSource = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -226,4 +228,7 @@ pub const ManagedMediaSource = struct {
         if (comptime @hasDecl(ManagedMediaSourceImpl, "set_onendstreaming")) return try ManagedMediaSourceImpl.set_onendstreaming(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onendstreaming", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onstartstreaming", "set_onendstreaming" };
 };

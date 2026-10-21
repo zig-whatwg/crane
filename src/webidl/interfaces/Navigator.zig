@@ -311,6 +311,7 @@ pub const Navigator = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        pub const unforgeable_members = .{"epubReadingSystem"};
 
         /// [SecureContext] members - their own, their partial interface's or
         /// their mixin's: hidden in a realm that is not a secure context

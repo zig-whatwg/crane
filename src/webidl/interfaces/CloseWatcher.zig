@@ -188,6 +188,8 @@ pub const CloseWatcher = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -229,4 +231,7 @@ pub const CloseWatcher = struct {
     pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
         return try CloseWatcherImpl.call_destroy(instance);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_oncancel", "set_onclose" };
 };

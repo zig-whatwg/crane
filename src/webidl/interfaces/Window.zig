@@ -649,6 +649,7 @@ pub const Window = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        pub const unforgeable_members = .{ "window", "document", "location", "top" };
 
         /// WebIDL 2.5.6 special operations, own or inherited (the derived-most):
         /// the function that runs each. The binding installs indexed and named
@@ -2652,6 +2653,9 @@ pub const Window = struct {
     pub const legacy_null_to_empty = .{
         .{ "call_open", 0b100 },
     };
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onorientationchange", "set_onappinstalled", "set_onbeforeinstallprompt", "set_ondeviceorientation", "set_ondeviceorientationabsolute", "set_ondevicemotion", "set_onabort", "set_onauxclick", "set_onbeforeinput", "set_onbeforematch", "set_onbeforetoggle", "set_onblur", "set_oncancel", "set_oncanplay", "set_oncanplaythrough", "set_onchange", "set_onclick", "set_onclose", "set_oncommand", "set_oncontextlost", "set_oncontextmenu", "set_oncontextrestored", "set_oncopy", "set_oncuechange", "set_oncut", "set_ondblclick", "set_ondrag", "set_ondragend", "set_ondragenter", "set_ondragleave", "set_ondragover", "set_ondragstart", "set_ondrop", "set_ondurationchange", "set_onemptied", "set_onended", "set_onerror", "set_onfocus", "set_onformdata", "set_oninput", "set_oninvalid", "set_onkeydown", "set_onkeypress", "set_onkeyup", "set_onload", "set_onloadeddata", "set_onloadedmetadata", "set_onloadstart", "set_onmousedown", "set_onmouseenter", "set_onmouseleave", "set_onmousemove", "set_onmouseout", "set_onmouseover", "set_onmouseup", "set_onpaste", "set_onpause", "set_onplay", "set_onplaying", "set_onprogress", "set_onratechange", "set_onreset", "set_onresize", "set_onscroll", "set_onscrollend", "set_onsecuritypolicyviolation", "set_onseeked", "set_onseeking", "set_onselect", "set_onslotchange", "set_onstalled", "set_onsubmit", "set_onsuspend", "set_ontimeupdate", "set_ontoggle", "set_onvolumechange", "set_onwaiting", "set_onwebkitanimationend", "set_onwebkitanimationiteration", "set_onwebkitanimationstart", "set_onwebkittransitionend", "set_onwheel", "set_onanimationstart", "set_onanimationiteration", "set_onanimationend", "set_onanimationcancel", "set_onsnapchanged", "set_onsnapchanging", "set_ontransitionrun", "set_ontransitionstart", "set_ontransitionend", "set_ontransitioncancel", "set_onfencedtreeclick", "set_onpointerover", "set_onpointerenter", "set_onpointerdown", "set_onpointermove", "set_onpointerrawupdate", "set_onpointerup", "set_onpointercancel", "set_onpointerout", "set_onpointerleave", "set_ongotpointercapture", "set_onlostpointercapture", "set_onselectstart", "set_onselectionchange", "set_ontouchstart", "set_ontouchend", "set_ontouchmove", "set_ontouchcancel", "set_onbeforexrselect", "set_onafterprint", "set_onbeforeprint", "set_onbeforeunload", "set_onhashchange", "set_onlanguagechange", "set_onmessage", "set_onmessageerror", "set_onoffline", "set_ononline", "set_onpagehide", "set_onpagereveal", "set_onpageshow", "set_onpageswap", "set_onpopstate", "set_onrejectionhandled", "set_onstorage", "set_onunhandledrejection", "set_onunload", "set_ongamepadconnected", "set_ongamepaddisconnected", "set_onportalactivate" };
 
     /// WebIDL `object` arguments (or sequences of `object`): a value that is
     /// not an Object throws a TypeError (bit i = argument i).

@@ -373,6 +373,8 @@ pub const RTCPeerConnection = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -691,6 +693,9 @@ pub const RTCPeerConnection = struct {
             .{ .function = "call_setLocalDescription__1", .implemented = @hasDecl(RTCPeerConnectionImpl, "call_setLocalDescription__1"), .args = &.{ .{ .kinds = &.{.dictionary} }, .{ .kinds = &.{.callback_function} }, .{ .kinds = &.{.callback_function} } } },
         } },
     };
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onnegotiationneeded", "set_onicecandidate", "set_onicecandidateerror", "set_onsignalingstatechange", "set_oniceconnectionstatechange", "set_onicegatheringstatechange", "set_onconnectionstatechange", "set_ontrack", "set_ondatachannel" };
 
     /// WebIDL interface types: the interface each interface-typed argument
     /// and attribute value converts to - a TypeError unless the value implements

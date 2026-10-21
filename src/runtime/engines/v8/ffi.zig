@@ -3375,6 +3375,7 @@ pub extern fn v8_Object_SetAccessorPropertyChecked(
     setter: ?FunctionCallback,
     getter_accepts_any_receiver: bool,
     setter_accepts_any_receiver: bool,
+    attributes: c_int,
 ) bool;
 /// The cross-origin template callbacks, for the snapshot's external
 /// references: writes up to `capacity`, answers the count.

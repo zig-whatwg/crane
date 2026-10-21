@@ -44,3 +44,6 @@ pub fn set_onmessageerror(instance: *runtime.Instance, value: EventHandler) anye
     if (comptime @hasDecl(MessageEventTargetImpl, "set_onmessageerror")) return try MessageEventTargetImpl.set_onmessageerror(instance, value);
     try event_handlers.setValue(EventHandler, instance, "onmessageerror", value);
 }
+
+/// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+pub const legacy_treat_non_object_as_null = .{ "set_onmessage", "set_onmessageerror" };

@@ -322,6 +322,9 @@ pub const DedicatedWorkerGlobalScope = struct {
         } },
     };
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onrtctransform", "set_onmessage", "set_onmessageerror" };
+
     /// WebIDL `object` arguments (or sequences of `object`): a value that is
     /// not an Object throws a TypeError (bit i = argument i).
     pub const object_arguments = .{

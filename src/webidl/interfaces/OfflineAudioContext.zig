@@ -234,6 +234,8 @@ pub const OfflineAudioContext = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 1;
+
     /// Arguments for constructor (WebIDL overloading)
     pub const ConstructorArgs = union(enum) {
         /// constructor(contextOptions)
@@ -293,6 +295,9 @@ pub const OfflineAudioContext = struct {
     pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try OfflineAudioContextImpl.call_close(instance);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_oncomplete"};
 
     /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
     /// the infinities throw a TypeError for (bit i = argument i; an attribute
