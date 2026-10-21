@@ -3079,7 +3079,10 @@ pub extern fn v8_CompileEventHandlerWithParameters(
 /// script's start in its document; the column only on the first line) and
 /// carries `host_defined` (null: none). Free the result with
 /// v8_FreeScriptCompileResult; its script is OWNED.
-pub extern fn v8_Script_CompileWithHostDefined_Safe(context: *Context, source: *String, resource_name: ?*String, line_offset: c_int, column_offset: c_int, host_defined: ?*anyopaque) *V8ScriptCompileResult;
+pub extern fn v8_Script_CompileWithHostDefined_Safe(context: *Context, source: *String, resource_name: ?*String, line_offset: c_int, column_offset: c_int, host_defined: ?*anyopaque, muted_errors: bool) *V8ScriptCompileResult;
+/// HostPromiseRejectionTracker step 2: the running script's muted-errors
+/// flag, read from its host-defined options. No handles leave this query.
+pub extern fn v8_Isolate_CurrentScriptHasMutedErrors(isolate: *Isolate) bool;
 /// HTML "run a classic script" with rethrow errors true: compile and run, and
 /// on an abrupt completion TryCatch::ReThrow (the original message kept).
 /// 0 normal; 1 the exception is pending again; 2 it was muted and cleared;
@@ -3194,6 +3197,9 @@ pub extern fn v8_Value_ToObject(context: *Context, value: *Value) ?*Value;
 /// HTML "extract error information" for what a callback threw: a thrown
 /// value that is not an Error carries no position of its own.
 pub extern fn v8_Function_CallCatchingWithSite(context: *Context, function: *Value, recv: ?*Value, argc: c_int, argv: ?[*]const *Value, threw: *bool, site: *?*V8ErrorInfo) ?*Value;
+
+/// ToString's result or thrown value, OWNED, with its original throw site.
+pub extern fn v8_Value_ToStringCatchingWithSite(context: *Context, value: *Value, threw: *bool, site: *?*V8ErrorInfo) ?*Value;
 /// ECMAScript Construct(function, argv) - newTarget the function - under a
 /// TryCatch: the result with `threw.*` false, or the thrown value with
 /// `threw.*` true and `site.*` where it was thrown. Null (threw true) only

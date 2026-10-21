@@ -1146,6 +1146,21 @@ pub inline fn runClassicScript(realm: Context, source: ScriptSource, url: []cons
     return impl.runClassicScript(realm, source, url, host_defined, reporter);
 }
 
+/// The classic script's host record and muted-errors flag (HTML 8.1.4.1).
+/// The record is borrowed as for runClassicScript; the flag is copied into
+/// the script and applies to later calls into its functions too.
+pub const ClassicScriptOptions = struct {
+    host_defined: ?*anyopaque = null,
+    muted_errors: bool = false,
+};
+
+/// HTML "run a classic script", preserving the script's muted-errors flag
+/// for HostPromiseRejectionTracker. The reporter handles runtime errors as
+/// for runClassicScript; the existing convenience operation defaults false.
+pub inline fn runClassicScriptWithOptions(realm: Context, source: ScriptSource, url: []const u8, options: ClassicScriptOptions, reporter: Reporter) Error!void {
+    return impl.runClassicScriptWithOptions(realm, source, url, options, reporter);
+}
+
 /// HTML "run a classic script" with rethrow errors true - what
 /// importScripts() runs each script with ("import scripts into worker global
 /// scope" step 6.2), from inside a call from script. Nothing is reported;
@@ -1319,6 +1334,16 @@ pub inline fn releaseModuleRecord(record: *ModuleRecord) void {
 /// Gecko (CallbackObject::CallSetup) refuse every such callback.
 pub inline fn invokeCallbackFunction(realm: Context, callback: *const CallbackFunction, this_arg: CallbackThis, args: []const JSValue, behavior: ExceptionBehavior) Error!Completion {
     return impl.invokeCallbackFunction(realm, callback, this_arg, args, behavior);
+}
+
+/// The WebIDL callback's declared return type. Conversion is part of invoke,
+/// before either the stored incumbent or the callback's relevant realm leaves.
+pub const CallbackReturnType = enum { any, nullable_dom_string };
+
+/// WebIDL invoke step 13, including return conversion. A conversion throw
+/// follows `behavior` with the original throw site's error information.
+pub inline fn invokeCallbackFunctionWithReturnType(realm: Context, callback: *const CallbackFunction, this_arg: CallbackThis, args: []const JSValue, behavior: ExceptionBehavior, return_type: CallbackReturnType) Error!Completion {
+    return impl.invokeCallbackFunctionWithReturnType(realm, callback, this_arg, args, behavior, return_type);
 }
 
 /// WebIDL "construct a callback function" (3.12): Construct(F, args) for a

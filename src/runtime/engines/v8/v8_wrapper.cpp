@@ -11591,14 +11591,29 @@ Global<Value>* v8_CompileEventHandlerWithParameters(
 }
 
 /// A script or module's ScriptOrigin host-defined options for the engine
-/// protocol: [kind, host_defined], the host's pointer as a Number (exact: a
+/// protocol: [kind, host_defined, muted_errors], the host's pointer as a Number (exact: a
 /// user-space address is below 2^53). `kind` is 0 for a classic script, 1
 /// for a module - what HostLoadImportedModule's referrer is.
-static Local<PrimitiveArray> protocolHostDefinedOptions(Isolate* isolate, int kind, void* host_defined) {
-    Local<PrimitiveArray> options = PrimitiveArray::New(isolate, 2);
+static Local<PrimitiveArray> protocolHostDefinedOptions(Isolate* isolate, int kind, void* host_defined, bool muted_errors = false) {
+    Local<PrimitiveArray> options = PrimitiveArray::New(isolate, 3);
     options->Set(isolate, 0, Integer::New(isolate, kind));
     options->Set(isolate, 1, Number::New(isolate, static_cast<double>(reinterpret_cast<uintptr_t>(host_defined))));
+    options->Set(isolate, 2, Boolean::New(isolate, muted_errors));
     return options;
+}
+
+/// HTML HostPromiseRejectionTracker step 2. The flag belongs to the running
+/// script, including a function invoked after its initial evaluation ended.
+/// Local handles only; the script itself keeps its host-defined options.
+bool v8_Isolate_CurrentScriptHasMutedErrors(Isolate* isolate) {
+    HandleScope scope(isolate);
+    Local<Data> options;
+    if (!isolate->GetCurrentHostDefinedOptions().ToLocal(&options) || !options->IsFixedArray()) return false;
+    Local<PrimitiveArray> array = Local<PrimitiveArray>::Cast(options);
+    if (array->Length() < 3) return false;
+    Local<Primitive> kind = array->Get(isolate, 0);
+    return kind->IsInt32() && kind.As<Int32>()->Value() == 0 &&
+           array->Get(isolate, 2)->IsTrue();
 }
 
 /// Compile a classic script with a ScriptOrigin naming `resource_name` (null:
@@ -11614,7 +11629,8 @@ V8ScriptCompileResult* v8_Script_CompileWithHostDefined_Safe(
     Global<String>* resource_name,
     int line_offset,
     int column_offset,
-    void* host_defined
+    void* host_defined,
+    bool muted_errors
 ) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
@@ -11629,7 +11645,7 @@ V8ScriptCompileResult* v8_Script_CompileWithHostDefined_Safe(
     result->error = nullptr;
 
     Local<Data> host_defined_options;
-    if (host_defined) host_defined_options = protocolHostDefinedOptions(isolate, 0, host_defined);
+    if (host_defined || muted_errors) host_defined_options = protocolHostDefinedOptions(isolate, 0, host_defined, muted_errors);
     ScriptOrigin origin(local_resource_name, line_offset, column_offset, false, -1, Local<Value>(), false, false, false, host_defined_options);
 
     TryCatch try_catch(isolate);
@@ -11682,7 +11698,7 @@ int v8_Script_RunRethrowingErrors(
     Local<Value> local_resource_name = resource_name ? resource_name->Get(isolate).As<Value>() : String::Empty(isolate).As<Value>();
 
     Local<Data> host_defined_options;
-    if (host_defined) host_defined_options = protocolHostDefinedOptions(isolate, 0, host_defined);
+    if (host_defined || muted_errors) host_defined_options = protocolHostDefinedOptions(isolate, 0, host_defined, muted_errors);
     ScriptOrigin origin(local_resource_name, line_offset, column_offset, false, -1, Local<Value>(), false, false, false, host_defined_options);
 
     TryCatch try_catch(isolate);
@@ -11755,7 +11771,7 @@ static void protocolReadHostDefined(Isolate* isolate, Local<Data> options, int* 
     *host_defined = nullptr;
     if (options.IsEmpty() || !options->IsFixedArray()) return;
     Local<PrimitiveArray> array = Local<PrimitiveArray>::Cast(options);
-    if (array->Length() != 2) return;
+    if (array->Length() < 2) return;
     Local<Primitive> k = array->Get(isolate, 0);
     Local<Primitive> p = array->Get(isolate, 1);
     if (!k->IsInt32() || !p->IsNumber()) return;
@@ -12409,6 +12425,35 @@ Global<Value>* v8_Function_CallCatchingWithSite(
 
     *threw = false;
     return trackHandle(new Global<Value>(isolate, maybe_result.ToLocalChecked()));
+}
+
+/// WebIDL DOMString conversion inside the callback's prepared scopes. The
+/// returned Global (string or thrown value) and copied throw site are owned
+/// by the caller, exactly as in v8_Function_CallCatchingWithSite.
+Global<Value>* v8_Value_ToStringCatchingWithSite(
+    Global<Context>* context, Global<Value>* value, bool* threw,
+    V8ErrorInfo** site
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    *threw = true;
+    *site = nullptr;
+    if (!context || !value || value->IsEmpty()) return nullptr;
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    TryCatch try_catch(isolate);
+    try_catch.SetCaptureMessage(true);
+    Local<String> result;
+    const bool converted = value->Get(isolate)->ToString(ctx).ToLocal(&result);
+    if (try_catch.HasCaught()) {
+        if (!try_catch.CanContinue()) return nullptr;
+        Global<Value>* thrown = trackHandle(new Global<Value>(isolate, try_catch.Exception()));
+        *site = errorInfoAtThrowSite(isolate, ctx, try_catch);
+        return thrown;
+    }
+    if (!converted) return nullptr;
+    *threw = false;
+    return trackHandle(new Global<Value>(isolate, result));
 }
 
 /// ECMAScript Construct(`function`, `argv`) in `context` - newTarget the

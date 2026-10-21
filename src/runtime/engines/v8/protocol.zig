@@ -291,8 +291,12 @@ fn forbidScriptInAgentHold(agent: *Agent) void {
 }
 
 pub fn runClassicScript(realm: Context, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque, reporter: engine.Reporter) Error!void {
+    return runClassicScriptWithOptions(realm, source, url, .{ .host_defined = host_defined }, reporter);
+}
+
+pub fn runClassicScriptWithOptions(realm: Context, source: engine.ScriptSource, url: []const u8, options: engine.ClassicScriptOptions, reporter: engine.Reporter) Error!void {
     forbidScriptInHold(realm);
-    return protocol_scripts.runClassicScript(realm, source, url, host_defined, reporter);
+    return protocol_scripts.runClassicScriptWithOptions(realm, source, url, options, reporter);
 }
 
 pub fn runClassicScriptRethrowingErrors(realm: Context, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque, muted_errors: bool) Error!void {
@@ -369,6 +373,13 @@ const protocol_callbacks = @import("protocol_callbacks.zig");
 pub fn invokeCallbackFunction(realm: Context, callback: *const engine.CallbackFunction, this_arg: engine.CallbackThis, args: []const JSValue, behavior: engine.ExceptionBehavior) Error!engine.Completion {
     forbidScriptInHold(realm);
     return protocol_callbacks.invokeCallbackFunction(realm, callback, this_arg, args, behavior);
+}
+
+pub fn invokeCallbackFunctionWithReturnType(realm: Context, callback: *const engine.CallbackFunction, this_arg: engine.CallbackThis, args: []const JSValue, behavior: engine.ExceptionBehavior, return_type: engine.CallbackReturnType) Error!engine.Completion {
+    forbidScriptInHold(realm);
+    return switch (return_type) {
+        inline else => |kind| protocol_callbacks.invokeCallbackFunctionWithReturnType(realm, callback, this_arg, args, behavior, kind),
+    };
 }
 
 pub fn constructCallbackFunction(realm: Context, callback: *const engine.CallbackFunction, args: []const JSValue) Error!engine.Completion {

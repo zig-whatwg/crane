@@ -268,7 +268,7 @@ pub fn originOffsets(start: engine.SourcePosition) struct { line: c_int, column:
     };
 }
 
-fn evaluate(scope: ScriptScope, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque) Error!Evaluation {
+fn evaluate(scope: ScriptScope, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque, muted_errors: bool) Error!Evaluation {
     const isolate = scope.isolate;
     const context = scope.context();
 
@@ -283,7 +283,7 @@ fn evaluate(scope: ScriptScope, source: engine.ScriptSource, url: []const u8, ho
     defer if (name) |n| ffi.v8_String_Dispose(n);
     if (url.len > 0) name = try support.newString(isolate, url);
 
-    var evaluation = Evaluation{ .compiled = ffi.v8_Script_CompileWithHostDefined_Safe(context, text.text, name, text.line_offset, text.column_offset, host_defined) };
+    var evaluation = Evaluation{ .compiled = ffi.v8_Script_CompileWithHostDefined_Safe(context, text.text, name, text.line_offset, text.column_offset, host_defined, muted_errors) };
     // "Create a classic script": a script that does not parse has a parse
     // error, which run a classic script step 6 turns into the evaluation
     // status - thrown, like anything evaluation throws.
@@ -307,6 +307,7 @@ const EvaluateAndReport = struct {
     source: engine.ScriptSource,
     url: []const u8,
     host_defined: ?*anyopaque,
+    muted_errors: bool = false,
     reporter: engine.Reporter,
     /// Keep the normal completion's value.
     keep_value: bool,
@@ -320,7 +321,7 @@ const EvaluateAndReport = struct {
     fn run(data: ?*anyopaque) callconv(.c) void {
         const self: *EvaluateAndReport = @ptrCast(@alignCast(data orelse return));
         // 5-7. The evaluation status: the parse error, or ScriptEvaluation.
-        var evaluation = evaluate(self.scope, self.source, self.url, self.host_defined) catch |err| {
+        var evaluation = evaluate(self.scope, self.source, self.url, self.host_defined, self.muted_errors) catch |err| {
             self.failure = err;
             return;
         };
@@ -351,6 +352,10 @@ const EvaluateAndReport = struct {
 
 /// HTML "run a classic script" with rethrow errors false.
 pub fn runClassicScript(realm: Context, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque, reporter: engine.Reporter) Error!void {
+    return runClassicScriptWithOptions(realm, source, url, .{ .host_defined = host_defined }, reporter);
+}
+
+pub fn runClassicScriptWithOptions(realm: Context, source: engine.ScriptSource, url: []const u8, options: engine.ClassicScriptOptions, reporter: engine.Reporter) Error!void {
     // 1-3. The settings object is the realm's; "check if we can run script"
     // and the long-animation-frame timing are the host's.
     // 4. Prepare to run script.
@@ -359,7 +364,8 @@ pub fn runClassicScript(realm: Context, source: engine.ScriptSource, url: []cons
         .realm = realm,
         .source = source,
         .url = url,
-        .host_defined = host_defined,
+        .host_defined = options.host_defined,
+        .muted_errors = options.muted_errors,
         .reporter = reporter,
         .keep_value = false,
     };
@@ -574,7 +580,13 @@ pub fn compileEventHandler(realm: Context, source: *const engine.EventHandlerSou
         offsets.column,
         &parse_error,
     );
-    if (function) |f| return .{ .value = realm_entry.owned(f) };
+    if (function) |f| {
+        // The raw-handler path transfers this same Global directly, without
+        // takeCallbackFunction. Detaching the document must weaken its root
+        // just as it weakens an IDL-assigned callback's (HTML steps 3.12-13).
+        if (context_manager.keyOf(context)) |key| ffi.v8_Global_TagRealm(f, key);
+        return .{ .value = realm_entry.owned(f) };
+    }
 
     // 7. The body does not parse: 2. a SyntaxError of the settings object's
     // realm, based on `location` - V8 counts its line from the body's

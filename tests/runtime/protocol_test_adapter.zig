@@ -149,6 +149,10 @@ pub fn runClassicScript(realm: Context, source: engine.ScriptSource, url: []cons
 /// The test adapter parses no script, and has no engine to leave an
 /// exception pending in: an empty script completes; a muted one "throws"
 /// (the host's NetworkError path); any other cannot be run.
+pub fn runClassicScriptWithOptions(realm: Context, source: engine.ScriptSource, url: []const u8, options: engine.ClassicScriptOptions, reporter: engine.Reporter) Error!void {
+    return runClassicScript(realm, source, url, options.host_defined, reporter);
+}
+
 pub fn runClassicScriptRethrowingErrors(_: Context, source: engine.ScriptSource, _: []const u8, _: ?*anyopaque, muted_errors: bool) Error!void {
     const text = switch (source) {
         .utf8 => |bytes| bytes,
@@ -213,6 +217,11 @@ pub fn releaseModuleRecord(_: *engine.ModuleRecord) void {}
 /// No engine: no callback runs, so none of a Window whose Document is not
 /// fully active either (engine_protocol.zig invokeCallbackFunction).
 pub fn invokeCallbackFunction(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
+    return error.NotSupported;
+}
+
+/// Typed callback return conversion runs before callback scope cleanup.
+pub fn invokeCallbackFunctionWithReturnType(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior, _: engine.CallbackReturnType) Error!engine.Completion {
     return error.NotSupported;
 }
 /// No engine: nothing to construct.

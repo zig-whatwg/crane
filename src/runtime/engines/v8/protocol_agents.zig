@@ -608,6 +608,10 @@ fn onPromiseReject(isolate: *ffi.Isolate, event: c_int, promise: *ffi.Value, rea
         if (reason) |r| ffi.v8_Global_Dispose(r);
     };
 
+    // HTML HostPromiseRejectionTracker steps 1-2: a running script with
+    // muted errors suppresses both reject and handle. Nothing is adopted.
+    if (ffi.v8_Isolate_CurrentScriptHasMutedErrors(isolate)) return;
+
     const record = recordOf(isolate) orelse return;
     const tracker = record.hooks.promiseRejectionTracker orelse return;
     const operation: engine.RejectionOperation = switch (event) {

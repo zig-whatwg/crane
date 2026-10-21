@@ -174,6 +174,10 @@ pub fn runClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, _: ?*
 }
 /// Runs no script yet, as runClassicScript. The route: the engine's own
 /// rethrow - an error object carries the location it was thrown at.
+pub fn runClassicScriptWithOptions(_: Context, _: engine.ScriptSource, _: []const u8, _: engine.ClassicScriptOptions, _: engine.Reporter) Error!void {
+    return error.NotSupported;
+}
+
 pub fn runClassicScriptRethrowingErrors(_: Context, _: engine.ScriptSource, _: []const u8, _: ?*anyopaque, _: bool) Error!void {
     return error.NotSupported;
 }
@@ -237,6 +241,11 @@ pub fn releaseModuleRecord(_: *engine.ModuleRecord) void {}
 /// or reported, as the V8 adapter does (engine_protocol.zig
 /// invokeCallbackFunction; tests/v8/page_realm_operations_test.zig pins it).
 pub fn invokeCallbackFunction(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
+    return error.NotSupported;
+}
+
+/// Typed callback return conversion runs before callback scope cleanup.
+pub fn invokeCallbackFunctionWithReturnType(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior, _: engine.CallbackReturnType) Error!engine.Completion {
     return error.NotSupported;
 }
 /// WebIDL "construct a callback function". Linked: JSObjectIsConstructor
