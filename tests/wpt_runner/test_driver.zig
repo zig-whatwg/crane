@@ -16,6 +16,8 @@
 //!   get_all_cookies(ctx)          WebDriver 14.1 Get All Cookies
 //!   get_named_cookie(name, ctx)   WebDriver 14.2 Get Named Cookie
 //!   delete_all_cookies(ctx)       WebDriver 14.5 Delete All Cookies
+//!   get_computed_role(element)    WebDriver 12.4.9 Get Computed Role
+//!   get_computed_label(element)   WebDriver 12.4.10 Get Computed Label
 //!
 //! Each returns a promise and runs as tasks: the command's steps run from a
 //! timer on the page's event loop, a tick of actions per timer, each tick
@@ -31,10 +33,10 @@
 //! operation". Offsets from an element origin are not modelled: the pointer
 //! is over the element, as if at its centre.
 //!
-//! Lifetimes. A command holds the elements it will act on weakly (their
-//! generation): a listener can remove or collect them, and a closed popup's
-//! realm must not be kept alive by a command waiting on it. Every armed timer
-//! belongs to a command in `commands`; `endTest` - run by the runner when a
+//! Lifetimes. Input commands hold elements weakly (their generation): a
+//! listener can remove or collect them. Computed-name and computed-role
+//! commands own their pending argument and keep the weak teardown guard.
+//! Every armed timer belongs to a command in `commands`; `endTest` - run when a
 //! test ends, before its page goes, and at shutdown - cancels them and gives
 //! back every promise still pending.
 
@@ -67,7 +69,7 @@ pub const vendor_path = "/resources/testdriver-vendor.js";
 // The driver: its natives, its commands, the session's input state
 // ============================================================================
 
-const Native = enum { click, send_keys, action_sequence, minimize_window, set_window_rect, get_window_rect, get_all_cookies, get_named_cookie, delete_all_cookies, set_permission };
+const Native = enum { click, send_keys, action_sequence, minimize_window, set_window_rect, get_window_rect, get_all_cookies, get_named_cookie, delete_all_cookies, set_permission, get_computed_role, get_computed_label };
 
 fn nativeName(comptime native: Native) []const u8 {
     return "__crane_test_driver_" ++ @tagName(native);
@@ -248,7 +250,7 @@ const Failure = struct {
 // Commands
 // ============================================================================
 
-const Kind = enum { click, send_keys, actions, minimize, restore, get_rect, get_cookies, get_named_cookie, delete_cookies, set_permission };
+const Kind = enum { click, send_keys, actions, minimize, restore, get_rect, get_cookies, get_named_cookie, delete_cookies, set_permission, computed_role, computed_label };
 
 const Command = struct {
     driver: *TestDriver,
@@ -258,8 +260,10 @@ const Command = struct {
     capability: engine.PromiseCapability,
     /// The caller's window, weakly: a command whose window closed is dropped.
     window: ?Weak,
-    /// The element a click or send_keys acts on.
+    /// The element an input or computed-accessibility command acts on.
     element: ?Weak = null,
+    /// Only computed commands retain their argument until completion.
+    pending_element: ?engine.Owned = null,
     /// send_keys's text, or get_named_cookie's name. OWNED.
     text: []u8 = &.{},
     /// Where key actions go: this document's top-level traversable.
@@ -298,6 +302,7 @@ const Command = struct {
         const allocator = self.driver.allocator;
         self.releasePermissionBatch();
         engine.releasePromiseCapability(&self.capability);
+        if (self.pending_element) |element| element.release();
         if (self.own_key_source) |id| {
             self.driver.removeKeySource(id);
             allocator.free(id);
@@ -355,6 +360,7 @@ const Command = struct {
             switch (self.kind) {
                 .minimize, .restore, .get_rect => return self.resolveWindowRect(),
                 .get_cookies, .get_named_cookie, .delete_cookies => return self.resolveCookies(),
+                .computed_role, .computed_label => return self.resolveAccessibility(),
                 else => {},
             }
         }
@@ -388,9 +394,34 @@ const Command = struct {
             .actions => null,
             .minimize => self.setSystemVisibility(.hidden),
             .restore => self.setSystemVisibility(.visible),
-            .get_rect, .get_cookies, .get_named_cookie, .delete_cookies => null,
+            .get_rect, .get_cookies, .get_named_cookie, .delete_cookies, .computed_role, .computed_label => null,
             .set_permission => self.startSetPermission(),
         };
+    }
+
+    /// WebDriver 12.4.9/10's semantic computation, with the testdriver
+    /// compatibility rule below. No accessibility tree is retained.
+    fn resolveAccessibility(self: *Command) void {
+        const weak = self.element orelse return self.reject(staleElement());
+        const element = weak.get() orelse return self.reject(staleElement());
+        // Harness compatibility: WPT's selector transport sends :scope for
+        // an id-less detached argument, querying the document root. Instead
+        // of that artifact or WebDriver's stale rejection, compute THIS node's
+        // own semantics. aria-element-reflection-labelledby then checks that
+        // an out-of-scope explicit label is filtered while detached.
+        if (interfaces.Node.get_isConnected(element) catch false) {
+            _ = knownElement(self.element) orelse return self.reject(staleElement());
+        }
+        const accessibility = @import("dom").accessibility;
+        const options: accessibility.Options = .{ .is_focusable = html.focus.isFocusableArea };
+        const allocator = self.driver.allocator;
+        if (self.kind == .computed_role) {
+            const value = accessibility.computedRole(allocator, element, options) catch return self.reject(outOfMemory());
+            return self.resolve(JSValue.fromStringRef(value));
+        }
+        const value = accessibility.computedName(allocator, element, options) catch return self.reject(outOfMemory());
+        defer allocator.free(value);
+        self.resolve(JSValue.fromStringRef(value));
     }
 
     /// Permissions B.1.1 steps 5-6, after argument conversion: the target
@@ -960,6 +991,14 @@ fn startCommand(driver: *TestDriver, realm: runtime.Context, native: Native, arg
         return error.OperationFailed;
     };
     const failure: ?Failure = switch (native) {
+        .get_computed_role, .get_computed_label => blk: {
+            command.kind = if (native == .get_computed_role) .computed_role else .computed_label;
+            const element = engine.convertToPlatformObject(realm, argument(args, 0));
+            if (element == null or !isElement(element.?)) break :blk invalid("computed accessibility takes an element");
+            command.element = Weak.of(element.?);
+            command.pending_element = engine.retainValue(element.?.ctx, .{ .instance = element.? }) catch break :blk outOfMemory();
+            break :blk null;
+        },
         .click => blk: {
             command.kind = .click;
             const element = engine.convertToPlatformObject(realm, argument(args, 0));
