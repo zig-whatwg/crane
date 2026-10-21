@@ -2338,6 +2338,16 @@ pub extern fn v8_Isolate_PerformMicrotaskCheckpoint(isolate: *Isolate) void;
 /// Run one foreground task V8 has posted to the platform for `isolate`, if
 /// one is due. Returns whether a task ran. Never blocks; call with `isolate`
 /// entered.
+/// OWNED sink on success only. All callbacks are thread-safe.
+pub extern fn v8_Isolate_AttachForegroundTaskSink(isolate: *Isolate, sink: *anyopaque, wake: *const fn (?*anyopaque) callconv(.c) void, release: *const fn (?*anyopaque) callconv(.c) void) bool;
+pub extern fn v8_Isolate_CloseForegroundTasks(isolate: *Isolate) void;
+pub extern fn v8_Isolate_NextForegroundTaskDelay(isolate: *Isolate, nanoseconds: *u64) bool;
+/// Test-only shared_ptr<TaskRunner>, safe to post after the isolate is gone.
+pub const TestTaskRunner = opaque {};
+pub extern fn v8_test_ForegroundTaskRunner(isolate: *Isolate) ?*TestTaskRunner;
+pub extern fn v8_test_TaskRunner_Release(runner: *TestTaskRunner) void;
+pub extern fn v8_test_TaskRunner_Post(runner: *TestTaskRunner, run: *const fn (?*anyopaque) callconv(.c) void, drop: *const fn (?*anyopaque) callconv(.c) void, data: ?*anyopaque, delay_seconds: f64) void;
+
 pub extern fn v8_Platform_PumpMessageLoop(isolate: *Isolate) bool;
 /// Whether V8 has background work for `isolate` that will post a foreground
 /// task when it ends (d8's CompleteMessageLoop waits on it).

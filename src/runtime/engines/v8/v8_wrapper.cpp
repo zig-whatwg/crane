@@ -9,6 +9,9 @@
 // - Namespace bindings (callbacks convert Local→Global→Local)
 
 #include <atomic>
+#include <array>
+#include <cassert>
+#include <chrono>
 #include <mutex>
 #include <v8.h>
 #include <v8-snapshot.h>
@@ -1948,11 +1951,181 @@ void v8_SetFlagsFromString(const char* flags) {
     }
 }
 
+// Foreground tasks retain their wake target, never their isolate. The platform
+// still owns execution; this layer records deadlines and posts a loop wake.
+// V8 TaskRunner's public contract permits posting from any thread, but obtaining
+// a runner only on the foreground thread. Node's node_platform.cc uses the same
+// separation of task ownership, queue wake and delayed-work deadlines.
+struct ForegroundTasks {
+    using Clock = std::chrono::steady_clock;
+    std::mutex mutex;
+    bool closed = false;
+    void* sink = nullptr;
+    void (*wake)(void*) = nullptr;
+    void (*release)(void*) = nullptr;
+    std::multiset<Clock::time_point> deadlines;
+
+    bool attach(void* target, void (*notify)(void*), void (*drop)(void*)) {
+        std::lock_guard<std::mutex> guard(mutex);
+        if (closed || sink) return false;
+        sink = target;
+        wake = notify;
+        release = drop;
+        if (!deadlines.empty()) wake(sink);
+        return true;
+    }
+    ~ForegroundTasks() { close(); }
+    void close() {
+        void* owned;
+        {
+            std::lock_guard<std::mutex> guard(mutex);
+            if (closed) return;
+            closed = true;
+            owned = sink;
+            sink = nullptr;
+        }
+        if (owned) release(owned);
+    }
+    bool nextDelay(uint64_t* nanoseconds) {
+        std::lock_guard<std::mutex> guard(mutex);
+        if (closed || deadlines.empty()) return false;
+        const auto remaining = *deadlines.begin() - Clock::now();
+        *nanoseconds = remaining <= Clock::duration::zero() ? 0 :
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(remaining).count());
+        return true;
+    }
+};
+
+class ForegroundTask final : public Task {
+ public:
+    ForegroundTask(std::shared_ptr<ForegroundTasks> state, std::unique_ptr<Task> task,
+                   std::multiset<ForegroundTasks::Clock::time_point>::iterator deadline)
+        : state_(std::move(state)), task_(std::move(task)), deadline_(deadline) {}
+    ~ForegroundTask() override {
+        std::lock_guard<std::mutex> guard(state_->mutex);
+        removeDeadline();
+    }
+    void Run() override {
+        {
+            std::lock_guard<std::mutex> guard(state_->mutex);
+            removeDeadline();
+            if (state_->closed) return;
+        }
+        // Run and close are both foreground-only; no close can race this call.
+        task_->Run();
+    }
+ private:
+    void removeDeadline() {
+        if (!registered_) return;
+        state_->deadlines.erase(deadline_);
+        registered_ = false;
+    }
+    std::shared_ptr<ForegroundTasks> state_;
+    std::unique_ptr<Task> task_;
+    std::multiset<ForegroundTasks::Clock::time_point>::iterator deadline_;
+    bool registered_ = true;
+};
+
+class ForegroundTaskRunner final : public TaskRunner {
+ public:
+    ForegroundTaskRunner(std::shared_ptr<ForegroundTasks> state, std::shared_ptr<TaskRunner> runner)
+        : state_(std::move(state)), runner_(std::move(runner)) {}
+    bool IdleTasksEnabled() override { return runner_->IdleTasksEnabled(); }
+    bool NonNestableTasksEnabled() const override { return runner_->NonNestableTasksEnabled(); }
+    bool NonNestableDelayedTasksEnabled() const override { return runner_->NonNestableDelayedTasksEnabled(); }
+ protected:
+    void PostTaskImpl(std::unique_ptr<Task> task, const SourceLocation& location) override {
+        post(std::move(task), 0, false, false, location);
+    }
+    void PostNonNestableTaskImpl(std::unique_ptr<Task> task, const SourceLocation& location) override {
+        post(std::move(task), 0, false, true, location);
+    }
+    void PostDelayedTaskImpl(std::unique_ptr<Task> task, double delay, const SourceLocation& location) override {
+        post(std::move(task), delay, true, false, location);
+    }
+    void PostNonNestableDelayedTaskImpl(std::unique_ptr<Task> task, double delay, const SourceLocation& location) override {
+        post(std::move(task), delay, true, true, location);
+    }
+    void PostIdleTaskImpl(std::unique_ptr<IdleTask> task, const SourceLocation& location) override {
+        // The DefaultPlatform was created without idle tasks. Keep its contract;
+        // an idle task cannot become a wake that makes an idle loop busy.
+        assert(!runner_->IdleTasksEnabled());
+        std::lock_guard<std::mutex> guard(state_->mutex);
+        if (!state_->closed) runner_->PostIdleTask(std::move(task), location);
+    }
+ private:
+    void post(std::unique_ptr<Task> task, double delay, bool delayed, bool nonnestable,
+              const SourceLocation& location) {
+        using Clock = ForegroundTasks::Clock;
+        const auto now = Clock::now();
+        const double maximum = std::chrono::duration<double>(Clock::time_point::max() - now).count();
+        const double seconds = std::max(0.0, std::min(delay, maximum / 2));
+        const auto deadline = now + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(seconds));
+        std::lock_guard<std::mutex> guard(state_->mutex);
+        if (state_->closed) return;
+        const auto entry = state_->deadlines.insert(deadline);
+        auto wrapped = std::make_unique<ForegroundTask>(state_, std::move(task), entry);
+        // close holds the same lock before DefaultPlatform's isolate shutdown,
+        // so an open runner accepts the task rather than destroying it here.
+        if (delayed && nonnestable) runner_->PostNonNestableDelayedTask(std::move(wrapped), seconds, location);
+        else if (delayed) runner_->PostDelayedTask(std::move(wrapped), seconds, location);
+        else if (nonnestable) runner_->PostNonNestableTask(std::move(wrapped), location);
+        else runner_->PostTask(std::move(wrapped), location);
+        if (state_->sink) state_->wake(state_->sink);
+    }
+    std::shared_ptr<ForegroundTasks> state_;
+    std::shared_ptr<TaskRunner> runner_;
+};
+
+class CranePlatform final : public Platform {
+ public:
+    CranePlatform() : backend_(platform::NewDefaultPlatform()) {}
+    Platform* backend() { return backend_.get(); }
+    PageAllocator* GetPageAllocator() override { return backend_->GetPageAllocator(); }
+    ThreadIsolatedAllocator* GetThreadIsolatedAllocator() override { return backend_->GetThreadIsolatedAllocator(); }
+    void OnCriticalMemoryPressure() override { backend_->OnCriticalMemoryPressure(); }
+    int NumberOfWorkerThreads() override { return backend_->NumberOfWorkerThreads(); }
+    std::shared_ptr<TaskRunner> GetForegroundTaskRunner(Isolate*, TaskPriority) override;
+    bool IdleTasksEnabled(Isolate* isolate) override { return backend_->IdleTasksEnabled(isolate); }
+    std::unique_ptr<ScopedBlockingCall> CreateBlockingScope(BlockingType type) override { return backend_->CreateBlockingScope(type); }
+    double MonotonicallyIncreasingTime() override { return backend_->MonotonicallyIncreasingTime(); }
+    double CurrentClockTimeMillis() override { return backend_->CurrentClockTimeMillis(); }
+    int64_t CurrentClockTimeMilliseconds() override { return backend_->CurrentClockTimeMilliseconds(); }
+    double CurrentClockTimeMillisecondsHighResolution() override { return backend_->CurrentClockTimeMillisecondsHighResolution(); }
+    StackTracePrinter GetStackTracePrinter() override { return backend_->GetStackTracePrinter(); }
+    TracingController* GetTracingController() override { return backend_->GetTracingController(); }
+    void DumpWithoutCrashing() override { backend_->DumpWithoutCrashing(); }
+    HighAllocationThroughputObserver* GetHighAllocationThroughputObserver() override { return backend_->GetHighAllocationThroughputObserver(); }
+ protected:
+    std::unique_ptr<JobHandle> CreateJobImpl(TaskPriority priority, std::unique_ptr<JobTask> job,
+                                           const SourceLocation& location) override {
+        return backend_->CreateJob(priority, std::move(job), location);
+    }
+    void PostTaskOnWorkerThreadImpl(TaskPriority priority, std::unique_ptr<Task> task,
+                                    const SourceLocation& location) override {
+        switch (priority) {
+            case TaskPriority::kBestEffort: backend_->CallLowPriorityTaskOnWorkerThread(std::move(task), location); break;
+            case TaskPriority::kUserVisible: backend_->CallOnWorkerThread(std::move(task), location); break;
+            case TaskPriority::kUserBlocking: backend_->CallBlockingTaskOnWorkerThread(std::move(task), location); break;
+        }
+    }
+    void PostDelayedTaskOnWorkerThreadImpl(TaskPriority, std::unique_ptr<Task> task,
+                                           double delay, const SourceLocation& location) override {
+        backend_->CallDelayedOnWorkerThread(std::move(task), delay, location);
+    }
+ private:
+    std::unique_ptr<Platform> backend_;
+};
+
+static Platform* defaultPlatform() {
+    return static_cast<CranePlatform*>(g_platform.get())->backend();
+}
+
 void v8_Platform_Initialize() {
     if (!v8_initialized) {
         V8::InitializeICUDefaultLocation("");
         V8::InitializeExternalStartupData("");
-        g_platform = platform::NewDefaultPlatform();
+        g_platform = std::make_unique<CranePlatform>();
         V8::InitializePlatform(g_platform.get());
         V8::Initialize();
         v8_initialized = true;
@@ -2006,7 +2179,7 @@ bool v8_Isolate_HasPendingBackgroundTasks(Isolate* isolate) {
 
 bool v8_Platform_PumpMessageLoop(Isolate* isolate) {
     if (!g_platform || !isolate) return false;
-    return platform::PumpMessageLoop(g_platform.get(), isolate,
+    return platform::PumpMessageLoop(defaultPlatform(), isolate,
                                      platform::MessageLoopBehavior::kDoNotWait);
 }
 
@@ -2051,6 +2224,11 @@ struct SyntheticJsonExport {
 };
 
 struct IsolateData {
+    // Installed before Isolate::Initialize: V8 caches runners while setting up
+    // its heap. Their shared state receives the host's sink after creation.
+    std::shared_ptr<ForegroundTasks> foreground_tasks = std::make_shared<ForegroundTasks>();
+    std::array<std::shared_ptr<TaskRunner>, 3> foreground_runners;
+
     /// A snapshot isolate's StartupData (v8_Isolate_NewFromSnapshot), which
     /// V8 keeps a pointer to for the isolate's life (CreateParams::
     /// snapshot_blob) and reads again for every context it restores
@@ -2082,6 +2260,65 @@ static IsolateData* isolateData(Isolate* isolate) {
     return isolate ? static_cast<IsolateData*>(isolate->GetData(kIsolateDataSlot)) : nullptr;
 }
 
+std::shared_ptr<TaskRunner> CranePlatform::GetForegroundTaskRunner(Isolate* isolate, TaskPriority priority) {
+    // Public contract: this lookup is foreground-only. A retained TaskRunner
+    // may subsequently be posted to on any thread, without an isolate lookup.
+    IsolateData* record = isolateData(isolate);
+    if (!record) return backend_->GetForegroundTaskRunner(isolate, priority);
+    const size_t index = static_cast<size_t>(priority);
+    assert(index < record->foreground_runners.size());
+    auto& runner = record->foreground_runners[index];
+    if (!runner) runner = std::make_shared<ForegroundTaskRunner>(record->foreground_tasks,
+                                                               backend_->GetForegroundTaskRunner(isolate, priority));
+    return runner;
+}
+
+/// Attach one OWNED wake target. On failure the caller retains ownership.
+bool v8_Isolate_AttachForegroundTaskSink(Isolate* isolate, void* sink,
+                                        void (*wake)(void*), void (*release)(void*)) {
+    IsolateData* record = isolateData(isolate);
+    return record && record->foreground_tasks->attach(sink, wake, release);
+}
+
+/// Close before any host/realm teardown. Racing posts finish under the state
+/// lock; after this returns neither the sink nor the isolate is touched again.
+void v8_Isolate_CloseForegroundTasks(Isolate* isolate) {
+    if (IsolateData* record = isolateData(isolate)) record->foreground_tasks->close();
+}
+
+bool v8_Isolate_NextForegroundTaskDelay(Isolate* isolate, uint64_t* nanoseconds) {
+    IsolateData* record = isolateData(isolate);
+    return record && record->foreground_tasks->nextDelay(nanoseconds);
+}
+
+/// Test-only owning runner reference. Require the runner V8 requested during
+/// initialization, rather than manufacturing one that could hide that path.
+std::shared_ptr<TaskRunner>* v8_test_ForegroundTaskRunner(Isolate* isolate) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return nullptr;
+    auto& runner = record->foreground_runners[static_cast<size_t>(TaskPriority::kUserBlocking)];
+    return runner ? new std::shared_ptr<TaskRunner>(runner) : nullptr;
+}
+
+void v8_test_TaskRunner_Release(std::shared_ptr<TaskRunner>* runner) { delete runner; }
+void v8_test_TaskRunner_Post(std::shared_ptr<TaskRunner>* runner, void (*run)(void*),
+                            void (*drop)(void*), void* data, double delay) {
+    class ProbeTask final : public Task {
+     public:
+        ProbeTask(void (*run)(void*), void (*drop)(void*), void* data)
+            : run_(run), drop_(drop), data_(data) {}
+        ~ProbeTask() override { drop_(data_); }
+        void Run() override { run_(data_); }
+     private:
+        void (*run_)(void*);
+        void (*drop_)(void*);
+        void* data_;
+    };
+    auto task = std::make_unique<ProbeTask>(run, drop, data);
+    if (delay > 0) (*runner)->PostDelayedTask(std::move(task), delay);
+    else (*runner)->PostTask(std::move(task));
+}
+
 static void deleteSyntheticExport(SyntheticJsonExport* entry) {
     entry->module.Reset();
     entry->value.Reset();
@@ -2096,8 +2333,13 @@ Isolate* v8_Isolate_New() {
     Isolate::CreateParams create_params;
     create_params.array_buffer_allocator_shared =
         std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
-    Isolate* isolate = Isolate::New(create_params);
-    if (isolate) isolate->SetData(kIsolateDataSlot, new IsolateData());
+    auto record = std::make_unique<IsolateData>();
+    // Isolate::New is exactly Allocate + Initialize (13.1 api.cc:9935).
+    // Only GetData/SetData are allowed between them (v8-isolate.h:591).
+    Isolate* isolate = Isolate::Allocate();
+    if (!isolate) return nullptr;
+    isolate->SetData(kIsolateDataSlot, record.release());
+    Isolate::Initialize(isolate, create_params);
     return isolate;
 }
 
@@ -2132,6 +2374,7 @@ void v8_Isolate_Dispose(Isolate* isolate) {
         // Isolate::Dispose, below: it holds the StartupData V8 points at.
         IsolateData* record = isolateData(isolate);
         if (record) {
+            record->foreground_tasks->close();
             isolate->SetData(kIsolateDataSlot, nullptr);
             for (SyntheticJsonExport* entry : record->synthetic_json_exports) deleteSyntheticExport(entry);
             record->synthetic_json_exports.clear();
@@ -2160,7 +2403,7 @@ void v8_Isolate_Dispose(Isolate* isolate) {
         // what V8 posted for it; without this a later isolate at the same
         // address inherits it and its stale tasks. d8 does this before every
         // Dispose (Worker::ExecuteInThread).
-        if (g_platform && v8_initialized) platform::NotifyIsolateShutdown(g_platform.get(), isolate);
+        if (g_platform && v8_initialized) platform::NotifyIsolateShutdown(defaultPlatform(), isolate);
 
         // Dispose the isolate first
         isolate->Dispose();
@@ -8762,13 +9005,13 @@ Isolate* v8_Isolate_NewFromSnapshot(
     create_params.snapshot_blob = &isolate_data->startup_data;
     create_params.external_references = external_references;
     
-    Isolate* isolate = Isolate::New(create_params);
+    Isolate* isolate = Isolate::Allocate();
     if (!isolate) {
-        fprintf(stderr, "[v8_Isolate_NewFromSnapshot] ERROR: Isolate::New returned nullptr\n");
         delete isolate_data;
         return nullptr;
     }
     isolate->SetData(kIsolateDataSlot, isolate_data);
+    Isolate::Initialize(isolate, create_params);
     
     return isolate;
 }

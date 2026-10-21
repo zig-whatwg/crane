@@ -310,6 +310,16 @@ pub fn drainDeferredTeardown(agent: *Agent) void {
     queue.drainAll();
 }
 
+fn engineWakeTask(_: ?*anyopaque) void {}
+fn wakeEngineLoop(data: ?*anyopaque) callconv(.c) void {
+    const sink: *runtime.TaskSink = @ptrCast(@alignCast(data.?));
+    _ = sink.post(.{ .run = engineWakeTask, .drop = engineWakeTask, .data = null });
+}
+fn releaseEngineSink(data: ?*anyopaque) callconv(.c) void {
+    const sink: *runtime.TaskSink = @ptrCast(@alignCast(data.?));
+    sink.release();
+}
+
 /// HTML "obtain an agent" (a similar-origin window agent or a worker's): a
 /// new isolate - restored from the engine's snapshot when asked for and one
 /// was given - with [[CanBlock]] as the options say and the host's hooks
@@ -330,6 +340,13 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
         break :blk @ptrCast(@alignCast(agent));
     };
     errdefer ffi.v8_Isolate_Dispose(isolate);
+    if (options.engine_task_sink) |sink| {
+        const retained = sink.retain();
+        if (!ffi.v8_Isolate_AttachForegroundTaskSink(isolate, retained, wakeEngineLoop, releaseEngineSink)) {
+            retained.release();
+            return error.OperationFailed;
+        }
+    }
 
     // [[CanBlock]]: false for a similar-origin window agent, whose one thread
     // Atomics.wait() would freeze - it throws a TypeError instead.
@@ -418,6 +435,7 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
 /// under whoever still uses it.
 pub fn endAgent(agent: *Agent) void {
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
+    ffi.v8_Isolate_CloseForegroundTasks(isolate);
     const record = recordOf(isolate);
     const allocator = if (record) |r| r.allocator else std.heap.c_allocator;
     const host_agent = if (record) |r| r.host_agent else false;

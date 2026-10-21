@@ -114,6 +114,10 @@ pub fn hasPendingEngineWork(_: *Agent) bool {
 pub fn runEngineTasks(_: *Agent) bool {
     return false;
 }
+pub fn nextEngineTaskDelay(_: *Agent) ?u64 {
+    return null;
+}
+
 pub fn requestGarbageCollection(_: *Agent) void {}
 // TODO(protocol): JSGarbageCollect(ctx) once the adapter keeps a context per
 // agent; nothing to hint until then.

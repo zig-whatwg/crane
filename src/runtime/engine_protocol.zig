@@ -496,6 +496,10 @@ pub const MemoryPressure = enum {
 
 /// HTML "obtain an agent".
 pub const AgentOptions = struct {
+    /// Optional host wake target, BORROWED here; an adapter that uses it takes
+    /// one thread-safe reference until the agent begins teardown. Posts only
+    /// wake the loop; the agent thread executes work via runEngineTasks.
+    engine_task_sink: ?*runtime.TaskSink = null,
     /// [[CanBlock]] - honoured where `can_block_control`.
     can_block: bool,
     /// Create the agent's realms from the engine's snapshot - honoured where
@@ -973,6 +977,14 @@ pub inline fn hasPendingEngineWork(agent: *Agent) bool {
 /// Run the engine's own posted tasks for the agent; whether any ran.
 pub inline fn runEngineTasks(agent: *Agent) bool {
     return impl.runEngineTasks(agent);
+}
+
+/// Delay in nanoseconds until the next queued engine task is due; zero if due,
+/// null when no task is queued. Call on the agent thread. A task posted from
+/// another thread wakes AgentOptions.engine_task_sink so the host recomputes
+/// its wait bound. This does not create an artificial polling deadline.
+pub inline fn nextEngineTaskDelay(agent: *Agent) ?u64 {
+    return impl.nextEngineTaskDelay(agent);
 }
 
 /// Collect `agent`'s garbage now, as completely as the engine can - for

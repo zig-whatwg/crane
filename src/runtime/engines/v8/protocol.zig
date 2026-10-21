@@ -195,6 +195,10 @@ pub fn hasPendingEngineWork(agent: *Agent) bool {
 pub fn runEngineTasks(agent: *Agent) bool {
     return worker_realm.runEngineTasks(agent);
 }
+pub fn nextEngineTaskDelay(agent: *Agent) ?u64 {
+    var delay: u64 = undefined;
+    return if (ffi.v8_Isolate_NextForegroundTaskDelay(isolateOf(agent), &delay)) delay else null;
+}
 
 /// A realm's agent is its isolate (context_manager records it so).
 /// LowMemoryNotification: a full, synchronous collection.

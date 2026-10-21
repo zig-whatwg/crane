@@ -86,6 +86,10 @@ pub fn hasPendingEngineWork(_: *Agent) bool {
 pub fn runEngineTasks(_: *Agent) bool {
     return false;
 }
+pub fn nextEngineTaskDelay(_: *Agent) ?u64 {
+    return null;
+}
+
 pub fn requestGarbageCollection(_: *Agent) void {}
 // TODO(protocol): JS_RunGC(rt) once the adapter has a runtime per agent.
 pub fn notifyMemoryPressure(_: *Agent, _: engine.MemoryPressure) void {}

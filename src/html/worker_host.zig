@@ -972,6 +972,7 @@ pub const WorkerHost = struct {
             // A collected node's teardown is queued here, for the worker's
             // loop to run between tasks (runtime.gc.DeferredTeardown).
             .deferred_teardown = &self.agent_host.deferred_teardown,
+            .engine_task_sink = thread.loop.sink,
         });
         self.agent = agent;
         thread.loop.agent = agent;
@@ -1061,6 +1062,7 @@ pub const WorkerHost = struct {
             .host = &self.agent_host,
             .allocator = allocator,
             .deferred_teardown = &self.agent_host.deferred_teardown,
+            .engine_task_sink = thread.loop.sink,
         });
         self.agent = agent;
         thread.loop.agent = agent;
