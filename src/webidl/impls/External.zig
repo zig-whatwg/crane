@@ -39,14 +39,12 @@ pub fn deinit(instance: *runtime.Instance) void {
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
-/// Operation: AddSearchProvider
+/// HTML 16.3.3: AddSearchProvider() must do nothing.
 pub fn call_AddSearchProvider(instance: *runtime.Instance) anyerror!void {
     _ = instance;
-    return error.NotImplemented;
 }
 
-/// Operation: IsSearchProviderInstalled
+/// HTML 16.3.3: IsSearchProviderInstalled() must do nothing.
 pub fn call_IsSearchProviderInstalled(instance: *runtime.Instance) anyerror!void {
     _ = instance;
-    return error.NotImplemented;
 }
