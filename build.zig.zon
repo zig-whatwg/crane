@@ -32,6 +32,12 @@
     // Once all dependencies are fetched, `zig build` no longer requires
     // internet connectivity.
     .dependencies = .{
+        // Google's MIT-licensed Brotli, built as C libraries in build.zig.
+        .brotli = .{
+            .url = "https://codeload.github.com/google/brotli/tar.gz/028fb5a23661f123017c060daa546b55cf4bde29",
+            .hash = "N-V-__8AAJudKgCQCuIiH6MJjAiIJHfg_tT_Ew-0vZwVkCo_",
+            .lazy = true,
+        },
         // libcurl - HTTP client library for Fetch network requests
         // Static compilation via allyourcodebase package
         .curl = .{

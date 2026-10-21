@@ -267,6 +267,7 @@ system state (defaults allowed), console output.
 | `file_urls` | native on macOS, unsupported on iOS (sandbox) | native | native | Fetch 4.3 scheme fetch "file": network error |
 | `system_trust_store` | native (SecTrust, decision 6) | emulated (distro CA bundle: no revocation, no enterprise roots) | as its host OS | only `extra_trust_anchors_pem` trusted |
 | `http2` / `http3` | native when built with nghttp2 / unsupported | same | same | HTTP-network fetch step 8.3: an HTTP/2-only request is a network error / HTTP/1.1 and 2 only |
+| `brotli` | native (vendored Google Brotli) | native (same) | native (same) | CompressionStream/DecompressionStream reject "brotli"; the static HTTP backend does not advertise or decode br |
 | `thread_qos` | native | unsupported | as its host OS | default priority |
 | `resident_memory` | native | native | native | diagnostics report nothing |
 | `layout` | unsupported (headless) | unsupported | emulated - a STOPGAP (decision 19b): only a connected img has a box, sized from the facts Crane gives (`replacedElementBox`, 6.9); every other node has none | CSSOM View with no layout box: zero boxes, no hit (6.9) |
@@ -417,6 +418,29 @@ retry needs (docs/lessons/spec-compliance-a-network-error-may-need-a-native-caus
 is the platform's: the system trust store where `system_trust_store` is native (darwin: SecTrust over
 the chain through mbedTLS's verify callback, Security.framework linked - decision 6), plus
 `extra_trust_anchors_pem`.
+
+#### 6.7.1 Incremental Brotli [brotli]
+
+`createBrotliDecoder(allocator) CodecError!*BrotliDecoder` and
+`createBrotliEncoder(allocator) CodecError!*BrotliEncoder` allocate independent
+contexts. `decompressBrotli(decoder, input: Bytes, output: []u8)` and
+`compressBrotli(encoder, input: Bytes, output: []u8, finish: bool)` return
+`CodecError!CodecProgress`. Input and output are borrowed only for the call;
+progress reports consumed and produced byte counts and `CodecStatus`
+(`need_input`, `need_output`, `finished`). Retry with the unconsumed input when
+output is full. Finish an encoder until `finished`; a decoder needing input at
+end of input is truncated. A finished decoder leaves trailing bytes unconsumed.
+Crane's Compression Streams layer applies the format's trailing-data policy.
+`CodecError` is `OutOfMemory`, `InvalidData` or `NotSupported`.
+
+The caller owns the context until `destroyBrotliDecoder` or
+`destroyBrotliEncoder`. Calls on one context must not overlap; independent
+contexts are safe on different threads. The supplied allocator owns all C
+allocations too. The built-ins use the hash-pinned MIT Google Brotli v1.2.0
+codec in `kit/brotli`, for matching semantics and no OS-version dependency.
+`-Dplatform-without=brotli` removes it; `-Dplatform-static=brotli` is already the
+default. HTTP uses the same source library through curl's streaming decoder.
+Only RFC 7932 streams are accepted (no large-window extension or dictionaries).
 
 ### 6.8 Crypto primitives (decision 11)
 
@@ -756,7 +780,7 @@ not verified is marked UNVERIFIED.
 | HTTP client | /usr/lib/libcurl.4.dylib, 8.7.1 (macOS SDK's curlver.h) | macOS only (no libcurl in the iOS SDK) | no - macOS's build has no WebSockets (`curl -V` lists no ws/wss), uses the deprecated SecureTransport/LibreSSL 3.3.6, and is pinned old | kit/curl | static |
 | HTTP/2 framing | nghttp2 (inside macOS's libcurl only; no libnghttp2 in either SDK) | - | no public library | static nghttp2 (build.zig `enable_http2`) | static |
 | zlib (Content-Encoding gzip/deflate, Compression Streams) | libz.tbd, zlib 1.2.12 (zlib.h in both SDKs) | both | yes - stable API; Apple's security backports to 1.2.12 UNVERIFIED | static zlib (today's) | dynamic |
-| Brotli (Content-Encoding br; not built today) | Compression framework `COMPRESSION_BROTLI` (compression.h: macOS 12, iOS 15; Apple's encoder is level 2 only) | both | yes for decoding, when br is added | static brotli | dynamic |
+| Brotli (Content-Encoding br and Compression Streams) | Compression framework `COMPRESSION_BROTLI` (compression.h: macOS 12, iOS 15; Apple's encoder is level 2 only) | both | future alternative after validating the streaming and allocator contract (6.7.1) | pinned Google Brotli v1.2.0 | static |
 | storage engine | libsqlite3.tbd, SQLite 3.54.0 (sqlite3.h in both SDKs) | both | yes - the ordered key-value contract (6.6) needs nothing version-specific | kit/sqlite (amalgamation); kit/leveldb (no system LevelDB on darwin - today's macOS link is Homebrew's) | dynamic |
 | SHA-1/256/384/512 | CommonCrypto `CC_SHA*` (CommonDigest.h) | both | yes | kit/crypto | dynamic |
 | HMAC | CommonCrypto `CCHmac` (SHA-1, -224, -256, -384, -512) | both | yes | kit/crypto | dynamic |

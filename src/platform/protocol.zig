@@ -305,6 +305,8 @@ pub const Capabilities = struct {
     http2: Support,
     /// HTTP/1.1 and HTTP/2 only.
     http3: Support,
+    /// Compression Streams rejects "brotli" with TypeError; no br content decoding.
+    brotli: Support,
     /// Threads run at the default priority.
     thread_qos: Support,
     /// Diagnostics report no resident memory.
@@ -790,6 +792,63 @@ pub inline fn closeCursor(cursor: *StoreCursor) void {
 /// Bytes the store uses, for Storage 6. Any thread.
 pub inline fn storeSize(store: *Store) StoreError!u64 {
     return impl.storeSize(store);
+}
+
+// ============================================================================
+// Brotli (Compression §§2–5; RFC 7932)
+// ============================================================================
+
+/// One opaque compression context, OWNED until its matching destroy operation.
+/// It may move between threads, but calls on it must not overlap.
+pub const BrotliDecoder = opaque {};
+pub const BrotliEncoder = opaque {};
+pub const CodecError = error{ OutOfMemory, InvalidData, NotSupported };
+pub const CodecStatus = enum(u8) { need_input, need_output, finished };
+/// Input/output are BORROWED for the call. Unconsumed input remains the caller's;
+/// a finished decoder may leave trailing input for the caller's format rules.
+pub const CodecProgress = extern struct {
+    consumed: usize,
+    produced: usize,
+    status: CodecStatus,
+};
+
+/// Create an RFC 7932 decoder, using allocator for ALL its native storage.
+/// Synchronous, any thread. Unsupported: NotSupported (constructor TypeError).
+pub inline fn createBrotliDecoder(allocator: std.mem.Allocator) CodecError!*BrotliDecoder {
+    comptime gate(.brotli, "createBrotliDecoder");
+    return impl.createBrotliDecoder(allocator);
+}
+
+/// Decode into caller storage without retaining input/output pointers. A need_input
+/// result at end of input means truncation; final/trailing-data policy is Crane's.
+pub inline fn decompressBrotli(decoder: *BrotliDecoder, input: Bytes, output: []u8) CodecError!CodecProgress {
+    comptime gate(.brotli, "decompressBrotli");
+    return impl.decompressBrotli(decoder, input, output);
+}
+
+/// Release the context and all native allocations, including after a failed call.
+pub inline fn destroyBrotliDecoder(decoder: *BrotliDecoder) void {
+    comptime gate(.brotli, "destroyBrotliDecoder");
+    return impl.destroyBrotliDecoder(decoder);
+}
+
+/// Create an RFC 7932 encoder. Ownership/thread rules match createBrotliDecoder.
+pub inline fn createBrotliEncoder(allocator: std.mem.Allocator) CodecError!*BrotliEncoder {
+    comptime gate(.brotli, "createBrotliEncoder");
+    return impl.createBrotliEncoder(allocator);
+}
+
+/// Compress available input. With finish, repeat with the unconsumed suffix until
+/// finished; subsequent calls may not supply new input. Buffers are borrowed.
+pub inline fn compressBrotli(encoder: *BrotliEncoder, input: Bytes, output: []u8, finish: bool) CodecError!CodecProgress {
+    comptime gate(.brotli, "compressBrotli");
+    return impl.compressBrotli(encoder, input, output, finish);
+}
+
+/// Release the encoder and every native allocation, including after a failed call.
+pub inline fn destroyBrotliEncoder(encoder: *BrotliEncoder) void {
+    comptime gate(.brotli, "destroyBrotliEncoder");
+    return impl.destroyBrotliEncoder(encoder);
 }
 
 // ============================================================================
