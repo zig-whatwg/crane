@@ -740,7 +740,25 @@ pub const HttpNetworkFinish = union(enum) {
 pub fn httpNetworkOrCacheFetchFinish(allocator: Allocator, params: *FetchParams, options: HttpFetchOptions, response: *InternalResponse) HttpFetchError!HttpNetworkFinish {
     errdefer response.deinit();
     const request = params.request;
-    if (response.status != 401 or request.response_tainting == .cors or !httpNetworkFetchUsesCookies(request) or
+    if (response.status != 401) return .{ .response = response };
+    // Step 15.2.1's replay restriction also applies to a worker's actionable
+    // challenge. Chromium URLLoader::OnAuthRequired rejects a Fetch stream
+    // before checking the prompt policy (services/network/url_loader.cc).
+    // Chrome passes request-upload.h2.any.worker.html at wpt.fyi 0f26972422;
+    // Firefox/Safari do not implement streaming uploads. Golden rule 2:
+    // follow the implementing browser even without a traversable, or with
+    // CORS credentials. A bare/unsupported 401 does not request a replay.
+    if (httpNetworkFetchUsesCookies(request)) {
+        if (request.body) |body| if (body == .body and body.body.source == .none) {
+            if (try basicChallengeRealm(allocator, &response.header_list)) |realm| {
+                defer allocator.free(realm);
+                const failed = if (params.controller.isAborted()) try internal_response.abortedNetworkError(allocator) else try internal_response.networkError(allocator);
+                response.deinit();
+                return .{ .response = failed };
+            }
+        };
+    }
+    if (request.response_tainting == .cors or !httpNetworkFetchUsesCookies(request) or
         request.traversable_for_user_prompts != .traversable) return .{ .response = response };
     // Cancellation wins before a challenge can cause another request.
     if (params.isCanceled()) {
