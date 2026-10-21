@@ -345,6 +345,10 @@ A lane brief now carries the lessons chosen for its batch.
 - [A native timer must preserve document task suspension](architecture-a-native-timer-must-preserve-document-task-suspension.md) - Preserve inactive-document delivery and transfer task ownership exactly once.
 
 ### Spec Compliance
+- [XML prefix and default declaration rules are independent](spec-compliance-xml-prefix-and-default-declaration-rules-are-independent.md) - A shared branch does not make two observable mechanisms one change; isolate their tests and preserve any deferred behavior.
+- [SVG rel stubs override generated reflection](spec-compliance-svg-rel-stubs-override-generated-reflection.md) - Trace generated accessor selection before adding an implementation; test the existing cache's observable identity and retention when enabling it.
+- [Parent resource status keeps navigation origin history](spec-compliance-parent-resource-status-keeps-navigation-origin-history.md) - A default-valued metadata field is not proof that the producing algorithm populated it. Trace the producer before trusting the value at an exposure boundary.
+- [Origin keying uses group isolation](spec-compliance-origin-keying-uses-group-isolation.md) - Fix the owner of the missing isolation state; origin keying and isolation-gated API permission are separate decisions.
 - [Worker module imports use the existing client](spec-compliance-worker-module-imports-use-the-existing-client.md) - When a request field becomes more precise, audit algorithms that used it as a proxy for creation or ownership; preserve the field and fix the classification.
 - [Dataset writes use the null namespace](spec-compliance-dataset-writes-use-the-null-namespace.md) - A browser majority is insufficient evidence when a specification change explains the split and one browser implements the newer algorithm.
 - [Select responsive image sources after the microtask](spec-compliance-srcset-selection-belongs-after-the-microtask.md) - Adding source selection should reuse the image request lifecycle; the source's URL and pixel density must travel together.
@@ -600,6 +604,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [A generated import can rest on a typedef an upstream IDL file happens to declare](codegen-a-generated-import-can-rest-on-a-typedef-an-upstream-idl-file-happens-to-declare.md) - When a generated file relies on something being generated, codegen must generate it itself; find out by deleting an upstream file in a test fixture, not by waiting for upstream to delete it.
 
 ### Testing
+- [Zig warning steps print failed-command footers](testing-zig-warning-steps-print-failed-command-footers.md) - Use the build summary and named test diagnostics to determine success; a command footer is context, not a result.
+- [Sweep streams include single-runner chunks](testing-sweep-streams-include-single-runner-chunks.md) - Equal file counts do not prove equal subtest evidence; verify complete report streams after collecting every chunk.
+- [Match WPT revisions before changing browser behavior](testing-match-wpt-revisions-before-changing-browser-behavior.md) - Compare the test source revisions before treating changed browser pass counts as changed browser behavior.
 - [Progress floors belong to a test revision](testing-progress-floors-belong-to-a-test-revision.md) - A remembered maximum needs the identity of what was measured; a loss needs a durable explanation, not merely another report run.
 - [Compare the test before repairing a pass-count drop](testing-compare-the-test-before-repairing-a-pass-count-drop.md) - A historical pass count is a lead, not a behavioural contract: establish which assertion changed before treating a decrease as an engine regression.
 - [An intermittent leak at a test's end is a task the Browser ended before it ran](testing-an-intermittent-leak-at-a-test-s-end-is-a-task-the-browser-ended-first.md) - When a leak is intermittent at a test's end, end the Browser right after the last step on purpose - a task that loses the race leaks every time.
@@ -741,6 +748,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Pre-existing allocations distort failure-injection accounting](testing-preexisting-allocations-distort-failure-injection-accounting.md) - Align accounting with ownership and cover destination growth separately.
 
 ### Debugging
+- [An idlharness type failure can be an impl stub](debugging-an-idlharness-type-failure-can-be-an-impl-stub.md) - Trace an idlharness failure through the generated member before deciding whether it is an exposure bug, an impl stub, or a missing prerequisite.
 - [An LRU list inside a hash map dangles after a rehash](debugging-an-lru-list-inside-a-hash-map-dangles-after-a-rehash.md) - Never keep a pointer to a hash map's value across a `put`: a list threaded through the values dangles at the first rehash. Heap-allocate the nodes and store pointers in the map.
 - [A call that can free its argument ends every read of it](debugging-a-call-that-can-free-its-argument-ends-every-read-of-it.md) - A call that can free its argument ends the caller's use of it - including the `defer`s written above the call; read the trace's top frame before believing a deep one.
 - [A parsed selector borrows its source text](debugging-a-parsed-selector-borrows-its-source-text.md) - Before keeping a parse result, find out what it borrows: an AST of slices lives no longer than its source.
