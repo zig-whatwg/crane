@@ -519,6 +519,15 @@ pub fn structuredSerializeWithTransfer(_: Context, _: JSValue, _: []const JSValu
 pub fn structuredDeserializeWithTransfer(_: Context, _: []const u8, _: []const []const u8, _: []const *Instance) Error!Owned {
     return error.NotSupported;
 }
+pub fn structuredDeserializeWithOptions(_: Context, _: []const u8, _: engine.StructuredDeserializeOptions) Error!Owned {
+    return error.NotSupported;
+}
+pub fn retainSharedMemory(_: *engine.SharedMemory) void {
+    @panic("this adapter cannot produce shared memory");
+}
+pub fn releaseSharedMemory(_: *engine.SharedMemory) void {
+    @panic("this adapter cannot produce shared memory");
+}
 
 // 4.11a WebAssembly Web API 2 [webassembly_streaming]: unsupported, so the
 // hook is never called and nothing is ever handed a compilation.

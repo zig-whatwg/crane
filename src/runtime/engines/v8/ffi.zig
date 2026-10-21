@@ -1015,7 +1015,42 @@ pub extern fn v8_Value_StructuredSerializeWithTransfer(
 pub const StructuredSerializeOptions = extern struct {
     for_storage: bool,
     agent_cluster: u64,
+    cross_origin_isolated: bool = false,
 };
+
+/// Adapter-owned shared_ptr<BackingStore> sidecar. Never a V8 handle.
+pub const SharedMemory = opaque {};
+pub extern fn v8_SharedMemory_Retain(memory: *SharedMemory) void;
+pub extern fn v8_SharedMemory_Release(memory: *SharedMemory) void;
+pub extern fn v8_test_SharedMemory_RefCount(memory: *const SharedMemory) usize;
+
+/// Success transfers one sidecar reference through out_shared_memory; failure
+/// leaves it null and releases every store retained during serialization.
+pub extern fn v8_Value_StructuredSerializeWithSharedMemory(
+    value: *Value,
+    transfer_list: [*]*Value,
+    transfer_count: usize,
+    out_size: *usize,
+    out_arraybuffer_data: [*]ArrayBufferTransferData,
+    error_code: *c_int,
+    host: ?*const HostObjectSteps,
+    options: *const StructuredSerializeOptions,
+    out_shared_memory: *?*SharedMemory,
+) ?[*]u8;
+
+/// The sidecar is BORROWED for deserialization; the resulting objects take
+/// their own backing-store references. Target isolation and cluster are checked.
+pub extern fn v8_Value_DeserializeWithSharedMemory(
+    serialized_data: [*]const u8,
+    serialized_size: usize,
+    arraybuffer_data: [*]const ArrayBufferTransferData,
+    arraybuffer_count: usize,
+    error_code: *c_int,
+    host: ?*const HostObjectSteps,
+    agent_cluster: u64,
+    shared_memory: ?*const SharedMemory,
+    cross_origin_isolated: bool,
+) ?*Value;
 
 /// Deserialize V8 structured clone data with ArrayBuffer transfer.
 /// This is called in the DESTINATION isolate to recreate values.

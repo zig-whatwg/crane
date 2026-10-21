@@ -882,7 +882,17 @@ pub fn structuredSerializeWithTransfer(realm: Context, value: JSValue, transfer_
 }
 
 pub fn structuredDeserializeWithTransfer(realm: Context, serialized: []const u8, array_buffers: []const []const u8, transferred: []const *Instance) Error!Owned {
-    return owned(structured_serialization.structuredDeserializeWithTransfer(realm, serialized, array_buffers, transferred) catch |err| return protocolError(err));
+    return structuredDeserializeWithOptions(realm, serialized, .{ .array_buffers = array_buffers, .transferred = transferred });
+}
+
+pub fn structuredDeserializeWithOptions(realm: Context, serialized: []const u8, options: engine.StructuredDeserializeOptions) Error!Owned {
+    return owned(structured_serialization.structuredDeserializeWithOptions(realm, serialized, options) catch |err| return protocolError(err));
+}
+pub fn retainSharedMemory(memory: *engine.SharedMemory) void {
+    ffi.v8_SharedMemory_Retain(@ptrCast(memory));
+}
+pub fn releaseSharedMemory(memory: *engine.SharedMemory) void {
+    ffi.v8_SharedMemory_Release(@ptrCast(memory));
 }
 
 // ============================================================================

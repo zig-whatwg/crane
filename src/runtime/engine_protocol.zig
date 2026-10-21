@@ -461,6 +461,7 @@ pub const StringConversion = runtime.StringConversion;
 pub const StringRecordEntry = runtime.StringRecordEntry;
 pub const DictionaryMember = runtime.DictionaryMember;
 pub const SerializedWithTransfer = runtime.SerializedWithTransfer;
+pub const SharedMemory = runtime.SharedMemory;
 /// HTML 2.7.1 serializable objects: the engine-neutral records a
 /// [Serializable] interface's serialization steps fill and its
 /// deserialization steps read, and the pair of steps a generated interface
@@ -523,6 +524,9 @@ pub const AgentOptions = struct {
 /// The host's side of the ECMAScript host hooks, installed per agent. A hook
 /// whose capability the engine lacks is never called.
 pub const HostHooks = struct {
+    /// HTML's cross-origin isolated capability of the relevant settings.
+    /// Absent means false: shared memory cannot be serialized or received.
+    crossOriginIsolatedCapability: ?*const fn (host: ?*anyopaque, realm: Context) bool = null,
     /// HostLoadImportedModule for `import()` [module_scripts]: the host owns
     /// `request` until `finishDynamicImport`.
     loadImportedModule: ?*const fn (host: ?*anyopaque, realm: Context, referrer: ImportReferrer, specifier: []const u8, type_attribute: ?[]const u8, request: *ImportRequest) void = null,
@@ -2026,9 +2030,10 @@ pub inline fn getViewedArrayBuffer(realm: Context, view: JSValue) Error!Owned {
 // the same memory as the rest of the value; it is read back as a new
 // instance of that interface in the target realm, set up by its
 // deserialization steps. Any other platform object throws a
-// "DataCloneError" DOMException. The serialized form holds everything
-// inline - no pointer into any realm, agent or thread - so a worker's
-// message and an IndexedDB record can be read anywhere.
+// "DataCloneError" DOMException. Platform-object records are inline, without
+// pointers into realms, agents or threads. Shared memory travels separately
+// in the owning sidecar and is disallowed for storage; receiving it requires
+// cross-origin isolation and a matching agent cluster.
 
 /// StructuredSerializeForStorage of any value: an inline primitive is
 /// serialized as it is (HTML StructuredSerializeInternal step 4), and so is
@@ -2063,6 +2068,33 @@ pub inline fn structuredSerializeWithTransfer(realm: Context, value: JSValue, tr
 /// `memory`); a reference past `transferred` is a DataCloneError. OWNED.
 pub inline fn structuredDeserializeWithTransfer(realm: Context, serialized: []const u8, array_buffers: []const []const u8, transferred: []const *Instance) Error!Owned {
     return impl.structuredDeserializeWithTransfer(realm, serialized, array_buffers, transferred);
+}
+
+/// StructuredDeserializeWithTransfer's receiving data holders, all BORROWED
+/// for the call. Shared memory is never copied into the serialized byte stream.
+pub const StructuredDeserializeOptions = struct {
+    array_buffers: []const []const u8 = &.{},
+    transferred: []const *Instance = &.{},
+    shared_memory: ?*SharedMemory = null,
+};
+
+/// HTML StructuredDeserialize with shared backing memory. The target must have
+/// cross-origin isolated capability and belong to the source's agent cluster.
+/// OWNED result. JSC/QuickJS return NotSupported until linked.
+pub inline fn structuredDeserializeWithOptions(realm: Context, serialized: []const u8, options: StructuredDeserializeOptions) Error!Owned {
+    return impl.structuredDeserializeWithOptions(realm, serialized, options);
+}
+
+/// Take one more thread-safe owner of serialized shared backing memory.
+/// Unsupported adapters cannot produce one and panic if given one.
+pub inline fn retainSharedMemory(memory: *SharedMemory) void {
+    impl.retainSharedMemory(memory);
+}
+
+/// Release one owner; the last owner frees the backing-store sidecar.
+/// May run after all agents are gone, on any thread.
+pub inline fn releaseSharedMemory(memory: *SharedMemory) void {
+    impl.releaseSharedMemory(memory);
 }
 
 // ============================================================================

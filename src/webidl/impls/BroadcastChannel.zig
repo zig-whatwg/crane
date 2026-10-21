@@ -296,7 +296,7 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue) a
     // "9. For each destination in destinations, queue a global task on the
     // DOM manipulation task source given destination's relevant global
     // object." Outside the registry's lock: each post allocates.
-    for (destinations.items) |destination| queueDelivery(destination, serialized.serialized, source_origin, allocator);
+    for (destinations.items) |destination| queueDelivery(destination, serialized.serialized, serialized.shared_memory, source_origin, allocator);
 }
 
 /// Nothing is transferred: the transfer list is empty, so this is never
@@ -355,6 +355,8 @@ const Delivery = struct {
     allocator: std.mem.Allocator,
     /// StructuredSerialize(message)'s bytes. Owned.
     serialized: []u8,
+    /// One retained owner for this recipient, released even if it drops.
+    shared_memory: ?*runtime.SharedMemory,
     /// sourceOrigin, serialized. Owned.
     origin: []u8,
 
@@ -366,10 +368,11 @@ const Delivery = struct {
     fn destroy(self: *Delivery) void {
         self.allocator.free(self.serialized);
         self.allocator.free(self.origin);
+        if (self.shared_memory) |memory| memory.release();
         self.allocator.destroy(self);
     }
 
-    /// Never run: its loop has ended. Any thread; no engine.
+    /// Never run: its loop has ended. Any thread; no isolate access.
     fn drop(data: ?*anyopaque) void {
         const self: *Delivery = @ptrCast(@alignCast(data orelse return));
         self.destroy();
@@ -414,7 +417,7 @@ const Delivery = struct {
         // initialized to the serialization of sourceOrigin, and then abort
         // these steps."
         // No transfer list: nothing was transferred.
-        const value = engine.structuredDeserializeWithTransfer(channel.ctx, self.serialized, &.{}, &.{}) catch {
+        const value = engine.structuredDeserializeWithOptions(channel.ctx, self.serialized, .{ .shared_memory = self.shared_memory }) catch {
             fire(channel, "messageerror", null, self.origin);
             return;
         };
@@ -430,7 +433,7 @@ const Delivery = struct {
 /// Queue step 9's task for the channel `entry` on its global's event loop:
 /// posted to its realm's sink, from whichever thread posts. `allocator` is
 /// thread-safe: the destination's thread frees what this one made.
-fn queueDelivery(entry: Destination, serialized: []const u8, origin: []const u8, allocator: std.mem.Allocator) void {
+fn queueDelivery(entry: Destination, serialized: []const u8, shared_memory: ?*runtime.SharedMemory, origin: []const u8, allocator: std.mem.Allocator) void {
     const task = allocator.create(Delivery) catch return;
     const bytes = allocator.dupe(u8, serialized) catch {
         allocator.destroy(task);
@@ -447,6 +450,7 @@ fn queueDelivery(entry: Destination, serialized: []const u8, origin: []const u8,
         .allocator = allocator,
         .serialized = bytes,
         .origin = origin_copy,
+        .shared_memory = if (shared_memory) |memory| memory.retain() else null,
     };
     // A closed sink - its loop has ended - drops the task.
     _ = entry.sink.post(.{ .run = Delivery.run, .drop = Delivery.drop, .data = task });

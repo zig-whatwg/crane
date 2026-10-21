@@ -181,6 +181,7 @@ pub const ArrayBufferViewDescription = @import("engine_types.zig").ArrayBufferVi
 // ---- end lane: runtime-impls ----
 // ---- lane: engine-boundary ----
 pub const SerializedWithTransfer = @import("engine_types.zig").SerializedWithTransfer;
+pub const SharedMemory = @import("engine_types.zig").SharedMemory;
 pub const TransferableState = @import("engine_types.zig").TransferableState;
 pub const TransferableCheck = @import("engine_types.zig").TransferableCheck;
 pub const Agent = @import("engine_types.zig").Agent;

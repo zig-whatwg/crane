@@ -258,6 +258,13 @@ pub fn agentClusterOf(isolate: *ffi.Isolate, realm: Context) u64 {
     return call(record.host, realm);
 }
 
+/// HTML's cross-origin isolated capability; absent hooks deny shared memory.
+pub fn crossOriginIsolatedCapability(isolate: *ffi.Isolate, realm: Context) bool {
+    const record = recordOf(isolate) orelse return false;
+    const call = record.hooks.crossOriginIsolatedCapability orelse return false;
+    return call(record.host, realm);
+}
+
 /// HostHooks.htmlConstructor [html_constructor] of the agent whose isolate
 /// this is, with the host it is handed - what an [HTMLConstructor]
 /// interface's construction runs (interface.zig). Null for an agent without

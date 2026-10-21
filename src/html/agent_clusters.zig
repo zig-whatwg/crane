@@ -66,6 +66,14 @@ pub fn agentClusterOf(host: ?*anyopaque, realm: runtime.Context) u64 {
     return 0;
 }
 
+/// HTML's cross-origin isolated capability of the relevant settings object.
+pub fn crossOriginIsolatedCapability(_: ?*anyopaque, realm: runtime.Context) bool {
+    const record = realm.getRealm() orelse return false;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return false));
+    const settings = dom.global_settings.of(global) orelse return false;
+    return settings.cross_origin_isolated(global);
+}
+
 /// `realm`'s agent cluster key, as its agent's hook answers it - what the
 /// worker host records for a dedicated worker it makes on its owner's thread
 /// ("obtain a worker/worklet agent" step 3: the owner's agent cluster). 0

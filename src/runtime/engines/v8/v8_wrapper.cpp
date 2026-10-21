@@ -10435,6 +10435,7 @@ struct HostObjectSteps {
 struct StructuredSerializeOptions {
     bool for_storage;
     uint64_t agent_cluster;
+    bool cross_origin_isolated;
 };
 
 } // extern "C"
@@ -10472,8 +10473,9 @@ static bool ProtocolAllowWasmCodeGeneration(Local<Context> context, Local<String
 // and StructuredDeserializeWithTransfer step 3.3 makes it resizable again with
 // that maximum - which V8 then checks a length-tracking view against.
 //
-// Everything is inline - no pointer into an isolate, a realm or a thread - so
-// a message is read on any thread, as often as it is delivered (a
+// This envelope is inline, without pointers into any realm or thread. Shared
+// buffers additionally require their independently owned backing-store sidecar.
+// A message is read on any thread, as often as it is delivered (a
 // BroadcastChannel delivers one serialization to every channel), and freed as
 // the bytes it is. The deserialization steps compile a module from its bytes
 // in the target realm; V8's NativeModuleCache (keyed by the wire bytes) shares
@@ -10496,6 +10498,17 @@ static constexpr uint8_t kEnvelopeVersion = 2;
 struct TransferredBufferShape {
     bool resizable;
     uint64_t max_byte_length;
+};
+
+/// An owning message sidecar: shared backing stores, never V8 handles. The
+/// store retains its allocator (Isolate::CreateParams uses a shared allocator),
+/// so it survives the sending isolate. V8's d8 serializer uses this same design
+/// (13.1 d8.cc GetSharedArrayBufferId / GetSharedArrayBufferFromId).
+struct CraneSharedMemory {
+    std::atomic<size_t> refs{1};
+    uint64_t agent_cluster;
+    std::vector<std::shared_ptr<BackingStore>> stores;
+    explicit CraneSharedMemory(uint64_t cluster) : agent_cluster(cluster) {}
 };
 
 /// What travels in the envelope.
@@ -10593,22 +10606,25 @@ static bool openEnvelope(const uint8_t* data, size_t size, SerializationAttachme
 ///
 /// V8 also asks the delegate about host objects (platform objects - DOM
 /// nodes and the like, which it sees as API wrappers) and SharedArrayBuffers,
-/// and its defaults for both throw a plain Error too. Neither is serializable
-/// here yet, so both throw DataCloneError, which is what the spec says for a
-/// platform object that is not [Serializable] and for a SharedArrayBuffer
-/// outside a cross-origin-isolated agent cluster.
+/// and its defaults for both throw a plain Error too. Host objects use their
+/// [Serializable] steps. Shared buffers use an owned backing-store sidecar only
+/// for non-storage serialization in a cross-origin-isolated agent cluster;
+/// unsupported platform objects and disallowed sharing throw DataCloneError.
 class DataCloneErrorDelegate final : public ValueSerializer::Delegate {
  public:
-    explicit DataCloneErrorDelegate(Isolate* isolate, const HostObjectSteps* host = nullptr, const StructuredSerializeOptions* options = nullptr)
+    explicit DataCloneErrorDelegate(Isolate* isolate, const HostObjectSteps* host = nullptr,
+                                    const StructuredSerializeOptions* options = nullptr, bool carries_shared_memory = false)
         : isolate_(isolate), host_(host) {
         if (options) {
             for_storage_ = options->for_storage;
             attachments_.agent_cluster = options->agent_cluster;
+            shared_allowed_ = carries_shared_memory && options->cross_origin_isolated;
         }
     }
 
     /// What the serialization put in its envelope: its modules' bytes.
     const SerializationAttachments& attachments() const { return attachments_; }
+    CraneSharedMemory* takeSharedMemory() { return shared_memory_.release(); }
 
     /// The serializer this delegate serves: WriteHostObject hands it to the
     /// host's steps, which write into it. Set right after the serializer is
@@ -10663,9 +10679,17 @@ class DataCloneErrorDelegate final : public ValueSerializer::Delegate {
     }
 
     Maybe<uint32_t> GetSharedArrayBufferId(Isolate* isolate, Local<SharedArrayBuffer> shared_array_buffer) override {
-        (void)shared_array_buffer;
-        ThrowDataCloneError(String::NewFromUtf8Literal(isolate, "A SharedArrayBuffer could not be cloned."));
-        return Nothing<uint32_t>();
+        // HTML StructuredSerializeInternal: reject storage and non-isolated
+        // settings before retaining any shared memory. An unknown cluster is
+        // not sufficient authority to send it to another agent.
+        if (for_storage_ || !shared_allowed_ || attachments_.agent_cluster == 0) {
+            ThrowDataCloneError(String::NewFromUtf8Literal(isolate, "A SharedArrayBuffer could not be cloned."));
+            return Nothing<uint32_t>();
+        }
+        if (!shared_memory_) shared_memory_ = std::make_unique<CraneSharedMemory>(attachments_.agent_cluster);
+        const uint32_t id = static_cast<uint32_t>(shared_memory_->stores.size());
+        shared_memory_->stores.push_back(shared_array_buffer->GetBackingStore());
+        return Just(id);
     }
 
     /// WebAssembly Web API section 3, a Module's serialization steps. V8 has
@@ -10695,6 +10719,8 @@ class DataCloneErrorDelegate final : public ValueSerializer::Delegate {
     const HostObjectSteps* host_;
     ValueSerializer* serializer_ = nullptr;
     bool for_storage_ = false;
+    bool shared_allowed_ = false;
+    std::unique_ptr<CraneSharedMemory> shared_memory_;
     SerializationAttachments attachments_;
 };
 
@@ -10739,8 +10765,11 @@ static void throwDeserializationError(Isolate* isolate, Local<String> message) {
 /// ImageData's data).
 class HostObjectDeserializerDelegate final : public ValueDeserializer::Delegate {
  public:
-    explicit HostObjectDeserializerDelegate(const HostObjectSteps* host, const SerializationAttachments* attachments = nullptr, uint64_t agent_cluster = 0)
-        : host_(host), attachments_(attachments), agent_cluster_(agent_cluster) {}
+    explicit HostObjectDeserializerDelegate(const HostObjectSteps* host, const SerializationAttachments* attachments = nullptr,
+                                            uint64_t agent_cluster = 0, const CraneSharedMemory* shared_memory = nullptr,
+                                            bool cross_origin_isolated = false)
+        : host_(host), attachments_(attachments), agent_cluster_(agent_cluster),
+          shared_memory_(shared_memory), cross_origin_isolated_(cross_origin_isolated) {}
     void SetDeserializer(ValueDeserializer* deserializer) { deserializer_ = deserializer; }
 
     /// WebAssembly Web API section 3, a Module's deserialization steps, in
@@ -10776,6 +10805,19 @@ class HostObjectDeserializerDelegate final : public ValueDeserializer::Delegate 
         return WasmModuleObject::Compile(isolate, MemorySpan<const uint8_t>(bytes.data(), bytes.size()));
     }
 
+    MaybeLocal<SharedArrayBuffer> GetSharedArrayBufferFromId(Isolate* isolate, uint32_t id) override {
+        // HTML StructuredDeserialize: target settings must permit sharing and
+        // [[AgentCluster]] must match, before creating a receiver-side object.
+        if (!cross_origin_isolated_ || !shared_memory_ ||
+            shared_memory_->agent_cluster != agent_cluster_ || id >= shared_memory_->stores.size()) {
+            throwDeserializationError(isolate, String::NewFromUtf8Literal(isolate, "DataCloneError: shared memory is not available in this agent cluster."));
+            return {};
+        }
+        // SharedArrayBuffer::New preserves a growable BackingStore's maximum
+        // and shared length; copying its bytes would lose both and atomicity.
+        return SharedArrayBuffer::New(isolate, shared_memory_->stores[id]);
+    }
+
     MaybeLocal<Object> ReadHostObject(Isolate* isolate) override {
         if (host_ == nullptr || host_->read == nullptr || deserializer_ == nullptr) {
             throwDeserializationError(isolate, String::NewFromUtf8Literal(isolate, "A platform object could not be deserialized."));
@@ -10801,6 +10843,8 @@ class HostObjectDeserializerDelegate final : public ValueDeserializer::Delegate 
     const HostObjectSteps* host_;
     const SerializationAttachments* attachments_;
     uint64_t agent_cluster_;
+    const CraneSharedMemory* shared_memory_;
+    bool cross_origin_isolated_;
     ValueDeserializer* deserializer_ = nullptr;
 };
 
@@ -11042,6 +11086,32 @@ uint8_t* v8_Value_StructuredSerializeWithTransfer(
                                  out_arraybuffer_data, error_code, &delegate);
 }
 
+/// HTML's message serialization, with an independently owned shared-memory
+/// sidecar. It is handed out only on success; every failure drops it here.
+uint8_t* v8_Value_StructuredSerializeWithSharedMemory(
+    Global<Value>* value, Global<Value>** transfer_list, size_t transfer_count,
+    size_t* out_size, ArrayBufferTransferData* out_arraybuffer_data, int* error_code,
+    const HostObjectSteps* host, const StructuredSerializeOptions* options,
+    CraneSharedMemory** out_shared_memory) {
+    *out_shared_memory = nullptr;
+    DataCloneErrorDelegate delegate(Isolate::GetCurrent(), host, options, true);
+    uint8_t* bytes = serializeWithTransfer(value, transfer_list, transfer_count, out_size,
+                                          out_arraybuffer_data, error_code, &delegate);
+    if (bytes) *out_shared_memory = delegate.takeSharedMemory();
+    return bytes;
+}
+
+void v8_SharedMemory_Retain(CraneSharedMemory* memory) {
+    memory->refs.fetch_add(1, std::memory_order_relaxed);
+}
+void v8_SharedMemory_Release(CraneSharedMemory* memory) {
+    if (memory->refs.fetch_sub(1, std::memory_order_acq_rel) == 1) delete memory;
+}
+/// Test-only, while the caller owns a reference. No production counter added.
+size_t v8_test_SharedMemory_RefCount(const CraneSharedMemory* memory) {
+    return memory->refs.load(std::memory_order_acquire);
+}
+
 /// Deserialize V8 structured clone data with ArrayBuffer transfer.
 ///
 /// This function is called in the DESTINATION isolate to recreate values.
@@ -11057,14 +11127,16 @@ uint8_t* v8_Value_StructuredSerializeWithTransfer(
 /// @param agent_cluster - the target realm's agent cluster (0: none known),
 ///               which a WebAssembly.Module's record must name
 /// @return Global<Value>* to the deserialized value in current isolate
-Global<Value>* v8_Value_DeserializeWithTransfer_CrossIsolate(
+static Global<Value>* deserializeWithSharedMemory(
     const uint8_t* serialized_data,
     size_t serialized_size,
     const ArrayBufferTransferData* arraybuffer_data,
     size_t arraybuffer_count,
     int* error_code,
     const HostObjectSteps* host,
-    uint64_t agent_cluster
+    uint64_t agent_cluster,
+    const CraneSharedMemory* shared_memory,
+    bool cross_origin_isolated
 ) {
     if (error_code) *error_code = 0;
 
@@ -11098,7 +11170,7 @@ Global<Value>* v8_Value_DeserializeWithTransfer_CrossIsolate(
     }
 
     // Create ValueDeserializer
-    HostObjectDeserializerDelegate delegate(host, &attachments, agent_cluster);
+    HostObjectDeserializerDelegate delegate(host, &attachments, agent_cluster, shared_memory, cross_origin_isolated);
     ValueDeserializer deserializer(isolate, payload, payload_size, &delegate);
     delegate.SetDeserializer(&deserializer);
 
@@ -11148,6 +11220,20 @@ Global<Value>* v8_Value_DeserializeWithTransfer_CrossIsolate(
 
     Local<Value> deserialized = result.ToLocalChecked();
     return trackHandle(new Global<Value>(isolate, deserialized));
+}
+
+Global<Value>* v8_Value_DeserializeWithTransfer_CrossIsolate(
+    const uint8_t* bytes, size_t size, const ArrayBufferTransferData* buffers,
+    size_t count, int* error_code, const HostObjectSteps* host, uint64_t cluster) {
+    return deserializeWithSharedMemory(bytes, size, buffers, count, error_code, host, cluster, nullptr, false);
+}
+
+Global<Value>* v8_Value_DeserializeWithSharedMemory(
+    const uint8_t* bytes, size_t size, const ArrayBufferTransferData* buffers,
+    size_t count, int* error_code, const HostObjectSteps* host, uint64_t cluster,
+    const CraneSharedMemory* shared_memory, bool cross_origin_isolated) {
+    return deserializeWithSharedMemory(bytes, size, buffers, count, error_code, host, cluster,
+                                       shared_memory, cross_origin_isolated);
 }
 
 // ---- lane: serializable ----
