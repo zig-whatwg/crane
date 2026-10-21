@@ -207,6 +207,7 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    dom.mutation.registerInsertionStepsCallback(&autofocusInsertionSteps) catch @panic("failed to install autofocus insertion steps");
     // Its states left at its Browser's end (Browser.deinit).
     @import("dom").teardown_sweeps.install(.elements, &sweepRemaining);
     // The attribute list's hook, for its ancestors' use (cloning). Installed
@@ -246,6 +247,16 @@ pub fn installHooks() void {
         .set_registry = &setCustomElementRegistry,
         .attach_shadow = &attachShadow,
     });
+}
+
+fn autofocusInsertionSteps(node: *dom.NodeBase) void {
+    if (node.node_type != 1) return;
+    const element: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse return));
+    const internal = getInternal(element) orelse return;
+    // Every insertion visits this callback; allocate and wrap nothing unless
+    // the element actually has the autofocus content attribute.
+    if (!dom.element_data.hasAttribute(&internal.data, "autofocus")) return;
+    @import("html").autofocus.inserted(element);
 }
 
 fn isValueHook(instance: *runtime.Instance) ?[]const u8 {

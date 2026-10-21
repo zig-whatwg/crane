@@ -93,12 +93,20 @@ pub const Mode = enum {
 /// Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html#speculation-rule-eagerness
 pub const SpeculationEagerness = @import("dom").document_scripts.SpeculationEagerness;
 
+/// Independently lazy interaction state behind one Document-owned pointer.
+/// A second inline pointer would cross Document's 2048-byte allocation class.
+const InteractionState = struct {
+    top_layer: ?*@import("dom").top_layer.State = null,
+    autofocus: ?*@import("dom").document_autofocus.State = null,
+};
+
 /// Internal state for Document implementation
 /// Spec: https://dom.spec.whatwg.org/#concept-document
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
-    /// Allocated only by an open popover/picker. The document owns all holds.
-    top_layer: ?*@import("dom").top_layer.State = null,
+    /// Allocated only by top-layer use, autofocus insertion or dialog
+    /// completion. The document owns both states and all their holds.
+    interaction_state: ?*InteractionState = null,
 
     /// Cached DOMImplementation instance ([SameObject])
     implementation: ?*runtime.Instance,
@@ -570,13 +578,18 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
+        const interaction = self.interaction_state;
+        self.interaction_state = null;
+        if (interaction) |shared| if (shared.autofocus) |state| state.destroy(self.allocator);
         // domindex1: the maps go first, and keep nothing after: a node the
         // rest of this teardown releases is in no reader's answer.
         self.tree_index.deinit();
-        if (self.top_layer) |layer| {
-            self.top_layer = null;
-            layer.releaseAfterRealmEnded();
-            self.allocator.destroy(layer);
+        if (interaction) |shared| {
+            if (shared.top_layer) |layer| {
+                layer.releaseAfterRealmEnded();
+                self.allocator.destroy(layer);
+            }
+            self.allocator.destroy(shared);
         }
         self.script_delivery_continuation_suppressed = true;
         // Borrowed membership ends before parsers/module owners release nodes.
@@ -729,9 +742,27 @@ pub const InternalState = struct {
         if (self.style_sheets) |ss| self.style_sheets_kept.release(ss, interfaces.StyleSheetList.deinit);
     }
 
+    fn ensureInteractionState(self: *InternalState) !*InteractionState {
+        if (self.interaction_state) |shared| return shared;
+        const shared = try self.allocator.create(InteractionState);
+        shared.* = .{};
+        self.interaction_state = shared;
+        return shared;
+    }
+
+    /// Roll back a newly allocated container when its first child allocation
+    /// fails. An existing sibling's state is never discarded by this path.
+    fn discardEmptyInteractionState(self: *InternalState, shared: *InteractionState) void {
+        std.debug.assert(self.interaction_state == shared);
+        std.debug.assert(shared.top_layer == null and shared.autofocus == null);
+        self.interaction_state = null;
+        self.allocator.destroy(shared);
+    }
+
     fn clearTopLayer(self: *InternalState) void {
-        const layer = self.top_layer orelse return;
-        self.top_layer = null;
+        const shared = self.interaction_state orelse return;
+        const layer = shared.top_layer orelse return;
+        shared.top_layer = null;
         layer.deinit();
         self.allocator.destroy(layer);
     }
@@ -739,12 +770,27 @@ pub const InternalState = struct {
 
 fn topLayerState(instance: *runtime.Instance, create: bool) !?*@import("dom").top_layer.State {
     const internal = getInternal(instance) orelse return null;
-    if (internal.top_layer) |layer| return layer;
+    if (internal.interaction_state) |shared| if (shared.top_layer) |layer| return layer;
     if (!create) return null;
+    const existed = internal.interaction_state != null;
+    const shared = try internal.ensureInteractionState();
+    errdefer if (!existed) internal.discardEmptyInteractionState(shared);
     const layer = try internal.allocator.create(@import("dom").top_layer.State);
     layer.* = @import("dom").top_layer.State.init(internal.allocator, instance);
-    internal.top_layer = layer;
+    shared.top_layer = layer;
     return layer;
+}
+
+fn autofocusState(document: *runtime.Instance, create: bool) ?*@import("dom").document_autofocus.State {
+    const internal = getInternal(document) orelse return null;
+    if (internal.interaction_state) |shared| if (shared.autofocus) |state| return state;
+    if (!create) return null;
+    const existed = internal.interaction_state != null;
+    const shared = internal.ensureInteractionState() catch return null;
+    return @import("dom").document_autofocus.State.ensure(&shared.autofocus, internal.allocator) catch {
+        if (!existed) internal.discardEmptyInteractionState(shared);
+        return null;
+    };
 }
 
 /// dom.style's `engine_of`: this document's style engine.
@@ -845,6 +891,7 @@ pub fn installHooks() void {
         .ensure_global_registry = &ensureGlobalRegistry,
     });
     @import("dom").document_lifecycle.install(.{
+        .autofocus = &autofocusState,
         .rendering = .{
             .of = &renderBlockingElements,
             .allows_adding = &allowsAddingRenderBlockers,
@@ -1240,6 +1287,7 @@ pub fn getBoundV8Wrapper(instance: *runtime.Instance) ?*anyopaque {
 
 /// Document's own teardown: the generated chain runs Node's after it.
 pub fn deinitOwn(instance: *runtime.Instance) void {
+    if (autofocusState(instance, false)) |state| state.clear();
     if (getInternal(instance)) |internal| internal.clearTopLayer();
     if (getInternal(instance)) |internal| internal.script_delivery_continuation_suppressed = true;
     @import("html").script_execution.discardDocumentScripts(instance);

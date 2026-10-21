@@ -18,6 +18,7 @@ const runtime = @import("runtime");
 
 /// What Document supplies.
 pub const Implementation = struct {
+    autofocus: *const fn (*runtime.Instance, create: bool) ?*@import("document_autofocus.zig").State,
     /// Rendering is a document lifecycle operation; share its installed table.
     rendering: @import("document_rendering.zig").Implementation,
     /// Only Document casts these parser pointers to the HTML owner type.
@@ -77,6 +78,12 @@ pub fn install(impl: Implementation) void {
 pub fn renderingImplementation() ?@import("document_rendering.zig").Implementation {
     const impl = implementation orelse return null;
     return impl.rendering;
+}
+
+/// HTML 6.6.7 state, owned by the queried Document.
+pub fn autofocusState(document: *runtime.Instance, create: bool) ?*@import("document_autofocus.zig").State {
+    const impl = implementation orelse return null;
+    return impl.autofocus(document, create);
 }
 
 /// Document acquires a parser reference independently of the initiating
