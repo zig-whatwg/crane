@@ -3581,6 +3581,17 @@ pub fn V8Interface(comptime Interface: type) type {
                     var error_realm: ErrorRealm = .{ .info = info, .isolate = isolate_inner };
                     defer error_realm.release();
 
+                    // WebIDL attribute getter 1.1.2.2 / HTML 7.2.1.1: a
+                    // Proxy's borrowed getter must check its platform target.
+                    if (comptime std.mem.eql(u8, iface_name, "Location") and
+                        !acceptsAnyReceiver(getter_name["get_".len..], .getter))
+                    {
+                        if (!cross_origin.receiverIsAccessible(info)) {
+                            if (error_realm.get()) |realm| conv.throwWebIDLErrorFromContext(isolate_inner, realm, "SecurityError");
+                            return;
+                        }
+                    }
+
                     // Check return type
                     const fn_info = @typeInfo(@TypeOf(zig_getter)).@"fn";
                     const ReturnType = fn_info.return_type.?;
@@ -4389,11 +4400,19 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
 
                 fn body(info: *const v8.FunctionCallbackInfo) void {
-                    // WebIDL "perform a security check" for a promise-returning
-                    // operation of an interface a Window or Location implements:
-                    // in the binding, inside rejectOnThrow, so its SecurityError
-                    // rejects the promise (V8 checks every other such member).
-                    if (comptime bindingChecksReceiver(zig_name)) {
+                    // WebIDL operation 2.1.2.2 / HTML 7.2.1.1. Location's
+                    // Proxy needs an explicit check; promise-returning members
+                    // keep this inside rejectOnThrow. Cross-origin replace is
+                    // allowed by the same table that configures V8's checks.
+                    const location_checks_receiver = comptime blk: {
+                        if (!std.mem.eql(u8, interface_name, "Location")) break :blk false;
+                        for (methods) |method| {
+                            if (std.mem.eql(u8, method[1], zig_name))
+                                break :blk !acceptsAnyReceiver(method[0], .operation);
+                        }
+                        break :blk true;
+                    };
+                    if (comptime bindingChecksReceiver(zig_name) or location_checks_receiver) {
                         if (!cross_origin.receiverIsAccessible(info)) {
                             const isolate = info.getIsolate();
                             if (v8.v8_Isolate_GetCurrentContext(isolate)) |current| {
@@ -8895,6 +8914,17 @@ pub fn V8Interface(comptime Interface: type) type {
                     const setter_context_owned = info.getFunctionCreationContext();
                     defer if (setter_context_owned) |c| v8.v8_Context_Dispose(c);
                     const setter_context = setter_context_owned orelse context;
+
+                    // WebIDL attribute setter 4.5.2 precedes conversion.
+                    // CrossOriginProperties exempts href's setter.
+                    if (comptime std.mem.eql(u8, interface_name, "Location") and
+                        !acceptsAnyReceiver(setter_name_param["set_".len..], .setter))
+                    {
+                        if (!cross_origin.receiverIsAccessible(info)) {
+                            conv.throwWebIDLErrorFromContext(isolate_inner, setter_context, "SecurityError");
+                            return;
+                        }
+                    }
 
                     // Get the new value from info[0] - handle missing arguments as undefined
                     // Per WebIDL spec, missing arguments should be treated as undefined

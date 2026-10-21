@@ -353,7 +353,14 @@ pub fn wrapInstanceAsV8Object(
 
     // For legacy platform objects, wrap in a Proxy to ensure correct
     // [[OwnPropertyKeys]] enumeration order per WebIDL §3.9.6.
-    const final_object = if (isLegacyPlatformObject(interface_name)) blk: {
+    const final_object = if (std.mem.eql(u8, interface_name, "Location")) blk: {
+        // The cache takes the exotic object's single identity from creation.
+        // The proxy owns the ordinary target once its temporary handle goes.
+        defer v8.v8_Object_Dispose(v8_object);
+        const realm = ctx_mgr.get(context) orelse return error.ObjectCreationFailed;
+        const location = try @import("engine").createLocationObject(realm, runtime.JSValue.fromHandle(v8_object));
+        break :blk @as(*v8.Object, @ptrCast(@alignCast(location.value.handle.ptr)));
+    } else if (isLegacyPlatformObject(interface_name)) blk: {
         const lpo_proxy = @import("legacy_platform_object_proxy.zig");
         const proxy = lpo_proxy.wrapInProxy(v8_object, isolate, context, hasNamedPropertySetter(interface_name));
         // The proxy holds its target, and nothing below uses the target's own

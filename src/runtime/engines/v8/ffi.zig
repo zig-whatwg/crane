@@ -3400,6 +3400,9 @@ pub extern fn v8_SetCrossOriginDispatch(dispatch: *const CrossOriginDispatch) vo
 /// The cross-origin access check and interceptors on `tpl` (kind 0: a Window
 /// global template, 1: Location's instance template).
 pub extern fn v8_ObjectTemplate_SetCrossOriginAccessCheck(tpl: *ObjectTemplate, kind: c_int) void;
+/// The current function realm's security check for its unwrapped receiver.
+/// Local handles only; call after identifying it as a Window or Location.
+pub extern fn v8_FunctionCallbackInfo_ReceiverIsAccessible(info: *const FunctionCallbackInfo) bool;
 /// The isolate's failed-access-check callback: a SecurityError.
 pub extern fn v8_Isolate_SetCrossOriginFailedAccessCheck(isolate: *Isolate) void;
 /// FunctionTemplate::SetAcceptAnyReceiver: false runs WebIDL's security check.
@@ -3416,6 +3419,9 @@ pub extern fn v8_ObjectTemplate_SetAccessorPropertyChecked(
 ) void;
 /// HTML "Location object setup" steps 3-4: own valueOf (%Object.prototype.valueOf%)
 /// and %Symbol.toPrimitive% (undefined), read-only, non-enumerable, non-configurable.
+/// Borrow target, return the owned HTML Location exotic object identity.
+pub extern fn v8_CreateLocationObject(context: *Context, target: *Object) ?*Object;
+
 pub extern fn v8_ObjectTemplate_SetLocationValueOfAndToPrimitive(tpl: *ObjectTemplate) void;
 /// v8_Object_SetAccessorProperty with each function's receiver check.
 pub extern fn v8_Object_SetAccessorPropertyChecked(

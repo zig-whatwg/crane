@@ -14361,10 +14361,145 @@ void v8_ObjectTemplate_SetCrossOriginAccessCheck(Global<ObjectTemplate>* tpl, in
             data));
 }
 
+/// WebIDL's receiver check after the binding identifies Window/Location.
+/// A Location Proxy does not itself carry the target's V8 access check, so
+/// SetAcceptAnyReceiver(false) alone cannot protect borrowed member calls.
+/// Only Local handles; the current context is the member function's realm.
+bool v8_FunctionCallbackInfo_ReceiverIsAccessible(const FunctionCallbackInfo<Value>* info) {
+    Isolate* isolate = info->GetIsolate();
+    HandleScope handles(isolate);
+    Local<Object> receiver = info->This();
+    if (receiver->IsProxy()) {
+        Local<Value> target = receiver.As<Proxy>()->GetTarget();
+        if (!target->IsObject()) return true; // The binding rejects the brand.
+        receiver = target.As<Object>();
+    }
+    return CrossOriginAccessCheck(isolate->GetCurrentContext(), receiver, {});
+}
+
 /// The isolate's failed-access-check callback: a SecurityError
 /// (CrossOriginFailedAccessCheck).
 void v8_Isolate_SetCrossOriginFailedAccessCheck(Isolate* isolate) {
     isolate->SetFailedAccessCheckCallbackFunction(CrossOriginFailedAccessCheck);
+}
+
+// HTML 7.2.4: Location's exotic methods on the single object exposed from
+// creation. Traps are native functions in the CALLER'S current context, so a
+// Reflect method borrowed from another realm keeps that builtin's realm.
+static Local<Object> locationTarget(const FunctionCallbackInfo<Value>& info) {
+    return info[0].As<Object>();
+}
+static bool locationSameOrigin(Isolate* isolate, Local<Object> target) {
+    return CrossOriginAccessCheck(isolate->GetCurrentContext(), target, {});
+}
+static void LocationGetPrototype(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Object> target = locationTarget(info);
+    info.GetReturnValue().Set(locationSameOrigin(isolate, target) ? target->GetPrototype() : Null(isolate).As<Value>());
+}
+static void LocationSetPrototype(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Object> target = locationTarget(info);
+    // SetImmutablePrototype, including the cross-origin null prototype.
+    Local<Value> current = locationSameOrigin(isolate, target) ? target->GetPrototype() : Null(isolate).As<Value>();
+    info.GetReturnValue().Set(current->StrictEquals(info[1]));
+}
+static void LocationPreventExtensions(const FunctionCallbackInfo<Value>& info) {
+    info.GetReturnValue().Set(false);
+}
+static void LocationOwnKeys(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Array> keys;
+    if (locationTarget(info)->GetOwnPropertyNames(isolate->GetCurrentContext(), ALL_PROPERTIES,
+                                                  KeyConversionMode::kConvertToString).ToLocal(&keys))
+        info.GetReturnValue().Set(keys);
+}
+static void LocationOwnDescriptor(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Value> descriptor;
+    // C/F/S all report configurable:false for same-origin href/hash/toString
+    // (WPT location-stringifier and proxy-getOwnPropertyDescriptor, aligned
+    // 5d23b743bb, 2026-10-21). Preserve that long-standing browser behavior:
+    // https://github.com/whatwg/html/issues/4157. Cross-origin descriptors are
+    // separately produced by CrossOriginNamedDescriptor, configurable:true.
+    if (locationTarget(info)->GetOwnPropertyDescriptor(isolate->GetCurrentContext(), info[1].As<Name>()).ToLocal(&descriptor))
+        info.GetReturnValue().Set(descriptor);
+}
+static void LocationDefineProperty(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Context> context = isolate->GetCurrentContext();
+    Local<Object> target = locationTarget(info);
+    if (!locationSameOrigin(isolate, target)) {
+        ThrowCrossOriginSecurityError(isolate);
+        return;
+    }
+    // V8 supplies FromPropertyDescriptor's fresh ordinary object. Read only
+    // its own fields, so a polluted Object.prototype cannot add attributes.
+    Local<Object> descriptor = info[2].As<Object>();
+    auto field = [&](const char* name, Local<Value>* value) -> bool {
+        Local<String> key = String::NewFromUtf8(isolate, name).ToLocalChecked();
+        Maybe<bool> has = descriptor->HasOwnProperty(context, key);
+        if (has.IsNothing()) return false;
+        if (!has.FromJust()) return true;
+        return descriptor->Get(context, key).ToLocal(value);
+    };
+    Local<Value> value, writable, get, set, enumerable, configurable;
+    if (!field("value", &value) || !field("writable", &writable) ||
+        !field("get", &get) || !field("set", &set) ||
+        !field("enumerable", &enumerable) || !field("configurable", &configurable)) return;
+    std::unique_ptr<PropertyDescriptor> native;
+    if (!get.IsEmpty() || !set.IsEmpty()) native = std::make_unique<PropertyDescriptor>(get, set);
+    else if (!writable.IsEmpty()) native = std::make_unique<PropertyDescriptor>(value, writable->BooleanValue(isolate));
+    else if (!value.IsEmpty()) native = std::make_unique<PropertyDescriptor>(value);
+    else native = std::make_unique<PropertyDescriptor>();
+    if (!enumerable.IsEmpty()) native->set_enumerable(enumerable->BooleanValue(isolate));
+    if (!configurable.IsEmpty()) native->set_configurable(configurable->BooleanValue(isolate));
+    Maybe<bool> result = target->DefineProperty(context, info[1].As<Name>(), *native);
+    if (result.IsJust()) info.GetReturnValue().Set(result.FromJust());
+}
+static Intercepted LocationTrapLookup(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
+    if (!name->IsString()) return Intercepted::kNo;
+    Isolate* isolate = info.GetIsolate();
+    Local<String> key = name.As<String>();
+    FunctionCallback callback = nullptr;
+    // Normal reads/writes ask for "get"/"set": no function allocation on
+    // that path. The target keeps its existing access-check semantics.
+    switch (key->Length()) {
+        case 7:
+            if (key->StringEquals(String::NewFromUtf8Literal(isolate, "ownKeys"))) callback = LocationOwnKeys;
+            break;
+        case 14:
+            if (key->StringEquals(String::NewFromUtf8Literal(isolate, "getPrototypeOf"))) callback = LocationGetPrototype;
+            else if (key->StringEquals(String::NewFromUtf8Literal(isolate, "setPrototypeOf"))) callback = LocationSetPrototype;
+            else if (key->StringEquals(String::NewFromUtf8Literal(isolate, "defineProperty"))) callback = LocationDefineProperty;
+            break;
+        case 17:
+            if (key->StringEquals(String::NewFromUtf8Literal(isolate, "preventExtensions"))) callback = LocationPreventExtensions;
+            break;
+        case 24:
+            if (key->StringEquals(String::NewFromUtf8Literal(isolate, "getOwnPropertyDescriptor"))) callback = LocationOwnDescriptor;
+            break;
+    }
+    if (!callback) return Intercepted::kNo;
+    Local<Function> function;
+    if (Function::New(isolate->GetCurrentContext(), callback, {}, 0, ConstructorBehavior::kThrow).ToLocal(&function))
+        info.GetReturnValue().Set(function);
+    return Intercepted::kYes;
+}
+
+Global<Object>* v8_CreateLocationObject(Global<Context>* realm, Global<Object>* target) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handles(isolate);
+    NativeStepScope native_step(isolate);
+    Local<Context> context = realm->Get(isolate);
+    Local<ObjectTemplate> handler_template = ObjectTemplate::New(isolate);
+    handler_template->SetHandler(NamedPropertyHandlerConfiguration(LocationTrapLookup));
+    Local<Object> handler;
+    if (!handler_template->NewInstance(context).ToLocal(&handler)) return nullptr;
+    if (!handler->SetPrototype(context, Null(isolate)).FromMaybe(false)) return nullptr;
+    Local<Proxy> result;
+    if (!Proxy::New(context, target->Get(isolate), handler).ToLocal(&result)) return nullptr;
+    return trackHandle(new Global<Object>(isolate, result));
 }
 
 /// HTML 7.2.4 "Location object setup" steps 3-4 on Location's instance
@@ -14396,6 +14531,13 @@ void v8_FunctionTemplate_SetAcceptAnyReceiver(Global<FunctionTemplate>* tpl, boo
 size_t v8_CrossOrigin_ExternalReferences(uintptr_t* out, size_t capacity) {
     const uintptr_t refs[] = {
         reinterpret_cast<uintptr_t>(&CrossOriginAccessCheck),
+        reinterpret_cast<uintptr_t>(&LocationGetPrototype),
+        reinterpret_cast<uintptr_t>(&LocationSetPrototype),
+        reinterpret_cast<uintptr_t>(&LocationPreventExtensions),
+        reinterpret_cast<uintptr_t>(&LocationOwnKeys),
+        reinterpret_cast<uintptr_t>(&LocationOwnDescriptor),
+        reinterpret_cast<uintptr_t>(&LocationDefineProperty),
+        reinterpret_cast<uintptr_t>(&LocationTrapLookup),
         reinterpret_cast<uintptr_t>(&CrossOriginNamedGetter),
         reinterpret_cast<uintptr_t>(&CrossOriginNamedSetter),
         reinterpret_cast<uintptr_t>(&CrossOriginNamedQuery),

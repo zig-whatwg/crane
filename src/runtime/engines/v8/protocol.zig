@@ -81,7 +81,7 @@ pub const capabilities: engine.Capabilities = .{
     // ObjectTemplate::SetAccessCheckCallbackAndHandler on the Window global
     // and Location templates, per-realm security tokens, and
     // FunctionTemplate::SetAcceptAnyReceiver (cross_origin.zig).
-    .cross_origin_objects = .native,
+    .cross_origin_objects = .emulated,
     // Isolate::SetWasmStreamingCallback: V8 defines compileStreaming and
     // instantiateStreaming and hands each fulfilled source to the host
     // (protocol_webassembly.zig).
@@ -585,6 +585,14 @@ pub fn createSequenceOfPlatformObjects(realm: Context, instances: []const *Insta
     defer std.heap.c_allocator.free(values);
     for (instances, values) |instance, *value| value.* = .{ .instance = instance };
     return createSequenceOfValues(realm, values);
+}
+
+pub fn createLocationObject(realm: Context, ordinary_target: JSValue) Error!Owned {
+    const target = handleOf(ordinary_target) orelse return error.TypeError;
+    const entered = try enter(realm);
+    defer entered.leave();
+    const object = ffi.v8_CreateLocationObject(entered.context(), @ptrCast(target)) orelse return error.OperationFailed;
+    return owned(JSValue.fromHandle(object));
 }
 
 pub fn createDictionaryObject(realm: Context, members: []const engine.DictionaryMember) Error!Owned {

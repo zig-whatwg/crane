@@ -476,10 +476,11 @@ test "every protocol operation's V8 function compiles" {
     }
 }
 
-test "the protocol is bound to V8, which has every capability the protocol declares natively" {
+test "the protocol is bound to V8, with explicit native and emulated capabilities" {
     try std.testing.expectEqualStrings("V8", protocol.name);
     inline for (@typeInfo(protocol.Capabilities).@"struct".fields) |field| {
-        try std.testing.expectEqual(protocol.Support.native, @field(protocol.capabilities, field.name));
+        const expected: protocol.Support = if (std.mem.eql(u8, field.name, "cross_origin_objects")) .emulated else .native;
+        try std.testing.expectEqual(expected, @field(protocol.capabilities, field.name));
     }
 }
 

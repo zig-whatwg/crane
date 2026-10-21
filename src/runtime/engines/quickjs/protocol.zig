@@ -415,6 +415,9 @@ pub fn createSequenceOfValues(_: Context, _: []const JSValue) Error!Owned {
 pub fn createSequenceOfPlatformObjects(_: Context, _: []const *Instance) Error!Owned {
     return error.NotSupported;
 }
+pub fn createLocationObject(_: Context, _: JSValue) Error!Owned {
+    return error.NotSupported;
+}
 pub fn createDictionaryObject(_: Context, _: []const engine.DictionaryMember) Error!Owned {
     return error.NotSupported;
 }

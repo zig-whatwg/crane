@@ -1797,6 +1797,14 @@ pub inline fn createDictionaryObject(realm: Context, members: []const Dictionary
     return impl.createDictionaryObject(realm, members);
 }
 
+/// HTML Location object with its exotic internal methods [cross_origin_objects].
+/// ordinary_target is BORROWED; the returned identity is OWNED and used from
+/// the object's creation onward. Access decisions are made at each operation.
+pub inline fn createLocationObject(realm: Context, ordinary_target: JSValue) Error!Owned {
+    comptime gate(.cross_origin_objects, "createLocationObject");
+    return impl.createLocationObject(realm, ordinary_target);
+}
+
 /// What an observable array's indexed values are - its `T` (WebIDL
 /// ObservableArray<T>): the conversion each value goes through before the
 /// owner's set-an-indexed-value steps see it.
