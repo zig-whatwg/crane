@@ -494,6 +494,195 @@ const brotli_enc_sources = [_][]const u8{
     "enc/utf8_util.c",
 };
 
+/// The testing image decoders. Unmodified pinned sources; no tools, test
+/// corpus, system JPEG/XML dependency, or build-time interpreter. Scalar JPEG
+/// builds on every target, including iOS, without assembler or CPU globals.
+fn buildImageCodecs(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, sanitize_c: ?std.zig.SanitizeC) ?*std.Build.Step.Compile {
+    const jpeg = b.lazyDependency("jpeg", .{}) orelse return null;
+    const nanosvg = b.lazyDependency("nanosvg", .{}) orelse return null;
+    const expat = b.lazyDependency("expat", .{}) orelse return null;
+    const headers = b.addWriteFiles();
+    _ = headers.add("jconfig.h",
+        \\#define JPEG_LIB_VERSION 62
+        \\#define LIBJPEG_TURBO_VERSION 3.1.3
+        \\#define LIBJPEG_TURBO_VERSION_NUMBER 3001003
+        \\#define MEM_SRCDST_SUPPORTED 1
+        \\#ifndef BITS_IN_JSAMPLE
+        \\#define BITS_IN_JSAMPLE 8
+        \\#endif
+        \\#define C_ARITH_CODING_SUPPORTED 1
+        \\#define D_ARITH_CODING_SUPPORTED 1
+        \\
+    );
+    _ = headers.add("jconfigint.h", b.fmt(
+        \\#define BUILD "crane-3.1.3"
+        \\#define HIDDEN __attribute__((visibility("hidden")))
+        \\#define INLINE inline __attribute__((always_inline))
+        \\#define THREAD_LOCAL _Thread_local
+        \\#define PACKAGE_NAME "libjpeg-turbo"
+        \\#define VERSION "3.1.3"
+        \\#define SIZEOF_SIZE_T {d}
+        \\#define HAVE_BUILTIN_CTZL 1
+        \\#define FALLTHROUGH __attribute__((fallthrough));
+        \\#ifndef BITS_IN_JSAMPLE
+        \\#define BITS_IN_JSAMPLE 8
+        \\#endif
+        \\#undef C_ARITH_CODING_SUPPORTED
+        \\#undef D_ARITH_CODING_SUPPORTED
+        \\#if BITS_IN_JSAMPLE == 8
+        \\#define C_ARITH_CODING_SUPPORTED 1
+        \\#define D_ARITH_CODING_SUPPORTED 1
+        \\#endif
+        \\
+    , .{target.result.ptrBitWidth() / 8}));
+    const jpeg_version = b.addConfigHeader(.{ .style = .{ .cmake = jpeg.path("src/jversion.h.in") }, .include_path = "jversion.h" }, .{ .COPYRIGHT_YEAR = "1991-2025" });
+    const jpeg_lib = b.addLibrary(.{ .name = "jpeg", .linkage = .static, .root_module = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true, .sanitize_c = sanitize_c }) });
+    jpeg_lib.root_module.addIncludePath(headers.getDirectory());
+    jpeg_lib.root_module.addIncludePath(jpeg.path("src"));
+    jpeg_lib.root_module.addConfigHeader(jpeg_version);
+    jpeg_lib.root_module.addCSourceFiles(.{ .root = jpeg.path("src"), .files = &jpeg_sources, .flags = &.{"-std=c11"} });
+
+    const xml_headers = b.addWriteFiles();
+    _ = xml_headers.add("expat_config.h", b.fmt(
+        \\#define BYTEORDER {d}
+        \\#define XML_CONTEXT_BYTES 1024
+        \\#define XML_GE 1
+        \\#define XML_NS 1
+        \\#define HAVE_STDINT_H 1
+        \\#define HAVE_STDLIB_H 1
+        \\#define HAVE_STRING_H 1
+        \\#define HAVE_UNISTD_H 1
+        \\#define HAVE_SYS_TYPES_H 1
+        \\#define HAVE_FCNTL_H 1
+        \\#define HAVE_{s} 1
+        \\
+    , .{ if (target.result.cpu.arch.endian() == .little) @as(u16, 1234) else 4321, if (target.result.os.tag == .linux) "GETRANDOM" else "ARC4RANDOM_BUF" }));
+    const xml_lib = b.addLibrary(.{ .name = "expat", .linkage = .static, .root_module = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true, .sanitize_c = sanitize_c }) });
+    xml_lib.root_module.addIncludePath(xml_headers.getDirectory());
+    xml_lib.root_module.addIncludePath(expat.path("expat/lib"));
+    xml_lib.root_module.addCMacro("XML_STATIC", "1");
+    xml_lib.root_module.addCSourceFiles(.{ .root = expat.path("expat/lib"), .files = &.{ "xcs.c", "xmlparse.c", "xmlrole.c", "xmltok.c", if (target.result.os.tag == .linux) "random_getrandom.c" else "random_arc4random_buf.c" }, .flags = &.{"-std=c11"} });
+
+    const lib = b.addLibrary(.{ .name = "crane_image_codecs", .linkage = .static, .root_module = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true, .sanitize_c = sanitize_c }) });
+    lib.root_module.addIncludePath(headers.getDirectory());
+    lib.root_module.addIncludePath(jpeg.path("src"));
+    lib.root_module.addIncludePath(expat.path("expat/lib"));
+    lib.root_module.addIncludePath(nanosvg.path("src"));
+    lib.root_module.addCMacro("XML_STATIC", "1");
+    lib.root_module.addCSourceFiles(.{ .root = b.path("src/platform/kit/image_codecs"), .files = &.{ "jpeg.c", "svg.c" }, .flags = &.{"-std=c11"} });
+    lib.root_module.linkLibrary(jpeg_lib);
+    lib.root_module.linkLibrary(xml_lib);
+    if (target.result.os.tag == .linux) lib.root_module.linkSystemLibrary("m", .{});
+    lib.installHeader(b.path("src/platform/kit/image_codecs/image_codecs.h"), "image_codecs.h");
+    if (target.result.os.tag == .ios) for ([_]*std.Build.Step.Compile{ jpeg_lib, xml_lib, lib }) |part| addIosSdkPaths(part.root_module, iosSdkPath(b));
+    return lib;
+}
+
+// libjpeg-turbo 3.1.3 CMakeLists.txt JPEG_SOURCES, including all sample precisions.
+const jpeg_sources = [_][]const u8{
+    "jcapimin.c",
+    "wrapper/jcapistd-8.c",
+    "wrapper/jcapistd-12.c",
+    "wrapper/jcapistd-16.c",
+    "wrapper/jccoefct-8.c",
+    "wrapper/jccoefct-12.c",
+    "wrapper/jccolor-8.c",
+    "wrapper/jccolor-12.c",
+    "wrapper/jccolor-16.c",
+    "wrapper/jcdctmgr-8.c",
+    "wrapper/jcdctmgr-12.c",
+    "wrapper/jcdiffct-8.c",
+    "wrapper/jcdiffct-12.c",
+    "wrapper/jcdiffct-16.c",
+    "jchuff.c",
+    "jcicc.c",
+    "jcinit.c",
+    "jclhuff.c",
+    "wrapper/jclossls-8.c",
+    "wrapper/jclossls-12.c",
+    "wrapper/jclossls-16.c",
+    "wrapper/jcmainct-8.c",
+    "wrapper/jcmainct-12.c",
+    "wrapper/jcmainct-16.c",
+    "jcmarker.c",
+    "jcmaster.c",
+    "jcomapi.c",
+    "jcparam.c",
+    "jcphuff.c",
+    "wrapper/jcprepct-8.c",
+    "wrapper/jcprepct-12.c",
+    "wrapper/jcprepct-16.c",
+    "wrapper/jcsample-8.c",
+    "wrapper/jcsample-12.c",
+    "wrapper/jcsample-16.c",
+    "jctrans.c",
+    "jdapimin.c",
+    "wrapper/jdapistd-8.c",
+    "wrapper/jdapistd-12.c",
+    "wrapper/jdapistd-16.c",
+    "jdatadst.c",
+    "jdatasrc.c",
+    "wrapper/jdcoefct-8.c",
+    "wrapper/jdcoefct-12.c",
+    "wrapper/jdcolor-8.c",
+    "wrapper/jdcolor-12.c",
+    "wrapper/jdcolor-16.c",
+    "wrapper/jddctmgr-8.c",
+    "wrapper/jddctmgr-12.c",
+    "wrapper/jddiffct-8.c",
+    "wrapper/jddiffct-12.c",
+    "wrapper/jddiffct-16.c",
+    "jdhuff.c",
+    "jdicc.c",
+    "jdinput.c",
+    "jdlhuff.c",
+    "wrapper/jdlossls-8.c",
+    "wrapper/jdlossls-12.c",
+    "wrapper/jdlossls-16.c",
+    "wrapper/jdmainct-8.c",
+    "wrapper/jdmainct-12.c",
+    "wrapper/jdmainct-16.c",
+    "jdmarker.c",
+    "jdmaster.c",
+    "wrapper/jdmerge-8.c",
+    "wrapper/jdmerge-12.c",
+    "jdphuff.c",
+    "wrapper/jdpostct-8.c",
+    "wrapper/jdpostct-12.c",
+    "wrapper/jdpostct-16.c",
+    "wrapper/jdsample-8.c",
+    "wrapper/jdsample-12.c",
+    "wrapper/jdsample-16.c",
+    "jdtrans.c",
+    "jerror.c",
+    "jfdctflt.c",
+    "wrapper/jfdctfst-8.c",
+    "wrapper/jfdctfst-12.c",
+    "wrapper/jfdctint-8.c",
+    "wrapper/jfdctint-12.c",
+    "wrapper/jidctflt-8.c",
+    "wrapper/jidctflt-12.c",
+    "wrapper/jidctfst-8.c",
+    "wrapper/jidctfst-12.c",
+    "wrapper/jidctint-8.c",
+    "wrapper/jidctint-12.c",
+    "wrapper/jidctred-8.c",
+    "wrapper/jidctred-12.c",
+    "jmemmgr.c",
+    "jmemnobs.c",
+    "jpeg_nbits.c",
+    "wrapper/jquant1-8.c",
+    "wrapper/jquant1-12.c",
+    "wrapper/jquant2-8.c",
+    "wrapper/jquant2-12.c",
+    "wrapper/jutils-8.c",
+    "wrapper/jutils-12.c",
+    "wrapper/jutils-16.c",
+    "jaricom.c",
+    "jcarith.c",
+    "jdarith.c",
+};
+
 /// nghttp2 - the HTTP/2 library libcurl speaks HTTP/2 through - compiled from
 /// its release tarball (build.zig.zon `nghttp2`, pinned by hash), never a
 /// system library. Only lib/ is built, as upstream's --enable-lib-only does:
@@ -1001,17 +1190,72 @@ const Platform = enum {
 /// Capabilities fields. The facade checks the names again at compile time;
 /// this list only makes a typo fail before any compile starts.
 const platform_capability_names = [_][]const u8{
-    "brotli",              "persistent_storage", "file_urls",      "system_trust_store", "http2",              "http3",
-    "thread_qos",          "resident_memory",    "layout",         "os_permissions",     "simple_dialogs",     "printing",
-    "file_picker",         "windows",            "media_decoding", "webcodecs",          "media_capabilities", "encrypted_media",
-    "camera",              "microphone",         "screen_capture", "audio_output",       "speech_synthesis",   "speech_recognition",
-    "clipboard",           "notifications",      "push",           "background_sync",    "background_fetch",   "geolocation",
-    "sensors",             "device_orientation", "usb",            "hid",                "serial",             "bluetooth",
-    "nfc",                 "midi",               "gamepad",        "payment",            "webauthn",           "identity_credentials",
-    "share",               "contacts",           "fullscreen",     "pointer_lock",       "keyboard_lock",      "wake_lock",
-    "idle_detection",      "battery",            "vibration",      "badging",            "eyedropper",         "local_fonts",
-    "keyboard_map",        "screen_details",     "presentation",   "remote_playback",    "picture_in_picture", "media_session",
-    "network_information", "compute_pressure",   "device_posture", "virtual_keyboard",   "protocol_handlers",
+    "image_decoding",
+    "brotli",
+    "persistent_storage",
+    "file_urls",
+    "system_trust_store",
+    "http2",
+    "http3",
+    "thread_qos",
+    "resident_memory",
+    "layout",
+    "os_permissions",
+    "simple_dialogs",
+    "printing",
+    "file_picker",
+    "windows",
+    "media_decoding",
+    "webcodecs",
+    "media_capabilities",
+    "encrypted_media",
+    "camera",
+    "microphone",
+    "screen_capture",
+    "audio_output",
+    "speech_synthesis",
+    "speech_recognition",
+    "clipboard",
+    "notifications",
+    "push",
+    "background_sync",
+    "background_fetch",
+    "geolocation",
+    "sensors",
+    "device_orientation",
+    "usb",
+    "hid",
+    "serial",
+    "bluetooth",
+    "nfc",
+    "midi",
+    "gamepad",
+    "payment",
+    "webauthn",
+    "identity_credentials",
+    "share",
+    "contacts",
+    "fullscreen",
+    "pointer_lock",
+    "keyboard_lock",
+    "wake_lock",
+    "idle_detection",
+    "battery",
+    "vibration",
+    "badging",
+    "eyedropper",
+    "local_fonts",
+    "keyboard_map",
+    "screen_details",
+    "presentation",
+    "remote_playback",
+    "picture_in_picture",
+    "media_session",
+    "network_information",
+    "compute_pressure",
+    "device_posture",
+    "virtual_keyboard",
+    "protocol_handlers",
 };
 
 /// The link-plan items -Dplatform-static may name (contract section 10): a
@@ -1051,6 +1295,7 @@ const ModuleConfig = struct {
     /// -Dsystem-curl or when the lazy dependencies are not fetched yet).
     static_libcurl: ?StaticLibcurl,
     brotli: ?BrotliLibraries,
+    image_codecs: ?*std.Build.Step.Compile,
     /// The graph whose modules are registered by name for dependent packages.
     public_platform: Platform,
     /// -Dplatform-without, -Dplatform-static and -Dplatform-module.
@@ -1083,6 +1328,7 @@ const PlatformBindingOptions = struct {
     static: []const []const u8 = &.{},
     http2: bool,
     brotli: ?BrotliLibraries,
+    image_codecs: ?*std.Build.Step.Compile,
     /// Register the facade by name (the public graph).
     public: bool = false,
     /// Today's bridges, which kit/posix wraps and the facade's TRANSITIONAL
@@ -1122,7 +1368,7 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     const brotli_enabled = for (options.without) |name| {
         if (std.mem.eql(u8, name, "brotli")) break false;
     } else true;
-    const kit_parts = [_][]const u8{ "posix", "headless", "memory_store", "curl", "crypto", "memory_clipboard", "browser_state", "brotli" };
+    const kit_parts = [_][]const u8{ "posix", "headless", "memory_store", "curl", "crypto", "memory_clipboard", "browser_state", "brotli", "image_codecs" };
     var kit: [kit_parts.len]*std.Build.Module = undefined;
     for (kit_parts, 0..) |part, i| {
         kit[i] = b.createModule(.{
@@ -1140,7 +1386,11 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
         kit[7].linkLibrary(codec.decoder);
         kit[7].linkLibrary(codec.encoder);
     };
-    if (target.result.os.tag == .ios) addIosSdkPaths(kit[7], iosSdkPath(b));
+    if (options.image_codecs) |codecs| kit[8].linkLibrary(codecs);
+    if (target.result.os.tag == .ios) {
+        addIosSdkPaths(kit[7], iosSdkPath(b));
+        addIosSdkPaths(kit[8], iosSdkPath(b));
+    }
     // kit/posix wraps today's clock, process Io and resident-memory bridges.
     kit[0].addImport("clock", options.clock);
     kit[0].addImport("host", options.host);
@@ -1426,6 +1676,9 @@ pub fn build(b: *std.Build) void {
         if (std.mem.eql(u8, name, "brotli")) break false;
     } else true;
     const brotli = buildBrotli(b, target, optimize, null);
+    const image_codecs = buildImageCodecs(b, target, optimize, null);
+    const image_codecs_step = b.step("platform-image-codecs", "Build the testing JPEG/SVG libraries (also for cross targets)");
+    if (image_codecs) |codecs| image_codecs_step.dependOn(&b.addInstallArtifact(codecs, .{}).step);
     const static_libcurl: ?StaticLibcurl = if (use_system_curl) null else buildStaticLibcurl(b, target, optimize, enable_http2, null, if (brotli_enabled) brotli else null);
     // A system libcurl may lack WebSockets. Say so now rather than leaving it to
     // a runtime CURLE_UNSUPPORTED_PROTOCOL.
@@ -1455,6 +1708,7 @@ pub fn build(b: *std.Build) void {
         .enable_http2 = enable_http2,
         .static_libcurl = static_libcurl,
         .brotli = brotli,
+        .image_codecs = image_codecs,
         .public_platform = target_platform,
         .platform_without = platform_without,
         .platform_static = platform_static,
@@ -1484,6 +1738,7 @@ pub fn build(b: *std.Build) void {
     const runner_graph = if (!runner_modes.ownCLibraries() or use_system_curl) testing_graph else runner_graph: {
         var runner_config = module_config;
         runner_config.brotli = buildBrotli(b, target, runner_modes.c_libraries, runner_modes.sanitize_c);
+        runner_config.image_codecs = buildImageCodecs(b, target, runner_modes.c_libraries, runner_modes.sanitize_c);
         runner_config.static_libcurl = buildStaticLibcurl(b, target, runner_modes.c_libraries, enable_http2, runner_modes.sanitize_c, if (brotli_enabled) runner_config.brotli else null);
         break :runner_graph addCraneModules(b, target, .testing, runner_config);
     };
@@ -2359,11 +2614,13 @@ pub fn build(b: *std.Build) void {
             .{ .name = "linux", .platform = .linux, .without = &.{} },
             .{ .name = "testing_without_camera_clipboard", .platform = .testing, .without = &.{ "camera", "clipboard" } },
             .{ .name = "testing_without_brotli", .platform = .testing, .without = &.{"brotli"} },
+            .{ .name = "testing_without_image_decoding", .platform = .testing, .without = &.{"image_decoding"} },
         };
         for (conformance_bindings) |binding| {
             const bound = platformBinding(b, target, .{
                 .platform = binding.platform,
                 .brotli = brotli,
+                .image_codecs = image_codecs,
                 .without = binding.without,
                 .http2 = enable_http2 and !use_system_curl,
                 .clock = testing_graph.clock,
@@ -5730,6 +5987,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     const platform_binding = platformBinding(b, target, .{
         .platform = platform,
         .brotli = config.brotli,
+        .image_codecs = config.image_codecs,
         .module_path = config.platform_module,
         .without = config.platform_without,
         .static = config.platform_static,

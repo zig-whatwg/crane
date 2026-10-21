@@ -22,7 +22,9 @@ const curl = @import("kit_curl");
 const crypto = @import("kit_crypto");
 const browser_state = @import("kit_browser_state");
 const memory_clipboard = @import("kit_memory_clipboard");
-const image_decoding = @import("image_decoding.zig");
+const image_decoding = if (for (platform_options.platform_without) |capability| {
+    if (std.mem.eql(u8, capability, "image_decoding")) break true;
+} else false) headless else @import("image_decoding.zig");
 const layout = @import("layout.zig");
 
 /// Per-Browser test state: fresh for every Browser, so nothing one test does
@@ -77,7 +79,7 @@ pub const protocol = struct {
         // kit/memory_clipboard per Browser. Deviation: nothing leaves the
         // Browser and nothing another application copies arrives.
         c.clipboard = .emulated;
-        // Zig decoders compiled in (image_decoding.zig): PNG and BMP.
+        // Compiled-in decoders: PNG, BMP, GIF, JPEG and SVG.
         c.image_decoding = .native;
         // STOPGAP (decision 19b): layout.zig. Deviation: only a connected
         // replaced element (an img) has a box, sized from the facts Crane
