@@ -1471,7 +1471,7 @@ fn runClassicScriptSource(element: *runtime.Instance, document: *runtime.Instanc
     const import_base_url = if (muted) "about:blank" else base_url;
     const host_defined: ?*anyopaque = if (classicScriptRecord(document, import_base_url, element, credentials_mode)) |record| &record.script else null;
     var host = ClassicScriptReport{ .realm = realm, .muted = muted };
-    engine.runClassicScript(realm, source, url, host_defined, .{
+    engine.runClassicScriptWithOptions(realm, source, url, .{ .host_defined = host_defined, .muted_errors = muted }, .{
         .report = reportClassicScriptError,
         .host = &host,
     }) catch |err| switch (err) {

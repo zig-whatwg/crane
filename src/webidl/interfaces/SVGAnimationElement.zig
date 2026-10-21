@@ -454,6 +454,9 @@ pub const SVGAnimationElement = struct {
         return try SVGAnimationElementImpl.call_beginElement(instance);
     }
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onbegin", "set_onend", "set_onrepeat" };
+
     /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
     /// the infinities throw a TypeError for (bit i = argument i; an attribute
     /// setter's value is bit 0).

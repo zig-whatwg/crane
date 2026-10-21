@@ -186,6 +186,8 @@ pub const CSSRGB = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 3;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator

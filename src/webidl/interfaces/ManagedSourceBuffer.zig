@@ -194,4 +194,7 @@ pub const ManagedSourceBuffer = struct {
         if (comptime @hasDecl(ManagedSourceBufferImpl, "set_onbufferedchange")) return try ManagedSourceBufferImpl.set_onbufferedchange(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onbufferedchange", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onbufferedchange"};
 };

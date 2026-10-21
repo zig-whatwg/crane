@@ -77,6 +77,10 @@ pub fn hasPendingEngineWork(_: *Agent) bool {
 pub fn runEngineTasks(_: *Agent) bool {
     return false;
 }
+pub fn nextEngineTaskDelay(_: *Agent) ?u64 {
+    return null;
+}
+
 pub fn requestGarbageCollection(_: *Agent) void {}
 pub fn notifyMemoryPressure(_: *Agent, _: engine.MemoryPressure) void {}
 
@@ -149,6 +153,10 @@ pub fn runClassicScript(realm: Context, source: engine.ScriptSource, url: []cons
 /// The test adapter parses no script, and has no engine to leave an
 /// exception pending in: an empty script completes; a muted one "throws"
 /// (the host's NetworkError path); any other cannot be run.
+pub fn runClassicScriptWithOptions(realm: Context, source: engine.ScriptSource, url: []const u8, options: engine.ClassicScriptOptions, reporter: engine.Reporter) Error!void {
+    return runClassicScript(realm, source, url, options.host_defined, reporter);
+}
+
 pub fn runClassicScriptRethrowingErrors(_: Context, source: engine.ScriptSource, _: []const u8, _: ?*anyopaque, muted_errors: bool) Error!void {
     const text = switch (source) {
         .utf8 => |bytes| bytes,
@@ -213,6 +221,11 @@ pub fn releaseModuleRecord(_: *engine.ModuleRecord) void {}
 /// No engine: no callback runs, so none of a Window whose Document is not
 /// fully active either (engine_protocol.zig invokeCallbackFunction).
 pub fn invokeCallbackFunction(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
+    return error.NotSupported;
+}
+
+/// Typed callback return conversion runs before callback scope cleanup.
+pub fn invokeCallbackFunctionWithReturnType(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior, _: engine.CallbackReturnType) Error!engine.Completion {
     return error.NotSupported;
 }
 /// No engine: nothing to construct.
@@ -404,6 +417,9 @@ pub fn createSequenceOfValues(_: Context, _: []const JSValue) Error!Owned {
 pub fn createSequenceOfPlatformObjects(_: Context, _: []const *Instance) Error!Owned {
     return error.NotSupported;
 }
+pub fn createLocationObject(_: Context, _: JSValue) Error!Owned {
+    return error.NotSupported;
+}
 pub fn createDictionaryObject(_: Context, _: []const engine.DictionaryMember) Error!Owned {
     return error.NotSupported;
 }
@@ -509,6 +525,15 @@ pub fn structuredSerializeWithTransfer(_: Context, _: JSValue, _: []const JSValu
 }
 pub fn structuredDeserializeWithTransfer(_: Context, _: []const u8, _: []const []const u8, _: []const *Instance) Error!Owned {
     return error.NotSupported;
+}
+pub fn structuredDeserializeWithOptions(_: Context, _: []const u8, _: engine.StructuredDeserializeOptions) Error!Owned {
+    return error.NotSupported;
+}
+pub fn retainSharedMemory(_: *engine.SharedMemory) void {
+    @panic("this adapter cannot produce shared memory");
+}
+pub fn releaseSharedMemory(_: *engine.SharedMemory) void {
+    @panic("this adapter cannot produce shared memory");
 }
 
 // 4.11a WebAssembly Web API 2 [webassembly_streaming]: unsupported, so the

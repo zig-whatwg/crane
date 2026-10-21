@@ -201,6 +201,8 @@ pub const Worker = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 1;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -267,6 +269,9 @@ pub const Worker = struct {
             .{ .function = "call_postMessage__1", .implemented = @hasDecl(WorkerImpl, "call_postMessage__1"), .args = &.{ .{ .kinds = &.{.any} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
         } },
     };
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onerror", "set_onmessage", "set_onmessageerror" };
 
     /// WebIDL `object` arguments (or sequences of `object`): a value that is
     /// not an Object throws a TypeError (bit i = argument i).

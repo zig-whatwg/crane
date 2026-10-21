@@ -233,6 +233,8 @@ pub const EditContext = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -336,6 +338,9 @@ pub const EditContext = struct {
     pub fn call_updateText(instance: *runtime.Instance, rangeStart: u32, rangeEnd: u32, text: runtime.DOMString) anyerror!void {
         return try EditContextImpl.call_updateText(instance, rangeStart, rangeEnd, text);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_ontextupdate", "set_ontextformatupdate", "set_oncharacterboundsupdate", "set_oncompositionstart", "set_oncompositionend" };
 
     /// WebIDL interface types: the interface each interface-typed argument
     /// and attribute value converts to - a TypeError unless the value implements

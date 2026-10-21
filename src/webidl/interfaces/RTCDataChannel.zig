@@ -429,6 +429,9 @@ pub const RTCDataChannel = struct {
         } },
     };
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onopen", "set_onbufferedamountlow", "set_onerror", "set_onclosing", "set_onclose", "set_onmessage" };
+
     /// WebIDL interface types: the interface each interface-typed argument
     /// and attribute value converts to - a TypeError unless the value implements
     /// it (function, argument index - an attribute setter's value is 0 -,

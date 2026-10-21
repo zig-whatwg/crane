@@ -9,6 +9,9 @@
 // - Namespace bindings (callbacks convert Local→Global→Local)
 
 #include <atomic>
+#include <array>
+#include <cassert>
+#include <chrono>
 #include <mutex>
 #include <v8.h>
 #include <v8-snapshot.h>
@@ -1948,11 +1951,181 @@ void v8_SetFlagsFromString(const char* flags) {
     }
 }
 
+// Foreground tasks retain their wake target, never their isolate. The platform
+// still owns execution; this layer records deadlines and posts a loop wake.
+// V8 TaskRunner's public contract permits posting from any thread, but obtaining
+// a runner only on the foreground thread. Node's node_platform.cc uses the same
+// separation of task ownership, queue wake and delayed-work deadlines.
+struct ForegroundTasks {
+    using Clock = std::chrono::steady_clock;
+    std::mutex mutex;
+    bool closed = false;
+    void* sink = nullptr;
+    void (*wake)(void*) = nullptr;
+    void (*release)(void*) = nullptr;
+    std::multiset<Clock::time_point> deadlines;
+
+    bool attach(void* target, void (*notify)(void*), void (*drop)(void*)) {
+        std::lock_guard<std::mutex> guard(mutex);
+        if (closed || sink) return false;
+        sink = target;
+        wake = notify;
+        release = drop;
+        if (!deadlines.empty()) wake(sink);
+        return true;
+    }
+    ~ForegroundTasks() { close(); }
+    void close() {
+        void* owned;
+        {
+            std::lock_guard<std::mutex> guard(mutex);
+            if (closed) return;
+            closed = true;
+            owned = sink;
+            sink = nullptr;
+        }
+        if (owned) release(owned);
+    }
+    bool nextDelay(uint64_t* nanoseconds) {
+        std::lock_guard<std::mutex> guard(mutex);
+        if (closed || deadlines.empty()) return false;
+        const auto remaining = *deadlines.begin() - Clock::now();
+        *nanoseconds = remaining <= Clock::duration::zero() ? 0 :
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(remaining).count());
+        return true;
+    }
+};
+
+class ForegroundTask final : public Task {
+ public:
+    ForegroundTask(std::shared_ptr<ForegroundTasks> state, std::unique_ptr<Task> task,
+                   std::multiset<ForegroundTasks::Clock::time_point>::iterator deadline)
+        : state_(std::move(state)), task_(std::move(task)), deadline_(deadline) {}
+    ~ForegroundTask() override {
+        std::lock_guard<std::mutex> guard(state_->mutex);
+        removeDeadline();
+    }
+    void Run() override {
+        {
+            std::lock_guard<std::mutex> guard(state_->mutex);
+            removeDeadline();
+            if (state_->closed) return;
+        }
+        // Run and close are both foreground-only; no close can race this call.
+        task_->Run();
+    }
+ private:
+    void removeDeadline() {
+        if (!registered_) return;
+        state_->deadlines.erase(deadline_);
+        registered_ = false;
+    }
+    std::shared_ptr<ForegroundTasks> state_;
+    std::unique_ptr<Task> task_;
+    std::multiset<ForegroundTasks::Clock::time_point>::iterator deadline_;
+    bool registered_ = true;
+};
+
+class ForegroundTaskRunner final : public TaskRunner {
+ public:
+    ForegroundTaskRunner(std::shared_ptr<ForegroundTasks> state, std::shared_ptr<TaskRunner> runner)
+        : state_(std::move(state)), runner_(std::move(runner)) {}
+    bool IdleTasksEnabled() override { return runner_->IdleTasksEnabled(); }
+    bool NonNestableTasksEnabled() const override { return runner_->NonNestableTasksEnabled(); }
+    bool NonNestableDelayedTasksEnabled() const override { return runner_->NonNestableDelayedTasksEnabled(); }
+ protected:
+    void PostTaskImpl(std::unique_ptr<Task> task, const SourceLocation& location) override {
+        post(std::move(task), 0, false, false, location);
+    }
+    void PostNonNestableTaskImpl(std::unique_ptr<Task> task, const SourceLocation& location) override {
+        post(std::move(task), 0, false, true, location);
+    }
+    void PostDelayedTaskImpl(std::unique_ptr<Task> task, double delay, const SourceLocation& location) override {
+        post(std::move(task), delay, true, false, location);
+    }
+    void PostNonNestableDelayedTaskImpl(std::unique_ptr<Task> task, double delay, const SourceLocation& location) override {
+        post(std::move(task), delay, true, true, location);
+    }
+    void PostIdleTaskImpl(std::unique_ptr<IdleTask> task, const SourceLocation& location) override {
+        // The DefaultPlatform was created without idle tasks. Keep its contract;
+        // an idle task cannot become a wake that makes an idle loop busy.
+        assert(!runner_->IdleTasksEnabled());
+        std::lock_guard<std::mutex> guard(state_->mutex);
+        if (!state_->closed) runner_->PostIdleTask(std::move(task), location);
+    }
+ private:
+    void post(std::unique_ptr<Task> task, double delay, bool delayed, bool nonnestable,
+              const SourceLocation& location) {
+        using Clock = ForegroundTasks::Clock;
+        const auto now = Clock::now();
+        const double maximum = std::chrono::duration<double>(Clock::time_point::max() - now).count();
+        const double seconds = std::max(0.0, std::min(delay, maximum / 2));
+        const auto deadline = now + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(seconds));
+        std::lock_guard<std::mutex> guard(state_->mutex);
+        if (state_->closed) return;
+        const auto entry = state_->deadlines.insert(deadline);
+        auto wrapped = std::make_unique<ForegroundTask>(state_, std::move(task), entry);
+        // close holds the same lock before DefaultPlatform's isolate shutdown,
+        // so an open runner accepts the task rather than destroying it here.
+        if (delayed && nonnestable) runner_->PostNonNestableDelayedTask(std::move(wrapped), seconds, location);
+        else if (delayed) runner_->PostDelayedTask(std::move(wrapped), seconds, location);
+        else if (nonnestable) runner_->PostNonNestableTask(std::move(wrapped), location);
+        else runner_->PostTask(std::move(wrapped), location);
+        if (state_->sink) state_->wake(state_->sink);
+    }
+    std::shared_ptr<ForegroundTasks> state_;
+    std::shared_ptr<TaskRunner> runner_;
+};
+
+class CranePlatform final : public Platform {
+ public:
+    CranePlatform() : backend_(platform::NewDefaultPlatform()) {}
+    Platform* backend() { return backend_.get(); }
+    PageAllocator* GetPageAllocator() override { return backend_->GetPageAllocator(); }
+    ThreadIsolatedAllocator* GetThreadIsolatedAllocator() override { return backend_->GetThreadIsolatedAllocator(); }
+    void OnCriticalMemoryPressure() override { backend_->OnCriticalMemoryPressure(); }
+    int NumberOfWorkerThreads() override { return backend_->NumberOfWorkerThreads(); }
+    std::shared_ptr<TaskRunner> GetForegroundTaskRunner(Isolate*, TaskPriority) override;
+    bool IdleTasksEnabled(Isolate* isolate) override { return backend_->IdleTasksEnabled(isolate); }
+    std::unique_ptr<ScopedBlockingCall> CreateBlockingScope(BlockingType type) override { return backend_->CreateBlockingScope(type); }
+    double MonotonicallyIncreasingTime() override { return backend_->MonotonicallyIncreasingTime(); }
+    double CurrentClockTimeMillis() override { return backend_->CurrentClockTimeMillis(); }
+    int64_t CurrentClockTimeMilliseconds() override { return backend_->CurrentClockTimeMilliseconds(); }
+    double CurrentClockTimeMillisecondsHighResolution() override { return backend_->CurrentClockTimeMillisecondsHighResolution(); }
+    StackTracePrinter GetStackTracePrinter() override { return backend_->GetStackTracePrinter(); }
+    TracingController* GetTracingController() override { return backend_->GetTracingController(); }
+    void DumpWithoutCrashing() override { backend_->DumpWithoutCrashing(); }
+    HighAllocationThroughputObserver* GetHighAllocationThroughputObserver() override { return backend_->GetHighAllocationThroughputObserver(); }
+ protected:
+    std::unique_ptr<JobHandle> CreateJobImpl(TaskPriority priority, std::unique_ptr<JobTask> job,
+                                           const SourceLocation& location) override {
+        return backend_->CreateJob(priority, std::move(job), location);
+    }
+    void PostTaskOnWorkerThreadImpl(TaskPriority priority, std::unique_ptr<Task> task,
+                                    const SourceLocation& location) override {
+        switch (priority) {
+            case TaskPriority::kBestEffort: backend_->CallLowPriorityTaskOnWorkerThread(std::move(task), location); break;
+            case TaskPriority::kUserVisible: backend_->CallOnWorkerThread(std::move(task), location); break;
+            case TaskPriority::kUserBlocking: backend_->CallBlockingTaskOnWorkerThread(std::move(task), location); break;
+        }
+    }
+    void PostDelayedTaskOnWorkerThreadImpl(TaskPriority, std::unique_ptr<Task> task,
+                                           double delay, const SourceLocation& location) override {
+        backend_->CallDelayedOnWorkerThread(std::move(task), delay, location);
+    }
+ private:
+    std::unique_ptr<Platform> backend_;
+};
+
+static Platform* defaultPlatform() {
+    return static_cast<CranePlatform*>(g_platform.get())->backend();
+}
+
 void v8_Platform_Initialize() {
     if (!v8_initialized) {
         V8::InitializeICUDefaultLocation("");
         V8::InitializeExternalStartupData("");
-        g_platform = platform::NewDefaultPlatform();
+        g_platform = std::make_unique<CranePlatform>();
         V8::InitializePlatform(g_platform.get());
         V8::Initialize();
         v8_initialized = true;
@@ -2006,7 +2179,7 @@ bool v8_Isolate_HasPendingBackgroundTasks(Isolate* isolate) {
 
 bool v8_Platform_PumpMessageLoop(Isolate* isolate) {
     if (!g_platform || !isolate) return false;
-    return platform::PumpMessageLoop(g_platform.get(), isolate,
+    return platform::PumpMessageLoop(defaultPlatform(), isolate,
                                      platform::MessageLoopBehavior::kDoNotWait);
 }
 
@@ -2051,6 +2224,11 @@ struct SyntheticJsonExport {
 };
 
 struct IsolateData {
+    // Installed before Isolate::Initialize: V8 caches runners while setting up
+    // its heap. Their shared state receives the host's sink after creation.
+    std::shared_ptr<ForegroundTasks> foreground_tasks = std::make_shared<ForegroundTasks>();
+    std::array<std::shared_ptr<TaskRunner>, 3> foreground_runners;
+
     /// A snapshot isolate's StartupData (v8_Isolate_NewFromSnapshot), which
     /// V8 keeps a pointer to for the isolate's life (CreateParams::
     /// snapshot_blob) and reads again for every context it restores
@@ -2063,6 +2241,11 @@ struct IsolateData {
     /// evaluation, until V8 runs their evaluation steps or the module is
     /// disposed - or the isolate is: v8_Isolate_Dispose resets what is left.
     std::vector<SyntheticJsonExport*> synthetic_json_exports;
+    // Inert unless a tests/v8 lifecycle probe is installed. The test clears
+    // the hook before its borrowed stack payload expires.
+    void (*test_promise_hook)(int, void*) = nullptr;
+    void* test_promise_hook_data = nullptr;
+
 
     /// Take out the entry whose module is `module`, if any.
     SyntheticJsonExport* takeSyntheticExport(Local<Module> module) {
@@ -2082,6 +2265,65 @@ static IsolateData* isolateData(Isolate* isolate) {
     return isolate ? static_cast<IsolateData*>(isolate->GetData(kIsolateDataSlot)) : nullptr;
 }
 
+std::shared_ptr<TaskRunner> CranePlatform::GetForegroundTaskRunner(Isolate* isolate, TaskPriority priority) {
+    // Public contract: this lookup is foreground-only. A retained TaskRunner
+    // may subsequently be posted to on any thread, without an isolate lookup.
+    IsolateData* record = isolateData(isolate);
+    if (!record) return backend_->GetForegroundTaskRunner(isolate, priority);
+    const size_t index = static_cast<size_t>(priority);
+    assert(index < record->foreground_runners.size());
+    auto& runner = record->foreground_runners[index];
+    if (!runner) runner = std::make_shared<ForegroundTaskRunner>(record->foreground_tasks,
+                                                               backend_->GetForegroundTaskRunner(isolate, priority));
+    return runner;
+}
+
+/// Attach one OWNED wake target. On failure the caller retains ownership.
+bool v8_Isolate_AttachForegroundTaskSink(Isolate* isolate, void* sink,
+                                        void (*wake)(void*), void (*release)(void*)) {
+    IsolateData* record = isolateData(isolate);
+    return record && record->foreground_tasks->attach(sink, wake, release);
+}
+
+/// Close before any host/realm teardown. Racing posts finish under the state
+/// lock; after this returns neither the sink nor the isolate is touched again.
+void v8_Isolate_CloseForegroundTasks(Isolate* isolate) {
+    if (IsolateData* record = isolateData(isolate)) record->foreground_tasks->close();
+}
+
+bool v8_Isolate_NextForegroundTaskDelay(Isolate* isolate, uint64_t* nanoseconds) {
+    IsolateData* record = isolateData(isolate);
+    return record && record->foreground_tasks->nextDelay(nanoseconds);
+}
+
+/// Test-only owning runner reference. Require the runner V8 requested during
+/// initialization, rather than manufacturing one that could hide that path.
+std::shared_ptr<TaskRunner>* v8_test_ForegroundTaskRunner(Isolate* isolate) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return nullptr;
+    auto& runner = record->foreground_runners[static_cast<size_t>(TaskPriority::kUserBlocking)];
+    return runner ? new std::shared_ptr<TaskRunner>(runner) : nullptr;
+}
+
+void v8_test_TaskRunner_Release(std::shared_ptr<TaskRunner>* runner) { delete runner; }
+void v8_test_TaskRunner_Post(std::shared_ptr<TaskRunner>* runner, void (*run)(void*),
+                            void (*drop)(void*), void* data, double delay) {
+    class ProbeTask final : public Task {
+     public:
+        ProbeTask(void (*run)(void*), void (*drop)(void*), void* data)
+            : run_(run), drop_(drop), data_(data) {}
+        ~ProbeTask() override { drop_(data_); }
+        void Run() override { run_(data_); }
+     private:
+        void (*run_)(void*);
+        void (*drop_)(void*);
+        void* data_;
+    };
+    auto task = std::make_unique<ProbeTask>(run, drop, data);
+    if (delay > 0) (*runner)->PostDelayedTask(std::move(task), delay);
+    else (*runner)->PostTask(std::move(task));
+}
+
 static void deleteSyntheticExport(SyntheticJsonExport* entry) {
     entry->module.Reset();
     entry->value.Reset();
@@ -2096,8 +2338,13 @@ Isolate* v8_Isolate_New() {
     Isolate::CreateParams create_params;
     create_params.array_buffer_allocator_shared =
         std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
-    Isolate* isolate = Isolate::New(create_params);
-    if (isolate) isolate->SetData(kIsolateDataSlot, new IsolateData());
+    auto record = std::make_unique<IsolateData>();
+    // Isolate::New is exactly Allocate + Initialize (13.1 api.cc:9935).
+    // Only GetData/SetData are allowed between them (v8-isolate.h:591).
+    Isolate* isolate = Isolate::Allocate();
+    if (!isolate) return nullptr;
+    isolate->SetData(kIsolateDataSlot, record.release());
+    Isolate::Initialize(isolate, create_params);
     return isolate;
 }
 
@@ -2132,6 +2379,7 @@ void v8_Isolate_Dispose(Isolate* isolate) {
         // Isolate::Dispose, below: it holds the StartupData V8 points at.
         IsolateData* record = isolateData(isolate);
         if (record) {
+            record->foreground_tasks->close();
             isolate->SetData(kIsolateDataSlot, nullptr);
             for (SyntheticJsonExport* entry : record->synthetic_json_exports) deleteSyntheticExport(entry);
             record->synthetic_json_exports.clear();
@@ -2160,7 +2408,7 @@ void v8_Isolate_Dispose(Isolate* isolate) {
         // what V8 posted for it; without this a later isolate at the same
         // address inherits it and its stale tasks. d8 does this before every
         // Dispose (Worker::ExecuteInThread).
-        if (g_platform && v8_initialized) platform::NotifyIsolateShutdown(g_platform.get(), isolate);
+        if (g_platform && v8_initialized) platform::NotifyIsolateShutdown(defaultPlatform(), isolate);
 
         // Dispose the isolate first
         isolate->Dispose();
@@ -6627,7 +6875,8 @@ bool v8_Object_SetAccessorPropertyChecked(
     FunctionCallback getter,
     FunctionCallback setter,
     bool getter_accepts_any_receiver,
-    bool setter_accepts_any_receiver
+    bool setter_accepts_any_receiver,
+    int attributes
 );
 
 bool v8_Object_SetAccessorProperty(
@@ -6637,7 +6886,7 @@ bool v8_Object_SetAccessorProperty(
     FunctionCallback getter,
     FunctionCallback setter
 ) {
-    return v8_Object_SetAccessorPropertyChecked(object, context, name, getter, setter, true, true);
+    return v8_Object_SetAccessorPropertyChecked(object, context, name, getter, setter, true, true, None);
 }
 
 /// v8_Object_SetAccessorProperty with v8_ObjectTemplate_SetAccessorPropertyChecked's
@@ -6650,7 +6899,8 @@ bool v8_Object_SetAccessorPropertyChecked(
     FunctionCallback getter,
     FunctionCallback setter,
     bool getter_accepts_any_receiver,
-    bool setter_accepts_any_receiver
+    bool setter_accepts_any_receiver,
+    int attributes
 ) {
     Isolate* isolate = Isolate::GetCurrent();
     NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
@@ -6701,8 +6951,8 @@ bool v8_Object_SetAccessorPropertyChecked(
     Local<Value> setter_value = setter ? Local<Value>(setter_func) : Undefined(isolate).As<Value>();
 
     PropertyDescriptor desc(getter_value, setter_value);
-    desc.set_enumerable(true);
-    desc.set_configurable(true);
+    desc.set_enumerable((attributes & DontEnum) == 0);
+    desc.set_configurable((attributes & DontDelete) == 0);
 
     // Define the property on the object
     return obj->DefineProperty(ctx, key.As<Name>(), desc).FromMaybe(false);
@@ -8760,13 +9010,13 @@ Isolate* v8_Isolate_NewFromSnapshot(
     create_params.snapshot_blob = &isolate_data->startup_data;
     create_params.external_references = external_references;
     
-    Isolate* isolate = Isolate::New(create_params);
+    Isolate* isolate = Isolate::Allocate();
     if (!isolate) {
-        fprintf(stderr, "[v8_Isolate_NewFromSnapshot] ERROR: Isolate::New returned nullptr\n");
         delete isolate_data;
         return nullptr;
     }
     isolate->SetData(kIsolateDataSlot, isolate_data);
+    Isolate::Initialize(isolate, create_params);
     
     return isolate;
 }
@@ -10433,6 +10683,7 @@ struct HostObjectSteps {
 struct StructuredSerializeOptions {
     bool for_storage;
     uint64_t agent_cluster;
+    bool cross_origin_isolated;
 };
 
 } // extern "C"
@@ -10470,8 +10721,9 @@ static bool ProtocolAllowWasmCodeGeneration(Local<Context> context, Local<String
 // and StructuredDeserializeWithTransfer step 3.3 makes it resizable again with
 // that maximum - which V8 then checks a length-tracking view against.
 //
-// Everything is inline - no pointer into an isolate, a realm or a thread - so
-// a message is read on any thread, as often as it is delivered (a
+// This envelope is inline, without pointers into any realm or thread. Shared
+// buffers additionally require their independently owned backing-store sidecar.
+// A message is read on any thread, as often as it is delivered (a
 // BroadcastChannel delivers one serialization to every channel), and freed as
 // the bytes it is. The deserialization steps compile a module from its bytes
 // in the target realm; V8's NativeModuleCache (keyed by the wire bytes) shares
@@ -10494,6 +10746,17 @@ static constexpr uint8_t kEnvelopeVersion = 2;
 struct TransferredBufferShape {
     bool resizable;
     uint64_t max_byte_length;
+};
+
+/// An owning message sidecar: shared backing stores, never V8 handles. The
+/// store retains its allocator (Isolate::CreateParams uses a shared allocator),
+/// so it survives the sending isolate. V8's d8 serializer uses this same design
+/// (13.1 d8.cc GetSharedArrayBufferId / GetSharedArrayBufferFromId).
+struct CraneSharedMemory {
+    std::atomic<size_t> refs{1};
+    uint64_t agent_cluster;
+    std::vector<std::shared_ptr<BackingStore>> stores;
+    explicit CraneSharedMemory(uint64_t cluster) : agent_cluster(cluster) {}
 };
 
 /// What travels in the envelope.
@@ -10591,22 +10854,25 @@ static bool openEnvelope(const uint8_t* data, size_t size, SerializationAttachme
 ///
 /// V8 also asks the delegate about host objects (platform objects - DOM
 /// nodes and the like, which it sees as API wrappers) and SharedArrayBuffers,
-/// and its defaults for both throw a plain Error too. Neither is serializable
-/// here yet, so both throw DataCloneError, which is what the spec says for a
-/// platform object that is not [Serializable] and for a SharedArrayBuffer
-/// outside a cross-origin-isolated agent cluster.
+/// and its defaults for both throw a plain Error too. Host objects use their
+/// [Serializable] steps. Shared buffers use an owned backing-store sidecar only
+/// for non-storage serialization in a cross-origin-isolated agent cluster;
+/// unsupported platform objects and disallowed sharing throw DataCloneError.
 class DataCloneErrorDelegate final : public ValueSerializer::Delegate {
  public:
-    explicit DataCloneErrorDelegate(Isolate* isolate, const HostObjectSteps* host = nullptr, const StructuredSerializeOptions* options = nullptr)
+    explicit DataCloneErrorDelegate(Isolate* isolate, const HostObjectSteps* host = nullptr,
+                                    const StructuredSerializeOptions* options = nullptr, bool carries_shared_memory = false)
         : isolate_(isolate), host_(host) {
         if (options) {
             for_storage_ = options->for_storage;
             attachments_.agent_cluster = options->agent_cluster;
+            shared_allowed_ = carries_shared_memory && options->cross_origin_isolated;
         }
     }
 
     /// What the serialization put in its envelope: its modules' bytes.
     const SerializationAttachments& attachments() const { return attachments_; }
+    CraneSharedMemory* takeSharedMemory() { return shared_memory_.release(); }
 
     /// The serializer this delegate serves: WriteHostObject hands it to the
     /// host's steps, which write into it. Set right after the serializer is
@@ -10661,9 +10927,17 @@ class DataCloneErrorDelegate final : public ValueSerializer::Delegate {
     }
 
     Maybe<uint32_t> GetSharedArrayBufferId(Isolate* isolate, Local<SharedArrayBuffer> shared_array_buffer) override {
-        (void)shared_array_buffer;
-        ThrowDataCloneError(String::NewFromUtf8Literal(isolate, "A SharedArrayBuffer could not be cloned."));
-        return Nothing<uint32_t>();
+        // HTML StructuredSerializeInternal: reject storage and non-isolated
+        // settings before retaining any shared memory. An unknown cluster is
+        // not sufficient authority to send it to another agent.
+        if (for_storage_ || !shared_allowed_ || attachments_.agent_cluster == 0) {
+            ThrowDataCloneError(String::NewFromUtf8Literal(isolate, "A SharedArrayBuffer could not be cloned."));
+            return Nothing<uint32_t>();
+        }
+        if (!shared_memory_) shared_memory_ = std::make_unique<CraneSharedMemory>(attachments_.agent_cluster);
+        const uint32_t id = static_cast<uint32_t>(shared_memory_->stores.size());
+        shared_memory_->stores.push_back(shared_array_buffer->GetBackingStore());
+        return Just(id);
     }
 
     /// WebAssembly Web API section 3, a Module's serialization steps. V8 has
@@ -10693,6 +10967,8 @@ class DataCloneErrorDelegate final : public ValueSerializer::Delegate {
     const HostObjectSteps* host_;
     ValueSerializer* serializer_ = nullptr;
     bool for_storage_ = false;
+    bool shared_allowed_ = false;
+    std::unique_ptr<CraneSharedMemory> shared_memory_;
     SerializationAttachments attachments_;
 };
 
@@ -10737,8 +11013,11 @@ static void throwDeserializationError(Isolate* isolate, Local<String> message) {
 /// ImageData's data).
 class HostObjectDeserializerDelegate final : public ValueDeserializer::Delegate {
  public:
-    explicit HostObjectDeserializerDelegate(const HostObjectSteps* host, const SerializationAttachments* attachments = nullptr, uint64_t agent_cluster = 0)
-        : host_(host), attachments_(attachments), agent_cluster_(agent_cluster) {}
+    explicit HostObjectDeserializerDelegate(const HostObjectSteps* host, const SerializationAttachments* attachments = nullptr,
+                                            uint64_t agent_cluster = 0, const CraneSharedMemory* shared_memory = nullptr,
+                                            bool cross_origin_isolated = false)
+        : host_(host), attachments_(attachments), agent_cluster_(agent_cluster),
+          shared_memory_(shared_memory), cross_origin_isolated_(cross_origin_isolated) {}
     void SetDeserializer(ValueDeserializer* deserializer) { deserializer_ = deserializer; }
 
     /// WebAssembly Web API section 3, a Module's deserialization steps, in
@@ -10774,6 +11053,19 @@ class HostObjectDeserializerDelegate final : public ValueDeserializer::Delegate 
         return WasmModuleObject::Compile(isolate, MemorySpan<const uint8_t>(bytes.data(), bytes.size()));
     }
 
+    MaybeLocal<SharedArrayBuffer> GetSharedArrayBufferFromId(Isolate* isolate, uint32_t id) override {
+        // HTML StructuredDeserialize: target settings must permit sharing and
+        // [[AgentCluster]] must match, before creating a receiver-side object.
+        if (!cross_origin_isolated_ || !shared_memory_ ||
+            shared_memory_->agent_cluster != agent_cluster_ || id >= shared_memory_->stores.size()) {
+            throwDeserializationError(isolate, String::NewFromUtf8Literal(isolate, "DataCloneError: shared memory is not available in this agent cluster."));
+            return {};
+        }
+        // SharedArrayBuffer::New preserves a growable BackingStore's maximum
+        // and shared length; copying its bytes would lose both and atomicity.
+        return SharedArrayBuffer::New(isolate, shared_memory_->stores[id]);
+    }
+
     MaybeLocal<Object> ReadHostObject(Isolate* isolate) override {
         if (host_ == nullptr || host_->read == nullptr || deserializer_ == nullptr) {
             throwDeserializationError(isolate, String::NewFromUtf8Literal(isolate, "A platform object could not be deserialized."));
@@ -10799,6 +11091,8 @@ class HostObjectDeserializerDelegate final : public ValueDeserializer::Delegate 
     const HostObjectSteps* host_;
     const SerializationAttachments* attachments_;
     uint64_t agent_cluster_;
+    const CraneSharedMemory* shared_memory_;
+    bool cross_origin_isolated_;
     ValueDeserializer* deserializer_ = nullptr;
 };
 
@@ -11040,6 +11334,32 @@ uint8_t* v8_Value_StructuredSerializeWithTransfer(
                                  out_arraybuffer_data, error_code, &delegate);
 }
 
+/// HTML's message serialization, with an independently owned shared-memory
+/// sidecar. It is handed out only on success; every failure drops it here.
+uint8_t* v8_Value_StructuredSerializeWithSharedMemory(
+    Global<Value>* value, Global<Value>** transfer_list, size_t transfer_count,
+    size_t* out_size, ArrayBufferTransferData* out_arraybuffer_data, int* error_code,
+    const HostObjectSteps* host, const StructuredSerializeOptions* options,
+    CraneSharedMemory** out_shared_memory) {
+    *out_shared_memory = nullptr;
+    DataCloneErrorDelegate delegate(Isolate::GetCurrent(), host, options, true);
+    uint8_t* bytes = serializeWithTransfer(value, transfer_list, transfer_count, out_size,
+                                          out_arraybuffer_data, error_code, &delegate);
+    if (bytes) *out_shared_memory = delegate.takeSharedMemory();
+    return bytes;
+}
+
+void v8_SharedMemory_Retain(CraneSharedMemory* memory) {
+    memory->refs.fetch_add(1, std::memory_order_relaxed);
+}
+void v8_SharedMemory_Release(CraneSharedMemory* memory) {
+    if (memory->refs.fetch_sub(1, std::memory_order_acq_rel) == 1) delete memory;
+}
+/// Test-only, while the caller owns a reference. No production counter added.
+size_t v8_test_SharedMemory_RefCount(const CraneSharedMemory* memory) {
+    return memory->refs.load(std::memory_order_acquire);
+}
+
 /// Deserialize V8 structured clone data with ArrayBuffer transfer.
 ///
 /// This function is called in the DESTINATION isolate to recreate values.
@@ -11055,14 +11375,16 @@ uint8_t* v8_Value_StructuredSerializeWithTransfer(
 /// @param agent_cluster - the target realm's agent cluster (0: none known),
 ///               which a WebAssembly.Module's record must name
 /// @return Global<Value>* to the deserialized value in current isolate
-Global<Value>* v8_Value_DeserializeWithTransfer_CrossIsolate(
+static Global<Value>* deserializeWithSharedMemory(
     const uint8_t* serialized_data,
     size_t serialized_size,
     const ArrayBufferTransferData* arraybuffer_data,
     size_t arraybuffer_count,
     int* error_code,
     const HostObjectSteps* host,
-    uint64_t agent_cluster
+    uint64_t agent_cluster,
+    const CraneSharedMemory* shared_memory,
+    bool cross_origin_isolated
 ) {
     if (error_code) *error_code = 0;
 
@@ -11096,7 +11418,7 @@ Global<Value>* v8_Value_DeserializeWithTransfer_CrossIsolate(
     }
 
     // Create ValueDeserializer
-    HostObjectDeserializerDelegate delegate(host, &attachments, agent_cluster);
+    HostObjectDeserializerDelegate delegate(host, &attachments, agent_cluster, shared_memory, cross_origin_isolated);
     ValueDeserializer deserializer(isolate, payload, payload_size, &delegate);
     delegate.SetDeserializer(&deserializer);
 
@@ -11146,6 +11468,20 @@ Global<Value>* v8_Value_DeserializeWithTransfer_CrossIsolate(
 
     Local<Value> deserialized = result.ToLocalChecked();
     return trackHandle(new Global<Value>(isolate, deserialized));
+}
+
+Global<Value>* v8_Value_DeserializeWithTransfer_CrossIsolate(
+    const uint8_t* bytes, size_t size, const ArrayBufferTransferData* buffers,
+    size_t count, int* error_code, const HostObjectSteps* host, uint64_t cluster) {
+    return deserializeWithSharedMemory(bytes, size, buffers, count, error_code, host, cluster, nullptr, false);
+}
+
+Global<Value>* v8_Value_DeserializeWithSharedMemory(
+    const uint8_t* bytes, size_t size, const ArrayBufferTransferData* buffers,
+    size_t count, int* error_code, const HostObjectSteps* host, uint64_t cluster,
+    const CraneSharedMemory* shared_memory, bool cross_origin_isolated) {
+    return deserializeWithSharedMemory(bytes, size, buffers, count, error_code, host, cluster,
+                                       shared_memory, cross_origin_isolated);
 }
 
 // ---- lane: serializable ----
@@ -11589,14 +11925,29 @@ Global<Value>* v8_CompileEventHandlerWithParameters(
 }
 
 /// A script or module's ScriptOrigin host-defined options for the engine
-/// protocol: [kind, host_defined], the host's pointer as a Number (exact: a
+/// protocol: [kind, host_defined, muted_errors], the host's pointer as a Number (exact: a
 /// user-space address is below 2^53). `kind` is 0 for a classic script, 1
 /// for a module - what HostLoadImportedModule's referrer is.
-static Local<PrimitiveArray> protocolHostDefinedOptions(Isolate* isolate, int kind, void* host_defined) {
-    Local<PrimitiveArray> options = PrimitiveArray::New(isolate, 2);
+static Local<PrimitiveArray> protocolHostDefinedOptions(Isolate* isolate, int kind, void* host_defined, bool muted_errors = false) {
+    Local<PrimitiveArray> options = PrimitiveArray::New(isolate, 3);
     options->Set(isolate, 0, Integer::New(isolate, kind));
     options->Set(isolate, 1, Number::New(isolate, static_cast<double>(reinterpret_cast<uintptr_t>(host_defined))));
+    options->Set(isolate, 2, Boolean::New(isolate, muted_errors));
     return options;
+}
+
+/// HTML HostPromiseRejectionTracker step 2. The flag belongs to the running
+/// script, including a function invoked after its initial evaluation ended.
+/// Local handles only; the script itself keeps its host-defined options.
+bool v8_Isolate_CurrentScriptHasMutedErrors(Isolate* isolate) {
+    HandleScope scope(isolate);
+    Local<Data> options;
+    if (!isolate->GetCurrentHostDefinedOptions().ToLocal(&options) || !options->IsFixedArray()) return false;
+    Local<PrimitiveArray> array = Local<PrimitiveArray>::Cast(options);
+    if (array->Length() < 3) return false;
+    Local<Primitive> kind = array->Get(isolate, 0);
+    return kind->IsInt32() && kind.As<Int32>()->Value() == 0 &&
+           array->Get(isolate, 2)->IsTrue();
 }
 
 /// Compile a classic script with a ScriptOrigin naming `resource_name` (null:
@@ -11612,7 +11963,8 @@ V8ScriptCompileResult* v8_Script_CompileWithHostDefined_Safe(
     Global<String>* resource_name,
     int line_offset,
     int column_offset,
-    void* host_defined
+    void* host_defined,
+    bool muted_errors
 ) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
@@ -11627,7 +11979,7 @@ V8ScriptCompileResult* v8_Script_CompileWithHostDefined_Safe(
     result->error = nullptr;
 
     Local<Data> host_defined_options;
-    if (host_defined) host_defined_options = protocolHostDefinedOptions(isolate, 0, host_defined);
+    if (host_defined || muted_errors) host_defined_options = protocolHostDefinedOptions(isolate, 0, host_defined, muted_errors);
     ScriptOrigin origin(local_resource_name, line_offset, column_offset, false, -1, Local<Value>(), false, false, false, host_defined_options);
 
     TryCatch try_catch(isolate);
@@ -11680,7 +12032,7 @@ int v8_Script_RunRethrowingErrors(
     Local<Value> local_resource_name = resource_name ? resource_name->Get(isolate).As<Value>() : String::Empty(isolate).As<Value>();
 
     Local<Data> host_defined_options;
-    if (host_defined) host_defined_options = protocolHostDefinedOptions(isolate, 0, host_defined);
+    if (host_defined || muted_errors) host_defined_options = protocolHostDefinedOptions(isolate, 0, host_defined, muted_errors);
     ScriptOrigin origin(local_resource_name, line_offset, column_offset, false, -1, Local<Value>(), false, false, false, host_defined_options);
 
     TryCatch try_catch(isolate);
@@ -11753,7 +12105,7 @@ static void protocolReadHostDefined(Isolate* isolate, Local<Data> options, int* 
     *host_defined = nullptr;
     if (options.IsEmpty() || !options->IsFixedArray()) return;
     Local<PrimitiveArray> array = Local<PrimitiveArray>::Cast(options);
-    if (array->Length() != 2) return;
+    if (array->Length() < 2) return;
     Local<Primitive> k = array->Get(isolate, 0);
     Local<Primitive> p = array->Get(isolate, 1);
     if (!k->IsInt32() || !p->IsNumber()) return;
@@ -12250,6 +12602,23 @@ void v8_RunWithBackupIncumbent(Isolate* isolate, Global<Context>* incumbent, voi
     body(data);
 }
 
+/// Test-only public lifecycle probe. Context::SetPromiseHooks is unavailable
+/// in the linked build (V8_ENABLE_JAVASCRIPT_PROMISE_HOOKS is disabled).
+static void testPromiseHook(PromiseHookType type, Local<Promise> promise, Local<Value>) {
+    IsolateData* data = isolateData(promise->GetIsolate());
+    if (data && data->test_promise_hook)
+        data->test_promise_hook(static_cast<int>(type), data->test_promise_hook_data);
+}
+
+bool v8_test_Isolate_SetPromiseHook(Isolate* isolate, void (*hook)(int, void*), void* payload) {
+    IsolateData* data = isolateData(isolate);
+    if (!data) return false;
+    isolate->SetPromiseHook(hook ? testPromiseHook : nullptr);
+    data->test_promise_hook = hook;
+    data->test_promise_hook_data = hook ? payload : nullptr;
+    return true;
+}
+
 /// HTML's incumbent realm here: Isolate::GetIncumbentContext - the realm of
 /// the most recent script frame, or of the innermost backup incumbent scope
 /// newer than it, or the entered context. A new Global the caller owns
@@ -12407,6 +12776,35 @@ Global<Value>* v8_Function_CallCatchingWithSite(
 
     *threw = false;
     return trackHandle(new Global<Value>(isolate, maybe_result.ToLocalChecked()));
+}
+
+/// WebIDL DOMString conversion inside the callback's prepared scopes. The
+/// returned Global (string or thrown value) and copied throw site are owned
+/// by the caller, exactly as in v8_Function_CallCatchingWithSite.
+Global<Value>* v8_Value_ToStringCatchingWithSite(
+    Global<Context>* context, Global<Value>* value, bool* threw,
+    V8ErrorInfo** site
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    *threw = true;
+    *site = nullptr;
+    if (!context || !value || value->IsEmpty()) return nullptr;
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    TryCatch try_catch(isolate);
+    try_catch.SetCaptureMessage(true);
+    Local<String> result;
+    const bool converted = value->Get(isolate)->ToString(ctx).ToLocal(&result);
+    if (try_catch.HasCaught()) {
+        if (!try_catch.CanContinue()) return nullptr;
+        Global<Value>* thrown = trackHandle(new Global<Value>(isolate, try_catch.Exception()));
+        *site = errorInfoAtThrowSite(isolate, ctx, try_catch);
+        return thrown;
+    }
+    if (!converted) return nullptr;
+    *threw = false;
+    return trackHandle(new Global<Value>(isolate, result));
 }
 
 /// ECMAScript Construct(`function`, `argv`) in `context` - newTarget the
@@ -13985,10 +14383,145 @@ void v8_ObjectTemplate_SetCrossOriginAccessCheck(Global<ObjectTemplate>* tpl, in
             data));
 }
 
+/// WebIDL's receiver check after the binding identifies Window/Location.
+/// A Location Proxy does not itself carry the target's V8 access check, so
+/// SetAcceptAnyReceiver(false) alone cannot protect borrowed member calls.
+/// Only Local handles; the current context is the member function's realm.
+bool v8_FunctionCallbackInfo_ReceiverIsAccessible(const FunctionCallbackInfo<Value>* info) {
+    Isolate* isolate = info->GetIsolate();
+    HandleScope handles(isolate);
+    Local<Object> receiver = info->This();
+    if (receiver->IsProxy()) {
+        Local<Value> target = receiver.As<Proxy>()->GetTarget();
+        if (!target->IsObject()) return true; // The binding rejects the brand.
+        receiver = target.As<Object>();
+    }
+    return CrossOriginAccessCheck(isolate->GetCurrentContext(), receiver, {});
+}
+
 /// The isolate's failed-access-check callback: a SecurityError
 /// (CrossOriginFailedAccessCheck).
 void v8_Isolate_SetCrossOriginFailedAccessCheck(Isolate* isolate) {
     isolate->SetFailedAccessCheckCallbackFunction(CrossOriginFailedAccessCheck);
+}
+
+// HTML 7.2.4: Location's exotic methods on the single object exposed from
+// creation. Traps are native functions in the CALLER'S current context, so a
+// Reflect method borrowed from another realm keeps that builtin's realm.
+static Local<Object> locationTarget(const FunctionCallbackInfo<Value>& info) {
+    return info[0].As<Object>();
+}
+static bool locationSameOrigin(Isolate* isolate, Local<Object> target) {
+    return CrossOriginAccessCheck(isolate->GetCurrentContext(), target, {});
+}
+static void LocationGetPrototype(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Object> target = locationTarget(info);
+    info.GetReturnValue().Set(locationSameOrigin(isolate, target) ? target->GetPrototype() : Null(isolate).As<Value>());
+}
+static void LocationSetPrototype(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Object> target = locationTarget(info);
+    // SetImmutablePrototype, including the cross-origin null prototype.
+    Local<Value> current = locationSameOrigin(isolate, target) ? target->GetPrototype() : Null(isolate).As<Value>();
+    info.GetReturnValue().Set(current->StrictEquals(info[1]));
+}
+static void LocationPreventExtensions(const FunctionCallbackInfo<Value>& info) {
+    info.GetReturnValue().Set(false);
+}
+static void LocationOwnKeys(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Array> keys;
+    if (locationTarget(info)->GetOwnPropertyNames(isolate->GetCurrentContext(), ALL_PROPERTIES,
+                                                  KeyConversionMode::kConvertToString).ToLocal(&keys))
+        info.GetReturnValue().Set(keys);
+}
+static void LocationOwnDescriptor(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Value> descriptor;
+    // C/F/S all report configurable:false for same-origin href/hash/toString
+    // (WPT location-stringifier and proxy-getOwnPropertyDescriptor, aligned
+    // 5d23b743bb, 2026-10-21). Preserve that long-standing browser behavior:
+    // https://github.com/whatwg/html/issues/4157. Cross-origin descriptors are
+    // separately produced by CrossOriginNamedDescriptor, configurable:true.
+    if (locationTarget(info)->GetOwnPropertyDescriptor(isolate->GetCurrentContext(), info[1].As<Name>()).ToLocal(&descriptor))
+        info.GetReturnValue().Set(descriptor);
+}
+static void LocationDefineProperty(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Context> context = isolate->GetCurrentContext();
+    Local<Object> target = locationTarget(info);
+    if (!locationSameOrigin(isolate, target)) {
+        ThrowCrossOriginSecurityError(isolate);
+        return;
+    }
+    // V8 supplies FromPropertyDescriptor's fresh ordinary object. Read only
+    // its own fields, so a polluted Object.prototype cannot add attributes.
+    Local<Object> descriptor = info[2].As<Object>();
+    auto field = [&](const char* name, Local<Value>* value) -> bool {
+        Local<String> key = String::NewFromUtf8(isolate, name).ToLocalChecked();
+        Maybe<bool> has = descriptor->HasOwnProperty(context, key);
+        if (has.IsNothing()) return false;
+        if (!has.FromJust()) return true;
+        return descriptor->Get(context, key).ToLocal(value);
+    };
+    Local<Value> value, writable, get, set, enumerable, configurable;
+    if (!field("value", &value) || !field("writable", &writable) ||
+        !field("get", &get) || !field("set", &set) ||
+        !field("enumerable", &enumerable) || !field("configurable", &configurable)) return;
+    std::unique_ptr<PropertyDescriptor> native;
+    if (!get.IsEmpty() || !set.IsEmpty()) native = std::make_unique<PropertyDescriptor>(get, set);
+    else if (!writable.IsEmpty()) native = std::make_unique<PropertyDescriptor>(value, writable->BooleanValue(isolate));
+    else if (!value.IsEmpty()) native = std::make_unique<PropertyDescriptor>(value);
+    else native = std::make_unique<PropertyDescriptor>();
+    if (!enumerable.IsEmpty()) native->set_enumerable(enumerable->BooleanValue(isolate));
+    if (!configurable.IsEmpty()) native->set_configurable(configurable->BooleanValue(isolate));
+    Maybe<bool> result = target->DefineProperty(context, info[1].As<Name>(), *native);
+    if (result.IsJust()) info.GetReturnValue().Set(result.FromJust());
+}
+static Intercepted LocationTrapLookup(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
+    if (!name->IsString()) return Intercepted::kNo;
+    Isolate* isolate = info.GetIsolate();
+    Local<String> key = name.As<String>();
+    FunctionCallback callback = nullptr;
+    // Normal reads/writes ask for "get"/"set": no function allocation on
+    // that path. The target keeps its existing access-check semantics.
+    switch (key->Length()) {
+        case 7:
+            if (key->StringEquals(String::NewFromUtf8Literal(isolate, "ownKeys"))) callback = LocationOwnKeys;
+            break;
+        case 14:
+            if (key->StringEquals(String::NewFromUtf8Literal(isolate, "getPrototypeOf"))) callback = LocationGetPrototype;
+            else if (key->StringEquals(String::NewFromUtf8Literal(isolate, "setPrototypeOf"))) callback = LocationSetPrototype;
+            else if (key->StringEquals(String::NewFromUtf8Literal(isolate, "defineProperty"))) callback = LocationDefineProperty;
+            break;
+        case 17:
+            if (key->StringEquals(String::NewFromUtf8Literal(isolate, "preventExtensions"))) callback = LocationPreventExtensions;
+            break;
+        case 24:
+            if (key->StringEquals(String::NewFromUtf8Literal(isolate, "getOwnPropertyDescriptor"))) callback = LocationOwnDescriptor;
+            break;
+    }
+    if (!callback) return Intercepted::kNo;
+    Local<Function> function;
+    if (Function::New(isolate->GetCurrentContext(), callback, {}, 0, ConstructorBehavior::kThrow).ToLocal(&function))
+        info.GetReturnValue().Set(function);
+    return Intercepted::kYes;
+}
+
+Global<Object>* v8_CreateLocationObject(Global<Context>* realm, Global<Object>* target) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handles(isolate);
+    NativeStepScope native_step(isolate);
+    Local<Context> context = realm->Get(isolate);
+    Local<ObjectTemplate> handler_template = ObjectTemplate::New(isolate);
+    handler_template->SetHandler(NamedPropertyHandlerConfiguration(LocationTrapLookup));
+    Local<Object> handler;
+    if (!handler_template->NewInstance(context).ToLocal(&handler)) return nullptr;
+    if (!handler->SetPrototype(context, Null(isolate)).FromMaybe(false)) return nullptr;
+    Local<Proxy> result;
+    if (!Proxy::New(context, target->Get(isolate), handler).ToLocal(&result)) return nullptr;
+    return trackHandle(new Global<Object>(isolate, result));
 }
 
 /// HTML 7.2.4 "Location object setup" steps 3-4 on Location's instance
@@ -14020,6 +14553,13 @@ void v8_FunctionTemplate_SetAcceptAnyReceiver(Global<FunctionTemplate>* tpl, boo
 size_t v8_CrossOrigin_ExternalReferences(uintptr_t* out, size_t capacity) {
     const uintptr_t refs[] = {
         reinterpret_cast<uintptr_t>(&CrossOriginAccessCheck),
+        reinterpret_cast<uintptr_t>(&LocationGetPrototype),
+        reinterpret_cast<uintptr_t>(&LocationSetPrototype),
+        reinterpret_cast<uintptr_t>(&LocationPreventExtensions),
+        reinterpret_cast<uintptr_t>(&LocationOwnKeys),
+        reinterpret_cast<uintptr_t>(&LocationOwnDescriptor),
+        reinterpret_cast<uintptr_t>(&LocationDefineProperty),
+        reinterpret_cast<uintptr_t>(&LocationTrapLookup),
         reinterpret_cast<uintptr_t>(&CrossOriginNamedGetter),
         reinterpret_cast<uintptr_t>(&CrossOriginNamedSetter),
         reinterpret_cast<uintptr_t>(&CrossOriginNamedQuery),

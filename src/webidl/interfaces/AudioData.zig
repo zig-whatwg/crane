@@ -232,6 +232,8 @@ pub const AudioData = struct {
         break :blk @hasDecl(impls.AudioData, "serializationSteps") and @hasDecl(impls.AudioData, "deserializationSteps");
     };
 
+    pub const constructor_required_arguments: usize = 1;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator

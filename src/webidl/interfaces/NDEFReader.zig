@@ -192,6 +192,8 @@ pub const NDEFReader = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -233,6 +235,9 @@ pub const NDEFReader = struct {
     pub fn call_makeReadOnly(instance: *runtime.Instance, options: webidl.Opt(NDEFMakeReadOnlyOptions)) anyerror!runtime.JSValue {
         return try NDEFReaderImpl.call_makeReadOnly(instance, options);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onreading", "set_onreadingerror" };
 
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.

@@ -108,8 +108,9 @@ pub fn isSecurityChecked(comptime iface: []const u8) bool {
 }
 
 /// WebIDL's "perform a security check" (HTML 7.2.1.1 step 3) for a binding
-/// that runs it itself: an operation whose return type is a promise, whose
-/// exception - this SecurityError included - becomes a rejected promise, so
+/// that runs it itself: a Location member (its Proxy hides V8's access check),
+/// or an operation whose return type is a promise, whose exception - this
+/// SecurityError included - becomes a rejected promise, so
 /// V8 must not throw it before the callback (WebIDL 3.7.6; fetch and
 /// createImageBitmap with a cross-origin `this`, html/browsers/origin/
 /// cross-origin-objects/cross-origin-objects.html). False when `this` is a
@@ -123,16 +124,9 @@ pub fn receiverIsAccessible(info: *const v8.FunctionCallbackInfo) bool {
     const object = instanceOf(instance_ptr) orelse return true;
     const kind = object.vtable.name;
     if (!std.mem.eql(u8, kind, "Window") and !std.mem.eql(u8, kind, "Location")) return true;
-    const isolate = info.getIsolate();
-    // Owned: a fresh Global<Context> - the function's realm.
-    const current = v8.v8_Isolate_GetCurrentContext(isolate) orelse return false;
-    defer v8.v8_Context_Dispose(current);
-    const key = v8.v8_Context_GetRawAddress(current) orelse return false;
-    // The object's own realm: same origin-domain by definition.
-    if (context_manager.getByKey(@intFromPtr(key))) |realm| {
-        if (realm == object.ctx) return true;
-    }
-    return sameOrigin(isolate, key, object);
+    // The C++ half unwraps the same Proxy layer, with Local handles only.
+    // V8 has entered the member function's realm, including borrowed members.
+    return v8.v8_FunctionCallbackInfo_ReceiverIsAccessible(info);
 }
 
 /// `binding`'s own steps for each entry of `table`, as the C++ half takes

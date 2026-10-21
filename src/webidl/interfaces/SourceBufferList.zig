@@ -223,4 +223,7 @@ pub const SourceBufferList = struct {
             return error.NotImplemented;
         }
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onaddsourcebuffer", "set_onremovesourcebuffer" };
 };

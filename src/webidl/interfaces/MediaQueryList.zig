@@ -215,4 +215,7 @@ pub const MediaQueryList = struct {
     pub fn call_removeListener(instance: *runtime.Instance, callback: ??*runtime.CallbackWrapper) anyerror!void {
         return try MediaQueryListImpl.call_removeListener(instance, callback);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onchange"};
 };

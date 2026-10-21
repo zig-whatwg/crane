@@ -2305,6 +2305,9 @@ pub const Element = struct {
         .{ "set_outerHTML", 0b1 },
     };
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onfullscreenchange", "set_onfullscreenerror" };
+
     /// WebIDL `object` arguments (or sequences of `object`): a value that is
     /// not an Object throws a TypeError (bit i = argument i).
     pub const object_arguments = .{

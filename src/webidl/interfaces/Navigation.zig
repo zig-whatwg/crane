@@ -327,4 +327,7 @@ pub const Navigation = struct {
     pub fn call_forward(instance: *runtime.Instance, options: webidl.Opt(NavigationOptions)) anyerror!NavigationResult {
         return try NavigationImpl.call_forward(instance, options);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onnavigate", "set_onnavigatesuccess", "set_onnavigateerror", "set_oncurrententrychange" };
 };

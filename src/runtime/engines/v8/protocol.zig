@@ -81,7 +81,7 @@ pub const capabilities: engine.Capabilities = .{
     // ObjectTemplate::SetAccessCheckCallbackAndHandler on the Window global
     // and Location templates, per-realm security tokens, and
     // FunctionTemplate::SetAcceptAnyReceiver (cross_origin.zig).
-    .cross_origin_objects = .native,
+    .cross_origin_objects = .emulated,
     // Isolate::SetWasmStreamingCallback: V8 defines compileStreaming and
     // instantiateStreaming and hands each fulfilled source to the host
     // (protocol_webassembly.zig).
@@ -195,6 +195,10 @@ pub fn hasPendingEngineWork(agent: *Agent) bool {
 pub fn runEngineTasks(agent: *Agent) bool {
     return worker_realm.runEngineTasks(agent);
 }
+pub fn nextEngineTaskDelay(agent: *Agent) ?u64 {
+    var delay: u64 = undefined;
+    return if (ffi.v8_Isolate_NextForegroundTaskDelay(isolateOf(agent), &delay)) delay else null;
+}
 
 /// A realm's agent is its isolate (context_manager records it so).
 /// LowMemoryNotification: a full, synchronous collection.
@@ -291,8 +295,12 @@ fn forbidScriptInAgentHold(agent: *Agent) void {
 }
 
 pub fn runClassicScript(realm: Context, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque, reporter: engine.Reporter) Error!void {
+    return runClassicScriptWithOptions(realm, source, url, .{ .host_defined = host_defined }, reporter);
+}
+
+pub fn runClassicScriptWithOptions(realm: Context, source: engine.ScriptSource, url: []const u8, options: engine.ClassicScriptOptions, reporter: engine.Reporter) Error!void {
     forbidScriptInHold(realm);
-    return protocol_scripts.runClassicScript(realm, source, url, host_defined, reporter);
+    return protocol_scripts.runClassicScriptWithOptions(realm, source, url, options, reporter);
 }
 
 pub fn runClassicScriptRethrowingErrors(realm: Context, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque, muted_errors: bool) Error!void {
@@ -369,6 +377,13 @@ const protocol_callbacks = @import("protocol_callbacks.zig");
 pub fn invokeCallbackFunction(realm: Context, callback: *const engine.CallbackFunction, this_arg: engine.CallbackThis, args: []const JSValue, behavior: engine.ExceptionBehavior) Error!engine.Completion {
     forbidScriptInHold(realm);
     return protocol_callbacks.invokeCallbackFunction(realm, callback, this_arg, args, behavior);
+}
+
+pub fn invokeCallbackFunctionWithReturnType(realm: Context, callback: *const engine.CallbackFunction, this_arg: engine.CallbackThis, args: []const JSValue, behavior: engine.ExceptionBehavior, return_type: engine.CallbackReturnType) Error!engine.Completion {
+    forbidScriptInHold(realm);
+    return switch (return_type) {
+        inline else => |kind| protocol_callbacks.invokeCallbackFunctionWithReturnType(realm, callback, this_arg, args, behavior, kind),
+    };
 }
 
 pub fn constructCallbackFunction(realm: Context, callback: *const engine.CallbackFunction, args: []const JSValue) Error!engine.Completion {
@@ -570,6 +585,14 @@ pub fn createSequenceOfPlatformObjects(realm: Context, instances: []const *Insta
     defer std.heap.c_allocator.free(values);
     for (instances, values) |instance, *value| value.* = .{ .instance = instance };
     return createSequenceOfValues(realm, values);
+}
+
+pub fn createLocationObject(realm: Context, ordinary_target: JSValue) Error!Owned {
+    const target = handleOf(ordinary_target) orelse return error.TypeError;
+    const entered = try enter(realm);
+    defer entered.leave();
+    const object = ffi.v8_CreateLocationObject(entered.context(), @ptrCast(target)) orelse return error.OperationFailed;
+    return owned(JSValue.fromHandle(object));
 }
 
 pub fn createDictionaryObject(realm: Context, members: []const engine.DictionaryMember) Error!Owned {
@@ -871,7 +894,17 @@ pub fn structuredSerializeWithTransfer(realm: Context, value: JSValue, transfer_
 }
 
 pub fn structuredDeserializeWithTransfer(realm: Context, serialized: []const u8, array_buffers: []const []const u8, transferred: []const *Instance) Error!Owned {
-    return owned(structured_serialization.structuredDeserializeWithTransfer(realm, serialized, array_buffers, transferred) catch |err| return protocolError(err));
+    return structuredDeserializeWithOptions(realm, serialized, .{ .array_buffers = array_buffers, .transferred = transferred });
+}
+
+pub fn structuredDeserializeWithOptions(realm: Context, serialized: []const u8, options: engine.StructuredDeserializeOptions) Error!Owned {
+    return owned(structured_serialization.structuredDeserializeWithOptions(realm, serialized, options) catch |err| return protocolError(err));
+}
+pub fn retainSharedMemory(memory: *engine.SharedMemory) void {
+    ffi.v8_SharedMemory_Retain(@ptrCast(memory));
+}
+pub fn releaseSharedMemory(memory: *engine.SharedMemory) void {
+    ffi.v8_SharedMemory_Release(@ptrCast(memory));
 }
 
 // ============================================================================

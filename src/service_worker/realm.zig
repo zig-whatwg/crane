@@ -593,7 +593,7 @@ pub const RealmEnvironment = struct {
             const port = dom.message_ports.receive(realm, @ptrCast(shipped)) catch continue;
             ports.append(self.allocator, port) catch continue;
         }
-        const data = engine.structuredDeserializeWithTransfer(realm, port_message.serialized, port_message.array_buffers, ports.items) catch {
+        const data = engine.structuredDeserializeWithOptions(realm, port_message.serialized, .{ .array_buffers = port_message.array_buffers, .transferred = ports.items, .shared_memory = port_message.shared_memory }) catch {
             // "If this throws an exception, catch it, fire an event named
             // messageerror at destination, using MessageEvent, with its
             // origin initialized to origin and the source attribute

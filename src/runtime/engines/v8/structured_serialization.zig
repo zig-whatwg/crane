@@ -15,6 +15,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const protocol = @import("engine");
 const EngineError = runtime.EngineError;
 
 const ffi = @import("ffi.zig");
@@ -102,8 +103,10 @@ pub fn structuredSerializeWithTransfer(
     // to its data holder, by its index among `objects`.
     var host: serializable_objects.Host = .{ .realm = realm, .for_storage = false, .allocator = allocator, .transferred = objects.items };
     // A WebAssembly.Module's [[AgentCluster]]: the current realm's.
-    const options: ffi.StructuredSerializeOptions = .{ .for_storage = false, .agent_cluster = protocol_agents.agentClusterOf(isolate, realm) };
-    const bytes = ffi.v8_Value_StructuredSerializeWithTransfer(
+    const options: ffi.StructuredSerializeOptions = .{ .for_storage = false, .agent_cluster = protocol_agents.agentClusterOf(isolate, realm), .cross_origin_isolated = protocol_agents.crossOriginIsolatedCapability(isolate, realm) };
+    var shared_memory: ?*ffi.SharedMemory = null;
+    errdefer if (shared_memory) |memory| ffi.v8_SharedMemory_Release(memory);
+    const bytes = ffi.v8_Value_StructuredSerializeWithSharedMemory(
         subject,
         buffers.items.ptr,
         buffers.items.len,
@@ -112,6 +115,7 @@ pub fn structuredSerializeWithTransfer(
         &code,
         host.hostObjectSteps(),
         &options,
+        &shared_memory,
     ) orelse return switch (code) {
         1 => EngineError.DataCloneError,
         3 => EngineError.ExceptionPending,
@@ -138,6 +142,7 @@ pub fn structuredSerializeWithTransfer(
         .serialized = serialized,
         .array_buffers = contents,
         .platform_objects = objects.toOwnedSlice(allocator) catch return EngineError.OutOfMemory,
+        .shared_memory = if (shared_memory) |memory| @ptrCast(memory) else null,
     };
 }
 
@@ -151,6 +156,12 @@ pub fn structuredDeserializeWithTransfer(
     array_buffers: []const []const u8,
     transferred: []const *runtime.Instance,
 ) EngineError!runtime.JSValue {
+    return structuredDeserializeWithOptions(realm, serialized, .{ .array_buffers = array_buffers, .transferred = transferred });
+}
+
+pub fn structuredDeserializeWithOptions(realm: runtime.Context, serialized: []const u8, options: protocol.StructuredDeserializeOptions) EngineError!runtime.JSValue {
+    const array_buffers = options.array_buffers;
+    const transferred = options.transferred;
     const entered = try engine.enterRealm(realm);
     defer entered.leaveAgent();
     defer entered.leaveScope();
@@ -173,7 +184,7 @@ pub fn structuredDeserializeWithTransfer(
     // memory): a platform object is made there by its interface's
     // deserialization steps; a transferred one is memory's.
     var host: serializable_objects.Host = .{ .realm = realm, .for_storage = false, .allocator = std.heap.c_allocator, .transferred = transferred };
-    const value = ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(serialized.ptr, serialized.len, data.ptr, data.len, &code, host.hostObjectSteps(), agent_cluster) orelse
+    const value = ffi.v8_Value_DeserializeWithSharedMemory(serialized.ptr, serialized.len, data.ptr, data.len, &code, host.hostObjectSteps(), agent_cluster, if (options.shared_memory) |memory| @ptrCast(memory) else null, protocol_agents.crossOriginIsolatedCapability(entered.isolate, realm)) orelse
         return EngineError.DataCloneError;
     return .{ .handle = .{ .ptr = @ptrCast(value) } };
 }

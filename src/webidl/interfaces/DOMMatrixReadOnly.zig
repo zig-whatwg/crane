@@ -390,6 +390,8 @@ pub const DOMMatrixReadOnly = struct {
         break :blk @hasDecl(impls.DOMMatrixReadOnly, "serializationSteps") and @hasDecl(impls.DOMMatrixReadOnly, "deserializationSteps");
     };
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator

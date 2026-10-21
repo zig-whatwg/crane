@@ -626,6 +626,9 @@ pub const XRSession = struct {
         return try XRSessionImpl.call_end(instance);
     }
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onend", "set_oninputsourceschange", "set_onselect", "set_onselectstart", "set_onselectend", "set_onsqueeze", "set_onsqueezestart", "set_onsqueezeend", "set_onvisibilitychange", "set_onframeratechange" };
+
     /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
     /// the infinities throw a TypeError for (bit i = argument i; an attribute
     /// setter's value is bit 0).

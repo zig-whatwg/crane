@@ -1,0 +1,12 @@
+[LegacyTreatNonObjectAsNull]
+callback LegacyCallback = undefined ();
+callback StrictCallback = undefined ();
+typedef LegacyCallback? LegacyAlias;
+typedef LegacyAlias AnotherAlias;
+[Exposed=*]
+interface CallbackAttributes {
+  attribute AnotherAlias legacy;
+  attribute StrictCallback? strict;
+  attribute LegacyCallback required;
+  undefined method(LegacyCallback? callback);
+};

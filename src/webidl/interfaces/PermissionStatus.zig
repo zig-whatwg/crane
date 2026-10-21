@@ -201,4 +201,7 @@ pub const PermissionStatus = struct {
         if (comptime @hasDecl(PermissionStatusImpl, "set_onchange")) return try PermissionStatusImpl.set_onchange(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onchange", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onchange"};
 };

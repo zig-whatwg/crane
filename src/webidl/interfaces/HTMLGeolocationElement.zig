@@ -381,6 +381,8 @@ pub const HTMLGeolocationElement = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -488,6 +490,9 @@ pub const HTMLGeolocationElement = struct {
         if (comptime @hasDecl(HTMLGeolocationElementImpl, "set_onpromptdismiss")) return try HTMLGeolocationElementImpl.set_onpromptdismiss(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onpromptdismiss", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onlocation", "set_onvalidationstatuschange", "set_onpromptaction", "set_onpromptdismiss" };
 
     /// HTML [CEReactions]: the functions that run a custom element reactions
     /// bracket - the binding dispatches each in a catch scope, where

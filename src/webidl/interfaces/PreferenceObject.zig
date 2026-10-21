@@ -224,6 +224,9 @@ pub const PreferenceObject = struct {
         return try PreferenceObjectImpl.call_clearOverride(instance);
     }
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onchange"};
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{

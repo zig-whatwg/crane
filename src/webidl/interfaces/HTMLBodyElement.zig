@@ -441,6 +441,8 @@ pub const HTMLBodyElement = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -631,6 +633,9 @@ pub const HTMLBodyElement = struct {
         .{ "set_aLink", 0b1 },
         .{ "set_bgColor", 0b1 },
     };
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onorientationchange", "set_onafterprint", "set_onbeforeprint", "set_onbeforeunload", "set_onhashchange", "set_onlanguagechange", "set_onmessage", "set_onmessageerror", "set_onoffline", "set_ononline", "set_onpagehide", "set_onpagereveal", "set_onpageshow", "set_onpageswap", "set_onpopstate", "set_onrejectionhandled", "set_onstorage", "set_onunhandledrejection", "set_onunload", "set_ongamepadconnected", "set_ongamepaddisconnected", "set_onportalactivate" };
 
     /// HTML [CEReactions]: the functions that run a custom element reactions
     /// bracket - the binding dispatches each in a catch scope, where

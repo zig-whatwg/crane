@@ -533,7 +533,7 @@ fn deliver(port: *runtime.Instance, message: *PortMessage) void {
         fire(port, "messageerror", runtime.JSValue.jsUndefined, &.{});
         return;
     }
-    const clone = engine.structuredDeserializeWithTransfer(ctx, message.serialized, message.array_buffers, ports.items) catch {
+    const clone = engine.structuredDeserializeWithOptions(ctx, message.serialized, .{ .array_buffers = message.array_buffers, .transferred = ports.items, .shared_memory = message.shared_memory }) catch {
         fire(port, "messageerror", runtime.JSValue.jsUndefined, &.{});
         return;
     };

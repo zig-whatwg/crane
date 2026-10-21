@@ -63,40 +63,6 @@ fn isWebIdlOpt(comptime T: type) bool {
     return @hasDecl(T, "notPassed") and @hasDecl(T, "wasPassed");
 }
 
-/// Check if a type is optional (Zig optional or webidl.Opt)
-fn isOptionalParam(comptime T: type) bool {
-    const info = @typeInfo(T);
-    // Check Zig optional type
-    if (info == .optional) return true;
-    // Check webidl.Opt
-    return isWebIdlOpt(T);
-}
-
-/// Compute constructor arity (number of required parameters) from function type.
-/// Per WebIDL spec, constructor.length is the number of required parameters.
-/// The first parameter (runtime.Context) is skipped as it's an internal parameter.
-fn computeConstructorArity(comptime FnType: type) c_int {
-    const info = @typeInfo(FnType);
-    if (info != .@"fn") return 0;
-
-    const fn_info = info.@"fn";
-    const params = fn_info.params;
-
-    // Skip first parameter (runtime.Context)
-    if (params.len <= 1) return 0;
-
-    var required: c_int = 0;
-    for (params[1..]) |param| {
-        if (param.type) |T| {
-            // Count non-optional parameters
-            if (!isOptionalParam(T)) {
-                required += 1;
-            }
-        }
-    }
-    return required;
-}
-
 /// Get the default value for a parameter type when the argument was not provided.
 /// Returns null if no default is possible and NotEnoughArguments should be returned.
 /// This function handles all the type-specific logic at comptime to avoid
@@ -2743,6 +2709,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     setter_cb,
                     comptime acceptsAnyReceiver(prop_name, .getter),
                     comptime acceptsAnyReceiver(prop_name, .setter),
+                    comptime if (isUnforgeableMember(prop_name)) v8.PropertyAttribute.DontDelete else v8.PropertyAttribute.None,
                 );
             }
         }
@@ -2960,15 +2927,9 @@ pub fn V8Interface(comptime Interface: type) type {
             defer v8.v8_String_Dispose(name_str);
             v8.v8_FunctionTemplate_SetClassName(template, name_str);
 
-            // Set constructor length from the call_constructor function signature
-            // Per WebIDL spec, constructor.length is the number of required parameters
-            const constructor_length: c_int = comptime blk: {
-                if (!@hasDecl(Interface, "call_constructor")) {
-                    break :blk 0; // Non-constructible
-                }
-                const ctor_type = @TypeOf(Interface.call_constructor);
-                break :blk computeConstructorArity(ctor_type);
-            };
+            // WebIDL 3.7.1 step 9: the shortest effective constructor list.
+            // Nullable and sequence types do not imply optional arguments.
+            const constructor_length: c_int = comptime if (@hasDecl(Interface, "constructor_required_arguments")) @intCast(Interface.constructor_required_arguments) else 0;
             v8.v8_FunctionTemplate_SetLength(template, constructor_length);
 
             // Handle callback interfaces differently per WebIDL §3.12
@@ -3125,74 +3086,12 @@ pub fn V8Interface(comptime Interface: type) type {
                 v8.v8_ObjectTemplate_SetImmutableProto(proto_tmpl);
             }
 
-            // HTML 7.2.4: every member of Location is [LegacyUnforgeable] -
-            // an own property of each instance, non-configurable (WebIDL
-            // 3.7.5 "define the unforgeable regular operations / attributes"),
-            // with none on Location.prototype - and "Location object setup"
-            // adds own valueOf and %Symbol.toPrimitive%. Codegen does not mark
-            // [LegacyUnforgeable] members; Location is the interface whose
-            // members all are, and whose cross-origin [[GetOwnProperty]]
-            // reports `href` and `replace` as own.
-            const unforgeable_members = comptime std.mem.eql(u8, interface_name, "Location");
-            const member_tmpl = if (unforgeable_members) instance_tmpl else proto_tmpl;
-            if (unforgeable_members) v8.v8_ObjectTemplate_SetLocationValueOfAndToPrimitive(instance_tmpl);
+            // HTML "Location object setup" adds valueOf and @@toPrimitive.
+            // Member placement itself follows WebIDL metadata below.
+            if (comptime std.mem.eql(u8, interface_name, "Location")) v8.v8_ObjectTemplate_SetLocationValueOfAndToPrimitive(instance_tmpl);
 
-            // Register EAGER properties as accessors on prototype (defined upfront)
-            // eager_properties is tuple array: .{ "propName", "get_propName", "set_propName" or null }
-            // IMPORTANT: Use callbacks from EagerCallbackStore - SAME callbacks registered in registerExternalReferences()
-            inline for (eager_properties, 0..) |prop, prop_idx| {
-                // A [Global] interface's are the global object's own instead
-                // (members_on_global_object).
-                if (comptime members_on_global_object) continue;
-                const prop_name: []const u8 = prop[0];
-
-                const prop_name_str = v8.v8_String_NewFromUtf8(
-                    isolate,
-                    prop_name.ptr,
-                    @intCast(prop_name.len),
-                ).?;
-                // SetAccessorProperty reads it as a Local; the template keeps its own.
-                defer v8.v8_String_Dispose(prop_name_str);
-
-                // Use callback from static store - SAME callback registered in registerExternalReferences()
-                // This ensures V8 snapshot restoration can reconnect the callback correctly
-                const getter_cb: v8.FunctionCallback = EagerCallbackStore.getters[prop_idx];
-
-                // Check if this property has [PutForwards] extended attribute
-                // Per WebIDL spec §4.3.10: setting the attribute forwards to a property on the value
-                const put_forwards_target: ?[]const u8 = comptime blk: {
-                    if (!@hasDecl(Meta, "put_forwards_attributes")) break :blk null;
-                    for (Meta.put_forwards_attributes) |pf| {
-                        if (std.mem.eql(u8, pf[0], prop_name)) {
-                            break :blk pf[1]; // The forwarded property name
-                        }
-                    }
-                    break :blk null;
-                };
-
-                // Generate setter callback - use PutForwards setter if applicable, otherwise use stored callback
-                const setter_cb: ?v8.FunctionCallback = if (put_forwards_target) |forward_prop|
-                    // Use PutForwards setter that uses JavaScript [[Get]]/[[Set]] semantics
-                    PutForwardsSetterCallback(prop_name, forward_prop).callback
-                else
-                    // Use setter from static store (null if read-only)
-                    EagerCallbackStore.setters[prop_idx];
-
-                // Use SetAccessorProperty instead of SetAccessor to create visible descriptors
-                // This makes the getter/setter appear in Object.getOwnPropertyDescriptor.
-                // Each function runs WebIDL's security check for a
-                // cross-origin `this` unless HTML lists it (cross_origin.zig).
-                v8.v8_ObjectTemplate_SetAccessorPropertyChecked(
-                    member_tmpl,
-                    prop_name_str,
-                    getter_cb,
-                    setter_cb,
-                    comptime acceptsAnyReceiver(prop_name, .getter),
-                    comptime acceptsAnyReceiver(prop_name, .setter),
-                    // [LegacyUnforgeable]: { [[Configurable]]: false }.
-                    if (unforgeable_members) v8.PropertyAttribute.DontDelete else v8.PropertyAttribute.None,
-                );
-            }
+            registerInheritedUnforgeables(isolate, template, instance_tmpl);
+            registerEagerProperties(isolate, instance_tmpl, proto_tmpl, false);
 
             // Register constants on prototype template
             // This allows instance.CONSTANT to work (e.g., xhr.UNSENT)
@@ -3379,7 +3278,8 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Also pass template for signature-based receiver type checking
                     // [LegacyUnforgeable] operations: { [[Writable]]: false,
                     // [[Configurable]]: false }, on the instance.
-                    registerMethod(zig_name, method_name, isolate, template, member_tmpl, arity, if (unforgeable_members) v8.PropertyAttribute.ReadOnly | v8.PropertyAttribute.DontDelete else v8.PropertyAttribute.None);
+                    const unforgeable = comptime isUnforgeableMember(method_name);
+                    registerMethod(zig_name, method_name, isolate, template, if (unforgeable) instance_tmpl else proto_tmpl, arity, if (unforgeable) v8.PropertyAttribute.ReadOnly | v8.PropertyAttribute.DontDelete else v8.PropertyAttribute.None);
                 }
             }
 
@@ -3403,6 +3303,98 @@ pub fn V8Interface(comptime Interface: type) type {
             }
 
             return template;
+        }
+
+        /// WebIDL 3.8 step 11: define inherited unforgeables on each instance.
+        /// V8 13.1 api-natives.cc ConfigureInstance inherits native AccessorInfo
+        /// entries, but copies the JS accessor property_list only from this
+        /// template. SetAccessorProperty's entries therefore need installing
+        /// explicitly with their defining interface's callbacks.
+        fn registerInheritedUnforgeables(isolate: *v8.Isolate, template: *v8.FunctionTemplate, instance_tmpl: *v8.ObjectTemplate) void {
+            if (@hasDecl(Meta, "ParentInterface")) {
+                const ParentBinding = V8Interface(Meta.ParentInterface);
+                ParentBinding.registerInheritedUnforgeables(isolate, template, instance_tmpl);
+                ParentBinding.registerEagerProperties(isolate, instance_tmpl, instance_tmpl, true);
+                ParentBinding.registerOwnUnforgeableMethods(isolate, template, instance_tmpl);
+            }
+        }
+
+        fn registerOwnUnforgeableMethods(isolate: *v8.Isolate, template: *v8.FunctionTemplate, instance_tmpl: *v8.ObjectTemplate) void {
+            inline for (methods) |method| {
+                if (comptime isUnforgeableMember(method[0])) {
+                    registerMethod(method[1], method[0], isolate, template, instance_tmpl, if (method.len >= 3) method[2] else 0, v8.PropertyAttribute.ReadOnly | v8.PropertyAttribute.DontDelete);
+                }
+            }
+        }
+
+        fn registerEagerProperties(isolate: *v8.Isolate, instance_tmpl: *v8.ObjectTemplate, proto_tmpl: *v8.ObjectTemplate, comptime only_unforgeable: bool) void {
+            // Register EAGER properties as accessors on prototype (defined upfront)
+            // eager_properties is tuple array: .{ "propName", "get_propName", "set_propName" or null }
+            // IMPORTANT: Use callbacks from EagerCallbackStore - SAME callbacks registered in registerExternalReferences()
+            inline for (eager_properties, 0..) |prop, prop_idx| {
+                // A [Global] interface's are the global object's own instead
+                // (members_on_global_object).
+                if (comptime members_on_global_object) continue;
+                const prop_name: []const u8 = prop[0];
+                const unforgeable = comptime isUnforgeableMember(prop_name);
+                if (comptime only_unforgeable and !unforgeable) continue;
+
+                const prop_name_str = v8.v8_String_NewFromUtf8(
+                    isolate,
+                    prop_name.ptr,
+                    @intCast(prop_name.len),
+                ).?;
+                // SetAccessorProperty reads it as a Local; the template keeps its own.
+                defer v8.v8_String_Dispose(prop_name_str);
+
+                // Use callback from static store - SAME callback registered in registerExternalReferences()
+                // This ensures V8 snapshot restoration can reconnect the callback correctly
+                const getter_cb: v8.FunctionCallback = EagerCallbackStore.getters[prop_idx];
+
+                // Check if this property has [PutForwards] extended attribute
+                // Per WebIDL spec §4.3.10: setting the attribute forwards to a property on the value
+                const put_forwards_target: ?[]const u8 = comptime blk: {
+                    if (!@hasDecl(Meta, "put_forwards_attributes")) break :blk null;
+                    for (Meta.put_forwards_attributes) |pf| {
+                        if (std.mem.eql(u8, pf[0], prop_name)) {
+                            break :blk pf[1]; // The forwarded property name
+                        }
+                    }
+                    break :blk null;
+                };
+
+                // Generate setter callback - use PutForwards setter if applicable, otherwise use stored callback
+                const setter_cb: ?v8.FunctionCallback = if (put_forwards_target) |forward_prop|
+                    // Use PutForwards setter that uses JavaScript [[Get]]/[[Set]] semantics
+                    PutForwardsSetterCallback(prop_name, forward_prop).callback
+                else
+                    // Use setter from static store (null if read-only)
+                    EagerCallbackStore.setters[prop_idx];
+
+                // Use SetAccessorProperty instead of SetAccessor to create visible descriptors
+                // This makes the getter/setter appear in Object.getOwnPropertyDescriptor.
+                // Each function runs WebIDL's security check for a
+                // cross-origin `this` unless HTML lists it (cross_origin.zig).
+                v8.v8_ObjectTemplate_SetAccessorPropertyChecked(
+                    if (unforgeable) instance_tmpl else proto_tmpl,
+                    prop_name_str,
+                    getter_cb,
+                    setter_cb,
+                    comptime acceptsAnyReceiver(prop_name, .getter),
+                    comptime acceptsAnyReceiver(prop_name, .setter),
+                    // [LegacyUnforgeable]: { [[Configurable]]: false }.
+                    if (unforgeable) v8.PropertyAttribute.DontDelete else v8.PropertyAttribute.None,
+                );
+            }
+        }
+
+        /// WebIDL 3.7.6/3.7.7: unannotated members remain on the prototype.
+        fn isUnforgeableMember(comptime member_name: []const u8) bool {
+            if (!@hasDecl(Meta, "unforgeable_members")) return false;
+            inline for (Meta.unforgeable_members) |member| {
+                if (comptime std.mem.eql(u8, member, member_name)) return true;
+            }
+            return false;
         }
 
         /// Check if a property name is in the [LegacyLenientThis] attributes list
@@ -3588,6 +3580,17 @@ pub fn V8Interface(comptime Interface: type) type {
                     };
                     var error_realm: ErrorRealm = .{ .info = info, .isolate = isolate_inner };
                     defer error_realm.release();
+
+                    // WebIDL attribute getter 1.1.2.2 / HTML 7.2.1.1: a
+                    // Proxy's borrowed getter must check its platform target.
+                    if (comptime std.mem.eql(u8, iface_name, "Location") and
+                        !acceptsAnyReceiver(getter_name["get_".len..], .getter))
+                    {
+                        if (!cross_origin.receiverIsAccessible(info)) {
+                            if (error_realm.get()) |realm| conv.throwWebIDLErrorFromContext(isolate_inner, realm, "SecurityError");
+                            return;
+                        }
+                    }
 
                     // Check return type
                     const fn_info = @typeInfo(@TypeOf(zig_getter)).@"fn";
@@ -4397,11 +4400,19 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
 
                 fn body(info: *const v8.FunctionCallbackInfo) void {
-                    // WebIDL "perform a security check" for a promise-returning
-                    // operation of an interface a Window or Location implements:
-                    // in the binding, inside rejectOnThrow, so its SecurityError
-                    // rejects the promise (V8 checks every other such member).
-                    if (comptime bindingChecksReceiver(zig_name)) {
+                    // WebIDL operation 2.1.2.2 / HTML 7.2.1.1. Location's
+                    // Proxy needs an explicit check; promise-returning members
+                    // keep this inside rejectOnThrow. Cross-origin replace is
+                    // allowed by the same table that configures V8's checks.
+                    const location_checks_receiver = comptime blk: {
+                        if (!std.mem.eql(u8, interface_name, "Location")) break :blk false;
+                        for (methods) |method| {
+                            if (std.mem.eql(u8, method[1], zig_name))
+                                break :blk !acceptsAnyReceiver(method[0], .operation);
+                        }
+                        break :blk true;
+                    };
+                    if (comptime bindingChecksReceiver(zig_name) or location_checks_receiver) {
                         if (!cross_origin.receiverIsAccessible(info)) {
                             const isolate = info.getIsolate();
                             if (v8.v8_Isolate_GetCurrentContext(isolate)) |current| {
@@ -5875,6 +5886,13 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Check argument count from JavaScript
             const js_arg_count = info.length();
+
+            // WebIDL 3.7.1 steps 1.6–1.7 / 3.6 step 5: an empty effective
+            // overload set throws before converting ANY argument. Blink's
+            // bind_gen/interface.py make_check_argument_length does the same.
+            if (comptime @hasDecl(Interface, "constructor_required_arguments")) {
+                if (js_arg_count < Interface.constructor_required_arguments) return error.NotEnoughArguments;
+            }
 
             // Build arguments tuple at comptime based on constructor signature
             // Note: Constructors use ctx.allocator internally for consistency with deinit
@@ -8897,6 +8915,17 @@ pub fn V8Interface(comptime Interface: type) type {
                     defer if (setter_context_owned) |c| v8.v8_Context_Dispose(c);
                     const setter_context = setter_context_owned orelse context;
 
+                    // WebIDL attribute setter 4.5.2 precedes conversion.
+                    // CrossOriginProperties exempts href's setter.
+                    if (comptime std.mem.eql(u8, interface_name, "Location") and
+                        !acceptsAnyReceiver(setter_name_param["set_".len..], .setter))
+                    {
+                        if (!cross_origin.receiverIsAccessible(info)) {
+                            conv.throwWebIDLErrorFromContext(isolate_inner, setter_context, "SecurityError");
+                            return;
+                        }
+                    }
+
                     // Get the new value from info[0] - handle missing arguments as undefined
                     // Per WebIDL spec, missing arguments should be treated as undefined
                     const raw_value_v8 = if (info.length() > 0) info.get(0) else v8.v8_Undefined(isolate_inner) orelse unreachable;
@@ -9133,11 +9162,23 @@ pub fn V8Interface(comptime Interface: type) type {
                         .clamp
                     else
                         .modulo;
-                    const converted_value = if (comptime setter_integer != .modulo)
+                    const legacy_callback = comptime blk: {
+                        if (!@hasDecl(Interface, "legacy_treat_non_object_as_null")) break :blk false;
+                        for (Interface.legacy_treat_non_object_as_null) |member| {
+                            if (std.mem.eql(u8, member, setter_name_param)) break :blk true;
+                        }
+                        break :blk false;
+                    };
+                    const converted_value = if (comptime legacy_callback)
+                        conv.fromV8LegacyCallbackAttribute(ValueType, new_value_v8)
+                    else if (comptime setter_integer != .modulo)
                         conv.fromV8ValueInteger(ValueType, setter_integer, allocator, isolate_inner, context, new_value_v8)
                     else
                         convertV8ToZig(ValueType, comptime argumentInterface(Interface, setter_name_param, 0), allocator, isolate_inner, context, new_value_v8);
                     const zig_value = converted_value catch |err| {
+                        // A strict callback rejects before taking its Global.
+                        // The setter's defer still owns that failed argument.
+                        if (comptime isCallbackFunctionType(ValueType) or isOptionalCallbackType(ValueType)) value_handed_over = false;
                         // ExceptionPending means an exception was already rethrown
                         if (err == conv.ConversionError.ExceptionPending) {
                             return;

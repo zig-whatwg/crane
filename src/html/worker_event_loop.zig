@@ -222,6 +222,9 @@ pub const WorkerEventLoop = struct {
         if (self.deferred_teardown) |queue| if (!queue.isEmpty()) return 0;
         var bound: ?u64 = null;
         if (self.timers.getNextTimerDeadline()) |ms| bound = ms *| std.time.ns_per_ms;
+        if (self.agent) |agent| if (engine.nextEngineTaskDelay(agent)) |ns| {
+            bound = @min(bound orelse ns, ns);
+        };
         const busy = (if (self.fetches) |fetches| fetches.inFlight() > 0 else false) or
             (if (self.agent) |agent| engine.hasPendingEngineWork(agent) else false);
         if (busy) bound = @min(bound orelse busy_slice_ns, busy_slice_ns);

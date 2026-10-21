@@ -205,4 +205,7 @@ pub const IDBOpenDBRequest = struct {
         if (comptime @hasDecl(IDBOpenDBRequestImpl, "set_onupgradeneeded")) return try IDBOpenDBRequestImpl.set_onupgradeneeded(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onupgradeneeded", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onblocked", "set_onupgradeneeded" };
 };

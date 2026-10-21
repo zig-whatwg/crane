@@ -312,7 +312,7 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue,
     defer if (transferred_values) |values| values.release();
     // Steps 2-3: the value, deserialized with the received ports as the
     // transferred objects it refers to (memory, step 3.5).
-    const deserialized = try engine.structuredDeserializeWithTransfer(instance.ctx, serialized.serialized, serialized.array_buffers, received.items);
+    const deserialized = try engine.structuredDeserializeWithOptions(instance.ctx, serialized.serialized, .{ .array_buffers = serialized.array_buffers, .transferred = received.items, .shared_memory = serialized.shared_memory });
     return deserialized.take();
 }
 

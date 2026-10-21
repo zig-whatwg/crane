@@ -200,6 +200,8 @@ pub const SFrameDecryptorStream = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 1;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -235,6 +237,9 @@ pub const SFrameDecryptorStream = struct {
     pub fn call_removeDecryptionKey(instance: *runtime.Instance, keyId: CryptoKeyID) anyerror!runtime.JSValue {
         return try SFrameDecryptorStreamImpl.call_removeDecryptionKey(instance, keyId);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onerror"};
 
     /// WebIDL interface types: the interface each interface-typed argument
     /// and attribute value converts to - a TypeError unless the value implements

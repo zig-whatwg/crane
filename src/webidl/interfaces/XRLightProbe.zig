@@ -191,4 +191,7 @@ pub const XRLightProbe = struct {
         if (comptime @hasDecl(XRLightProbeImpl, "set_onreflectionchange")) return try XRLightProbeImpl.set_onreflectionchange(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onreflectionchange", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onreflectionchange"};
 };

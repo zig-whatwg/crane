@@ -197,4 +197,7 @@ pub const PictureInPictureWindow = struct {
         if (comptime @hasDecl(PictureInPictureWindowImpl, "set_onresize")) return try PictureInPictureWindowImpl.set_onresize(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onresize", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onresize"};
 };

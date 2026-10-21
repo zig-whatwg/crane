@@ -212,6 +212,8 @@ pub const VideoEncoder = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 1;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -263,6 +265,9 @@ pub const VideoEncoder = struct {
     pub fn call_static_isConfigSupported(instance: *runtime.Instance, config: VideoEncoderConfig) anyerror!runtime.JSValue {
         return try VideoEncoderImpl.call_static_isConfigSupported(instance, config);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_ondequeue"};
 
     /// WebIDL interface types: the interface each interface-typed argument
     /// and attribute value converts to - a TypeError unless the value implements

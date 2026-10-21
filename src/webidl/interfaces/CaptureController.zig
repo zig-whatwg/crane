@@ -203,6 +203,8 @@ pub const CaptureController = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -260,6 +262,9 @@ pub const CaptureController = struct {
     pub fn call_getSupportedZoomLevels(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CaptureControllerImpl.call_getSupportedZoomLevels(instance);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_oncapturedmousechange", "set_onzoomlevelchange" };
 
     /// WebIDL interface types: the interface each interface-typed argument
     /// and attribute value converts to - a TypeError unless the value implements

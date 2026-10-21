@@ -885,8 +885,7 @@ fn handlerListener(internal: *InternalState, event_type: []const u8) ?*EventList
 /// return null").
 ///
 /// The handler stops being raw BEFORE it is compiled: compiling reports
-/// errors and sets the value through the IDL attribute, either of which can
-/// run script that reads this handler again, and that read must find it
+/// errors, which can run script that reads this handler again, and that read must find it
 /// settled rather than compile it a second time.
 fn currentHandlerValue(target: *runtime.Instance, event_type: []const u8) ?HandlerValue {
     const internal = getInternalFromRegistry(target) orelse return null;
@@ -908,6 +907,24 @@ fn currentHandlerValue(target: *runtime.Instance, event_type: []const u8) ?Handl
                     return null;
                 },
                 .settled => source.deinit(allocator),
+                .compiled => |callback| {
+                    source.deinit(allocator);
+                    // HTML getting the current value steps 3.12-3.13. Take
+                    // the compiled callback directly: IDL conversion here
+                    // would capture the getter's caller as the incumbent.
+                    const current = getInternalFromRegistry(target) orelse {
+                        callback.release();
+                        return null;
+                    };
+                    const value: HandlerEntry = .{ .compiled = .{
+                        .callback = callback,
+                        .address = @intFromPtr(callback.function.value.handle.ptr),
+                    } };
+                    storeHandlerEntry(target, current, event_type, value) catch {
+                        callback.release();
+                        return null;
+                    };
+                },
             }
             // Compilation may have changed the map (or erased the target).
             return eventHandlerValue(target, event_type);
@@ -1591,9 +1608,18 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance, 
     // callback's associated realm (DOM inner invoke step 2.11): reported
     // here, and the completion is then normal undefined, which step 5 ignores.
     var reporter = DispatchReporter{ .realm = realm, .did_throw = did_throw };
-    const completion = engine.invokeCallbackFunction(realm, &callback, .{ .value = .{ .instance = instance } }, args, .{
+    const behavior: engine.ExceptionBehavior = .{
         .report = .{ .report = DispatchReporter.report, .host = &reporter },
-    }) catch |err| {
+    };
+    // HTML event handler processing step 4: beforeunload uses DOMString?
+    // even for an ordinary Event. WebIDL invoke converts before cleanup of
+    // either callback scope; a throwing toString is reported by DOM here.
+    const beforeunload = std.mem.eql(u8, event_type_str.asSlice(), "beforeunload");
+    const invoked = if (beforeunload)
+        engine.invokeCallbackFunctionWithReturnType(realm, &callback, .{ .value = .{ .instance = instance } }, args, behavior, .nullable_dom_string)
+    else
+        engine.invokeCallbackFunction(realm, &callback, .{ .value = .{ .instance = instance } }, args, behavior);
+    const completion = invoked catch |err| {
         log.debug("event handler not invoked: {}", .{err});
         return;
     };
@@ -1611,12 +1637,11 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance, 
     //
     // "If event is a BeforeUnloadEvent object and event's type is
     // beforeunload": the attribute is an OnBeforeUnloadEventHandler, whose
-    // callback returns DOMString?, so the return value is converted - script
-    // (a toString) runs here, with window.event still set - to null or a
-    // string. "If return value is not null, then: set event's canceled flag;
+    // callback returned DOMString?; conversion already ran inside invoke,
+    // with window.event still set. "If return value is not null, then: set event's canceled flag;
     // if event's returnValue attribute's value is the empty string, then set
     // it to return value."
-    if (std.mem.eql(u8, event_type_str.asSlice(), "beforeunload") and event.stateAs(interfaces.BeforeUnloadEvent.State) != null) {
+    if (beforeunload and event.stateAs(interfaces.BeforeUnloadEvent.State) != null) {
         switch (engine.typeOf(realm, return_value.value)) {
             .undefined, .null => return,
             else => {},

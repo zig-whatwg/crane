@@ -235,4 +235,7 @@ pub const RTCDtlsTransport = struct {
     pub fn call_getRemoteCertificates(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try RTCDtlsTransportImpl.call_getRemoteCertificates(instance);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onstatechange", "set_onerror" };
 };

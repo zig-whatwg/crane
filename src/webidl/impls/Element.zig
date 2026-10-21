@@ -2543,10 +2543,9 @@ fn compileRawEventHandler(target: *runtime.Instance, event_type: []const u8, raw
     // Do not call the null IDL setter: it removes the listener's position.
     const compiled = engine.compileEventHandler(realm, &source, .{ .report = reportException, .host = realm }) catch return .settled;
     const function = compiled orelse return .settled;
-    defer function.release();
-    // Step 3.12: existing IDL conversion transfers the compiled callback.
-    engine.setProperty(realm, .{ .instance = target }, local_name, function.value) catch {};
-    return .settled;
+    // Steps 3.12-3.13: the callback context is the document's settings,
+    // even when another realm's script caused this getter to compile it.
+    return .{ .compiled = .{ .function = function, .context = realm } };
 }
 
 /// HTML 3.2.6.5, the style attribute, when it "is added or has its value

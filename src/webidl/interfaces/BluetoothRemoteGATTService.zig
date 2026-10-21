@@ -288,6 +288,9 @@ pub const BluetoothRemoteGATTService = struct {
         return try BluetoothRemoteGATTServiceImpl.call_getIncludedService(instance, service);
     }
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_oncharacteristicvaluechanged", "set_onserviceadded", "set_onservicechanged", "set_onserviceremoved" };
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{

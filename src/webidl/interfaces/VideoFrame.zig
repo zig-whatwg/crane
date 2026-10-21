@@ -264,6 +264,8 @@ pub const VideoFrame = struct {
         break :blk @hasDecl(impls.VideoFrame, "serializationSteps") and @hasDecl(impls.VideoFrame, "deserializationSteps");
     };
 
+    pub const constructor_required_arguments: usize = 1;
+
     /// Arguments for constructor (WebIDL overloading)
     pub const ConstructorArgs = union(enum) {
         /// constructor(image, init)
