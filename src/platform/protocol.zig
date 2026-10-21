@@ -211,7 +211,7 @@ pub const EventLoopPort = opaque {};
 /// An HTTP transfer, OWNED by its port until its client's last callback or
 /// `cancelTransfer`.
 pub const Transfer = opaque {};
-/// A WebSocket connection, OWNED by its port until `releaseWebSocket`.
+/// A WebSocket transport, OWNED by its caller until `releaseWebSocket`.
 pub const WebSocket = opaque {};
 /// Storage engine handles (6.6), OWNED until closed / committed or aborted.
 pub const Store = opaque {};
@@ -957,24 +957,47 @@ pub const TransferClient = extern struct {
     end: *const fn (context: ?*anyopaque, result: *const TransferResult) callconv(.c) void,
 };
 
-/// The WebSocket handshake request Crane built (URL, protocols, origin,
-/// cookies). BORROWED; copied before `openWebSocket` returns.
-pub const WebSocketRequest = extern struct {
-    url: Str,
-    protocols: StrList = .{},
-    origin: Str = .{},
-    headers: HeaderList = .{},
+/// Network options copied by openWebSocket; policy comes from the caller's Browser.
+pub const WebSocketNetworkOptions = extern struct {
+    user_agent: Str = .{},
+    verify_peer: bool = true,
+    verify_host: bool = true,
+    ca_bundle_path: Str = .{},
+    has_ca_bundle: bool = false,
+    proxy_has_credentials: bool = false,
+    has_no_proxy: bool = false,
+    has_proxy: bool = false,
+    proxy_url: Str = .{},
+    proxy_username: Str = .{},
+    proxy_password: Str = .{},
+    no_proxy: Str = .{},
 };
 
-pub const WebSocketFrameKind = enum(u8) { text, binary, ping, pong };
+/// The handshake request. All strings/headers are BORROWED for openWebSocket.
+/// Cookies, Origin and offered protocols are constructed above the transport.
+pub const WebSocketRequest = extern struct {
+    url: Str,
+    headers: HeaderList = .{},
+    network: WebSocketNetworkOptions = .{},
+};
 
-/// A socket's receiver; every callback runs inside `pollEventLoopPort`.
-pub const WebSocketClient = extern struct {
-    context: ?*anyopaque,
-    opened: *const fn (context: ?*anyopaque, head: *const HttpResponseHead) callconv(.c) void,
-    /// The bytes are BORROWED for the call.
-    frame: *const fn (context: ?*anyopaque, kind: WebSocketFrameKind, bytes: Bytes, fin: bool) callconv(.c) void,
-    closed: *const fn (context: ?*anyopaque, code: u16, reason: Str, clean: bool) callconv(.c) void,
+pub const WebSocketFrameKind = enum(u8) { text, binary, close, ping, pong };
+pub const WebSocketError = HttpError || error{ WouldBlock, ConnectionLost };
+
+/// The real transport response, including a failed handshake's Set-Cookie.
+/// Header strings remain BORROWED until releaseWebSocket.
+pub const WebSocketHandshake = extern struct {
+    head: HttpResponseHead,
+    /// The transport verified its handshake (including h1's Accept key).
+    verified: bool,
+};
+
+/// One chunk of one RFC6455 frame. Bytes refer to the caller's receive buffer.
+pub const WebSocketChunk = extern struct {
+    bytes: Bytes,
+    kind: WebSocketFrameKind,
+    bytes_left: u64,
+    more_fragments: bool,
 };
 
 /// One per event loop (the Browser's, each worker's), OWNED by it, bound to
@@ -1025,23 +1048,38 @@ pub inline fn resumeTransfer(port: *EventLoopPort, transfer: *Transfer) void {
     return impl.resumeTransfer(port, transfer);
 }
 
-/// Open a WebSocket. The per-host CONNECTING queue (RFC 6455 4.1) is the
-/// Browser's. OWNED until `releaseWebSocket`.
-pub inline fn openWebSocket(port: *EventLoopPort, allocator: std.mem.Allocator, request: *const WebSocketRequest, client: WebSocketClient) HttpError!*WebSocket {
-    return impl.openWebSocket(port, allocator, request, client);
+/// Begin a nonblocking handshake. OWNED until releaseWebSocket, on the
+/// requesting agent's thread. The existing owned WebSocket timer drives polling;
+/// no callback can outlive the owner. The Browser's CONNECTING gate is above us.
+pub inline fn openWebSocket(allocator: std.mem.Allocator, request: *const WebSocketRequest) HttpError!*WebSocket {
+    return impl.openWebSocket(allocator, request);
 }
 
-/// Send a frame; the platform buffers partial writes.
-pub inline fn sendWebSocketFrame(socket: *WebSocket, kind: WebSocketFrameKind, bytes: Bytes) HttpError!void {
+/// One nonblocking handshake step; null means pending. A completed response is
+/// stable until release, including when verified is false. Cookies are policy
+/// above the platform, and must also be processed on a failed handshake.
+pub inline fn pollWebSocketHandshake(socket: *WebSocket) HttpError!?WebSocketHandshake {
+    return impl.pollWebSocketHandshake(socket);
+}
+
+/// Accept part of a frame without waiting. Retry the remainder with the same
+/// kind; WouldBlock accepted nothing. This preserves bufferedAmount accounting.
+pub inline fn sendWebSocketFrame(socket: *WebSocket, kind: WebSocketFrameKind, bytes: Bytes) WebSocketError!usize {
     return impl.sendWebSocketFrame(socket, kind, bytes);
 }
 
-/// Start the closing handshake.
+/// Read one chunk without waiting. WouldBlock means no data; ConnectionLost
+/// means the transport ended. Frame validation and ping replies are transport work.
+pub inline fn receiveWebSocketFrame(socket: *WebSocket, buffer: []u8) WebSocketError!WebSocketChunk {
+    return impl.receiveWebSocketFrame(socket, buffer);
+}
+
+/// Best-effort closing handshake. Protocol state and close-code validation are
+/// above this layer; releaseWebSocket cancels immediately without callbacks.
 pub inline fn closeWebSocket(socket: *WebSocket, code: u16, reason: Str) void {
     return impl.closeWebSocket(socket, code, reason);
 }
 
-/// Free the socket; nothing more is heard.
 pub inline fn releaseWebSocket(socket: *WebSocket) void {
     return impl.releaseWebSocket(socket);
 }

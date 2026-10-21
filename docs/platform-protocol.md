@@ -139,7 +139,8 @@ The types are the ownership rule, as in the engine protocol.
 | `Reply(T)` | One asynchronous answer (section 4). OWNED by the platform from the call until it calls exactly one of `deliver` / `drop`. |
 | `EventSink` | Crane's receiver for what the platform reports unasked (section 7); given to `createBrowserPlatform`, BORROWED by the platform until `destroyBrowserPlatform` returns. |
 | `EventLoopPort` | One event loop's OS side - its sockets, its wait, its wake (6.7). OWNED by the event loop; used on its thread only, except `wakeEventLoopPort`. |
-| `Transfer`, `WebSocket` | OWNED by their port until their client's last callback or a cancel. |
+| `Transfer` | OWNED by its port until its client's last callback or a cancel. |
+| `WebSocket` | OWNED by its caller until `releaseWebSocket`; polled on the requesting agent by its existing owned timer. |
 | `Store`, `StoreTransaction`, `StoreCursor` | Storage engine handles (6.6), OWNED until closed / committed or aborted / closed. |
 | `MediaDecoder`, `Codec`, `CaptureSource`, `AudioOutput`, `DeviceHandle`, `SensorHandle` | Capability objects, OWNED by Crane from a successful open until its close call. |
 | `FileToken` | A file the user picked (6.10.3), OWNED until `releasePickedFile`. |
@@ -406,9 +407,13 @@ kit/curl implements it (libcurl + mbedTLS; decision 5 keeps it on iOS for 0.1, U
 | `startTransfer` | `(port, allocator, request: *const HttpRequest, client: TransferClient) HttpError!*Transfer` | agent | `client.head(*const HttpResponseHead)`, `client.data(Bytes)` (BORROWED), `client.end(HttpError!void)` last - all inside `pollEventLoopPort`. The request is copied before return. Retries without a connection and the HTTP/2-only refusal (`require_http2`, step 8.3) are the platform's. |
 | `cancelTransfer` | `(port, transfer) void` | agent | Nothing more is heard. |
 | `pauseTransfer`, `resumeTransfer` | `(port, transfer) void` | agent | Receive backpressure. |
-| `openWebSocket` | `(port, allocator, request: *const WebSocketRequest, client: WebSocketClient) HttpError!*WebSocket` | agent | The handshake request Crane built (URL, protocols, origin, cookies); `opened(head)`, `frame(kind, Bytes, fin)`, `closed(code, reason, clean)` inside poll. The per-host CONNECTING queue (RFC 6455 4.1) is the Browser's. |
-| `sendWebSocketFrame` | `(socket, kind, bytes: Bytes) HttpError!void` | agent | The platform buffers partial writes. |
+| `openWebSocket` | `(allocator, request: *const WebSocketRequest) HttpError!*WebSocket` | agent | Copies the URL, headers (Origin, cookies, protocols) and Browser network options; begins an owned transport without callbacks. The Browser's CONNECTING gate stays above the platform. |
+| `pollWebSocketHandshake` | `(socket) HttpError!?WebSocketHandshake` | agent | Null while pending; completed real HTTP version/status/headers plus transport verification. Headers are borrowed until release. Failed-handshake cookies are still processed above the platform. |
+| `sendWebSocketFrame` | `(socket, kind, bytes: Bytes) WebSocketError!usize` | agent | Partial writes: returns accepted payload bytes; WouldBlock accepted nothing. The existing API queue accounts for bufferedAmount. |
+| `receiveWebSocketFrame` | `(socket, buffer: []u8) WebSocketError!WebSocketChunk` | agent | Borrowed bytes in caller's buffer, frame kind, bytes left and fragmentation. WouldBlock/ConnectionLost are distinct. |
 | `closeWebSocket`, `releaseWebSocket` | `(socket, code, reason: Str) void`, `(socket) void` | agent | |
+
+WebSockets use the existing owned-timer pump, independently of the not-yet-migrated fetch/event-loop port. Releasing the transport cancels synchronously and cannot deliver a late callback. HTTP/1.1 uses curl's GET/101 handshake and RFC6455 frames. RFC8441 is not implemented yet: browser-equivalent selection needs access to fetch's existing HTTP/2 sessions and their CONNECT settings, which curl's public WebSocket API does not expose. A future HTTP/2 transport returns its real 2xx status, never a synthetic 101.
 
 `HttpRequest`: URL, method, headers in order, body (bytes or a pull callback), HTTP version
 preference, timeouts, `require_http2`. `HttpResponseHead`: status, status message, version, headers in

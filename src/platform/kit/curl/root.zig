@@ -3,11 +3,9 @@
 //!
 //! Step 0 of the platform protocol: the event-loop port is real (its wait
 //! blocks until the deadline or a wake from any thread, with no busy loop),
-//! but transfers and WebSockets still run in src/fetch/network and
-//! src/websocket, which recipes step 2 moves here. Until then nothing calls
-//! these operations, and starting a transfer or a socket through the
-//! protocol answers `error.NetworkError` (TODO(platform step 2)). This module
-//! links no C library yet; libcurl stays linked into `fetch`.
+//! transfers still run in src/fetch/network (recipe step 2). WebSocket
+//! transports now live here and are polled by their existing owned timers.
+//! startTransfer remains the unused step-2 stub. The kit links libcurl.
 
 const std = @import("std");
 const platform = @import("platform");
@@ -98,21 +96,12 @@ pub fn resumeTransfer(handle: *platform.EventLoopPort, transfer: *platform.Trans
     _ = .{ handle, transfer };
 }
 
-/// TODO(platform step 2): src/websocket's curl backend moves behind the port.
-pub fn openWebSocket(handle: *platform.EventLoopPort, allocator: std.mem.Allocator, request: *const platform.WebSocketRequest, client: platform.WebSocketClient) platform.HttpError!*platform.WebSocket {
-    _ = .{ handle, allocator, request, client };
-    return error.NetworkError;
-}
-
-pub fn sendWebSocketFrame(socket: *platform.WebSocket, kind: platform.WebSocketFrameKind, bytes: platform.Bytes) platform.HttpError!void {
-    _ = .{ socket, kind, bytes };
-    return error.NetworkError;
-}
-
-pub fn closeWebSocket(socket: *platform.WebSocket, code: u16, reason: platform.Str) void {
-    _ = .{ socket, code, reason };
-}
-
-pub fn releaseWebSocket(socket: *platform.WebSocket) void {
-    _ = socket;
-}
+// The WebSocket pump owns and polls each transport through the facade. It uses
+// no event-loop port callbacks, so cancellation is synchronous with release.
+const websocket = @import("websocket.zig");
+pub const openWebSocket = websocket.open;
+pub const pollWebSocketHandshake = websocket.pollHandshake;
+pub const sendWebSocketFrame = websocket.send;
+pub const receiveWebSocketFrame = websocket.receive;
+pub const closeWebSocket = websocket.close;
+pub const releaseWebSocket = websocket.release;

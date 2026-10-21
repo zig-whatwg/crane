@@ -1327,6 +1327,7 @@ const PlatformBindingOptions = struct {
     without: []const []const u8 = &.{},
     static: []const []const u8 = &.{},
     http2: bool,
+    libcurl: ?*std.Build.Step.Compile,
     brotli: ?BrotliLibraries,
     image_codecs: ?*std.Build.Step.Compile,
     /// Register the facade by name (the public graph).
@@ -1404,6 +1405,11 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
         .link_libc = true,
     });
     kit[3].addImport("kit_curl_share", kit_curl_share);
+    if (options.libcurl) |libcurl| {
+        linkStaticLibcurl(b, kit[3], target, libcurl);
+    } else {
+        kit[3].linkSystemLibrary("curl", .{});
+    }
     return .{ .facade = facade, .options = options_mod, .kit_curl_share = kit_curl_share };
 }
 
@@ -2324,8 +2330,10 @@ pub fn build(b: *std.Build) void {
             // A Browser's network context, which a connection is made with
             // (tests/websocket/websocket_proxy_test.zig).
             .{ .name = "fetch", .module = testing_graph.fetch },
+            .{ .name = "browser", .module = testing_graph.browser },
+            .{ .name = "engine", .module = testing_graph.engine },
         };
-        addTestFilesFromDir(b, test_step, "tests/websocket", target, &websocket_imports, false, test_selection) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/websocket", target, &websocket_imports, true, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add websocket test files: {}\n", .{err});
         };
     }
@@ -2623,6 +2631,7 @@ pub fn build(b: *std.Build) void {
                 .image_codecs = image_codecs,
                 .without = binding.without,
                 .http2 = enable_http2 and !use_system_curl,
+                .libcurl = if (static_libcurl) |lib| lib.libcurl else null,
                 .clock = testing_graph.clock,
                 .host = testing_graph.host,
                 .memory = testing_graph.memory,
@@ -5992,6 +6001,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .without = config.platform_without,
         .static = config.platform_static,
         .http2 = enable_http2 and !use_system_curl,
+        .libcurl = if (config.static_libcurl) |lib| lib.libcurl else null,
         .public = public,
         .clock = clock_mod,
         .host = host_mod,
@@ -6005,7 +6015,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // and fetch's transfers and WebSocket's handshakes take the Browser's
     // network options (proxy, TLS, user agent) from it.
     fetch_mod.addImport("kit_curl_share", platform_binding.kit_curl_share);
-    websocket_mod.addImport("kit_curl_share", platform_binding.kit_curl_share);
+    websocket_mod.addImport("platform", platform_mod);
     const platform_options_mod = platform_binding.options;
 
     // HTML Core module (WHATWG HTML Standard) - Interface-free subset
