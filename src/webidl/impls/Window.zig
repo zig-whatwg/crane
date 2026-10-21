@@ -1721,10 +1721,10 @@ pub fn get_orientation(instance: *runtime.Instance) anyerror!i16 {
     return error.NotImplemented;
 }
 
-/// Getter for external
+/// HTML 16.3.3: return an External object. The generated [SameObject] getter
+/// owns the cache and traces its child, including reads made from native code.
 pub fn get_external(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return interfaces.External.init(instance.ctx.allocator, instance.ctx);
 }
 
 /// Getter for screen
