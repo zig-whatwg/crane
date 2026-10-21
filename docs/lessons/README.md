@@ -347,6 +347,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A native timer must preserve document task suspension](architecture-a-native-timer-must-preserve-document-task-suspension.md) - Preserve inactive-document delivery and transfer task ownership exactly once.
 
 ### Spec Compliance
+- [Stream authentication is independent of prompts](spec-compliance-stream-authentication-is-independent-of-prompts.md) - Separate replay eligibility from prompt availability, and compare only browsers that implement the feature.
 - [XML prefix and default declaration rules are independent](spec-compliance-xml-prefix-and-default-declaration-rules-are-independent.md) - A shared branch does not make two observable mechanisms one change; isolate their tests and preserve any deferred behavior.
 - [SVG rel stubs override generated reflection](spec-compliance-svg-rel-stubs-override-generated-reflection.md) - Trace generated accessor selection before adding an implementation; test the existing cache's observable identity and retention when enabling it.
 - [Parent resource status keeps navigation origin history](spec-compliance-parent-resource-status-keeps-navigation-origin-history.md) - A default-valued metadata field is not proof that the producing algorithm populated it. Trace the producer before trusting the value at an exposure boundary.
@@ -606,6 +607,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A generated import can rest on a typedef an upstream IDL file happens to declare](codegen-a-generated-import-can-rest-on-a-typedef-an-upstream-idl-file-happens-to-declare.md) - When a generated file relies on something being generated, codegen must generate it itself; find out by deleting an upstream file in a test fixture, not by waiting for upstream to delete it.
 
 ### Testing
+- [Missing browser results may mean a test was replaced](testing-missing-browser-results-can-be-replaced-tests.md) - Test identity, observed behavior and implementer intent are three separate pieces of evidence. Keep all three explicit.
 - [Zig warning steps print failed-command footers](testing-zig-warning-steps-print-failed-command-footers.md) - Use the build summary and named test diagnostics to determine success; a command footer is context, not a result.
 - [Sweep streams include single-runner chunks](testing-sweep-streams-include-single-runner-chunks.md) - Equal file counts do not prove equal subtest evidence; verify complete report streams after collecting every chunk.
 - [Match WPT revisions before changing browser behavior](testing-match-wpt-revisions-before-changing-browser-behavior.md) - Compare the test source revisions before treating changed browser pass counts as changed browser behavior.
@@ -750,6 +752,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Pre-existing allocations distort failure-injection accounting](testing-preexisting-allocations-distort-failure-injection-accounting.md) - Align accounting with ownership and cover destination growth separately.
 
 ### Debugging
+- [Missing event handlers can start with the element factory](debugging-missing-event-handlers-can-start-with-the-element-factory.md) - Check the receiver's interface before debugging a getter that may never have been called.
 - [An idlharness type failure can be an impl stub](debugging-an-idlharness-type-failure-can-be-an-impl-stub.md) - Trace an idlharness failure through the generated member before deciding whether it is an exposure bug, an impl stub, or a missing prerequisite.
 - [An LRU list inside a hash map dangles after a rehash](debugging-an-lru-list-inside-a-hash-map-dangles-after-a-rehash.md) - Never keep a pointer to a hash map's value across a `put`: a list threaded through the values dangles at the first rehash. Heap-allocate the nodes and store pointers in the map.
 - [A call that can free its argument ends every read of it](debugging-a-call-that-can-free-its-argument-ends-every-read-of-it.md) - A call that can free its argument ends the caller's use of it - including the `defer`s written above the call; read the trace's top frame before believing a deep one.
@@ -821,6 +824,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Measure a hot struct against allocator size classes](debugging-a-hot-struct-against-allocator-size-classes.md) - Compare the compiled request with its allocation bucket; a 16-byte field can cost 2 KiB.
 
 ### Workflow
+- [A sweep chunk with one runner writes an unsharded stream](workflow-a-sweep-chunk-with-one-runner-writes-an-unsharded-stream.md) - A complete file journal does not prove the accompanying subtest stream is complete. Reconcile the passing counts, and check duplicate variants.
 - [Trial an instrumentation mode over the whole worklist before the gate](workflow-trial-an-instrumentation-mode-over-the-whole-worklist-before-the-gate.md) - A runner mode enters the gate sweep only after a full-worklist trial matches an unmodified sweep file for file; compare a generation with the previous one before pushing gh-pages.
 - [Measure the three browsers with a probe page that reports home](workflow-measure-the-three-browsers-with-a-probe-page-that-reports-home.md) - For a value or a phase wpt.fyi cannot show, measure all three browsers with one probe page that reports to a local server - Firefox through `open -n -a`, Safari on chat - and cite the versions and the JSON.
 - [wpt.fyi's search answers 0/0 for browsers it has no aligned run of - read the runs' raw reports](workflow-wpt-fyi-search-hides-subtests-read-the-runs-raw-report.md) - For a browser-behaviour ruling, read the aligned stable runs' raw report.json - subtest status and message per browser - never the search endpoint's file counts.
