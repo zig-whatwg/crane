@@ -523,7 +523,16 @@ INCLUDE = [
     ('domparsing/',    'DOMParser, XMLSerializer, innerHTML/outerHTML, insertAdjacentHTML'),
     ('selection/',     'Selection API'),
     ('cookies/',       'HTTP cookie semantics through libcurl'),
-    ('wasm/',          'WebAssembly JS and Web APIs'),
+    ('wasm/core/',     'WebAssembly core conformance'),
+    ('wasm/jsapi/',    'WebAssembly JavaScript API'),
+    ('wasm/webapi/',   'WebAssembly Web API integration'),
+    ('wasm/serialization/', 'WebAssembly module serialization'),
+    ('wasm/create_multiple_memory.worker.js', 'WebAssembly memory creation in workers'),
+    # Proposals are reviewed individually. Wide arithmetic is Phase 4 and
+    # ships in Firefox 155 (https://bugzilla.mozilla.org/show_bug.cgi?id=2062374).
+    # Other proposal paths do not match these explicit wasm entries.
+    ('wasm/proposals/wide-arithmetic/core/wide-arithmetic.wast.js.tentative.html',
+     'wide arithmetic, Phase 4, Firefox 155 shipping; linked-V8 capability follow-up, not a jsapi fix'),
     ('FileAPI/',       'Blob, File, FileReader, blob URLs'),
     ('workers/',       'dedicated and shared workers'),
 
@@ -770,7 +779,6 @@ EXCLUDE = [
     # elsewhere, or a human.
     ('selection/caret/',             'caret position needs layout'),
     ('selection/bidi/',              'bidi selection needs layout'),
-    ('wasm/proposals/',              'WebAssembly proposals, not shipping'),
     ('content-security-policy/webrtc/', 'WebRTC is out of scope'),
     ('content-security-policy/xslt/',   'XSLT is out of scope (as dom/xslt/)'),
     ('content-security-policy/plugin-types/', 'plugins do not exist'),
