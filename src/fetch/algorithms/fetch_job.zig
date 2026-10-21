@@ -911,7 +911,18 @@ pub const FetchJob = struct {
             // 4.2.7.1 reads the filtered response's status, not its
             // internal response. TAO exposes timing, never an opaque
             // response's status (including same-origin manual redirects).
-            facts.response_status = if (opaque_response) 0 else response.status;
+            // Navigation responses remain basic for their document. Their
+            // parent's resource timing must also mask a cross-origin final
+            // URL or redirect history, independently of TAO. Chrome and
+            // Firefox pass response-status-code.{no-cors,cross-origin-redirect}
+            // (wpt.fyi 0f26972422); Fetch #1602 is still open. Follow that
+            // majority, as Chromium NavigationRequest does for parent timing.
+            // Read the request's existing history: response.redirect_taint
+            // has not been populated by main fetch step 17 in Crane.
+            const navigation_status_visible = request.mode != .navigate or
+                ((request.currentUrlIsSameOrigin() catch false) and
+                    (request.redirectTaintIsSameOrigin() catch false));
+            facts.response_status = if (opaque_response or !navigation_status_visible) 0 else response.status;
             if (!opaque_response) {
                 if (@import("../internal/mime.zig").extractMimeType(self.allocator, &response.header_list) catch null) |mime_type| {
                     var parsed = mime_type;
