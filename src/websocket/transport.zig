@@ -1,42 +1,17 @@
-//! libcurl WebSocket Backend
-//!
-//! Provides low-level WebSocket operations using libcurl's WebSocket API (7.86.0+).
-//! This backend handles the RFC 6455 protocol details:
-//! - HTTP/1.1 Upgrade handshake
-//! - Frame parsing and serialization
-//! - Payload masking (automatic for client-to-server)
-//! - Sec-WebSocket-Key/Accept validation
-//! - TLS for wss:// URLs
-//! - Automatic Ping/Pong handling
-//!
-//! ## Usage
-//!
-//! ```zig
-//! var backend = try CurlWebSocket.init(allocator, "wss://example.com/socket", null);
-//! defer backend.deinit();
-//!
-//! try backend.startConnect();
-//! while (!try backend.pollConnect()) {} // one poll per event-loop turn
-//!
-//! // Frames go out in parts: call again with what is left.
-//! const accepted = try backend.sendPart("Hello!", .text);
-//!
-//! var buffer: [4096]u8 = undefined;
-//! const chunk = try backend.receive(&buffer); // error.WouldBlock: nothing yet
-//! ```
-//!
-//! ## References
-//!
-//! - libcurl WebSocket: https://curl.se/libcurl/c/libcurl-ws.html
-//! - curl_ws_send: https://curl.se/libcurl/c/curl_ws_send.html
-//! - curl_ws_recv: https://curl.se/libcurl/c/curl_ws_recv.html
+//! WebSocket policy over the platform transport. Native handles, framing and
+//! TLS live only in src/platform/kit/curl.
+//! The WebSocket owned timer drives startConnect/pollConnect/sendPart/receive.
 
 const std = @import("std");
 const fetch = @import("fetch");
-const curl = fetch.network.curl_ffi;
+const platform = @import("platform");
 const cookiestore = @import("cookiestore");
-const kit_curl = @import("kit_curl_share");
 const log = std.log.scoped(.websocket);
+
+pub fn acceptsHandshake(http2: bool, status: u16) bool {
+    // RFC8441 replaces HTTP/1.1 Upgrade with extended CONNECT (RFC9113 8.5).
+    return if (http2) status >= 200 and status < 300 else status == 101;
+}
 
 /// Which subprotocol a handshake response selects, or whether it fails the
 /// connection.
@@ -77,48 +52,14 @@ pub fn selectSubprotocol(requested: ?[]const u8, response: ?[]const u8) error{Ha
     return error.HandshakeFailed;
 }
 
-/// What kind of frame a chunk belongs to, or is to be sent as.
-pub const FrameKind = enum { text, binary, close, ping, pong };
+pub const FrameKind = platform.WebSocketFrameKind;
 
-// libcurl's CURLWS_* flags, typed once: translate-c makes them `c_int`, while
-// curl_ws_send takes, and our frame metadata reads, `c_uint`.
-const ws_text: c_uint = curl.CURLWS_TEXT;
-const ws_binary: c_uint = curl.CURLWS_BINARY;
-const ws_cont: c_uint = curl.CURLWS_CONT;
-const ws_close: c_uint = curl.CURLWS_CLOSE;
-const ws_ping: c_uint = curl.CURLWS_PING;
-const ws_pong: c_uint = curl.CURLWS_PONG;
-
-/// WebSocket backend using libcurl.
-///
-/// ## The handshake runs on its own multi handle
-///
-/// The WebSocket constructor establishes the connection "in parallel"
-/// (WebSockets § 3.1 step 12): script keeps running while the handshake is in
-/// flight. `curl_easy_perform` cannot do that - it blocks until the server has
-/// answered, and a server that stalls (websockets/handlers/sleep_10_v13 sleeps
-/// ten seconds) stalls the whole event loop with it, so a test that calls
-/// close() from a one-second timer while CONNECTING never gets to.
-///
-/// So the transfer is driven by a multi handle of its own: `startConnect`
-/// adds it, and each `pollConnect` - one per pump turn - advances it without
-/// waiting. libcurl requires a CONNECT_ONLY handle driven that way to stay
-/// added to its multi handle for as long as the connection is used
-/// (CURLOPT_CONNECT_ONLY: "Once it has been removed with
-/// curl_multi_remove_handle(3), curl_easy_send(3) and curl_easy_recv(3) do not
-/// function"), so the multi handle lives exactly as long as the easy one.
-pub const CurlWebSocket = struct {
+/// The API policy owner. The platform transport is owned from startConnect
+/// until deinit; it has no callbacks and cannot survive cancellation.
+pub const WebSocketTransport = struct {
     allocator: std.mem.Allocator,
 
-    /// libcurl easy handle, from `startConnect` until `deinit`.
-    handle: ?*curl.CURL = null,
-
-    /// The multi handle driving `handle`. See the type's doc comment.
-    multi: ?*curl.CURLM = null,
-
-    /// Request headers. libcurl reads CURLOPT_HTTPHEADER while the transfer
-    /// runs, not when it is set, so the list lives until `deinit`.
-    headers: ?*curl.curl_slist = null,
+    handle: ?*platform.WebSocket = null,
 
     /// URL of the WebSocket server.
     url: []const u8,
@@ -236,19 +177,8 @@ pub const CurlWebSocket = struct {
 
     /// Clean up the backend and free resources. Closes the socket, if any.
     pub fn deinit(self: *Self) void {
-        if (self.handle) |h| {
-            if (self.multi) |m| _ = curl.multi_remove_handle(m, h);
-            curl.easy_cleanup(h);
-            self.handle = null;
-        }
-        if (self.multi) |m| {
-            _ = curl.multi_cleanup(m);
-            self.multi = null;
-        }
-        if (self.headers) |h| {
-            curl.slist_free_all(h);
-            self.headers = null;
-        }
+        if (self.handle) |h| platform.releaseWebSocket(h);
+        self.handle = null;
 
         if (self.negotiated_protocol) |p| {
             self.allocator.free(p);
@@ -266,155 +196,66 @@ pub const CurlWebSocket = struct {
         self.allocator.destroy(self);
     }
 
-    /// Establish the WebSocket connection, waiting for it.
-    ///
-    /// `startConnect` and `pollConnect` with a wait between polls. For callers
-    /// with nothing else to do; the WebSocket interface polls from its pump
-    /// instead, so that script runs while the handshake is in flight.
+    /// Blocking helper for native callers; the script API uses the owned timer.
     pub fn connect(self: *Self) !void {
         try self.startConnect();
-        while (!try self.pollConnect()) {
-            var numfds: c_int = 0;
-            _ = curl.multi_poll(self.multi.?, 100, &numfds);
-        }
+        while (!try self.pollConnect()) platform.sleepThread(std.time.ns_per_ms);
     }
 
-    /// Begin the opening handshake. Returns at once; `pollConnect` finishes it.
     pub fn startConnect(self: *Self) !void {
-        try self.setUpTransfer();
-        // Send the request now rather than on the next turn - "in parallel"
-        // means the network makes progress while script runs. A failure here
-        // is the handshake's, and the backend now owns everything it set up:
-        // `deinit` releases it, once.
+        if (self.handle != null) return error.AlreadyConnected;
+        var headers: [3]platform.Header = undefined;
+        var count: usize = 0;
+        if (self.origin) |origin| {
+            headers[count] = .{ .name = .from("Origin"), .value = .from(origin) };
+            count += 1;
+        }
+        const combined = if (self.protocols) |protos| try std.mem.replaceOwned(u8, self.allocator, protos, ",", ", ") else null;
+        defer if (combined) |value| self.allocator.free(value);
+        if (combined) |value| {
+            headers[count] = .{ .name = .from("Sec-WebSocket-Protocol"), .value = .from(value) };
+            count += 1;
+        }
+        // Credentials include; generate at handshake time, including Lax-by-default.
+        const cookies = try self.requestCookieHeader();
+        defer if (cookies) |value| self.allocator.free(value);
+        if (cookies) |value| {
+            headers[count] = .{ .name = .from("Cookie"), .value = .from(value) };
+            count += 1;
+        }
+        const proxy = self.proxy;
+        self.handle = try platform.openWebSocket(self.allocator, &.{
+            .url = .from(self.url),
+            .headers = .from(headers[0..count]),
+            .network = .{
+                .user_agent = .from(self.user_agent orelse ""),
+                .verify_peer = self.cert_options.verify_peer,
+                .verify_host = self.cert_options.verify_host,
+                .ca_bundle_path = .from(self.cert_options.ca_bundle_path orelse ""),
+                .has_ca_bundle = self.cert_options.ca_bundle_path != null,
+                .proxy_has_credentials = if (proxy) |p| p.username != null and p.password != null else false,
+                .has_no_proxy = if (proxy) |p| p.no_proxy != null else false,
+                .has_proxy = proxy != null,
+                .proxy_url = .from(if (proxy) |p| p.url else ""),
+                .proxy_username = .from(if (proxy) |p| p.username orelse "" else ""),
+                .proxy_password = .from(if (proxy) |p| p.password orelse "" else ""),
+                .no_proxy = .from(if (proxy) |p| p.no_proxy orelse "" else ""),
+            },
+        });
+        // Ownership already passed: only deinit frees a failed first poll.
         _ = try self.pollConnect();
     }
 
-    /// Make the transfer and hand it to the backend.
-    ///
-    /// Its own function so that its errdefers end where ownership passes to
-    /// `self`. `startConnect` used to go on to its first poll with them still
-    /// armed: a connection refused on the spot freed the handles and the
-    /// header list there, and failing the connection freed them again in
-    /// `deinit` - "pointer being freed was not allocated".
-    fn setUpTransfer(self: *Self) !void {
-        if (self.handle != null) {
-            return error.AlreadyConnected;
-        }
-
-        // Initialize curl handle
-        const handle = curl.easy_init() orelse return error.CurlInitFailed;
-        errdefer curl.easy_cleanup(handle);
-
-        // Set URL (need null-terminated string)
-        const url_z = try self.allocator.dupeZ(u8, self.url);
-        defer self.allocator.free(url_z);
-
-        var result = curl.easy_setopt(handle, curl.CURLOPT_URL, url_z.ptr);
-        if (result != curl.CURLE_OK) {
-            return error.CurlSetoptFailed;
-        }
-
-        // Set WebSocket connect-only mode (2 = WebSocket upgrade, return after handshake)
-        result = curl.easy_setopt(handle, curl.CURLOPT_CONNECT_ONLY, curl.CURL_CONNECT_ONLY_WEBSOCKET);
-        if (result != curl.CURLE_OK) {
-            return error.CurlSetoptFailed;
-        }
-
-        // The Browser's network options - TLS verification and trust, its
-        // proxy, its `User-Agent` (HTTP-network-or-cache fetch 8.15) -
-        // applied by the platform's kit, as for every fetch.
-        try self.applyNetworkOptions(handle);
-
-        // Request headers: the ones WebSockets § 2.2 adds that libcurl does
-        // not. Upgrade, Connection, Sec-WebSocket-Key and
-        // Sec-WebSocket-Version are libcurl's own.
-        var headers: ?*curl.curl_slist = null;
-        errdefer if (headers) |h| curl.slist_free_all(h);
-
-        if (self.origin) |origin| {
-            headers = try appendHeader(self.allocator, headers, "Origin: {s}", origin);
-        }
-
-        if (self.protocols) |protos| {
-            // Step 8: each protocol, combined into one header - joined with
-            // ", " (Fetch, "combine").
-            const combined = try std.mem.replaceOwned(u8, self.allocator, protos, ",", ", ");
-            defer self.allocator.free(combined);
-            headers = try appendHeader(self.allocator, headers, "Sec-WebSocket-Protocol: {s}", combined);
-        }
-
-        // The request's credentials mode is "include" (step 5), so
-        // HTTP-network-or-cache fetch step 8.21.1 appends a request `Cookie`
-        // header: the jar's cookies for the URL - made now, as the handshake
-        // is sent, not when the WebSocket was constructed.
-        if (try self.requestCookieHeader()) |value| {
-            defer self.allocator.free(value);
-            headers = try appendHeader(self.allocator, headers, "Cookie: {s}", value);
-        }
-
-        if (headers) |h| {
-            result = curl.easy_setopt(handle, curl.CURLOPT_HTTPHEADER, h);
-            if (result != curl.CURLE_OK) {
-                return error.CurlSetoptFailed;
-            }
-        }
-
-        const multi = curl.multi_init() orelse return error.CurlInitFailed;
-        errdefer _ = curl.multi_cleanup(multi);
-        if (curl.multi_add_handle(multi, handle) != curl.CURLM_OK) return error.CurlInitFailed;
-
-        self.handle = handle;
-        self.multi = multi;
-        self.headers = headers;
-    }
-
-    /// Advance the opening handshake without waiting.
-    ///
-    /// Returns true once the connection is established, false while the
-    /// handshake is still in flight, and an error if it failed - which is the
-    /// caller's cue to fail the WebSocket connection.
     pub fn pollConnect(self: *Self) !bool {
         if (self.connected) return true;
-        const multi = self.multi orelse return error.NotConnected;
         const handle = self.handle orelse return error.NotConnected;
-
-        var running: c_int = 0;
-        if (curl.multi_perform(multi, &running) != curl.CURLM_OK) return error.HandshakeFailed;
-
-        // Wait for the transfer's DONE message; `running` alone cannot tell a
-        // finished handshake from a failed one.
-        var queued: c_int = 0;
-        while (curl.multi_info_read(multi, &queued)) |msg| {
-            if (msg.msg != curl.CURLMSG_DONE) continue;
-            // HTTP-network fetch step 16: the response's `Set-Cookie`, stored
-            // whether or not it upgrades the connection.
-            self.storeResponseCookies(handle);
-            if (msg.data.result != curl.CURLE_OK) return error.HandshakeFailed;
-            try self.finishHandshake(handle);
-            return true;
-        }
-        return false;
-    }
-
-    /// WebSockets § 2.2 step 11, on a response libcurl has already accepted as
-    /// an upgrade (it checks the status and Sec-WebSocket-Accept itself).
-    fn finishHandshake(self: *Self, handle: *curl.CURL) !void {
-        // Step 11.1: a status other than 101 fails the connection.
-        var response_code: c_long = 0;
-        if (curl.easy_getinfo(handle, curl.CURLINFO_RESPONSE_CODE, &response_code) != curl.CURLE_OK) {
-            return error.CurlGetinfoFailed;
-        }
-        if (response_code != 101) {
-            return error.HandshakeFailed;
-        }
-
-        // Step 11.2, and RFC 6455 § 4.1: the subprotocol in use, if the
-        // handshake allows the connection at all. libcurl does not look at
-        // Sec-WebSocket-Protocol.
-        const selected = try selectSubprotocol(self.protocols, responseHeader(handle, "Sec-WebSocket-Protocol"));
-        if (selected) |p| self.negotiated_protocol = try self.allocator.dupe(u8, p);
-
+        const result = (try platform.pollWebSocketHandshake(handle)) orelse return false;
+        self.storeResponseCookies(result.head.headers.slice());
+        if (!result.verified or !acceptsHandshake(result.head.version == .http2, result.head.status)) return error.HandshakeFailed;
+        const selected = try selectSubprotocol(self.protocols, responseHeader(result.head.headers.slice(), "Sec-WebSocket-Protocol"));
+        if (selected) |value| self.negotiated_protocol = try self.allocator.dupe(u8, value);
         self.connected = true;
+        return true;
     }
 
     /// Fetch "append a request `Cookie` header" for the handshake: the
@@ -441,22 +282,14 @@ pub const CurlWebSocket = struct {
         return value;
     }
 
-    /// Fetch "parse and store response `Set-Cookie` headers" for the
-    /// handshake's response - every `Set-Cookie` on the last response on
-    /// the handle, a 101's included (libcurl files those under CURLH_1XX).
-    fn storeResponseCookies(self: *Self, handle: *curl.CURL) void {
+    /// Fetch stores Set-Cookie even when the opening handshake fails.
+    fn storeResponseCookies(self: *Self, headers: []const platform.Header) void {
         const jar = self.cookie_jar orelse return;
         const url = cookiestore.RequestUrl.of(self.url) orelse return;
-        const origin: c_uint = curl.c.CURLH_HEADER | curl.c.CURLH_1XX;
-        var header: ?*curl.c.struct_curl_header = null;
-        if (curl.c.curl_easy_header(handle, "Set-Cookie", 0, origin, -1, &header) != curl.c.CURLHE_OK) return;
-        const amount = (header orelse return).amount;
         const same_site = cookiestore.websocketSameSite(self.allocator, self.origin, self.url) catch return;
-        var index: usize = 0;
-        while (index < amount) : (index += 1) {
-            if (index > 0 and curl.c.curl_easy_header(handle, "Set-Cookie", index, origin, -1, &header) != curl.c.CURLHE_OK) return;
-            const value = std.mem.span((header orelse return).value);
-            _ = cookiestore.http_integration.parseAndStoreCookie(self.allocator, jar, value, url.path, .{
+        for (headers) |header| {
+            if (!std.ascii.eqlIgnoreCase(header.name.slice(), "Set-Cookie")) continue;
+            _ = cookiestore.http_integration.parseAndStoreCookie(self.allocator, jar, header.value.slice(), url.path, .{
                 .is_secure = url.secure,
                 .host = url.host,
                 .http_only_allowed = true,
@@ -467,61 +300,23 @@ pub const CurlWebSocket = struct {
         }
     }
 
-    fn appendHeader(
-        allocator: std.mem.Allocator,
-        list: ?*curl.curl_slist,
-        comptime fmt: []const u8,
-        value: []const u8,
-    ) !?*curl.curl_slist {
-        const line = try std.fmt.allocPrintSentinel(allocator, fmt, .{value}, 0);
-        defer allocator.free(line);
-        // slist_append copies the string.
-        return curl.slist_append(list, line.ptr) orelse error.OutOfMemory;
-    }
-
-    /// A header of the handshake response (request -1: the last request on
-    /// the handle), or null when it is absent. A header sent more than once
-    /// comes back as a bare ",": extracting its values yields a list, and a
-    /// list of subprotocols is never the ONE the server must select.
-    fn responseHeader(handle: *curl.CURL, name: [:0]const u8) ?[]const u8 {
-        // The 101 that completes the handshake is an informational response,
-        // and libcurl files its headers under CURLH_1XX, not CURLH_HEADER.
-        const origin: c_uint = curl.c.CURLH_HEADER | curl.c.CURLH_1XX;
-        var header: ?*curl.c.struct_curl_header = null;
-        const rc = curl.c.curl_easy_header(handle, name.ptr, 0, origin, -1, &header);
-        if (rc != curl.c.CURLHE_OK) return null;
-        const h = header orelse return null;
-        // Two or more instances cannot all be the one subprotocol requested.
-        if (h.amount > 1) return ",";
-        return std.mem.span(h.value);
-    }
-
-    /// The handshake's network options: the peer and its host name verified
-    /// against the configured CA bundle when there is one and the system's
-    /// store otherwise; the Browser's proxy and user agent string.
-    fn applyNetworkOptions(self: *Self, handle: *curl.CURL) !void {
-        const options = self.cert_options;
-        try kit_curl.options.apply(handle, self.allocator, .{
-            .user_agent = self.user_agent,
-            .proxy = if (self.proxy) |proxy| .{
-                .url = proxy.url,
-                .username = proxy.username,
-                .password = proxy.password,
-                .no_proxy = proxy.no_proxy,
-            } else null,
-            .verify_peer = options.verify_peer,
-            .verify_host = options.verify_host,
-            .ca_bundle_path = options.ca_bundle_path,
-        });
+    /// A repeated protocol field is a list, never the one offered token.
+    fn responseHeader(headers: []const platform.Header, name: []const u8) ?[]const u8 {
+        var found: ?[]const u8 = null;
+        for (headers) |header| {
+            if (!std.ascii.eqlIgnoreCase(header.name.slice(), name)) continue;
+            if (found != null) return ",";
+            found = header.value.slice();
+        }
+        return found;
     }
 
     /// Hand the socket as much of one frame as it will take, without waiting.
     ///
-    /// `remaining` is the part of the frame's payload not yet accepted, and
-    /// `total` the whole payload's length. Returns how many bytes of
-    /// `remaining` were accepted, which may be fewer than all of them - or
+    /// `remaining` is the part of the frame's payload not yet accepted.
+    /// Returns how many bytes were accepted, which may be fewer than all - or
     /// `error.WouldBlock` when none were. The caller calls again with what is
-    /// left, the same `kind` and `total`, until the frame is done; libcurl keeps
+    /// left and the same `kind` until the frame is done; the platform keeps
     /// the frame open in between (curl_ws_send: a frame "ongoing" continues
     /// with the next call's buffer), so nothing else may be sent until then.
     ///
@@ -532,21 +327,7 @@ pub const CurlWebSocket = struct {
         const handle = self.handle orelse return error.NotConnected;
         if (!self.connected) return error.NotConnected;
 
-        var sent: usize = 0;
-        const result = curl.ws_send(handle, remaining.ptr, remaining.len, &sent, 0, flagsOf(kind));
-        if (result == curl.c.CURLE_AGAIN) return error.WouldBlock;
-        if (result != curl.CURLE_OK) return error.SendFailed;
-        return sent;
-    }
-
-    fn flagsOf(kind: FrameKind) c_uint {
-        return switch (kind) {
-            .text => ws_text,
-            .binary => ws_binary,
-            .close => ws_close,
-            .ping => ws_ping,
-            .pong => ws_pong,
-        };
+        return platform.sendWebSocketFrame(handle, kind, .from(remaining));
     }
 
     /// One chunk of one received frame.
@@ -573,33 +354,12 @@ pub const CurlWebSocket = struct {
         const handle = self.handle orelse return error.NotConnected;
         if (!self.connected) return error.NotConnected;
 
-        var recv_count: usize = 0;
-        var meta: ?*const curl.curl_ws_frame = null;
-
-        const result = curl.ws_recv(handle, buffer.ptr, buffer.len, &recv_count, &meta);
-        if (result == curl.c.CURLE_AGAIN) return error.WouldBlock;
-        if (result == curl.CURLE_GOT_NOTHING) return error.ConnectionLost;
-        if (result != curl.CURLE_OK) return error.ReceiveFailed;
-
-        const frame = meta orelse return error.NoMetadata;
-        const flags: c_uint = @bitCast(frame.flags);
-
-        const kind: FrameKind = if (flags & ws_close != 0)
-            .close
-        else if (flags & ws_ping != 0)
-            .ping
-        else if (flags & ws_pong != 0)
-            .pong
-        else if (flags & ws_text != 0)
-            .text
-        else
-            .binary;
-
+        const chunk = try platform.receiveWebSocketFrame(handle, buffer);
         return .{
-            .data = buffer[0..recv_count],
-            .kind = kind,
-            .bytes_left = @intCast(@max(frame.bytesleft, 0)),
-            .more_fragments = flags & ws_cont != 0,
+            .data = chunk.bytes.slice(),
+            .kind = chunk.kind,
+            .bytes_left = chunk.bytes_left,
+            .more_fragments = chunk.more_fragments,
         };
     }
 
@@ -618,11 +378,11 @@ pub const CurlWebSocket = struct {
 // Tests
 // =============================================================================
 
-test "CurlWebSocket - initialization" {
+test "WebSocketTransport - initialization" {
     const allocator = std.testing.allocator;
 
     // Test basic initialization
-    var ws = try CurlWebSocket.init(allocator, "wss://example.com/socket", null);
+    var ws = try WebSocketTransport.init(allocator, "wss://example.com/socket", null);
     defer ws.deinit();
 
     try std.testing.expectEqualStrings("wss://example.com/socket", ws.url);
@@ -630,18 +390,18 @@ test "CurlWebSocket - initialization" {
     try std.testing.expect(ws.handle == null);
 }
 
-test "CurlWebSocket - initialization with protocols" {
+test "WebSocketTransport - initialization with protocols" {
     const allocator = std.testing.allocator;
 
     const protocols = [_][]const u8{ "chat", "json" };
-    var ws = try CurlWebSocket.init(allocator, "wss://example.com/socket", &protocols);
+    var ws = try WebSocketTransport.init(allocator, "wss://example.com/socket", &protocols);
     defer ws.deinit();
 
     try std.testing.expect(ws.protocols != null);
     try std.testing.expectEqualStrings("chat,json", ws.protocols.?);
 }
 
-test "CurlWebSocket - protocol list is exactly sized" {
+test "WebSocketTransport - protocol list is exactly sized" {
     const allocator = std.testing.allocator;
 
     // Regression: the join over-reserved one separator per protocol and then
@@ -650,20 +410,20 @@ test "CurlWebSocket - protocol list is exactly sized" {
     // protocol needs zero commas, three need two.
     {
         const protocols = [_][]const u8{"chat"};
-        var ws = try CurlWebSocket.init(allocator, "wss://example.com/socket", &protocols);
+        var ws = try WebSocketTransport.init(allocator, "wss://example.com/socket", &protocols);
         defer ws.deinit();
         try std.testing.expectEqualStrings("chat", ws.protocols.?);
     }
     {
         const protocols = [_][]const u8{ "chat", "json", "graphql-ws" };
-        var ws = try CurlWebSocket.init(allocator, "wss://example.com/socket", &protocols);
+        var ws = try WebSocketTransport.init(allocator, "wss://example.com/socket", &protocols);
         defer ws.deinit();
         try std.testing.expectEqualStrings("chat,json,graphql-ws", ws.protocols.?);
     }
     {
         // An empty protocol list must stay null, not become an empty allocation.
         const protocols = [_][]const u8{};
-        var ws = try CurlWebSocket.init(allocator, "wss://example.com/socket", &protocols);
+        var ws = try WebSocketTransport.init(allocator, "wss://example.com/socket", &protocols);
         defer ws.deinit();
         try std.testing.expect(ws.protocols == null);
     }
@@ -699,7 +459,7 @@ test "selectSubprotocol - the server's choice is the subprotocol in use" {
     try std.testing.expectEqualStrings("chat", (try selectSubprotocol("echo,chat", " chat ")).?);
 }
 
-test "CurlWebSocket - a wss handshake trusts what its Browser trusts" {
+test "WebSocketTransport - a wss handshake trusts what its Browser trusts" {
     // The embedder gives a Browser the certificate authorities it trusts -
     // the WPT runner adds the WPT CA that way - and a WebSocket handshake is
     // a fetch (WebSockets § 2.2 step 11), made with its client's Browser's
@@ -712,7 +472,7 @@ test "CurlWebSocket - a wss handshake trusts what its Browser trusts" {
     defer network.deinit();
     try network.configure(.{ .ca_bundle_path = "/wpt/tools/certs/cacert.pem" });
 
-    var ws = try CurlWebSocket.initWithOptions(allocator, "wss://web-platform.test:8666/echo", .{ .network = &network });
+    var ws = try WebSocketTransport.initWithOptions(allocator, "wss://web-platform.test:8666/echo", .{ .network = &network });
     defer ws.deinit();
 
     try std.testing.expectEqualStrings("/wpt/tools/certs/cacert.pem", ws.cert_options.ca_bundle_path.?);
@@ -720,10 +480,10 @@ test "CurlWebSocket - a wss handshake trusts what its Browser trusts" {
     try std.testing.expect(ws.cert_options.verify_host);
 }
 
-test "CurlWebSocket - not connected errors" {
+test "WebSocketTransport - not connected errors" {
     const allocator = std.testing.allocator;
 
-    var ws = try CurlWebSocket.init(allocator, "wss://example.com/socket", null);
+    var ws = try WebSocketTransport.init(allocator, "wss://example.com/socket", null);
     defer ws.deinit();
 
     // Should fail since not connected

@@ -3,7 +3,7 @@
 //! This module implements the WebSocket API as defined by the WHATWG WebSocket Standard:
 //! https://websockets.spec.whatwg.org/
 //!
-//! The implementation uses libcurl's WebSocket support (7.86.0+) for the underlying
+//! The platform kit uses libcurl's WebSocket support for the underlying
 //! RFC 6455 protocol handling, including:
 //! - HTTP/1.1 Upgrade handshake
 //! - Frame parsing and serialization
@@ -15,7 +15,7 @@
 //! ## Module Structure
 //!
 //! - `connection.zig` - WebSocket connection state machine and lifecycle
-//! - `curl_backend.zig` - libcurl WebSocket backend implementation
+//! - `transport.zig` - WebSocket policy over the platform transport
 //! - `close_codes.zig` - RFC 6455 close status codes (1000-4999)
 //! - `events.zig` - Event types for task queue integration
 //! - `utf8.zig` - UTF-8 validation for text frames
@@ -35,9 +35,9 @@
 //! │  │ SendBuffer  │  │ CloseCodes  │  │ UTF-8 Validator │ │
 //! │  └─────────────┘  └─────────────┘  └─────────────────┘ │
 //! ├─────────────────────────────────────────────────────────┤
-//! │                   CurlWebSocket                          │
-//! │                  (curl_backend.zig)                      │
-//! │         libcurl WebSocket API (7.86.0+)                 │
+//! │                WebSocketTransport                     │
+//! │                 (transport.zig)                       │
+//! │           platform WebSocket operations               │
 //! └─────────────────────────────────────────────────────────┘
 //! ```
 //!
@@ -87,8 +87,9 @@
 //! ## Status: what is wired, and what is not
 //!
 //! The live path is real: `src/webidl/impls/WebSocket.zig` drives
-//! `WebSocketConnection`, which drives `curl_backend.zig`, which sets
-//! `CURLOPT_CONNECT_ONLY = CURL_CONNECT_ONLY_WEBSOCKET`, runs the handshake on
+//! `WebSocketConnection`, which drives the platform through `transport.zig`.
+//! The curl kit sets `CURLOPT_CONNECT_ONLY = CURL_CONNECT_ONLY_WEBSOCKET`,
+//! runs the handshake on
 //! a multi handle of its own so that it never blocks the event loop, and moves
 //! frames with `curl_ws_send`/`curl_ws_recv`.
 //!
@@ -161,7 +162,7 @@ const std = @import("std");
 // Export submodules
 pub const close_codes = @import("close_codes.zig");
 pub const connection = @import("connection.zig");
-pub const curl_backend = @import("curl_backend.zig");
+pub const transport = @import("transport.zig");
 pub const send_buffer = @import("send_buffer.zig");
 pub const events = @import("events.zig");
 pub const utf8 = @import("utf8.zig");

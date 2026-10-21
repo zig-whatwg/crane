@@ -785,3 +785,19 @@ pub const capabilities: platform.Capabilities = blk: {
     for (@typeInfo(platform.Capabilities).@"struct".fields) |field| @field(all, field.name) = .unsupported;
     break :blk all;
 };
+
+// Compression's unsupported-format path. These remain exactly typed even when gated off.
+pub fn createBrotliDecoder(_: std.mem.Allocator) platform.CodecError!*platform.BrotliDecoder {
+    return error.NotSupported;
+}
+pub fn decompressBrotli(_: *platform.BrotliDecoder, _: Bytes, _: []u8) platform.CodecError!platform.CodecProgress {
+    return error.NotSupported;
+}
+pub fn destroyBrotliDecoder(_: *platform.BrotliDecoder) void {}
+pub fn createBrotliEncoder(_: std.mem.Allocator) platform.CodecError!*platform.BrotliEncoder {
+    return error.NotSupported;
+}
+pub fn compressBrotli(_: *platform.BrotliEncoder, _: Bytes, _: []u8, _: bool) platform.CodecError!platform.CodecProgress {
+    return error.NotSupported;
+}
+pub fn destroyBrotliEncoder(_: *platform.BrotliEncoder) void {}
