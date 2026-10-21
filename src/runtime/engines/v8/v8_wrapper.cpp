@@ -2241,6 +2241,11 @@ struct IsolateData {
     /// evaluation, until V8 runs their evaluation steps or the module is
     /// disposed - or the isolate is: v8_Isolate_Dispose resets what is left.
     std::vector<SyntheticJsonExport*> synthetic_json_exports;
+    // Inert unless a tests/v8 lifecycle probe is installed. The test clears
+    // the hook before its borrowed stack payload expires.
+    void (*test_promise_hook)(int, void*) = nullptr;
+    void* test_promise_hook_data = nullptr;
+
 
     /// Take out the entry whose module is `module`, if any.
     SyntheticJsonExport* takeSyntheticExport(Local<Module> module) {
@@ -12595,6 +12600,23 @@ void v8_RunWithBackupIncumbent(Isolate* isolate, Global<Context>* incumbent, voi
     Local<Context> context = incumbent->Get(isolate);
     Context::BackupIncumbentScope scope(context);
     body(data);
+}
+
+/// Test-only public lifecycle probe. Context::SetPromiseHooks is unavailable
+/// in the linked build (V8_ENABLE_JAVASCRIPT_PROMISE_HOOKS is disabled).
+static void testPromiseHook(PromiseHookType type, Local<Promise> promise, Local<Value>) {
+    IsolateData* data = isolateData(promise->GetIsolate());
+    if (data && data->test_promise_hook)
+        data->test_promise_hook(static_cast<int>(type), data->test_promise_hook_data);
+}
+
+bool v8_test_Isolate_SetPromiseHook(Isolate* isolate, void (*hook)(int, void*), void* payload) {
+    IsolateData* data = isolateData(isolate);
+    if (!data) return false;
+    isolate->SetPromiseHook(hook ? testPromiseHook : nullptr);
+    data->test_promise_hook = hook;
+    data->test_promise_hook_data = hook ? payload : nullptr;
+    return true;
 }
 
 /// HTML's incumbent realm here: Isolate::GetIncumbentContext - the realm of

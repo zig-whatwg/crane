@@ -3217,6 +3217,9 @@ pub extern fn v8_ArrayBufferView_WriteBytes(view: *Value, bytes: [*]const u8, le
 /// held on the C++ stack around the body). Null `incumbent`: nothing pushed.
 pub extern fn v8_RunWithBackupIncumbent(isolate: *Isolate, incumbent: ?*Context, body: *const fn (?*anyopaque) callconv(.c) void, data: ?*anyopaque) void;
 
+/// Test-only: callback data is borrowed until all hooks are cleared.
+pub extern fn v8_test_Isolate_SetPromiseHook(isolate: *Isolate, hook: ?*const fn (kind: c_int, data: ?*anyopaque) callconv(.c) void, data: ?*anyopaque) bool;
+
 /// HTML's incumbent realm here (Isolate::GetIncumbentContext). A new Global
 /// the caller disposes with v8_Context_Dispose; null when no context is
 /// entered.
