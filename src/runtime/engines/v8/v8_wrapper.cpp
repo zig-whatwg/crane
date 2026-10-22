@@ -13516,6 +13516,72 @@ static void WasmGlobalValueSet(const FunctionCallbackInfo<Value>& info) {
     info.GetReturnValue().Set(result);
 }
 
+static void WasmSuspendingApply(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Context> context = isolate->GetCurrentContext();
+    Local<Function> target = info[0].As<Function>();
+    Local<Context> import_realm;
+    if (!wasmConstructorRealm(isolate, target).ToLocal(&import_realm)) return;
+    Local<Value> intrinsics_value;
+    if (!import_realm->Global()->GetPrivate(import_realm, wasmIntrinsicPrototypesKey(isolate)).ToLocal(&intrinsics_value)) return;
+    if (!intrinsics_value->IsArray()) {
+        isolate->ThrowException(Exception::TypeError(
+            String::NewFromUtf8Literal(isolate, "WebAssembly import realm is not initialized")));
+        return;
+    }
+    Local<Array> intrinsics = intrinsics_value.As<Array>();
+    Local<Value> promise_constructor, promise_resolve;
+    if (!intrinsics->Get(import_realm, 5).ToLocal(&promise_constructor) ||
+        !intrinsics->Get(import_realm, 6).ToLocal(&promise_resolve)) return;
+    Local<Array> arguments = info[2].As<Array>();
+    std::vector<Local<Value>> args;
+    args.reserve(arguments->Length());
+    for (uint32_t i = 0; i < arguments->Length(); ++i) {
+        Local<Value> value;
+        if (!arguments->Get(context, i).ToLocal(&value)) return;
+        args.push_back(value);
+    }
+    // JSPI "create a suspending function" 3.10/3.14: preserve the receiver,
+    // argument list and abrupt completion. An apply trap exposes the actual
+    // receiver; a plain native Function callback would box it as info.This().
+    Local<Value> result;
+    if (!target->Call(context, info[1], static_cast<int>(args.size()), args.data()).ToLocal(&result)) return;
+    // Step 3.15: intrinsic PromiseResolve in the import's realm. Capturing
+    // both intrinsics preserves same-constructor Promise identity, including
+    // when script replaces Promise or Promise.resolve. Resolver::New would
+    // instead allocate a new promise and assimilate the original.
+    Local<Value> promise;
+    if (!promise_resolve.As<Function>()->Call(import_realm, promise_constructor, 1, &result).ToLocal(&promise)) return;
+    info.GetReturnValue().Set(promise);
+}
+
+static void WasmSuspendingConstruct(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Context> context = isolate->GetCurrentContext();
+    Local<Function> original = info[0].As<Function>();
+    Local<Array> arguments = info[1].As<Array>();
+    std::vector<Local<Value>> args;
+    args.reserve(arguments->Length());
+    for (uint32_t i = 0; i < arguments->Length(); ++i) {
+        Local<Value> value;
+        if (!arguments->Get(context, i).ToLocal(&value)) return;
+        args.push_back(value);
+    }
+    if (!args.empty() && args[0]->IsFunction() && !args[0].As<Function>()->GetScriptOrigin().Options().IsWasm()) {
+        Local<Proxy> callable;
+        if (!Proxy::New(context, args[0].As<Object>(), info.Data().As<Object>()).ToLocal(&callable)) return;
+        args[0] = callable;
+    }
+    // V8 13.1.203 wasm-js.cc:2393-2397 rejects native wasm exports here.
+    // Do not hide their identity behind a Proxy and bypass that check.
+    // Step 3.15 is emulated only for JS callables. Step 3.5 (the pre-call active-suspender check) and catchable
+    // SuspendError still require V8 support: wrappers.cc 1166-1228 and
+    // runtime-wasm.cc 143-159, 329-332 expose no public suspension hook.
+    Local<Object> made;
+    if (!original->NewInstance(context, static_cast<int>(args.size()), args.data()).ToLocal(&made)) return;
+    info.GetReturnValue().Set(made);
+}
+
 /// Called once for every Window/worker realm before script runs. The private
 /// array belongs to the realm's global and contains only GC-traced objects;
 /// it has no native Global, external pointer, registry or teardown callback.
@@ -13619,6 +13685,9 @@ void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>*
         if (!fast_factory.As<Function>()->Call(context, Undefined(isolate), 3, factory_args).ToLocal(&replacement) || !replacement->IsFunction()) return;
         replacements[i] = replacement.As<Function>();
     }
+    Local<Value> promise_constructor, promise_resolve;
+    if (!context->Global()->Get(context, String::NewFromUtf8Literal(isolate, "Promise")).ToLocal(&promise_constructor) || !promise_constructor->IsFunction() ||
+        !promise_constructor.As<Object>()->Get(context, String::NewFromUtf8Literal(isolate, "resolve")).ToLocal(&promise_resolve) || !promise_resolve->IsFunction()) return;
     // An empty target avoids Proxy invariants from a user's nonconfigurable
     // `index`. Both the target and handler have null prototypes; only the
     // captured Reflect.get and Proxy intrinsics can participate after setup.
@@ -13635,7 +13704,7 @@ void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>*
     // The private JS constructor is embedding machinery, not the script
     // responsible for a CSP violation. Retain its unforgeable script ID for
     // running-script attribution below, without retaining a native handle.
-    Local<Value> intrinsic_values[] = {prototypes[0], prototypes[1], prototypes[2], prototypes[3], prototypes[4], Undefined(isolate), Undefined(isolate), Undefined(isolate), descriptor_factory,
+    Local<Value> intrinsic_values[] = {prototypes[0], prototypes[1], prototypes[2], prototypes[3], prototypes[4], promise_constructor, promise_resolve, Undefined(isolate), descriptor_factory,
         Integer::New(isolate, fast_script->GetUnboundScript()->GetId())};
     Local<Array> intrinsics = Array::New(isolate, intrinsic_values, 10);
     if (!intrinsics->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return;
@@ -13662,6 +13731,29 @@ void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>*
     value_descriptor.set_enumerable(enumerable->IsTrue());
     value_descriptor.set_configurable(configurable->IsTrue());
     if (!global_prototype->DefineProperty(context, value_name, value_descriptor).FromMaybe(false)) return;
+
+    // JSPI is optional in this V8 build (disabled under --jitless).
+    Local<String> suspending_name = String::NewFromUtf8Literal(isolate, "Suspending");
+    Local<Value> suspending;
+    if (!wasm->Get(context, suspending_name).ToLocal(&suspending) || !suspending->IsFunction()) return;
+    Local<Function> apply;
+    if (!Function::New(context, WasmSuspendingApply, {}, 3, ConstructorBehavior::kThrow).ToLocal(&apply)) return;
+    Local<Object> apply_handler = Object::New(isolate);
+    if (!apply_handler->SetPrototypeV2(context, Null(isolate)).FromMaybe(false) ||
+        !apply_handler->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "apply"), apply).FromMaybe(false) ||
+        !apply_handler->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return;
+    Local<Function> construct;
+    if (!Function::New(context, WasmSuspendingConstruct, apply_handler, 3, ConstructorBehavior::kThrow).ToLocal(&construct)) return;
+    Local<Object> construct_handler = Object::New(isolate);
+    if (!construct_handler->SetPrototypeV2(context, Null(isolate)).FromMaybe(false) ||
+        !construct_handler->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "construct"), construct).FromMaybe(false) ||
+        !construct_handler->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return;
+    Local<Proxy> suspending_adapter;
+    if (!Proxy::New(context, suspending.As<Object>(), construct_handler).ToLocal(&suspending_adapter)) return;
+    Local<Value> suspending_prototype;
+    if (!suspending.As<Object>()->Get(context, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&suspending_prototype) || !suspending_prototype->IsObject()) return;
+    if (!suspending_prototype.As<Object>()->DefineOwnProperty(context, String::NewFromUtf8Literal(isolate, "constructor"), suspending_adapter, DontEnum).FromMaybe(false) ||
+        !wasm->DefineOwnProperty(context, suspending_name, suspending_adapter, DontEnum).FromMaybe(false)) return;
 }
 
 } // extern "C"

@@ -193,6 +193,84 @@ const ending =
     \\})()
 ;
 
+test "snapshot Window worklet and ShadowRealm use their own wasm adapter intrinsics" {
+    // Snapshot deserialization after another file starts V8 can crash in
+    // StringTable::InsertForIsolateDeserialization, before adapter code runs
+    // (pattern_attribute_snapshot_test.zig). Run this test first in its own
+    // file and verify it with -Dtest-file=; the shared directory suite skips
+    // when another file already owns process initialization.
+    if (ffi.v8_Platform_IsInitialized()) {
+        std.log.warn("skipping Wasm snapshot control: run wj1_wasm_constructor_test.zig with -Dtest-file=", .{});
+        return error.SkipZigTest;
+    }
+    // An isolated native test can be built without a snapshot. The final
+    // runner+snapshot gate supplies this build's blob and runs this case.
+    const io = std.testing.io;
+    const file = std.Io.Dir.cwd().openFile(io, "zig-out/bin/whatwg_snapshot.bin", .{}) catch |err| switch (err) {
+        error.FileNotFound => return error.SkipZigTest,
+        else => return err,
+    };
+    defer file.close(io);
+    const stat = try file.stat(io);
+    const bytes = try std.testing.allocator.alloc(u8, stat.size);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expectEqual(bytes.len, try file.readPositionalAll(io, bytes, 0));
+    try engine.initializeEngine(.{ .snapshot = bytes });
+    defer engine.deinitializeEngine();
+    const RunSnapshot = struct {
+        fn thread(failure: *?anyerror) void {
+            const source =
+                \\(async () => {
+                \\try {
+                \\const g = new WebAssembly.Global({value:"i32", mutable:true});
+                \\Object.getOwnPropertyDescriptor(WebAssembly.Global.prototype,"value").set.call(g);
+                \\const shadow = new ShadowRealm();
+                \\const result = shadow.evaluate(`(() => {
+                \\  const Module = WebAssembly.Module;
+                \\  const prototype = Module.prototype;
+                \\  function Target() {}
+                \\  Target.prototype = null;
+                \\  WebAssembly.Module = function() { throw Error("mutable Module"); };
+                \\  const made = Reflect.construct(Module, [new Uint8Array([0,97,115,109,1,0,0,0])], Target);
+                \\  if (Object.getPrototypeOf(made) !== prototype) return "shadow realm prototype";
+                \\  WebAssembly.Module = Module;
+                \\  const g = new WebAssembly.Global({value:"i32",mutable:true});
+                \\  Object.getOwnPropertyDescriptor(WebAssembly.Global.prototype,"value").set.call(g);
+                \\  return "ok";
+                \\})()`);
+                \\if (result !== "ok") return result;
+                \\shadow.evaluate(`globalThis.done = "pending"; void (async () => {
+                \\  try {
+                \\    const bytes = new Uint8Array([0,97,115,109,1,0,0,0,
+                \\      1,7,1,96,2,127,127,1,127,2,7,1,1,109,1,102,0,0,
+                \\      3,2,1,0,6,6,1,127,1,65,0,11,7,9,2,1,102,0,1,1,103,3,0,
+                \\      10,14,1,12,0,32,0,32,1,16,0,36,0,35,0,11]);
+                \\    const instance = new WebAssembly.Instance(new WebAssembly.Module(bytes),
+                \\      {m:{f:new WebAssembly.Suspending((a,b) => a+b)}});
+                \\    const pending = WebAssembly.promising(instance.exports.f)(2,3);
+                \\    if (instance.exports.g.value !== 0) throw Error("not suspended");
+                \\    globalThis.done = await pending === 5 ? "ok" : "result";
+                \\  } catch(e) { globalThis.done = String(e); }
+                \\})()`);
+                \\for (let i=0; i<10 && shadow.evaluate("done") === "pending"; i++) await Promise.resolve();
+                \\return shadow.evaluate("done");
+                \\} catch(e) { return String(e); }
+                \\})()
+            ;
+            for ([_]PlatformKind{ .window, .worklet }) |kind| {
+                inPlatformRealm(source, kind, true) catch |err| {
+                    failure.* = err;
+                    return;
+                };
+            }
+        }
+    };
+    var failure: ?anyerror = null;
+    const thread = try std.Thread.spawn(.{}, RunSnapshot.thread, .{&failure});
+    thread.join();
+    if (failure) |err| return err;
+}
+
 test "wasm constructors fall back to bound and proxy NewTarget realm prototypes" {
     try check(prelude ++
         \\for (const [name, args] of cases) {
@@ -399,6 +477,101 @@ test "wasm adapter private intrinsics die with their realm without handle growth
 
 // (i32, i32) -> i32: import m.f, call it, write its result to exported g,
 // then return it. g distinguishes a synchronous import from a suspension.
+const jspi_prelude =
+    \\(async () => {
+    \\try {
+    \\const bytes = new Uint8Array([0,97,115,109,1,0,0,0,
+    \\ 1,7,1,96,2,127,127,1,127, 2,7,1,1,109,1,102,0,0,
+    \\ 3,2,1,0, 6,6,1,127,1,65,0,11,
+    \\ 7,9,2,1,102,0,1,1,103,3,0,
+    \\ 10,14,1,12,0,32,0,32,1,16,0,36,0,35,0,11]);
+    \\const module = new WebAssembly.Module(bytes);
+    \\const make = f => new WebAssembly.Instance(module, {m:{f}});
+;
+
+test "wasm Suspending normal completion suspends and preserves this and arguments" {
+    try check(jspi_prelude ++
+        \\let calls = 0;
+        \\const original = function(a,b) {
+        \\  "use strict";
+        \\  if (this !== undefined || arguments.length !== 2 || a !== 7 || b !== 8) throw Error("call changed");
+        \\  calls++; return a + b;
+        \\};
+        \\const saved = original;
+        \\const suspending = new WebAssembly.Suspending(original);
+        \\const instance = make(suspending);
+        \\const promise = WebAssembly.promising(instance.exports.f)(7,8);
+        \\if (instance.exports.g.value !== 0) return "not suspended";
+        \\if (await promise !== 15 || calls !== 1 || original !== saved) return "call result";
+        \\const second = make(suspending);
+        \\if (await WebAssembly.promising(second.exports.f)(7,8) !== 15 || calls !== 2) return "marker identity";
+    ++ ending);
+}
+
+test "wasm Suspending preserves same-realm Promise identity and abrupt completion" {
+    try check(jspi_prelude ++
+        \\const original = Promise.resolve(23);
+        \\Object.defineProperty(original, "then", {get() { throw Error("assimilated same promise"); }});
+        \\const instance = make(new WebAssembly.Suspending(() => original));
+        \\if (await WebAssembly.promising(instance.exports.f)(0,0) !== 23) return "promise changed";
+        \\const sentinel = {};
+        \\const throwing = make(new WebAssembly.Suspending(() => {throw sentinel;}));
+        \\try { await WebAssembly.promising(throwing.exports.f)(0,0); return "did not throw"; }
+        \\catch(e) { if(e !== sentinel) return "throw changed"; }
+    ++ ending);
+}
+
+test "wasm Suspending resolves through the import realm intrinsics after tampering" {
+    try check(jspi_prelude ++
+        \\other.p = other.Promise.resolve(29);
+        \\Object.defineProperty(other.p, "then", {get() { throw Error("wrong realm Promise"); }});
+        \\const original = new other.Function("return globalThis.p");
+        \\const suspending = new WebAssembly.Suspending(original);
+        \\const instance = make(suspending);
+        \\other.Promise.resolve = () => {throw Error("mutable resolve");};
+        \\other.Promise = function() {throw Error("mutable Promise");};
+        \\if (await WebAssembly.promising(instance.exports.f)(0,0) !== 29) return "realm result";
+    ++ ending);
+}
+
+test "wasm Suspending preserves native export rejection and leaves native calls intact" {
+    try check(jspi_prelude ++
+        \\const direct = make((a,b) => a+b);
+        \\if (direct.exports.f(11,12) !== 23) return "native result";
+        \\const sentinel = {};
+        \\const throwing = make(() => {throw sentinel;});
+        \\try { throwing.exports.f(0,0); return "missing native throw"; }
+        \\catch(e) { if (e !== sentinel) return "native throw changed"; }
+        \\const trap = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array([
+        \\ 0,97,115,109,1,0,0,0,1,7,1,96,2,127,127,1,127,3,2,1,0,
+        \\ 7,5,1,1,102,0,0,10,5,1,3,0,0,11])));
+        \\try { trap.exports.f(0,0); return "missing trap"; }
+        \\catch(e) { if (!(e instanceof WebAssembly.RuntimeError)) return "trap changed"; }
+        \\// Linked V8 13.1.203 rejects these before creating a marker. Do
+        \\// not bypass that check by hiding a native export behind a Proxy.
+        \\for (const f of [direct.exports.f, throwing.exports.f, trap.exports.f]) {
+        \\  try { new WebAssembly.Suspending(f); return "native export accepted"; }
+        \\  catch(e) { if (!(e instanceof TypeError)) return "native export error"; }
+        \\}
+    ++ ending);
+}
+
+test "wasm Suspending interface shape and revoked callable remain native" {
+    try check(jspi_prelude ++
+        \\const ctor = WebAssembly.Suspending;
+        \\const descriptor = Object.getOwnPropertyDescriptor(WebAssembly, "Suspending");
+        \\if (ctor.prototype.constructor !== ctor || ctor.name !== "Suspending" || ctor.length !== 1) return "constructor shape";
+        \\if (!descriptor.writable || descriptor.enumerable || !descriptor.configurable) return "namespace shape";
+        \\try { ctor(() => {}); return "no new"; } catch(e) { if (!(e instanceof TypeError)) return "no-new error"; }
+        \\const revocable = Proxy.revocable(() => {}, {});
+        \\revocable.revoke();
+        \\const marker = new ctor(revocable.proxy);
+        \\const instance = make(marker);
+        \\try { await WebAssembly.promising(instance.exports.f)(0,0); return "revoked call succeeded"; }
+        \\catch(e) { if (!(e instanceof TypeError)) return "revoked error"; }
+    ++ ending);
+}
+
 test "wasm ordinary constructors ignore replaced reflection and argument iterators" {
     try check(
         \\(() => {

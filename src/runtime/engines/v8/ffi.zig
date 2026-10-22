@@ -3341,7 +3341,8 @@ pub extern fn v8_Context_IsCodeGenerationFromStringsAllowed(context: *Context) b
 /// Adapt `context`'s WebAssembly constructors to WebIDL's NewTarget-realm
 /// prototype fallback, preserving the native interface objects' shape.
 /// Memory/Table translate `address` to V8 13.1's old `index` spelling;
-/// Global.value converts an absent setter argument as undefined.
+/// Global.value converts an absent setter argument as undefined; JSPI wraps
+/// normal JS import returns with the import realm's intrinsic PromiseResolve.
 /// Called once per realm before script. All retained values are GC-traced
 /// realm-owned objects; no native owning handles are created. On V8 upgrade,
 /// remove address translation at >= 13.3 and separately recheck realm fallback.
