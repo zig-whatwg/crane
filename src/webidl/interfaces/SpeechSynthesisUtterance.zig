@@ -231,6 +231,8 @@ pub const SpeechSynthesisUtterance = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -358,6 +360,9 @@ pub const SpeechSynthesisUtterance = struct {
         if (comptime @hasDecl(SpeechSynthesisUtteranceImpl, "set_onboundary")) return try SpeechSynthesisUtteranceImpl.set_onboundary(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onboundary", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onstart", "set_onend", "set_onerror", "set_onpause", "set_onresume", "set_onmark", "set_onboundary" };
 
     /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
     /// the infinities throw a TypeError for (bit i = argument i; an attribute

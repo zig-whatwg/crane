@@ -23,6 +23,7 @@
 //! lint-impls: hook for EventTarget, Element
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const process_start = @import("process_start.zig");
 
@@ -42,18 +43,20 @@ pub const Implementation = struct {
 var implementation: ?Implementation = null;
 
 /// What compiling a raw uncompiled handler came to.
-pub const RawCompile = enum {
+pub const RawCompile = union(enum) {
     /// Scripting is disabled for the element's document (it still has no
     /// browsing context): the handler stays raw, and its value is null.
     scripting_disabled,
-    /// Compiled: the value is now the function - or null, with the syntax
-    /// error reported - and no longer raw.
+    /// Compilation failed or was blocked. An error reporter may have set a
+    /// replacement; otherwise the handler remains null and activated.
     settled,
+    /// The function and its document callback context, OWNED by the caller.
+    compiled: engine.CallbackFunction,
 };
 
 /// Element's "getting the current value of the event handler" step 3 for a
 /// raw uncompiled handler of `target` for an event type: compile the body (the
-/// content attribute) in the element's document and set the handler's value.
+/// content attribute) in the element's document and return its owned value.
 pub const RawCompiler = *const fn (target: *runtime.Instance, event_type: []const u8, source: RawSource) RawCompile;
 
 /// HTML's internal raw uncompiled handler body and source location. Borrowed

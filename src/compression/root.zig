@@ -1,21 +1,26 @@
 //! Stateful, engine-free Compression Streams codecs (Compression §§3–5).
 //! DEFLATE is std.compress; container validation is stricter than the stdlib
-//! reader, which only records trailer checksums. No native codec is linked.
+//! reader, which only records trailer checksums. Brotli uses the platform protocol.
 const std = @import("std");
+const platform = @import("platform");
+/// Whether the bound platform supports the Brotli format.
+pub const brotli_supported = platform.capabilities.brotli != .unsupported;
 const flate = std.compress.flate;
 const Allocator = std.mem.Allocator;
 
-/// CompressionFormat's three DEFLATE formats.
+/// CompressionFormat's formats.
 pub const Format = enum {
     deflate,
     deflate_raw,
     gzip,
+    brotli,
 
     fn container(self: Format) flate.Container {
         return switch (self) {
             .deflate => .zlib,
             .deflate_raw => .raw,
             .gzip => .gzip,
+            .brotli => unreachable,
         };
     }
 };
@@ -29,6 +34,7 @@ pub const Encoder = struct {
     output: std.Io.Writer.Allocating,
     history: [flate.max_window_len]u8 = undefined,
     compressor: flate.Compress,
+    brotli: ?*platform.BrotliEncoder = null,
     finished: bool = false,
 
     pub fn create(allocator: Allocator, format: Format) Error!*Encoder {
@@ -40,11 +46,18 @@ pub const Encoder = struct {
             .compressor = undefined,
         };
         errdefer self.output.deinit();
+        if (format == .brotli) {
+            if (brotli_supported) {
+                self.brotli = platform.createBrotliEncoder(allocator) catch |err| return codecError(err);
+                return self;
+            } else return error.InvalidData;
+        }
         self.compressor = flate.Compress.init(&self.output.writer, &self.history, format.container(), .default) catch return error.OutOfMemory;
         return self;
     }
 
     pub fn destroy(self: *Encoder) void {
+        if (brotli_supported) if (self.brotli) |codec| platform.destroyBrotliEncoder(codec);
         self.output.deinit();
         self.allocator.destroy(self);
     }
@@ -54,6 +67,20 @@ pub const Encoder = struct {
     pub fn push(self: *Encoder, input: []const u8, final: bool) Error![]u8 {
         if (self.finished) return error.InvalidData;
         errdefer self.finished = true;
+        if (brotli_supported) if (self.brotli) |codec| {
+            var remaining = input;
+            while (true) {
+                var buffer: [16384]u8 = undefined;
+                const progress = platform.compressBrotli(codec, .from(remaining), &buffer, final) catch |err| return codecError(err);
+                remaining = remaining[progress.consumed..];
+                self.output.writer.writeAll(buffer[0..progress.produced]) catch return error.OutOfMemory;
+                if (progress.status != .need_output) break;
+            }
+            self.finished = final;
+            const output = try self.allocator.dupe(u8, self.output.written());
+            self.output.writer.end = 0;
+            return output;
+        };
         self.compressor.writer.writeAll(input) catch return error.OutOfMemory;
         if (final) {
             self.compressor.finish() catch return error.OutOfMemory;
@@ -86,21 +113,28 @@ pub const Decoder = struct {
     extra_remaining: usize = 0,
     header_crc: std.hash.Crc32 = .init(),
     valid_prefix: []u8 = &.{},
+    brotli: ?*platform.BrotliDecoder = null,
+    brotli_ended: bool = false,
 
     pub fn create(allocator: Allocator, format: Format) Error!*Decoder {
         const self = try allocator.create(Decoder);
+        errdefer allocator.destroy(self);
         self.* = .{
             .allocator = allocator,
             .format = format,
             .input = .fixed(&.{}),
             .inflater = undefined,
-            .hasher = .init(format.container()),
+            .hasher = .init(if (format == .brotli) .raw else format.container()),
         };
+        if (format == .brotli) {
+            if (brotli_supported) self.brotli = platform.createBrotliDecoder(allocator) catch |err| return codecError(err) else return error.InvalidData;
+        }
         self.inflater = .init(&self.input, .raw, &.{});
         return self;
     }
 
     pub fn destroy(self: *Decoder) void {
+        if (brotli_supported) if (self.brotli) |codec| platform.destroyBrotliDecoder(codec);
         self.pending.deinit(self.allocator);
         self.allocator.free(self.valid_prefix);
         self.allocator.destroy(self);
@@ -121,6 +155,7 @@ pub const Decoder = struct {
     pub fn push(self: *Decoder, bytes: []const u8, final: bool) Error![]u8 {
         if (self.finished) return error.InvalidData;
         errdefer self.finished = true;
+        if (brotli_supported) if (self.brotli) |codec| return self.pushBrotli(codec, bytes, final);
         try self.pending.appendSlice(self.allocator, bytes);
         const input_end = self.pending.items.len;
         // std's Huffman lookup peeks four bytes. Its short-input fallback in
@@ -216,6 +251,28 @@ pub const Decoder = struct {
         return output.toOwnedSlice() catch return error.OutOfMemory;
     }
 
+    fn pushBrotli(self: *Decoder, codec: *platform.BrotliDecoder, bytes: []const u8, final: bool) Error![]u8 {
+        var output: std.Io.Writer.Allocating = .init(self.allocator);
+        defer output.deinit();
+        var remaining = bytes;
+        while (!self.brotli_ended) {
+            var buffer: [16384]u8 = undefined;
+            const progress = platform.decompressBrotli(codec, .from(remaining), &buffer) catch |err| return codecError(err);
+            remaining = remaining[progress.consumed..];
+            output.writer.writeAll(buffer[0..progress.produced]) catch return error.OutOfMemory;
+            if (progress.status == .finished) self.brotli_ended = true;
+            if (progress.status != .need_output) break;
+        }
+        // Compression §5: enqueue a completed prefix before rejecting trailing
+        // input (step 6), or a flush's prefix before rejecting truncation (step 3).
+        if ((self.brotli_ended and remaining.len != 0) or (final and !self.brotli_ended)) {
+            self.valid_prefix = output.toOwnedSlice() catch return error.OutOfMemory;
+            return error.InvalidData;
+        }
+        self.finished = final;
+        return output.toOwnedSlice() catch return error.OutOfMemory;
+    }
+
     fn needInput(_: *std.Io.Reader, _: *std.Io.Writer, _: std.Io.Limit) std.Io.Reader.StreamError!usize {
         return error.ReadFailed;
     }
@@ -240,6 +297,7 @@ pub const Decoder = struct {
             const bytes = self.input.buffer[self.input.seek..];
             switch (self.header_stage) {
                 .fixed => switch (self.format) {
+                    .brotli => unreachable,
                     .deflate_raw => return true,
                     .deflate => {
                         if (bytes.len < 2) return false;
@@ -297,3 +355,10 @@ pub const Decoder = struct {
         }
     }
 };
+
+fn codecError(err: platform.CodecError) Error {
+    return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        else => error.InvalidData,
+    };
+}

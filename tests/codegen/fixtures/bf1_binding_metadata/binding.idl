@@ -1,0 +1,28 @@
+[Exposed=*]
+interface NullableRequired {
+  constructor(DOMString? value);
+  [LegacyUnforgeable] readonly attribute boolean fixed;
+  attribute boolean ordinary;
+  [LegacyUnforgeable] undefined fixedOperation();
+};
+[Exposed=*]
+interface OptionalConstructor {
+  constructor(optional DOMString value = "");
+};
+[Exposed=*]
+interface VariadicConstructor {
+  constructor(DOMString... values);
+};
+[Exposed=*]
+interface SequenceConstructor {
+  constructor(sequence<DOMString> values);
+};
+[Exposed=*]
+interface OverloadedConstructor {
+  constructor();
+  constructor(DOMString value, long number);
+};
+[Exposed=*]
+interface OptionalThenRequired {
+  constructor(optional DOMString message = "", long code, optional boolean flag = false);
+};

@@ -212,6 +212,8 @@ pub const ImageData = struct {
         break :blk @hasDecl(impls.ImageData, "serializationSteps") and @hasDecl(impls.ImageData, "deserializationSteps");
     };
 
+    pub const constructor_required_arguments: usize = 2;
+
     /// Arguments for constructor (WebIDL overloading)
     pub const ConstructorArgs = union(enum) {
         /// constructor(sw, sh, settings)

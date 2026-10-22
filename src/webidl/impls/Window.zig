@@ -1473,27 +1473,9 @@ fn documentTreeChildNavigables(instance: *runtime.Instance, internal: *InternalS
         const raw = navigable.getActiveDocument() orelse return .empty;
         break :blk @as(*runtime.Instance, @ptrCast(@alignCast(raw)));
     };
-    const children = @import("dom").navigables.childNavigablesOf(document, allocator);
-    // Golden rule 2 (row 81 Q15, 2026-10-19): step 3's tree-order wording
-    // arrived with the navigables cleanup (whatwg/html#1336, 2022), with no
-    // browser adoption or demonstrated lag. WPT indexed-browsing-contexts-01
-    // still asserts "The child browsing contexts must be sorted in the order
-    // that their containers were inserted into the Document." Aligned stable
-    // Chrome 6244643405824000, Firefox 6213611998674944 and Safari
-    // 6209999629189120 all pass it. Re-check if the spec or test changes.
-    // Like WebKit FrameTree::scopedChild, filter membership while preserving
-    // the parent's frame-list order. Reorder in place; no new holder or list.
-    var next: usize = 0;
-    for (navigable.children.items) |child| {
-        if (next == children.items.len) break;
-        for (children.items[next..], next..) |entry, index| {
-            if (entry.browsing_context != child) continue;
-            std.mem.swap(@import("dom").navigables.ChildNavigable, &children.items[next], &children.items[index]);
-            next += 1;
-            break;
-        }
-    }
-    return children;
+    // Membership and order: dom.navigables (the engine adapter's indexed
+    // interceptor walks the same list).
+    return @import("dom").navigables.documentTreeChildNavigables(navigable, document, allocator);
 }
 
 /// Getter for length - Number of document-tree child navigables.
@@ -1757,10 +1739,10 @@ pub fn get_orientation(instance: *runtime.Instance) anyerror!i16 {
     return error.NotImplemented;
 }
 
-/// Getter for external
+/// HTML 16.3.3: return an External object. The generated [SameObject] getter
+/// owns the cache and traces its child, including reads made from native code.
 pub fn get_external(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return interfaces.External.init(instance.ctx.allocator, instance.ctx);
 }
 
 /// Getter for screen
@@ -2381,7 +2363,7 @@ const SerializedMessage = union(enum) {
             .serialized => |serialized| {
                 // No transfer list (`.with_transfer` has one): no platform
                 // object was transferred.
-                const value = try engine.structuredDeserializeWithTransfer(realm, serialized.serialized, serialized.array_buffers, &.{});
+                const value = try engine.structuredDeserializeWithOptions(realm, serialized.serialized, .{ .array_buffers = serialized.array_buffers, .shared_memory = serialized.shared_memory });
                 return value.take();
             },
             // Delivered by `deliverWithTransfer`, which receives its ports.
@@ -2523,7 +2505,7 @@ fn deliverWithTransfer(target: *runtime.Instance, message: *@import("dom").port_
         fireTransferEvent(target, "messageerror", runtime.JSValue.jsUndefined, origin, source, &.{});
         return;
     }
-    const data = engine.structuredDeserializeWithTransfer(target.ctx, message.serialized, message.array_buffers, ports.items) catch {
+    const data = engine.structuredDeserializeWithOptions(target.ctx, message.serialized, .{ .array_buffers = message.array_buffers, .transferred = ports.items, .shared_memory = message.shared_memory }) catch {
         fireTransferEvent(target, "messageerror", runtime.JSValue.jsUndefined, origin, source, &.{});
         return;
     };
@@ -3193,6 +3175,13 @@ const CloseTask = struct {
         engine.runTaskInRealm(task.window.ctx, steps, task.window) catch {};
     }
 
+    /// The task never ran: its realm's timers ended with it armed - the
+    /// popup, or the whole Browser, went first.
+    fn drop(data: ?*anyopaque) void {
+        const task: *CloseTask = @ptrCast(@alignCast(data orelse return));
+        task.allocator.destroy(task);
+    }
+
     fn steps(data: ?*anyopaque) void {
         const window: *runtime.Instance = @ptrCast(@alignCast(data orelse return));
         // "Definitely close" is the navigable machinery's, HTMLIFrameElement's,
@@ -3207,6 +3196,12 @@ fn queueDefinitelyClose(window: *runtime.Instance) void {
     const timer = window.ctx.getOptionalTimer() orelse return;
     const task = window.ctx.allocator.create(CloseTask) catch return;
     task.* = .{ .window = window, .generation = runtime.SlabAllocator.generationOf(window), .allocator = window.ctx.allocator };
+    // Owned by the timer: a task its realm's end drops is freed then. With a
+    // plain timer, a popup closed just before its Browser ended leaked this
+    // task - lane httpcache1's one intermittent allocation (lane leaks6;
+    // docs/lessons/architecture-a-task-queued-on-a-loop-that-never-runs-again-leaks-its-data.md).
+    if (timer.setTimeoutOwned(0, CloseTask.run, task, CloseTask.drop) != 0) return;
+    // A timer that cannot promise the drop: the plain one, as before.
     if (timer.setTimeout(0, CloseTask.run, task) == 0) task.allocator.destroy(task);
 }
 

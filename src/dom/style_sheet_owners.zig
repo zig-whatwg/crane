@@ -26,6 +26,10 @@ const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
+/// Where a parsed element's content starts in its document: the parser's
+/// position after its start tag.
+pub const Position = @import("csp").inline_check.Position;
+
 /// Queries over the owners' live loads: the document's load-event delay
 /// and its own script-blocking style sheet set.
 pub const LoadDelay = struct {
@@ -35,8 +39,11 @@ pub const LoadDelay = struct {
 
 /// What the style element does when the parser creates and pops it.
 pub const ParserSteps = struct {
-    /// The parser created `element`, a style element, and will pop it.
-    created: *const fn (element: *runtime.Instance) void,
+    /// The parser created `element`, a style element, and will pop it; its
+    /// text starts at `start` in the document (null: the parser cannot say)
+    /// - where a CSP violation of its style block is located when no script
+    /// runs (Blink's StyleElement start_position_).
+    created: *const fn (element: *runtime.Instance, start: ?Position) void,
     /// The parser popped `element` off its stack of open elements, its
     /// text inserted.
     popped: *const fn (element: *runtime.Instance) void,
@@ -64,12 +71,17 @@ pub fn installParserSteps(steps: ParserSteps) void {
 /// Called by the link element. Keeps the style element's parser hooks.
 pub fn installLinkParserSteps(created: *const fn (element: *runtime.Instance) void) void {
     process_start.assertInstalling();
-    if (parser_steps == null) parser_steps = .{ .created = &ignoreParserStep, .popped = &ignoreParserStep };
+    if (parser_steps == null) parser_steps = .{ .created = &ignoreCreatedStep, .popped = &ignoreParserStep };
     parser_steps.?.link_created = created;
 }
 
 fn ignoreParserStep(element: *runtime.Instance) void {
     _ = element;
+}
+
+fn ignoreCreatedStep(element: *runtime.Instance, start: ?Position) void {
+    _ = element;
+    _ = start;
 }
 
 /// "The end" step 8: whether a style sheet an element in `document` loads
@@ -87,10 +99,11 @@ pub fn blocksScripts(document: *runtime.Instance) bool {
 }
 
 /// The HTML parser created `element`, a style or link element in the HTML
-/// namespace, and appended all token attributes before connection.
-pub fn createdByParser(element: *runtime.Instance) void {
+/// namespace, and appended all token attributes before connection. `start`
+/// is the parser's position after its start tag (null: unknown).
+pub fn createdByParser(element: *runtime.Instance, start: ?Position) void {
     const steps = parser_steps orelse return;
-    steps.created(element);
+    steps.created(element, start);
     if (steps.link_created) |created| created(element);
 }
 
@@ -114,7 +127,7 @@ test "without installed implementations nothing delays a load event, and the par
     var node: runtime.Instance = undefined;
     try @import("std").testing.expect(!delaysLoadEvent(&node));
     try @import("std").testing.expect(!blocksScripts(&node));
-    createdByParser(&node);
+    createdByParser(&node, null);
     poppedByParser(&node);
 }
 
@@ -125,8 +138,9 @@ fn testDelays(document: *runtime.Instance) bool {
     return true;
 }
 
-fn testCreated(element: *runtime.Instance) void {
+fn testCreated(element: *runtime.Instance, start: ?Position) void {
     _ = element;
+    _ = start;
 }
 
 fn testPopped(element: *runtime.Instance) void {

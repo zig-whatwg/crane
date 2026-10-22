@@ -95,6 +95,7 @@ pub const script_elements = @import("script_elements.zig");
 pub const activation = @import("activation.zig");
 pub const form_controls = @import("form_controls.zig");
 pub const top_layer = @import("top_layer.zig");
+pub const dialog = @import("dialog.zig");
 pub const form_submission = @import("form_submission.zig");
 pub const form_past_names = @import("form_past_names.zig");
 pub const node_lists = @import("node_lists.zig");
@@ -106,8 +107,10 @@ pub const teardown_sweeps = @import("teardown_sweeps.zig");
 /// its type's sweep for an orphan no deinit reaches.
 pub const orphan_states = @import("orphan_states.zig");
 pub const unloading_cleanup = @import("unloading_cleanup.zig");
+pub const editor_states = @import("editor_states.zig");
 pub const idle_periods = @import("idle_periods.zig");
 pub const document_activity = @import("document_activity.zig");
+pub const document_autofocus = @import("document_autofocus.zig");
 /// A Document's back/forward cache state: "make document unsalvageable", its
 /// bfcache blocking details, and building not restored reasons.
 pub const bfcache = @import("bfcache.zig");
@@ -210,6 +213,8 @@ pub const document_scripts = @import("document_scripts.zig");
 pub const document_modules = @import("document_modules.zig");
 /// A Document's browsing context's window, as a frame's parser sets it.
 pub const document_browsing_context = @import("document_browsing_context.zig");
+pub const element_references = @import("element_references.zig");
+pub const accessibility = @import("accessibility.zig");
 /// What the parsers' tree construction sets on the nodes it makes where no
 /// IDL member fits: an element's names, a doctype's identifiers.
 pub const node_creation = @import("node_creation.zig");

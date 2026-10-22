@@ -350,6 +350,8 @@ pub const HTMLInstallElement = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -415,6 +417,9 @@ pub const HTMLInstallElement = struct {
         if (comptime @hasDecl(HTMLInstallElementImpl, "set_onvalidationstatuschange")) return try HTMLInstallElementImpl.set_onvalidationstatuschange(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onvalidationstatuschange", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_oninstallresult", "set_onvalidationstatuschange" };
 
     /// HTML [CEReactions]: the functions that run a custom element reactions
     /// bracket - the binding dispatches each in a catch scope, where

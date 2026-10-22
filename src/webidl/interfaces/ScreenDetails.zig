@@ -214,4 +214,7 @@ pub const ScreenDetails = struct {
         if (comptime @hasDecl(ScreenDetailsImpl, "set_oncurrentscreenchange")) return try ScreenDetailsImpl.set_oncurrentscreenchange(instance, value);
         try event_handlers.setValue(EventHandler, instance, "oncurrentscreenchange", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onscreenschange", "set_oncurrentscreenchange" };
 };

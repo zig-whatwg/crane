@@ -29,11 +29,11 @@
 
 const std = @import("std");
 const close_codes = @import("close_codes.zig");
-const curl_backend = @import("curl_backend.zig");
+const transport = @import("transport.zig");
 const utf8 = @import("utf8.zig");
 
 const CloseCodes = close_codes.CloseCodes;
-const FrameKind = curl_backend.FrameKind;
+const FrameKind = transport.FrameKind;
 
 /// WebSocket ready state values matching the WHATWG spec.
 /// https://websockets.spec.whatwg.org/#dom-websocket-readystate
@@ -234,9 +234,9 @@ pub const WebSocketConnection = struct {
     /// Binary type preference (blob or arraybuffer).
     binary_type: BinaryType,
 
-    /// Underlying curl backend connection. Released once the connection is
+    /// Underlying platform transport. Released once the connection is
     /// closed, which is what closes the TCP connection.
-    backend: ?*curl_backend.CurlWebSocket,
+    backend: ?*transport.WebSocketTransport,
 
     /// The WebSocket connection close code (RFC 6455 § 7.1.5): the status code
     /// of the first Close frame received, 1005 if it had none, 1006 if the
@@ -398,10 +398,7 @@ pub const WebSocketConnection = struct {
     pub fn connect(self: *Self, protocols: ?[]const []const u8) !void {
         try self.startConnect(.{ .protocols = protocols });
         while (!try self.pollConnect()) {
-            const backend = self.backend orelse return error.HandshakeFailed;
-            var numfds: c_int = 0;
-            // No multi handle yet: the handshake is waiting its turn.
-            if (backend.multi) |multi| _ = @import("fetch").network.curl_ffi.multi_poll(multi, 100, &numfds);
+            @import("platform").sleepThread(std.time.ns_per_ms);
         }
     }
 
@@ -415,7 +412,7 @@ pub const WebSocketConnection = struct {
 
         // The request, made now: the backend copies the protocols and origin,
         // so they need not outlive this call even if the handshake waits.
-        const backend = try curl_backend.CurlWebSocket.initWithOptions(self.allocator, self.url, .{
+        const backend = try transport.WebSocketTransport.initWithOptions(self.allocator, self.url, .{
             .protocols = options.protocols,
             .origin = options.origin,
             .cookie_jar = options.cookie_jar,

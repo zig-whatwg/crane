@@ -247,6 +247,8 @@ pub const MediaRecorder = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 1;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -371,4 +373,7 @@ pub const MediaRecorder = struct {
     pub fn call_requestData(instance: *runtime.Instance) anyerror!void {
         return try MediaRecorderImpl.call_requestData(instance);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onstart", "set_onstop", "set_ondataavailable", "set_onpause", "set_onresume", "set_onerror" };
 };

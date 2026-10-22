@@ -232,4 +232,7 @@ pub const NavigationHistoryEntry = struct {
     pub fn call_getState(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try NavigationHistoryEntryImpl.call_getState(instance);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_ondispose"};
 };

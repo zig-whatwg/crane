@@ -1015,7 +1015,42 @@ pub extern fn v8_Value_StructuredSerializeWithTransfer(
 pub const StructuredSerializeOptions = extern struct {
     for_storage: bool,
     agent_cluster: u64,
+    cross_origin_isolated: bool = false,
 };
+
+/// Adapter-owned shared_ptr<BackingStore> sidecar. Never a V8 handle.
+pub const SharedMemory = opaque {};
+pub extern fn v8_SharedMemory_Retain(memory: *SharedMemory) void;
+pub extern fn v8_SharedMemory_Release(memory: *SharedMemory) void;
+pub extern fn v8_test_SharedMemory_RefCount(memory: *const SharedMemory) usize;
+
+/// Success transfers one sidecar reference through out_shared_memory; failure
+/// leaves it null and releases every store retained during serialization.
+pub extern fn v8_Value_StructuredSerializeWithSharedMemory(
+    value: *Value,
+    transfer_list: [*]*Value,
+    transfer_count: usize,
+    out_size: *usize,
+    out_arraybuffer_data: [*]ArrayBufferTransferData,
+    error_code: *c_int,
+    host: ?*const HostObjectSteps,
+    options: *const StructuredSerializeOptions,
+    out_shared_memory: *?*SharedMemory,
+) ?[*]u8;
+
+/// The sidecar is BORROWED for deserialization; the resulting objects take
+/// their own backing-store references. Target isolation and cluster are checked.
+pub extern fn v8_Value_DeserializeWithSharedMemory(
+    serialized_data: [*]const u8,
+    serialized_size: usize,
+    arraybuffer_data: [*]const ArrayBufferTransferData,
+    arraybuffer_count: usize,
+    error_code: *c_int,
+    host: ?*const HostObjectSteps,
+    agent_cluster: u64,
+    shared_memory: ?*const SharedMemory,
+    cross_origin_isolated: bool,
+) ?*Value;
 
 /// Deserialize V8 structured clone data with ArrayBuffer transfer.
 /// This is called in the DESTINATION isolate to recreate values.
@@ -2303,6 +2338,16 @@ pub extern fn v8_Isolate_PerformMicrotaskCheckpoint(isolate: *Isolate) void;
 /// Run one foreground task V8 has posted to the platform for `isolate`, if
 /// one is due. Returns whether a task ran. Never blocks; call with `isolate`
 /// entered.
+/// OWNED sink on success only. All callbacks are thread-safe.
+pub extern fn v8_Isolate_AttachForegroundTaskSink(isolate: *Isolate, sink: *anyopaque, wake: *const fn (?*anyopaque) callconv(.c) void, release: *const fn (?*anyopaque) callconv(.c) void) bool;
+pub extern fn v8_Isolate_CloseForegroundTasks(isolate: *Isolate) void;
+pub extern fn v8_Isolate_NextForegroundTaskDelay(isolate: *Isolate, nanoseconds: *u64) bool;
+/// Test-only shared_ptr<TaskRunner>, safe to post after the isolate is gone.
+pub const TestTaskRunner = opaque {};
+pub extern fn v8_test_ForegroundTaskRunner(isolate: *Isolate) ?*TestTaskRunner;
+pub extern fn v8_test_TaskRunner_Release(runner: *TestTaskRunner) void;
+pub extern fn v8_test_TaskRunner_Post(runner: *TestTaskRunner, run: *const fn (?*anyopaque) callconv(.c) void, drop: *const fn (?*anyopaque) callconv(.c) void, data: ?*anyopaque, delay_seconds: f64) void;
+
 pub extern fn v8_Platform_PumpMessageLoop(isolate: *Isolate) bool;
 /// Whether V8 has background work for `isolate` that will post a foreground
 /// task when it ends (d8's CompleteMessageLoop waits on it).
@@ -3052,9 +3097,11 @@ pub extern fn v8_Isolate_HasJavaScriptOnStack(isolate: *Isolate) bool;
 /// the parameter names given. `scopes` are scope objects, OUTERMOST first
 /// ([document, form owner, element] for an element's handler; none for a
 /// Window's), at most 8; each may be a weak cache handle (read before
-/// anything allocates; an empty one fails the compile). The function is
-/// OWNED (a Global<Value>*); on a SyntaxError null, with `out_error` set
-/// (v8_FreeErrorInfo).
+/// anything allocates; an empty one fails the compile). The body is compiled
+/// in a resource named `resource_name` (the document's URL; len 0: none) at
+/// the 0-based `line_offset` / `column_offset`, with no host-defined options.
+/// The function is OWNED (a Global<Value>*); on a SyntaxError null, with
+/// `out_error` set (v8_FreeErrorInfo).
 pub extern fn v8_CompileEventHandlerWithParameters(
     context: *Context,
     name: [*]const u8,
@@ -3065,18 +3112,27 @@ pub extern fn v8_CompileEventHandlerWithParameters(
     parameter_count: c_int,
     scopes: [*]const ?*Object,
     scope_count: c_int,
+    resource_name: [*]const u8,
+    resource_name_len: c_int,
+    line_offset: c_int,
+    column_offset: c_int,
     out_error: *?*V8ErrorInfo,
 ) ?*Value;
 
 /// Compile a classic script whose ScriptOrigin names `resource_name` (null:
-/// "") and carries `host_defined` (null: none). Free the result with
+/// ""), puts it at the 0-based `line_offset` / `column_offset` (an inline
+/// script's start in its document; the column only on the first line) and
+/// carries `host_defined` (null: none). Free the result with
 /// v8_FreeScriptCompileResult; its script is OWNED.
-pub extern fn v8_Script_CompileWithHostDefined_Safe(context: *Context, source: *String, resource_name: ?*String, host_defined: ?*anyopaque) *V8ScriptCompileResult;
+pub extern fn v8_Script_CompileWithHostDefined_Safe(context: *Context, source: *String, resource_name: ?*String, line_offset: c_int, column_offset: c_int, host_defined: ?*anyopaque, muted_errors: bool) *V8ScriptCompileResult;
+/// HostPromiseRejectionTracker step 2: the running script's muted-errors
+/// flag, read from its host-defined options. No handles leave this query.
+pub extern fn v8_Isolate_CurrentScriptHasMutedErrors(isolate: *Isolate) bool;
 /// HTML "run a classic script" with rethrow errors true: compile and run, and
 /// on an abrupt completion TryCatch::ReThrow (the original message kept).
 /// 0 normal; 1 the exception is pending again; 2 it was muted and cleared;
 /// -1 the isolate is terminating.
-pub extern fn v8_Script_RunRethrowingErrors(context: *Context, source: *String, resource_name: ?*String, host_defined: ?*anyopaque, muted_errors: bool) c_int;
+pub extern fn v8_Script_RunRethrowingErrors(context: *Context, source: *String, resource_name: ?*String, line_offset: c_int, column_offset: c_int, host_defined: ?*anyopaque, muted_errors: bool) c_int;
 
 /// Whether V8's platform is initialized in this process.
 pub extern fn v8_Platform_IsInitialized() bool;
@@ -3094,9 +3150,10 @@ pub extern fn v8_Isolate_SetProtocolPromiseRejectCallback(
 pub extern fn v8_Isolate_ClearProtocolPromiseRejectCallback(isolate: *Isolate) void;
 
 /// ECMAScript ParseModule: compile `source` as a module whose ScriptOrigin
-/// names `resource_name` (null: "") and carries `host_defined` (null: none)
-/// as a module's. Free with v8_FreeModuleCompileResult; its module is OWNED.
-pub extern fn v8_Module_CompileWithHostDefined_Safe(context: *Context, source: *String, resource_name: ?*String, host_defined: ?*anyopaque) *V8ModuleCompileResult;
+/// names `resource_name` (null: ""), puts it at the 0-based `line_offset` /
+/// `column_offset`, and carries `host_defined` (null: none) as a module's.
+/// Free with v8_FreeModuleCompileResult; its module is OWNED.
+pub extern fn v8_Module_CompileWithHostDefined_Safe(context: *Context, source: *String, resource_name: ?*String, line_offset: c_int, column_offset: c_int, host_defined: ?*anyopaque) *V8ModuleCompileResult;
 
 /// The host's answer for one module request during a Link: the resolved
 /// module (the host keeps it), or null. `referrer` is BORROWED for the call.
@@ -3160,6 +3217,9 @@ pub extern fn v8_ArrayBufferView_WriteBytes(view: *Value, bytes: [*]const u8, le
 /// held on the C++ stack around the body). Null `incumbent`: nothing pushed.
 pub extern fn v8_RunWithBackupIncumbent(isolate: *Isolate, incumbent: ?*Context, body: *const fn (?*anyopaque) callconv(.c) void, data: ?*anyopaque) void;
 
+/// Test-only: callback data is borrowed until all hooks are cleared.
+pub extern fn v8_test_Isolate_SetPromiseHook(isolate: *Isolate, hook: ?*const fn (kind: c_int, data: ?*anyopaque) callconv(.c) void, data: ?*anyopaque) bool;
+
 /// HTML's incumbent realm here (Isolate::GetIncumbentContext). A new Global
 /// the caller disposes with v8_Context_Dispose; null when no context is
 /// entered.
@@ -3185,6 +3245,9 @@ pub extern fn v8_Value_ToObject(context: *Context, value: *Value) ?*Value;
 /// HTML "extract error information" for what a callback threw: a thrown
 /// value that is not an Error carries no position of its own.
 pub extern fn v8_Function_CallCatchingWithSite(context: *Context, function: *Value, recv: ?*Value, argc: c_int, argv: ?[*]const *Value, threw: *bool, site: *?*V8ErrorInfo) ?*Value;
+
+/// ToString's result or thrown value, OWNED, with its original throw site.
+pub extern fn v8_Value_ToStringCatchingWithSite(context: *Context, value: *Value, threw: *bool, site: *?*V8ErrorInfo) ?*Value;
 /// ECMAScript Construct(function, argv) - newTarget the function - under a
 /// TryCatch: the result with `threw.*` false, or the thrown value with
 /// `threw.*` true and `site.*` where it was thrown. Null (threw true) only
@@ -3340,6 +3403,9 @@ pub extern fn v8_SetCrossOriginDispatch(dispatch: *const CrossOriginDispatch) vo
 /// The cross-origin access check and interceptors on `tpl` (kind 0: a Window
 /// global template, 1: Location's instance template).
 pub extern fn v8_ObjectTemplate_SetCrossOriginAccessCheck(tpl: *ObjectTemplate, kind: c_int) void;
+/// The current function realm's security check for its unwrapped receiver.
+/// Local handles only; call after identifying it as a Window or Location.
+pub extern fn v8_FunctionCallbackInfo_ReceiverIsAccessible(info: *const FunctionCallbackInfo) bool;
 /// The isolate's failed-access-check callback: a SecurityError.
 pub extern fn v8_Isolate_SetCrossOriginFailedAccessCheck(isolate: *Isolate) void;
 /// FunctionTemplate::SetAcceptAnyReceiver: false runs WebIDL's security check.
@@ -3356,6 +3422,9 @@ pub extern fn v8_ObjectTemplate_SetAccessorPropertyChecked(
 ) void;
 /// HTML "Location object setup" steps 3-4: own valueOf (%Object.prototype.valueOf%)
 /// and %Symbol.toPrimitive% (undefined), read-only, non-enumerable, non-configurable.
+/// Borrow target, return the owned HTML Location exotic object identity.
+pub extern fn v8_CreateLocationObject(context: *Context, target: *Object) ?*Object;
+
 pub extern fn v8_ObjectTemplate_SetLocationValueOfAndToPrimitive(tpl: *ObjectTemplate) void;
 /// v8_Object_SetAccessorProperty with each function's receiver check.
 pub extern fn v8_Object_SetAccessorPropertyChecked(
@@ -3366,6 +3435,7 @@ pub extern fn v8_Object_SetAccessorPropertyChecked(
     setter: ?FunctionCallback,
     getter_accepts_any_receiver: bool,
     setter_accepts_any_receiver: bool,
+    attributes: c_int,
 ) bool;
 /// The cross-origin template callbacks, for the snapshot's external
 /// references: writes up to `capacity`, answers the count.

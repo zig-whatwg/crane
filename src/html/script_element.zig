@@ -82,6 +82,11 @@ pub const ClassicScript = struct {
     muted_errors: bool,
     /// Prepare step 25's value, retained across fetching and attribute changes.
     credentials_mode: @import("fetch").internal.CredentialsMode = .same_origin,
+    /// Where an inline script's source text starts in its document, when the
+    /// parser prepared it (`State.start`); `.{}` otherwise. Not the spec's:
+    /// Blink's ClassicScript and ScriptSourceCode keep the same TextPosition,
+    /// so what the script throws reports its document's lines.
+    start: engine.SourcePosition = .{},
 
     pub fn init(source: []const u8, base: []const u8) ClassicScript {
         return .{
@@ -172,6 +177,25 @@ pub const State = struct {
     /// tag and by the Trusted Types-aware setters; owned.
     script_text: ScriptText = .{},
 
+    /// The URL an external script was REQUESTED from (prepare's parsed src),
+    /// owned here and never replaced by a redirect's: the resource name its
+    /// script is compiled with, so a stack trace or an error's filename
+    /// names what the page asked for, not where a cross-origin redirect led
+    /// (content-security-policy/reporting/post-redirect-stacktrace.https.html:
+    /// Chrome 155 and Firefox 158 pass, Safari 27 leaks the path - Blink
+    /// names a classic script by Resource::Url(), its initial request URL).
+    /// `script_url` - and so the script's base URL - is the response's.
+    request_url: ?[]const u8 = null,
+
+    /// Where the element's source text starts in its document - the HTML
+    /// parser's position after its start tag, 1-based - set by the parser
+    /// when it creates the element (`parserPosition`); null for one no HTML
+    /// parser position is known for. Read only when the parser prepares the
+    /// element (its parser document set): Blink's HTMLParserScriptRunner
+    /// hands PrepareScript the same TextPosition, and every other
+    /// preparation MinimumPosition.
+    start: ?engine.SourcePosition = null,
+
     pub fn init(allocator: std.mem.Allocator) State {
         return .{
             .allocator = allocator,
@@ -197,9 +221,11 @@ pub const State = struct {
         if (self.takeExecutionRoot()) |root| root.release();
         if (self.cached_source_text) |text| self.allocator.free(text);
         if (self.script_url) |url| self.allocator.free(url);
+        if (self.request_url) |url| self.allocator.free(url);
         self.script_text.deinit();
         self.cached_source_text = null;
         self.script_url = null;
+        self.request_url = null;
     }
 
     /// Transfer the queue's root to its executor or discard step, exactly once.
@@ -217,6 +243,14 @@ pub const State = struct {
         self.cached_source_text = owned;
     }
 
+    /// Record the URL an external script is requested from (`request_url`),
+    /// taking a copy the element owns.
+    pub fn setRequestUrl(self: *State, url: []const u8) !void {
+        const owned = try self.allocator.dupe(u8, url);
+        if (self.request_url) |old| self.allocator.free(old);
+        self.request_url = owned;
+    }
+
     /// Record the URL an external script comes from, taking a copy the
     /// element owns. Returns the element's copy - the one a script result may
     /// point at.
@@ -227,6 +261,17 @@ pub const State = struct {
         return owned;
     }
 };
+
+/// The HTML parser's position in `document`'s input: the 1-based line and
+/// column of the next character it reads - right after the start tag it is
+/// creating an element for, when asked from the tree builder's node-created
+/// callback. Null when no parser is parsing `document`. Blink's
+/// ScriptableDocumentParser::GetTextPosition; WebKit's textPosition.
+pub fn parserPosition(document: *runtime.Instance) ?engine.SourcePosition {
+    const stream = @import("dom").document_internals.getInputStreamManager(document) orelse return null;
+    const tokenizer = stream.tokenizer orelse return null;
+    return .{ .line = tokenizer.input.line, .column = tokenizer.input.column };
+}
 
 /// What HTMLScriptElement supplies: an HTML script element's state, or null
 /// for any other object.

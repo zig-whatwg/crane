@@ -222,3 +222,47 @@ test "a script the adapter cannot parse is reported as its parse error; an adapt
     try engine.runClassicScript(realm, .{ .utf8 = "" }, "w.js", null, reporter);
     try std.testing.expectEqual(@as(usize, 0), seen.count);
 }
+
+const PositionReport = struct {
+    count: usize = 0,
+    lineno: u32 = 0,
+    colno: u32 = 0,
+
+    fn report(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
+        const self: *PositionReport = @ptrCast(@alignCast(host.?));
+        self.count += 1;
+        self.lineno = info.lineno;
+        self.colno = info.colno;
+    }
+};
+
+test "an embedded script reports in its document's lines; an adapter with no engine runs none" {
+    var data = try runtime.ContextData.init(std.testing.allocator, .{});
+    defer data.deinit();
+    const realm: engine.Context = &data;
+
+    var seen: PositionReport = .{};
+    const reporter: engine.Reporter = .{ .report = PositionReport.report, .host = &seen };
+    const source: engine.ScriptSource = .{ .embedded = .{ .utf8 = "postMessage(1);", .start = .{ .line = 15, .column = 9 } } };
+    // JavaScriptCore and QuickJS run no script yet (their doc lines say how
+    // each will take the position: a starting line; none).
+    if (!std.mem.eql(u8, engine.name, "test")) {
+        try std.testing.expectError(error.NotSupported, engine.runClassicScript(realm, source, "https://a.test/", null, reporter));
+        try std.testing.expectEqual(@as(usize, 0), seen.count);
+        return;
+    }
+    // The test adapter reports its parse error at the script's first
+    // character - in the document, for an embedded one.
+    try std.testing.expectError(error.ExceptionReported, engine.runClassicScript(realm, source, "https://a.test/", null, reporter));
+    try std.testing.expectEqual(@as(usize, 1), seen.count);
+    try std.testing.expectEqual(@as(u32, 15), seen.lineno);
+    try std.testing.expectEqual(@as(u32, 9), seen.colno);
+    // A script of its own starts at line 1, column 1: SourcePosition's default.
+    seen = .{};
+    try std.testing.expectError(error.ExceptionReported, engine.runClassicScript(realm, .{ .utf8 = "postMessage(1);" }, "w.js", null, reporter));
+    try std.testing.expectEqual(@as(u32, 1), seen.lineno);
+    try std.testing.expectEqual(@as(u32, 1), seen.colno);
+    const default: engine.SourcePosition = .{};
+    try std.testing.expectEqual(@as(u32, 1), default.line);
+    try std.testing.expectEqual(@as(u32, 1), default.column);
+}

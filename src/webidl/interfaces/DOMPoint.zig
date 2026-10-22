@@ -226,6 +226,8 @@ pub const DOMPoint = struct {
         break :blk @hasDecl(impls.DOMPoint, "serializationSteps") and @hasDecl(impls.DOMPoint, "deserializationSteps");
     };
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator

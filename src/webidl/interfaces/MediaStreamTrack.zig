@@ -420,6 +420,9 @@ pub const MediaStreamTrack = struct {
         return try MediaStreamTrackImpl.call_getConstraints(instance);
     }
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onmute", "set_onunmute", "set_onended", "set_oncapturehandlechange", "set_onconfigurationchange", "set_onisolationchange" };
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{

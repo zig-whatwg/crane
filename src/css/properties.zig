@@ -87,6 +87,7 @@ pub const Longhand = enum(u8) {
     bottom,
     color,
     color_scheme,
+    content,
     direction,
     display,
     float,
@@ -285,6 +286,8 @@ pub const Grammar = enum {
     text_transform,
     /// CSS Color Adjustment 1 color-scheme (`values.ColorScheme`).
     color_scheme,
+    /// CSS Generated Content 3: typed strings, attributes and layout values.
+    content,
 };
 
 pub const Info = struct {
@@ -343,6 +346,7 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .color, .inherited = true, .initial = .{ .color = .{ .system = .canvastext } }, .grammar = .color, .quirky_color = true },
         // CSS Color Adjustment 1 2.2: "Initial: normal", "Inherited: yes".
         .{ .longhand = .color_scheme, .inherited = true, .initial = Value.kw(.normal), .grammar = .color_scheme },
+        .{ .longhand = .content, .inherited = false, .initial = Value.kw(.normal), .grammar = .content },
         .{ .longhand = .direction, .inherited = true, .initial = Value.kw(.ltr), .grammar = .keywords, .keywords = &.{ .ltr, .rtl } },
         .{ .longhand = .display, .inherited = false, .initial = .{ .display = Display.inline_flow }, .grammar = .display },
         .{ .longhand = .float, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .left, .right, .inline_start, .inline_end } },
@@ -595,7 +599,7 @@ pub fn parseDeclaration(options: ParseOptions, property: Property, text: []const
         }
         return true;
     }
-    if (containsUnsupportedFunction(text)) return false;
+    if (!(property == .longhand and property.longhand == .content) and containsUnsupportedFunction(text)) return false;
     var stream = Stream.init(text);
     const ok = switch (property) {
         .longhand => |l| blk: {
@@ -736,6 +740,14 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .display => return displayValue(stream),
         .text_transform => return textTransformValue(stream),
         .color_scheme => return colorSchemeValue(options, stream),
+        .content => {
+            if (takeKeyword(stream, &.{ .normal, .none })) |k| return Value.kw(k);
+            const generated = @import("generated_content.zig");
+            const resolver: ?generated.UrlResolver = if (options.url_resolver) |r| .{ .context = r.context, .resolve = r.resolve } else null;
+            const parsed = try generated.parse(options.allocator, stream.text[stream.offset()..], resolver) orelse return null;
+            while (!stream.atEnd()) _ = stream.next();
+            return .{ .content = parsed };
+        },
         .font_family => return fontFamilyValue(options, stream),
         .font_size => {
             if (takeKeyword(stream, &.{ .xx_small, .x_small, .small, .medium, .large, .x_large, .xx_large, .xxx_large, .larger, .smaller })) |k| return Value.kw(k);
@@ -1545,6 +1557,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .display => |d| try d.serialize(out, allocator),
         .text_transform => |t| try t.serialize(out, allocator),
         .color_scheme => |c| try out.appendSlice(allocator, c.text.bytes),
+        .content => |c| try out.appendSlice(allocator, c.serialization),
         .text => |t| try out.appendSlice(allocator, t.bytes),
     }
 }

@@ -154,6 +154,8 @@ pub const DocumentTimeline = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator

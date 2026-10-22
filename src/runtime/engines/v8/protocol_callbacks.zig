@@ -17,13 +17,13 @@
 //! answers it for a callback with no script frame of its own (a built-in
 //! function); a script function is its own incumbent, as HTML says.
 //!
-//! The conversion of the completion's value to the callback's return type is
-//! the caller's, and so is step 7 onwards of "invoke" for a promise return
-//! type (a promise rejected with the thrown value): both need the type, which
-//! only the caller knows.
+//! The caller supplies the declared return type when it is not `any`.
+//! Its conversion runs before either callback scope ends (step 13), as in
+//! Blink's CallbackInvokeHelper. Promise return types are not supported here.
 
 const std = @import("std");
 const engine = @import("engine");
+const runtime = @import("runtime");
 
 const ffi = @import("ffi.zig");
 const js_scope = @import("js_scope.zig");
@@ -80,9 +80,39 @@ const CallbackRealm = struct {
     /// html/semantics/scripting-1/the-script-element/execution-timing/083.html
     /// passes in Chrome 155, Firefox 157 and Safari 27. A worker's realm, or
     /// a realm the context manager does not host, is always runnable here.
+    ///
+    /// Nor when the Window's associated Document has been destroyed but its
+    /// realm is not detached yet: "destroy a child navigable" destroys the
+    /// frame's document at once (step 5) and ends its realm at a task of
+    /// its own (dom.navigables.queueRemovedFrameRealmEnd), and in between a
+    /// callback of the frame - a NodeFilter its script made for a parent
+    /// document's iterator - must not run. Blink's IsCallbackFunctionRunnable
+    /// refuses it the same way: the frame's ExecutionContext is destroyed
+    /// (IsContextDestroyed) as the frame detaches. HTML "prepare to run
+    /// script" with a Window whose Document is not fully active; WebIDL "call
+    /// a user object's operation" step 7. dom/traversal/TreeWalker-acceptNode-
+    /// filter-cross-realm-null-browsing-context.html: Chrome 155 and Firefox
+    /// 158 pass, Safari 27 fails. Only a document that can never be fully
+    /// active again (dom.document_activity `.gone`) is refused: a page the
+    /// back/forward cache keeps (`.inactive`) is the cached-realm lesson's,
+    /// for its phase C.
     fn runnable(self: CallbackRealm) bool {
         const realm = self.realm orelse return true;
-        return !protocol_realms.isDetached(realm);
+        if (protocol_realms.isDetached(realm)) return false;
+        // Only a frame's realm stays attached after its document is
+        // destroyed (its end is a task of its own); a top-level page's realm
+        // ends or detaches with its document. (The activity check walks the
+        // Browser's navigables: keep it off every top-level callback.)
+        if (!protocol_realms.isAttachedFrame(realm)) return true;
+        // A realm no Browser made (WindowRealmOptions.browser_scope unset:
+        // the engine's own tests) has no document state to consult - its
+        // Window belongs to no navigable. (Not browserScope(), which falls
+        // back to the process's standalone scope.)
+        if (realm.browser_scope == null) return true;
+        const record = realm.getRealm() orelse return true;
+        const global: *engine.Instance = @ptrCast(@alignCast(record.global_object orelse return true));
+        if (global.stateAs(@import("interfaces").Window.State) == null) return true;
+        return @import("dom").document_activity.activity(global, runtime.SlabAllocator.generationOf(global)) != .gone;
     }
 
     /// "Clean up after running script".
@@ -260,6 +290,10 @@ fn incumbentRealm(isolate: *ffi.Isolate) ?Context {
 /// WebIDL "invoke a callback function" (3.12), `realm` being where the
 /// callback is read: a realm of its agent.
 pub fn invokeCallbackFunction(realm: Context, callback: *const engine.CallbackFunction, this_arg: engine.CallbackThis, args: []const JSValue, behavior: engine.ExceptionBehavior) Error!Completion {
+    return invokeCallbackFunctionWithReturnType(realm, callback, this_arg, args, behavior, .any);
+}
+
+pub fn invokeCallbackFunctionWithReturnType(realm: Context, callback: *const engine.CallbackFunction, this_arg: engine.CallbackThis, args: []const JSValue, behavior: engine.ExceptionBehavior, comptime return_type: engine.CallbackReturnType) Error!Completion {
     const entered = try support.enter(realm);
     defer entered.leave();
 
@@ -269,12 +303,13 @@ pub fn invokeCallbackFunction(realm: Context, callback: *const engine.CallbackFu
     // 3. Let F be the JavaScript object corresponding to callable.
     // 4. If IsCallable(F) is false - only possible for a
     //    [LegacyTreatNonObjectAsNull] attribute's value - return undefined
-    //    converted to the return type (the caller's conversion).
-    const function = support.handleOf(callback.function.value) orelse return normal_undefined;
+    //    converted to the return type (undefined becomes null for DOMString?).
+    const no_call: Completion = if (return_type == .any) normal_undefined else .{ .normal = .{ .value = JSValue.jsNull } };
+    const function = support.handleOf(callback.function.value) orelse return no_call;
     // A callback of a realm the collector took (weak since the realm's
     // detach, protocol_realms) is empty: nothing to call.
-    if (ffi.v8_Global_IsEmpty(function)) return normal_undefined;
-    if (!ffi.v8_Value_IsFunction(function)) return normal_undefined;
+    if (ffi.v8_Global_IsEmpty(function)) return no_call;
+    if (!ffi.v8_Value_IsFunction(function)) return no_call;
 
     // 5. Let realm be F's associated realm.
     // 6. Let relevant settings be realm's settings object.
@@ -311,9 +346,13 @@ pub fn invokeCallbackFunction(realm: Context, callback: *const engine.CallbackFu
             // 11. Let callResult be Completion(Call(F, thisArg, jsArgs)).
             // 12. If callResult is an abrupt completion, set completion to
             //     callResult.
-            // 13. Set completion to callResult.[[Value]] (its conversion to
-            //     the return type is the caller's).
-            self.result = callRaw(self.context, self.function, self.receiver, self.js_args.slice());
+            const raw = callRaw(self.context, self.function, self.receiver, self.js_args.slice()) catch |err| {
+                self.result = err;
+                return;
+            };
+            // 13. Convert to the callback's IDL return type while relevant
+            // settings and stored settings are both still prepared.
+            self.result = convertReturn(self.isolate, self.context, raw, return_type);
         }
     } = .{ .isolate = entered.isolate, .context = callback_realm.context, .function = function, .receiver = receiver.value, .args = args, .js_args = &js_args };
     // 9. Prepare to run a callback with stored settings; 14.1. clean up after
@@ -325,6 +364,28 @@ pub fn invokeCallbackFunction(realm: Context, callback: *const engine.CallbackFu
     in_callback_realm = false;
     // 14.3-14.6. The IDL value, or the abrupt completion as `behavior` has it.
     return finish(try body.result, entered.context(), callback_realm.realm, behavior);
+}
+
+/// Takes the call's owned completion. Every conversion path releases the old
+/// normal value once; an abrupt call is handed on unchanged.
+fn convertReturn(isolate: *ffi.Isolate, context: *ffi.Context, raw: Raw, comptime return_type: engine.CallbackReturnType) Error!Raw {
+    if (return_type == .any) return raw;
+    const value = switch (raw) {
+        .thrown => return raw,
+        .normal => |v| v,
+    };
+    defer ffi.v8_Global_Dispose(value);
+    // WebIDL nullable conversion step 1: null and undefined become null.
+    if (ffi.v8_Value_IsNull(value) or ffi.v8_Value_IsUndefined(value)) {
+        return .{ .normal = ffi.v8_Null(isolate) orelse return error.OperationFailed };
+    }
+    var threw = false;
+    var site: ?*ffi.V8ErrorInfo = null;
+    const converted = ffi.v8_Value_ToStringCatchingWithSite(context, value, &threw, &site) orelse {
+        ffi.v8_FreeErrorInfo(site);
+        return error.OperationFailed;
+    };
+    return if (threw) .{ .thrown = .{ .value = converted, .site = site } } else .{ .normal = converted };
 }
 
 /// WebIDL "construct a callback function" (3.12), `realm` as for

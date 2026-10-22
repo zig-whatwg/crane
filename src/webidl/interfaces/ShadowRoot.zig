@@ -430,6 +430,9 @@ pub const ShadowRoot = struct {
         .{ "set_innerHTML", 0b1 },
     };
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onslotchange"};
+
     /// HTML [CEReactions]: the functions that run a custom element reactions
     /// bracket - the binding dispatches each in a catch scope, where
     /// engine.withPendingExceptionSetAside sets aside what the member leaves

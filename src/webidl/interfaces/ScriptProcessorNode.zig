@@ -202,4 +202,7 @@ pub const ScriptProcessorNode = struct {
     pub fn get_bufferSize(instance: *runtime.Instance) anyerror!i32 {
         return try ScriptProcessorNodeImpl.get_bufferSize(instance);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onaudioprocess"};
 };

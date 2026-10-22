@@ -93,12 +93,20 @@ pub const Mode = enum {
 /// Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html#speculation-rule-eagerness
 pub const SpeculationEagerness = @import("dom").document_scripts.SpeculationEagerness;
 
+/// Independently lazy interaction state behind one Document-owned pointer.
+/// A second inline pointer would cross Document's 2048-byte allocation class.
+const InteractionState = struct {
+    top_layer: ?*@import("dom").top_layer.State = null,
+    autofocus: ?*@import("dom").document_autofocus.State = null,
+};
+
 /// Internal state for Document implementation
 /// Spec: https://dom.spec.whatwg.org/#concept-document
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
-    /// Allocated only by an open popover/picker. The document owns all holds.
-    top_layer: ?*@import("dom").top_layer.State = null,
+    /// Allocated only by top-layer use, autofocus insertion or dialog
+    /// completion. The document owns both states and all their holds.
+    interaction_state: ?*InteractionState = null,
 
     /// Cached DOMImplementation instance ([SameObject])
     implementation: ?*runtime.Instance,
@@ -228,6 +236,13 @@ pub const InternalState = struct {
     /// continuing the old document's normal loading steps. A new parser epoch
     /// enables delivery continuations again.
     script_delivery_continuation_suppressed: bool = false,
+    /// The editing subsystem's editor state for this document (its undo
+    /// history and command configuration), made with `allocator` on the
+    /// first editing command and freed with the document
+    /// (dom.editor_states). Opaque here: Document never names the editing
+    /// code. It used to live in a process-global map keyed by the document's
+    /// address that nothing ever emptied (lane leaks6).
+    editor_state: ?*anyopaque = null,
     /// HTML "delay the load event": how many delays are held on this
     /// document's load event (dom.document_lifecycle.delayLoadEvent) - an
     /// object element's fetch, say. Blink's load_event_delay_count_.
@@ -563,13 +578,18 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
+        const interaction = self.interaction_state;
+        self.interaction_state = null;
+        if (interaction) |shared| if (shared.autofocus) |state| state.destroy(self.allocator);
         // domindex1: the maps go first, and keep nothing after: a node the
         // rest of this teardown releases is in no reader's answer.
         self.tree_index.deinit();
-        if (self.top_layer) |layer| {
-            self.top_layer = null;
-            layer.releaseAfterRealmEnded();
-            self.allocator.destroy(layer);
+        if (interaction) |shared| {
+            if (shared.top_layer) |layer| {
+                layer.releaseAfterRealmEnded();
+                self.allocator.destroy(layer);
+            }
+            self.allocator.destroy(shared);
         }
         self.script_delivery_continuation_suppressed = true;
         // Borrowed membership ends before parsers/module owners release nodes.
@@ -722,9 +742,27 @@ pub const InternalState = struct {
         if (self.style_sheets) |ss| self.style_sheets_kept.release(ss, interfaces.StyleSheetList.deinit);
     }
 
+    fn ensureInteractionState(self: *InternalState) !*InteractionState {
+        if (self.interaction_state) |shared| return shared;
+        const shared = try self.allocator.create(InteractionState);
+        shared.* = .{};
+        self.interaction_state = shared;
+        return shared;
+    }
+
+    /// Roll back a newly allocated container when its first child allocation
+    /// fails. An existing sibling's state is never discarded by this path.
+    fn discardEmptyInteractionState(self: *InternalState, shared: *InteractionState) void {
+        std.debug.assert(self.interaction_state == shared);
+        std.debug.assert(shared.top_layer == null and shared.autofocus == null);
+        self.interaction_state = null;
+        self.allocator.destroy(shared);
+    }
+
     fn clearTopLayer(self: *InternalState) void {
-        const layer = self.top_layer orelse return;
-        self.top_layer = null;
+        const shared = self.interaction_state orelse return;
+        const layer = shared.top_layer orelse return;
+        shared.top_layer = null;
         layer.deinit();
         self.allocator.destroy(layer);
     }
@@ -732,12 +770,27 @@ pub const InternalState = struct {
 
 fn topLayerState(instance: *runtime.Instance, create: bool) !?*@import("dom").top_layer.State {
     const internal = getInternal(instance) orelse return null;
-    if (internal.top_layer) |layer| return layer;
+    if (internal.interaction_state) |shared| if (shared.top_layer) |layer| return layer;
     if (!create) return null;
+    const existed = internal.interaction_state != null;
+    const shared = try internal.ensureInteractionState();
+    errdefer if (!existed) internal.discardEmptyInteractionState(shared);
     const layer = try internal.allocator.create(@import("dom").top_layer.State);
     layer.* = @import("dom").top_layer.State.init(internal.allocator, instance);
-    internal.top_layer = layer;
+    shared.top_layer = layer;
     return layer;
+}
+
+fn autofocusState(document: *runtime.Instance, create: bool) ?*@import("dom").document_autofocus.State {
+    const internal = getInternal(document) orelse return null;
+    if (internal.interaction_state) |shared| if (shared.autofocus) |state| return state;
+    if (!create) return null;
+    const existed = internal.interaction_state != null;
+    const shared = internal.ensureInteractionState() catch return null;
+    return @import("dom").document_autofocus.State.ensure(&shared.autofocus, internal.allocator) catch {
+        if (!existed) internal.discardEmptyInteractionState(shared);
+        return null;
+    };
 }
 
 /// dom.style's `engine_of`: this document's style engine.
@@ -821,6 +874,9 @@ fn policyContainerOf(document: *runtime.Instance) ?*fetch.internal.PolicyContain
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     @import("dom").top_layer.install(.{ .get = &topLayerState });
+    // The editing commands' per-document state is freed with the document
+    // (dom.editor_states): the editing subsystem installs its step.
+    editing.executor.installHooks();
     // Its states left at its Browser's end (Browser.deinit).
     @import("dom").teardown_sweeps.install(.documents, &sweepRemaining);
     // The style engine this document keeps, and the media environment its
@@ -835,6 +891,7 @@ pub fn installHooks() void {
         .ensure_global_registry = &ensureGlobalRegistry,
     });
     @import("dom").document_lifecycle.install(.{
+        .autofocus = &autofocusState,
         .rendering = .{
             .of = &renderBlockingElements,
             .allows_adding = &allowsAddingRenderBlockers,
@@ -1230,6 +1287,7 @@ pub fn getBoundV8Wrapper(instance: *runtime.Instance) ?*anyopaque {
 
 /// Document's own teardown: the generated chain runs Node's after it.
 pub fn deinitOwn(instance: *runtime.Instance) void {
+    if (autofocusState(instance, false)) |state| state.clear();
     if (getInternal(instance)) |internal| internal.clearTopLayer();
     if (getInternal(instance)) |internal| internal.script_delivery_continuation_suppressed = true;
     @import("html").script_execution.discardDocumentScripts(instance);
@@ -1252,6 +1310,10 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
         }
         releaseNativeGlobalRegistry(internal);
         internal.custom_element_registry.release(instance);
+        if (internal.editor_state) |editor_state| {
+            internal.editor_state = null;
+            @import("dom").editor_states.free(editor_state, internal.allocator);
+        }
         internal.deinit();
     }
     Registry.remove(instance);
@@ -3856,16 +3918,16 @@ pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: ?runtime.D
 }
 
 /// Operation: hasFocus
-/// HTML §6.4.4 - Returns true if document has focus
+/// HTML §6.6.6 - Whether this document is in the focused document chain.
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-hasfocus
-///
-/// In a typical browser context, this checks if the document's browsing context
-/// is focused. Since we're not in a browser, we return true as a sensible default.
 pub fn call_hasFocus(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    // In non-browser environment, default to true (document is considered focused)
-    // TODO: Integrate with browsing context/window focus state when available
-    return true;
+    // Has-focus steps 1-2 start from the node navigable's active document.
+    // A windowless, destroyed or inactive document cannot be on that chain.
+    if (!isFullyActive(instance)) return false;
+    // The method's step is to run the existing has-focus steps. Their
+    // system-focus policy and descent through child navigables are shared
+    // with the focusing implementation.
+    return @import("html").focus.hasFocus(instance);
 }
 
 /// Operation: exitFullscreen
@@ -4807,6 +4869,16 @@ fn unloadSteps(data: ?*anyopaque) void {
     const document: *runtime.Instance = @ptrCast(@alignCast(data.?));
     const internal = getInternal(document) orelse return;
     const window = (get_defaultView(document) catch null) orelse return;
+
+    // Before step 7: a dismissal handler can remove this document's frame
+    // (including through document.open on its parent), reentering unload.
+    // The original invocation still owns the event dispatch and cleanup.
+    // WebKit FrameLoader::dispatchUnloadEvents likewise returns while a
+    // dismissal event is being dispatched (FrameLoader.cpp); the existing
+    // unload counter covers beforeunload, pagehide, visibilitychange and
+    // unload without adding a second state flag.
+    // https://github.com/WebKit/WebKit/blob/main/Source/WebCore/loader/FrameLoader.cpp
+    if (internal.unload_counter > 0) return;
 
     // Step 7: "Increase eventLoop's termination nesting level by 1"; step 14
     // lowers it after the unload event.

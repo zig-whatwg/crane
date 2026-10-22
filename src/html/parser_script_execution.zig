@@ -293,6 +293,24 @@ pub fn resumeAfterBlockingScript(ctx: *ParserScriptContext) void {
 /// could not make.
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/parsing.html#create-an-element-for-the-token
+/// Record where an HTML script element the parser just created starts in
+/// `document`: the parser's position after its start tag (Blink's
+/// HTMLTreeBuilder script start position). Read when the parser prepares
+/// it, for its errors' lines and its CSP violation's location.
+pub fn recordStartPosition(element: *runtime.Instance, document: *runtime.Instance) void {
+    const state = @import("script_element.zig").of(element) orelse return;
+    state.start = @import("script_element.zig").parserPosition(document);
+}
+
+/// Where a `<style>` the parser just created starts in `document` - the
+/// parser's position after its start tag - for its CSP violation; null for
+/// a link, or when no parser position is known.
+pub fn styleStart(local_name: []const u8, document: *runtime.Instance) ?dom.style_sheet_owners.Position {
+    if (!std.mem.eql(u8, local_name, "style")) return null;
+    const at = @import("script_element.zig").parserPosition(document) orelse return null;
+    return .{ .line = at.line, .column = at.column };
+}
+
 pub fn appendParsedAttribute(element: *runtime.Instance, attr: html_core.parser.TreeNode.Attribute) void {
     dom.element_attributes.append(element, .{
         .namespace = if (attr.namespace) |ns| ns.uri() else null,
@@ -987,7 +1005,12 @@ pub const DomTreeAdapter = struct {
         // A script element - HTML's, or an SVG script, whose insertion and
         // children-changed steps wait for its end tag too - is
         // parser-inserted.
-        if (std.mem.eql(u8, local_name, "script")) dom.script_elements.markParserInserted(element, self.document);
+        if (std.mem.eql(u8, local_name, "script")) {
+            dom.script_elements.markParserInserted(element, self.document);
+            // Where its text starts: the parser's position after its start
+            // tag, for its errors and a CSP violation to report.
+            recordStartPosition(element, self.document);
+        }
         // An element type that acts when the parser pops its elements
         // (dom.finish_parsing_children) hears that this one is on the stack
         // of open elements - before its attributes are appended, so their
@@ -1000,7 +1023,7 @@ pub const DomTreeAdapter = struct {
 
         // HTML 4.2.7 records the token's stylesheet relationship and enabled
         // state at creation, before its post-connection steps start a fetch.
-        if (is_html and (std.mem.eql(u8, local_name, "style") or std.mem.eql(u8, local_name, "link"))) dom.style_sheet_owners.createdByParser(element);
+        if (is_html and (std.mem.eql(u8, local_name, "style") or std.mem.eql(u8, local_name, "link"))) dom.style_sheet_owners.createdByParser(element, styleStart(local_name, self.document));
 
         // Step 15: the tree builder found its parser conditions held; the
         // intended parent must share the form's tree, and a form-associated
@@ -1086,10 +1109,9 @@ pub fn createHTMLElement(
 /// Create an element the parser met in foreign content - in the SVG or MathML
 /// namespace - with the interface its local name and namespace call for.
 ///
-/// Deviation, stated: of the SVG element interfaces only SVGScriptElement is
-/// made (its `type`, and the script element state it keeps); every other
-/// foreign element is a plain Element (TODO: the rest of SVG's interfaces,
-/// SVGElement for the unknown ones, and MathMLElement).
+/// MathML Core 2.2.3 and 3.2.5 select MathMLElement and MathMLAnchorElement.
+/// Deviation, stated: SVG interfaces other than script and a still use
+/// plain Element (TODO: the rest of SVG and SVGElement for unknown ones).
 pub fn createForeignElement(
     allocator: Allocator,
     ctx: runtime.Context,
@@ -1104,6 +1126,12 @@ pub fn createForeignElement(
     // are still plain Elements (stated: their impls do not chain yet).
     if (namespace == .svg and std.mem.eql(u8, local_name, "a")) {
         return interfaces.SVGAElement.init(allocator, ctx);
+    }
+    if (namespace == .mathml) {
+        return if (std.mem.eql(u8, local_name, "a"))
+            interfaces.MathMLAnchorElement.init(allocator, ctx)
+        else
+            interfaces.MathMLElement.init(allocator, ctx);
     }
     return interfaces.Element.init(allocator, ctx);
 }

@@ -2734,13 +2734,14 @@ fn expectErrorMentions(r: runtime.Context, value: runtime.JSValue, needle: []con
 
 test "protocol: a module graph is parsed, its requests read, linked and evaluated" {
     const base = try realm();
-    const dep = try parsed(try protocol.parseModule(base, "export const answer = 42;", "https://example.test/dep.js", null));
+    const dep = try parsed(try protocol.parseModule(base, "export const answer = 42;", .{}, "https://example.test/dep.js", null));
     defer protocol.releaseModuleRecord(dep);
     const json = try parsed(try protocol.parseJSONModule(base, "{\"n\": 1}", "https://example.test/d.json", null));
     defer protocol.releaseModuleRecord(json);
     const main = try parsed(try protocol.parseModule(
         base,
         "import { answer } from './dep.js';\nimport data from './d.json' with { type: 'json' };\nglobalThis.fromModule = answer + data.n;",
+        .{},
         "https://example.test/main.js",
         null,
     ));
@@ -2783,6 +2784,7 @@ test "protocol: a module graph is parsed, its requests read, linked and evaluate
     const importer = try parsed(try protocol.parseModule(
         base,
         "import sheet from './s.css' with { type: 'css' };\nglobalThis.fromSynthetic = sheet.rules;",
+        .{},
         "https://example.test/importer.js",
         null,
     ));
@@ -2801,26 +2803,26 @@ test "protocol: what a module graph gets wrong comes back as its parse, link or 
     const base = try realm();
 
     // A SyntaxError is the parse error, not a throw.
-    const broken = try protocol.parseModule(base, "export let = ;", "https://example.test/broken.js", null);
+    const broken = try protocol.parseModule(base, "export let = ;", .{}, "https://example.test/broken.js", null);
     try std.testing.expect(broken == .parse_error);
     try expectErrorMentions(base, broken.parse_error.value, "SyntaxError");
     broken.parse_error.release();
 
     // An import attribute other than "type" is a SyntaxError of the script.
-    const attribute = try protocol.parseModule(base, "import x from './a.js' with { kind: 'x' };", "https://example.test/attr.js", null);
+    const attribute = try protocol.parseModule(base, "import x from './a.js' with { kind: 'x' };", .{}, "https://example.test/attr.js", null);
     try std.testing.expect(attribute == .parse_error);
     try expectErrorMentions(base, attribute.parse_error.value, "Import attribute");
     attribute.parse_error.release();
 
     // A request the host cannot resolve fails the Link with a TypeError.
-    const missing = try parsed(try protocol.parseModule(base, "import './missing.js';", "https://example.test/missing-importer.js", null));
+    const missing = try parsed(try protocol.parseModule(base, "import './missing.js';", .{}, "https://example.test/missing-importer.js", null));
     defer protocol.releaseModuleRecord(missing);
     const link_error = (try protocol.linkModule(base, missing, Graph.none, null)) orelse return error.Linked;
     defer link_error.release();
     try expectErrorMentions(base, link_error.value, "missing.js");
 
     // A module that throws: Evaluate()'s promise is rejected with it.
-    const thrower = try parsed(try protocol.parseModule(base, "throw new RangeError('at top level');", "https://example.test/throws.js", null));
+    const thrower = try parsed(try protocol.parseModule(base, "throw new RangeError('at top level');", .{}, "https://example.test/throws.js", null));
     defer protocol.releaseModuleRecord(thrower);
     try std.testing.expect(try protocol.linkModule(base, thrower, Graph.none, null) == null);
     var scope = try protocol.prepareToRunScript(base);
@@ -2831,7 +2833,7 @@ test "protocol: what a module graph gets wrong comes back as its parse, link or 
     thrown.rejected.release();
 
     // Top-level await: pending on a promise until the checkpoint of clean up.
-    const awaiting = try parsed(try protocol.parseModule(base, "await 0; globalThis.afterAwait = 1;", "https://example.test/tla.js", null));
+    const awaiting = try parsed(try protocol.parseModule(base, "await 0; globalThis.afterAwait = 1;", .{}, "https://example.test/tla.js", null));
     defer protocol.releaseModuleRecord(awaiting);
     try std.testing.expect(try protocol.linkModule(base, awaiting, Graph.none, null) == null);
     scope = try protocol.prepareToRunScript(base);
@@ -2910,7 +2912,7 @@ test "protocol: import() reaches the agent's host with its referrer, and finishe
 
     // The host loads the module, and the engine links, evaluates and settles.
     var module_script: TestModuleScript = .{ .url = "https://example.test/m.js" };
-    const m = try parsed(try protocol.parseModule(r, "export const value = 7; globalThis.metaUrl = import.meta.url; import('./n.js');", module_script.url, &module_script));
+    const m = try parsed(try protocol.parseModule(r, "export const value = 7; globalThis.metaUrl = import.meta.url; import('./n.js');", .{}, module_script.url, &module_script));
     defer protocol.releaseModuleRecord(m);
     protocol.finishDynamicImport(try host.takeRequest(), .{ .module = m });
     try protocol.performMicrotaskCheckpoint(r.agent.?);
@@ -2989,7 +2991,7 @@ test "protocol: import.meta.resolve is a builtin that asks the host with the mod
     // A module whose import.meta the engine initializes on first use; its
     // resolve is kept on the global, to be called from a classic script.
     var module_script: TestModuleScript = .{ .url = "https://example.test/m.js" };
-    const m = try parsed(try protocol.parseModule(r, "globalThis.resolve = import.meta.resolve; globalThis.meta = import.meta;", module_script.url, &module_script));
+    const m = try parsed(try protocol.parseModule(r, "globalThis.resolve = import.meta.resolve; globalThis.meta = import.meta;", .{}, module_script.url, &module_script));
     defer protocol.releaseModuleRecord(m);
     try std.testing.expect(try protocol.linkModule(r, m, Graph.none, null) == null);
     const scope = try protocol.prepareToRunScript(r);

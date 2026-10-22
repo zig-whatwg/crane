@@ -204,4 +204,7 @@ pub const AudioSession = struct {
         if (comptime @hasDecl(AudioSessionImpl, "set_onstatechange")) return try AudioSessionImpl.set_onstatechange(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onstatechange", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onstatechange"};
 };

@@ -252,4 +252,7 @@ pub const Screen = struct {
         if (comptime @hasDecl(ScreenImpl, "set_onchange")) return try ScreenImpl.set_onchange(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onchange", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onchange"};
 };

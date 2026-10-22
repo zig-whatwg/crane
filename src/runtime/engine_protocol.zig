@@ -264,12 +264,33 @@ pub const CallbackInterface = struct {
     }
 };
 
+/// Where a script's source text starts in the resource it came from - an
+/// inline script's text in its document: the 1-based line and column of its
+/// first character, as the HTML parser counts them (the position after the
+/// element's start tag - Blink's and WebKit's TextPosition, which their
+/// ScriptSourceCode keeps beside the text). Positions the engine reports in
+/// the script - what it throws, `runningScriptLocation` inside it - count
+/// from here: every line is offset by `line - 1`, and the first line's
+/// columns by `column - 1`. The default is a resource of its own. V8:
+/// ScriptOrigin's resource_line_offset and resource_column_offset.
+/// JavaScriptCore: JSEvaluateScript's startingLineNumber - a line, no column,
+/// so the first line's columns are the script's own. QuickJS: JS_Eval takes
+/// no offset, and the script runs at a resource of its own.
+pub const SourcePosition = struct {
+    line: u32 = 1,
+    column: u32 = 1,
+};
+
 /// A classic script's source: UTF-8 text, or a string value whose every code
-/// unit is kept (a timer's string handler).
+/// unit is kept (a timer's string handler), or UTF-8 text that starts inside
+/// a larger resource.
 pub const ScriptSource = union(enum) {
     utf8: []const u8,
     /// BORROWED.
     string: JSValue,
+    /// An inline script's text (`utf8`), which starts at `start` in its
+    /// document: what it reports, it reports in the document's lines.
+    embedded: struct { utf8: []const u8, start: SourcePosition },
 };
 
 /// HTML "getting the current value of the event handler", step 3: an event
@@ -279,10 +300,17 @@ pub const EventHandlerSource = struct {
     body: []const u8,
     /// The handler's name ("onclick"): the function's name.
     name: []const u8,
-    /// The document's URL: the script's URL.
+    /// The document's URL: the script's URL - the resource name the
+    /// function is compiled with, so what it throws and a violation inside it
+    /// report it. The function still has no [[ScriptOrModule]]: an import()
+    /// in it names no referrer.
     url: []const u8,
-    /// Where the attribute is, for errors (1-based; 0 when unknown).
+    /// Where the body is ("the location where the script body originated"),
+    /// 1-based; 0 when unknown. The function is compiled at this position,
+    /// as `SourcePosition` says: the body's first line is `lineno`, and its
+    /// first line's columns are offset by `colno - 1`.
     lineno: u32,
+    colno: u32 = 0,
     /// The function's parameter list (step 3.6).
     parameters: enum {
         /// `event` - every handler but the two below.
@@ -319,6 +347,13 @@ pub const PromiseCapability = struct {
 /// For each `reactToPromise` that succeeded, exactly ONE of `fulfilled`,
 /// `rejected` and `dropped` runs, once - so the host frees its `data` at the
 /// end of its steps and in `dropped`, and nowhere else.
+///
+/// `fulfilled` and `rejected` run as HTML's HostEnqueuePromiseJob runs a
+/// promise job: between "prepare to run script" and "clean up after running
+/// script" with the realm the reaction was made in, so the JavaScript
+/// execution context stack is not empty while they run and nothing they
+/// call performs a microtask checkpoint of its own (an error listener's
+/// clean up, say) - the checkpoint running them goes on afterwards.
 pub const PromiseReactionSteps = struct {
     fulfilled: ?*const fn (data: ?*anyopaque, value: JSValue) void = null,
     rejected: ?*const fn (data: ?*anyopaque, reason: JSValue) void = null,
@@ -426,6 +461,7 @@ pub const StringConversion = runtime.StringConversion;
 pub const StringRecordEntry = runtime.StringRecordEntry;
 pub const DictionaryMember = runtime.DictionaryMember;
 pub const SerializedWithTransfer = runtime.SerializedWithTransfer;
+pub const SharedMemory = runtime.SharedMemory;
 /// HTML 2.7.1 serializable objects: the engine-neutral records a
 /// [Serializable] interface's serialization steps fill and its
 /// deserialization steps read, and the pair of steps a generated interface
@@ -460,6 +496,10 @@ pub const MemoryPressure = enum {
 
 /// HTML "obtain an agent".
 pub const AgentOptions = struct {
+    /// Optional host wake target, BORROWED here; an adapter that uses it takes
+    /// one thread-safe reference until the agent begins teardown. Posts only
+    /// wake the loop; the agent thread executes work via runEngineTasks.
+    engine_task_sink: ?*runtime.TaskSink = null,
     /// [[CanBlock]] - honoured where `can_block_control`.
     can_block: bool,
     /// Create the agent's realms from the engine's snapshot - honoured where
@@ -488,6 +528,9 @@ pub const AgentOptions = struct {
 /// The host's side of the ECMAScript host hooks, installed per agent. A hook
 /// whose capability the engine lacks is never called.
 pub const HostHooks = struct {
+    /// HTML's cross-origin isolated capability of the relevant settings.
+    /// Absent means false: shared memory cannot be serialized or received.
+    crossOriginIsolatedCapability: ?*const fn (host: ?*anyopaque, realm: Context) bool = null,
     /// HostLoadImportedModule for `import()` [module_scripts]: the host owns
     /// `request` until `finishDynamicImport`.
     loadImportedModule: ?*const fn (host: ?*anyopaque, realm: Context, referrer: ImportReferrer, specifier: []const u8, type_attribute: ?[]const u8, request: *ImportRequest) void = null,
@@ -936,6 +979,14 @@ pub inline fn runEngineTasks(agent: *Agent) bool {
     return impl.runEngineTasks(agent);
 }
 
+/// Delay in nanoseconds until the next queued engine task is due; zero if due,
+/// null when no task is queued. Call on the agent thread. A task posted from
+/// another thread wakes AgentOptions.engine_task_sink so the host recomputes
+/// its wait bound. This does not create an artificial polling deadline.
+pub inline fn nextEngineTaskDelay(agent: *Agent) ?u64 {
+    return impl.nextEngineTaskDelay(agent);
+}
+
 /// Collect `agent`'s garbage now, as completely as the engine can - for
 /// TestUtils.gc() only (never in a shipping configuration). The teardowns the
 /// collection queued (AgentOptions.deferred_teardown) run before it returns.
@@ -1111,6 +1162,21 @@ pub inline fn runClassicScript(realm: Context, source: ScriptSource, url: []cons
     return impl.runClassicScript(realm, source, url, host_defined, reporter);
 }
 
+/// The classic script's host record and muted-errors flag (HTML 8.1.4.1).
+/// The record is borrowed as for runClassicScript; the flag is copied into
+/// the script and applies to later calls into its functions too.
+pub const ClassicScriptOptions = struct {
+    host_defined: ?*anyopaque = null,
+    muted_errors: bool = false,
+};
+
+/// HTML "run a classic script", preserving the script's muted-errors flag
+/// for HostPromiseRejectionTracker. The reporter handles runtime errors as
+/// for runClassicScript; the existing convenience operation defaults false.
+pub inline fn runClassicScriptWithOptions(realm: Context, source: ScriptSource, url: []const u8, options: ClassicScriptOptions, reporter: Reporter) Error!void {
+    return impl.runClassicScriptWithOptions(realm, source, url, options, reporter);
+}
+
 /// HTML "run a classic script" with rethrow errors true - what
 /// importScripts() runs each script with ("import scripts into worker global
 /// scope" step 6.2), from inside a call from script. Nothing is reported;
@@ -1209,11 +1275,13 @@ pub inline fn runningScriptLocation(agent: *Agent, allocator: std.mem.Allocator)
     return impl.runningScriptLocation(agent, allocator);
 }
 
-/// ECMAScript ParseModule. `host_defined` is the host's, handed back to its
-/// hooks.
-pub inline fn parseModule(realm: Context, source: []const u8, url: []const u8, host_defined: ?*anyopaque) Error!ParseResult {
+/// ECMAScript ParseModule. `start` is where `source` starts in its resource
+/// (an inline module script's text in its document; `.{}` for a module of
+/// its own), as `SourcePosition` says. `host_defined` is the host's, handed
+/// back to its hooks.
+pub inline fn parseModule(realm: Context, source: []const u8, start: SourcePosition, url: []const u8, host_defined: ?*anyopaque) Error!ParseResult {
     comptime gate(.module_scripts, "parseModule");
-    return impl.parseModule(realm, source, url, host_defined);
+    return impl.parseModule(realm, source, start, url, host_defined);
 }
 
 /// HTML "create a JSON module script": ParseJSONModule.
@@ -1282,6 +1350,16 @@ pub inline fn releaseModuleRecord(record: *ModuleRecord) void {
 /// Gecko (CallbackObject::CallSetup) refuse every such callback.
 pub inline fn invokeCallbackFunction(realm: Context, callback: *const CallbackFunction, this_arg: CallbackThis, args: []const JSValue, behavior: ExceptionBehavior) Error!Completion {
     return impl.invokeCallbackFunction(realm, callback, this_arg, args, behavior);
+}
+
+/// The WebIDL callback's declared return type. Conversion is part of invoke,
+/// before either the stored incumbent or the callback's relevant realm leaves.
+pub const CallbackReturnType = enum { any, nullable_dom_string };
+
+/// WebIDL invoke step 13, including return conversion. A conversion throw
+/// follows `behavior` with the original throw site's error information.
+pub inline fn invokeCallbackFunctionWithReturnType(realm: Context, callback: *const CallbackFunction, this_arg: CallbackThis, args: []const JSValue, behavior: ExceptionBehavior, return_type: CallbackReturnType) Error!Completion {
+    return impl.invokeCallbackFunctionWithReturnType(realm, callback, this_arg, args, behavior, return_type);
 }
 
 /// WebIDL "construct a callback function" (3.12): Construct(F, args) for a
@@ -1719,6 +1797,14 @@ pub inline fn createDictionaryObject(realm: Context, members: []const Dictionary
     return impl.createDictionaryObject(realm, members);
 }
 
+/// HTML Location object with its exotic internal methods [cross_origin_objects].
+/// ordinary_target is BORROWED; the returned identity is OWNED and used from
+/// the object's creation onward. Access decisions are made at each operation.
+pub inline fn createLocationObject(realm: Context, ordinary_target: JSValue) Error!Owned {
+    comptime gate(.cross_origin_objects, "createLocationObject");
+    return impl.createLocationObject(realm, ordinary_target);
+}
+
 /// What an observable array's indexed values are - its `T` (WebIDL
 /// ObservableArray<T>): the conversion each value goes through before the
 /// owner's set-an-indexed-value steps see it.
@@ -1964,9 +2050,10 @@ pub inline fn getViewedArrayBuffer(realm: Context, view: JSValue) Error!Owned {
 // the same memory as the rest of the value; it is read back as a new
 // instance of that interface in the target realm, set up by its
 // deserialization steps. Any other platform object throws a
-// "DataCloneError" DOMException. The serialized form holds everything
-// inline - no pointer into any realm, agent or thread - so a worker's
-// message and an IndexedDB record can be read anywhere.
+// "DataCloneError" DOMException. Platform-object records are inline, without
+// pointers into realms, agents or threads. Shared memory travels separately
+// in the owning sidecar and is disallowed for storage; receiving it requires
+// cross-origin isolation and a matching agent cluster.
 
 /// StructuredSerializeForStorage of any value: an inline primitive is
 /// serialized as it is (HTML StructuredSerializeInternal step 4), and so is
@@ -2001,6 +2088,33 @@ pub inline fn structuredSerializeWithTransfer(realm: Context, value: JSValue, tr
 /// `memory`); a reference past `transferred` is a DataCloneError. OWNED.
 pub inline fn structuredDeserializeWithTransfer(realm: Context, serialized: []const u8, array_buffers: []const []const u8, transferred: []const *Instance) Error!Owned {
     return impl.structuredDeserializeWithTransfer(realm, serialized, array_buffers, transferred);
+}
+
+/// StructuredDeserializeWithTransfer's receiving data holders, all BORROWED
+/// for the call. Shared memory is never copied into the serialized byte stream.
+pub const StructuredDeserializeOptions = struct {
+    array_buffers: []const []const u8 = &.{},
+    transferred: []const *Instance = &.{},
+    shared_memory: ?*SharedMemory = null,
+};
+
+/// HTML StructuredDeserialize with shared backing memory. The target must have
+/// cross-origin isolated capability and belong to the source's agent cluster.
+/// OWNED result. JSC/QuickJS return NotSupported until linked.
+pub inline fn structuredDeserializeWithOptions(realm: Context, serialized: []const u8, options: StructuredDeserializeOptions) Error!Owned {
+    return impl.structuredDeserializeWithOptions(realm, serialized, options);
+}
+
+/// Take one more thread-safe owner of serialized shared backing memory.
+/// Unsupported adapters cannot produce one and panic if given one.
+pub inline fn retainSharedMemory(memory: *SharedMemory) void {
+    impl.retainSharedMemory(memory);
+}
+
+/// Release one owner; the last owner frees the backing-store sidecar.
+/// May run after all agents are gone, on any thread.
+pub inline fn releaseSharedMemory(memory: *SharedMemory) void {
+    impl.releaseSharedMemory(memory);
 }
 
 // ============================================================================

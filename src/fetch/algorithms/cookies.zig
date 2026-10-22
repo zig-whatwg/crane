@@ -141,21 +141,17 @@ fn sameSiteMode(allocator: Allocator, request: *const InternalRequest) !cookiest
     if (same_site) return .strict_or_less;
     if (top_level) {
         // RFC 6265bis 5.8.3 step 3: safe top-level navigation permits Lax
-        // and Default. Unsafe navigation uses the Default policy below.
+        // and Default. 5.6.7.2 permits recent Default on unsafe navigation;
+        // all three browsers send it on form-post-blank (Q6).
         const method = request.method;
         if (std.mem.eql(u8, method, "GET") or std.mem.eql(u8, method, "HEAD") or
             std.mem.eql(u8, method, "OPTIONS") or std.mem.eql(u8, method, "TRACE")) return .lax_or_less;
+        return .lax_allowing_unsafe;
     }
-    // Browser deviation (2026-10-12), 2-1: default is None.
-    // Firefox release network.cookie.sameSite.laxByDefault=false:
-    // https://github.com/mozilla-firefox/firefox/blob/release/modules/libpref/init/StaticPrefList.yaml
-    // WebKit coreSameSitePolicy(nil) -> None:
-    // https://github.com/WebKit/WebKit/blob/main/Source/WebCore/platform/network/cocoa/CookieCocoa.mm
-    // Chromium CookieBase::GetEffectiveSameSite -> Lax:
-    // https://github.com/chromium/chromium/blob/main/net/cookies/cookie_base.cc
-    // Keep .unset distinct: only explicit SameSite=None requires Secure.
-    // Third-party privacy blocking is separate, with no policy state here.
-    return .unset_or_less;
+    // Q6 integrator ruling: SameSite conformance sends None cross-site.
+    // Firefox/Safari third-party blocking is a separate Browser privacy
+    // policy, not a different SameSite rule; add no policy state here.
+    return .none;
 }
 
 const RequestUrl = cookiestore.RequestUrl;

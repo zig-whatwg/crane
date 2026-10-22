@@ -11,6 +11,7 @@ const ce = dom.custom_elements;
 pub const Creation = ce.Creation;
 pub const html_namespace = "http://www.w3.org/1999/xhtml";
 const svg_namespace = "http://www.w3.org/2000/svg";
+const mathml_namespace = "http://www.w3.org/1998/Math/MathML";
 
 pub const FlattenedOptions = struct {
     registry: ?*runtime.Instance,
@@ -171,6 +172,7 @@ pub fn createInternal(options: Creation, state: ce.State, interface: Interface) 
     const realm = options.document.ctx;
     const is_html = if (options.namespace) |namespace| std.mem.eql(u8, namespace, html_namespace) else false;
     const is_svg = if (options.namespace) |namespace| std.mem.eql(u8, namespace, svg_namespace) else false;
+    const is_mathml = if (options.namespace) |namespace| std.mem.eql(u8, namespace, mathml_namespace) else false;
     const element = if (interface == .autonomous)
         try interfaces.HTMLElement.init(realm.allocator, realm)
     else if (interface == .unknown)
@@ -181,6 +183,10 @@ pub fn createInternal(options: Creation, state: ce.State, interface: Interface) 
         try interfaces.SVGScriptElement.init(realm.allocator, realm)
     else if (is_svg and std.mem.eql(u8, options.local_name, "a"))
         try interfaces.SVGAElement.init(realm.allocator, realm)
+    else if (is_mathml and std.mem.eql(u8, options.local_name, "a"))
+        try interfaces.MathMLAnchorElement.init(realm.allocator, realm)
+    else if (is_mathml)
+        try interfaces.MathMLElement.init(realm.allocator, realm)
     else
         try interfaces.Element.init(realm.allocator, realm);
     errdefer dom.node_creation.destroyUninserted(element);

@@ -1,0 +1,68 @@
+# Accepted per-file pass losses, scoped to the generation that recorded them.
+# Read by tools/wpt_progress.py. No entries are seeded: every observed loss is
+# UNEXPLAINED until its evidence is reviewed and recorded here. A disposition
+# explains a loss; it never changes passing counts or the blocking-file rule.
+#
+# Format: [worklist/path] followed by key = value lines. Blank lines and lines
+# beginning with # are ignored. A path can occur in several generations; a
+# (path, generation) pair can occur only once. Unknown, duplicate, empty or
+# missing keys are errors. Every entry needs generation (positive integer),
+# kind (one of the three below), and why (the explanation).
+#
+# Flake: three isolated BASE/TIP pairs, each reporting passes/total. State the
+# commands, base/tip revisions and exact failing subtests in why (or link to
+# the retained evidence there). The parser checks the three pair counts;
+# review determines whether the evidence actually proves a flake.
+#
+#   [example/test.html]
+#   generation = 170
+#   kind = flake
+#   why = explanation and the location of the isolated-run evidence
+#   pair.1 = base 3/4; tip 4/4
+#   pair.2 = base 4/4; tip 3/4
+#   pair.3 = base 4/4; tip 4/4
+#
+# User ruling: a valid date and the user's decision, not an agent's inference.
+#
+#   [example/test.html]
+#   generation = 171
+#   kind = user-ruling
+#   why = what changed and why the loss is accepted
+#   date = 2026-10-20
+#   decision = the user's decision and its source
+#
+# Upstream test change: two distinct full WPT commit IDs. They must match the
+# loss's recorded before/after revisions to explain it. Unknown provenance is
+# not evidence of an upstream change.
+#
+#   [example/test.html]
+#   generation = 172
+#   kind = upstream-test-change
+#   why = what upstream removed or changed, with the upstream commit/PR
+#   wpt.before = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+#   wpt.after = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+#
+# Entries:
+
+[navigation-timing/secure-connection-start-non-zero.https.html]
+generation = 171
+kind = flake
+why = Order-dependent, not code: alone it is 0/1 on both main-911f294506 and main-ab7d57819d (3 runs each, 2026-10-19, integrator); it passes only after a particular shard prefix (feature-queue RUNNER CROSS-FILE STATE). Gen 170 -> 171 shard split changed.
+pair.1 = base 0/1; tip 0/1
+pair.2 = base 0/1; tip 0/1
+pair.3 = base 0/1; tip 0/1
+
+[service-workers/service-worker/navigation-timing-extended.https.html]
+generation = 171
+kind = flake
+why = Timing intermittent proven by Codex row 87 (tmp/plans/codex-wsregress-report.md: three isolated pairs all 1/1 on both runners) and row 97 (5/6 on each runner); fetchStart sometimes equals the handler time.
+pair.1 = base 1/1; tip 1/1
+pair.2 = base 1/1; tip 1/1
+pair.3 = base 1/1; tip 1/1
+
+[websockets/cookies/cross-origin-cookie-set.html]
+generation = 171
+kind = user-ruling
+why = The WebSocket handshake is cross-SITE ({{hosts[alt][www]}}); its Set-Cookie has no SameSite attribute, which is Lax again under the restored Lax-by-default (revert d26c5f1ec8f + 387ac80b403), so a cross-site response may not store it - Chrome's behaviour. It passed only under the reverted None-by-default.
+date = 2026-10-20
+decision = the user chose "Restore Lax-by-default" for cookies without SameSite (Chrome's behaviour; +21 cookies/samesite subtests), in this session's SameSite question

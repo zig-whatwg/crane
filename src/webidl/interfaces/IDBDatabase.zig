@@ -296,4 +296,7 @@ pub const IDBDatabase = struct {
 
         return try IDBDatabaseImpl.call_transaction(instance, storeNames, mode, options);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onabort", "set_onclose", "set_onerror", "set_onversionchange" };
 };

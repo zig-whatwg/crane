@@ -207,6 +207,8 @@ pub const RTCEncodedVideoFrame = struct {
         break :blk @hasDecl(impls.RTCEncodedVideoFrame, "serializationSteps") and @hasDecl(impls.RTCEncodedVideoFrame, "deserializationSteps");
     };
 
+    pub const constructor_required_arguments: usize = 1;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator

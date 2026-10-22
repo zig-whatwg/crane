@@ -199,6 +199,8 @@ pub const QuotaExceededError = struct {
         break :blk @hasDecl(impls.QuotaExceededError, "serializationSteps") and @hasDecl(impls.QuotaExceededError, "deserializationSteps");
     };
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator

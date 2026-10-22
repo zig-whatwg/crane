@@ -168,8 +168,8 @@ pub const InternalState = struct {
     allocator: ?std.mem.Allocator = null,
 
     /// The selection or text entry cursor, in UTF-16 code units of the API
-    /// value (§ 4.10.20); clamped on read because the value can shrink
-    /// underneath it.
+    /// value (§ 4.10.20); children changed steps persist clamping when the
+    /// clean API value shrinks, so later growth cannot restore old offsets.
     selection: form_associated.TextSelection = .{},
     /// Selection API: this control's has-scheduled-selectionchange-event flag.
     selectionchange_scheduled: bool = false,
@@ -252,6 +252,24 @@ pub fn installHooks() void {
     dom.form_controls.install(.{ .is = &isTextArea, .reset = &resetAlgorithm, .validity_flags = &constraintFlags, .user_edit = &userEdit, .editor_text = &editorText });
     dom.teardown_sweeps.install(.element_types, &cleanupAllRemainingInternal);
     dom.cloning_steps.install(&cloningSteps);
+    dom.mutation.registerChildrenChangedCallback(&childrenChangedSteps) catch |err| {
+        log.warn("textarea children changed steps not registered: {}", .{err});
+    };
+}
+
+/// HTML 4.10.11 updates a clean raw value from child text on each mutation.
+/// 4.10.20's relevant-value-change steps 1.1–2 clamp the selection/cursor
+/// immediately, including the empty interval of a replace-all operation.
+fn childrenChangedSteps(parent: *dom.NodeBase, _: dom.mutation.ChildrenChange) void {
+    if (parent.node_type != 1) return;
+    const instance_ptr = dom.instance_bridge.getInstance(parent) orelse return;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+    if (!isTextArea(instance)) return;
+    const internal = StateMap.get(instance) orelse return;
+    if (internal.raw_value != null or (internal.selection.start == 0 and internal.selection.end == 0)) return;
+    const value = currentApiValue(instance) catch return;
+    defer instance.ctx.allocator.free(value);
+    internal.selection = internal.selection.clamped(form_associated.utf16Length(value));
 }
 
 /// HTML 4.10.11: "The cloning steps for textarea elements given node, copy,

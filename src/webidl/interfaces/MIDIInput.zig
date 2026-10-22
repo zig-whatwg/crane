@@ -190,4 +190,7 @@ pub const MIDIInput = struct {
         if (comptime @hasDecl(MIDIInputImpl, "set_onmidimessage")) return try MIDIInputImpl.set_onmidimessage(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onmidimessage", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onmidimessage"};
 };

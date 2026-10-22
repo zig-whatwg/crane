@@ -175,6 +175,24 @@ pub fn setDoctype(instance: *runtime.Instance, doctype: ?*runtime.Instance) void
 }
 
 /// Get the doctype node.
+/// The editing subsystem's editor state for `instance` (opaque here), or
+/// null before its first editing command or for a node that is not a
+/// Document with state. The Document frees it with itself (dom.editor_states).
+pub fn editorState(instance: *runtime.Instance) ?*anyopaque {
+    const internal = getInternal(instance) orelse return null;
+    return internal.editor_state;
+}
+
+/// Give `instance` its editor state, made with the document's allocator;
+/// false when `instance` is not a Document with state - the caller still
+/// owns `state` then.
+pub fn setEditorState(instance: *runtime.Instance, state: *anyopaque) bool {
+    const internal = getInternal(instance) orelse return false;
+    std.debug.assert(internal.editor_state == null);
+    internal.editor_state = state;
+    return true;
+}
+
 pub fn getDoctype(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
     return internal.doctype;

@@ -186,6 +186,8 @@ pub const PresentationRequest = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 1;
+
     /// Arguments for constructor (WebIDL overloading)
     pub const ConstructorArgs = union(enum) {
         /// constructor(url)
@@ -233,6 +235,9 @@ pub const PresentationRequest = struct {
     pub fn call_reconnect(instance: *runtime.Instance, presentationId: runtime.USVString) anyerror!runtime.JSValue {
         return try PresentationRequestImpl.call_reconnect(instance, presentationId);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onconnectionavailable"};
 
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.

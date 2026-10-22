@@ -246,6 +246,8 @@ pub const DOMQuad = struct {
         break :blk @hasDecl(impls.DOMQuad, "serializationSteps") and @hasDecl(impls.DOMQuad, "deserializationSteps");
     };
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator

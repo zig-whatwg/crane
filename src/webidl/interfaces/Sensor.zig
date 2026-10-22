@@ -257,4 +257,7 @@ pub const Sensor = struct {
     pub fn call_stop(instance: *runtime.Instance) anyerror!void {
         return try SensorImpl.call_stop(instance);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onreading", "set_onactivate", "set_onerror" };
 };

@@ -972,6 +972,7 @@ pub const WorkerHost = struct {
             // A collected node's teardown is queued here, for the worker's
             // loop to run between tasks (runtime.gc.DeferredTeardown).
             .deferred_teardown = &self.agent_host.deferred_teardown,
+            .engine_task_sink = thread.loop.sink,
         });
         self.agent = agent;
         thread.loop.agent = agent;
@@ -1061,6 +1062,7 @@ pub const WorkerHost = struct {
             .host = &self.agent_host,
             .allocator = allocator,
             .deferred_teardown = &self.agent_host.deferred_teardown,
+            .engine_task_sink = thread.loop.sink,
         });
         self.agent = agent;
         thread.loop.agent = agent;
@@ -2070,7 +2072,7 @@ pub fn deliverPortMessage(
         ports.append(allocator, port) catch continue;
     }
 
-    const data = engine.structuredDeserializeWithTransfer(realm, message.serialized, message.array_buffers, ports.items) catch {
+    const data = engine.structuredDeserializeWithOptions(realm, message.serialized, .{ .array_buffers = message.array_buffers, .transferred = ports.items, .shared_memory = message.shared_memory }) catch {
         fire(realm, target, "messageerror", runtime.JSValue.jsUndefined, &.{});
         return;
     };
@@ -2655,9 +2657,16 @@ pub fn creatorReferrerSource(realm: runtime.Context) ?[]const u8 {
 /// The policy container of the global whose realm is `realm`: the
 /// worker's creator's settings object's.
 pub fn creatorPolicyContainer(realm: runtime.Context) ?*const fetch_mod.internal.PolicyContainer {
-    const record = realm.getRealm() orelse return null;
-    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
-    const settings = @import("dom").global_settings.of(global) orelse return null;
+    // A creator realm whose record, global or settings cannot be found has a
+    // policy container nobody can read: the unavailable one, which blocks
+    // every CSP decision - never null, which a data: or blob: worker took as
+    // "no policy" (lane leaks6). A global that keeps no container (no hook,
+    // or a hook answering null - a Window not yet given a document) is still
+    // null.
+    const unavailable = &fetch_mod.internal.PolicyContainer.unavailable;
+    const record = realm.getRealm() orelse return unavailable;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return unavailable));
+    const settings = @import("dom").global_settings.of(global) orelse return unavailable;
     const container_of = settings.policy_container orelse return null;
     return container_of(global);
 }
@@ -2761,6 +2770,7 @@ const worker_hooks: engine.HostHooks = .{
     .getCodeForEval = code_generation.hooks.getCodeForEval,
     .ensureCanCompileWasmBytes = code_generation.hooks.ensureCanCompileWasmBytes,
     .agentClusterOf = @import("agent_clusters.zig").agentClusterOf,
+    .crossOriginIsolatedCapability = @import("agent_clusters.zig").crossOriginIsolatedCapability,
     // WebAssembly Web API 2: compileStreaming and instantiateStreaming
     // ([Exposed=(Window,Worker)]), as a window agent's.
     .compilePotentialWebAssemblyResponse = if (webassembly_streaming.supported) webassembly_streaming.compilePotentialWebAssemblyResponse else null,

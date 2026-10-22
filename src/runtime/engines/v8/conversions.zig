@@ -1644,6 +1644,27 @@ pub fn fromV8Value(
     return fromV8ValueAs(T, null, allocator, isolate, context, value);
 }
 
+/// WebIDL 3.2.19, attribute assignment with [LegacyTreatNonObjectAsNull]:
+/// a non-object becomes null; every object is preserved, callable or not.
+/// The binding keeps ownership on null and hands the same Global to the
+/// setter otherwise. This is never the generic callback conversion.
+pub fn fromV8LegacyCallbackAttribute(comptime T: type, value: *v8.Value) ConversionError!T {
+    const Child = @typeInfo(T).optional.child;
+    if (!v8.v8_Value_IsObject(value)) return null;
+    return callbackFunctionValue(Child, value);
+}
+
+/// The transitional callback representation is the untagged Global address,
+/// never a callable Zig function. The consumer adopts it through the protocol.
+fn callbackFunctionValue(comptime T: type, value: *v8.Value) T {
+    const address: usize = @intFromPtr(value);
+    std.debug.assert(std.mem.isAligned(address, @alignOf(@typeInfo(T).pointer.child)));
+    comptime std.debug.assert(@sizeOf(T) == @sizeOf(usize));
+    var function_value: T = undefined;
+    @memcpy(std.mem.asBytes(&function_value), std.mem.asBytes(&address));
+    return function_value;
+}
+
 /// `fromV8Value`, where `T`'s interface-typed positions convert to
 /// `Interface` (a generated interface; WebIDL 3.2.15: a TypeError unless the
 /// value implements it): `*runtime.Instance`, its nullable form, an optional
@@ -1679,24 +1700,9 @@ pub fn fromV8ValueAs(
 
         const ChildType = type_info.optional.child;
 
-        // Special handling for optional callback types (like EventHandler = ?EventHandlerNonNull)
-        // Per WebIDL spec, EventHandler treats non-function values as null, not as a type error.
-        // This is because EventHandler is nullable and non-callable objects convert to null.
-        // https://html.spec.whatwg.org/multipage/webappapis.html#eventhandler
-        const child_type_info = @typeInfo(ChildType);
-        if (child_type_info == .pointer) {
-            const pointer_child_info = @typeInfo(child_type_info.pointer.child);
-            if (pointer_child_info == .@"fn") {
-                // This is an optional callback (?*fn(...))
-                // If value is not a function, return null instead of erroring
-                // NOTE: value from v8_FunctionCallbackInfo_GetArgument is already a Global<Value>*.
-                if (!v8.v8_Value_IsFunction(value)) {
-                    return null;
-                }
-            }
-        }
-
-        // Recursively convert the child type
+        // WebIDL 3.2.20: a present value converts to the inner type. A
+        // nullable callback is strict unless attribute metadata opts in to
+        // fromV8LegacyCallbackAttribute above.
         return try fromV8ValueAs(ChildType, Interface, allocator, isolate, context, value);
     }
 
@@ -2351,12 +2357,7 @@ pub fn fromV8ValueAs(
             //
             // A byte copy, since no pointer cast turns a Value* into a function
             // pointer; both are one machine word.
-            const address: usize = @intFromPtr(value);
-            std.debug.assert(std.mem.isAligned(address, @alignOf(type_info.pointer.child)));
-            comptime std.debug.assert(@sizeOf(T) == @sizeOf(usize));
-            var function_value: T = undefined;
-            @memcpy(std.mem.asBytes(&function_value), std.mem.asBytes(&address));
-            return function_value;
+            return callbackFunctionValue(T, value);
         }
     }
 
@@ -2533,14 +2534,21 @@ pub fn fromV8ValueAs(
                 } else {
                     // Convert field value - an interface-typed member to the
                     // interface `interface_members` names.
-                    const member = try fromV8ValueAs(
+                    const member = fromV8ValueAs(
                         field.type,
                         comptime structMemberInterface(T, Interface, field.name),
                         allocator,
                         isolate,
                         context,
                         field_v8,
-                    );
+                    ) catch |err| {
+                        // A strict callback conversion adopts its input only
+                        // on success. Ordinary copying members already have
+                        // the defer above; unknown types keep the safe default.
+                        if (comptime callbackConversionAdoptsInput(field.type) and !member_handle_released)
+                            v8.v8_Value_Dispose(field_v8);
+                        return err;
+                    };
                     // A member that converted to nothing - absent or null,
                     // a callback member's included - leaves Get's handle
                     // referred to by nothing (`conversionLeavesHandle`):
@@ -2967,9 +2975,15 @@ pub fn toV8Record(
     return object;
 }
 
-/// Generic Zig type to V8 Value conversion
-///
-/// Dispatches to the appropriate conversion function based on source type.
+/// ALLOWLIST: the raw function-pointer conversion hands its input Global to
+/// the callback on success, and adopts nothing when it fails. Unknown pointer
+/// and aggregate types remain false; nullable callbacks have the same rule.
+pub fn callbackConversionAdoptsInput(comptime T: type) bool {
+    const info = @typeInfo(T);
+    if (info == .optional) return callbackConversionAdoptsInput(info.optional.child);
+    return info == .pointer and info.pointer.size == .one and @typeInfo(info.pointer.child) == .@"fn";
+}
+
 /// Whether `T` is a dictionary as toV8Value converts one: a struct that is
 /// none of the special struct types (an interface, an optional argument, an
 /// ArrayBufferView) - its conversion is an object made for the call.

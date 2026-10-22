@@ -132,6 +132,10 @@ test "an event handler compiled with a scope only a weak handle holds sees that 
             parameters.len,
             &scopes,
             1,
+            "",
+            0,
+            0,
+            0,
             &parse_error,
         ) orelse return error.CompileFailed;
         defer ffi.v8_Value_Dispose(function);

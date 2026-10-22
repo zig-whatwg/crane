@@ -206,6 +206,8 @@ pub const OffscreenCanvas = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 2;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -270,6 +272,9 @@ pub const OffscreenCanvas = struct {
     pub fn call_convertToBlob(instance: *runtime.Instance, options: webidl.Opt(ImageEncodeOptions)) anyerror!runtime.JSValue {
         return try OffscreenCanvasImpl.call_convertToBlob(instance, options);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_oncontextlost", "set_oncontextrestored" };
 
     /// WebIDL [EnforceRange]: the integer arguments and attribute values
     /// whose conversion takes that branch of ConvertToInt (bit i = argument i;

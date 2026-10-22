@@ -119,7 +119,7 @@ fn workerSteps() !void {
         else => return err,
     };
     if (thrown) return error.WorkerScriptThrew;
-    switch (try engine.parseModule(made.realm, "export const x = 1;", "http://web-platform.test:8000/workers/m.js", null)) {
+    switch (try engine.parseModule(made.realm, "export const x = 1;", .{}, "http://web-platform.test:8000/workers/m.js", null)) {
         .record => |record| engine.releaseModuleRecord(record),
         .parse_error => |parse_error| {
             parse_error.release();

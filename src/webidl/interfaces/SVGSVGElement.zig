@@ -797,6 +797,9 @@ pub const SVGSVGElement = struct {
         return try SVGSVGElementImpl.call_checkIntersection(instance, element, rect);
     }
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onafterprint", "set_onbeforeprint", "set_onbeforeunload", "set_onhashchange", "set_onlanguagechange", "set_onmessage", "set_onmessageerror", "set_onoffline", "set_ononline", "set_onpagehide", "set_onpagereveal", "set_onpageshow", "set_onpageswap", "set_onpopstate", "set_onrejectionhandled", "set_onstorage", "set_onunhandledrejection", "set_onunload", "set_ongamepadconnected", "set_ongamepaddisconnected", "set_onportalactivate" };
+
     /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
     /// the infinities throw a TypeError for (bit i = argument i; an attribute
     /// setter's value is bit 0).

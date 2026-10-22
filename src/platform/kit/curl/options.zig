@@ -1,11 +1,11 @@
 //! A Browser's network options on a curl easy handle (kit/curl): its user
 //! agent string, its proxy, and its TLS verification - what every transfer
 //! and every WebSocket handshake of the Browser is made with. fetch's
-//! curl_backend.zig and websocket/curl_backend.zig both apply them here, so
+//! curl_backend.zig and the platform WebSocket transport apply them here, so
 //! neither sets these options itself, and they are set one way for both.
 //!
 //! Until step 2 of the platform protocol moves transfers behind the port, the
-//! handle is made in src/fetch/network and src/websocket. curl copies every
+//! fetch still makes its handles in src/fetch/network. curl copies every
 //! string option it is given (since 7.17), so the temporaries made here go
 //! before `apply` returns.
 

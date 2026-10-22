@@ -919,6 +919,8 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
     return css.cascade.cascade(.{
         .allocator = element.ctx.allocator,
         .parent = parent,
+        .content_attributes = .{ .context = element, .get = contentAttribute },
+        .pseudo = pseudo,
         .root_font_size = if (is_root) 16 else res.root_font_size,
         .viewport_width = res.active.media.width,
         .viewport_height = res.active.media.height,
@@ -926,6 +928,23 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         .page_color_scheme = res.page_color_scheme,
         .preferred_color_scheme = res.preferred_color_scheme,
     }, res.matched.items);
+}
+
+/// attr() on a pseudo-element reads its originating element. The cascade
+/// calls this synchronously; no computed value keeps the context pointer.
+fn contentAttribute(context: *const anyopaque, name: []const u8) ?[]const u8 {
+    const element: *const runtime.Instance = @ptrCast(@alignCast(context));
+    const value = element_data.of(@constCast(element)) orelse return null;
+    const document = interfaces.Node.get_ownerDocument(@constCast(element)) catch null;
+    const is_html = std.mem.eql(u8, value.namespaceSlice() orelse "", html_namespace) and
+        (if (document) |owner| document_internals.getDocumentType(owner) == .html else false);
+    var it = value.attributeIterator();
+    while (it.next()) |entry| {
+        if (entry.namespace_uri != null) continue;
+        const matches = if (is_html) std.ascii.eqlIgnoreCase(entry.local_name, name) else std.mem.eql(u8, entry.local_name, name);
+        if (matches) return entry.value;
+    }
+    return null;
 }
 
 /// Cascade 5 section 5: every declaration block that applies to the

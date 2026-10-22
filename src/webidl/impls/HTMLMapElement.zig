@@ -33,8 +33,11 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     return instance;
 }
 
-/// Getter for areas
+/// HTML 4.8.12: the live collection rooted at this map, matching area elements.
+/// The generated [SameObject] getter caches and traces this collection; its
+/// existing HTMLCollection implementation retains the root and tracks mutations.
+/// WebKit uses the same rooted collection design in HTMLMapElement::areas:
+/// https://github.com/WebKit/WebKit/blob/main/Source/WebCore/html/HTMLMapElement.cpp
 pub fn get_areas(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return interfaces.Element.call_getElementsByTagNameNS(instance, runtime.DOMString.initInterned("http://www.w3.org/1999/xhtml"), .initInterned("area"));
 }

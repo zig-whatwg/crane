@@ -417,6 +417,9 @@ pub const BaseAudioContext = struct {
         return try BaseAudioContextImpl.call_createPeriodicWave(instance, real, imag, constraints);
     }
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onstatechange"};
+
     /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
     /// the infinities throw a TypeError for (bit i = argument i; an attribute
     /// setter's value is bit 0).

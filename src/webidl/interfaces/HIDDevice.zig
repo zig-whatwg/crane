@@ -274,6 +274,9 @@ pub const HIDDevice = struct {
         return try HIDDeviceImpl.call_sendReport(instance, reportId, data);
     }
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_oninputreport"};
+
     /// WebIDL [EnforceRange]: the integer arguments and attribute values
     /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
     /// an attribute setter's value is bit 0).

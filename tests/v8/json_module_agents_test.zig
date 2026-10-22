@@ -92,7 +92,7 @@ const Side = struct {
         }
 
         // One evaluated through an import: its value is taken out.
-        const main = try parsed(try protocol.parseModule(realm, "import d from './d.json' with { type: 'json' }; globalThis.n = d.n;", "https://json.test/main.js", null));
+        const main = try parsed(try protocol.parseModule(realm, "import d from './d.json' with { type: 'json' }; globalThis.n = d.n;", .{}, "https://json.test/main.js", null));
         defer protocol.releaseModuleRecord(main);
         var graph: JsonGraph = .{ .json = records[0] };
         if (try protocol.linkModule(realm, main, JsonGraph.resolve, &graph)) |link_error| {

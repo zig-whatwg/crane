@@ -290,6 +290,8 @@ pub const AudioContext = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -382,6 +384,9 @@ pub const AudioContext = struct {
     pub fn call_createMediaStreamSource(instance: *runtime.Instance, mediaStream: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioContextImpl.call_createMediaStreamSource(instance, mediaStream);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onsinkchange", "set_onerror" };
 
     /// WebIDL interface types: the interface each interface-typed argument
     /// and attribute value converts to - a TypeError unless the value implements

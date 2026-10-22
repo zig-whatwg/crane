@@ -42,6 +42,7 @@ src/dom/content_navigables.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/crypto_keys.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/custom_elements.zig implementation 1 G P-res decl:89dd82c5fbd26c9f
 src/dom/declarative_shadow.zig implementation 1 G P-res decl:9c737e7125e9c3d4
+src/dom/dialog.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/document_activity.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/document_browsing_context.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/document_fetches.zig cancelers 1 G H decl:30e1703fbc925361
@@ -53,6 +54,7 @@ src/dom/document_rendering.zig internal_resource_links 1 G P-res decl:dd23315fc6
 src/dom/document_scripts.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/dom_exceptions.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/drag_data_store.zig implementation 1 G P-res decl:89dd82c5fbd26c9f
+src/dom/editor_states.zig free_step 1 G P-res decl:b1c900c542822d04
 src/dom/element_attributes.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/element_data.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/event_construction.zig event_steps 1 G H decl:f85775e0ca95f00d
@@ -175,8 +177,6 @@ src/fetch/internal/fetch_params.zig chunk_length_received 1 G X decl:1dfcee87d8d
 src/fetch/internal/fetch_params.zig queue_task_executed 1 G X decl:de58a3b1f5ff5e75
 src/fetch/network/curl_backend.zig global_init_count 1 G P-res decl:3796f88280404836
 src/fetch/network/curl_backend.zig global_init_mutex 1 G P-res decl:ee0617868871b920
-src/html/editing/executor.zig document_states 1 G R decl:3e3e1a8064593da4
-src/html/editing/executor.zig getOrCreateEditorState.new_state.Static.editor_state 1 G R decl:8eaedec687f8b9fc
 src/html/embedder_scripts.zig registered 1 TL I/engine decl:985bda748b35fe88
 src/html/focus.zig last_modality 1 TL T decl:c2a587c8ee049550
 src/html/focus.zig pending_edit_count 1 TL T decl:3796f88280404836

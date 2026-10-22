@@ -278,6 +278,9 @@ pub const BackgroundFetchRegistration = struct {
         return try BackgroundFetchRegistrationImpl.call_matchAll(instance, request, options);
     }
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onprogress"};
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{

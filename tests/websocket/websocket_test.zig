@@ -393,9 +393,9 @@ test "outgoing queue: only application data counts, and a part-sent frame counts
     try testing.expectEqualStrings("llo", queue.head().?.remaining);
 
     // The rest of it, then the Close frame, which is not application data.
-    try testing.expectEqual(@as(?websocket.curl_backend.FrameKind, .text), queue.advance(testing.allocator, 3));
+    try testing.expectEqual(@as(?websocket.transport.FrameKind, .text), queue.advance(testing.allocator, 3));
     try testing.expectEqual(@as(u64, 3), queue.untransmitted);
-    try testing.expectEqual(@as(?websocket.curl_backend.FrameKind, .close), queue.advance(testing.allocator, 2));
+    try testing.expectEqual(@as(?websocket.transport.FrameKind, .close), queue.advance(testing.allocator, 2));
     try testing.expectEqual(@as(u64, 3), queue.untransmitted);
 }
 
@@ -538,7 +538,7 @@ test "a one-byte Close frame fails the connection" {
 //
 // `connect` and everything it calls sat UNANALYSED until the WebSocket impl
 // started calling them: nothing in this file, and nothing in `src/websocket/`,
-// referenced `CurlWebSocket.connect`, so the compiler never looked inside it.
+// referenced `WebSocketTransport.connect`, so the compiler never looked inside it.
 // It contained a call to `std.fmt.allocPrintZ`, removed in Zig 0.16, and
 // `zig build test` stayed green over it for the whole migration - the exact
 // shape of AGENTS.md's "a re-export does not mean the code is compiled".
@@ -550,13 +550,13 @@ test "a one-byte Close frame fails the connection" {
 // =============================================================================
 
 test "curl backend: the handshake and frame paths are analysed" {
-    const CurlWebSocket = websocket.curl_backend.CurlWebSocket;
+    const WebSocketTransport = websocket.transport.WebSocketTransport;
 
-    _ = &CurlWebSocket.connect;
-    _ = &CurlWebSocket.startConnect;
-    _ = &CurlWebSocket.pollConnect;
-    _ = &CurlWebSocket.sendPart;
-    _ = &CurlWebSocket.receive;
+    _ = &WebSocketTransport.connect;
+    _ = &WebSocketTransport.startConnect;
+    _ = &WebSocketTransport.pollConnect;
+    _ = &WebSocketTransport.sendPart;
+    _ = &WebSocketTransport.receive;
 
     const Connection = websocket.WebSocketConnection;
     _ = &Connection.startConnect;
@@ -569,9 +569,9 @@ test "curl backend: a protocol list is joined with exactly N-1 commas" {
     // The join is sized exactly, and `deinit` frees it at that same length -
     // an over-reservation here is an allocator contract violation, not a leak,
     // and `std.testing.allocator` reports it as a size mismatch on free.
-    const CurlWebSocket = websocket.curl_backend.CurlWebSocket;
+    const WebSocketTransport = websocket.transport.WebSocketTransport;
 
-    const two = try CurlWebSocket.init(
+    const two = try WebSocketTransport.init(
         testing.allocator,
         "ws://example.com/echo",
         &[_][]const u8{ "echo", "chat" },
@@ -579,7 +579,7 @@ test "curl backend: a protocol list is joined with exactly N-1 commas" {
     defer two.deinit();
     try testing.expectEqualStrings("echo,chat", two.protocols.?);
 
-    const one = try CurlWebSocket.init(
+    const one = try WebSocketTransport.init(
         testing.allocator,
         "ws://example.com/echo",
         &[_][]const u8{"echo"},
@@ -589,11 +589,11 @@ test "curl backend: a protocol list is joined with exactly N-1 commas" {
 
     // No protocols at all must stay null: an empty Sec-WebSocket-Protocol
     // header is not the same request as no header.
-    const none = try CurlWebSocket.init(testing.allocator, "ws://example.com/echo", null);
+    const none = try WebSocketTransport.init(testing.allocator, "ws://example.com/echo", null);
     defer none.deinit();
     try testing.expect(none.protocols == null);
 
-    const empty = try CurlWebSocket.init(
+    const empty = try WebSocketTransport.init(
         testing.allocator,
         "ws://example.com/echo",
         &[_][]const u8{},

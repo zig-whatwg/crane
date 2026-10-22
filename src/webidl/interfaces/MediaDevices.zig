@@ -273,6 +273,9 @@ pub const MediaDevices = struct {
         return try MediaDevicesImpl.call_getSupportedConstraints(instance);
     }
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_ondevicechange", "set_oncaptureaction" };
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{

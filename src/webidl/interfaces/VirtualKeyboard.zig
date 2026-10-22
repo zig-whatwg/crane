@@ -221,4 +221,7 @@ pub const VirtualKeyboard = struct {
     pub fn call_hide(instance: *runtime.Instance) anyerror!void {
         return try VirtualKeyboardImpl.call_hide(instance);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_ongeometrychange"};
 };

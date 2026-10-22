@@ -7,7 +7,8 @@
 //! passthrough"; whatwg/fetch#1327 - the spec has no "main frame navigation"
 //! concept yet): a cross-site safe one sends Lax cookies, and its response
 //! may set Strict and Lax ones. Without the bit, a navigate-mode request
-//! with no destination is a cross-site subresource request.
+//! with no destination is a cross-site subresource request, where a cookie
+//! without SameSite is Lax (Lax-by-default, the user's ruling 2026-10-20).
 const std = @import("std");
 const fetch = @import("fetch");
 const cookies = fetch.algorithms.cookies;
@@ -51,7 +52,7 @@ test "a passthrough copy of a cross-site top-level GET navigation sends Lax cook
         defer request.deinit();
         const value = (try cookies.requestCookieHeader(allocator, request)).?;
         defer allocator.free(value);
-        try std.testing.expectEqualStrings(if (main_frame) "lax=1; default=1; none=1" else "default=1; none=1", value);
+        try std.testing.expectEqualStrings(if (main_frame) "lax=1; default=1; none=1" else "none=1", value);
     }
 }
 
@@ -70,7 +71,7 @@ test "a passthrough copy of a cross-site top-level POST navigation may set Stric
         try headers.append("Set-Cookie", "default=1; Secure");
         try headers.append("Set-Cookie", "none=1; Secure; SameSite=None");
         try cookies.storeResponseCookies(allocator, request, &headers);
-        try std.testing.expectEqual(@as(usize, if (main_frame) 4 else 2), jar.count());
+        try std.testing.expectEqual(@as(usize, if (main_frame) 4 else 1), jar.count());
     }
 }
 

@@ -208,6 +208,8 @@ pub const MediaStream = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// Arguments for constructor (WebIDL overloading)
     pub const ConstructorArgs = union(enum) {
         /// constructor()
@@ -300,6 +302,9 @@ pub const MediaStream = struct {
     pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try MediaStreamImpl.call_clone(instance);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onaddtrack", "set_onremovetrack" };
 
     /// WebIDL interface types: the interface each interface-typed argument
     /// and attribute value converts to - a TypeError unless the value implements
