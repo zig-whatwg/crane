@@ -233,9 +233,10 @@ test "the first declaration of an entity is binding" {
 }
 
 test "internal parameter entities expand between declarations" {
+    // A non-validating parser applies internal-subset defaults it has read.
     try expectTrace("<!DOCTYPE r [<!ENTITY % decl \"<!ENTITY e 'pe'>\"> %decl; <!ELEMENT r ANY><!ATTLIST r a CDATA '>'>]><r>&e;</r>",
         \\doctype r "" ""
-        \\start |r
+        \\start |r |a=">"
         \\text "pe"
         \\end r
     );

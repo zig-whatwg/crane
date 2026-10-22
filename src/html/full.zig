@@ -34,6 +34,7 @@ const std = @import("std");
 pub const dom_parser = @import("dom_parser.zig");
 /// HTML §14.2: the XML parser's tree builder.
 pub const xml_document_parser = @import("xml_document_parser.zig");
+pub const xml_document_encoding = core.xml_document_encoding;
 pub const sanitizer = @import("sanitizer.zig");
 pub const inner_text = @import("inner_text.zig");
 pub const serialization = @import("serialization.zig");

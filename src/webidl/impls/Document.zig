@@ -3838,7 +3838,10 @@ pub fn call_createCDATASection(instance: *runtime.Instance, data: runtime.DOMStr
         return error.NotSupportedError;
     }
 
-    // Use interface instead of impl (per Golden Rule #13)
+    // DOM createCDATASection step 2 follows the HTML-document check.
+    if (std.mem.indexOf(u8, data.asSlice(), "]]>") != null) return error.InvalidCharacterError;
+
+    // Step 3: create the node with this as its node document.
     const cdata = try interfaces.CDATASection.init(internal.allocator, instance.ctx);
     errdefer interfaces.CDATASection.deinit(cdata);
 
@@ -3846,7 +3849,7 @@ pub fn call_createCDATASection(instance: *runtime.Instance, data: runtime.DOMStr
     try interfaces.CharacterData.set_data(cdata, data);
 
     // Set owner document
-    try NodeImpl.setOwnerDocument(cdata, instance);
+    try @import("dom").node_document.set(cdata, instance);
 
     return cdata;
 }

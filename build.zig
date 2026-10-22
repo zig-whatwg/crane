@@ -3538,6 +3538,8 @@ pub fn build(b: *std.Build) void {
                     .imports = &.{
                         .{ .name = "clock", .module = testing_graph.clock },
                         .{ .name = "host", .module = testing_graph.host },
+                        .{ .name = "xml", .module = testing_graph.xml },
+                        .{ .name = "xml_document_encoding", .module = testing_graph.xml_document_encoding },
                     },
                 }),
             });
@@ -3559,6 +3561,8 @@ pub fn build(b: *std.Build) void {
         const command_test_imports = [_]std.Build.Module.Import{
             .{ .name = "clock", .module = testing_graph.clock },
             .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "xml", .module = testing_graph.xml },
+            .{ .name = "xml_document_encoding", .module = testing_graph.xml_document_encoding },
             .{ .name = "runtime", .module = testing_graph.runtime },
             .{ .name = "engine", .module = testing_graph.engine },
             .{ .name = "interfaces", .module = testing_graph.interfaces },
@@ -3582,6 +3586,8 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = "clock", .module = runner_graph.clock },
                 .{ .name = "host", .module = runner_graph.host },
+                .{ .name = "xml", .module = runner_graph.xml },
+                .{ .name = "xml_document_encoding", .module = runner_graph.xml_document_encoding },
                 .{ .name = "runtime", .module = runner_graph.runtime },
                 .{ .name = "engine", .module = runner_graph.engine },
                 .{ .name = "interfaces", .module = runner_graph.interfaces },
@@ -4887,6 +4893,7 @@ const CraneModules = struct {
     html: *std.Build.Module,
     service_worker: *std.Build.Module,
     xml: *std.Build.Module,
+    xml_document_encoding: *std.Build.Module,
     permissions: *std.Build.Module,
     browser: *std.Build.Module,
     webdriver: *std.Build.Module,
@@ -6127,6 +6134,30 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     });
     html_mod.addImport("xml", xml_mod);
 
+    // One owner per graph for these engine-free HTML data/decoding files.
+    // The XML metadata harness uses them without HTML core's DOM or fetch.
+    const html_encoding_sniffing_mod = graphModule(b, public, "html_encoding_sniffing", .{
+        .root_source_file = b.path("src/html/parser/encoding_sniffing.zig"),
+        .target = target,
+    });
+    html_encoding_sniffing_mod.addImport("encoding", encoding_mod);
+    html_encoding_sniffing_mod.addImport("mimesniff", mimesniff_mod);
+    const html_entities_mod = graphModule(b, public, "html_entities", .{
+        .root_source_file = b.path("src/html/parser/entities.zig"),
+        .target = target,
+    });
+    html_core_mod.addImport("html_encoding_sniffing", html_encoding_sniffing_mod);
+    html_core_mod.addImport("html_entities", html_entities_mod);
+    const xml_document_encoding_mod = graphModule(b, public, "xml_document_encoding", .{
+        .root_source_file = b.path("src/html/xml_document_encoding.zig"),
+        .target = target,
+    });
+    xml_document_encoding_mod.addImport("xml", xml_mod);
+    xml_document_encoding_mod.addImport("encoding", encoding_mod);
+    xml_document_encoding_mod.addImport("html_encoding_sniffing", html_encoding_sniffing_mod);
+    xml_document_encoding_mod.addImport("html_entities", html_entities_mod);
+    html_core_mod.addImport("xml_document_encoding", xml_document_encoding_mod);
+
     // Add html_core to impls for DOMParser, innerHTML, document.write, Window implementations
     // Using html_core (not html) to avoid cycle: impls → html → interfaces → impls
     impls_mod.addImport("html_core", html_core_mod);
@@ -6332,6 +6363,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .html = html_mod,
         .service_worker = service_worker_mod,
         .xml = xml_mod,
+        .xml_document_encoding = xml_document_encoding_mod,
         .permissions = permissions_mod,
         .browser = browser_mod,
         .webdriver = webdriver_mod,

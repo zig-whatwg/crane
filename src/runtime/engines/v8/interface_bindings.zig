@@ -65,7 +65,6 @@ pub const interface_skip_list = .{
     "PushManager", // Missing cached field
     "PushSubscriptionOptions", // ArrayBuffer type issues
     "RTCTrackEvent", // MediaStream array issues
-    "SVGPathElement", // Missing cached field
     "XRCPUDepthInformation", // ArrayBuffer type issues
     "XRInputSource", // DOMString array issues
     "XRInputSourcesChangeEvent", // XRInputSource array issues

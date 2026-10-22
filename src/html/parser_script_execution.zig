@@ -1110,22 +1110,18 @@ pub fn createHTMLElement(
 /// namespace - with the interface its local name and namespace call for.
 ///
 /// MathML Core 2.2.3 and 3.2.5 select MathMLElement and MathMLAnchorElement.
-/// Deviation, stated: SVG interfaces other than script and a still use
-/// plain Element (TODO: the rest of SVG and SVGElement for unknown ones).
+/// SVG 2 §4.3.3 selects each element's interface, or SVGElement for an
+/// unknown name, using the same map as DOM create-an-element-internal.
 pub fn createForeignElement(
     allocator: Allocator,
     ctx: runtime.Context,
     namespace: Namespace,
     local_name: []const u8,
 ) !*runtime.Instance {
-    if (namespace == .svg and std.mem.eql(u8, local_name, "script")) {
-        return interfaces.SVGScriptElement.init(allocator, ctx);
-    }
-    // An SVG a is an SVGAElement, whose activation behaviour follows its
-    // hyperlink - as Document.createElementNS makes it. Other SVG elements
-    // are still plain Elements (stated: their impls do not chain yet).
-    if (namespace == .svg and std.mem.eql(u8, local_name, "a")) {
-        return interfaces.SVGAElement.init(allocator, ctx);
+    if (namespace == .svg) {
+        return switch (@import("svg_element_interface.zig").forLocalName(local_name)) {
+            inline else => |which| @field(interfaces, @tagName(which)).init(allocator, ctx),
+        };
     }
     if (namespace == .mathml) {
         return if (std.mem.eql(u8, local_name, "a"))

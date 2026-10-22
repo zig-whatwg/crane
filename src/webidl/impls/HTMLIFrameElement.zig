@@ -532,7 +532,7 @@ fn createNavigationDocument(
 /// HTML §7.5.3 "load an XML document" for iframe navigation: "create and
 /// initialize a Document object" given "xml" and the response's computed
 /// type, and an XML parser for it. Its encoding is the one the response's
-/// bytes and Content-Type determine (xml_document_parser.decodeBytes). XML
+/// bytes and Content-Type determine; malformed bytes are fatal (XML §4.3.3). XML
 /// scripting support is enabled unless the navigable's sandbox blocks
 /// scripts. Errors are "reported inline by mutating the Document": the tree
 /// up to the first error stays and Chrome's and Safari's message block goes
@@ -554,11 +554,11 @@ fn parseXmlForIframe(
     const xml_parser = html_module.xml_document_parser;
     const sniffing = html_core.parser.encoding_sniffing;
     const transport = if (response.content_type) |content_type| sniffing.transportEncoding(allocator, content_type) else null;
-    const decoded = (xml_parser.decodeBytes(allocator, bytes, transport) catch return document) orelse {
-        // An encoding the declaration names that there is none of: libxml2's
-        // fatal error at the declaration.
+    const decoded = (html_module.xml_document_encoding.decodeDocumentBytes(allocator, bytes, transport) catch return document) orelse {
+        // Unsupported encoding or malformed bytes: XML document loading
+        // reports a fatal encoding error, unlike XHR replacement decoding.
         var failure: xml_parser.Failure = .{ .line = 1, .column = 1 };
-        const message = "Unsupported encoding";
+        const message = "Encoding error";
         @memcpy(failure.message_buffer[0..message.len], message);
         failure.message_len = message.len;
         xml_parser.insertErrorMessageBlock(document, failure) catch {};

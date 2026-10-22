@@ -244,7 +244,14 @@ fn connectedToDocument(element: *runtime.Instance, document: *runtime.Instance) 
 /// Whether the element's media attribute matches its document's
 /// environment.
 fn mediaMatches(element: *runtime.Instance) bool {
-    const media = interfaces.Element.call_getAttributeNS(element, null, runtime.DOMString.initInterned("media")) catch null;
+    const media = if (element.stateAs(interfaces.ProcessingInstruction.State) != null)
+        interfaces.ProcessingInstruction.call_getAttribute(element, runtime.DOMString.initInterned("media")) catch null
+    else
+        interfaces.Element.call_getAttributeNS(element, null, runtime.DOMString.initInterned("media")) catch null;
+    defer if (media) |value| {
+        var owned = value;
+        owned.deinit(element.ctx.allocator);
+    };
     const text = if (media) |value| value.asSlice() else "";
     // HTML 4.2.7 "contributes a script-blocking style sheet": "el's media
     // attribute's value matches the environment" - Media Queries 5 against

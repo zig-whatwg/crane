@@ -2434,7 +2434,7 @@ pub const Context = struct {
         const xml_parser = html_mod.xml_document_parser;
         const sniffing = html_mod.parser.encoding_sniffing;
         const transport = if (content_type.len > 0) sniffing.transportEncoding(self.allocator, content_type) else null;
-        if (try xml_parser.decodeBytes(self.allocator, bytes, transport)) |decoded| {
+        if (try html_mod.xml_document_encoding.decodeDocumentBytes(self.allocator, bytes, transport)) |decoded| {
             defer self.allocator.free(decoded.text);
             dom_mod.document_internals.setEncoding(document, sniffing.canonicalName(decoded.encoding)) catch {};
             const loader: ?html_mod.script_execution.ParserScriptLoader = if (script_loader) |embedder| .{
@@ -2450,10 +2450,10 @@ pub const Context = struct {
             if (self.document_instance != document) return;
             if (failure) |found| xml_parser.insertErrorMessageBlock(document, found) catch {};
         } else {
-            // A declaration naming an encoding there is none of: libxml2's
-            // fatal error at the declaration.
+            // XML 1.0 §4.3.3: unsupported encodings and malformed byte
+            // sequences use the ordinary XML parsererror document shape.
             var failure: xml_parser.Failure = .{ .line = 1, .column = 1 };
-            const message = "Unsupported encoding";
+            const message = "Encoding error";
             @memcpy(failure.message_buffer[0..message.len], message);
             failure.message_len = message.len;
             xml_parser.insertErrorMessageBlock(document, failure) catch {};

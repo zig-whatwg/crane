@@ -1554,7 +1554,48 @@ pub fn call_createContextualFragment(instance: *runtime.Instance, string: typede
     // Step 7: "Return the result of invoking the fragment parsing algorithm
     // steps with element, compliantString, and Fragment." The body made in
     // step 6 is only the context: nothing keeps it.
-    return @import("html").dom_parser.parseFragmentIn(allocator, instance.ctx, compliant, element.?, .fragment);
+    const fragment = try @import("html").dom_parser.parseFragmentIn(allocator, instance.ctx, compliant, element.?, .fragment);
+    errdefer dom.node_creation.destroyUninserted(fragment);
+    try unwrapContextualFragment(fragment);
+    return fragment;
+}
+
+/// Browser compatibility beyond HTML 8.5.7's fragment-parsing return step.
+/// Aligned stable WPT 5d23b743bb: Chrome 4/4 strips nested html/head/body,
+/// Firefox 1/4 keeps them, Safari 27 2/4 strips only the outer wrappers.
+/// Aligned experimental 64f13635ce: Chrome 158 and Safari 254 preview 4/4,
+/// Firefox 160 1/4. Safari ships WebKit 317962@main (bug 320228), joining
+/// Blink's recursive stripping. No newer specification changes this rule.
+/// https://commits.webkit.org/317962@main
+///
+/// Remove wrappers at the fragment frontier, revisiting their promoted
+/// children. Ordinary elements and foreign namespaces retain their trees;
+/// this iterative walk also avoids a stack limit on nested XML wrappers.
+fn unwrapContextualFragment(fragment: *runtime.Instance) !void {
+    // The HTML tree builder already discards these wrapper tokens. Only
+    // XML fragments can reach this compatibility step with them intact.
+    const document = (try interfaces.Node.get_ownerDocument(fragment)) orelse return;
+    if (document_internals.getDocumentType(document) == .html) return;
+    var next = try interfaces.Node.get_firstChild(fragment);
+    while (next) |child| {
+        const following = try interfaces.Node.get_nextSibling(child);
+        const names = dom.node_creation.elementNames(child);
+        const unwrap = if (names) |name|
+            std.mem.eql(u8, name.namespace orelse "", "http://www.w3.org/1999/xhtml") and
+                (std.mem.eql(u8, name.local_name, "html") or std.mem.eql(u8, name.local_name, "head") or std.mem.eql(u8, name.local_name, "body"))
+        else
+            false;
+        if (!unwrap) {
+            next = following;
+            continue;
+        }
+        const first = try interfaces.Node.get_firstChild(child);
+        while (try interfaces.Node.get_firstChild(child)) |promoted| {
+            _ = try interfaces.Node.call_insertBefore(fragment, promoted, child);
+        }
+        _ = try interfaces.Node.call_removeChild(fragment, child);
+        next = first orelse following;
+    }
 }
 
 /// DOM §5.7 - Range stringifier (toString)
