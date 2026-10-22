@@ -138,16 +138,10 @@ pub const DiscoveryResult = struct {
     }
 };
 
-/// Why a manifest testharness source the runner has no `FileType` for was
-/// not run. Only a full-corpus run records these; the in-scope run's
-/// exclusion patterns already keep XML documents out.
-pub const xml_document_skip_reason = "XML document (.xhtml/.xht/.svg/.xml): Crane has no XML parser";
+/// Why a manifest testharness source with no executable FileType was skipped.
 pub const unknown_type_skip_reason = "not a file type the runner executes";
 
-pub fn skipReasonForUnrunnable(path: []const u8) []const u8 {
-    for ([_][]const u8{ ".xhtml", ".xht", ".svg", ".xml" }) |ext| {
-        if (std.mem.endsWith(u8, path, ext)) return xml_document_skip_reason;
-    }
+pub fn skipReasonForUnrunnable(_: []const u8) []const u8 {
     return unknown_type_skip_reason;
 }
 
@@ -255,8 +249,7 @@ pub fn discoverTests(allocator: std.mem.Allocator, options: Options) !DiscoveryR
 
             const file_type = config.FileType.fromPath(source_path);
             if (file_type == .unknown) {
-                // In scope, the exclusion patterns already keep these out. A
-                // full-corpus run selected them on purpose, so each one that
+                // A full-corpus run selected these on purpose, so each one that
                 // cannot run is recorded with its reason: a result wpt.fyi
                 // shows as missing must be accounted for, not vanish.
                 if (options.full_corpus) try result.addSkipped(source_path, skipReasonForUnrunnable(source_path));
@@ -622,7 +615,7 @@ const full_corpus_files = [_][]const u8{
     "svg/types/SVGLength.svg",
 };
 
-test "a full-corpus discovery takes every manifest source and names the ones it cannot run" {
+test "a full-corpus discovery includes XML documents" {
     const allocator = testing.allocator;
 
     var tmp = testing.tmpDir(.{});
@@ -641,18 +634,16 @@ test "a full-corpus discovery takes every manifest source and names the ones it 
 
     // css/ is off the allowlist and html/rendering/ is excluded; the full
     // corpus runs both.
-    try testing.expectEqual(@as(usize, 3), result.test_files.items.len);
+    try testing.expectEqual(@as(usize, 4), result.test_files.items.len);
     try testing.expectEqualStrings("css/selectors/focus-visible.html", result.test_files.items[0].path);
     try testing.expectEqualStrings("dom/nodes/Node-appendChild.html", result.test_files.items[1].path);
     try testing.expectEqualStrings("html/rendering/replaced.html", result.test_files.items[2].path);
     try testing.expectEqual(@as(usize, 4), result.total_in_scope_urls);
     try testing.expectEqual(@as(usize, 4), result.total_manifest_urls);
 
-    // The .svg is a real testharness test the runner has no file type for:
-    // it is recorded with its reason, not dropped.
-    try testing.expectEqual(@as(usize, 1), result.skipped.items.len);
-    try testing.expectEqualStrings("svg/types/SVGLength.svg", result.skipped.items[0].path);
-    try testing.expectEqualStrings(xml_document_skip_reason, result.skipped.items[0].reason);
+    try testing.expectEqualStrings("svg/types/SVGLength.svg", result.test_files.items[3].path);
+    try testing.expectEqual(config.FileType.xml, result.test_files.items[3].file_type);
+    try testing.expectEqual(@as(usize, 0), result.skipped.items.len);
 }
 
 test "without --full-corpus the same tree is filtered to the runner's scope" {
@@ -676,11 +667,7 @@ test "without --full-corpus the same tree is filtered to the runner's scope" {
     try testing.expectEqual(@as(usize, 1), result.total_in_scope_urls);
 }
 
-test "skipReasonForUnrunnable names XML documents apart from other file types" {
-    try testing.expectEqualStrings(xml_document_skip_reason, skipReasonForUnrunnable("a/b.xhtml"));
-    try testing.expectEqualStrings(xml_document_skip_reason, skipReasonForUnrunnable("a/b.xht"));
-    try testing.expectEqualStrings(xml_document_skip_reason, skipReasonForUnrunnable("a/b.svg"));
-    try testing.expectEqualStrings(xml_document_skip_reason, skipReasonForUnrunnable("a/b.xml"));
+test "an unknown extension has an explicit skip reason" {
     try testing.expectEqualStrings(unknown_type_skip_reason, skipReasonForUnrunnable("a/b.sharedworker.js"));
 }
 

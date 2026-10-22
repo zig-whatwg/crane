@@ -35,7 +35,7 @@ src/webidl/impls/DOMImplementation.zig DocumentType.createDocumentType 2
 src/webidl/impls/DOMParser.zig HTMLParser.parseHTML 1
 src/webidl/impls/Document.zig DOMImplementation.setDocument 1
 src/webidl/impls/Document.zig Node.deinitNodeByType 2
-src/webidl/impls/Document.zig Node.setOwnerDocument 5
+src/webidl/impls/Document.zig Node.setOwnerDocument 4
 src/webidl/impls/Document.zig Range.call_deleteContents 1
 src/webidl/impls/Document.zig Range.call_insertNode 1
 src/webidl/impls/Document.zig Range.call_surroundContents 2

@@ -23,7 +23,7 @@ const InputStream = @import("input_stream.zig").InputStream;
 const InputCharacter = @import("input_stream.zig").InputCharacter;
 const ParseErrorCode = @import("parse_errors.zig").ParseErrorCode;
 const ParseErrorCallback = @import("parse_errors.zig").ParseErrorCallback;
-const entities = @import("entities.zig");
+const entities = @import("html_entities");
 
 /// The longest identifier in the named character references table
 /// ("CounterClockwiseContourIntegral;").

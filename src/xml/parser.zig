@@ -18,8 +18,9 @@
 //! The document type declaration's internal subset is read for what a
 //! non-validating processor must read (XML §5.1): general and parameter
 //! entity declarations, with internal parameter entities expanded between
-//! declarations. Element, attribute-list and notation declarations are
-//! skipped. External entities are never fetched (HTML §14.2: user agents
+//! declarations, declaration grammar, attribute defaults and normalization.
+//! It does not validate element content or attribute values against a DTD.
+//! External entities are never fetched (HTML §14.2: user agents
 //! "should not attempt to retrieve any other external entity's content"),
 //! so a reference to an external parsed entity expands to nothing. For a
 //! doctype whose public identifier is one of HTML §14.2's list, the HTML
@@ -188,6 +189,13 @@ const RawAttribute = struct {
     value_end: usize,
 };
 
+const AttributeDeclaration = struct {
+    name: []const u8,
+    cdata: bool,
+    /// Already normalized, or null for #IMPLIED / #REQUIRED.
+    default: ?[]const u8,
+};
+
 const WellFormedness = error{WellFormedness};
 
 pub const Parser = struct {
@@ -205,6 +213,9 @@ pub const Parser = struct {
     attributes: std.ArrayList(Attribute) = .empty,
     entities: std.StringHashMapUnmanaged(Entity) = .empty,
     parameter_entities: std.StringHashMapUnmanaged(Entity) = .empty,
+    /// XML §3.3: declarations use lexical names, before namespace expansion.
+    /// The lists and their default values live in the per-parse arena.
+    attribute_declarations: std.StringHashMapUnmanaged(std.ArrayList(AttributeDeclaration)) = .empty,
     uris: std.StringHashMapUnmanaged(void) = .empty,
     message: std.ArrayList(u8) = .empty,
     failure_offset: usize = 0,
@@ -215,6 +226,8 @@ pub const Parser = struct {
     /// A parameter entity reference was not read: later declarations are
     /// not processed (XML §5.1).
     skip_declarations: bool = false,
+    /// XML declaration: used when a parameter entity cannot be read.
+    standalone: bool = false,
     seen_doctype: bool = false,
     line_offset: usize = 0,
     line_count: u32 = 1,
@@ -235,6 +248,7 @@ pub const Parser = struct {
         self.attributes.deinit(a);
         self.entities.deinit(a);
         self.parameter_entities.deinit(a);
+        self.attribute_declarations.deinit(a);
         self.uris.deinit(a);
         self.message.deinit(a);
         self.arena.deinit();
@@ -248,12 +262,14 @@ pub const Parser = struct {
         self.text_buffer.clearRetainingCapacity();
         self.entities.clearRetainingCapacity();
         self.parameter_entities.clearRetainingCapacity();
+        self.attribute_declarations.clearRetainingCapacity();
         self.uris.clearRetainingCapacity();
         self.message.clearRetainingCapacity();
         _ = self.arena.reset(.retain_capacity);
         self.expanded = 0;
         self.xhtml = false;
         self.skip_declarations = false;
+        self.standalone = false;
         self.seen_doctype = false;
         self.line_offset = 0;
         self.line_count = 1;
@@ -418,6 +434,7 @@ pub const Parser = struct {
                 } else return self.fail("standalone accepts only 'yes' or 'no'", .{});
             } else return self.fail("parsing XML declaration: '?>' expected", .{});
         }
+        self.standalone = decl.standalone orelse false;
         const Sink = @typeInfo(@TypeOf(sink)).pointer.child;
         if (@hasDecl(Sink, "xmlDeclaration")) try sink.xmlDeclaration(decl);
     }
@@ -445,6 +462,7 @@ pub const Parser = struct {
         cur.pos += "<!DOCTYPE".len;
         if (!cur.skipSpace()) return self.fail("Space required after 'DOCTYPE'", .{});
         const name = cur.name() orelse return self.fail("xmlParseDocTypeDecl : no DOCTYPE name !", .{});
+        if (splitQName(name) == null) return self.fail("Failed to parse QName '{s}'", .{name});
         var public_id: []const u8 = "";
         var system_id: []const u8 = "";
         const spaced = cur.skipSpace();
@@ -516,8 +534,12 @@ pub const Parser = struct {
                 try self.parameterReference(cur);
             } else if (cur.startsWith("<!ENTITY")) {
                 try self.entityDeclaration(cur);
-            } else if (cur.startsWith("<!ELEMENT") or cur.startsWith("<!ATTLIST") or cur.startsWith("<!NOTATION")) {
-                try self.skipDeclaration(cur);
+            } else if (cur.startsWith("<!ELEMENT")) {
+                try self.elementDeclaration(cur);
+            } else if (cur.startsWith("<!ATTLIST")) {
+                try self.attributeListDeclaration(cur);
+            } else if (cur.startsWith("<!NOTATION")) {
+                try self.notationDeclaration(cur);
             } else if (cur.startsWith("<!--")) {
                 _ = try self.commentData(cur);
             } else if (cur.startsWith("<?")) {
@@ -533,42 +555,248 @@ pub const Parser = struct {
     fn parameterReference(self: *Parser, cur: *Cursor) anyerror!void {
         cur.pos += 1;
         const name = cur.name() orelse return self.fail("PEReference: no name", .{});
+        if (!chars.isNCName(name)) return self.fail("Invalid parameter entity name '{s}'", .{name});
         if (cur.peek() != ';') return self.fail("PEReference: expecting ';'", .{});
         cur.pos += 1;
-        const entity = self.parameter_entities.getPtr(name) orelse {
+        const entity = self.parameter_entities.get(name) orelse {
             // XML §5.1: a non-validating processor that does not read a
             // parameter entity must not process the declarations after it.
             self.skip_declarations = true;
             return;
         };
         if (entity.kind != .internal) {
+            // XML §5.1 normally skips declarations after an unread PE.
+            // Chrome 155 and Safari 27 instead reject the reference when
+            // standalone=yes (Firefox 158 continues). Browser majority,
+            // measured 2026-10-22: row 113 Q17/Q18/Q19's nine-case probe.
+            if (self.standalone) return self.fail("External parameter entity '{s}' in standalone document", .{name});
             self.skip_declarations = true;
             return;
         }
         if (entity.in_use) return self.fail("Detected an entity reference loop", .{});
         try self.spend(entity.value.len);
-        entity.in_use = true;
-        defer entity.in_use = false;
+        self.parameter_entities.getPtr(name).?.in_use = true;
+        // The replacement text can declare more parameter entities and grow
+        // this map. Keep the arena-owned text, not a pointer into the table,
+        // and reacquire the entry when clearing XML's recursion guard.
+        defer self.parameter_entities.getPtr(name).?.in_use = false;
         var inner: Cursor = .{ .text = entity.value };
         try self.declarations(&inner, false);
     }
 
-    /// Element, attribute-list and notation declarations are read past.
-    fn skipDeclaration(self: *Parser, cur: *Cursor) anyerror!void {
-        var i = cur.pos + 2;
-        while (i < cur.text.len) : (i += 1) {
-            switch (cur.text[i]) {
-                '>' => {
-                    cur.pos = i + 1;
-                    return;
+    fn declarationName(self: *Parser, cur: *Cursor) anyerror![]const u8 {
+        const name = cur.name() orelse return self.fail("Name required in declaration", .{});
+        if (splitQName(name) == null) return self.fail("Failed to parse QName '{s}'", .{name});
+        return name;
+    }
+
+    fn declarationEnd(self: *Parser, cur: *Cursor) anyerror!void {
+        _ = cur.skipSpace();
+        if (cur.peek() != '>') return self.fail("Declaration improperly terminated", .{});
+        cur.pos += 1;
+    }
+
+    /// XML [45]-[51]: check the entire content-model grammar, without the
+    /// validity constraints. Like libxml2's xmlParseElementDecl, this does
+    /// not constrain the later document's children in a non-validating parse.
+    fn elementDeclaration(self: *Parser, cur: *Cursor) anyerror!void {
+        cur.pos += "<!ELEMENT".len;
+        if (!cur.skipSpace()) return self.fail("Space required after '<!ELEMENT'", .{});
+        _ = try self.declarationName(cur);
+        if (!cur.skipSpace()) return self.fail("Space required before element content model", .{});
+        if (cur.startsWith("EMPTY")) {
+            cur.pos += "EMPTY".len;
+        } else if (cur.startsWith("ANY")) {
+            cur.pos += "ANY".len;
+        } else {
+            if (cur.peek() != '(') return self.fail("Element content model required", .{});
+            var peek = cur.*;
+            peek.pos += 1;
+            _ = peek.skipSpace();
+            if (peek.startsWith("#PCDATA")) {
+                cur.* = peek;
+                cur.pos += "#PCDATA".len;
+                var has_elements = false;
+                while (true) {
+                    _ = cur.skipSpace();
+                    if (cur.peek() != '|') break;
+                    has_elements = true;
+                    cur.pos += 1;
+                    _ = cur.skipSpace();
+                    _ = try self.declarationName(cur);
+                }
+                if (cur.peek() != ')') return self.fail("Mixed content model not terminated", .{});
+                cur.pos += 1;
+                if (cur.peek() == '*') {
+                    cur.pos += 1;
+                } else if (has_elements) return self.fail("Mixed content model requires '*'", .{});
+            } else try self.childrenModel(cur);
+        }
+        try self.declarationEnd(cur);
+    }
+
+    /// [47]-[50]. Each open group remembers its separator; deeply nested
+    /// models use a heap stack, never the native call stack.
+    fn childrenModel(self: *Parser, cur: *Cursor) anyerror!void {
+        var groups: std.ArrayList(?u8) = .empty;
+        defer groups.deinit(self.allocator);
+        cur.pos += 1;
+        try groups.append(self.allocator, null);
+        var need_particle = true;
+        while (groups.items.len != 0) {
+            _ = cur.skipSpace();
+            if (need_particle) {
+                if (cur.peek() == '(') {
+                    cur.pos += 1;
+                    try groups.append(self.allocator, null);
+                } else {
+                    _ = try self.declarationName(cur);
+                    if (cur.peek()) |c| if (c == '?' or c == '*' or c == '+') {
+                        cur.pos += 1;
+                    };
+                    need_particle = false;
+                }
+            } else switch (cur.peek() orelse return self.fail("Unfinished element content model", .{})) {
+                ',', '|' => |separator| {
+                    const group = &groups.items[groups.items.len - 1];
+                    if (group.*) |previous| if (previous != separator) return self.fail("Mixed separators in element content model", .{});
+                    group.* = separator;
+                    cur.pos += 1;
+                    need_particle = true;
                 },
-                '"', '\'' => |quote| {
-                    i = std.mem.indexOfScalarPos(u8, cur.text, i + 1, quote) orelse break;
+                ')' => {
+                    _ = groups.pop();
+                    cur.pos += 1;
+                    if (cur.peek()) |c| if (c == '?' or c == '*' or c == '+') {
+                        cur.pos += 1;
+                    };
                 },
-                else => {},
+                else => return self.fail("Invalid element content model", .{}),
             }
         }
-        return self.fail("xmlParseInternalSubset: error detected in Markup declaration", .{});
+    }
+
+    /// XML [52]-[60], §3.3.3. The first declaration wins. Defaults are
+    /// expanded now (forward entity references are forbidden), then applied
+    /// before start-tag namespace resolution, as libxml2's xmlAddDefAttrs
+    /// and xmlParseStartTag2 do. Gecko's nsExpatDriver::HandleStartElement
+    /// likewise passes Expat's defaulted attributes to its DOM sink.
+    fn attributeListDeclaration(self: *Parser, cur: *Cursor) anyerror!void {
+        cur.pos += "<!ATTLIST".len;
+        if (!cur.skipSpace()) return self.fail("Space required after '<!ATTLIST'", .{});
+        const element_name = try self.declarationName(cur);
+        while (true) {
+            const spaced = cur.skipSpace();
+            if (cur.peek() == '>') {
+                cur.pos += 1;
+                return;
+            }
+            if (!spaced) return self.fail("Space required before attribute declaration", .{});
+            const name = try self.declarationName(cur);
+            if (!cur.skipSpace()) return self.fail("Space required before attribute type", .{});
+            const cdata = try self.attributeType(cur);
+            if (!cur.skipSpace()) return self.fail("Space required before attribute default", .{});
+            var default: ?[]const u8 = null;
+            if (cur.startsWith("#REQUIRED")) {
+                cur.pos += "#REQUIRED".len;
+            } else if (cur.startsWith("#IMPLIED")) {
+                cur.pos += "#IMPLIED".len;
+            } else {
+                if (cur.startsWith("#FIXED")) {
+                    cur.pos += "#FIXED".len;
+                    if (!cur.skipSpace()) return self.fail("Space required after '#FIXED'", .{});
+                }
+                const quote = cur.peek() orelse return self.fail("Attribute default required", .{});
+                if (quote != '"' and quote != '\'') return self.fail("Attribute default must be quoted", .{});
+                cur.pos += 1;
+                self.values.clearRetainingCapacity();
+                try self.attributeValue(cur, quote, 0);
+                if (!cdata) self.normalizeAttributeSpaces(0);
+                default = try self.arena.allocator().dupe(u8, self.values.items);
+            }
+            if (self.skip_declarations) continue;
+            const entry = try self.attribute_declarations.getOrPut(self.allocator, element_name);
+            if (!entry.found_existing) entry.value_ptr.* = .empty;
+            const decls = entry.value_ptr;
+            var found = false;
+            for (decls.items) |existing| {
+                if (std.mem.eql(u8, existing.name, name)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) try decls.append(self.arena.allocator(), .{ .name = name, .cdata = cdata, .default = default });
+        }
+    }
+
+    /// [54]-[59]; only CDATA is exempt from space collapsing.
+    fn attributeType(self: *Parser, cur: *Cursor) anyerror!bool {
+        if (cur.peek() == '(') {
+            try self.attributeEnumeration(cur, false);
+            return false;
+        }
+        const name = cur.name() orelse return self.fail("Attribute type required", .{});
+        if (std.mem.eql(u8, name, "CDATA")) return true;
+        if (std.mem.eql(u8, name, "NOTATION")) {
+            if (!cur.skipSpace()) return self.fail("Space required after 'NOTATION'", .{});
+            try self.attributeEnumeration(cur, true);
+            return false;
+        }
+        for ([_][]const u8{ "ID", "IDREF", "IDREFS", "ENTITY", "ENTITIES", "NMTOKEN", "NMTOKENS" }) |kind| {
+            if (std.mem.eql(u8, name, kind)) return false;
+        }
+        return self.fail("Unknown attribute type '{s}'", .{name});
+    }
+
+    fn attributeEnumeration(self: *Parser, cur: *Cursor, notation: bool) anyerror!void {
+        if (cur.peek() != '(') return self.fail("Attribute enumeration required", .{});
+        cur.pos += 1;
+        while (true) {
+            _ = cur.skipSpace();
+            if (notation) {
+                const name = cur.name() orelse return self.fail("Notation name required", .{});
+                if (!chars.isNCName(name)) return self.fail("Invalid notation name '{s}'", .{name});
+            } else {
+                const start = cur.pos;
+                while (cur.pos < cur.text.len) {
+                    const d = chars.decodeAt(cur.text, cur.pos) orelse break;
+                    if (!chars.isNameChar(d.c)) break;
+                    cur.pos += d.len;
+                }
+                if (cur.pos == start) return self.fail("Nmtoken required in enumeration", .{});
+            }
+            _ = cur.skipSpace();
+            if (cur.peek() == ')') {
+                cur.pos += 1;
+                return;
+            }
+            if (cur.peek() != '|') return self.fail("Invalid attribute enumeration", .{});
+            cur.pos += 1;
+        }
+    }
+
+    /// [82]-[83]: a notation's PUBLIC identifier may omit the system ID.
+    fn notationDeclaration(self: *Parser, cur: *Cursor) anyerror!void {
+        cur.pos += "<!NOTATION".len;
+        if (!cur.skipSpace()) return self.fail("Space required after '<!NOTATION'", .{});
+        const name = cur.name() orelse return self.fail("Notation name required", .{});
+        if (!chars.isNCName(name)) return self.fail("Invalid notation name '{s}'", .{name});
+        if (!cur.skipSpace()) return self.fail("Space required before notation identifier", .{});
+        if (cur.startsWith("PUBLIC")) {
+            cur.pos += "PUBLIC".len;
+            if (!cur.skipSpace()) return self.fail("Space required after 'PUBLIC'", .{});
+            const public_id = try self.quoted(cur, "PubidLiteral");
+            for (public_id) |b| if (!chars.isPubidChar(b)) return self.fail("Invalid char in PubidLiteral", .{});
+            const spaced = cur.skipSpace();
+            if (cur.peek() == '"' or cur.peek() == '\'') {
+                if (!spaced) return self.fail("Space required before SystemLiteral", .{});
+                const system_id = try self.quoted(cur, "SystemLiteral");
+                if (chars.firstNonChar(system_id) != null) return self.fail("Invalid char in SystemLiteral", .{});
+            }
+        } else if (cur.startsWith("SYSTEM")) {
+            _ = try self.externalId(cur);
+        } else return self.fail("External identifier required in notation declaration", .{});
+        try self.declarationEnd(cur);
     }
 
     /// [70] EntityDecl ::= GEDecl | PEDecl
@@ -582,6 +810,7 @@ pub const Parser = struct {
             parameter = true;
         }
         const name = cur.name() orelse return self.fail("xmlParseEntityDecl: no name", .{});
+        if (!chars.isNCName(name)) return self.fail("Invalid entity name '{s}'", .{name});
         if (!cur.skipSpace()) return self.fail("Space required after the entity name", .{});
         var entity: Entity = .{ .kind = .internal };
         if (cur.peek() == '"' or cur.peek() == '\'') {
@@ -593,7 +822,8 @@ pub const Parser = struct {
             if (!parameter and spaced and cur.startsWith("NDATA")) {
                 cur.pos += "NDATA".len;
                 if (!cur.skipSpace()) return self.fail("Space required after 'NDATA'", .{});
-                _ = cur.name() orelse return self.fail("NDATA: no notation name", .{});
+                const notation = cur.name() orelse return self.fail("NDATA: no notation name", .{});
+                if (!chars.isNCName(notation)) return self.fail("Invalid notation name '{s}'", .{notation});
                 entity.kind = .unparsed;
             }
         } else return self.fail("Entity value required", .{});
@@ -720,6 +950,12 @@ pub const Parser = struct {
         var p: Cursor = cur.*;
         p.pos += 1;
         const qualified = p.name() orelse return self.fail("StartTag: invalid element name", .{});
+        const decls = if (self.attribute_declarations.count() == 0)
+            &.{}
+        else if (self.attribute_declarations.get(qualified)) |list|
+            list.items
+        else
+            &.{};
         self.raw_attributes.clearRetainingCapacity();
         self.values.clearRetainingCapacity();
         var empty = false;
@@ -748,6 +984,12 @@ pub const Parser = struct {
             p.pos += 1;
             const value_start = self.values.items.len;
             try self.attributeValue(&p, quote, 0);
+            for (decls) |decl| {
+                if (std.mem.eql(u8, decl.name, attr_name)) {
+                    if (!decl.cdata) self.normalizeAttributeSpaces(value_start);
+                    break;
+                }
+            }
             for (self.raw_attributes.items) |seen| {
                 // WFC: Unique Att Spec.
                 if (std.mem.eql(u8, seen.qualified, attr_name)) return self.fail("Attribute {s} redefined", .{attr_name});
@@ -756,6 +998,22 @@ pub const Parser = struct {
         }
         const line = self.lineAt();
         cur.pos = p.pos;
+        // XML §3.3.2: an explicitly specified attribute takes precedence.
+        // Namespace defaults must be present before processNamespaces.
+        for (decls) |decl| {
+            const default = decl.default orelse continue;
+            var specified = false;
+            for (self.raw_attributes.items) |raw| {
+                if (std.mem.eql(u8, raw.qualified, decl.name)) {
+                    specified = true;
+                    break;
+                }
+            }
+            if (specified) continue;
+            const value_start = self.values.items.len;
+            try self.values.appendSlice(self.allocator, default);
+            try self.raw_attributes.append(self.allocator, .{ .qualified = decl.name, .value_start = value_start, .value_end = self.values.items.len });
+        }
         const name = try self.processNamespaces(qualified);
         const Sink = @typeInfo(@TypeOf(sink)).pointer.child;
         if (@hasDecl(Sink, "startElement")) try sink.startElement(name.element, self.attributes.items);
@@ -765,6 +1023,28 @@ pub const Parser = struct {
         } else {
             try self.elements.append(self.allocator, .{ .name = name.element, .line = line, .bindings_mark = name.mark });
         }
+    }
+
+    /// XML §3.3.3 after step 3: trim and collapse only U+0020, preserving
+    /// tabs/newlines introduced by character references. The value is last
+    /// in the scratch buffer, so compacting it cannot move earlier values.
+    fn normalizeAttributeSpaces(self: *Parser, start: usize) void {
+        var end = start;
+        var pending_space = false;
+        for (self.values.items[start..]) |c| {
+            if (c == ' ') {
+                pending_space = end != start;
+            } else {
+                if (pending_space) {
+                    self.values.items[end] = ' ';
+                    end += 1;
+                }
+                self.values.items[end] = c;
+                end += 1;
+                pending_space = false;
+            }
+        }
+        self.values.shrinkRetainingCapacity(end);
     }
 
     /// [10] AttValue's content up to `quote` (0: the end of an entity's
@@ -864,6 +1144,7 @@ pub const Parser = struct {
     fn entityReferenceName(self: *Parser, cur: *Cursor) anyerror![]const u8 {
         cur.pos += 1;
         const name = cur.name() orelse return self.fail("xmlParseEntityRef: no name", .{});
+        if (!chars.isNCName(name)) return self.fail("Invalid entity name '{s}'", .{name});
         if (cur.peek() != ';') return self.fail("EntityRef: expecting ';'", .{});
         cur.pos += 1;
         return name;

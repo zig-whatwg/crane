@@ -1657,6 +1657,20 @@ pub fn svgScriptInsertionOrChildrenChanged(allocator: std.mem.Allocator, element
 /// ("An end tag whose tag name is "script", if the current node is an SVG
 /// script element")
 pub fn processSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Instance) void {
+    processSvgScriptElementWithLoader(allocator, element, null);
+}
+
+/// XML's parser uses the same embedder fetch hook for SVG and XHTML
+/// scripts. Only this element may use it: scripts inserted while it runs
+/// retain the ordinary network path, as prepareScriptElementWithLoader does.
+pub fn processSvgScriptElementWithLoader(
+    allocator: std.mem.Allocator,
+    element: *runtime.Instance,
+    loader: ?ParserScriptLoader,
+) void {
+    const saved = parser_script_loader;
+    parser_script_loader = if (loader) |l| .{ .element = element, .loader = l } else null;
+    defer parser_script_loader = saved;
     prepareSvgScriptElement(allocator, element, true);
 }
 
@@ -1734,8 +1748,8 @@ fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Insta
         const url = parseUrl(element, raw, base_url) orelse return queueErrorEventTask(element);
         defer element.ctx.allocator.free(url);
 
-        var fetched = fetchClassicScript(allocator, element, document, url, documentEncoding(document));
-        defer fetched.deinit(allocator);
+        var fetched = fetchClassicScriptSource(allocator, element, document, raw, url, documentEncoding(document));
+        defer fetched.deinit();
         const response_url = fetched.final_url orelse url;
         if (from_parser_end_tag) {
             // A parser-blocking script, whose result is in hand: run it now.

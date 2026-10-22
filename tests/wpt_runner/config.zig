@@ -95,6 +95,8 @@ pub fn explicitTimeoutForMillis(millis: u64) bool {
 pub const FileType = enum {
     /// HTML test document
     html,
+    /// XML test document (XHTML, SVG, or generic XML); MIME selects the parser.
+    xml,
     /// Multi-context JavaScript test (window + worker)
     any_js,
     /// Window-only JavaScript test
@@ -109,6 +111,9 @@ pub const FileType = enum {
         if (std.mem.endsWith(u8, path, ".window.js")) return .window_js;
         if (std.mem.endsWith(u8, path, ".worker.js")) return .worker_js;
         if (std.mem.endsWith(u8, path, ".html") or std.mem.endsWith(u8, path, ".htm")) return .html;
+        for ([_][]const u8{ ".xhtml", ".xht", ".svg", ".xml" }) |extension| {
+            if (std.mem.endsWith(u8, path, extension)) return .xml;
+        }
         return .unknown;
     }
 };
@@ -360,6 +365,12 @@ test "FileType.fromPath" {
     try testing.expectEqual(FileType.worker_js, FileType.fromPath("streams/byte-stream.worker.js"));
     try testing.expectEqual(FileType.html, FileType.fromPath("html/test.html"));
     try testing.expectEqual(FileType.unknown, FileType.fromPath("readme.md"));
+}
+
+test "XML document extensions are executable test formats" {
+    for ([_][]const u8{ "test.xhtml", "test.xht", "test.svg", "test.xml" }) |path| {
+        try std.testing.expect(FileType.fromPath(path) != .unknown);
+    }
 }
 
 test "isExcluded" {
