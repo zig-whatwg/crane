@@ -227,6 +227,8 @@ pub const custom_elements = @import("custom_elements.zig");
 /// Window's and Document's state through (src/html/user_activation.zig,
 /// focus.zig).
 pub const user_activation_state = @import("user_activation_state.zig");
+/// HTML 6.10.2: each Window's close watcher manager (src/html/close_watchers.zig).
+pub const close_watcher_manager = @import("close_watcher_manager.zig");
 pub const focused_area = @import("focused_area.zig");
 pub const visibility_state = @import("visibility_state.zig");
 pub const focus_matching = @import("focus_matching.zig");

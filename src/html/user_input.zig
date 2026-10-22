@@ -35,6 +35,7 @@ const dom = @import("dom");
 const form_associated = @import("form_associated.zig");
 const focus = @import("focus.zig");
 const user_activation = @import("user_activation.zig");
+const close_watchers = @import("close_watchers.zig");
 
 const Instance = runtime.Instance;
 const log = std.log.scoped(.user_input);
@@ -708,10 +709,20 @@ fn isKey(key: Key, comptime name: []const u8) bool {
 /// and the default action.
 pub fn keyDown(keyboard: *Keyboard, document: *Instance, key: Key, modifiers: Modifiers) void {
     const target = keyTarget(document) orelse return;
+    // HTML 6.10.1: on desktop platforms Esc is a close request, "the key
+    // being pressed down" - targeted at the document the key goes to. Its
+    // close request steps: step 1 (a fullscreen element ends it before any
+    // event), step 3 fires "the single keydown event" below, step 5 returns
+    // when it was canceled, and steps 6-9 process the close watchers as the
+    // keydown's default action (Blink: KeyboardEventManager::
+    // DefaultKeyboardEventHandler -> the window's CloseWatcherStack).
+    const escape = isKey(key, "Escape");
+    const close_request_document = if (escape) nodeDocument(target) else null;
+    if (close_request_document) |d| if (close_watchers.closeRequestEndsInFullscreen(d)) return;
     // HTML 6.4.2: keydown is an activation-triggering input event, "provided
     // the key is neither the Esc key nor a shortcut key reserved by the user
     // agent".
-    if (!isKey(key, "Escape")) {
+    if (!escape) {
         if (nodeDocument(target)) |d| user_activation.notifyActivation(d);
     }
     if (nodeDocument(target)) |d| focus.noteInputModality(d, false);
@@ -720,6 +731,9 @@ pub fn keyDown(keyboard: *Keyboard, document: *Instance, key: Key, modifiers: Mo
         keyboard.space_armed = null;
         return;
     }
+    // The close request steps 6-9: the keydown was not canceled. A close
+    // watcher that closed something consumed the key.
+    if (close_request_document) |d| if (close_watchers.closeRequestSteps(d)) return;
     // The key may have moved the focus: the default action is the focused
     // element's now.
     const focused = keyTarget(document) orelse return;

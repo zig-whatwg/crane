@@ -245,12 +245,10 @@ fn runCommand(element: *runtime.Instance) !void {
                 .notPassed();
             switch (kind) {
                 .close => dom.dialog.close(after, return_value, element) catch {},
-                .request_close => interfaces.HTMLDialogElement.call_requestClose(after, return_value) catch {},
+                .request_close => dom.dialog.requestClose(after, return_value, element) catch {},
                 .show_modal => unreachable,
             }
         }
-        // TODO(closewatch1, row85 Q3): request-close needs the manager's
-        // source-bearing algorithm; show and close now use the dialog hook.
         return;
     }
     // Steps 5.7-9. Owner interfaces perform popover validity checks. The
