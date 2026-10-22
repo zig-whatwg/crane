@@ -572,6 +572,96 @@ test "wasm Suspending interface shape and revoked callable remain native" {
     ++ ending);
 }
 
+test "wasm Exception stack is a branded prototype getter over captured state" {
+    try check(
+        \\(() => {
+        \\try {
+        \\const ctor = WebAssembly.Exception;
+        \\const descriptor = Object.getOwnPropertyDescriptor(ctor.prototype, "stack");
+        \\if (!descriptor || !descriptor.enumerable || !descriptor.configurable || descriptor.set !== undefined) return "stack descriptor";
+        \\const get = descriptor.get;
+        \\if (get.name !== "get stack" || get.length !== 0) return "getter shape";
+        \\const tag = new WebAssembly.Tag({parameters:["i32"]});
+        \\const untraced = new ctor(tag,[7]);
+        \\if (get.call(untraced) !== undefined || Object.hasOwn(untraced,"stack")) return "untraced stack";
+        \\let reads = 0;
+        \\const exn = new ctor(tag,[8],{get traceStack() { reads++; return true; }});
+        \\if (reads !== 1 || Object.hasOwn(exn,"stack")) return "traceStack order";
+        \\const stack = get.call(exn);
+        \\if (typeof stack !== "string") return "native trace lost";
+        \\Object.defineProperty(exn,"stack",{value:"replacement",configurable:true});
+        \\if (get.call(exn) !== stack) return "mutable stack read";
+        \\for (const receiver of [{}, Object.create(ctor.prototype), undefined, new Error()]) {
+        \\  try { get.call(receiver); return "unbranded receiver"; }
+        \\  catch(e) { if (!(e instanceof TypeError)) return "brand error"; }
+        \\}
+        \\try { new get(); return "constructible getter"; }
+        \\catch(e) { if (!(e instanceof TypeError)) return "constructor error"; }
+        \\return "ok";
+        \\} catch(e) { return String(e); }
+        \\})()
+    );
+}
+
+test "wasm Exception keeps constructor shape prototype ordering and native throws" {
+    try check(
+        \\(() => {
+        \\try {
+        \\const ctor = WebAssembly.Exception;
+        \\const tag = new WebAssembly.Tag({parameters:[]});
+        \\if (ctor.length !== 1 || ctor.name !== "Exception" || ctor.prototype.constructor !== ctor) return "constructor shape";
+        \\const namespace = Object.getOwnPropertyDescriptor(WebAssembly,"Exception");
+        \\if (!namespace.writable || namespace.enumerable || !namespace.configurable) return "namespace shape";
+        \\try { ctor(tag,[]); return "no new"; } catch(e) { if (!(e instanceof TypeError)) return "no-new error"; }
+        \\const order = [];
+        \\const prototype = {};
+        \\const target = new Proxy(function(){}, {get(t,k,r) {
+        \\  if(k === "prototype") { order.push("prototype"); return prototype; }
+        \\  return Reflect.get(t,k,r);
+        \\}});
+        \\const made = Reflect.construct(ctor,[tag,[],{get traceStack() {order.push("traceStack"); return true;}}],target);
+        \\if (Object.getPrototypeOf(made) !== prototype || order.join() !== "prototype,traceStack") return "prototype/order " + order;
+        \\const foreign = new other.Function(); foreign.prototype = null;
+        \\const intrinsic = other.WebAssembly.Exception.prototype;
+        \\other.WebAssembly.Exception = function() {throw Error("mutable constructor");};
+        \\if (Object.getPrototypeOf(Reflect.construct(ctor,[tag,[]],foreign)) !== intrinsic) return "foreign intrinsic";
+        \\const sentinel = {};
+        \\try { new ctor(tag,[],{get traceStack() {throw sentinel;}}); return "missing trace throw"; }
+        \\catch(e) { if(e !== sentinel) return "changed trace throw"; }
+        \\return "ok";
+        \\} catch(e) { return String(e); }
+        \\})()
+    );
+}
+
+test "wasm Exception trace capture never calls user stack formatting hooks" {
+    try check(
+        \\(() => {
+        \\const old = Object.getOwnPropertyDescriptor(Error, "prepareStackTrace");
+        \\const oldName = Object.getOwnPropertyDescriptor(Error.prototype, "name");
+        \\const oldMessage = Object.getOwnPropertyDescriptor(Error.prototype, "message");
+        \\try {
+        \\let calls = 0;
+        \\Object.defineProperty(Error,"prepareStackTrace",{configurable:true,get(){calls++;throw "formatter getter";}});
+        \\for (const key of ["name","message"]) Object.defineProperty(Error.prototype,key,{configurable:true,get(){calls++;throw "Error prototype getter";}});
+        \\const tag = new WebAssembly.Tag({parameters:[]});
+        \\function wj1Capture() { return new WebAssembly.Exception(tag, [], {traceStack:true}); }
+        \\const traced = wj1Capture();
+        \\const get = Object.getOwnPropertyDescriptor(WebAssembly.Exception.prototype,"stack").get;
+        \\const stack = get.call(traced);
+        \\if (typeof stack !== "string" || !stack.includes("wj1Capture") || calls !== 0) return "formatter invoked or trace lost";
+        \\if (get.call(traced) !== stack) return "trace changed";
+        \\return "ok";
+        \\} catch { return "unexpected throw"; }
+        \\finally {
+        \\  if(old) Object.defineProperty(Error,"prepareStackTrace",old); else delete Error.prepareStackTrace;
+        \\  Object.defineProperty(Error.prototype,"name",oldName);
+        \\  Object.defineProperty(Error.prototype,"message",oldMessage);
+        \\}
+        \\})()
+    );
+}
+
 test "wasm ordinary constructors ignore replaced reflection and argument iterators" {
     try check(
         \\(() => {

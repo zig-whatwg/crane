@@ -13399,6 +13399,67 @@ static Local<Private> wasmIntrinsicPrototypesKey(Isolate* isolate) {
     return Private::ForApi(isolate, String::NewFromUtf8Literal(isolate, "crane.wasm.intrinsicPrototypes"));
 }
 
+static Local<Private> wasmExceptionStackKey(Isolate* isolate) {
+    return Private::ForApi(isolate, String::NewFromUtf8Literal(isolate, "crane.wasm.exceptionStack"));
+}
+
+static bool wasmCaptureExceptionStack(Local<Context> context, Local<Object> exception) {
+    Isolate* isolate = context->GetIsolate();
+    Local<String> stack_name = String::NewFromUtf8Literal(isolate, "stack");
+    Maybe<bool> captured = exception->HasOwnProperty(context, stack_name);
+    if (captured.IsNothing()) return false;
+    if (!captured.FromJust()) return true;
+
+    // JS API 5.9 constructor step 11: capture a DOMString now. V8 13.1.203
+    // messages.cc:1203-1240 installs a lazy own accessor instead. Reading it
+    // would invoke Error.prepareStackTrace, a callback the spec never calls.
+    // No script runs between native construction and this public native-frame
+    // snapshot. Its format is implementation-defined; no Error properties or
+    // user functions participate. An untraced/native-wasm exception has no slot.
+    Local<StackTrace> trace = StackTrace::CurrentStackTrace(isolate, 64, StackTrace::kDetailed);
+    std::string formatted = "WebAssembly.Exception";
+    if (!trace.IsEmpty()) {
+        for (int i = 0; i < trace->GetFrameCount(); ++i) {
+            Local<StackFrame> frame = trace->GetFrame(isolate, i);
+            formatted += "\n    at ";
+            Local<String> name = frame->GetFunctionName();
+            if (!name.IsEmpty() && name->Length() > 0) {
+                String::Utf8Value utf8(isolate, name);
+                if (*utf8) formatted.append(*utf8, utf8.length());
+            } else {
+                formatted += "<anonymous>";
+            }
+            formatted += " (";
+            Local<String> source = frame->GetScriptNameOrSourceURL();
+            if (!source.IsEmpty() && source->Length() > 0) {
+                String::Utf8Value utf8(isolate, source);
+                if (*utf8) formatted.append(*utf8, utf8.length());
+            } else {
+                formatted += "<anonymous>";
+            }
+            formatted += ":" + std::to_string(frame->GetLineNumber()) + ":" + std::to_string(frame->GetColumn()) + ")";
+        }
+    }
+    Local<String> stack;
+    if (!String::NewFromUtf8(isolate, formatted.c_str(), NewStringType::kNormal,
+            static_cast<int>(formatted.size())).ToLocal(&stack)) return false;
+    return exception->SetPrivate(context, wasmExceptionStackKey(isolate), stack).FromMaybe(false) &&
+        exception->Delete(context, stack_name).FromMaybe(false);
+}
+
+static void WasmExceptionStackGet(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Context> context = isolate->GetCurrentContext();
+    Local<Array> brand = info.Data().As<Array>();
+    Local<Value> is_exception, tag, ignored, stack;
+    if (!brand->Get(context, 0).ToLocal(&is_exception) || !brand->Get(context, 1).ToLocal(&tag)) return;
+    // The captured native is() performs the real internal-slot brand check.
+    // The private tag never escapes, and the method's boolean result is unused.
+    if (!is_exception.As<Function>()->Call(context, info.This(), 1, &tag).ToLocal(&ignored)) return;
+    if (!info.This()->GetPrivate(context, wasmExceptionStackKey(isolate)).ToLocal(&stack)) return;
+    info.GetReturnValue().Set(stack);
+}
+
 // ECMAScript GetFunctionRealm, following V8 13.1.203's iterative walk in
 // src/objects/js-objects.cc:647-685, through public APIs only. No Global is
 // acquired: these handles live only for the native construct trap.
@@ -13496,6 +13557,8 @@ static void WasmConstructorConstruct(const FunctionCallbackInfo<Value>& info) {
     }
     Local<Object> made;
     if (!original->NewInstance(context, static_cast<int>(args.size()), args.data()).ToLocal(&made)) return;
+    // Index 7 is Exception; 5/6 hold the JSPI Promise intrinsics.
+    if (index == 7 && !wasmCaptureExceptionStack(context, made)) return;
     // WebIDL step 9. The native constructor makes the Wasm internal slots;
     // only its externally observable prototype needs adapting.
     if (!made->GetPrototypeV2()->StrictEquals(prototype) && !made->SetPrototypeV2(context, prototype).FromMaybe(false)) return;
@@ -13595,16 +13658,16 @@ void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>*
     Local<Value> wasm_value;
     if (!context->Global()->Get(context, String::NewFromUtf8Literal(isolate, "WebAssembly")).ToLocal(&wasm_value) || !wasm_value->IsObject()) return;
     Local<Object> wasm = wasm_value.As<Object>();
-    const char* const names[] = {"Module", "Instance", "Memory", "Table", "Global"};
-    Local<Function> originals[5];
-    Local<Value> prototypes[5];
-    Local<Function> replacements[5];
-    // These prototype-realm wrappers for Module, Instance, Memory, Table
-    // and Global exist ONLY because V8 13.1 picks the wrong
+    const char* const names[] = {"Module", "Instance", "Memory", "Table", "Global", "Exception"};
+    Local<Function> originals[6];
+    Local<Value> prototypes[6];
+    Local<Function> replacements[6];
+    // These prototype-realm wrappers for Module, Instance, Memory, Table,
+    // Global and Exception exist ONLY because V8 13.1 picks the wrong
     // prototype realm. RE-CHECK at EVERY V8 upgrade: delete the wrappers
     // when V8 supplies the native NewTarget-realm fallback. The independent
-    // Memory/Table address adaptation needs its own upgrade check; it is
-    // not a reason to retain prototype wrapping.
+    // Memory/Table address and Exception stack adaptations need their own
+    // upgrade checks; they are not reasons to retain prototype wrapping.
     // Ordinary new calls the original directly; only a custom NewTarget uses
     // the native prototype/realm adapter. A derived class returns the native
     // object without super, avoiding a receiver allocation/prototype Get before
@@ -13651,6 +13714,9 @@ void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>*
         "const args = apply(slice, arguments, []); args[0] = descriptor; return construct(target, args);"
         "} finally { currentDescriptor = previousDescriptor; currentAddress = previousAddress; }"
         "}"
+        // Exception's optional trace requires the captured-string adapter.
+        // Missing/null/undefined options request no trace and need no work.
+        "if (kind === 5 && count >= 3 && a2 !== undefined && a2 !== null) return native(target, apply(slice, arguments, []), replacement);"
         "if (count === 1) return new target(a0);"
         "if (count === 2) return new target(a0, a1);"
         "return construct(target, arguments);"
@@ -13671,14 +13737,14 @@ void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>*
         !context->Global()->Get(context, String::NewFromUtf8Literal(isolate, "Proxy")).ToLocal(&proxy_constructor) || !proxy_constructor->IsFunction()) return;
     // Prepare everything before publishing a replacement. The original
     // functions preserve name, length, statics and call-without-new errors.
-    for (uint32_t i = 0; i < 5; ++i) {
+    for (uint32_t i = 0; i < 6; ++i) {
         Local<String> name = String::NewFromUtf8(isolate, names[i]).ToLocalChecked();
         Local<Value> original;
         if (!wasm->Get(context, name).ToLocal(&original) || !original->IsFunction()) return;
         originals[i] = original.As<Function>();
         if (!originals[i]->Get(context, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&prototypes[i]) || !prototypes[i]->IsObject()) return;
         Local<Function> construct;
-        const uint32_t intrinsic_index = i;
+        const uint32_t intrinsic_index = i == 5 ? 7 : i;
         if (!Function::New(context, WasmConstructorConstruct, Integer::NewFromUnsigned(isolate, intrinsic_index), 3, ConstructorBehavior::kThrow).ToLocal(&construct)) return;
         Local<Value> factory_args[] = {originals[i], construct, Integer::NewFromUnsigned(isolate, i)};
         Local<Value> replacement;
@@ -13704,12 +13770,12 @@ void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>*
     // The private JS constructor is embedding machinery, not the script
     // responsible for a CSP violation. Retain its unforgeable script ID for
     // running-script attribution below, without retaining a native handle.
-    Local<Value> intrinsic_values[] = {prototypes[0], prototypes[1], prototypes[2], prototypes[3], prototypes[4], promise_constructor, promise_resolve, Undefined(isolate), descriptor_factory,
+    Local<Value> intrinsic_values[] = {prototypes[0], prototypes[1], prototypes[2], prototypes[3], prototypes[4], promise_constructor, promise_resolve, prototypes[5], descriptor_factory,
         Integer::New(isolate, fast_script->GetUnboundScript()->GetId())};
     Local<Array> intrinsics = Array::New(isolate, intrinsic_values, 10);
     if (!intrinsics->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return;
     if (!context->Global()->SetPrivate(context, wasmIntrinsicPrototypesKey(isolate), intrinsics).FromMaybe(false)) return;
-    for (uint32_t i = 0; i < 5; ++i) {
+    for (uint32_t i = 0; i < 6; ++i) {
         if (!prototypes[i].As<Object>()->DefineOwnProperty(context, String::NewFromUtf8Literal(isolate, "constructor"), replacements[i], DontEnum).FromMaybe(false)) return;
         Local<String> name = String::NewFromUtf8(isolate, names[i]).ToLocalChecked();
         if (!wasm->DefineOwnProperty(context, name, replacements[i], DontEnum).FromMaybe(false)) return;
@@ -13731,6 +13797,31 @@ void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>*
     value_descriptor.set_enumerable(enumerable->IsTrue());
     value_descriptor.set_configurable(configurable->IsTrue());
     if (!global_prototype->DefineProperty(context, value_name, value_descriptor).FromMaybe(false)) return;
+
+    // Golden rule 2: Exception.length remains V8's 1. The spec's 2 dates
+    // to 2019, while Firefox/Safari still expose 1 (pinned runs above).
+    // For stack, Chrome/Firefox expose a prototype member, but disagree on
+    // enumerability; Safari has no member. With no enumerability majority,
+    // follow the spec's enumerable getter (exception-handling PR 218, 2022).
+    Local<Object> exception_prototype = prototypes[5].As<Object>();
+    Local<Value> is_exception, tag_constructor;
+    if (!exception_prototype->Get(context, String::NewFromUtf8Literal(isolate, "is")).ToLocal(&is_exception) || !is_exception->IsFunction() ||
+        !wasm->Get(context, String::NewFromUtf8Literal(isolate, "Tag")).ToLocal(&tag_constructor) || !tag_constructor->IsFunction()) return;
+    Local<Name> tag_names[] = {String::NewFromUtf8Literal(isolate, "parameters")};
+    Local<Value> tag_values[] = {Array::New(isolate)};
+    Local<Value> tag_descriptor = Object::New(isolate, Null(isolate), tag_names, tag_values, 1);
+    Local<Object> brand_tag;
+    if (!tag_constructor.As<Function>()->NewInstance(context, 1, &tag_descriptor).ToLocal(&brand_tag)) return;
+    Local<Value> brand_values[] = {is_exception, brand_tag};
+    Local<Array> brand = Array::New(isolate, brand_values, 2);
+    if (!brand->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return;
+    Local<Function> stack_getter;
+    if (!Function::New(context, WasmExceptionStackGet, brand, 0, ConstructorBehavior::kThrow).ToLocal(&stack_getter)) return;
+    stack_getter->SetName(String::NewFromUtf8Literal(isolate, "get stack"));
+    PropertyDescriptor stack_descriptor(stack_getter, Undefined(isolate));
+    stack_descriptor.set_enumerable(true);
+    stack_descriptor.set_configurable(true);
+    if (!exception_prototype->DefineProperty(context, String::NewFromUtf8Literal(isolate, "stack"), stack_descriptor).FromMaybe(false)) return;
 
     // JSPI is optional in this V8 build (disabled under --jitless).
     Local<String> suspending_name = String::NewFromUtf8Literal(isolate, "Suspending");
