@@ -179,10 +179,10 @@ pub fn createInternal(options: Creation, state: ce.State, interface: Interface) 
         try interfaces.HTMLUnknownElement.init(realm.allocator, realm)
     else if (is_html)
         try @import("../parser_script_execution.zig").createHTMLElement(realm.allocator, realm, options.local_name)
-    else if (is_svg and std.mem.eql(u8, options.local_name, "script"))
-        try interfaces.SVGScriptElement.init(realm.allocator, realm)
-    else if (is_svg and std.mem.eql(u8, options.local_name, "a"))
-        try interfaces.SVGAElement.init(realm.allocator, realm)
+    else if (is_svg)
+        try switch (@import("../svg_element_interface.zig").forLocalName(options.local_name)) {
+            inline else => |which| @field(interfaces, @tagName(which)).init(realm.allocator, realm),
+        }
     else if (is_mathml and std.mem.eql(u8, options.local_name, "a"))
         try interfaces.MathMLAnchorElement.init(realm.allocator, realm)
     else if (is_mathml)

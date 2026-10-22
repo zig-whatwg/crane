@@ -21,6 +21,7 @@ const ProcessingInstruction = interfaces.ProcessingInstruction;
 const dom = @import("dom");
 const engine = @import("engine");
 const Attributes = dom.pi_attributes.Attributes;
+const style_sheet_loading = @import("html").style_sheet_loading;
 
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
@@ -43,6 +44,11 @@ pub const InternalState = struct {
     attributes: ?*Attributes = null,
     attributes_stale: bool = true,
     attributes_already_updated: bool = false,
+    sheet: ?*dom.style.SheetRecord = null,
+    sheet_document: ?*runtime.Instance = null,
+    sheet_document_generation: u64 = 0,
+    load: u64 = 0,
+    in_prolog: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -51,7 +57,10 @@ pub const InternalState = struct {
         };
     }
 
-    pub fn deinit(self: *InternalState) void {
+    pub fn deinit(self: *InternalState, instance: *runtime.Instance) void {
+        style_sheet_loading.elementGone(instance);
+        self.load = 0;
+        removeSheet(instance, self);
         if (self.target.len > 0) self.allocator.free(self.target);
         self.target = "";
         if (self.attributes) |attributes| {
@@ -96,7 +105,7 @@ fn sweepLive(scope: *runtime.BrowserScope) void {
     while (it.next()) |instance| {
         if (runtime.BrowserScope.ofInstance(instance.*) != scope) continue;
         if (getInternal(instance.*)) |internal| {
-            internal.deinit();
+            internal.deinit(instance.*);
             internal.target = "";
         }
     }
@@ -117,12 +126,16 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 pub fn installHooks() void {
     dom.teardown_sweeps.install(.element_types, &sweepLive);
     dom.character_data.installProcessingInstruction(.{ .data_changed = &dataChanged });
+    dom.style.hooks.install(.{ .pi_sheet_of = &sheetOf, .pi_sheet_arrived = &sheetArrived });
+    dom.mutation.registerChildrenChangedCallback(&documentChildrenChanged) catch {};
+    dom.mutation.registerRemovingStepsCallback(&removingSteps) catch {};
 }
 
 /// Replace-data step 12. Consume the already-updated argument before step 13
 /// can run children-changed steps and reenter script with a different change.
 fn dataChanged(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
+    defer updateStyleSheet(instance);
     if (internal.attributes_already_updated) {
         internal.attributes_already_updated = false;
         return;
@@ -155,7 +168,7 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
     untrackLive(instance);
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.deinit();
+        internal.deinit(instance);
 
         // Return the block itself, not just what it points to.
         // `internal.deinit()` releases the strings and lists the state
@@ -182,10 +195,104 @@ pub fn get_target(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for sheet (from LinkStyle mixin - CSSOM)
 /// Returns the associated stylesheet, if any
 pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    // TODO: Return associated CSSStyleSheet if this is <?xml-stylesheet?>
-    // Requires CSSOM integration
-    return error.NotImplemented;
+    const record = sheetOf(instance) orelse return null;
+    return try dom.style.objects.sheetObject(record, instance.ctx);
+}
+
+/// CSSOM 6.3.4: the prolog is the Document's children before its element.
+/// Reconsider membership when a document child moves, including when an
+/// element moves past an existing PI. Ordinary element mutations return here.
+fn documentChildrenChanged(parent: *dom.NodeBase, _: dom.mutation.ChildrenChange) void {
+    if (parent.node_type != dom.NodeBase.DOCUMENT_NODE) return;
+    var in_prolog = true;
+    for (parent.child_nodes.items()) |child| {
+        if (child.node_type == dom.NodeBase.ELEMENT_NODE) in_prolog = false;
+        if (child.node_type != dom.NodeBase.PROCESSING_INSTRUCTION_NODE) continue;
+        const raw = dom.instance_bridge.getInstance(child) orelse continue;
+        const instance: *runtime.Instance = @ptrCast(@alignCast(raw));
+        const internal = getInternal(instance) orelse continue;
+        if (internal.in_prolog == in_prolog) continue;
+        internal.in_prolog = in_prolog;
+        updateStyleSheet(instance);
+    }
+}
+
+fn removingSteps(node: *dom.NodeBase, _: ?*dom.NodeBase) void {
+    if (node.node_type != dom.NodeBase.PROCESSING_INSTRUCTION_NODE) return;
+    const raw = dom.instance_bridge.getInstance(node) orelse return;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(raw));
+    const internal = getInternal(instance) orelse return;
+    internal.in_prolog = false;
+    updateStyleSheet(instance);
+}
+
+/// CSSOM 6.3.4 steps 1-14. The existing stylesheet loader owns fetching,
+/// imports, cancellation, load-event delay and the owner's execution hold.
+fn updateStyleSheet(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    const previous_load = internal.load;
+    internal.load = 0;
+    defer if (previous_load != 0) style_sheet_loading.cancel(previous_load);
+    removeSheet(instance, internal);
+    if (!internal.in_prolog or !std.mem.eql(u8, internal.target, "xml-stylesheet")) return;
+    const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return;
+    if ((interfaces.Document.get_defaultView(document) catch null) == null) return;
+    // CSSOM reads the serialized PI data using XML Stylesheet's grammar.
+    // DOM's attribute map can retain names set through its more permissive
+    // IDL API, so it is not a substitute for this strict parse.
+    var attributes = Attributes.init(internal.allocator);
+    defer attributes.deinit();
+    attributes.parse(dom.character_data.dataOf(instance) orelse "") catch return;
+    const href = attributes.get("href") orelse return;
+    const title = attributes.get("title") orelse "";
+    if (std.mem.eql(u8, attributes.get("alternate") orelse "", "yes") and title.len == 0) return;
+    if (attributes.get("type")) |mime| if (mime.len != 0 and !std.ascii.eqlIgnoreCase(mime, "text/css")) return;
+    // XML's stack-local parser cannot suspend yet. The load is asynchronous
+    // and delays load, but enters no parser-blocking set until the XML
+    // parser gains its document-load continuation (streamnav).
+    internal.load = style_sheet_loading.startLink(instance, .{ .href = href }, false) orelse 0;
+}
+
+fn sheetOf(instance: *runtime.Instance) ?*dom.style.SheetRecord {
+    return (getInternal(instance) orelse return null).sheet;
+}
+
+fn sheetArrived(instance: *runtime.Instance, text: []const u8, url: []const u8, origin_clean: bool) void {
+    const internal = getInternal(instance) orelse return;
+    if (!internal.in_prolog or !std.mem.eql(u8, internal.target, "xml-stylesheet")) return;
+    var attributes = Attributes.init(internal.allocator);
+    defer attributes.deinit();
+    attributes.parse(dom.character_data.dataOf(instance) orelse "") catch return;
+    const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return;
+    removeSheet(instance, internal);
+    const record = dom.style.SheetRecord.create(instance.ctx.allocator, text, .{
+        .owner_node = instance,
+        .title = attributes.get("title") orelse "",
+        .alternate = std.mem.eql(u8, attributes.get("alternate") orelse "", "yes"),
+        .media = attributes.get("media") orelse "",
+        .location = url,
+        .base_url = url,
+        .origin_clean = origin_clean,
+        .mode = .{ .quirks = dom.document_internals.getMode(document) == .quirks },
+    }) catch return;
+    internal.sheet = record;
+    internal.sheet_document = document;
+    internal.sheet_document_generation = runtime.SlabAllocator.generationOf(document);
+    if (dom.style.engine.engineOf(document)) |style_engine| style_engine.addOwner(instance) catch {};
+}
+
+fn removeSheet(instance: *runtime.Instance, internal: *InternalState) void {
+    const record = internal.sheet orelse return;
+    internal.sheet = null;
+    if (internal.sheet_document) |document| {
+        if (runtime.SlabAllocator.generationOf(document) == internal.sheet_document_generation) {
+            if (dom.style.engine.engineOf(document)) |style_engine| style_engine.removeOwner(instance);
+        }
+    }
+    internal.sheet_document = null;
+    record.detach();
+    dom.style.objects.ownerReleased(instance);
+    record.unref();
 }
 
 // =============================================================================

@@ -42,7 +42,7 @@ pub const InputCharacter = @import("input_stream.zig").InputCharacter;
 
 // Determining the character encoding (HTML §13.2.3.2) and decoding the
 // input byte stream
-pub const encoding_sniffing = @import("encoding_sniffing.zig");
+pub const encoding_sniffing = @import("html_encoding_sniffing");
 
 // Tokenizer
 pub const Tokenizer = @import("tokenizer.zig").Tokenizer;
@@ -66,7 +66,7 @@ pub const ElementCategory = @import("tree_builder.zig").ElementCategory;
 // because it requires runtime and interfaces which aren't available in html_core.
 
 // Named character references (entities)
-pub const entities = @import("entities.zig");
+pub const entities = @import("html_entities");
 
 // Fragment parsing (innerHTML, DOMParser, etc.)
 pub const fragment_parser = @import("fragment_parser.zig");
@@ -100,7 +100,7 @@ test {
     _ = @import("input_stream.zig");
     _ = @import("tokenizer.zig");
     _ = @import("tree_builder.zig");
-    _ = @import("entities.zig");
+    _ = @import("html_entities");
     _ = @import("fragment_parser.zig");
     _ = @import("document_write.zig");
     _ = @import("tag_name_intern.zig");

@@ -4,7 +4,7 @@
 //! start, from its installHooks (docs/instances.md); none of them is named
 //! here (AGENTS.md "The impls boundary").
 //!
-//! lint-impls: hook for Document, ShadowRoot, Element, HTMLStyleElement, HTMLLinkElement, MediaQueryList, StyleSheet, CSSRule
+//! lint-impls: hook for Document, ShadowRoot, Element, HTMLStyleElement, HTMLLinkElement, ProcessingInstruction, MediaQueryList, StyleSheet, CSSRule
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -31,6 +31,9 @@ pub const Hooks = struct {
     /// the linked resource" for the stylesheet link type), `text` decoded,
     /// at `url`: it creates its CSS style sheet.
     link_sheet_arrived: ?*const fn (element: *runtime.Instance, text: []const u8, url: []const u8, origin_clean: bool) void = null,
+    /// CSSOM 6.3.4: an xml-stylesheet processing instruction's sheet.
+    pi_sheet_of: ?*const fn (owner: *runtime.Instance) ?*sheet.SheetRecord = null,
+    pi_sheet_arrived: ?*const fn (owner: *runtime.Instance, text: []const u8, url: []const u8, origin_clean: bool) void = null,
     /// MediaQueryList: CSSOM View 4.2's substep for one list - fire
     /// `change` at it if its matches state changed since the last report.
     report_media_query_list: ?*const fn (list: *runtime.Instance) void = null,
@@ -75,12 +78,13 @@ pub fn elementStyleSlot(element: *runtime.Instance) ?*?*element_style.ElementSty
 pub fn sheetOf(owner: *runtime.Instance) ?*sheet.SheetRecord {
     if (hooks.style_sheet_of) |f| if (f(owner)) |record| return record;
     if (hooks.link_sheet_of) |f| if (f(owner)) |record| return record;
+    if (hooks.pi_sheet_of) |f| if (f(owner)) |record| return record;
     return null;
 }
 
 pub fn linkSheetArrived(element: *runtime.Instance, text: []const u8, url: []const u8, origin_clean: bool) void {
-    const f = hooks.link_sheet_arrived orelse return;
-    f(element, text, url, origin_clean);
+    if (hooks.link_sheet_arrived) |f| f(element, text, url, origin_clean);
+    if (hooks.pi_sheet_arrived) |f| f(element, text, url, origin_clean);
 }
 
 /// The CSS style sheet the StyleSheet object `object` is over; null for an

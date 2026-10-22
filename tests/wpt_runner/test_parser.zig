@@ -36,6 +36,8 @@
 const std = @import("std");
 const config = @import("config.zig");
 const host = @import("host");
+const xml = @import("xml");
+const xml_document_encoding = @import("xml_document_encoding");
 
 /// Error types for test parsing
 pub const ParseError = error{
@@ -321,7 +323,9 @@ pub const TestMetadata = struct {
 
     /// Add a variant
     pub fn addVariant(self: *TestMetadata, variant: []const u8) !void {
-        try self.variants.append(self.allocator, try self.allocator.dupe(u8, variant));
+        const owned = try self.allocator.dupe(u8, variant);
+        errdefer self.allocator.free(owned);
+        try self.variants.append(self.allocator, owned);
     }
 
     /// Add a global context
@@ -783,9 +787,160 @@ pub fn parseTestFile(allocator: std.mem.Allocator, path: []const u8, content: []
         .window_js => parseWindowJs(allocator, path, content),
         .worker_js => parseWorkerJs(allocator, path, content),
         .html => parseHtml(allocator, path, content),
+        .xml => parseXml(allocator, path, content),
         .unknown => error.UnsupportedTestFormat,
     };
 }
+
+/// XML documents run in a Window. Only metadata is read here; Browser loads
+/// the original response and runs its scripts with HTML §14.2 XML scripting.
+pub fn parseXml(allocator: std.mem.Allocator, path: []const u8, content: []const u8) !ParsedTest {
+    var metadata = try parseXmlMetadata(allocator, content);
+    errdefer metadata.deinit();
+    try metadata.addGlobal(.window);
+    const owned_path = try allocator.dupe(u8, path);
+    errdefer allocator.free(owned_path);
+    return .{
+        .allocator = allocator,
+        .path = owned_path,
+        .file_type = .xml,
+        .metadata = metadata,
+        .content = try allocator.dupe(u8, content),
+    };
+}
+
+/// WPT tools/manifest/sourcefile.py selects descendant XHTML-namespace meta
+/// elements. XML names are case-sensitive; prefixes, entity references,
+/// comments and CDATA must be interpreted by the XML parser, not an HTML
+/// substring scan. The first timeout element wins; variants retain order.
+fn parseXmlMetadata(allocator: std.mem.Allocator, content: []const u8) !TestMetadata {
+    var metadata = TestMetadata.init(allocator);
+    errdefer metadata.deinit();
+    const decoded = (try xml_document_encoding.decodeDocumentBytes(allocator, content, null)) orelse return metadata;
+    defer allocator.free(decoded.text);
+    var parser = xml.Parser.init(allocator, .{ .xhtml_entities = xml_document_encoding.htmlNamedReference });
+    defer parser.deinit();
+    var sink = XmlMetadataSink{ .metadata = &metadata };
+    if (try parser.parse(decoded.text, &sink) != null) {
+        // Upstream has no metadata for an ill-formed XML source. Still load
+        // it in the browser: parsing errors are document behavior, not a
+        // reason for the runner to suppress a requested navigation.
+        metadata.deinit();
+        metadata = TestMetadata.init(allocator);
+    }
+    return metadata;
+}
+
+test "XML metadata decodes UTF-16 with and without a byte order mark" {
+    const text = "<?xml version='1.0' encoding='UTF-16'?><r xmlns:h='http://www.w3.org/1999/xhtml'><h:meta name='variant' content='?wide'/></r>";
+    for ([_]bool{ false, true }) |big_endian| {
+        for ([_]bool{ false, true }) |bom| {
+            var bytes: std.ArrayList(u8) = .empty;
+            defer bytes.deinit(std.testing.allocator);
+            if (bom) try bytes.appendSlice(std.testing.allocator, if (big_endian) "\xfe\xff" else "\xff\xfe");
+            for (text) |c| try bytes.appendSlice(std.testing.allocator, if (big_endian) &.{ 0, c } else &.{ c, 0 });
+            var metadata = try parseXmlMetadata(std.testing.allocator, bytes.items);
+            defer metadata.deinit();
+            try std.testing.expectEqual(@as(usize, 1), metadata.variants.items.len);
+            try std.testing.expectEqualStrings("?wide", metadata.variants.items[0]);
+        }
+    }
+}
+
+test "XML metadata decodes declared legacy encodings and XHTML entities" {
+    const sources = [_][]const u8{
+        "<?xml version='1.0' encoding='windows-1252'?><r xmlns='http://www.w3.org/1999/xhtml'><meta name='variant' content='?caf\xe9'/></r>",
+        "<!DOCTYPE r PUBLIC '-//W3C//DTD XHTML 1.0 Strict//EN' 'http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd'><r xmlns='http://www.w3.org/1999/xhtml'><meta name='variant' content='?caf&eacute;'/></r>",
+    };
+    for (sources) |source| {
+        var metadata = try parseXmlMetadata(std.testing.allocator, source);
+        defer metadata.deinit();
+        try std.testing.expectEqual(@as(usize, 1), metadata.variants.items.len);
+        try std.testing.expectEqualStrings("?café", metadata.variants.items[0]);
+    }
+}
+
+test "XML metadata ignores an unsupported declared encoding" {
+    var metadata = try parseXmlMetadata(std.testing.allocator, "<?xml version='1.0' encoding='xm1-unknown'?><r xmlns='http://www.w3.org/1999/xhtml'><meta name='variant' content='?invalid'/></r>");
+    defer metadata.deinit();
+    try std.testing.expectEqual(@as(usize, 0), metadata.variants.items.len);
+}
+
+test "malformed encoded XML discards metadata even after a complete meta element" {
+    const prefix = "<r xmlns='http://www.w3.org/1999/xhtml'><meta name='variant' content='?bad'/><x>";
+    const suffix = "</x></r>";
+    var utf16: std.ArrayList(u8) = .empty;
+    defer utf16.deinit(std.testing.allocator);
+    try utf16.appendSlice(std.testing.allocator, "\xff\xfe");
+    for (prefix) |c| try utf16.appendSlice(std.testing.allocator, &.{ c, 0 });
+    try utf16.appendSlice(std.testing.allocator, "\x00\xd8");
+    for (suffix) |c| try utf16.appendSlice(std.testing.allocator, &.{ c, 0 });
+    const sources = [_][]const u8{
+        prefix ++ "\xff" ++ suffix,
+        prefix ++ "\xe2\x82" ++ suffix,
+        utf16.items,
+        "<?xml version='1.0' encoding='Shift_JIS'?>" ++ prefix ++ "\x82" ++ suffix,
+    };
+    for (sources) |source| {
+        var metadata = try parseXmlMetadata(std.testing.allocator, source);
+        defer metadata.deinit();
+        try std.testing.expectEqual(@as(usize, 0), metadata.variants.items.len);
+    }
+}
+
+test "XML metadata preserves multibyte text across decoder output buffers" {
+    const allocator = std.testing.allocator;
+    const text = "<?xml version='1.0' encoding='UTF-16'?><r xmlns='http://www.w3.org/1999/xhtml'>" ++
+        "<x>é😀</x>" ** 1200 ++ "<meta name='variant' content='?é😀'/></r>";
+    const units = try std.unicode.utf8ToUtf16LeAlloc(allocator, text);
+    defer allocator.free(units);
+    var metadata = try parseXmlMetadata(allocator, std.mem.sliceAsBytes(units));
+    defer metadata.deinit();
+    try std.testing.expectEqual(@as(usize, 1), metadata.variants.items.len);
+    try std.testing.expectEqualStrings("?é😀", metadata.variants.items[0]);
+}
+
+fn checkMalformedEncodedMetadataAllocations(allocator: std.mem.Allocator) !void {
+    const source = "<?xml version='1.0' encoding='Shift_JIS'?><r xmlns='http://www.w3.org/1999/xhtml'>" ++
+        "<meta name='variant' content='?bad'/><x>" ++ "a" ** 12000 ++ "\x82</x></r>";
+    var metadata = try parseXmlMetadata(allocator, source);
+    defer metadata.deinit();
+    try std.testing.expectEqual(@as(usize, 0), metadata.variants.items.len);
+}
+
+test "fatal XML byte errors release all previously decoded buffers" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, checkMalformedEncodedMetadataAllocations, .{});
+}
+
+const XmlMetadataSink = struct {
+    metadata: *TestMetadata,
+    depth: usize = 0,
+    seen_timeout: bool = false,
+
+    pub fn startElement(self: *XmlMetadataSink, name: xml.Name, attributes: []const xml.Attribute) !void {
+        self.depth += 1;
+        if (self.depth == 1 or !std.mem.eql(u8, name.namespace orelse "", "http://www.w3.org/1999/xhtml") or
+            !std.mem.eql(u8, name.local, "meta")) return;
+        var meta_name: ?[]const u8 = null;
+        var content: ?[]const u8 = null;
+        for (attributes) |attribute| {
+            if (attribute.name.namespace != null) continue;
+            if (std.mem.eql(u8, attribute.name.local, "name")) meta_name = attribute.value;
+            if (std.mem.eql(u8, attribute.name.local, "content")) content = attribute.value;
+        }
+        const kind = meta_name orelse return;
+        if (std.mem.eql(u8, kind, "timeout") and !self.seen_timeout) {
+            self.seen_timeout = true;
+            if (std.ascii.eqlIgnoreCase(content orelse "", "long")) self.metadata.timeout = .long;
+        } else if (std.mem.eql(u8, kind, "variant")) {
+            if (content) |value| try self.metadata.addVariant(value);
+        }
+    }
+
+    pub fn endElement(self: *XmlMetadataSink, _: xml.Name) !void {
+        self.depth -= 1;
+    }
+};
 
 /// Resolve a script path relative to the test file
 pub fn resolveScriptPath(
@@ -942,6 +1097,7 @@ pub const ScriptLoader = struct {
 pub fn extractMetadata(allocator: std.mem.Allocator, file_type: config.FileType, content: []const u8) !TestMetadata {
     return switch (file_type) {
         .any_js, .window_js, .worker_js => try parseMetaComments(allocator, content),
+        .xml => try parseXmlMetadata(allocator, content),
         .html => blk: {
             var metadata = TestMetadata.init(allocator);
             errdefer metadata.deinit();
@@ -963,6 +1119,118 @@ pub fn extractMetadata(allocator: std.mem.Allocator, file_type: config.FileType,
 // =============================================================================
 // Tests
 // =============================================================================
+
+test "XML metadata follows expanded names and excludes comments and CDATA" {
+    const content =
+        \\<svg xmlns="http://www.w3.org/2000/svg" xmlns:h="http://www.w3.org/1999/xhtml">
+        \\  <!-- <meta name="variant" content="?comment"/> -->
+        \\  <script><![CDATA[const s = '<meta name="variant" content="?script"/>';]]></script>
+        \\  <meta name="variant" content="?svg"/>
+        \\  <h:meta name="timeout" content="LONG"/>
+        \\  <h:meta name="variant" content="?a=1&amp;b=2"/>
+        \\  <h:meta name="variant" content="#fragment"/>
+        \\</svg>
+    ;
+    for ([_][]const u8{ "test.xhtml", "test.xht", "test.svg", "test.xml" }) |path| {
+        var parsed = try parseTestFile(std.testing.allocator, path, content);
+        defer parsed.deinit();
+        try std.testing.expectEqual(config.Timeout.long, parsed.metadata.timeout);
+        try std.testing.expectEqualSlices(GlobalType, &.{.window}, parsed.metadata.globals.items);
+        try std.testing.expectEqual(@as(usize, 2), parsed.metadata.variants.items.len);
+        try std.testing.expectEqualStrings("?a=1&b=2", parsed.metadata.variants.items[0]);
+        try std.testing.expectEqualStrings("#fragment", parsed.metadata.variants.items[1]);
+    }
+}
+
+test "XML metadata uses the first timeout and includes only descendant meta elements" {
+    const content =
+        \\<meta xmlns="http://www.w3.org/1999/xhtml" name="variant" content="?root">
+        \\  <meta name="timeout"/>
+        \\  <meta name="timeout" content="long"/>
+        \\  <META name="variant" content="?uppercase"/>
+        \\  <meta name="variant"/>
+        \\  <meta name="variant" content=""/>
+        \\  <meta xmlns="" name="variant" content="?no-namespace"/>
+        \\</meta>
+    ;
+    var metadata = try extractMetadata(std.testing.allocator, .xml, content);
+    defer metadata.deinit();
+    try std.testing.expectEqual(config.Timeout.normal, metadata.timeout);
+    try std.testing.expectEqual(@as(usize, 1), metadata.variants.items.len);
+    try std.testing.expectEqualStrings("", metadata.variants.items[0]);
+}
+
+test "malformed XML still schedules a browser navigation without invented metadata" {
+    var parsed = try parseTestFile(std.testing.allocator, "test.xml", "<root xmlns='http://www.w3.org/1999/xhtml'><meta name='variant' content='?bad'/></wrong>");
+    defer parsed.deinit();
+    try std.testing.expectEqualSlices(GlobalType, &.{.window}, parsed.metadata.globals.items);
+    try std.testing.expectEqual(@as(usize, 0), parsed.metadata.variants.items.len);
+}
+
+fn checkXmlMetadataAllocations(allocator: std.mem.Allocator) !void {
+    var parsed = try parseTestFile(allocator, "test.xml", "<root xmlns='http://www.w3.org/1999/xhtml'><meta name='variant' content='?a&amp;b'/></root>");
+    defer parsed.deinit();
+}
+
+test "XML metadata allocation failures release every owned value" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, checkXmlMetadataAllocations, .{});
+}
+
+fn checkEncodedXmlMetadataAllocations(allocator: std.mem.Allocator) !void {
+    const text = "<?xml version='1.0' encoding='UTF-16'?><r xmlns='http://www.w3.org/1999/xhtml'><meta name='variant' content='?wide'/></r>";
+    var utf16: [text.len * 2]u8 = undefined;
+    for (text, 0..) |c, i| {
+        utf16[i * 2] = c;
+        utf16[i * 2 + 1] = 0;
+    }
+    const sources = [_][]const u8{
+        &utf16,
+        "<?xml version='1.0' encoding='windows-1252'?><r xmlns='http://www.w3.org/1999/xhtml'><meta name='variant' content='?caf\xe9'/></r>",
+        "<!DOCTYPE r PUBLIC '-//W3C//DTD XHTML 1.0 Strict//EN' 'http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd'><r xmlns='http://www.w3.org/1999/xhtml'><meta name='variant' content='?caf&eacute;'/></r>",
+    };
+    for (sources) |source| {
+        var parsed = try parseXml(allocator, "encoded.xml", source);
+        defer parsed.deinit();
+        try std.testing.expectEqual(@as(usize, 1), parsed.metadata.variants.items.len);
+    }
+}
+
+test "decoded XML metadata frees buffers and entities on every allocation failure" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, checkEncodedXmlMetadataAllocations, .{});
+}
+
+test "XML corpus metadata expands to the manifest URLs" {
+    const allocator = std.testing.allocator;
+    const manifest_module = @import("manifest.zig");
+    host.cwd().access(host.io(), "tests/wpt/MANIFEST.json", .{}) catch return error.SkipZigTest;
+    var manifest = try manifest_module.loadManifest(allocator, "tests/wpt");
+    defer manifest.deinit();
+    var iterator = manifest.source_to_urls.iterator();
+    while (iterator.next()) |entry| {
+        const path = entry.key_ptr.*;
+        if (config.FileType.fromPath(path) != .xml) continue;
+        const full_path = try std.fs.path.join(allocator, &.{ "tests/wpt", path });
+        defer allocator.free(full_path);
+        const content = host.cwd().readFileAlloc(host.io(), full_path, allocator, .limited(16 * 1024 * 1024)) catch |err| switch (err) {
+            error.FileNotFound => continue,
+            else => return err,
+        };
+        defer allocator.free(content);
+        var parsed = try parseTestFile(allocator, path, content);
+        defer parsed.deinit();
+        const variants = parsed.metadata.variantsOrDefault();
+        try std.testing.expectEqual(entry.value_ptr.items.len, variants.len);
+        for (variants) |variant| {
+            const url = try std.fmt.allocPrint(allocator, "{s}{s}", .{ path, variant });
+            defer allocator.free(url);
+            var found = false;
+            for (entry.value_ptr.items) |expected| {
+                if (std.mem.eql(u8, expected, url)) found = true;
+            }
+            try std.testing.expect(found);
+        }
+    }
+}
 
 test "parseMetaComments basic" {
     const testing = std.testing;
