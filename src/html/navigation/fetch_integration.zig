@@ -177,6 +177,15 @@ pub const StreamedBody = struct {
     fetch: ?*fetch.algorithms.AsyncFetch = null,
     /// Who holds the body now, and whether it is still there.
     holder: Holder,
+    /// What the fetch's request borrows from whoever started it, which must
+    /// last as long as the fetch does (a timing reporter at the end of the
+    /// body): released once the fetch can no longer reach it.
+    kept: ?Kept = null,
+
+    pub const Kept = struct {
+        context: *anyopaque,
+        release: *const fn (context: *anyopaque) void,
+    };
 
     pub const Holder = struct {
         context: *anyopaque,
@@ -219,6 +228,8 @@ pub const StreamedBody = struct {
             self.fetch = null;
             handle.terminate();
         }
+        // No fetch is left to reach what its request borrowed.
+        if (self.kept) |kept| kept.release(kept.context);
         self.allocator.destroy(self);
     }
 
@@ -262,6 +273,12 @@ pub const BodyHandoff = struct {
 
     fn destroy(self: *BodyHandoff) void {
         if (self.body) |body| body.release();
+        self.allocator.destroy(self);
+    }
+
+    /// Free a handoff whose body was never handed over (its creator's
+    /// error path): the body is the creator's to free.
+    pub fn destroyEmpty(self: *BodyHandoff) void {
         self.allocator.destroy(self);
     }
 };

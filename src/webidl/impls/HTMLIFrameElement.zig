@@ -2082,11 +2082,45 @@ fn streamBody(record: *Navigation, response: *navigation_fetch.NavigationFetchRe
         record.allocator.destroy(streamed);
         return err;
     };
+    // The fetch now outlives this record, whose reporters its request
+    // borrowed. A timing reporter is still needed at the body's end (Fetch's
+    // report timing steps): a copy the body keeps takes its place. The CSP
+    // checks that report through the record's are all behind it - they run
+    // before the response is handed over.
+    const request = f.job.request;
+    request.csp_violation_reporter = null;
+    if (record.timing_reporter) |reporter| {
+        const kept = KeptTimingReporter.create(record.allocator, reporter) catch |err| {
+            handoff.destroyEmpty();
+            record.allocator.destroy(streamed);
+            return err;
+        };
+        request.timing_reporter = kept.reporter.reporter();
+        streamed.kept = .{ .context = kept, .release = &KeptTimingReporter.release };
+    }
     // The response's body no longer reads it: its deinit leaves it.
     body.pipe = null;
     streamed.adopt(f);
     response.body_stream = handoff;
 }
+
+/// A navigation's timing reporter, kept by its streamed body for as long as
+/// the fetch may report the body's end (`StreamedBody.kept`).
+const KeptTimingReporter = struct {
+    allocator: std.mem.Allocator,
+    reporter: dom_module.performance_timeline.GuardedTimingReporter,
+
+    fn create(allocator: std.mem.Allocator, reporter: dom_module.performance_timeline.GuardedTimingReporter) !*KeptTimingReporter {
+        const self = try allocator.create(KeptTimingReporter);
+        self.* = .{ .allocator = allocator, .reporter = reporter };
+        return self;
+    }
+
+    fn release(context: *anyopaque) void {
+        const self: *KeptTimingReporter = @ptrCast(@alignCast(context));
+        self.allocator.destroy(self);
+    }
+};
 
 /// Whether the document `response` makes is an HTML document that is parsed
 /// as its body arrives (HTML 7.5.1 "load an HTML document"): a response that

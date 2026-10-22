@@ -150,3 +150,22 @@ test "a frame removed while its body arrives stops parsing it" {
     while (turns < 30) : (turns += 1) _ = try browser.runEventLoopBlocking(10);
     try testing.expect(try truthy(browser, "!kept.getElementById('b')"));
 }
+
+test "a frame's streamed body is reported to its container's resource timing once it ends" {
+    var server: ChunkServer = undefined;
+    try server.start();
+    defer server.stop();
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    defer browser.deinit();
+    var url_buf: [64]u8 = undefined;
+    const page_url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}/page", .{server.port});
+    try browser.navigateWithOptions(page_url, .window, .{ .skip_load = true });
+    const context = browser.current_context orelse return error.NoPage;
+    try context.loadHTML("<!doctype html><body>", .{ .base_url = page_url });
+    // The container starts the navigation, so the container's global hears
+    // its resource timing - at the body's end, long after the commit.
+    try testing.expect(try truthy(browser, "(() => { const f = document.createElement('iframe'); f.src = '/frame'; document.body.append(f); return true; })()"));
+    try waitFor(browser, "!!(frames[0] && frames[0].document.getElementById('a'))");
+    server.release();
+    try waitFor(browser, "frames[0].document.readyState === 'complete' && performance.getEntriesByType('resource').some(e => e.initiatorType === 'iframe' && e.name.endsWith('/frame'))");
+}
