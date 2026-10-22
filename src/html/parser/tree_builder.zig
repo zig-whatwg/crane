@@ -34,7 +34,7 @@ const ParseErrorCode = @import("parse_errors.zig").ParseErrorCode;
 const ParseErrorCallback = @import("parse_errors.zig").ParseErrorCallback;
 const document_write = @import("document_write.zig");
 const InputStreamManager = document_write.InputStreamManager;
-const encoding_sniffing = @import("encoding_sniffing.zig");
+const encoding_sniffing = @import("html_encoding_sniffing");
 
 /// A parser driver's "change the encoding" (HTML §13.2.3.4), which the tree
 /// builder runs for a meta element that declares `requested`.

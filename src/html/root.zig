@@ -289,3 +289,6 @@ pub const media = @import("media/root.zig");
 test {
     std.testing.refAllDecls(@This());
 }
+
+/// XML byte decoding and XHTML named references, without document state.
+pub const xml_document_encoding = @import("xml_document_encoding");
