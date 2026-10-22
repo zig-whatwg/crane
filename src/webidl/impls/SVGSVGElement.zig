@@ -194,8 +194,8 @@ pub fn call_unpauseAnimations(instance: *runtime.Instance) anyerror!void {
 
 /// Operation: createSVGRect
 pub fn call_createSVGRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    // SVG 2 §5.13.2: a new DOMRect whose x, y, width and height are all zero.
+    return interfaces.DOMRect.call_constructor(instance.ctx, webidl.Opt(f64).passed(0), webidl.Opt(f64).passed(0), webidl.Opt(f64).passed(0), webidl.Opt(f64).passed(0));
 }
 
 /// Operation: createSVGTransform

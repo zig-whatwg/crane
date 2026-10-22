@@ -71,8 +71,9 @@ pub fn get_viewportElement(instance: *runtime.Instance) anyerror!?*runtime.Insta
 
 /// Getter for style
 pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    // CSSOM §7.1: the mutable inline declaration has this owner and no rule.
+    // The generated SameObject accessor owns its identity and traced edge.
+    return interfaces.CSSStyleProperties.initWith(instance.ctx.allocator, instance.ctx, .{ .inline_owner = instance });
 }
 
 /// Getter for attributeStyleMap
