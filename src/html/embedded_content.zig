@@ -771,6 +771,11 @@ fn terminateFetch(content: *Content) void {
         // Terminating a fetch runs neither `done` nor `gone`.
         f.terminate();
     }
+    // What the record owns goes with it, as at its own end (Fetch.finish):
+    // the copy of its URL leaked at every terminated fetch - the element
+    // removed, its data changed, its document aborted or destroyed (lane
+    // exitleak1: resource-timing/nested-nav-fallback-timing.html).
+    content.allocator.free(record.url);
     content.allocator.destroy(record);
     endPending(content);
     content.unref();
