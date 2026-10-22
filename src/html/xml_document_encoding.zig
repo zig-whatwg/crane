@@ -5,6 +5,7 @@ const std = @import("std");
 const xml = @import("xml");
 const sniffing = @import("html_encoding_sniffing");
 const html_entities = @import("html_entities");
+const bom = @import("encoding").bom;
 
 pub const Decoded = struct {
     /// The document's characters, UTF-8, owned by the caller's allocator.
@@ -24,6 +25,35 @@ pub const Decoded = struct {
 pub fn decodeBytes(allocator: std.mem.Allocator, bytes: []const u8, transport: ?sniffing.Encoding) !?Decoded {
     const encoding = chooseEncoding(bytes, transport) orelse return null;
     return .{ .text = try sniffing.decode(allocator, bytes, encoding), .encoding = encoding };
+}
+
+/// XML 1.0 §4.3.3: malformed encoded input is fatal for document loading.
+/// WebKit's XMLDocumentParser::doWrite checks decoder.sawError; Gecko's
+/// nsScanner::Append uses DecodeToUTF16WithoutReplacement for XML. Keep
+/// decodeBytes's replacement behavior for XMLHttpRequest document responses.
+pub fn decodeDocumentBytes(allocator: std.mem.Allocator, bytes: []const u8, transport: ?sniffing.Encoding) !?Decoded {
+    const encoding = chooseEncoding(bytes, transport) orelse return null;
+    const input = if (bom.sniff(bytes)) |found| bytes[bom.length(found)..] else bytes;
+    // Preserve the existing allocation and fast path for ordinary UTF-8.
+    if (encoding == sniffing.utf_8) {
+        if (!std.unicode.utf8ValidateSlice(input)) return null;
+        return .{ .text = try allocator.dupe(u8, input), .encoding = encoding };
+    }
+    var decoder = encoding.newDecoder();
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(allocator);
+    var buffer: [4096]u8 = undefined;
+    var position: usize = 0;
+    while (true) {
+        // decodeToUtf8 exposes the decoder's fatal status; it never inserts
+        // replacement characters. Its state carries partial output chunks.
+        const result = decoder.decodeToUtf8(input[position..], &buffer, true);
+        if (result.status == .malformed) return null;
+        position += result.bytes_consumed;
+        try output.appendSlice(allocator, buffer[0..result.bytes_written]);
+        if (result.status == .input_empty) break;
+    }
+    return .{ .text = try output.toOwnedSlice(allocator), .encoding = encoding };
 }
 
 fn chooseEncoding(bytes: []const u8, transport: ?sniffing.Encoding) ?sniffing.Encoding {
