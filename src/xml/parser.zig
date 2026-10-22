@@ -554,7 +554,7 @@ pub const Parser = struct {
         if (!chars.isNCName(name)) return self.fail("Invalid parameter entity name '{s}'", .{name});
         if (cur.peek() != ';') return self.fail("PEReference: expecting ';'", .{});
         cur.pos += 1;
-        const entity = self.parameter_entities.getPtr(name) orelse {
+        const entity = self.parameter_entities.get(name) orelse {
             // XML §5.1: a non-validating processor that does not read a
             // parameter entity must not process the declarations after it.
             self.skip_declarations = true;
@@ -566,8 +566,11 @@ pub const Parser = struct {
         }
         if (entity.in_use) return self.fail("Detected an entity reference loop", .{});
         try self.spend(entity.value.len);
-        entity.in_use = true;
-        defer entity.in_use = false;
+        self.parameter_entities.getPtr(name).?.in_use = true;
+        // The replacement text can declare more parameter entities and grow
+        // this map. Keep the arena-owned text, not a pointer into the table,
+        // and reacquire the entry when clearing XML's recursion guard.
+        defer self.parameter_entities.getPtr(name).?.in_use = false;
         var inner: Cursor = .{ .text = entity.value };
         try self.declarations(&inner, false);
     }

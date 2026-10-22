@@ -127,3 +127,14 @@ test "DTD defaults release allocations on every failure path" {
         "|r\n|a=hello world\n",
     });
 }
+
+test "parameter entity expansion may grow the declaration table while its caller is active" {
+    var source: std.ArrayList(u8) = .empty;
+    defer source.deinit(std.testing.allocator);
+    try source.appendSlice(std.testing.allocator, "<!DOCTYPE r [<!ENTITY % many \"");
+    for (0..48) |i| try source.print(std.testing.allocator, "<!ENTITY &#37; p{d} ''>", .{i});
+    try source.appendSlice(std.testing.allocator, "\">%many;%p47;%many;]><r/>");
+    // Every declaration is valid. In particular, the parameter-entity map
+    // can reallocate while the outer expansion remains active.
+    try expectAttributes(std.testing.allocator, source.items, "|r\n");
+}
