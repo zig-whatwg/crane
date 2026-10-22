@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Destroying a navigable ends its descendants' navigations too](architecture-destroying-a-navigable-ends-its-descendants-navigations-too.md) - When a navigable goes, every navigable inside it goes too, and so do their navigations in flight: end them where the documents are destroyed, or a late commit brings a document back into a navigable nobody owns.
 - [Restoring a Document Must Restore Native Rendering Work](architecture-restoring-a-document-must-restore-native-rendering-work.md) - Restoring an owner must also restore the wakeup for work that the owner retained.
 - [Proxy wrappers need explicit borrowed-receiver security checks](architecture-proxy-wrappers-need-explicit-borrowed-receiver-security-checks.md) - When introducing a Proxy around a platform object, test borrowed getters, setters and methods as well as ordinary access. Origin and brand checks are separate obligations.
 - [Promise lifecycle hooks do not observe every reaction registration](architecture-promise-lifecycle-hooks-do-not-observe-every-reaction-registration.md) - Before using allocation or lifecycle hooks as registration hooks, test legal paths that allocate nothing and return unusual capabilities.
