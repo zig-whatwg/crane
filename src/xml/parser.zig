@@ -226,6 +226,8 @@ pub const Parser = struct {
     /// A parameter entity reference was not read: later declarations are
     /// not processed (XML §5.1).
     skip_declarations: bool = false,
+    /// XML declaration: used when a parameter entity cannot be read.
+    standalone: bool = false,
     seen_doctype: bool = false,
     line_offset: usize = 0,
     line_count: u32 = 1,
@@ -267,6 +269,7 @@ pub const Parser = struct {
         self.expanded = 0;
         self.xhtml = false;
         self.skip_declarations = false;
+        self.standalone = false;
         self.seen_doctype = false;
         self.line_offset = 0;
         self.line_count = 1;
@@ -431,6 +434,7 @@ pub const Parser = struct {
                 } else return self.fail("standalone accepts only 'yes' or 'no'", .{});
             } else return self.fail("parsing XML declaration: '?>' expected", .{});
         }
+        self.standalone = decl.standalone orelse false;
         const Sink = @typeInfo(@TypeOf(sink)).pointer.child;
         if (@hasDecl(Sink, "xmlDeclaration")) try sink.xmlDeclaration(decl);
     }
@@ -561,6 +565,11 @@ pub const Parser = struct {
             return;
         };
         if (entity.kind != .internal) {
+            // XML §5.1 normally skips declarations after an unread PE.
+            // Chrome 155 and Safari 27 instead reject the reference when
+            // standalone=yes (Firefox 158 continues). Browser majority,
+            // measured 2026-10-22: row 113 Q17/Q18/Q19's nine-case probe.
+            if (self.standalone) return self.fail("External parameter entity '{s}' in standalone document", .{name});
             self.skip_declarations = true;
             return;
         }
