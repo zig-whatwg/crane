@@ -188,7 +188,7 @@ const Builder = struct {
         // Trusted Types 4.1.2.6: the script text is its child text content.
         try dom.script_elements.setScriptTextToChildTextContent(self.allocator, element);
         if (isSvgElement(element)) {
-            script_execution.processSvgScriptElement(self.allocator, element);
+            script_execution.processSvgScriptElementWithLoader(self.allocator, element, self.options.script_loader);
             return;
         }
         const realm = document.ctx;
