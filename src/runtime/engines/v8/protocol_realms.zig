@@ -281,8 +281,8 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     // [code_generation_checks]: eval and Function in it reach the agent's
     // host, when the host checks them.
     @import("protocol_agents.zig").restrictCodeGenerationFromStrings(isolate, context);
-    // WebAssembly's Memory and Table read the descriptor's `address`, which
-    // V8 13.1 calls `index` (until the V8 upgrade, >= 13.3).
+    // WebAssembly constructors use NewTarget's realm for prototype fallback;
+    // Memory/Table also adapt V8 13.1's old `index` descriptor spelling.
     ffi.v8_WebAssembly_InstallAddressDescriptors(isolate, context);
     // The page's context stays entered while it lives; destroyWindowRealm
     // exits it. A frame's is entered only while it is made (below).

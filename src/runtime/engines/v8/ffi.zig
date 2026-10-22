@@ -3338,10 +3338,13 @@ pub extern fn v8_Isolate_SetProtocolCodeGenerationHooks(isolate: *Isolate, strin
 pub extern fn v8_Context_IsCodeGenerationFromStringsAllowed(context: *Context) bool;
 // ---- end lane: cspenforce ----
 // ---- lane: wasmh ----
-/// Translate Memory/Table descriptor `address` to V8 13.1's old `index`
-/// spelling, and convert an absent Global.value setter argument as undefined.
-/// Called once per realm before script runs. On V8 upgrade, remove only the
-/// address translation at >= 13.3 and separately recheck the Global setter.
+/// Adapt `context`'s WebAssembly constructors to WebIDL's NewTarget-realm
+/// prototype fallback, preserving the native interface objects' shape.
+/// Memory/Table translate `address` to V8 13.1's old `index` spelling;
+/// Global.value converts an absent setter argument as undefined.
+/// Called once per realm before script. All retained values are GC-traced
+/// realm-owned objects; no native owning handles are created. On V8 upgrade,
+/// remove address translation at >= 13.3 and separately recheck realm fallback.
 pub extern fn v8_WebAssembly_InstallAddressDescriptors(isolate: *Isolate, context: *Context) void;
 // ---- end lane: wasmh ----
 // ---- lane: csp2 ----

@@ -193,6 +193,118 @@ const ending =
     \\})()
 ;
 
+test "wasm constructors fall back to bound and proxy NewTarget realm prototypes" {
+    try check(prelude ++
+        \\for (const [name, args] of cases) {
+        \\  const target = new other.Function();
+        \\  target.prototype = null;
+        \\  for (const nt of [target, target.bind(null), new Proxy(target, {}),
+        \\      new Proxy(target.bind(null), {}), new Proxy(target, {}).bind(null)]) {
+        \\    const made = Reflect.construct(WebAssembly[name], args, nt);
+        \\    if (Object.getPrototypeOf(made) !== other.WebAssembly[name].prototype)
+        \\      return name + " wrong realm";
+        \\  }
+        \\}
+    ++ ending);
+}
+
+test "wasm constructor reads NewTarget prototype once before argument getters" {
+    try check(prelude ++
+        \\for (const name of ["Memory", "Table"]) {
+        \\  const order = [];
+        \\  const prototype = {};
+        \\  const target = new Proxy(function () {}, {
+        \\    get(t, key, receiver) {
+        \\      if (key === "prototype") { order.push("prototype"); return prototype; }
+        \\      return Reflect.get(t, key, receiver);
+        \\    }
+        \\  });
+        \\  const descriptor = {initial: 0, element: "anyfunc",
+        \\    get address() { order.push("address"); return "i32"; }};
+        \\  const made = Reflect.construct(WebAssembly[name], [descriptor], target);
+        \\  if (Object.getPrototypeOf(made) !== prototype) return name + " explicit prototype";
+        \\  if (order.join() !== "prototype,address") return name + ": " + order;
+        \\}
+    ++ ending);
+}
+
+test "wasm address adaptation preserves dictionary getter receiver" {
+    try check(prelude ++
+        \\for (const name of ["Memory", "Table"]) {
+        \\  const descriptor = {address:"i32", element:"anyfunc"};
+        \\  Object.defineProperty(descriptor, "initial", {get() {
+        \\    if (this !== descriptor) throw Error("dictionary receiver changed");
+        \\    return 0;
+        \\  }});
+        \\  Object.defineProperty(descriptor, "index", {value:"ignored"});
+        \\  new WebAssembly[name](descriptor);
+        \\}
+    ++ ending);
+}
+
+test "wasm realm fallback keeps intrinsic prototypes after namespace replacement" {
+    try check(prelude ++
+        \\const prototypes = Object.fromEntries(cases.map(([name]) => [name, other.WebAssembly[name].prototype]));
+        \\const target = new other.Function();
+        \\target.prototype = undefined;
+        \\other.WebAssembly = new Proxy({}, {get() { throw Error("read mutable namespace"); }});
+        \\for (const [name, args] of cases) {
+        \\  const made = Reflect.construct(WebAssembly[name], args, target);
+        \\  if (Object.getPrototypeOf(made) !== prototypes[name]) return name + " intrinsic lost";
+        \\}
+    ++ ending);
+}
+
+test "wasm constructor adapters preserve the complete interface object shape" {
+    try check(prelude ++
+        \\for (const [name, args] of cases) {
+        \\  const constructor = WebAssembly[name];
+        \\  const namespace = Object.getOwnPropertyDescriptor(WebAssembly, name);
+        \\  const prototype = Object.getOwnPropertyDescriptor(constructor, "prototype");
+        \\  const back = Object.getOwnPropertyDescriptor(prototype.value, "constructor");
+        \\  const length = Object.getOwnPropertyDescriptor(constructor, "length");
+        \\  const label = Object.getOwnPropertyDescriptor(constructor, "name");
+        \\  if (namespace.value !== constructor || !namespace.writable || namespace.enumerable || !namespace.configurable) return name + " namespace";
+        \\  if (prototype.writable || prototype.enumerable || prototype.configurable) return name + " prototype";
+        \\  if (back.value !== constructor || !back.writable || back.enumerable || !back.configurable) return name + " constructor";
+        \\  if (length.value !== 1 || length.writable || length.enumerable || !length.configurable) return name + " length";
+        \\  if (label.value !== name || label.writable || label.enumerable || !label.configurable) return name + " name";
+        \\  if (Object.getPrototypeOf(constructor) !== Function.prototype) return name + " parent";
+        \\  if (!Function.prototype.toString.call(constructor).includes("[native code]")) return name + " source";
+        \\  try { constructor(...args); return name + " no new"; } catch(e) { if (!(e instanceof TypeError)) return name + " wrong error"; }
+        \\  if (Object.getPrototypeOf(new constructor(...args)) !== prototype.value) return name + " instance";
+        \\  class Sub extends constructor {}
+        \\  if (Object.getPrototypeOf(new Sub(...args)) !== Sub.prototype) return name + " subclass";
+        \\}
+        \\for (const method of ["imports", "exports"]) {
+        \\  if (typeof WebAssembly.Module[method] !== "function" || WebAssembly.Module[method](module).length !== 0) return method;
+        \\}
+        \\if (WebAssembly.Module.customSections(module, "missing").length !== 0) return "customSections";
+    ++ ending);
+}
+
+test "wasm constructor prototype getter exceptions and revocation propagate" {
+    try check(prelude ++
+        \\for (const [name, args] of cases) {
+        \\  const sentinel = {};
+        \\  const throwing = new Proxy(function () {}, {get(t, key, r) {
+        \\    if (key === "prototype") throw sentinel;
+        \\    return Reflect.get(t, key, r);
+        \\  }});
+        \\  try { Reflect.construct(WebAssembly[name], args, throwing); return name + " no throw"; }
+        \\  catch(e) { if (e !== sentinel) return name + " changed exception"; }
+        \\  let revoke;
+        \\  const target = Proxy.revocable(function () {}, {get(t, key, r) {
+        \\    if (key === "prototype") { revoke(); return null; }
+        \\    return Reflect.get(t, key, r);
+        \\  }});
+        \\  revoke = target.revoke;
+        \\  try { Reflect.construct(WebAssembly[name], args, target.proxy); return name + " no revoked throw"; }
+        \\  catch(e) { if (!(e instanceof TypeError)) return name + " wrong revoked error"; }
+        \\}
+    ++ ending);
+}
+
 test "wasm Global value setter treats an absent argument as undefined" {
     try check(
         \\(() => {
@@ -225,6 +337,272 @@ test "wasm Global setter keeps branding immutability conversion and descriptors"
         \\  try { setter.call(global, {valueOf() { throw sentinel; }}); return "did not throw"; }
         \\  catch(e) { if (e !== sentinel) return "replaced exception"; }
         \\  return "ok";
+        \\})()
+    );
+}
+
+const LifetimeRun = struct {
+    failure: ?anyerror = null,
+
+    fn thread(self: *LifetimeRun) void {
+        self.measure() catch |err| {
+            self.failure = err;
+        };
+    }
+
+    fn collect(isolate: *ffi.Isolate) void {
+        for (0..3) |_| ffi.v8_Isolate_RequestGarbageCollection(isolate);
+    }
+
+    fn realm(isolate: *ffi.Isolate) !*ffi.Context {
+        const context = ffi.v8_Context_New(isolate) orelse return error.NoContext;
+        ffi.v8_WebAssembly_InstallAddressDescriptors(isolate, context);
+        return context;
+    }
+
+    fn measure(_: *LifetimeRun) !void {
+        const isolate = ffi.v8_Isolate_New() orelse return error.NoIsolate;
+        defer ffi.v8_Isolate_Dispose(isolate);
+        ffi.v8_Isolate_Enter(isolate);
+        defer ffi.v8_Isolate_Exit(isolate);
+        // Warm V8's API symbols and prove that the counters see a live realm.
+        const warm = try realm(isolate);
+        ffi.v8_Context_Dispose(warm);
+        collect(isolate);
+        var baseline: usize = 0;
+        ffi.v8_Isolate_GetContextCounts(isolate, &baseline, null);
+        const handles = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const held = try realm(isolate);
+        var with_held: usize = 0;
+        ffi.v8_Isolate_GetContextCounts(isolate, &with_held, null);
+        ffi.v8_Context_Dispose(held);
+        try std.testing.expect(with_held > baseline);
+        for (0..64) |_| {
+            const context = try realm(isolate);
+            ffi.v8_Context_Dispose(context);
+        }
+        collect(isolate);
+        var after: usize = 0;
+        ffi.v8_Isolate_GetContextCounts(isolate, &after, null);
+        try std.testing.expectEqual(baseline, after);
+        try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate) <= handles);
+    }
+};
+
+test "wasm adapter private intrinsics die with their realm without handle growth" {
+    try engine.initializeEngine(.{});
+    var run: LifetimeRun = .{};
+    const thread = try std.Thread.spawn(.{}, LifetimeRun.thread, .{&run});
+    thread.join();
+    if (run.failure) |err| return err;
+}
+
+// (i32, i32) -> i32: import m.f, call it, write its result to exported g,
+// then return it. g distinguishes a synchronous import from a suspension.
+test "wasm ordinary constructors ignore replaced reflection and argument iterators" {
+    try check(
+        \\(() => {
+        \\const reflect = Reflect.construct;
+        \\const iterator = Array.prototype[Symbol.iterator];
+        \\const moduleConstructor = WebAssembly.Module;
+        \\const instanceConstructor = WebAssembly.Instance;
+        \\const globalConstructor = WebAssembly.Global;
+        \\const bytes = new Uint8Array([0,97,115,109,1,0,0,0]);
+        \\try {
+        \\Reflect.construct = () => {throw "mutable reflect";};
+        \\Array.prototype[Symbol.iterator] = () => {throw "argument iterator";};
+        \\const module = new moduleConstructor(bytes);
+        \\const instance = new instanceConstructor(module);
+        \\const global = new globalConstructor({value:"i32"},42);
+        \\if (!(module instanceof moduleConstructor) || !(instance instanceof instanceConstructor) || global.value !== 42) return "ordinary construction";
+        \\return "ok";
+        \\} catch(e) { return String(e); }
+        \\finally { Reflect.construct = reflect; Array.prototype[Symbol.iterator] = iterator; }
+        \\})()
+    );
+}
+
+test "wasm constructor forwarding closures stay private in stack call sites" {
+    try check(
+        \\(() => {
+        \\const old = Object.getOwnPropertyDescriptor(Error,"prepareStackTrace");
+        \\try {
+        \\let exposed = false;
+        \\Error.prepareStackTrace = (_, frames) => {
+        \\  for (const frame of frames) {
+        \\    const fn = frame.getFunction();
+        \\    if (fn && /cell\[0\]|newTarget !== (replacement|W)|currentDescriptor/.test(Function.prototype.toString.call(fn))) exposed = true;
+        \\  }
+        \\  return "formatted";
+        \\};
+        \\try { new WebAssembly.Module(new Uint8Array()); return "missing compile error"; }
+        \\catch(e) { if (e.stack !== "formatted") return "stack formatter"; }
+        \\return exposed ? "private closure exposed" : "ok";
+        \\} catch(e) { return String(e); }
+        \\finally { if(old) Object.defineProperty(Error,"prepareStackTrace",old); else delete Error.prepareStackTrace; }
+        \\})()
+    );
+}
+
+test "wasm descriptor forwarding ignores replaced Proxy and Reflect get" {
+    try check(
+        \\(() => {
+        \\const proxy = globalThis.Proxy;
+        \\const get = Reflect.get;
+        \\try {
+        \\globalThis.Proxy = function(){throw "mutable Proxy";};
+        \\Reflect.get = function(){throw "mutable Reflect.get";};
+        \\for (const C of [WebAssembly.Memory, WebAssembly.Table]) {
+        \\  const descriptor = {address:"i32",element:"externref"};
+        \\  Object.defineProperty(descriptor,"index",{value:"ignored"});
+        \\  Object.defineProperty(descriptor,"initial",{get() {
+        \\    if (this !== descriptor) throw "wrong receiver";
+        \\    return 0;
+        \\  }});
+        \\  new C(descriptor);
+        \\  const sentinel = {};
+        \\  try { new C({element:"externref",get initial(){throw sentinel;}}); return "missing throw"; }
+        \\  catch(e) { if (e !== sentinel) return "changed throw"; }
+        \\}
+        \\return "ok";
+        \\} catch(e) { return String(e); }
+        \\finally { globalThis.Proxy = proxy; Reflect.get = get; }
+        \\})()
+    );
+}
+
+test "wasm descriptor forwarding restores outer state after nested construction and throws" {
+    try check(
+        \\(() => {
+        \\try {
+        \\for (const C of [WebAssembly.Memory, WebAssembly.Table]) {
+        \\  for (const throws of [false,true]) {
+        \\    let maximumRead = false;
+        \\    const sentinel = {};
+        \\    const outer = {element:"externref", address:"i64", get initial() {
+        \\      if (this !== outer) throw "outer initial receiver";
+        \\      try {
+        \\        new WebAssembly.Memory({initial:0, get maximum() {
+        \\          new WebAssembly.Table({element:"externref",initial:0});
+        \\          if (throws) throw sentinel;
+        \\          return 1;
+        \\        }});
+        \\        if (throws) throw "missing nested throw";
+        \\      } catch(e) { if (!throws || e !== sentinel) throw e; }
+        \\      return 0n;
+        \\    }, get maximum() {
+        \\      if (this !== outer) throw "outer maximum receiver";
+        \\      maximumRead = true;
+        \\      return 1n;
+        \\    }};
+        \\    new C(outer);
+        \\    if (!maximumRead) return "outer descriptor lost";
+        \\    new C({element:"externref",initial:0});
+        \\  }
+        \\}
+        \\return "ok";
+        \\} catch(e) { return String(e); }
+        \\})()
+    );
+}
+
+test "wasm exposed constructors preserve instanceof and bound newTarget replacement" {
+    try check(
+        \\(() => {
+        \\try {
+        \\const bytes = new Uint8Array([0,97,115,109,1,0,0,0]);
+        \\const module = new WebAssembly.Module(bytes);
+        \\const tag = new WebAssembly.Tag({parameters:[]});
+        \\for (const [name,args] of [["Module",[bytes]],["Instance",[module]],
+        \\  ["Memory",[{initial:0}]],["Table",[{element:"externref",initial:0}]],
+        \\  ["Global",[{value:"i32"},42]],["Exception",[tag,[]]]]) {
+        \\  const C = WebAssembly[name];
+        \\  const original = wj1OriginalWasm[name];
+        \\  if (Object.getPrototypeOf(C) !== Object.getPrototypeOf(original)) return name + " constructor prototype";
+        \\  if (Reflect.ownKeys(C).join() !== Reflect.ownKeys(original).join()) return name + " own keys";
+        \\  for (const key of Reflect.ownKeys(original)) {
+        \\    const actual = Object.getOwnPropertyDescriptor(C,key);
+        \\    const expected = Object.getOwnPropertyDescriptor(original,key);
+        \\    for (const field of Reflect.ownKeys(expected)) if (actual[field] !== expected[field]) return name + " descriptor " + key + "." + field;
+        \\  }
+        \\  const bound = C.bind(undefined);
+        \\  const made = Reflect.construct(C,args);
+        \\  const viaBound = Reflect.construct(bound,args);
+        \\  if (!(made instanceof C) || !(made instanceof bound) || !(viaBound instanceof C)) return name + " instanceof";
+        \\  if (!Function.prototype[Symbol.hasInstance].call(C,made)) return name + " OrdinaryHasInstance";
+        \\  if (!Function.prototype[Symbol.hasInstance].call(C,Object.create(C.prototype))) return name + " prototype-only instanceof";
+        \\  const foreign = Reflect.construct(other.WebAssembly[name],args);
+        \\  for (const value of [made,foreign,Object.create(C.prototype),Object.create(other.WebAssembly[name].prototype),{},null,42]) {
+        \\    if (Function.prototype[Symbol.hasInstance].call(C,value) !== Function.prototype[Symbol.hasInstance].call(original,value)) return name + " native hasInstance difference";
+        \\  }
+        \\  if (made instanceof other.WebAssembly[name] || foreign instanceof C || !(foreign instanceof other.WebAssembly[name])) return name + " cross-realm instanceof";
+        \\  if (Object.getPrototypeOf(viaBound) !== C.prototype) return name + " bound newTarget";
+        \\  if (Object.getPrototypeOf(Reflect.construct(C,args,bound)) !== C.prototype) return name + " bound realm fallback";
+        \\  class X extends C { constructor() { super(...args); } }
+        \\  const child = new X();
+        \\  if (!(child instanceof X) || !(child instanceof C) || Object.getPrototypeOf(child) !== X.prototype) return name + " subclass";
+        \\  Object.defineProperty(C,Symbol.hasInstance,{configurable:true,value:()=>false});
+        \\  try { if (made instanceof C || made instanceof bound) return name + " custom hasInstance"; }
+        \\  finally { delete C[Symbol.hasInstance]; }
+        \\}
+        \\return "ok";
+        \\} catch(e) { return String(e); }
+        \\})()
+    );
+}
+
+test "wasm constructor argument counts match native under poisoned argument helpers" {
+    try check(
+        \\(() => {
+        \\const construct = Reflect.construct;
+        \\const apply = Reflect.apply;
+        \\const functionApply = Function.prototype.apply;
+        \\const slice = Array.prototype.slice;
+        \\const iterator = Array.prototype[Symbol.iterator];
+        \\const species = Object.getOwnPropertyDescriptor(Array,Symbol.species);
+        \\const bytes = new Uint8Array([0,97,115,109,1,0,0,0]);
+        \\const module = new WebAssembly.Module(bytes);
+        \\const tag = new WebAssembly.Tag({parameters:[]});
+        \\const cases = [];
+        \\for (const [name,first,second] of [["Module",bytes,undefined],["Instance",module,undefined],
+        \\  ["Memory",{initial:0},undefined],["Table",{element:"externref",initial:0},undefined],
+        \\  ["Global",{value:"i32"},42],["Exception",tag,[]]]) {
+        \\  for (const count of [0,1,2,3,8]) {
+        \\    const args = [first,second,undefined,Symbol(),{},null,7,8].slice(0,count);
+        \\    let expectedError, expectedPrototype;
+        \\    try { expectedPrototype = Object.getPrototypeOf(construct(wj1OriginalWasm[name],args)); }
+        \\    catch(e) { expectedError = e.constructor; }
+        \\    cases.push({name,args,expectedError,expectedPrototype});
+        \\  }
+        \\}
+        \\try {
+        \\const poison = () => {throw "mutable argument helper";};
+        \\Reflect.construct = Reflect.apply = Function.prototype.apply = Array.prototype.slice = poison;
+        \\Array.prototype[Symbol.iterator] = poison;
+        \\Object.defineProperty(Array,Symbol.species,{configurable:true,get:poison});
+        \\for (let i = 0; i < cases.length; i++) {
+        \\  const c = cases[i], C = WebAssembly[c.name];
+        \\  function Target() {}
+        \\  Target.prototype = C.prototype;
+        \\  for (let custom = 0; custom < 2; custom++) {
+        \\    let error, made;
+        \\    try { made = construct(C,c.args,custom ? Target : C); }
+        \\    catch(e) { error = e.constructor; }
+        \\    if (error !== c.expectedError) return c.name + " error at count " + c.args.length;
+        \\    if (!error && Object.getPrototypeOf(made) !== c.expectedPrototype) return c.name + " prototype at count " + c.args.length;
+        \\  }
+        \\}
+        \\const plain = new WebAssembly.Exception(tag,[]);
+        \\if (plain.stack !== undefined) return "plain exception stack";
+        \\const traced = new WebAssembly.Exception(tag,[],{traceStack:true});
+        \\if (typeof traced.stack !== "string") return "traced exception arguments";
+        \\return "ok";
+        \\} catch(e) { return String(e); }
+        \\finally {
+        \\  Reflect.construct = construct; Reflect.apply = apply; Function.prototype.apply = functionApply;
+        \\  Array.prototype.slice = slice; Array.prototype[Symbol.iterator] = iterator;
+        \\  Object.defineProperty(Array,Symbol.species,species);
+        \\}
         \\})()
     );
 }
