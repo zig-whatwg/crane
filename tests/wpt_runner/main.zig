@@ -1197,9 +1197,10 @@ fn executeTestFileInContext(
     variant: []const u8,
     server: *wpt_server.WptServer,
 ) !test_harness.TestResult {
-    // For HTML files, fetch from HTTP server and let the browser handle it properly
+    // For documents, fetch from HTTP and let the response's MIME type select
+    // HTML or XML parsing (HTML §7.5.2/§7.5.3). The suffix is not a MIME override.
     // This enables proper resource loading via wpt serve (URL rewrites, headers, etc.)
-    if (test_file.file_type == .html) {
+    if (test_file.file_type == .html or test_file.file_type == .xml) {
         // Build HTTP URL for this test
         const test_url = try server.buildTestUrl(allocator, test_file.path, .window, variant);
         defer allocator.free(test_url);
@@ -1454,6 +1455,7 @@ fn run(init: std.process.Init) !u8 {
     while (type_iter.next()) |entry| {
         const type_name = switch (entry.key_ptr.*) {
             .html => ".html",
+            .xml => ".xhtml/.xht/.svg/.xml",
             .any_js => ".any.js",
             .window_js => ".window.js",
             .worker_js => ".worker.js",

@@ -230,11 +230,7 @@ fn journalStem(journal_path: []const u8) []const u8 {
 
 /// Check if a path looks like a test file
 pub fn isTestFile(path: []const u8) bool {
-    return std.mem.endsWith(u8, path, ".any.js") or
-        std.mem.endsWith(u8, path, ".window.js") or
-        std.mem.endsWith(u8, path, ".worker.js") or
-        std.mem.endsWith(u8, path, ".html") or
-        std.mem.endsWith(u8, path, ".htm") or
+    return config.FileType.fromPath(path) != .unknown or
         std.mem.endsWith(u8, path, ".js");
 }
 
@@ -424,6 +420,14 @@ test "parseArgs routes a path with a test extension to specific_files" {
     try testing.expectEqualStrings("url/url-constructor.any.js", options.specific_files.items[0]);
     try testing.expectEqual(@as(usize, 1), options.filters.items.len);
     try testing.expectEqualStrings("dom/", options.filters.items[0]);
+}
+
+test "XML paths are explicit files rather than directory filters" {
+    const paths = [_][]const u8{ "a.xhtml", "b.xht", "c.svg", "d.xml" };
+    var options = try parseArgs(std.testing.allocator, &paths);
+    defer options.deinit();
+    try std.testing.expectEqual(@as(usize, 4), options.specific_files.items.len);
+    try std.testing.expectEqual(@as(usize, 0), options.filters.items.len);
 }
 
 test "--full-corpus is off by default and parsed when given" {
