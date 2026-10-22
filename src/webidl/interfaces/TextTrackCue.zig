@@ -258,6 +258,9 @@ pub const TextTrackCue = struct {
         try event_handlers.setValue(EventHandler, instance, "onexit", value);
     }
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onenter", "set_onexit" };
+
     /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
     /// the infinities throw a TypeError for (bit i = argument i; an attribute
     /// setter's value is bit 0).

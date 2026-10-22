@@ -68,6 +68,12 @@ pub const InternalState = struct {
     parser_inserting: bool = false,
     parser_document: ?*runtime.Instance = null,
     parser_document_generation: u64 = 0,
+    /// Where its text starts in its document, when the parser made it: a
+    /// CSP violation of its style block is located there when no script is
+    /// running (Blink's StyleElement start_position_, passed to
+    /// ContentSecurityPolicy::AllowInline; targeting-for-inline-style.html
+    /// 20:20, all three browsers).
+    start: ?dom_module.style_sheet_owners.Position = null,
     /// The element's associated CSS style sheet ("create a CSS style
     /// sheet", step 6), owned; null when it has none.
     sheet: ?*dom_module.style.SheetRecord = null,
@@ -174,7 +180,7 @@ fn updateStyleBlock(element: *runtime.Instance) void {
     // step 1; steps 2-3 concern script elements and the parser). A blocked
     // block fires error, as a failed sheet would (startBlockedStyle states
     // that deviation).
-    if (dom_module.csp_violations.shouldBlockInline(element, .style, text, .{ .nonce = nonceOf(element) })) {
+    if (dom_module.csp_violations.shouldBlockInline(element, .style, text, .{ .nonce = nonceOf(element), .position = internal.start })) {
         internal.load = style_sheet_loading.startBlockedStyle(element) orelse 0;
         return;
     }
@@ -313,10 +319,12 @@ fn childrenChangedSteps(parent: *NodeBase, _: dom_module.mutation.ChildrenChange
     updateStyleBlock(instance);
 }
 
-/// dom.style_sheet_owners: the HTML parser made `element`.
-fn createdByParser(element: *runtime.Instance) void {
+/// dom.style_sheet_owners: the HTML parser made `element`, whose text starts
+/// at `start` in its document.
+fn createdByParser(element: *runtime.Instance, start: ?dom_module.style_sheet_owners.Position) void {
     const internal = getInternal(element) orelse return;
     internal.parser_inserting = true;
+    internal.start = start;
     internal.parser_document = interfaces.Node.get_ownerDocument(element) catch null;
     internal.parser_document_generation = if (internal.parser_document) |document| runtime.SlabAllocator.generationOf(document) else 0;
 }

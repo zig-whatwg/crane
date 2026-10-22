@@ -337,4 +337,7 @@ pub const WindowEventHandlers = struct {
         if (comptime @hasDecl(WindowEventHandlersImpl, "set_onportalactivate")) return try WindowEventHandlersImpl.set_onportalactivate(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onportalactivate", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onafterprint", "set_onbeforeprint", "set_onbeforeunload", "set_onhashchange", "set_onlanguagechange", "set_onmessage", "set_onmessageerror", "set_onoffline", "set_ononline", "set_onpagehide", "set_onpagereveal", "set_onpageshow", "set_onpageswap", "set_onpopstate", "set_onrejectionhandled", "set_onstorage", "set_onunhandledrejection", "set_onunload", "set_ongamepadconnected", "set_ongamepaddisconnected", "set_onportalactivate" };
 };

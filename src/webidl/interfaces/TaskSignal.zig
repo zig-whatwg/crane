@@ -212,6 +212,9 @@ pub const TaskSignal = struct {
         return try TaskSignalImpl.call_static_any(instance, signals, init_data);
     }
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onprioritychange"};
+
     /// WebIDL interface types: the interface each interface-typed argument
     /// and attribute value converts to - a TypeError unless the value implements
     /// it (function, argument index - an attribute setter's value is 0 -,

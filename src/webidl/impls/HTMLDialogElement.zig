@@ -151,6 +151,10 @@ fn retain(instance: *Instance) !?engine.Owned {
 }
 
 fn beforeToggle(instance: *Instance, opening: bool, source: ?*Instance) !bool {
+    // As in Node's native-storage cleanup, an engine-free context has no
+    // agent. A retired realm keeps its agent and must retain the existing
+    // releaseIfUnwrapped contract even after hasEngine becomes false.
+    const native_context = !instance.ctx.hasEngine() and instance.ctx.agent == null;
     const event = try interfaces.ToggleEvent.call_constructor(instance.ctx, runtime.DOMString.initInterned("beforetoggle"), .passed(.{
         .base = .{ .cancelable = opening },
         .oldState = runtime.DOMString.initInterned(if (opening) "closed" else "open"),
@@ -158,7 +162,14 @@ fn beforeToggle(instance: *Instance, opening: bool, source: ?*Instance) !bool {
         .source = source,
     }));
     const generation = runtime.SlabAllocator.generationOf(event);
-    defer event.releaseIfUnwrapped(generation);
+    defer {
+        // Dispatch is synchronous. With no engine a listener cannot keep
+        // this internally created event, so its native caller owns cleanup.
+        if (native_context and runtime.SlabAllocator.generationOf(event) == generation)
+            Instance.deinit(event)
+        else
+            event.releaseIfUnwrapped(generation);
+    }
     return dom.fire_event.dispatchTrusted(instance, event);
 }
 
@@ -263,18 +274,24 @@ fn shadowDescendant(node: *Instance, ancestor: *Instance) bool {
 }
 
 fn dialogFocusingSteps(subject: *Instance) void {
-    // Step 1: focusMethod's existing allow-focus policy is unrestricted.
+    // Step 1.
+    const document = nodeDocument(subject) catch return;
+    if (!focus.allowFocusSteps(document)) return;
     // Steps 2–5: autofocus on the dialog takes precedence over its generic
     // focus delegate; an absent delegate falls back to the dialog itself.
     const control = if (forms.hasAttribute(subject, "autofocus"))
         subject
     else
         focus.focusDelegate(subject, .other) orelse subject;
+    // The focus handler can remove/adopt control, collect it, or end its
+    // realm. Keep it through steps 7–10, and revalidate after script.
+    const kept = KeptInstance.of(control);
+    var hold = retain(control) catch return;
+    defer if (hold) |*owned| owned.release();
     // Step 6.
     focus.focusingSteps(control, null, .other);
-    // TODO(feature-queue :988, row85 Q8): steps 7–10 clear top-document
-    // autofocus candidates and set autofocus processed. Crane's shared
-    // autofocus processing and update-the-rendering flush do not exist yet.
+    // Steps 7–10. No node navigable (native-only or removed frame): return.
+    html.autofocus.completeForDialog(kept.get() orelse return);
 }
 
 /// HTML removing steps: modal state is cleared even without an open attr.

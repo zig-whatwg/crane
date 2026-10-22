@@ -596,7 +596,7 @@ fn fireMessage(manager: *Manager, realm: runtime.Context, global_scope: *runtime
             const port = dom.message_ports.receive(realm, @ptrCast(end)) catch continue;
             ports.append(manager.allocator, port) catch continue;
         }
-        data_hold = engine.structuredDeserializeWithTransfer(realm, port_message.serialized, port_message.array_buffers, ports.items) catch blk: {
+        data_hold = engine.structuredDeserializeWithOptions(realm, port_message.serialized, .{ .array_buffers = port_message.array_buffers, .transferred = ports.items, .shared_memory = port_message.shared_memory }) catch blk: {
             // "If this throws an exception, let e be ... messageerror".
             event_type = "messageerror";
             ports.clearRetainingCapacity();

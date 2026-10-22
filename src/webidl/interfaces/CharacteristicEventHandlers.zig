@@ -78,4 +78,7 @@ pub const CharacteristicEventHandlers = struct {
         if (comptime @hasDecl(CharacteristicEventHandlersImpl, "set_oncharacteristicvaluechanged")) return try CharacteristicEventHandlersImpl.set_oncharacteristicvaluechanged(instance, value);
         try event_handlers.setValue(EventHandler, instance, "oncharacteristicvaluechanged", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_oncharacteristicvaluechanged"};
 };

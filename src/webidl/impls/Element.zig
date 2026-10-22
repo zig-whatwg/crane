@@ -84,6 +84,9 @@ pub const InternalState = struct {
     /// here, by "handle attribute changes" and "create an element".
     data: ElementData,
 
+    /// HTML element references, allocated only when a member is used.
+    references: ?*dom.element_references.State = null,
+
     /// The element's slot attribute value
     slot: runtime.DOMString,
 
@@ -136,6 +139,11 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
+        if (self.references) |refs| {
+            refs.deinit(self.allocator);
+            self.allocator.destroy(refs);
+            self.references = null;
+        }
         if (self.style) |style_state| style_state.destroy();
         self.style = null;
         if (self.custom_element_definition) |definition| definition.deinit();
@@ -207,6 +215,7 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    dom.mutation.registerInsertionStepsCallback(&autofocusInsertionSteps) catch @panic("failed to install autofocus insertion steps");
     // Its states left at its Browser's end (Browser.deinit).
     @import("dom").teardown_sweeps.install(.elements, &sweepRemaining);
     // The attribute list's hook, for its ancestors' use (cloning). Installed
@@ -246,6 +255,16 @@ pub fn installHooks() void {
         .set_registry = &setCustomElementRegistry,
         .attach_shadow = &attachShadow,
     });
+}
+
+fn autofocusInsertionSteps(node: *dom.NodeBase) void {
+    if (node.node_type != 1) return;
+    const element: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse return));
+    const internal = getInternal(element) orelse return;
+    // Every insertion visits this callback; allocate and wrap nothing unless
+    // the element actually has the autofocus content attribute.
+    if (!dom.element_data.hasAttribute(&internal.data, "autofocus")) return;
+    @import("html").autofocus.inserted(element);
 }
 
 fn isValueHook(instance: *runtime.Instance) ?[]const u8 {
@@ -367,6 +386,7 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
             internal.shadow_root_kept.release(shadow, forgetHost);
             internal.shadow_root = null;
         }
+        if (internal.references != null) dom.element_references.State.releaseUnwrapped(instance);
         internal.deinit();
     }
     Registry.remove(instance);
@@ -818,11 +838,8 @@ pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) anyerror!?*r
 /// Spec: https://w3c.github.io/aria/#dom-ariamixin-ariacontrolselements
 ///
 /// Returns a frozen array of elements referenced by space-separated IDs in aria-controls.
-/// Note: Returns null - full implementation requires FrozenArray support and ID resolution.
 pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    _ = instance;
-    // Return null - full implementation requires resolving space-separated IDs
-    return null;
+    return getAriaElements(instance, "aria-controls");
 }
 
 /// Getter for ariaDescribedByElements
@@ -830,11 +847,8 @@ pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!?runtime.J
 /// Spec: https://w3c.github.io/aria/#aria-describedby
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-describedby
-/// Note: Returns null - full implementation requires FrozenArray support
 pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    _ = instance;
-    // Return null - full implementation requires resolving space-separated IDs
-    return null;
+    return getAriaElements(instance, "aria-describedby");
 }
 
 /// Getter for ariaDetailsElements
@@ -842,11 +856,8 @@ pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!?runtim
 /// Spec: https://w3c.github.io/aria/#aria-details
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-details
-/// Note: Returns null - full implementation requires FrozenArray support
 pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    _ = instance;
-    // Return null - full implementation requires resolving space-separated IDs
-    return null;
+    return getAriaElements(instance, "aria-details");
 }
 
 /// Getter for ariaErrorMessageElements
@@ -854,11 +865,8 @@ pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!?runtime.JS
 /// Spec: https://w3c.github.io/aria/#aria-errormessage
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-errormessage
-/// Note: Returns null - full implementation requires FrozenArray support
 pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    _ = instance;
-    // Return null - full implementation requires resolving space-separated IDs
-    return null;
+    return getAriaElements(instance, "aria-errormessage");
 }
 
 /// Getter for ariaFlowToElements
@@ -866,11 +874,8 @@ pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!?runti
 /// Spec: https://w3c.github.io/aria/#aria-flowto
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-flowto.
-/// Note: Returns null - full implementation requires FrozenArray support and ID resolution.
 pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    _ = instance;
-    // Return null - full implementation requires resolving space-separated IDs
-    return null;
+    return getAriaElements(instance, "aria-flowto");
 }
 
 /// Getter for ariaLabelledByElements
@@ -878,11 +883,8 @@ pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!?runtime.JSV
 /// Spec: https://w3c.github.io/aria/#aria-labelledby
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-labelledby.
-/// Note: Returns null - full implementation requires FrozenArray support and ID resolution.
 pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    _ = instance;
-    // Return null - full implementation requires resolving space-separated IDs
-    return null;
+    return getAriaElements(instance, "aria-labelledby");
 }
 
 /// Getter for ariaOwnsElements
@@ -890,11 +892,8 @@ pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!?runtime
 /// Spec: https://w3c.github.io/aria/#aria-owns
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-owns.
-/// Note: Returns null - full implementation requires FrozenArray support and ID resolution.
 pub fn get_ariaOwnsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    _ = instance;
-    // Return null - full implementation requires resolving space-separated IDs
-    return null;
+    return getAriaElements(instance, "aria-owns");
 }
 
 /// Getter for regionOverset
@@ -1043,6 +1042,8 @@ fn attributeChangeSteps(
     // Every step below concerns attributes in no namespace.
     if (namespace != null) return;
     const internal = getInternal(instance) orelse return;
+
+    if (internal.references) |refs| refs.attributeChanged(internal.allocator, local_name);
 
     // DOM §4.9: "If localName is id, namespace is null, and value is null or
     // the empty string, then unset element's ID. Otherwise, if localName is
@@ -1397,47 +1398,53 @@ fn setAriaAttribute(instance: *runtime.Instance, aria_name: []const u8, value: ?
     }
 }
 
-/// Get an element by ID from the owner document (for ARIA element reference attributes)
-/// Returns null if the element is not connected to a document or the ID is not found
-fn getElementByIdFromDocument(instance: *runtime.Instance, id: []const u8) ?*runtime.Instance {
-    if (id.len == 0) return null;
-
-    // Get the owner document (nullable return type now)
-    const owner_doc_opt = interfaces.Node.get_ownerDocument(instance) catch return null;
-    const owner_doc = owner_doc_opt orelse return null;
-
-    // Use document's getElementById
-    // Use interface instead of impl (per Golden Rule #13)
-    const result = interfaces.Document.call_getElementById(owner_doc, runtime.DOMString.initInterned(id)) catch return null;
-    return result;
+/// Allocate reflection state only for elements that use it.
+fn ensureReferences(internal: *InternalState) !*dom.element_references.State {
+    if (internal.references) |refs| return refs;
+    const refs = try internal.allocator.create(dom.element_references.State);
+    refs.* = .{};
+    internal.references = refs;
+    return refs;
 }
 
-/// Get an ARIA element reference attribute (single element)
-/// These attributes contain an ID reference that needs to be resolved to an element
-fn getAriaElementRef(instance: *runtime.Instance, aria_attr: []const u8) ?*runtime.Instance {
-    // Get the attribute value (contains an ID)
-    const attr_value = getAriaAttribute(instance, aria_attr) orelse return null;
-    const id = attr_value.asSlice();
-    if (id.len == 0) return null;
-
-    return getElementByIdFromDocument(instance, id);
+fn getAriaElementRef(instance: *runtime.Instance, _: []const u8) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    return dom.element_references.getSingle(instance, internal.references);
 }
 
-/// Set an ARIA element reference attribute
-/// Takes an element and stores its ID as the attribute value
-fn setAriaElementRef(instance: *runtime.Instance, aria_attr: []const u8, element: ?*runtime.Instance) ImplError!void {
-    if (element) |elem| {
-        // Get the element's ID
-        if (getInternal(elem)) |elem_internal| {
-            const elem_id = elem_internal.data.id.asSlice();
-            if (elem_id.len > 0) {
-                // Set the ARIA attribute to the element's ID
-                return setAriaAttribute(instance, aria_attr, runtime.DOMString.initInterned(elem_id));
-            }
-        }
-    }
-    // Element is null or has no ID - remove the attribute
-    removeAttributeByNamespaceAndLocalName(instance, null, aria_attr);
+fn setAriaElementRef(instance: *runtime.Instance, aria_attr: []const u8, element: ?*runtime.Instance) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // HTML 2.6.1 setter step 1: clear the weak association and remove attr.
+    const target = element orelse {
+        if (internal.references) |refs| refs.single = null;
+        removeAttributeByNamespaceAndLocalName(instance, null, aria_attr);
+        return;
+    };
+    if (target.stateAs(interfaces.Element.State) == null) return error.TypeError;
+    const refs = try ensureReferences(internal);
+    // Steps 2-3: mutation resets the previous association, then install it.
+    try setAttributeValue(instance, aria_attr, "", null, null);
+    refs.single = dom.custom_elements.KeptInstance.of(target);
+}
+
+fn getAriaElements(instance: *runtime.Instance, comptime attribute: []const u8) !?runtime.JSValue {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return dom.element_references.getArray(instance, try ensureReferences(internal), internal.allocator, attribute);
+}
+
+fn setAriaElements(instance: *runtime.Instance, comptime attribute: []const u8, value: ?runtime.JSValue) !void {
+    const input = value orelse {
+        removeAttributeByNamespaceAndLocalName(instance, null, attribute);
+        return;
+    };
+    const weak = dom.custom_elements.KeptInstance.of(instance);
+    const allocator = (getInternal(instance) orelse return error.InvalidStateError).allocator;
+    var converted = try dom.element_references.Converted.init(engine.currentRealm() orelse instance.ctx, allocator, input);
+    defer converted.deinit();
+    // Iteration can run script, reenter the setter or close the owner realm.
+    _ = weak.get() orelse return error.InvalidStateError;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    try dom.element_references.setArray(instance, try ensureReferences(internal), allocator, attribute, converted.nodes.toSlice());
 }
 
 /// Setter for innerHTML
@@ -1580,106 +1587,72 @@ pub fn set_scrollLeft(instance: *runtime.Instance, value: f64) anyerror!void {
 /// ARIAMixin - Element reference setter
 /// Spec: https://w3c.github.io/aria/#dom-ariamixin-ariaactivedescendantelement
 ///
-/// Sets the element that is the active descendant. This should set
-/// aria-activedescendant to the target element's ID.
-/// Note: No-op - full implementation requires getting target element's ID
-/// and setting aria-activedescendant attribute.
+/// HTML 2.6.1: store an explicit weak target, clearing the content value.
 pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
-    _ = instance;
-    _ = value;
-    // No-op - would need to get value's ID and set aria-activedescendant
-    // Full implementation requires: get ID from value element, set attribute
+    return setAriaElementRef(instance, "aria-activedescendant", value);
 }
 
 /// Setter for ariaControlsElements
 /// ARIAMixin - Element array reference setter
 /// Spec: https://w3c.github.io/aria/#dom-ariamixin-ariacontrolselements
 ///
-/// Sets the elements that this element controls. This should set
-/// aria-controls to space-separated IDs of the target elements.
-/// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
+/// Sets explicit weak references and clears the content attribute value.
 pub fn set_ariaControlsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    // No-op - would need to extract IDs from elements and set aria-controls
+    return setAriaElements(instance, "aria-controls", value);
 }
 
 /// Setter for ariaDescribedByElements
 /// ARIAMixin - Element array reference setter
 /// Spec: https://w3c.github.io/aria/#dom-ariamixin-ariadescribedbyelements
 ///
-/// Sets the elements that describe this element. This should set
-/// aria-describedby to space-separated IDs of the target elements.
-/// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
+/// Sets explicit weak references and clears the content attribute value.
 pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    // No-op - would need to extract IDs from elements and set aria-describedby
+    return setAriaElements(instance, "aria-describedby", value);
 }
 
 /// Setter for ariaDetailsElements
 /// ARIAMixin - Element array reference setter
 /// Spec: https://w3c.github.io/aria/#dom-ariamixin-ariadetailselements
 ///
-/// Sets the elements that provide details for this element. This should set
-/// aria-details to space-separated IDs of the target elements.
-/// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
+/// Sets explicit weak references and clears the content attribute value.
 pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    // No-op - would need to extract IDs from elements and set aria-details
+    return setAriaElements(instance, "aria-details", value);
 }
 
 /// Setter for ariaErrorMessageElements
 /// ARIAMixin - Element array reference setter
 /// Spec: https://w3c.github.io/aria/#dom-ariamixin-ariaerrormessageelements
 ///
-/// Sets the elements that contain error messages for this element. This should set
-/// aria-errormessage to space-separated IDs of the target elements.
-/// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
+/// Sets explicit weak references and clears the content attribute value.
 pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    // No-op - would need to extract IDs from elements and set aria-errormessage
+    return setAriaElements(instance, "aria-errormessage", value);
 }
 
 /// Setter for ariaFlowToElements
 /// ARIAMixin - Element array reference setter
 /// Spec: https://w3c.github.io/aria/#dom-ariamixin-ariaflowtoelements
 ///
-/// Sets the elements that are the next in reading order. This should set
-/// aria-flowto to space-separated IDs of the target elements.
-/// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
+/// Sets explicit weak references and clears the content attribute value.
 pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    // No-op - would need to extract IDs from elements and set aria-flowto
+    return setAriaElements(instance, "aria-flowto", value);
 }
 
 /// Setter for ariaLabelledByElements
 /// ARIAMixin - Element array reference setter
 /// Spec: https://w3c.github.io/aria/#dom-ariamixin-arialabelledbyelements
 ///
-/// Sets the elements that label this element. This should set
-/// aria-labelledby to space-separated IDs of the target elements.
-/// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
+/// Sets explicit weak references and clears the content attribute value.
 pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    // No-op - would need to extract IDs from elements and set aria-labelledby
+    return setAriaElements(instance, "aria-labelledby", value);
 }
 
 /// Setter for ariaOwnsElements
 /// ARIAMixin - Element array reference setter
 /// Spec: https://w3c.github.io/aria/#dom-ariamixin-ariaownselements
 ///
-/// Sets the elements that are owned by this element. This should set
-/// aria-owns to space-separated IDs of the target elements.
-/// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
+/// Sets explicit weak references and clears the content attribute value.
 pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    // No-op - would need to extract IDs from elements and set aria-owns
+    return setAriaElements(instance, "aria-owns", value);
 }
 
 /// Operation: getAttributeNS
@@ -2581,10 +2554,9 @@ fn compileRawEventHandler(target: *runtime.Instance, event_type: []const u8, raw
     // Do not call the null IDL setter: it removes the listener's position.
     const compiled = engine.compileEventHandler(realm, &source, .{ .report = reportException, .host = realm }) catch return .settled;
     const function = compiled orelse return .settled;
-    defer function.release();
-    // Step 3.12: existing IDL conversion transfers the compiled callback.
-    engine.setProperty(realm, .{ .instance = target }, local_name, function.value) catch {};
-    return .settled;
+    // Steps 3.12-3.13: the callback context is the document's settings,
+    // even when another realm's script caused this getter to compile it.
+    return .{ .compiled = .{ .function = function, .context = realm } };
 }
 
 /// HTML 3.2.6.5, the style attribute, when it "is added or has its value

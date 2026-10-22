@@ -571,6 +571,9 @@ pub const ServiceWorkerGlobalScope = struct {
         return try ServiceWorkerGlobalScopeImpl.call_skipWaiting(instance);
     }
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_oninstall", "set_onactivate", "set_onfetch", "set_onmessage", "set_onmessageerror", "set_onbackgroundfetchsuccess", "set_onbackgroundfetchfail", "set_onbackgroundfetchabort", "set_onbackgroundfetchclick", "set_onsync", "set_oncontentdelete", "set_oncookiechange", "set_onnotificationclick", "set_onnotificationclose", "set_onperiodicsync", "set_onpush", "set_onpushsubscriptionchange", "set_oncanmakepayment", "set_onpaymentrequest" };
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{

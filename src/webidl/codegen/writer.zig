@@ -971,6 +971,30 @@ pub fn writeMetadata(
     try writer.writeAll("        \n");
     try writer.print("        pub const has_constructor = {};\n", .{has_constructor});
 
+    // WebIDL 3.7.6/3.7.7: only annotated members are own,
+    // non-configurable properties. A stringifier attribute's toString
+    // operation shares its unforgeability (WebIDL stringifiers).
+    var unforgeable: std.ArrayList([]const u8) = .empty;
+    defer unforgeable.deinit(std.heap.page_allocator);
+    for (own_attributes) |attr| {
+        if (!hasExtendedAttribute(attr.extAttrs, "LegacyUnforgeable")) continue;
+        try unforgeable.append(std.heap.page_allocator, attr.name);
+        if (hasExtendedAttribute(attr.extAttrs, "Stringifier")) try unforgeable.append(std.heap.page_allocator, "toString");
+    }
+    for (own_operations) |op| {
+        if (op.static or !hasExtendedAttribute(op.extAttrs, "LegacyUnforgeable")) continue;
+        const name = op.name orelse if (op.special == .stringifier) "toString" else continue;
+        try unforgeable.append(std.heap.page_allocator, name);
+    }
+    if (unforgeable.items.len != 0) {
+        try writer.writeAll("        pub const unforgeable_members = .{");
+        for (unforgeable.items, 0..) |name, i| {
+            if (i != 0) try writer.writeAll(", ");
+            try writer.print("\"{s}\"", .{name});
+        }
+        try writer.writeAll("};\n");
+    }
+
     // WebIDL 2.5.6: which function runs each special operation - an
     // anonymous one's delegate is gated, and the table says whether its impl
     // implements it.
@@ -2741,6 +2765,9 @@ pub fn writeConstructor(
     constructor: types.Constructor,
     type_registry: ?*const @import("ir.zig").TypeRegistry,
 ) !void {
+    // WebIDL 3.7.1 steps 1.6–1.7 and 9: arity is IDL optionality,
+    // independent of the Zig representation of nullable and sequence types.
+    try writer.print("    pub const constructor_required_arguments: usize = {d};\n\n", .{constructorRequiredArgumentCount(constructor)});
     try writer.writeAll("    /// WebIDL constructor\n");
     try writer.writeAll("    /// Note: Uses ctx.allocator internally for all allocations to ensure\n");
     try writer.writeAll("    /// consistency with deinit which uses instance.ctx.allocator\n");
@@ -2795,6 +2822,12 @@ pub fn writeOverloadedConstructor(
     type_registry: ?*const @import("ir.zig").TypeRegistry,
 ) !void {
     const allocator = std.heap.page_allocator;
+
+    var required = constructorRequiredArgumentCount(set.constructors[0]);
+    for (set.constructors[1..]) |constructor| {
+        required = @min(required, constructorRequiredArgumentCount(constructor));
+    }
+    try writer.print("    pub const constructor_required_arguments: usize = {d};\n\n", .{required});
 
     // Generate ConstructorArgs union type
     try writer.writeAll("    /// Arguments for constructor (WebIDL overloading)\n");
@@ -3309,6 +3342,21 @@ fn requiredArgumentCount(op: types.Operation) usize {
     return count;
 }
 
+fn constructorRequiredArgumentCount(constructor: types.Constructor) usize {
+    // WebIDL effective overload set 5.8–5.9 removes only TRAILING optionals.
+    // A required argument can follow an optional one (GPUPipelineError).
+    // C/F/S split 1/2/0 for that constructor's length; with no majority,
+    // follow the spec and Firefox's overloadLength (2026-10-21):
+    // https://github.com/mozilla-firefox/firefox/blob/main/dom/bindings/Codegen.py
+    var count = constructor.arguments.len;
+    while (count > 0) {
+        const arg = constructor.arguments[count - 1];
+        if (!arg.optional and !arg.variadic) break;
+        count -= 1;
+    }
+    return count;
+}
+
 /// The overloads of each overloaded regular operation, after the first.
 ///
 /// For `open` on XMLHttpRequest - `open(method, url)` and
@@ -3672,6 +3720,43 @@ fn isRestrictedFloatName(type_name: []const u8, model: ?*const ir.IR) bool {
         const target = typedef.idlType;
         if (target.unionTypes != null or target.generic != null) return false;
         name = target.type;
+    }
+    return false;
+}
+
+/// WebIDL 3.2.19: only assignment to an attribute whose nullable callback
+/// has [LegacyTreatNonObjectAsNull] preserves non-callable objects and maps
+/// other values to null. Operations and unannotated callbacks stay strict.
+fn writeLegacyCallbackAttributes(writer: anytype, attributes: []const types.Attribute, model: ?*const ir.IR) !void {
+    var first = true;
+    for (attributes) |attr| {
+        if (attr.readonly or !isLegacyCallbackAttribute(attr.idlType, model)) continue;
+        if (first) {
+            try writer.writeAll("    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].\n");
+            try writer.writeAll("    pub const legacy_treat_non_object_as_null = .{");
+        }
+        try writer.print("{s}\"set_{s}{s}\"", .{ if (first) "" else ", ", if (attr.static) "static_" else "", attr.name });
+        first = false;
+    }
+    if (!first) try writer.writeAll("};\n\n");
+}
+
+fn isLegacyCallbackAttribute(idl_type: types.IDLType, model: ?*const ir.IR) bool {
+    const m = model orelse return false;
+    var target = idl_type;
+    var nullable = false;
+    for (0..16) |_| {
+        if (target.unionTypes != null or target.generic != null or target.sequence != null or target.record != null) return false;
+        nullable = nullable or target.nullable;
+        if (m.callbacks.get(target.type)) |callback| {
+            if (!nullable) return false;
+            for (callback.extAttrs) |attr| {
+                if (std.mem.eql(u8, attr.name, "LegacyTreatNonObjectAsNull")) return true;
+            }
+            return false;
+        }
+        const alias = m.typedefs.get(target.type) orelse return false;
+        target = alias.idlType;
     }
     return false;
 }
@@ -5133,6 +5218,7 @@ pub fn writeDelegateFunctions(
 
     // Which string arguments and attribute values null converts to "" for.
     try writeLegacyNullToEmpty(writer, own_attributes, overload_ops);
+    try writeLegacyCallbackAttributes(writer, own_attributes, options.model);
     // Which float arguments and attribute values NaN and the infinities throw
     // for.
     try writeRestrictedFloats(writer, own_attributes, overload_ops, options.model);

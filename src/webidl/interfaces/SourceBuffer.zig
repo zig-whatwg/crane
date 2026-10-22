@@ -377,6 +377,9 @@ pub const SourceBuffer = struct {
         return try SourceBufferImpl.call_remove(instance, start, end);
     }
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onupdatestart", "set_onupdate", "set_onupdateend", "set_onerror", "set_onabort" };
+
     /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
     /// the infinities throw a TypeError for (bit i = argument i; an attribute
     /// setter's value is bit 0).

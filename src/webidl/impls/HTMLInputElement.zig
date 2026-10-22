@@ -577,6 +577,16 @@ fn attributeChangeSteps(
         const previous = InputType.fromAttribute(old_value);
         const now = InputType.fromAttribute(value);
         if (previous != now) typeChangeSteps(instance, previous, now);
+    } else if (std.mem.eql(u8, local_name, "multiple")) {
+        // HTML 4.10.5.1.5: setting or removing multiple runs the Email
+        // state's value sanitization algorithm. A clean value is derived
+        // from its attribute; an assigned value must be updated here.
+        if (typeOf(instance) != .email) return;
+        if (internal.value) |dirty| {
+            var sanitized = sanitize(internal.allocator, instance, .email, dirty) catch return;
+            defer sanitized.deinit(internal.allocator);
+            internal.setValue(sanitized.asSlice()) catch {};
+        }
     } else if (std.mem.eql(u8, local_name, "alpha") or std.mem.eql(u8, local_name, "colorspace")) {
         // Color state: update a color well control color on either attribute
         // change. Clean values still reparse their value attribute on read.
@@ -651,16 +661,16 @@ fn typeChangeSteps(instance: *runtime.Instance, previous: InputType, now: InputT
     }
 }
 
-/// The input element's insertion steps: "The element becomes connected" is
-/// one of the phenomena after which a checked radio button unchecks the
-/// others in its group. Called for every inserted node.
+/// Radio group normalization after connection or joining a form owner.
+/// Form ownership also changes when inserted into a detached form; merely
+/// joining a detached tree without an owner does not trigger this rule.
 fn insertionStepsCallback(node: *NodeBase) void {
     if (node.node_type != 1) return;
     const instance_ptr = instance_bridge.getInstance(node) orelse return;
     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
     const internal = getInternal(instance) orelse return;
     if (!internal.checkedness or typeOf(instance) != .radio) return;
-    if (!(interfaces.Node.get_isConnected(instance) catch false)) return;
+    if (!(interfaces.Node.get_isConnected(instance) catch false) and form_associated.formOwner(instance) == null) return;
     uncheckOthersInGroup(instance);
 }
 
@@ -804,6 +814,15 @@ fn runActivationBehavior(instance: *runtime.Instance, event: *runtime.Instance) 
     // 2. The input activation behavior of the state.
     switch (input_type) {
         .checkbox, .radio => {
+            if (input_type == .radio) {
+                // All three browsers gate radio input/change on changed
+                // checkedness (wpt.fyi 0f26972422, radio-click-events).
+                // Blink RadioInputType::RunInputActivationBehavior compares
+                // the pre-activation state with the post-click state. The
+                // spec's unconditional steps below omit that condition.
+                const internal = getInternal(instance) orelse return;
+                if (internal.saved_checkedness == internal.checkedness) return;
+            }
             // 1. If the element is not connected, then return.
             if (!(interfaces.Node.get_isConnected(instance) catch false)) return;
             // 2. Fire input, bubbling and composed. 3. Fire change, bubbling.
@@ -1090,8 +1109,11 @@ fn sanitize(allocator: std.mem.Allocator, instance: *runtime.Instance, input_typ
 /// underflow, overflow and step mismatch rules, which set the value to the
 /// minimum, the maximum, or the nearest allowed step (rounding up on a tie).
 fn sanitizeRange(allocator: std.mem.Allocator, instance: *runtime.Instance, value: []const u8) !runtime.DOMString {
-    const minimum = numberAttribute(instance, .range, "min") orelse 0;
-    const maximum_given = numberAttribute(instance, .range, "max") orelse 100;
+    // Blink RangeInputType::SanitizeValue uses Decimal through ClampValue.
+    // As in stepValue, retain the original decimal strings until the final
+    // serialization: binary64 snapping turns 0.6 into 0.6000000000000001.
+    const minimum = numberAttributeForStep(instance, "min") orelse 0;
+    const maximum_given = numberAttributeForStep(instance, "max") orelse 100;
     // "The default maximum is 100 ... if the maximum is less than the
     // minimum, the maximum is the minimum."
     const maximum = if (maximum_given < minimum) minimum else maximum_given;
@@ -1099,21 +1121,38 @@ fn sanitizeRange(allocator: std.mem.Allocator, instance: *runtime.Instance, valu
     // minimum and the maximum, unless the maximum is less than the minimum,
     // in which case the default value is the minimum."
     const default_value = if (maximum_given < minimum) minimum else minimum + (maximum - minimum) / 2;
-    var number = parseValidFloat(value) orelse default_value;
+    var number: f128 = if (parseValidFloat(value) != null)
+        std.fmt.parseFloat(f128, value) catch default_value
+    else
+        default_value;
     if (number < minimum) number = minimum;
     if (number > maximum) number = maximum;
-    if (allowedValueStep(instance, .range)) |step| {
-        const base = stepBase(instance, .range);
+    if (allowedValueStep(instance, .range)) |allowed_step| {
+        const candidate = numberAttributeForStep(instance, "step") orelse allowed_step;
+        const step: f128 = if (candidate > 0) candidate else allowed_step;
+        const base = numberAttributeForStep(instance, "min") orelse numberAttributeForStep(instance, "value") orelse 0;
         const steps = (number - base) / step;
         if (steps != @floor(steps)) {
-            var snapped = base + @floor(steps + 0.5) * step;
-            if (snapped > maximum) snapped = base + @floor((maximum - base) / step) * step;
-            if (snapped < minimum) snapped = base + @ceil((minimum - base) / step) * step;
-            number = snapped;
+            // Decimal half steps can land below the tie after binary128
+            // parsing/subtraction/division. Include both operands' scale:
+            // a large base can lose low bits even when the quotient is small.
+            // Only absorb that arithmetic error, not StepMismatch's much
+            // wider validity tolerance; a value below a tie still rounds down.
+            const arithmetic_scale = (@abs(number) + @abs(base)) / step + @abs(steps);
+            const tolerance = 4 * std.math.floatEps(f128) * @max(1, arithmetic_scale);
+            const lower = @floor(steps);
+            const nearest = if (steps - lower < 0.5 - tolerance) lower else lower + 1;
+            var snapped = base + nearest * step;
+            if (snapped > maximum) snapped = alignedStep(maximum, base, step, false);
+            if (snapped < minimum) snapped = alignedStep(minimum, base, step, true);
+            // A step base outside the range can leave no allowed step
+            // inside it. Blink/WebKit ClampValue retain the bounded value
+            // then; snapping must never reintroduce underflow/overflow.
+            if (snapped >= minimum and snapped <= maximum) number = snapped;
         }
     }
     var buffer: [32]u8 = undefined;
-    const serialized = reflection.numberToString(&buffer, number);
+    const serialized = reflection.numberToString(&buffer, @floatCast(number));
     return if (std.mem.eql(u8, value, serialized)) runtime.DOMString.initInterned(value) else runtime.DOMString.initDupe(allocator, serialized);
 }
 
@@ -1660,7 +1699,8 @@ fn stepValue(instance: *runtime.Instance, n: i32, comptime up: bool) !void {
     // 5. The value as a number, or zero.
     const current = try currentValue(instance);
     defer internal.allocator.free(current);
-    var value: f128 = if (stringToNumber(input_type, current)) |number|
+    const current_number = stringToNumber(input_type, current);
+    var value: f128 = if (current_number) |number|
         (if (decimal) std.fmt.parseFloat(f128, current) catch number else number)
     else
         0;
@@ -1669,7 +1709,8 @@ fn stepValue(instance: *runtime.Instance, n: i32, comptime up: bool) !void {
     // 7: browsers use the SIGNED count, and count an off-step snap as the
     // first requested step (Blink InputType::ApplyStep; WebKit applyStep).
     // This differs from the text's method-name direction / one-snap branch.
-    var count: i64 = if (up) @as(i64, n) else -@as(i64, n);
+    const signed_count: i64 = if (up) @as(i64, n) else -@as(i64, n);
+    var count = signed_count;
     const mismatch = forms.numericStepMismatch(value, base, step);
     if (mismatch and count != 0) {
         value = alignedStep(value, base, step, count > 0);
@@ -1685,8 +1726,13 @@ fn stepValue(instance: *runtime.Instance, n: i32, comptime up: bool) !void {
     if (maximum) |max| {
         if (value > max) value = alignedStep(max, base, step, false);
     }
-    // 10. Moving the wrong way: nothing.
-    if ((count < 0 and value > before) or (count > 0 and value < before)) return;
+    // 10. Moving the wrong way: nothing, unless step 5 replaced an invalid
+    // value with zero. Chrome/Firefox allow that initial bound clamp;
+    // Safari does not (input-stepdown-02, wpt.fyi 0f26972422). No newer
+    // spec change: use the majority, as Blink ApplyStep(current_was_invalid).
+    // Use the requested direction even when an off-step snap consumed the
+    // last step. The remaining count may already be zero.
+    if (current_number != null and ((signed_count < 0 and value > before) or (signed_count > 0 and value < before))) return;
     // 11-12. Set the value to its string.
     const result: f64 = @floatCast(value);
     if (!std.math.isFinite(result)) return;

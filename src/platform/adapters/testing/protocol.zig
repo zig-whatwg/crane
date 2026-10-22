@@ -16,12 +16,15 @@ const platform = @import("platform");
 const platform_options = @import("platform_options");
 const posix = @import("kit_posix");
 const headless = @import("kit_headless");
+const brotli = @import("kit_brotli");
 const memory_store = @import("kit_memory_store");
 const curl = @import("kit_curl");
 const crypto = @import("kit_crypto");
 const browser_state = @import("kit_browser_state");
 const memory_clipboard = @import("kit_memory_clipboard");
-const image_decoding = @import("image_decoding.zig");
+const image_decoding = if (for (platform_options.platform_without) |capability| {
+    if (std.mem.eql(u8, capability, "image_decoding")) break true;
+} else false) headless else @import("image_decoding.zig");
 const layout = @import("layout.zig");
 
 /// Per-Browser test state: fresh for every Browser, so nothing one test does
@@ -68,6 +71,7 @@ pub const protocol = struct {
     /// capabilities built so far.
     pub const capabilities: platform.Capabilities = blk: {
         var c = headless.capabilities;
+        c.brotli = .native; // Pinned RFC 7932 codec; identical on every OS.
         c.persistent_storage = .native;
         c.file_urls = .native;
         c.http2 = if (platform_options.http2) .native else .unsupported;
@@ -75,7 +79,7 @@ pub const protocol = struct {
         // kit/memory_clipboard per Browser. Deviation: nothing leaves the
         // Browser and nothing another application copies arrives.
         c.clipboard = .emulated;
-        // Zig decoders compiled in (image_decoding.zig): PNG and BMP.
+        // Compiled-in decoders: PNG, BMP, GIF, JPEG and SVG.
         c.image_decoding = .native;
         // STOPGAP (decision 19b): layout.zig. Deviation: only a connected
         // replaced element (an img) has a box, sized from the facts Crane
@@ -86,6 +90,12 @@ pub const protocol = struct {
         break :blk c;
     };
 
+    pub const createBrotliDecoder = brotli.createBrotliDecoder;
+    pub const decompressBrotli = brotli.decompressBrotli;
+    pub const destroyBrotliDecoder = brotli.destroyBrotliDecoder;
+    pub const createBrotliEncoder = brotli.createBrotliEncoder;
+    pub const compressBrotli = brotli.compressBrotli;
+    pub const destroyBrotliEncoder = brotli.destroyBrotliEncoder;
     pub const createBrowserPlatform = State.create;
     pub const destroyBrowserPlatform = State.destroy;
     pub const initializePlatform = posix.initializePlatform;
@@ -135,6 +145,8 @@ pub const protocol = struct {
     pub const pauseTransfer = curl.pauseTransfer;
     pub const resumeTransfer = curl.resumeTransfer;
     pub const openWebSocket = curl.openWebSocket;
+    pub const pollWebSocketHandshake = curl.pollWebSocketHandshake;
+    pub const receiveWebSocketFrame = curl.receiveWebSocketFrame;
     pub const sendWebSocketFrame = curl.sendWebSocketFrame;
     pub const closeWebSocket = curl.closeWebSocket;
     pub const releaseWebSocket = curl.releaseWebSocket;

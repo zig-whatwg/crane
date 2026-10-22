@@ -34,3 +34,6 @@ pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!vo
     if (comptime @hasDecl(AbstractWorkerImpl, "set_onerror")) return try AbstractWorkerImpl.set_onerror(instance, value);
     try event_handlers.setValue(EventHandler, instance, "onerror", value);
 }
+
+/// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+pub const legacy_treat_non_object_as_null = .{"set_onerror"};

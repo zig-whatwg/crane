@@ -110,6 +110,7 @@ pub const unloading_cleanup = @import("unloading_cleanup.zig");
 pub const editor_states = @import("editor_states.zig");
 pub const idle_periods = @import("idle_periods.zig");
 pub const document_activity = @import("document_activity.zig");
+pub const document_autofocus = @import("document_autofocus.zig");
 /// A Document's back/forward cache state: "make document unsalvageable", its
 /// bfcache blocking details, and building not restored reasons.
 pub const bfcache = @import("bfcache.zig");
@@ -212,6 +213,8 @@ pub const document_scripts = @import("document_scripts.zig");
 pub const document_modules = @import("document_modules.zig");
 /// A Document's browsing context's window, as a frame's parser sets it.
 pub const document_browsing_context = @import("document_browsing_context.zig");
+pub const element_references = @import("element_references.zig");
+pub const accessibility = @import("accessibility.zig");
 /// What the parsers' tree construction sets on the nodes it makes where no
 /// IDL member fits: an element's names, a doctype's identifiers.
 pub const node_creation = @import("node_creation.zig");

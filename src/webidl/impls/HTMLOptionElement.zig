@@ -641,18 +641,14 @@ fn isAsciiWhitespace(c: u8) bool {
 
 /// Is this element one whose text `option.text` must not descend into?
 ///
-/// HTML `script` and SVG `script`, but not MathML `script`. Note that an element
-/// created by `createElementNS(null, "script")` is indistinguishable from an
-/// HTML one here: `dom.element_data`'s `namespace_uri` is null for HTML
-/// elements (see `Element.get_tagName`, which treats null as HTML), so the null
-/// namespace cannot be told apart. The common case wins; the one WPT subtest
-/// asserting the null-namespace script DOES recurse stays red until Element
-/// stores the namespace explicitly.
+/// HTML `script` and SVG `script`, but not MathML or null-namespace `script`.
+/// HTML-aware text step 2.1 tests the namespace and case-sensitive local name,
+/// as Blink's IsScriptElement does. Element stores HTML's namespace explicitly.
 fn isOpaqueScript(element: *runtime.Instance) bool {
     const local = localName(element) orelse return false;
-    if (!std.ascii.eqlIgnoreCase(local, "script")) return false;
+    if (!std.mem.eql(u8, local, "script")) return false;
     const data = element_data.of(element) orelse return false;
-    const ns = data.namespace_uri orelse return true; // implicit HTML
+    const ns = data.namespace_uri orelse return false;
     const slice = ns.asSlice();
     return std.mem.eql(u8, slice, HTML_NAMESPACE) or std.mem.eql(u8, slice, SVG_NAMESPACE);
 }

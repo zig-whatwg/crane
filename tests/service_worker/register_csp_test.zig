@@ -94,9 +94,10 @@ test "register() of a script URL worker-src blocks rejects with SecurityError, r
     try waitFor(browser, "globalThis.state !== 'registering' && globalThis.events.length > 0");
     try testing.expect(try truthy(browser, "globalThis.state === 'rejected SecurityError'"));
     // One violation, of worker-src, naming the script URL and the calling
-    // script's position: the register() call, the inline script's second
-    // line (its positions count from the script's first line here).
-    try waitFor(browser, "globalThis.events.length === 1 && globalThis.events[0] === \"worker-src worker-src https://sw-csp.test/sw.js https://sw-csp.test/page.html 2\"");
+    // script's position: the register() call, on the inline script's second
+    // line - the document's line 4 (an inline script reports its document's
+    // lines: engine.ScriptSource.embedded, lane engine1).
+    try waitFor(browser, "globalThis.events.length === 1 && globalThis.events[0] === \"worker-src worker-src https://sw-csp.test/sw.js https://sw-csp.test/page.html 4\"");
     // No job ran: no registration exists for the scope.
     const listed = try browser.evaluateScript("globalThis.listed = 'pending'; navigator.serviceWorker.getRegistrations().then(rs => { globalThis.listed = rs.length; }); true");
     listed.release();

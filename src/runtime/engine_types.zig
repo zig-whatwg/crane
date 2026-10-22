@@ -209,6 +209,19 @@ pub const ArrayBufferViewDescription = struct {
     shared: bool,
 };
 
+/// An engine-owned set of shared backing stores, independent of every realm
+/// and agent. Each owner releases exactly once. retain/release are thread-safe;
+/// neither accesses an isolate or a thread's runtime state.
+pub const SharedMemory = opaque {
+    pub fn retain(self: *SharedMemory) *SharedMemory {
+        @import("engine").retainSharedMemory(self);
+        return self;
+    }
+    pub fn release(self: *SharedMemory) void {
+        @import("engine").releaseSharedMemory(self);
+    }
+};
+
 /// HTML's "serialize with transfer result" (2.7.5), as an engine produces it
 /// and StructuredDeserializeWithTransfer takes it back. `serialized` and
 /// `array_buffers` are OWNED (the allocator the operation was given; free them
@@ -224,12 +237,15 @@ pub const SerializedWithTransfer = struct {
     array_buffers: [][]u8,
     /// The transferred platform objects, in transfer-list order.
     platform_objects: []*Instance,
+    /// OWNED, released by deinit or moved to the receiving message.
+    shared_memory: ?*SharedMemory = null,
 
     pub fn deinit(self: *SerializedWithTransfer, allocator: std.mem.Allocator) void {
         allocator.free(self.serialized);
         for (self.array_buffers) |contents| allocator.free(contents);
         allocator.free(self.array_buffers);
         allocator.free(self.platform_objects);
+        if (self.shared_memory) |memory| memory.release();
         self.* = .{ .serialized = &.{}, .array_buffers = &.{}, .platform_objects = &.{} };
     }
 };

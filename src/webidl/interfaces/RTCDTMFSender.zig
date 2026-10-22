@@ -207,4 +207,7 @@ pub const RTCDTMFSender = struct {
     pub fn call_insertDTMF(instance: *runtime.Instance, tones: runtime.DOMString, duration: webidl.Opt(u32), interToneGap: webidl.Opt(u32)) anyerror!void {
         return try RTCDTMFSenderImpl.call_insertDTMF(instance, tones, duration, interToneGap);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_ontonechange"};
 };

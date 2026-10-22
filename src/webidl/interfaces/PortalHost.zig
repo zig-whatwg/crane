@@ -207,4 +207,7 @@ pub const PortalHost = struct {
     pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(StructuredSerializeOptions)) anyerror!void {
         return try PortalHostImpl.call_postMessage(instance, message, options);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onmessage", "set_onmessageerror" };
 };

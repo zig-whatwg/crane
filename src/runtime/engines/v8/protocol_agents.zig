@@ -258,6 +258,13 @@ pub fn agentClusterOf(isolate: *ffi.Isolate, realm: Context) u64 {
     return call(record.host, realm);
 }
 
+/// HTML's cross-origin isolated capability; absent hooks deny shared memory.
+pub fn crossOriginIsolatedCapability(isolate: *ffi.Isolate, realm: Context) bool {
+    const record = recordOf(isolate) orelse return false;
+    const call = record.hooks.crossOriginIsolatedCapability orelse return false;
+    return call(record.host, realm);
+}
+
 /// HostHooks.htmlConstructor [html_constructor] of the agent whose isolate
 /// this is, with the host it is handed - what an [HTMLConstructor]
 /// interface's construction runs (interface.zig). Null for an agent without
@@ -303,6 +310,16 @@ pub fn drainDeferredTeardown(agent: *Agent) void {
     queue.drainAll();
 }
 
+fn engineWakeTask(_: ?*anyopaque) void {}
+fn wakeEngineLoop(data: ?*anyopaque) callconv(.c) void {
+    const sink: *runtime.TaskSink = @ptrCast(@alignCast(data.?));
+    _ = sink.post(.{ .run = engineWakeTask, .drop = engineWakeTask, .data = null });
+}
+fn releaseEngineSink(data: ?*anyopaque) callconv(.c) void {
+    const sink: *runtime.TaskSink = @ptrCast(@alignCast(data.?));
+    sink.release();
+}
+
 /// HTML "obtain an agent" (a similar-origin window agent or a worker's): a
 /// new isolate - restored from the engine's snapshot when asked for and one
 /// was given - with [[CanBlock]] as the options say and the host's hooks
@@ -323,6 +340,13 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
         break :blk @ptrCast(@alignCast(agent));
     };
     errdefer ffi.v8_Isolate_Dispose(isolate);
+    if (options.engine_task_sink) |sink| {
+        const retained = sink.retain();
+        if (!ffi.v8_Isolate_AttachForegroundTaskSink(isolate, retained, wakeEngineLoop, releaseEngineSink)) {
+            retained.release();
+            return error.OperationFailed;
+        }
+    }
 
     // [[CanBlock]]: false for a similar-origin window agent, whose one thread
     // Atomics.wait() would freeze - it throws a TypeError instead.
@@ -411,6 +435,7 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
 /// under whoever still uses it.
 pub fn endAgent(agent: *Agent) void {
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
+    ffi.v8_Isolate_CloseForegroundTasks(isolate);
     const record = recordOf(isolate);
     const allocator = if (record) |r| r.allocator else std.heap.c_allocator;
     const host_agent = if (record) |r| r.host_agent else false;
@@ -607,6 +632,10 @@ fn onPromiseReject(isolate: *ffi.Isolate, event: c_int, promise: *ffi.Value, rea
         ffi.v8_Global_Dispose(promise);
         if (reason) |r| ffi.v8_Global_Dispose(r);
     };
+
+    // HTML HostPromiseRejectionTracker steps 1-2: a running script with
+    // muted errors suppresses both reject and handle. Nothing is adopted.
+    if (ffi.v8_Isolate_CurrentScriptHasMutedErrors(isolate)) return;
 
     const record = recordOf(isolate) orelse return;
     const tracker = record.hooks.promiseRejectionTracker orelse return;

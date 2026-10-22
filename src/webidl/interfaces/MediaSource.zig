@@ -240,6 +240,8 @@ pub const MediaSource = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -340,6 +342,9 @@ pub const MediaSource = struct {
     pub fn call_addSourceBuffer(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!*runtime.Instance {
         return try MediaSourceImpl.call_addSourceBuffer(instance, @"type");
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onsourceopen", "set_onsourceended", "set_onsourceclose" };
 
     /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
     /// the infinities throw a TypeError for (bit i = argument i; an attribute

@@ -139,7 +139,8 @@ The types are the ownership rule, as in the engine protocol.
 | `Reply(T)` | One asynchronous answer (section 4). OWNED by the platform from the call until it calls exactly one of `deliver` / `drop`. |
 | `EventSink` | Crane's receiver for what the platform reports unasked (section 7); given to `createBrowserPlatform`, BORROWED by the platform until `destroyBrowserPlatform` returns. |
 | `EventLoopPort` | One event loop's OS side - its sockets, its wait, its wake (6.7). OWNED by the event loop; used on its thread only, except `wakeEventLoopPort`. |
-| `Transfer`, `WebSocket` | OWNED by their port until their client's last callback or a cancel. |
+| `Transfer` | OWNED by its port until its client's last callback or a cancel. |
+| `WebSocket` | OWNED by its caller until `releaseWebSocket`; polled on the requesting agent by its existing owned timer. |
 | `Store`, `StoreTransaction`, `StoreCursor` | Storage engine handles (6.6), OWNED until closed / committed or aborted / closed. |
 | `MediaDecoder`, `Codec`, `CaptureSource`, `AudioOutput`, `DeviceHandle`, `SensorHandle` | Capability objects, OWNED by Crane from a successful open until its close call. |
 | `FileToken` | A file the user picked (6.10.3), OWNED until `releasePickedFile`. |
@@ -267,6 +268,7 @@ system state (defaults allowed), console output.
 | `file_urls` | native on macOS, unsupported on iOS (sandbox) | native | native | Fetch 4.3 scheme fetch "file": network error |
 | `system_trust_store` | native (SecTrust, decision 6) | emulated (distro CA bundle: no revocation, no enterprise roots) | as its host OS | only `extra_trust_anchors_pem` trusted |
 | `http2` / `http3` | native when built with nghttp2 / unsupported | same | same | HTTP-network fetch step 8.3: an HTTP/2-only request is a network error / HTTP/1.1 and 2 only |
+| `brotli` | native (vendored Google Brotli) | native (same) | native (same) | CompressionStream/DecompressionStream reject "brotli"; the static HTTP backend does not advertise or decode br |
 | `thread_qos` | native | unsupported | as its host OS | default priority |
 | `resident_memory` | native | native | native | diagnostics report nothing |
 | `layout` | unsupported (headless) | unsupported | emulated - a STOPGAP (decision 19b): only a connected img has a box, sized from the facts Crane gives (`replacedElementBox`, 6.9); every other node has none | CSSOM View with no layout box: zero boxes, no hit (6.9) |
@@ -276,7 +278,7 @@ system state (defaults allowed), console output.
 | `file_picker` | native: NSOpenPanel / NSSavePanel; UIDocumentPickerViewController, PHPickerViewController - over the key window, the unsupported path with no window | unsupported | native (testdriver queue) | no files chosen (`cancel`) |
 | `windows` | native | native | native | every popup allowed; rects ignored |
 | `media_decoding` | unsupported until built (AVFoundation) | unsupported | native (WAV; WebM/Ogg) | canPlayType "" |
-| `image_decoding` | unsupported until built (ImageIO, decision 19) | unsupported until built (the system libpng, libjpeg-turbo, libwebp, libavif) | native (Zig decoders: PNG, BMP, GIF) | every image is broken: "update the image data" fires error |
+| `image_decoding` | unsupported until built (ImageIO, decision 19) | unsupported until built (the system libpng, libjpeg-turbo, libwebp, libavif) | native (PNG, BMP, GIF; vendored JPEG and SVG) | every image is broken: "update the image data" fires error |
 | `webcodecs`, `media_capabilities`, `encrypted_media` | unsupported | unsupported | unsupported | NotSupportedError |
 | `camera`, `microphone` | unsupported until built (AVFoundation) | unsupported | native (fake devices) | enumerateDevices() empty; getUserMedia NotFoundError |
 | `screen_capture` | unsupported | unsupported | unsupported | getDisplayMedia NotAllowedError |
@@ -405,9 +407,13 @@ kit/curl implements it (libcurl + mbedTLS; decision 5 keeps it on iOS for 0.1, U
 | `startTransfer` | `(port, allocator, request: *const HttpRequest, client: TransferClient) HttpError!*Transfer` | agent | `client.head(*const HttpResponseHead)`, `client.data(Bytes)` (BORROWED), `client.end(HttpError!void)` last - all inside `pollEventLoopPort`. The request is copied before return. Retries without a connection and the HTTP/2-only refusal (`require_http2`, step 8.3) are the platform's. |
 | `cancelTransfer` | `(port, transfer) void` | agent | Nothing more is heard. |
 | `pauseTransfer`, `resumeTransfer` | `(port, transfer) void` | agent | Receive backpressure. |
-| `openWebSocket` | `(port, allocator, request: *const WebSocketRequest, client: WebSocketClient) HttpError!*WebSocket` | agent | The handshake request Crane built (URL, protocols, origin, cookies); `opened(head)`, `frame(kind, Bytes, fin)`, `closed(code, reason, clean)` inside poll. The per-host CONNECTING queue (RFC 6455 4.1) is the Browser's. |
-| `sendWebSocketFrame` | `(socket, kind, bytes: Bytes) HttpError!void` | agent | The platform buffers partial writes. |
+| `openWebSocket` | `(allocator, request: *const WebSocketRequest) HttpError!*WebSocket` | agent | Copies the URL, headers (Origin, cookies, protocols) and Browser network options; begins an owned transport without callbacks. The Browser's CONNECTING gate stays above the platform. |
+| `pollWebSocketHandshake` | `(socket) HttpError!?WebSocketHandshake` | agent | Null while pending; completed real HTTP version/status/headers plus transport verification. Headers are borrowed until release. Failed-handshake cookies are still processed above the platform. |
+| `sendWebSocketFrame` | `(socket, kind, bytes: Bytes) WebSocketError!usize` | agent | Partial writes: returns accepted payload bytes; WouldBlock accepted nothing. The existing API queue accounts for bufferedAmount. |
+| `receiveWebSocketFrame` | `(socket, buffer: []u8) WebSocketError!WebSocketChunk` | agent | Borrowed bytes in caller's buffer, frame kind, bytes left and fragmentation. WouldBlock/ConnectionLost are distinct. |
 | `closeWebSocket`, `releaseWebSocket` | `(socket, code, reason: Str) void`, `(socket) void` | agent | |
+
+WebSockets use the existing owned-timer pump, independently of the not-yet-migrated fetch/event-loop port. Releasing the transport cancels synchronously and cannot deliver a late callback. HTTP/1.1 uses curl's GET/101 handshake and RFC6455 frames. RFC8441 is not implemented yet: browser-equivalent selection needs access to fetch's existing HTTP/2 sessions and their CONNECT settings, which curl's public WebSocket API does not expose. A future HTTP/2 transport returns its real 2xx status, never a synthetic 101.
 
 `HttpRequest`: URL, method, headers in order, body (bytes or a pull callback), HTTP version
 preference, timeouts, `require_http2`. `HttpResponseHead`: status, status message, version, headers in
@@ -417,6 +423,29 @@ retry needs (docs/lessons/spec-compliance-a-network-error-may-need-a-native-caus
 is the platform's: the system trust store where `system_trust_store` is native (darwin: SecTrust over
 the chain through mbedTLS's verify callback, Security.framework linked - decision 6), plus
 `extra_trust_anchors_pem`.
+
+#### 6.7.1 Incremental Brotli [brotli]
+
+`createBrotliDecoder(allocator) CodecError!*BrotliDecoder` and
+`createBrotliEncoder(allocator) CodecError!*BrotliEncoder` allocate independent
+contexts. `decompressBrotli(decoder, input: Bytes, output: []u8)` and
+`compressBrotli(encoder, input: Bytes, output: []u8, finish: bool)` return
+`CodecError!CodecProgress`. Input and output are borrowed only for the call;
+progress reports consumed and produced byte counts and `CodecStatus`
+(`need_input`, `need_output`, `finished`). Retry with the unconsumed input when
+output is full. Finish an encoder until `finished`; a decoder needing input at
+end of input is truncated. A finished decoder leaves trailing bytes unconsumed.
+Crane's Compression Streams layer applies the format's trailing-data policy.
+`CodecError` is `OutOfMemory`, `InvalidData` or `NotSupported`.
+
+The caller owns the context until `destroyBrotliDecoder` or
+`destroyBrotliEncoder`. Calls on one context must not overlap; independent
+contexts are safe on different threads. The supplied allocator owns all C
+allocations too. The built-ins use the hash-pinned MIT Google Brotli v1.2.0
+codec in `kit/brotli`, for matching semantics and no OS-version dependency.
+`-Dplatform-without=brotli` removes it; `-Dplatform-static=brotli` is already the
+default. HTTP uses the same source library through curl's streaming decoder.
+Only RFC 7932 streams are accepted (no large-window extension or dictionaries).
 
 ### 6.8 Crypto primitives (decision 11)
 
@@ -710,7 +739,7 @@ time), kit/memory_clipboard otherwise.
 | Capability | The testing platform |
 |---|---|
 | media_decoding | WAV linear PCM (today tests/wpt_runner/wav_backend.zig) and WebM/Ogg (lane/webm), moved into the platform |
-| image_decoding | Zig decoders in src/platform/adapters/testing/ (decisions 19, 19a, 19c): PNG, BMP as Blink reads it (WPT's security-features image.py serves image/bmp), and GIF (the first frame; Firefox's and Safari's rules where the format is silent), so results do not depend on the machine's image libraries; each returns a partial image for data that ends or goes bad after its dimensions |
+| image_decoding | Zig decoders in src/platform/adapters/testing/ (decisions 19, 19a, 19c): PNG, BMP and GIF; kit/image_codecs adds pinned libjpeg-turbo 3.1.3 (including partial rows and EXIF orientation) and Expat 2.9.0 + NanoSVG for SVG. Returned pixels belong to the caller. SVG is a rasterizer, not a complete browser renderer: text, filters, masks, embedded resources and full CSS/layout remain unsupported; no scripts or external requests run. The README records exact pins, licences and coverage. Results do not depend on machine image libraries. |
 | camera, microphone | one fake camera "fake_video_0" (640x480, 30 fps) and one fake microphone "fake_audio_0" (48 kHz mono); precedent Chrome's FakeVideoCaptureDeviceFactory, Gecko's MediaEngineFake, WebKit's MockRealtimeMediaSourceCenter |
 | os_permissions | governs no descriptor: Crane's store answers, and a request in the prompt state grants camera and microphone (the fake devices) and denies everything else (decision 9); tests script anything else with `test_driver.set_permission`, which writes the store |
 | simple_dialogs | dismissed at once (alert OK, confirm false, prompt null), logged to the test's output |
@@ -756,7 +785,7 @@ not verified is marked UNVERIFIED.
 | HTTP client | /usr/lib/libcurl.4.dylib, 8.7.1 (macOS SDK's curlver.h) | macOS only (no libcurl in the iOS SDK) | no - macOS's build has no WebSockets (`curl -V` lists no ws/wss), uses the deprecated SecureTransport/LibreSSL 3.3.6, and is pinned old | kit/curl | static |
 | HTTP/2 framing | nghttp2 (inside macOS's libcurl only; no libnghttp2 in either SDK) | - | no public library | static nghttp2 (build.zig `enable_http2`) | static |
 | zlib (Content-Encoding gzip/deflate, Compression Streams) | libz.tbd, zlib 1.2.12 (zlib.h in both SDKs) | both | yes - stable API; Apple's security backports to 1.2.12 UNVERIFIED | static zlib (today's) | dynamic |
-| Brotli (Content-Encoding br; not built today) | Compression framework `COMPRESSION_BROTLI` (compression.h: macOS 12, iOS 15; Apple's encoder is level 2 only) | both | yes for decoding, when br is added | static brotli | dynamic |
+| Brotli (Content-Encoding br and Compression Streams) | Compression framework `COMPRESSION_BROTLI` (compression.h: macOS 12, iOS 15; Apple's encoder is level 2 only) | both | future alternative after validating the streaming and allocator contract (6.7.1) | pinned Google Brotli v1.2.0 | static |
 | storage engine | libsqlite3.tbd, SQLite 3.54.0 (sqlite3.h in both SDKs) | both | yes - the ordered key-value contract (6.6) needs nothing version-specific | kit/sqlite (amalgamation); kit/leveldb (no system LevelDB on darwin - today's macOS link is Homebrew's) | dynamic |
 | SHA-1/256/384/512 | CommonCrypto `CC_SHA*` (CommonDigest.h) | both | yes | kit/crypto | dynamic |
 | HMAC | CommonCrypto `CCHmac` (SHA-1, -224, -256, -384, -512) | both | yes | kit/crypto | dynamic |

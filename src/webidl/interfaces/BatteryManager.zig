@@ -259,4 +259,7 @@ pub const BatteryManager = struct {
         if (comptime @hasDecl(BatteryManagerImpl, "set_onlevelchange")) return try BatteryManagerImpl.set_onlevelchange(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onlevelchange", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onchargingchange", "set_onchargingtimechange", "set_ondischargingtimechange", "set_onlevelchange" };
 };

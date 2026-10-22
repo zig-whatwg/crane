@@ -32,6 +32,27 @@
     // Once all dependencies are fetched, `zig build` no longer requires
     // internet connectivity.
     .dependencies = .{
+        // Google's MIT-licensed Brotli, built as C libraries in build.zig.
+        .brotli = .{
+            .url = "https://codeload.github.com/google/brotli/tar.gz/028fb5a23661f123017c060daa546b55cf4bde29",
+            .hash = "N-V-__8AAJudKgCQCuIiH6MJjAiIJHfg_tT_Ew-0vZwVkCo_",
+            .lazy = true,
+        },
+        .jpeg = .{
+            .url = "https://codeload.github.com/libjpeg-turbo/libjpeg-turbo/tar.gz/af9c1c268520a29adf98cad5138dafe612b3d318",
+            .hash = "N-V-__8AAHgflgBkS1hdmoU-Ymf0HNpny-lZi1tPse1Dclge",
+            .lazy = true,
+        },
+        .nanosvg = .{
+            .url = "https://codeload.github.com/memononen/nanosvg/tar.gz/239e102ec2c691f2902e20ace2ed36ee4a35cfe6",
+            .hash = "N-V-__8AAE5yBwD_bLZNt1HvBZCk6poKiYnxBFzEuwomFCsa",
+            .lazy = true,
+        },
+        .expat = .{
+            .url = "https://codeload.github.com/libexpat/libexpat/tar.gz/a76b1174c1ea52abb639a4c69d52b630a8a106a2",
+            .hash = "N-V-__8AAHS_IAg9aWt4o7t4EMnGUP7EhLnbi0wWDkz9vHYe",
+            .lazy = true,
+        },
         // libcurl - HTTP client library for Fetch network requests
         // Static compilation via allyourcodebase package
         .curl = .{

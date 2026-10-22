@@ -62,7 +62,7 @@ fn windowOf(document: *Instance) ?*Instance {
 
 /// The navigable container (an iframe) whose content navigable's active
 /// document is `document`, or null for a top-level document.
-fn containerOf(document: *Instance) ?*Instance {
+pub fn containerOf(document: *Instance) ?*Instance {
     const window = windowOf(document) orelse return null;
     return dom.navigable_container.of(window);
 }
@@ -96,24 +96,12 @@ pub fn topLevelDocumentOf(document: *Instance) *Instance {
 // Focusable areas (6.6.2, 6.6.3)
 // ============================================================================
 
-/// HTML "rules for parsing integers" (2.3.4.1), or null on an error.
+/// HTML integer parsing with the tabindex IDL-long range. The existing
+/// reflection parser owns the syntax, including which whitespace to skip.
 fn parseInteger(input: []const u8) ?i32 {
-    var i: usize = 0;
-    while (i < input.len and std.ascii.isWhitespace(input[i])) : (i += 1) {}
-    var sign: i64 = 1;
-    if (i < input.len and (input[i] == '-' or input[i] == '+')) {
-        if (input[i] == '-') sign = -1;
-        i += 1;
-    }
-    if (i == input.len or !std.ascii.isDigit(input[i])) return null;
-    var value: i64 = 0;
-    while (i < input.len and std.ascii.isDigit(input[i])) : (i += 1) {
-        value = value * 10 + (input[i] - '0');
-        if (value > std.math.maxInt(i32) + 1) return null;
-    }
-    const signed = sign * value;
-    if (signed > std.math.maxInt(i32) or signed < std.math.minInt(i32)) return null;
-    return @intCast(signed);
+    const parsed = dom.reflection.parseInteger(input) orelse return null;
+    if (parsed < std.math.minInt(i32) or parsed > std.math.maxInt(i32)) return null;
+    return @intCast(parsed);
 }
 
 /// The "tabindex value" of `element`: its tabindex attribute parsed with the
@@ -225,6 +213,7 @@ fn isBeingRendered(element: *Instance) bool {
 /// disabled, not inert, and being rendered.
 pub fn isFocusableArea(element: *Instance) bool {
     if (!isElement(element)) return false;
+    if (element.stateAs(interfaces.HTMLAreaElement.State) != null) return isImageMapAreaFocusable(element);
     if (tabindexValue(element) == null and !isFocusableByDefault(element)) return false;
     // HTML 6.6.2, first row: a host that delegates focus is not itself a
     // focusable area, even with a tabindex. Focusing step 1 finds its delegate.
@@ -500,9 +489,65 @@ fn focusUpdateSteps(old_chain_in: Chain, new_chain_in: Chain, new_focus_target: 
     }
 }
 
+/// HTML 4.8.14 and 2.3.9: resolve usemap against the first map in the image's
+/// own tree whose name OR id matches the suffix after the first '#'. An id
+/// reference is nonconforming authoring, but still participates in parsing.
+fn imageMapOf(image: *Instance) ?*Instance {
+    var usemap = (interfaces.Element.call_getAttribute(image, runtime.DOMString.initInterned("usemap")) catch null) orelse return null;
+    defer usemap.deinit(image.ctx.allocator);
+    const value = usemap.asSlice();
+    const hash = std.mem.indexOfScalar(u8, value, '#') orelse return null;
+    const name = value[hash + 1 ..];
+    if (name.len == 0) return null;
+    const root = rootOf(image);
+    var current: ?*Instance = root;
+    while (current) |node| : (current = form_associated.nextInTree(node, root, false)) {
+        if (node.stateAs(interfaces.HTMLMapElement.State) == null) continue;
+        for ([_][]const u8{ "name", "id" }) |attribute| {
+            var candidate = (interfaces.Element.call_getAttribute(node, runtime.DOMString.initInterned(attribute)) catch null) orelse continue;
+            defer candidate.deinit(node.ctx.allocator);
+            if (std.mem.eql(u8, candidate.asSlice(), name)) return node;
+        }
+    }
+    return null;
+}
+
+/// HTML 6.6.2/6.6.4, represented by the area itself as browsers expose it.
+/// Blink HTMLAreaElement::IsFocusableStyle and WebKit's isFocusable use the
+/// associated image's rendering: areas have no box. All three pass WPT's
+/// autofocus-area.html with the AREA as activeElement (5d23b743bb), despite
+/// the spec's shape table naming IMG as DOM anchor. No shape geometry here.
+fn isImageMapAreaFocusable(area: *Instance) bool {
+    if (!(interfaces.Node.get_isConnected(area) catch false)) return false;
+    if (isInert(area) or isActuallyDisabled(area)) return false;
+    const tabindex = tabindexValue(area);
+    // Chrome/Safari reject negative area tabindex even for programmatic
+    // focus. Blink/Gecko accept explicit nonnegative tabindex without href;
+    // Gecko: nsFocusManager::IsAreaElementFocusable -> IsFocusableWithoutStyle.
+    if (tabindex) |value| if (value < 0) return false;
+    if (tabindex == null and !form_associated.hasAttribute(area, "href")) return false;
+    const root = rootOf(area);
+    var current: ?*Instance = root;
+    while (current) |image| : (current = form_associated.nextInTree(image, root, false)) {
+        if (image.stateAs(interfaces.HTMLImageElement.State) == null) continue;
+        const map = imageMapOf(image) orelse continue;
+        // Image-map processing collects all descendant areas, not only
+        // direct children. Association cannot cross a tree/shadow boundary.
+        var ancestor = form_associated.parentOf(area);
+        const contains = while (ancestor) |node| : (ancestor = form_associated.parentOf(node)) {
+            if (node == map) break true;
+        } else false;
+        if (!contains or isInert(image)) continue;
+        if (!(dom.style.engine.isBeingRendered(image) catch false)) continue;
+        const style = (dom.style.engine.computedStyle(image, null) catch null) orelse continue;
+        if (style.keyword(.visibility) == .visible) return true;
+    }
+    return false;
+}
+
 /// HTML "get the focusable area" for `focus_target`, an element that is not
 /// a focusable area.
-fn getFocusableArea(focus_target: *Instance, trigger: Trigger) ?*Instance {
+pub fn getFocusableArea(focus_target: *Instance, trigger: Trigger) ?*Instance {
     // HTML 4.10.4's platform label behavior, used by focusing step 1:
     // WebKit HTMLLabelElement::focus forwards only when the label itself
     // is not focusable. All three browsers pass forward-focus-to-associated-
@@ -528,7 +573,8 @@ fn getFocusableArea(focus_target: *Instance, trigger: Trigger) ?*Instance {
         // Step 3.
         return focusDelegate(focus_target, trigger);
     }
-    // Area shapes and scrollable regions have no layout-backed focus areas.
+    // Area focusability is handled by isFocusableArea; scrollable regions
+    // still require layout-backed focus areas.
     return null;
 }
 
@@ -646,12 +692,35 @@ pub fn unfocusingSteps(old_focus_target_in: *Instance) void {
 /// element type that includes the mixin.
 pub fn focusMethod(element: *Instance) void {
     // Step 1: "If the allow focus steps given this's node document return
-    // false, then return." The "focus-without-user-activation" feature's
-    // default allowlist is *, and Crane has no permissions policy that
-    // narrows it: always allowed.
+    // false, then return."
+    const document = nodeDocument(element) orelse return;
+    if (!allowFocusSteps(document)) return;
     // Step 2: "Run the focusing steps for this."
     focusingSteps(element, null, .other);
     // Steps 3-4 (indicate focus, scroll into view): nothing is rendered.
+}
+
+/// HTML "allow focus steps". The focus-without-user-activation feature's
+/// default allowlist is 'self' (HTML 2.2), inherited through every ancestor.
+/// A cross-origin document can instead use its own transient activation.
+/// Follow the newer spec; Blink's Element::EnqueueAutofocus also rejects a
+/// cross-origin ancestor. Declared policies await the Document/iframe policy
+/// implementation (PERMISSIONS POLICY, rows 70/79; row111 Q3).
+pub fn allowFocusSteps(document: *Instance) bool {
+    // Step 1: the effective default policy, with no declared policy yet.
+    const allowed = ancestors: {
+        var current = document;
+        while (containerOf(current)) |container| {
+            const parent = nodeDocument(container) orelse break :ancestors false;
+            if (!@import("autofocus.zig").sameOrigin(document, parent)) break :ancestors false;
+            current = parent;
+        }
+        break :ancestors true;
+    };
+    if (allowed) return true;
+    // Steps 2–3: activation is observed, not consumed.
+    const window = windowOf(document) orelse return false;
+    return @import("user_activation.zig").hasTransientActivation(window);
 }
 
 /// The HTMLOrSVGElement blur() method steps (6.6.6): "The user agent should
@@ -679,6 +748,10 @@ pub fn activeElement(this: *Instance) ?*Instance {
     if (interfaces.Document.get_body(candidate) catch null) |body| return body;
     // Step 6: "If candidate's document element is non-null, then return that
     // document element."
+    // An unfocused SVG document is a browser split: Chrome/Safari return
+    // null, Firefox returns its root (5d23b743bb, autofocus-attribute.svg).
+    // Keep this existing spec step, per row111 Q11(2)'s integrator ruling:
+    // adopting null would deliberately lose a passing subtest.
     if (interfaces.Document.get_documentElement(candidate) catch null) |element| return element;
     // Step 7.
     return null;

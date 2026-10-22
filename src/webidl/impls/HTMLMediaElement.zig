@@ -1402,12 +1402,27 @@ pub fn call_getStartDate(instance: *runtime.Instance) anyerror!runtime.JSValue {
     return error.NotImplemented;
 }
 
+/// HTML 4.8.11.11.5, addTextTrack steps 1–4.
 pub fn call_addTextTrack(instance: *runtime.Instance, kind: enums.TextTrackKind, label: webidl.Opt(runtime.DOMString), language: webidl.Opt(runtime.DOMString)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = kind;
-    _ = label;
-    _ = language;
-    return error.NotImplemented;
+    // Step 1: create the loaded, hidden track with an initially empty cue list.
+    const track = try hooks.createTrackElementTrack(instance.ctx, @enumFromInt(@intFromEnum(kind)), label.getOrDefault(.initEmpty()), language.getOrDefault(.initEmpty()), .initEmpty());
+    const generation = runtime.SlabAllocator.generationOf(track);
+    errdefer if (instance.ctx.hasEngine()) track.releaseIfUnwrapped(generation) else interfaces.TextTrack.deinit(track);
+    hooks.setTrackReadiness(track, .loaded);
+    try interfaces.TextTrack.set_mode(track, ._hidden_);
+
+    // Step 2: the existing list owner traces its members, as Blink's
+    // HTMLMediaElement::addTextTrack / TextTrackList::Append do.
+    // https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/html/media/html_media_element.cc
+    const list = try interfaces.HTMLMediaElement.get_textTracks(instance);
+    try hooks.appendTextTrack(list, track);
+
+    // Step 3: queue the TrackEvent through the existing media task holder.
+    // Script-created tracks survive load(), so the event is resource-independent.
+    if (instance.ctx.hasEngine()) try data(instance).activity.queueTrack(@intFromEnum(Kind.track_event), 0, list, "addtrack", track);
+
+    // Step 4.
+    return track;
 }
 
 fn severList(_: *runtime.Instance) void {}

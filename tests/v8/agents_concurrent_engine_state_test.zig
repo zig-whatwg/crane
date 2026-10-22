@@ -111,7 +111,7 @@ fn round(realm: runtime.Context, agent: *protocol.Agent, n: usize, shadow_realm:
     const json_source = try std.fmt.bufPrint(&source_buf, "{{\"n\": {d}}}", .{n});
     const json = try parsed(try protocol.parseJSONModule(realm, json_source, "https://agents.test/d.json", null));
     defer protocol.releaseModuleRecord(json);
-    const main = try parsed(try protocol.parseModule(realm, "import d from './d.json' with { type: 'json' }; globalThis.fromJson = d.n;", "https://agents.test/main.js", null));
+    const main = try parsed(try protocol.parseModule(realm, "import d from './d.json' with { type: 'json' }; globalThis.fromJson = d.n;", .{}, "https://agents.test/main.js", null));
     defer protocol.releaseModuleRecord(main);
     var graph: JsonGraph = .{ .json = json };
     if (try protocol.linkModule(realm, main, JsonGraph.resolve, &graph)) |link_error| {

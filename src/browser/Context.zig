@@ -106,6 +106,9 @@ const AnimationFrameState = struct {
     /// Each document's callback map, interleaved in registration order. Its
     /// entries stay pending until that document's turn snapshots its handles.
     pending: std.ArrayListUnmanaged(AnimationFrameEntry) = .empty,
+    /// Borrowed active-document identities with native rendering work. Their
+    /// navigables own them; generations and replacement retire stale requests.
+    native_pending: std.ArrayListUnmanaged(AnimationFrameDocument) = .empty,
     /// The single timer driving the next frame, if one is scheduled.
     timer_id: ?TimerId = null,
     /// The batch currently being run, borrowed from animationFrameHandler's
@@ -138,16 +141,16 @@ const AnimationFrameDocument = struct {
     realm: runtime.Context,
 
     fn current(self: AnimationFrameDocument) bool {
+        if (runtime.SlabAllocator.generationOf(self.window) != self.window_generation or
+            runtime.SlabAllocator.generationOf(self.document) != self.document_generation) return false;
+        if (instance_lifecycle.isCleanupStarted(self.window) or
+            instance_lifecycle.isCleanupStarted(self.document)) return false;
         const navigables = dom_mod.browser_state.navigablesOf(self.realm) orelse return false;
         const navigable = navigables.byId(self.navigable_id) orelse return false;
         if (navigable.is_closed or navigable.orphaned) return false;
         if (navigable.active_window != @as(?*anyopaque, @ptrCast(self.window)) or
             navigable.active_document != @as(?*anyopaque, @ptrCast(self.document))) return false;
-        if (runtime.SlabAllocator.generationOf(self.window) != self.window_generation) return false;
-        if (runtime.SlabAllocator.generationOf(self.document) != self.document_generation) return false;
-        return self.window.ctx == self.realm and self.realm.hasEngine() and
-            !instance_lifecycle.isCleanupStarted(self.window) and
-            !instance_lifecycle.isCleanupStarted(self.document);
+        return self.window.ctx == self.realm and self.realm.hasEngine();
     }
 };
 
@@ -819,7 +822,10 @@ pub fn clearTimerInterface() void {
         for (state.running) |*entry| entry.cancelled = true;
         // Every pending entry still owns its callback.
         for (state.pending.items) |*entry| entry.deinit();
-        if (current_allocator) |alloc| state.pending.deinit(alloc);
+        if (current_allocator) |alloc| {
+            state.pending.deinit(alloc);
+            state.native_pending.deinit(alloc);
+        }
         animation_frames = null;
     }
 
@@ -850,6 +856,7 @@ pub fn installHooks() void {
         .active_timer_handles = activeTimerHandles,
         .suspend_timers = suspendWindowTimers,
         .resume_timers = resumeWindowTimers,
+        .request_rendering = requestNativeRendering,
     });
     // The Browser's back/forward cache, which the navigation code reaches
     // through dom.bfcache.
@@ -892,6 +899,12 @@ fn clearWindowState(realm: runtime.Context) void {
             if (entry.realm == realm) {
                 var removed = state.pending.orderedRemove(i);
                 removed.deinit();
+            } else i += 1;
+        }
+        i = 0;
+        while (i < state.native_pending.items.len) {
+            if (state.native_pending.items[i].realm == realm) {
+                _ = state.native_pending.orderedRemove(i);
             } else i += 1;
         }
     }
@@ -950,7 +963,7 @@ fn suspendWindowTimers(realm: runtime.Context) void {
 /// dom.window_documents: HTML "reactivate" step 2 for `realm`'s window -
 /// every held timer is armed again for what it still had to wait (0 for one
 /// that came due while its document was inactive), and its animation frame
-/// callbacks get a frame again.
+/// callbacks and pending autofocus candidates get a frame again.
 fn resumeWindowTimers(realm: runtime.Context) void {
     if (timer_contexts) |*map| if (current_timer_interface) |timer| {
         var iter = map.iterator();
@@ -965,6 +978,9 @@ fn resumeWindowTimers(realm: runtime.Context) void {
             data.held = false;
             data.current_timer_id = id;
         }
+    };
+    if (realmWindow(realm)) |window| if (realmNavigable(realm, window)) |navigable| {
+        if (navigable.getActiveDocument()) |document| requestNativeRendering(@ptrCast(@alignCast(document)));
     };
     scheduleAnimationFrame();
 }
@@ -2698,15 +2714,16 @@ const DestroyReplacedDocument = struct {
 // Animation frames
 // ============================================================================
 
-/// Schedule the single next-frame timer, if callbacks are waiting and none is
-/// already pending. One timer per FRAME, never one per callback.
+/// HTML rendering opportunities: callbacks and autofocus share one frame timer.
+/// Documents without either have no native rendering timer.
 fn scheduleAnimationFrame() void {
     const state = if (animation_frames) |*s| s else return;
+    retireNativeRenderingRequests(state);
     if (state.timer_id != null) return;
     // A document turn may add callbacks to a later document this frame, but
     // nested loop pumping must never start another rendering turn.
     if (state.dispatch_token != null) return;
-    if (state.pending.items.len == 0) return;
+    if (state.pending.items.len == 0 and state.native_pending.items.len == 0) return;
     // Callbacks of pages the back/forward cache keeps wait without a frame:
     // a frame every 16 ms for a page that cannot run them would keep the
     // loop busy for as long as the page is cached. Their restore asks for
@@ -2721,10 +2738,53 @@ fn scheduleAnimationFrame() void {
 /// Whether a pending callback's page may run it at a frame: not one the
 /// back/forward cache keeps.
 fn anyAnimationFrameRunnable(state: *const AnimationFrameState) bool {
+    for (state.native_pending.items) |document| {
+        if (!realmIsCached(document.realm)) return true;
+    }
     for (state.pending.items) |entry| {
         if (!realmIsCached(entry.realm)) return true;
     }
     return false;
+}
+
+/// Native autofocus work can request the first frame before any page script
+/// has called requestAnimationFrame. The Document owns the candidates; this
+/// list is only a scheduling request, not an owner of a document or realm.
+fn requestNativeRendering(document: *runtime.Instance) void {
+    if (!dom_mod.document_autofocus.hasCandidates(document)) return;
+    const allocator = current_allocator orelse return;
+    const realm = document.ctx;
+    const window = realmWindow(realm) orelse return;
+    const navigable = realmNavigable(realm, window) orelse return;
+    if (navigable.active_document != @as(?*anyopaque, @ptrCast(document))) return;
+    if (animation_frames == null) animation_frames = .{};
+    const state = &animation_frames.?;
+    retireNativeRenderingRequests(state);
+    for (state.native_pending.items) |pending| {
+        if (pending.document == document) {
+            scheduleAnimationFrame();
+            return;
+        }
+    }
+    state.native_pending.append(allocator, .{
+        .navigable_id = navigable.id,
+        .window = window,
+        .window_generation = runtime.SlabAllocator.generationOf(window),
+        .document = document,
+        .document_generation = runtime.SlabAllocator.generationOf(document),
+        .realm = realm,
+    }) catch return;
+    scheduleAnimationFrame();
+}
+
+fn retireNativeRenderingRequests(state: *AnimationFrameState) void {
+    var index: usize = 0;
+    while (index < state.native_pending.items.len) {
+        const document = state.native_pending.items[index];
+        if (!document.current() or !dom_mod.document_autofocus.hasCandidates(document.document)) {
+            _ = state.native_pending.orderedRemove(index);
+        } else index += 1;
+    }
 }
 
 /// Whether `realm`'s Window belongs to a page the back/forward cache keeps:
@@ -2810,12 +2870,19 @@ fn animationFrameHandler(_: ?*anyopaque) void {
     // Terminal/canceled owners need no allocation to leave the map, even
     // when reserving the next document snapshot would fail.
     retireAnimationFrameCallbacks(state);
-    if (state.pending.items.len == 0) return;
+    retireNativeRenderingRequests(state);
+    const seed = if (state.pending.items.len != 0)
+        state.pending.items[0].realm
+    else if (state.native_pending.items.len != 0)
+        state.native_pending.items[0].realm
+    else
+        return;
 
-    var documents = collectAnimationFrameDocuments(allocator, state.pending.items[0].realm) catch {
+    var documents = collectAnimationFrameDocuments(allocator, seed) catch {
         scheduleAnimationFrame();
         return;
     };
+
     defer documents.deinit(allocator);
 
     var token: u8 = 0;
@@ -2826,6 +2893,16 @@ fn animationFrameHandler(_: ?*anyopaque) void {
         retireAnimationFrameCallbacks(current);
         scheduleAnimationFrame();
     };
+
+    // HTML update-rendering step 7 precedes resize/scroll/media/rAF. Every
+    // top-level document is visited even when its autofocus handler will
+    // request the first script callback. Revalidate after any script ran.
+    for (documents.items) |document| {
+        if (animationFrameDispatchState(&token) == null) break;
+        if (!document.current()) continue;
+        if (html_mod.focus.topLevelDocumentOf(document.document) != document.document) continue;
+        html_mod.autofocus.flush(document.document);
+    }
 
     // HTML update the rendering: "For each doc of docs, evaluate media queries
     // and report changes for doc" (CSSOM View 4.2), before the animation
@@ -2981,4 +3058,94 @@ test "a browser started without a snapshot builds its realm afresh and runs a pa
     const shape = try ctx.evaluateScriptToString("[globalThis instanceof Window, self === globalThis, typeof addEventListener, document instanceof Document].join()", allocator);
     defer allocator.free(shape);
     try std.testing.expectEqualStrings("true,true,function,true", shape);
+}
+
+test "native autofocus rendering retires replaced and destroyed documents and exhausted queues" {
+    const Exercise = struct {
+        failure: ?anyerror = null,
+        fn run(self: *@This()) void {
+            self.exercise() catch |err| {
+                self.failure = err;
+            };
+        }
+        fn exercise(_: *@This()) !void {
+            const browser = try @import("Browser.zig").Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+            defer browser.deinit();
+            try browser.navigate("about:blank", .window);
+            const context = browser.current_context.?;
+            try context.loadHTML("<!doctype html><body><input autofocus>", .{ .base_url = "about:blank" });
+            const old_document = context.document_instance.?;
+            try std.testing.expect(animation_frames.?.native_pending.items.len == 1);
+            const request = animation_frames.?.native_pending.items[0];
+            // Replacement changes the navigable's active Document while the
+            // old identity can still exist. A rendering request must not move
+            // to the replacement along with its reusable Window.
+            try context.loadHTML("<!doctype html><body>replacement", .{ .base_url = "about:blank" });
+            try std.testing.expect(context.document_instance.? != old_document);
+            try std.testing.expect(!request.current());
+            retireNativeRenderingRequests(&animation_frames.?);
+            try std.testing.expectEqual(@as(usize, 0), animation_frames.?.native_pending.items.len);
+
+            try context.runScript("document.body.innerHTML = '<input autofocus>'");
+            try std.testing.expect(animation_frames.?.native_pending.items.len == 1);
+            clearWindowState(context.document_instance.?.ctx);
+            try std.testing.expectEqual(@as(usize, 0), animation_frames.?.native_pending.items.len);
+            // Register its live document again and process the last candidate.
+            requestNativeRendering(context.document_instance.?);
+            try std.testing.expect(animation_frames.?.native_pending.items.len == 1);
+            html_mod.autofocus.flush(context.document_instance.?);
+            _ = try browser.runEventLoopBlocking(50);
+            try std.testing.expectEqual(@as(usize, 0), animation_frames.?.native_pending.items.len);
+            try std.testing.expect(animation_frames.?.timer_id == null);
+        }
+    };
+    var exercise: Exercise = .{};
+    const thread = try std.Thread.spawn(.{}, Exercise.run, .{&exercise});
+    thread.join();
+    if (exercise.failure) |err| return err;
+}
+
+test "reactivation restores pending native autofocus rendering without an idle timer" {
+    const Exercise = struct {
+        failure: ?anyerror = null,
+        fn run(self: *@This()) void {
+            self.exercise() catch |err| {
+                self.failure = err;
+            };
+        }
+        fn exercise(_: *@This()) !void {
+            const browser = try @import("Browser.zig").Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+            defer browser.deinit();
+            try browser.navigate("about:blank", .window);
+            const context = browser.current_context.?;
+            try context.loadHTML("<!doctype html><body><input autofocus>", .{ .base_url = "about:blank" });
+            const document = context.document_instance.?;
+            const realm = document.ctx;
+            const window = realmWindow(realm).?;
+            const navigable = realmNavigable(realm, window).?;
+            const saved = navigable.active_document;
+            defer navigable.active_document = saved;
+            suspendWindowTimers(realm);
+            // A cached Document is retained but not the active document of
+            // its navigable. Keep its native owner while simulating that gap.
+            navigable.active_document = null;
+            _ = try browser.runEventLoopBlocking(50);
+            try std.testing.expectEqual(@as(usize, 0), animation_frames.?.native_pending.items.len);
+            try std.testing.expect(animation_frames.?.timer_id == null);
+
+            navigable.active_document = saved;
+            resumeWindowTimers(realm);
+            try std.testing.expectEqual(@as(usize, 1), animation_frames.?.native_pending.items.len);
+            try std.testing.expect(animation_frames.?.timer_id != null);
+            html_mod.autofocus.flush(document);
+            _ = try browser.runEventLoopBlocking(50);
+            resumeWindowTimers(realm);
+            try std.testing.expectEqual(@as(usize, 0), animation_frames.?.native_pending.items.len);
+            try std.testing.expect(animation_frames.?.timer_id == null);
+        }
+    };
+    var exercise: Exercise = .{};
+    const thread = try std.Thread.spawn(.{}, Exercise.run, .{&exercise});
+    thread.join();
+    if (exercise.failure) |err| return err;
 }

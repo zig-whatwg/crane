@@ -186,9 +186,13 @@ pub fn call_setter(instance: *runtime.Instance, name: runtime.DOMString, value: 
     // Step 4 uses DOM's attribute-local-name grammar, not the XML Name grammar.
     if (!@import("dom").names.isValidAttributeLocalName(attr_name)) return error.InvalidCharacterError;
 
-    // Step 5: set the attribute only after both checks have succeeded.
-    const attr_dom_str = runtime.DOMString.initInterned(attr_name);
-    try interfaces.Element.call_setAttribute(internal.element, attr_dom_str, .{ .domstring = value });
+    // Step 5: DOM's "set an attribute value" defaults to a null namespace.
+    // HTML 177b8a506931 (2016-05-19) made this explicit; Firefox passes
+    // custom-attrs.html, while Blink/WebKit still use setAttribute. Follow
+    // the newer spec already shipped by Firefox (golden rule 2).
+    // https://github.com/whatwg/html/commit/177b8a506931a51ecaeae71d4518431ee01ce783
+    // https://wpt.fyi/results/html/dom/elements/global-attributes/custom-attrs.html
+    try @import("dom").element_attributes.set(internal.element, attr_name, value.asSlice(), .{});
 }
 
 /// Named property deleter - WebIDL deleter void (DOMString name)

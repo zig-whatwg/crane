@@ -53,3 +53,6 @@ pub fn set_onpromptdismiss(instance: *runtime.Instance, value: EventHandler) any
     if (comptime @hasDecl(PowerfulFeatureObserverImpl, "set_onpromptdismiss")) return try PowerfulFeatureObserverImpl.set_onpromptdismiss(instance, value);
     try event_handlers.setValue(EventHandler, instance, "onpromptdismiss", value);
 }
+
+/// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+pub const legacy_treat_non_object_as_null = .{ "set_onpromptaction", "set_onpromptdismiss" };

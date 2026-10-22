@@ -183,6 +183,8 @@ pub const CSSRotate = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 1;
+
     /// Arguments for constructor (WebIDL overloading)
     pub const ConstructorArgs = union(enum) {
         /// constructor(angle)

@@ -245,4 +245,7 @@ pub const SharedWorkerGlobalScope = struct {
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try SharedWorkerGlobalScopeImpl.call_close(instance);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onconnect"};
 };

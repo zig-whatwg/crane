@@ -193,4 +193,7 @@ pub const DevicePosture = struct {
         if (comptime @hasDecl(DevicePostureImpl, "set_onchange")) return try DevicePostureImpl.set_onchange(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onchange", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onchange"};
 };

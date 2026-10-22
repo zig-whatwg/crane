@@ -30,6 +30,7 @@ const engine = @import("engine");
 const ffi = @import("ffi.zig");
 const support = @import("protocol_support.zig");
 const realm_finalizers = @import("realm_finalizers.zig");
+const protocol_scripts = @import("protocol_scripts.zig");
 
 const Context = engine.Context;
 const JSValue = engine.JSValue;
@@ -65,6 +66,27 @@ const Reaction = struct {
         const host = self.end();
         defer if (value) |v| ffi.v8_Global_Dispose(v);
         const argument: JSValue = if (value) |v| support.borrowed(v) else JSValue.jsUndefined;
+        // HTML HostEnqueuePromiseJob: the job runs between "prepare to run
+        // script" and "clean up after running script" with its realm's
+        // settings, so the JavaScript execution context stack is not empty
+        // while the host's step runs: a callback it invokes (an error event
+        // listener, a stream's algorithm) performs no microtask checkpoint
+        // of its own when it returns, and the checkpoint running this job
+        // goes on afterwards. (V8 runs it as a microtask, where it would
+        // also refuse a nested checkpoint; the scope is what makes the
+        // host's view - hasRunningScript, the entry realm - HTML's.) Every
+        // host reaction - module evaluation, fetch, streams, module loading,
+        // queueRealmMicrotask - runs here. The steps may end the realm they
+        // run in, so the scope holds its own handle of the context (JobScope):
+        // the reaction function's, which V8 entered to call it - the realm
+        // the reaction was made in.
+        const isolate = ffi.v8_Isolate_GetCurrent() orelse return runSteps(host, argument, rejected);
+        const scope = protocol_scripts.prepareToRunJob(isolate);
+        defer if (scope) |s| protocol_scripts.cleanUpAfterRunningJob(s);
+        runSteps(host, argument, rejected);
+    }
+
+    fn runSteps(host: anytype, argument: JSValue, rejected: bool) void {
         if (rejected) {
             // onRejectedSteps: 1. Let reason be R converted to `any`.
             // 2. If there is a set of steps to be run if the promise was

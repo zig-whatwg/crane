@@ -286,6 +286,8 @@ pub const SpeechRecognition = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -508,6 +510,9 @@ pub const SpeechRecognition = struct {
             .{ .function = "call_start__1", .implemented = @hasDecl(SpeechRecognitionImpl, "call_start__1"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "MediaStreamTrack")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").MediaStreamTrack.State) } else .other)} }} },
         } },
     };
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onaudiostart", "set_onsoundstart", "set_onspeechstart", "set_onspeechend", "set_onsoundend", "set_onaudioend", "set_onresult", "set_onnomatch", "set_onerror", "set_onstart", "set_onend" };
 
     /// WebIDL interface types: the interface each interface-typed argument
     /// and attribute value converts to - a TypeError unless the value implements

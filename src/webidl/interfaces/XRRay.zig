@@ -168,6 +168,8 @@ pub const XRRay = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// Arguments for constructor (WebIDL overloading)
     pub const ConstructorArgs = union(enum) {
         /// constructor(origin, direction)

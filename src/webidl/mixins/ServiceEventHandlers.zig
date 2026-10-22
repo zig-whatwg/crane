@@ -54,3 +54,6 @@ pub fn set_onserviceremoved(instance: *runtime.Instance, value: EventHandler) an
     if (comptime @hasDecl(ServiceEventHandlersImpl, "set_onserviceremoved")) return try ServiceEventHandlersImpl.set_onserviceremoved(instance, value);
     try event_handlers.setValue(EventHandler, instance, "onserviceremoved", value);
 }
+
+/// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+pub const legacy_treat_non_object_as_null = .{ "set_onserviceadded", "set_onservicechanged", "set_onserviceremoved" };

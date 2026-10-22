@@ -823,9 +823,9 @@ pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!?runtime.DOMString 
 }
 
 /// Getter for as: reflects the as content attribute, limited to only known
-/// values; "" when absent or invalid (HTML's reflected-enumerated steps).
+/// values - the potential destinations; "" when absent or invalid.
 pub fn get_as(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return knownValue(attribute(instance, "as"), &as_keywords, "");
+    return knownValue(attribute(instance, "as"), &potential_destinations, "");
 }
 
 /// Getter for referrerPolicy: reflects the referrerpolicy content attribute,
@@ -874,18 +874,12 @@ pub fn set_fetchPriority(instance: *runtime.Instance, value: runtime.DOMString) 
     try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("fetchpriority"), .{ .domstring = value });
 }
 
-/// Browser-majority as reflection: Blink's HTMLLinkElement.idl ReflectOnly
-/// lists these six preload keywords. At WPT revision 23b0b89b1a,
-/// reflection-metadata.html's link.as cases are Chrome 174/214, Firefox
-/// 182/214, Safari 174/214: the old wide WPT enum disagrees with the majority.
-/// https://wpt.fyi/results/html/dom/reflection-metadata.html?sha=23b0b89b1a
-/// https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/html/html_link_element.idl
-/// Current HTML (specs/whatwg/html.md:22698) adds module-preload destinations,
-/// but no browser ships that union and implementation lag is not established.
-/// RE-CHECK when a browser ships module-preload keywords. This set lets the
-/// destination tests skip unsupported preload cases once missing loaders land.
-const as_keywords = [_][]const u8{
-    "fetch", "font", "image", "script", "style", "track",
+/// Fetch's potential destinations: "fetch" and the destinations.
+const potential_destinations = [_][]const u8{
+    "fetch",  "audio",         "audioworklet", "document", "embed",  "font",         "frame",
+    "iframe", "image",         "json",         "manifest", "object", "paintworklet", "report",
+    "script", "serviceworker", "sharedworker", "style",    "track",  "video",        "webidentity",
+    "worker", "xslt",
 };
 
 /// An enumerated attribute's state as the keyword it is, ASCII

@@ -245,6 +245,8 @@ pub const RTCIceTransport = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -356,4 +358,7 @@ pub const RTCIceTransport = struct {
     pub fn call_getLocalCandidates(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try RTCIceTransportImpl.call_getLocalCandidates(instance);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onstatechange", "set_ongatheringstatechange", "set_onselectedcandidatepairchange", "set_onerror", "set_onicecandidate" };
 };

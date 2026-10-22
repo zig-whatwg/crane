@@ -388,6 +388,9 @@ pub const ServiceWorkerRegistration = struct {
         return try ServiceWorkerRegistrationImpl.call_showNotification(instance, title, options);
     }
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onupdatefound"};
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{

@@ -3,6 +3,7 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
+const dom = @import("dom");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
@@ -22,23 +23,8 @@ pub const ImplError = error{
 /// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
+// No state of our own: use the generated Element/Node construction and
+// destruction chain, including when MathMLAnchorElement derives from us.
 
 /// Getter for style
 pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -79,11 +65,22 @@ pub fn set_nonce(instance: *runtime.Instance, value: runtime.DOMString) anyerror
     return error.NotImplemented;
 }
 
-/// Getter for tabIndex. Not implemented for MathML elements: HTMLElement's
-/// tabindex rules live in its impl, not in a shared helper.
+/// HTML tabIndex getter, shared by MathML Core 2.1.4.
+/// https://html.spec.whatwg.org/multipage/interaction.html#dom-tabindex
 pub fn get_tabIndex(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return error.NotImplemented;
+    // Steps 1–2: integer prefix parsing, then the IDL long range.
+    if (try interfaces.Element.call_getAttribute(instance, runtime.DOMString.initInterned("tabindex"))) |attribute| {
+        var value = attribute;
+        defer value.deinit(instance.ctx.allocator);
+        if (dom.reflection.parseInteger(value.asSlice())) |parsed| {
+            if (parsed >= std.math.minInt(i32) and parsed <= std.math.maxInt(i32)) return @intCast(parsed);
+        }
+    }
+    // Step 3 explicitly includes MathML a, independently of href/focusability.
+    // The complete HTML getter names it; other MathML elements default to -1.
+    const data = dom.element_data.of(instance) orelse return -1;
+    return if (std.mem.eql(u8, data.namespaceSlice() orelse "", "http://www.w3.org/1998/Math/MathML") and
+        std.mem.eql(u8, data.local_name.asSlice(), "a")) 0 else -1;
 }
 
 /// Operation: focus: the focusing steps (src/html/focus.zig), as

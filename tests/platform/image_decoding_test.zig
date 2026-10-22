@@ -285,8 +285,8 @@ test "image decoding: a type the platform does not decode is unsupported, whatev
     defer testing.allocator.free(bytes);
     // The MIME type Crane determined decides (MIME Sniffing's image rules run
     // above the protocol); the platform does not sniff.
-    // (SVG: a document to render, not a raster format the decoders read.)
-    try testing.expectError(error.UnsupportedFormat, decode("image/svg+xml", bytes));
+    // SVG is now decoded, but PNG bytes are not a valid SVG document.
+    try testing.expectError(error.Corrupt, decode("image/svg+xml", bytes));
     try testing.expectError(error.UnsupportedFormat, decode("text/html", bytes));
     try testing.expectError(error.UnsupportedFormat, decode("", bytes));
 }

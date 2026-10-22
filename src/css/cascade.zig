@@ -106,6 +106,9 @@ pub const Context = struct {
     allocator: Allocator,
     /// The flat-tree parent's computed style; null for the root element.
     parent: ?*const ComputedStyle,
+    /// Content 3 / Values 5: synchronous, never saved in a computed value.
+    content_attributes: ?@import("generated_content.zig").AttributeLookup = null,
+    pseudo: ?[]const u8 = null,
     /// The root element's computed font-size (rem); the initial 16px for
     /// the root itself.
     root_font_size: f64 = 16,
@@ -338,6 +341,20 @@ const Builder = struct {
 
     fn computeValue(self: *Builder, l: Longhand, v: Value) Allocator.Error!Value {
         switch (l) {
+            .content => {
+                if (v == .content) {
+                    if (try v.content.compute(self.ctx.allocator, self.ctx.content_attributes)) |content| return .{ .content = content };
+                    // A guaranteed-invalid attr() invalidates the entire
+                    // non-inherited declaration at computed-value time.
+                    return self.computeValue(.content, Value.kw(.normal));
+                }
+                if (v.isKeyword(.normal)) if (self.ctx.pseudo) |pseudo| {
+                    if (std.mem.eql(u8, pseudo, "before") or std.mem.eql(u8, pseudo, "after")) return Value.kw(.none);
+                };
+                // CSSOM exposes normal on ordinary elements in Chrome,
+                // Firefox and Safari (CSS Content's contents is a used rule).
+                return v;
+            },
             .font_size => return Value.px(self.computeFontSize(v)),
             .font_weight => return .{ .number = self.computeFontWeight(v) },
             // CSS Color 4 6.4: "if currentcolor is the specified value of

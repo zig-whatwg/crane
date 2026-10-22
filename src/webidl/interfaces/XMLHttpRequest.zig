@@ -300,6 +300,8 @@ pub const XMLHttpRequest = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -436,6 +438,9 @@ pub const XMLHttpRequest = struct {
             .{ .function = "call_open__1", .implemented = @hasDecl(XMLHttpRequestImpl, "call_open__1"), .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{.string} }, .{ .kinds = &.{.boolean} }, .{ .kinds = &.{.string}, .nullable = true, .optionality = .optional }, .{ .kinds = &.{.string}, .nullable = true, .optionality = .optional } } },
         } },
     };
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onreadystatechange"};
 
     /// WebIDL ByteString values: a code unit above 0xFF throws a TypeError
     /// for (bit i = argument i; an attribute setter's value is bit 0).

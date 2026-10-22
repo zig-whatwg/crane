@@ -284,6 +284,9 @@ pub const FontFaceSet = struct {
         return try FontFaceSetImpl.call_add(instance, font);
     }
 
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onloading", "set_onloadingdone", "set_onloadingerror" };
+
     /// WebIDL interface types: the interface each interface-typed argument
     /// and attribute value converts to - a TypeError unless the value implements
     /// it (function, argument index - an attribute setter's value is 0 -,

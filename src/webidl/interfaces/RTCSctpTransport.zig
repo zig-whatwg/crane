@@ -215,4 +215,7 @@ pub const RTCSctpTransport = struct {
         if (comptime @hasDecl(RTCSctpTransportImpl, "set_onstatechange")) return try RTCSctpTransportImpl.set_onstatechange(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onstatechange", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{"set_onstatechange"};
 };

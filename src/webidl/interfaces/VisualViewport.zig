@@ -267,4 +267,7 @@ pub const VisualViewport = struct {
         if (comptime @hasDecl(VisualViewportImpl, "set_onscrollend")) return try VisualViewportImpl.set_onscrollend(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onscrollend", value);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onresize", "set_onscroll", "set_onscrollend" };
 };

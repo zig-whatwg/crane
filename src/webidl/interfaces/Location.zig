@@ -79,6 +79,7 @@ pub const Location = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        pub const unforgeable_members = .{ "href", "toString", "origin", "protocol", "host", "hostname", "port", "pathname", "search", "hash", "ancestorOrigins", "assign", "replace", "reload" };
     };
 
     pub const State = runtime.FlattenedState(

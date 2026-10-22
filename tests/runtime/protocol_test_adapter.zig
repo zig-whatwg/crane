@@ -77,6 +77,10 @@ pub fn hasPendingEngineWork(_: *Agent) bool {
 pub fn runEngineTasks(_: *Agent) bool {
     return false;
 }
+pub fn nextEngineTaskDelay(_: *Agent) ?u64 {
+    return null;
+}
+
 pub fn requestGarbageCollection(_: *Agent) void {}
 pub fn notifyMemoryPressure(_: *Agent, _: engine.MemoryPressure) void {}
 
@@ -124,18 +128,21 @@ pub fn globalBuiltinFunction(_: Context, _: []const u8, _: []const u8, _: u32, _
 /// reported as its parse error (ErrorInfo.parse_error), as an engine reports a
 /// script it cannot compile - what a host's "run a worker" onComplete step 1
 /// is driven by. An empty script completes normally. A string value source
-/// has no text to look at: NotSupported.
+/// has no text to look at: NotSupported. The parse error is at the script's
+/// first character: line 1, column 1 of a script of its own, an embedded
+/// one's start in its document.
 pub fn runClassicScript(realm: Context, source: engine.ScriptSource, url: []const u8, _: ?*anyopaque, reporter: engine.Reporter) Error!void {
-    const text = switch (source) {
-        .utf8 => |bytes| bytes,
+    const text, const start: engine.SourcePosition = switch (source) {
+        .utf8 => |bytes| .{ bytes, .{} },
+        .embedded => |embedded| .{ embedded.utf8, embedded.start },
         .string => return error.NotSupported,
     };
     if (text.len == 0) return;
     const info: engine.ErrorInfo = .{
         .message = "SyntaxError: the test adapter parses no script",
         .filename = url,
-        .lineno = 1,
-        .colno = 1,
+        .lineno = start.line,
+        .colno = start.column,
         .error_value = JSValue.jsUndefined,
         .realm = realm,
         .parse_error = true,
@@ -146,9 +153,14 @@ pub fn runClassicScript(realm: Context, source: engine.ScriptSource, url: []cons
 /// The test adapter parses no script, and has no engine to leave an
 /// exception pending in: an empty script completes; a muted one "throws"
 /// (the host's NetworkError path); any other cannot be run.
+pub fn runClassicScriptWithOptions(realm: Context, source: engine.ScriptSource, url: []const u8, options: engine.ClassicScriptOptions, reporter: engine.Reporter) Error!void {
+    return runClassicScript(realm, source, url, options.host_defined, reporter);
+}
+
 pub fn runClassicScriptRethrowingErrors(_: Context, source: engine.ScriptSource, _: []const u8, _: ?*anyopaque, muted_errors: bool) Error!void {
     const text = switch (source) {
         .utf8 => |bytes| bytes,
+        .embedded => |embedded| embedded.utf8,
         .string => return error.NotSupported,
     };
     if (text.len == 0) return;
@@ -184,7 +196,7 @@ pub fn extractErrorInformation(_: Context, _: JSValue, _: Allocator) Error!engin
 pub fn runningScriptLocation(_: *Agent, _: Allocator) Error!?engine.ScriptLocation {
     return null;
 }
-pub fn parseModule(_: Context, _: []const u8, _: []const u8, _: ?*anyopaque) Error!engine.ParseResult {
+pub fn parseModule(_: Context, _: []const u8, _: engine.SourcePosition, _: []const u8, _: ?*anyopaque) Error!engine.ParseResult {
     return error.NotSupported;
 }
 pub fn parseJSONModule(_: Context, _: []const u8, _: []const u8, _: ?*anyopaque) Error!engine.ParseResult {
@@ -209,6 +221,11 @@ pub fn releaseModuleRecord(_: *engine.ModuleRecord) void {}
 /// No engine: no callback runs, so none of a Window whose Document is not
 /// fully active either (engine_protocol.zig invokeCallbackFunction).
 pub fn invokeCallbackFunction(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
+    return error.NotSupported;
+}
+
+/// Typed callback return conversion runs before callback scope cleanup.
+pub fn invokeCallbackFunctionWithReturnType(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior, _: engine.CallbackReturnType) Error!engine.Completion {
     return error.NotSupported;
 }
 /// No engine: nothing to construct.
@@ -400,6 +417,9 @@ pub fn createSequenceOfValues(_: Context, _: []const JSValue) Error!Owned {
 pub fn createSequenceOfPlatformObjects(_: Context, _: []const *Instance) Error!Owned {
     return error.NotSupported;
 }
+pub fn createLocationObject(_: Context, _: JSValue) Error!Owned {
+    return error.NotSupported;
+}
 pub fn createDictionaryObject(_: Context, _: []const engine.DictionaryMember) Error!Owned {
     return error.NotSupported;
 }
@@ -505,6 +525,15 @@ pub fn structuredSerializeWithTransfer(_: Context, _: JSValue, _: []const JSValu
 }
 pub fn structuredDeserializeWithTransfer(_: Context, _: []const u8, _: []const []const u8, _: []const *Instance) Error!Owned {
     return error.NotSupported;
+}
+pub fn structuredDeserializeWithOptions(_: Context, _: []const u8, _: engine.StructuredDeserializeOptions) Error!Owned {
+    return error.NotSupported;
+}
+pub fn retainSharedMemory(_: *engine.SharedMemory) void {
+    @panic("this adapter cannot produce shared memory");
+}
+pub fn releaseSharedMemory(_: *engine.SharedMemory) void {
+    @panic("this adapter cannot produce shared memory");
 }
 
 // 4.11a WebAssembly Web API 2 [webassembly_streaming]: unsupported, so the

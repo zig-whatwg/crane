@@ -253,4 +253,7 @@ pub const VideoTrackList = struct {
     pub fn call_getTrackById(instance: *runtime.Instance, id: runtime.DOMString) anyerror!?*runtime.Instance {
         return try VideoTrackListImpl.call_getTrackById(instance, id);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onchange", "set_onaddtrack", "set_onremovetrack" };
 };

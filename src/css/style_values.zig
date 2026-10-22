@@ -30,6 +30,7 @@ const color_scheme_mod = @import("color_scheme.zig");
 pub const Length = length_mod.Length;
 pub const LengthUnit = length_mod.LengthUnit;
 pub const RgbaColor = color_mod.Color;
+pub const Content = @import("generated_content.zig").Content;
 
 // ============================================================================
 // Keywords
@@ -527,16 +528,19 @@ pub const Value = union(enum) {
     display: Display,
     text_transform: TextTransform,
     color_scheme: ColorScheme,
+    content: *Content,
     /// Kept as its serialization (a font-family list, an <image>).
     text: *SharedText,
 
     /// Take a reference to what the value holds (a copy of it is kept).
     pub fn retain(self: Value) void {
+        if (self == .content) return self.content.ref();
         if (self.sharedText()) |t| t.ref();
     }
 
     /// Drop the reference `retain` took.
     pub fn release(self: Value) void {
+        if (self == .content) return self.content.unref();
         if (self.sharedText()) |t| t.unref();
     }
 
@@ -561,6 +565,7 @@ pub const Value = union(enum) {
             .display => |d| d.eql(b.display),
             .text_transform => |t| t.eql(b.text_transform),
             .color_scheme => |c| c.support.eql(b.color_scheme.support) and std.mem.eql(u8, c.text.bytes, b.color_scheme.text.bytes),
+            .content => |c| c.eql(b.content),
             .text => |t| t == b.text or std.mem.eql(u8, t.bytes, b.text.bytes),
         };
     }

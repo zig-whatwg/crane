@@ -33,17 +33,28 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     return instance;
 }
 
-/// Getter for loop
+/// HTML 16.3.1: the marquee loop count is a positive HTML integer, or -1.
 pub fn get_loop(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return error.NotImplemented;
+    var value = (try interfaces.Element.call_getAttribute(instance, .initInterned("loop"))) orelse return -1;
+    defer value.deinit(instance.ctx.allocator);
+    const parsed = @import("dom").reflection.parseInteger(value.asSlice()) orelse return -1;
+    // Blink and WebKit parse into a signed int; overflow uses the default.
+    if (parsed <= 0 or parsed > std.math.maxInt(i32)) return -1;
+    return @intCast(parsed);
 }
 
-/// Setter for loop
+/// Serialize a valid loop value; reject other values without changing the attr.
+/// Golden rule 2: Chrome and Safari throw IndexSizeError and serialize even an
+/// equal value. Firefox ignores invalid values. This is a longstanding split,
+/// not spec lag: HTML5 (2014) already said to ignore invalid/equal values.
+/// https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/html/html_marquee_element.cc
+/// https://github.com/WebKit/WebKit/blob/main/Source/WebCore/html/HTMLMarqueeElement.cpp
+/// https://www.w3.org/TR/2014/REC-html5-20141028/obsolete.html#the-marquee-element
 pub fn set_loop(instance: *runtime.Instance, value: i32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    if (value <= 0 and value != -1) return error.IndexSizeError;
+    var buffer: [12]u8 = undefined;
+    const text = std.fmt.bufPrint(&buffer, "{d}", .{value}) catch unreachable;
+    try interfaces.Element.call_setAttribute(instance, .initInterned("loop"), .{ .domstring = .initInterned(text) });
 }
 
 /// Operation: stop

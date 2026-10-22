@@ -272,6 +272,8 @@ pub const Animation = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -436,6 +438,9 @@ pub const Animation = struct {
     pub fn call_cancel(instance: *runtime.Instance) anyerror!void {
         return try AnimationImpl.call_cancel(instance);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onfinish", "set_oncancel", "set_onremove" };
 
     /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
     /// the infinities throw a TypeError for (bit i = argument i; an attribute

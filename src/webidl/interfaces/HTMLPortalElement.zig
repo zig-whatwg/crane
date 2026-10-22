@@ -349,6 +349,8 @@ pub const HTMLPortalElement = struct {
         }
     }
 
+    pub const constructor_required_arguments: usize = 0;
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
@@ -417,6 +419,9 @@ pub const HTMLPortalElement = struct {
 
         return try HTMLPortalElementImpl.call_activate(instance, options);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onmessage", "set_onmessageerror" };
 
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.

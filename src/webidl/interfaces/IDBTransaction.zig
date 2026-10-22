@@ -295,4 +295,7 @@ pub const IDBTransaction = struct {
     pub fn call_commit(instance: *runtime.Instance) anyerror!void {
         return try IDBTransactionImpl.call_commit(instance);
     }
+
+    /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
+    pub const legacy_treat_non_object_as_null = .{ "set_onabort", "set_oncomplete", "set_onerror" };
 };

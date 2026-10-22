@@ -97,6 +97,7 @@ pub const Event = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
+        pub const unforgeable_members = .{"isTrusted"};
     };
 
     pub const State = runtime.FlattenedState(
@@ -259,6 +260,8 @@ pub const Event = struct {
             if (comptime @hasDecl(impls.Event, "installHooks")) impls.Event.installHooks();
         }
     }
+
+    pub const constructor_required_arguments: usize = 1;
 
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
