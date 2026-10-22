@@ -13489,6 +13489,20 @@ static bool installWasmAddressDescriptorConstructor(Isolate* isolate, Local<Cont
     return wasm->DefineOwnProperty(context, key, constructor, DontEnum).FromMaybe(false);
 }
 
+static void WasmGlobalValueSet(const FunctionCallbackInfo<Value>& info) {
+    // WebIDL's attribute setter steps now convert a missing argument as
+    // undefined. PR whatwg/webidl#1498 (2025), WebAssembly/spec#2075 and WPT
+    // 5078da54e150d8d380062402eb09ada3aa0857fd record this newer behavior:
+    // Chrome ships it; Firefox bug 2078950 and Safari still lag. V8 13.1's
+    // wasm-js.cc WebAssemblyGlobalSetValue rejects Length() == 0, so supply
+    // exactly one argument and let V8 retain branding and value conversion.
+    Isolate* isolate = info.GetIsolate();
+    Local<Value> argument = info[0];
+    Local<Value> result;
+    if (!info.Data().As<Function>()->Call(isolate->GetCurrentContext(), info.This(), 1, &argument).ToLocal(&result)) return;
+    info.GetReturnValue().Set(result);
+}
+
 /// Every realm the adapter makes calls this once, before any script runs
 /// in it (protocol_realms.createWindowRealm, worker_realm.createWorkerRealm).
 /// A context with no WebAssembly (a jitless V8) is left alone; so is one
@@ -13503,6 +13517,26 @@ void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>*
     if (!context->Global()->Get(context, String::NewFromUtf8Literal(isolate, "WebAssembly")).ToLocal(&wasm) || !wasm->IsObject()) return;
     installWasmAddressDescriptorConstructor(isolate, context, wasm.As<Object>(), "Memory");
     installWasmAddressDescriptorConstructor(isolate, context, wasm.As<Object>(), "Table");
+    Local<Value> global_constructor, global_prototype_value;
+    if (!wasm.As<Object>()->Get(context, String::NewFromUtf8Literal(isolate, "Global")).ToLocal(&global_constructor) || !global_constructor->IsFunction() ||
+        !global_constructor.As<Function>()->Get(context, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&global_prototype_value) || !global_prototype_value->IsObject()) return;
+    Local<Object> global_prototype = global_prototype_value.As<Object>();
+    Local<String> value_name = String::NewFromUtf8Literal(isolate, "value");
+    Local<Value> descriptor_value;
+    if (!global_prototype->GetOwnPropertyDescriptor(context, value_name).ToLocal(&descriptor_value) || !descriptor_value->IsObject()) return;
+    Local<Object> descriptor = descriptor_value.As<Object>();
+    Local<Value> getter, setter, enumerable, configurable;
+    if (!descriptor->Get(context, String::NewFromUtf8Literal(isolate, "get")).ToLocal(&getter) ||
+        !descriptor->Get(context, String::NewFromUtf8Literal(isolate, "set")).ToLocal(&setter) || !setter->IsFunction() ||
+        !descriptor->Get(context, String::NewFromUtf8Literal(isolate, "enumerable")).ToLocal(&enumerable) ||
+        !descriptor->Get(context, String::NewFromUtf8Literal(isolate, "configurable")).ToLocal(&configurable)) return;
+    Local<Function> setter_adapter;
+    if (!Function::New(context, WasmGlobalValueSet, setter, 1, ConstructorBehavior::kThrow).ToLocal(&setter_adapter)) return;
+    setter_adapter->SetName(String::NewFromUtf8Literal(isolate, "set value"));
+    PropertyDescriptor value_descriptor(getter, setter_adapter);
+    value_descriptor.set_enumerable(enumerable->IsTrue());
+    value_descriptor.set_configurable(configurable->IsTrue());
+    if (!global_prototype->DefineProperty(context, value_name, value_descriptor).FromMaybe(false)) return;
 }
 
 } // extern "C"
