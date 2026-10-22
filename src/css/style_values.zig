@@ -26,11 +26,14 @@ const Allocator = std.mem.Allocator;
 const length_mod = @import("values/length.zig");
 const color_mod = @import("values/color.zig");
 const color_scheme_mod = @import("color_scheme.zig");
+const resources = @import("resource_values.zig");
 
 pub const Length = length_mod.Length;
 pub const LengthUnit = length_mod.LengthUnit;
 pub const RgbaColor = color_mod.Color;
 pub const Content = @import("generated_content.zig").Content;
+pub const ResourceSource = resources.ResourceSource;
+pub const ResourceUrl = resources.ResourceUrl;
 
 // ============================================================================
 // Keywords
@@ -479,6 +482,7 @@ pub const SharedText = struct {
     refs: u32,
     allocator: Allocator,
     bytes: []u8,
+    resource_urls: []const ResourceUrl = &.{},
 
     const immortal: u32 = std.math.maxInt(u32);
 
@@ -489,6 +493,14 @@ pub const SharedText = struct {
         return self;
     }
 
+    /// Copies both text and occurrences, retaining every occurrence's source.
+    pub fn createWithResources(allocator: Allocator, bytes: []const u8, urls: []const ResourceUrl) Allocator.Error!*SharedText {
+        const self = try create(allocator, bytes);
+        errdefer self.unref();
+        self.resource_urls = try resources.cloneAll(allocator, urls, 0);
+        return self;
+    }
+
     /// Make the string uncounted: it lives until `destroyImmortal`.
     pub fn makeImmortal(self: *SharedText) void {
         self.refs = immortal;
@@ -496,6 +508,7 @@ pub const SharedText = struct {
 
     pub fn destroyImmortal(self: *SharedText) void {
         std.debug.assert(self.refs == immortal);
+        resources.releaseAll(self.allocator, self.resource_urls);
         self.allocator.free(self.bytes);
         self.allocator.destroy(self);
     }
@@ -509,6 +522,7 @@ pub const SharedText = struct {
         if (self.refs == immortal) return;
         self.refs -= 1;
         if (self.refs > 0) return;
+        resources.releaseAll(self.allocator, self.resource_urls);
         self.allocator.free(self.bytes);
         self.allocator.destroy(self);
     }
@@ -531,6 +545,22 @@ pub const Value = union(enum) {
     content: *Content,
     /// Kept as its serialization (a font-family list, an <image>).
     text: *SharedText,
+
+    /// Borrowed URL candidates in serialization order, valid while this
+    /// value is retained. No sheet or document lookup is needed to use them.
+    pub fn resourceUrls(self: Value) []const ResourceUrl {
+        return switch (self) {
+            .text => |t| t.resource_urls,
+            .content => |c| c.resource_urls,
+            else => &.{},
+        };
+    }
+
+    /// Resource identity includes provenance; eql deliberately remains a
+    /// value/text comparison. Reuse decisions that keep a source need both.
+    pub fn resourcesEql(a: Value, b: Value) bool {
+        return resources.eql(a.resourceUrls(), b.resourceUrls());
+    }
 
     /// Take a reference to what the value holds (a copy of it is kept).
     pub fn retain(self: Value) void {

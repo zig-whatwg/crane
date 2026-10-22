@@ -512,7 +512,7 @@ const PhysicalSides = struct { group: properties.Logical.Group, ls: [4]Longhand 
 fn assignedEql(a: Assigned, b: Assigned) bool {
     return switch (a) {
         .css_wide => |k| b == .css_wide and b.css_wide == k,
-        .value => |v| b == .value and v.eql(b.value),
+        .value => |v| b == .value and v.eql(b.value) and v.resourcesEql(b.value),
     };
 }
 

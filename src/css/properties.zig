@@ -36,6 +36,7 @@ const tokenizer_mod = @import("tokenizer.zig");
 const Tokenizer = tokenizer_mod.Tokenizer;
 const Token = tokenizer_mod.Token;
 const values = @import("style_values.zig");
+const resources = @import("resource_values.zig");
 const color_mod = @import("values/color.zig");
 const color_scheme_mod = @import("color_scheme.zig");
 const serialize_mod = @import("serialize.zig");
@@ -552,12 +553,13 @@ pub const ParseOptions = struct {
     /// Resolve a url() against the sheet's base URL (CSS Values 4 4.5.1);
     /// null leaves it as written.
     url_resolver: ?UrlResolver = null,
+    /// Borrowed while parsing; resource-bearing values retain this record.
+    /// CSS Variables 1 §2.1: future untyped var() substitution must supply
+    /// the CONSUMING declaration's source after substituting its tokens.
+    resource_source: ?*values.ResourceSource = null,
 };
 
-pub const UrlResolver = struct {
-    context: *const anyopaque,
-    resolve: *const fn (context: *const anyopaque, allocator: Allocator, url: []const u8) ?[]u8,
-};
+pub const UrlResolver = resources.UrlResolver;
 
 /// A longhand set by a parsed declaration.
 pub const Assignment = struct {
@@ -608,6 +610,7 @@ pub fn parseDeclaration(options: ParseOptions, property: Property, text: []const
                 value.release();
                 break :blk false;
             }
+            errdefer value.release();
             try out.append(options.allocator, .{ .longhand = l, .value = .{ .value = value } });
             break :blk true;
         },
@@ -744,7 +747,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
             if (takeKeyword(stream, &.{ .normal, .none })) |k| return Value.kw(k);
             const generated = @import("generated_content.zig");
             const resolver: ?generated.UrlResolver = if (options.url_resolver) |r| .{ .context = r.context, .resolve = r.resolve } else null;
-            const parsed = try generated.parse(options.allocator, stream.text[stream.offset()..], resolver) orelse return null;
+            const parsed = try generated.parseWithSource(options.allocator, stream.text[stream.offset()..], resolver, options.resource_source) orelse return null;
             while (!stream.atEnd()) _ = stream.next();
             return .{ .content = parsed };
         },
@@ -944,7 +947,10 @@ fn imageOnly(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
                 const end = stream.tok.pos;
                 stream.peeked = null;
                 const text = std.mem.trim(u8, stream.text[begin..end], " \t\n");
-                return .{ .text = try SharedText.create(options.allocator, text) };
+                const shared = try SharedText.create(options.allocator, text);
+                errdefer shared.unref();
+                shared.resource_urls = try resources.collect(options.allocator, text, options.url_resolver, options.resource_source);
+                return .{ .text = shared };
             }
             return null;
         },
@@ -960,7 +966,8 @@ fn urlValue(options: ParseOptions, raw: []const u8) Allocator.Error!Value {
     try out.appendSlice(options.allocator, "url(");
     try values.appendString(resolved orelse raw, &out, options.allocator);
     try out.append(options.allocator, ')');
-    return .{ .text = try SharedText.create(options.allocator, out.items) };
+    const url = values.ResourceUrl.describe(raw, resolved, options.url_resolver != null, options.resource_source, .{ .start = 0, .end = out.items.len });
+    return .{ .text = try SharedText.createWithResources(options.allocator, out.items, &.{url}) };
 }
 
 /// CSS Display 4 section 2: the display grammar.
@@ -1401,8 +1408,11 @@ fn whiteSpace(options: ParseOptions, stream: *Stream, out: *std.ArrayList(Assign
 fn background(options: ParseOptions, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
     var images: std.ArrayList(u8) = .empty;
     defer images.deinit(options.allocator);
+    var urls = resources.Builder{ .allocator = options.allocator };
+    defer urls.deinit();
     var any_image = false;
     var color: ?Value = null;
+    defer if (color) |v| v.release();
     var layers: usize = 0;
     while (true) {
         var image: ?Value = null;
@@ -1444,15 +1454,14 @@ fn background(options: ParseOptions, stream: *Stream, out: *std.ArrayList(Assign
                 seen.boxes += 1;
                 continue;
             }
-            if (color) |v| v.release();
             return false;
         }
         if (components == 0) {
-            if (color) |v| v.release();
             return false;
         }
         if (layers > 0) try images.appendSlice(options.allocator, ", ");
         if (image) |v| {
+            try urls.append(v.resourceUrls(), images.items.len);
             switch (v) {
                 .text => |t| try images.appendSlice(options.allocator, t.bytes),
                 else => try images.appendSlice(options.allocator, "none"),
@@ -1463,7 +1472,6 @@ fn background(options: ParseOptions, stream: *Stream, out: *std.ArrayList(Assign
         if (stream.peek().token_type == .comma) {
             // Only the final layer may hold a color.
             if (color != null) {
-                color.?.release();
                 return false;
             }
             _ = stream.next();
@@ -1471,9 +1479,11 @@ fn background(options: ParseOptions, stream: *Stream, out: *std.ArrayList(Assign
         }
         break;
     }
-    const image_value: Value = if (!any_image and layers == 1) Value.kw(.none) else .{ .text = try SharedText.create(options.allocator, images.items) };
-    try append(options, out, .background_image, image_value);
-    try append(options, out, .background_color, color orelse .{ .color = Color.transparent });
+    try out.ensureUnusedCapacity(options.allocator, 2);
+    const image_value: Value = if (!any_image and layers == 1) Value.kw(.none) else .{ .text = try SharedText.createWithResources(options.allocator, images.items, urls.urls.items) };
+    out.appendAssumeCapacity(.{ .longhand = .background_image, .value = .{ .value = image_value } });
+    out.appendAssumeCapacity(.{ .longhand = .background_color, .value = .{ .value = color orelse .{ .color = Color.transparent } } });
+    color = null;
     return true;
 }
 
