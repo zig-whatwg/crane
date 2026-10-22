@@ -569,6 +569,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [Focus queries need an active navigable](spec-compliance-focus-queries-need-an-active-navigable.md) - A tree-walking helper's fallback identity does not establish that the root exists; test disconnected inputs as well as connected descendants.
 - [Dialog open state and modal membership are distinct](spec-compliance-dialog-open-and-modal-membership-are-distinct.md) - Keep attribute state and container membership separate when their spec transitions differ.
 - [Browser failures need the exact assertion](spec-compliance-browser-failures-need-the-exact-assertion.md) - Read the failing step and engine behavior before inferring a browser-majority rule from file-level counts.
+- [Nonvalidating XML Still Processes DTD Defaults](spec-compliance-nonvalidating-xml-still-processes-dtd-defaults.md) - Nonvalidating does not mean declaration-blind: syntax, defaults and normalization remain observable XML behavior.
+- [Source Inference Needs Browser Measurement](spec-compliance-source-inference-needs-browser-measurement.md) - Label source-based predictions as inferences until an actual browser run confirms them.
+- [XML Navigation and XHR Decode Differently](spec-compliance-xml-navigation-and-xhr-decode-differently.md) - Share encoding selection while preserving each consumer's required error mode.
 
 ### Codegen
 - [Unforgeable accessors must be installed on derived instances](codegen-unforgeable-accessors-must-be-installed-on-derived-instances.md) - An inherited WebIDL member still needs explicit instance installation when the engine template does not inherit that property representation.
@@ -613,6 +616,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Native SameObject getters can leak unwrapped instances](codegen-native-sameobject-getters-can-leak-unwrapped-instances.md) - Share scalar reads before acquiring wrapper objects; measure Zig and C++ allocations separately.
 - [A partial interface's [SecureContext] is its members', not the interface's](codegen-a-partial-interfaces-securecontext-is-its-members-not-the-interfaces.md) - Before honouring an interface-level extended attribute, check that a partial or mixin did not put it there: some attributes scope members, not the interface.
 - [A generated import can rest on a typedef an upstream IDL file happens to declare](codegen-a-generated-import-can-rest-on-a-typedef-an-upstream-idl-file-happens-to-declare.md) - When a generated file relies on something being generated, codegen must generate it itself; find out by deleting an upstream file in a test fixture, not by waiting for upstream to delete it.
+- [Empty Legacy SVG Initializers Skip Parent State](codegen-empty-legacy-svg-initializers-skip-parent-state.md) - A correct type name is not proof of a correctly constructed object. Pin parent state before broadening a factory's interface map.
 
 ### Testing
 - [WPT testdriver selectors can test the wrong node](testing-wpt-testdriver-selectors-can-test-the-wrong-node.md) - Browser agreement validates the operation that actually ran, not necessarily the operation the test intended.
@@ -760,6 +764,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Formatting expectations must not repeat the format expression](testing-formatting-expectations-must-not-repeat-the-format-expression.md) - Use literal expectations and compile the implementation-present test branch.
 - [Pre-existing allocations distort failure-injection accounting](testing-preexisting-allocations-distort-failure-injection-accounting.md) - Align accounting with ownership and cover destination growth separately.
 - [A test block in src/ that reaches an engine operation cannot link](testing-a-test-block-in-src-that-reaches-an-engine-operation-cannot-link.md) - Read the step count, not only the test count: a src/ test block that reaches the engine fails to LINK, while every test still passes.
+- [New Formats Need a Runner-Only Comparison](testing-new-formats-need-a-runner-only-comparison.md) - A baseline that cannot execute a test cannot detect regressions within that test.
+- [XML Runner Metadata Needs the XML Byte Stream](testing-xml-runner-metadata-needs-the-xml-byte-stream.md) - Corpus parity proves today's files; encoded and namespace-aware fixtures prove the format. Keep response MIME routing separate from metadata extraction.
 
 ### Debugging
 - [Missing event handlers can start with the element factory](debugging-missing-event-handlers-can-start-with-the-element-factory.md) - Check the receiver's interface before debugging a getter that may never have been called.
@@ -832,6 +838,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A WPT that waits for a frame's message after its load event may have missed it](debugging-a-wpt-that-waits-for-a-message-after-load-may-have-missed-it.md) - A hang waiting for a frame's message is often an ordering bug, not a missing message: record when it arrived relative to the load, and buffer it to find what else fails.
 - [An aggregate assignment can overwrite its input](debugging-aggregate-assignment-can-overwrite-its-input.md) - Save dependent old fields before assigning an anonymous Zig aggregate.
 - [Measure a hot struct against allocator size classes](debugging-a-hot-struct-against-allocator-size-classes.md) - Compare the compiled request with its allocation bucket; a 16-byte field can cost 2 KiB.
+- [XML Parameter Entities Can Grow Their Own Table](debugging-xml-parameter-entities-can-grow-their-own-table.md) - Map entries are temporary across recursive registration, even when their names and text have stable storage.
 
 ### Workflow
 - [V8 first-use queues affect persistent-handle probes](measurement-v8-first-use-queues-affect-persistent-handle-probes.md) - A one-time increase is a hypothesis to explain, not permission to loosen a leak assertion. Use an independent control and identify the allocation.
