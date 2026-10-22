@@ -625,13 +625,20 @@ pub fn prepareScriptElement(
                 // Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html#speculation-rules
 
                 // Step 1: Parse the speculation rules JSON
-                const speculation_result = parseSpeculationRules(allocator, source_text, base_url);
+                var speculation_result = parseSpeculationRules(allocator, source_text, base_url);
+                // The parsed rule set is this step's: the document keeps
+                // copies of its URLs (document_scripts.addPrefetchHint), so
+                // its rules - their URLs, tags and referrer policies - go
+                // here. Only the error message used to: one leaked block per
+                // rule URL, at every speculationrules script (lane exitleak1:
+                // order-in-prerender-activation.https.html).
                 defer {
                     if (speculation_result.allocator) |alloc| {
                         if (speculation_result.error_message) |msg| {
                             alloc.free(msg);
                         }
                     }
+                    speculation_result.deinit(allocator);
                 }
 
                 if (speculation_result.error_message) |err_msg| {
