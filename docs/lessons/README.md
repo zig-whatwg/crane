@@ -349,6 +349,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A settings getter may recompute security](architecture-a-settings-getter-may-recompute-security.md) - Profile hooks and share results within an operation without a cross-task cache.
 - [A key transfer must preserve its allocator](architecture-a-key-transfer-must-preserve-its-allocator.md) - Preserve destination ownership and prove the real move path.
 - [A native timer must preserve document task suspension](architecture-a-native-timer-must-preserve-document-task-suspension.md) - Preserve inactive-document delivery and transfer task ownership exactly once.
+- [A queued native task holds its nodes with a TaskHold, and its tracker is a lookup, not a pointer](architecture-a-queued-native-task-holds-its-nodes-with-a-task-hold.md) - A task that will hand nodes to script holds them with a TaskHold from queueing to its one end, and whatever must find that task later looks it up - after the handoff the record is the loop's.
 
 ### Spec Compliance
 - [Element reference associations and frozen arrays have different lifetimes](spec-compliance-element-reference-associations-and-frozen-arrays-have-different-lifetimes.md) - A weak association and a strong returned snapshot are different holders; model and test each lifetime independently.
@@ -758,6 +759,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Equal browser pass counts can hide opposite behaviour](testing-equal-browser-pass-counts-can-hide-opposite-behaviour.md) - Compare aligned per-subtest results before applying a browser majority.
 - [Formatting expectations must not repeat the format expression](testing-formatting-expectations-must-not-repeat-the-format-expression.md) - Use literal expectations and compile the implementation-present test branch.
 - [Pre-existing allocations distort failure-injection accounting](testing-preexisting-allocations-distort-failure-injection-accounting.md) - Align accounting with ownership and cover destination growth separately.
+- [A test block in src/ that reaches an engine operation cannot link](testing-a-test-block-in-src-that-reaches-an-engine-operation-cannot-link.md) - Read the step count, not only the test count: a src/ test block that reaches the engine fails to LINK, while every test still passes.
 
 ### Debugging
 - [Missing event handlers can start with the element factory](debugging-missing-event-handlers-can-start-with-the-element-factory.md) - Check the receiver's interface before debugging a getter that may never have been called.
