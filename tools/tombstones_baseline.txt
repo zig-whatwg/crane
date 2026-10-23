@@ -30,7 +30,6 @@ src/permissions/storage.zig PermissionStorage.cache 1
 src/platform/filesystem_adapter.zig InMemoryFileSystem.directories 1
 src/platform/filesystem_adapter.zig InMemoryFileSystem.files 1
 src/platform/stub_platform_backend.zig StubContext.storage 1
-src/runtime/engines/v8/callback_registry.zig live 1
 src/runtime/engines/v8/context_manager.zig ManagerState.contexts 1
 src/runtime/engines/v8/frozen_context_manager.zig FrozenContextManager.frozen_contexts 1
 src/runtime/engines/v8/observable_array.zig Registry.states 1
