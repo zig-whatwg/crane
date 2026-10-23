@@ -1,6 +1,7 @@
 # Debugging: A per-page slowdown with flat native contexts is a table, not a page
 
 **Date**: 2026-09-30
+**Status** (2026-10-23, lane wrappercache1): a second instance, in a map this fix did not reach - each realm's V8 wrapper cache (`WrapperCache.cache`, src/runtime/engines/v8/wrapper_cache.zig). Collected wrappers leave it, and the deferred teardown queue keeps their nodes' addresses, so gc_bench's append/remove ended with 0 free slots in 10 of 14 runs and every miss walked all 16,384 slots: the two-speed exit cost Codex row 117 profiled. It now has the same TombstoneGuard; see debugging-two-speeds-in-one-binary-were-no-free-slot-against-one.md. Any long-lived std hash map whose keys come and go needs one.
 **Lesson**: When one runner process gets slower page after page while `native_contexts` stays flat, no page is being kept whole. What grows is per-page state the process keeps: sample the slow page for time, and diff heap snapshots by type for memory.
 
 **Why**: A leaked realm shows up as a rising `native_contexts`, and the older lessons find its holders (docs/lessons/debugging-find-what-keeps-a-page-alive-count-native.md). Two other kinds of per-page retention never move that count:
