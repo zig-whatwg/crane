@@ -60,6 +60,7 @@
 //!
 //! lint-impls: hook for Document, ShadowRoot
 const std = @import("std");
+const tombstones = @import("infra").tombstones;
 const runtime = @import("runtime");
 const process_start = @import("process_start.zig");
 const NodeBase = @import("node_base.zig").NodeBase;
@@ -223,6 +224,14 @@ pub const Maps = struct {
     scope: Scope,
     /// Each key, owned, and its entries.
     map: std.StringHashMapUnmanaged(Slot) = .empty,
+    /// Bounds `map`'s tombstones. Every new ID or name is a key the map
+    /// never saw, and emptied keys leave in batches (`sweepEmptySlots`), so
+    /// a document whose elements come and go never grew its map and never
+    /// cleared them (a 1,069-file runner sample: starved in 44 of 4,082
+    /// samples). An `*Entry` (`entryOf`) is read and written only between
+    /// changes to the tree - no insert - and the map's walks (`clear`,
+    /// `sweepEmptySlots`) insert nothing.
+    map_guard: tombstones.TombstoneGuard = .{},
     /// How many registrations each kind holds: a kind with none answers
     /// every query without a lookup.
     totals: std.EnumArray(Kind, u32) = .initFill(0),
@@ -232,6 +241,7 @@ pub const Maps = struct {
     /// The scope's teardown has begun: nothing is kept from here on.
     ended: bool = false,
     /// A document's named-property collections, by name (owned).
+    // tombstones: a document's, written only when script reads a named property that makes a collection, and swept only past twice what stayed (`sweep_at`); empty at every insert of a 1,069-file runner sample
     collections: std.StringHashMapUnmanaged(Collections) = .empty,
     /// The size at which remembering a collection first sweeps out the names
     /// whose collections are all gone.
@@ -269,6 +279,7 @@ pub const Maps = struct {
             self.allocator.free(kv.key_ptr.*);
         }
         self.map.clearRetainingCapacity();
+        self.map_guard.reset();
         self.totals = .initFill(0);
         self.empty_slots = 0;
         self.live_peak = 0;
@@ -292,10 +303,12 @@ pub const Maps = struct {
 
     /// Add `member` under `key` for each of `kinds`: one hash lookup.
     fn add(self: *Maps, kinds: std.EnumSet(Kind), key: []const u8, member: Link) error{OutOfMemory}!void {
+        self.map_guard.beforeInsert(&self.map);
         const gop = try self.map.getOrPut(self.allocator, key);
         if (!gop.found_existing) {
             gop.key_ptr.* = self.allocator.dupe(u8, key) catch |err| {
                 self.map.removeByPtr(gop.key_ptr);
+                self.map_guard.noteRemoval(&self.map);
                 return err;
             };
             gop.value_ptr.* = .initFill(.{});
@@ -357,6 +370,7 @@ pub const Maps = struct {
             if (!slotIsEmpty(kv.value_ptr)) continue;
             const owned = kv.key_ptr.*;
             self.map.removeByPtr(kv.key_ptr);
+            self.map_guard.noteRemoval(&self.map);
             self.allocator.free(owned);
         }
         self.empty_slots = 0;
@@ -901,6 +915,20 @@ pub fn inspect(scope_root: *runtime.Instance, kind: Kind, key: []const u8) ?Insp
         .count = if (entry) |e| e.count else 0,
         .first_known = if (entry) |e| e.first != null else false,
     };
+}
+
+/// How `scope_root`'s key map stands as a hash table, for tests: its slot
+/// counts and the mean slots a miss walks (infra.tombstones); null when it
+/// is no tree scope's root.
+pub const TableInspection = struct {
+    slots: tombstones.SlotCounts,
+    mean_miss: usize,
+};
+
+pub fn inspectTable(scope_root: *runtime.Instance) ?TableInspection {
+    const root = instance_bridge.getNodeBase(scope_root) orelse return null;
+    const maps = mapsOfRoot(root) orelse return null;
+    return .{ .slots = tombstones.slotCounts(&maps.map), .mean_miss = tombstones.meanMissProbe(&maps.map) };
 }
 
 /// Make `scope_root`'s maps - still empty - allocate from `allocator`, so a
