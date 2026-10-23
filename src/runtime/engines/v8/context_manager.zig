@@ -1193,6 +1193,12 @@ pub fn removeContextByKey(key: usize, v8_ctx: ?*v8.Context) void {
                 realm.deinit();
             }
 
+            // Last: the storage of the nodes this teardown tore down that no
+            // wrapper of any realm ever reached ([wrap_tracking];
+            // Node.deinitNodeByType handed it over). Nothing can reach their
+            // slots: the cache, the event loop and the realm are gone.
+            coordinator.releaseDeferredStorage();
+
             // NOTE: no `ctx_data.deinit()` here - deinit()'s drain does it, once
             // no Instance can still be pointing at this ContextData.
         }

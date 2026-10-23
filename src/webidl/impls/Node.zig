@@ -413,6 +413,13 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
     // frees one through dom.node_creation.destroyUninserted - was not.
     if (!runtime.instance_lifecycle.markCleanupStarted(instance)) return;
 
+    // Whether script can be proven never to have reached this node, read
+    // before its teardown frees the NodeBase: no wrap marked it in any realm
+    // ([wrap_tracking]) and it has no bound wrapper. The safe default - an
+    // engine that does not track wraps, a node with no state to read - is
+    // "it may have been".
+    var provably_unwrapped = false;
+
     // A collected child's wrapper can leave its native storage to the tree.
     // Return that storage after the complete type-specific resource teardown,
     // only while the captured generation still names this same instance.
@@ -423,13 +430,25 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
     // also cannot prove absence of wrappers in another live realm. It keeps
     // its agent identity after hasEngine becomes false (ContextData.agent,
     // V8 retireEntry), unlike an engine-less native parser/test context.
+    //
+    // A node no wrapper ever reached needs no such query: nothing in any
+    // realm can reach its slot. During a realm's coordinated teardown its
+    // storage goes to the coordinator, which returns it once the teardown's
+    // last phase is done (CleanupCoordinator.releaseDeferredStorage) - so
+    // nothing the later phases read changes. It used to stay until the
+    // Browser ended: every page's unwrapped nodes kept their slots (lane
+    // unwrapped1; WebKit's unreferenced children die with their container,
+    // ContainerNodeAlgorithms.cpp removeDetachedChildrenInContainer).
     defer {
         if (runtime.SlabAllocator.generationOf(instance) == generation and
-            runtime.instance_lifecycle.isCleanedUp(instance) and
-            !teardown_started and !runtime.cleanup_coordinator.isContextTearingDown() and
-            (if (ctx.hasEngine()) !engine.hasWrapper(instance) else ctx.agent == null))
+            runtime.instance_lifecycle.isCleanedUp(instance))
         {
-            runtime.gc.releaseStorage(instance);
+            if (!teardown_started and !runtime.cleanup_coordinator.isContextTearingDown()) {
+                if (if (ctx.hasEngine()) !engine.hasWrapper(instance) else ctx.agent == null)
+                    runtime.gc.releaseStorage(instance);
+            } else if (provably_unwrapped and runtime.cleanup_coordinator.isContextTearingDown()) {
+                runtime.cleanup_coordinator.deferStorageRelease(instance, generation);
+            }
         }
     }
 
@@ -441,6 +460,8 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
         interfaces.EventTarget.deinitChain(instance);
         return;
     };
+    provably_unwrapped = runtime.instance_lifecycle.provablyUnwrapped(engine.capabilities.wrap_tracking != .unsupported, instance) and
+        if (internal.node_base) |node_base| node_base.bound_v8_wrapper == null else false;
 
     // Dispatch based on node type to call the appropriate interface's deinit.
     // Each interface's deinit will chain back to Node.deinit for proper recursive cleanup.

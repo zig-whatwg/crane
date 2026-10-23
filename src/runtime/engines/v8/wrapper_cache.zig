@@ -1710,6 +1710,15 @@ pub const WrapperCache = struct {
             if (entry.instance_already_cleaned) {
                 severWrapper(entry);
                 skipped_cleaned += 1;
+                // Its teardown began under its live wrapper (markAsCleanedUp -
+                // a node its realm's tree tore down before this sweep), and
+                // PHASE 1 disarmed the finalizer that would have freed the
+                // storage it left: free it now, as the branch below does.
+                // It used to stay until the Browser ended - every page's
+                // wrapped nodes kept their slots (lane unwrapped1).
+                if (!is_reused and runtime.instance_lifecycle.isCleanedUp(entry.instance) and
+                    !wrappedElsewhere(entry.instance, self))
+                    runtime.gc.releaseStorage(entry.instance);
                 if (is_iframe) {
                     log.debug("[wrapper_cache.deinit] SKIP_CLEANED iframe instance={*}", .{entry.instance});
                 }
