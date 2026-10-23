@@ -90,6 +90,13 @@ pub const PreflightCache = struct {
     allocator: Allocator,
     mutex: std.Io.Mutex = .init,
     entries: std.HashMapUnmanaged(CacheKey, CacheEntry, KeyContext, 80) = .empty,
+    /// Under `mutex`: bounds `entries`' tombstones. At `max_entries` every
+    /// new key evicts one, so std's map never grows and kept every
+    /// eviction's tombstone: its free slots ran out and every miss in
+    /// `allows` - promised one hash lookup - walked the table
+    /// (src/infra/tombstones.zig). A `*CacheEntry` is read and written only
+    /// between inserts, and `evict` finishes its walk before the insert.
+    guard: @import("infra").tombstones.TombstoneGuard = .{},
     entry_count: std.atomic.Value(usize) = .init(0),
     /// Chromium 154: kMaxCacheEntries=1024, kMaxTimeout=2h. Fetch permits
     /// implementation-defined caps and early eviction (codex-xhr D6).
@@ -135,6 +142,8 @@ pub const PreflightCache = struct {
             errdefer owned.deinit(self.allocator);
             try self.entries.ensureUnusedCapacity(self.allocator, 1);
             if (self.entries.count() >= self.max_entries) self.evict(now);
+            // A rehash keeps the capacity just ensured.
+            self.guard.beforeInsert(&self.entries);
             self.entries.putAssumeCapacity(owned, value);
             _ = self.entry_count.fetchAdd(1, .release);
             return;
@@ -172,6 +181,7 @@ pub const PreflightCache = struct {
     }
     fn remove(self: *PreflightCache, key: CacheKey) void {
         if (self.entries.fetchRemove(key)) |removed| {
+            self.guard.noteRemoval(&self.entries);
             var value = removed.value;
             value.deinit(self.allocator);
             removed.key.deinit(self.allocator);
@@ -194,6 +204,7 @@ pub const PreflightCache = struct {
             entry.key_ptr.deinit(self.allocator);
         }
         self.entries.clearRetainingCapacity();
+        self.guard.reset();
         self.entry_count.store(0, .release);
     }
     pub fn count(self: *const PreflightCache) usize {
@@ -272,4 +283,34 @@ test "PreflightCache credentials with wildcard" {
     defer cache.deinit();
     try cache.store(test_key, 0, 60, &.{"*"}, &.{"*"}, true);
     try std.testing.expect(!cache.allows(test_key, 1, true, "PUT", &.{"x-custom"}));
+}
+
+test "PreflightCache: at its entry cap it keeps half its map's unused slots free while it evicts" {
+    // Lane hashmaps1: a Browser's preflight cache at `max_entries` evicts a
+    // key for every new one - a removal, which std's map turns into a
+    // tombstone it never clears while puts and removes balance
+    // (src/infra/tombstones.zig); then every miss in `allows`, which
+    // promises one hash lookup, walks the whole table. A CacheEntry is read
+    // and written only under the lock, between inserts.
+    const tombstones = @import("infra").tombstones;
+    var cache = PreflightCache.init(std.testing.allocator);
+    defer cache.deinit();
+    cache.max_entries = 64;
+    var url_buf: [64]u8 = undefined;
+    var starved: usize = 0;
+    var worst: usize = 0;
+    for (0..20_000) |i| {
+        const url = try std.fmt.bufPrint(&url_buf, "https://api.test/p/{d}", .{i});
+        const key: CacheKey = .{ .network_partition_key = "https://top.test", .origin = "https://top.test", .url = url };
+        try cache.store(key, @intCast(i), 600, &.{"PUT"}, &.{}, false);
+        if (i % 100 == 99) {
+            if (!tombstones.slotCounts(&cache.entries).halfOfUnusedFree()) starved += 1;
+            worst = @max(worst, tombstones.meanMissProbe(&cache.entries));
+        }
+    }
+    if (starved != 0 or worst > 8) {
+        const counts = tombstones.slotCounts(&cache.entries);
+        std.debug.print("PreflightCache.entries: {d} of 200 samples starved; worst mean miss {d} (capacity {d}, live {d}, free {d})\n", .{ starved, worst, counts.capacity, counts.live, counts.free });
+        return error.TombstonesFilledTheMap;
+    }
 }

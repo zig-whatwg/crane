@@ -39,6 +39,7 @@ pub fn AgentState(comptime Element: type, comptime Realm: type, comptime Payload
 
         allocator: std.mem.Allocator,
         queues: Reactions(*Record, Payload),
+        // tombstones: cleared whole (releaseRecords) each time the agent is quiescent - the end of every outermost [CEReactions] scope and backup run - so its removals never outlive one scope; none starved in a 1,069-file runner sample
         elements: std.AutoHashMap(Element, *Record),
         records: ?*Record = null,
         invoking: usize = 0,

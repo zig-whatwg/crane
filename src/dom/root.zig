@@ -256,6 +256,10 @@ pub const NodeBase = node_base.NodeBase;
 
 // Instance bridge for runtime.Instance <-> NodeBase conversion
 pub const instance_bridge = @import("instance_bridge.zig");
+/// One element type's inline state in its Browser's side table, keyed by
+/// address, with its tombstones kept in check (HTMLOptionElement's and
+/// HTMLTextAreaElement's StateMaps).
+pub const InstanceStateMap = @import("instance_state_map.zig").InstanceStateMap;
 
 // Opaque handle types for breaking circular imports
 pub const handles = @import("handles.zig");

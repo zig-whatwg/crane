@@ -2519,6 +2519,8 @@ pub fn build(b: *std.Build) void {
             .{ .name = "clock", .module = testing_graph.clock },
             .{ .name = "host", .module = testing_graph.host },
             .{ .name = "storage", .module = testing_graph.storage },
+            // infra.tombstones: the slot counts of storage's long-lived maps.
+            .{ .name = "infra", .module = testing_graph.infra },
         };
         addTestFilesFromDir(b, test_step, "tests/storage", target, &storage_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add storage test files: {}\n", .{err});
@@ -4425,6 +4427,45 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&lint_refcount_check.step);
     const lint_refcount_tests = b.addTest(.{ .root_module = lint_refcount_module });
     test_step.dependOn(&b.addRunArtifact(lint_refcount_tests).step);
+
+    // ========================================================================
+    // LINT: long-lived hash maps that never clear their tombstones
+    // ========================================================================
+    // std.HashMap deletes by tombstone and never grows while puts and removes
+    // balance, so a long-lived map's free slots run out and every miss walks
+    // the table (src/infra/tombstones.zig; found and fixed in the instance
+    // registries, the V8 wrapper cache and the timer maps).
+    // tools/lint_tombstones.zig flags, through std.zig.Ast, every container
+    // field or container-level `var` std hash map in src/ that its file removes
+    // from with no TombstoneGuard and no `// tombstones: <why>` exemption, and
+    // fails if any is missing from tools/tombstones_baseline.txt. The baseline
+    // only goes down (`zig build lint-tombstones -- --update`; `-- --list`
+    // prints every unguarded map). `zig build test` depends on it.
+    const lint_tombstones_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_tombstones.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const lint_tombstones_exe = b.addExecutable(.{
+        .name = "lint_tombstones",
+        .root_module = lint_tombstones_module,
+    });
+    const lint_tombstones_step = b.step("lint-tombstones", "Fail on a new long-lived std hash map that is removed from with no TombstoneGuard (use -- --update after guarding some, -- --list to see them)");
+    const lint_tombstones = b.addRunArtifact(lint_tombstones_exe);
+    // It reads src/ and the baseline, which the build graph does not track.
+    lint_tombstones.has_side_effects = true;
+    lint_tombstones.setCwd(b.path("."));
+    if (b.args) |args| lint_tombstones.addArgs(args);
+    lint_tombstones_step.dependOn(&lint_tombstones.step);
+    // Part of `zig build test`: the check itself (never with --update) and the
+    // tool's own tests.
+    const lint_tombstones_check = b.addRunArtifact(lint_tombstones_exe);
+    lint_tombstones_check.has_side_effects = true;
+    lint_tombstones_check.setCwd(b.path("."));
+    test_step.dependOn(&lint_tombstones_check.step);
+    const lint_tombstones_tests = b.addTest(.{ .root_module = lint_tombstones_module });
+    test_step.dependOn(&b.addRunArtifact(lint_tombstones_tests).step);
 
     // ========================================================================
     // WPT: the wpt.fyi upload package
