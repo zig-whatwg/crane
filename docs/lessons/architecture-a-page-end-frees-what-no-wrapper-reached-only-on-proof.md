@@ -1,0 +1,19 @@
+# Architecture: A page's end frees what no wrapper reached - and needs a proof the engine declares
+
+**Date**: 2026-10-23
+**Lesson**: Every node a realm's end tore down kept its slab slot until the Browser ended, and every orphan kept everything; the fix frees them at the realm's end, on the strength of a mark the adapter sets on every wrap and DECLARES it sets (`engine.capabilities.wrap_tracking`), because "no mark" is only a proof on an engine that marks.
+
+**Why**: Two exits were missing, both invisible to `leaks --atExit` (the Browser's end frees everything):
+- **The slot of a node its realm's tree tore down.** `Node.deinitNodeByType` never released storage inside a coordinated teardown: it may not query a wrapper cache then, and a retired realm cannot prove that no other realm wraps the node. A wrapped node was no better off: its teardown began under its live wrapper (`markAsCleanedUp` set `instance_already_cleaned`), and `WrapperCache.deinit` disarms every weak callback first, then only severed such an entry - the finalizer that would have freed the storage never ran.
+- **An orphan** (a subtree removed while nothing wrapped it) is reached by no tree teardown and no collector until reference counting decides (refcount design step 7).
+
+**What Happened**: Lane hashmaps1's counters (CRANE_HEAP_GC=1, one runner process): ce3-named-property-cost (10,000 unwrapped divs in the document) grew the slab by 10,024 slots a page with flat registries; ce3-state-selector-cost grew 19,370 slots and 9,343 registry entries a page (its 9,333 orphaned divs, plus its 10,000 script-made custom elements - the wrapped half, which the brief had assumed freed "when its wrapper dies"), maxrss 356 -> 534 MB over four pages.
+
+**Fix** (lane unwrapped1):
+1. A sticky `wrapped` flag in the slot's lifecycle bits (`instance_lifecycle.markWrapped`), set by the V8 adapter wherever it writes an Instance into an object - `wrapInstanceAsV8Object` before its cache step, `setInstance`/`setInstanceWithTypeInfo` (constructors, custom element construction and upgrade), the global bindings - and cleared only when the slab issues the slot again. The capability `wrap_tracking` says the adapter does this; JavaScriptCore, QuickJS and the test adapter declare `.unsupported`, and `provablyUnwrapped(tracked = false, _)` is false: a missing mark proves nothing there, so nothing changes (tests pin the default and every V8 path).
+2. Inside a coordinated teardown, a node with no mark and no bound wrapper hands its slot to the `CleanupCoordinator`, which returns it after the teardown's LAST phase (`releaseDeferredStorage`): every later phase sees exactly what it saw before.
+3. `WrapperCache.deinit` frees the storage of an `instance_already_cleaned` entry after severing it, as its `is_started` branch always did.
+4. `dom.mutation.remove` records a removed root with no mark on its realm (`runtime.orphan_roots`), and the realm's end frees each root that is still an orphan BEFORE its coordinated teardown begins - the conditions of the collector's second pass, through the same `deinitNodeByType`.
+Precedent: WebKit's wrapper holds a `Ref<Node>`, so `removeDetachedChildrenInContainer` (ContainerNodeAlgorithms.cpp) leaves a wrapped child alive and an unreferenced one dies with its container; Blink keeps the main-world wrapper inline in the ScriptWrappable (dom_data_store.h). After: named-property flat at the page's own slots; state-selector's registries and node slots flat.
+
+**Takeaway**: **A "nothing references it" decision must rest on something every engine either provides or declares it lacks: a mark only one adapter sets is a use-after-free on every other adapter unless a capability gates it and its default is "keep". And count slots per page, not only registries: a registry that returns to the page's own says nothing about the storage behind it.**
