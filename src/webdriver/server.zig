@@ -4,11 +4,19 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const net = std.net;
+// Zig 0.16 moved networking onto std.Io: std.net became std.Io.net, and every
+// socket call takes the Io. This server uses the process Io (src/platform/host.zig),
+// which main adopts from std.start.
+const net = std.Io.net;
+const host = @import("host");
 const protocol = @import("protocol.zig");
 const commands = @import("commands.zig");
-const clock = @import("clock");
 const SessionManager = @import("session.zig").SessionManager;
+
+/// The largest request head this server reads before giving up.
+const max_head_bytes = 8192;
+/// The largest request body it accepts; a larger Content-Length gets a 413.
+const max_body_bytes = 65536;
 
 /// WebDriver Server Configuration
 pub const Config = struct {
@@ -45,13 +53,14 @@ pub const Server = struct {
 
     /// Start the server and listen for connections
     pub fn run(self: *Server) !void {
-        const address = try net.Address.parseIp4(self.config.host, self.config.port);
+        const io = host.io();
+        const address = try net.IpAddress.parseIp4(self.config.host, self.config.port);
 
-        self.server = try address.listen(.{
+        self.server = try address.listen(io, .{
             .reuse_address = true,
         });
         defer {
-            if (self.server) |*s| s.deinit();
+            if (self.server) |*s| s.deinit(io);
             self.server = null;
         }
 
@@ -59,19 +68,15 @@ pub const Server = struct {
         std.log.info("WebDriver server listening on {s}:{d}", .{ self.config.host, self.config.port });
 
         while (self.running) {
-            // Accept connection with timeout
-            const conn = self.server.?.accept() catch |err| {
-                if (err == error.WouldBlock) {
-                    clock.sleep(10 * std.time.ns_per_ms);
-                    continue;
-                }
+            // accept blocks until a client connects.
+            const stream = self.server.?.accept(io) catch |err| {
                 std.log.err("Accept error: {}", .{err});
                 continue;
             };
-            defer conn.stream.close();
+            defer stream.close(io);
 
             // Handle the request
-            self.handleConnection(conn.stream) catch |err| {
+            self.handleConnection(io, stream) catch |err| {
                 std.log.err("Request handling error: {}", .{err});
             };
         }
@@ -83,21 +88,28 @@ pub const Server = struct {
     }
 
     /// Handle a single HTTP connection
-    fn handleConnection(self: *Server, stream: net.Stream) !void {
-        var buf: [8192]u8 = undefined;
-        var body_buf: [65536]u8 = undefined;
+    fn handleConnection(self: *Server, io: std.Io, stream: net.Stream) !void {
+        // One buffer for the whole request: the head, then its body. Nothing is
+        // consumed from it, so the reader never moves what it holds and the
+        // slices parseHttpRequest returns stay valid.
+        var buf: [max_head_bytes + max_body_bytes]u8 = undefined;
+        var reader = stream.reader(io, &buf);
 
-        // Read HTTP request (simple parsing)
-        const bytes_read = stream.read(&buf) catch |err| {
-            std.log.warn("Failed to read request: {}", .{err});
-            return;
-        };
-        if (bytes_read == 0) return;
-
-        const request_data = buf[0..bytes_read];
+        // Read until the end of the request head.
+        while (std.mem.indexOf(u8, reader.interface.buffered(), "\r\n\r\n") == null) {
+            if (reader.interface.bufferedLen() >= max_head_bytes) {
+                std.log.warn("Request head larger than {d} bytes", .{max_head_bytes});
+                return;
+            }
+            reader.interface.fillMore() catch |err| {
+                // EndOfStream before a complete head: the client went away.
+                if (err != error.EndOfStream) std.log.warn("Failed to read request: {}", .{err});
+                return;
+            };
+        }
 
         // Parse HTTP request line and headers
-        const parsed = parseHttpRequest(request_data) orelse {
+        const parsed = parseHttpRequest(reader.interface.buffered()) orelse {
             std.log.warn("Failed to parse HTTP request", .{});
             return;
         };
@@ -105,28 +117,16 @@ pub const Server = struct {
         // Read body if Content-Length header present
         var body: []const u8 = "";
         if (parsed.content_length) |len| {
-            if (len > body_buf.len) {
-                try self.sendRawResponse(stream, 413, "Request too large");
+            if (len > max_body_bytes) {
+                try self.sendRawResponse(io, stream, 413, "Request too large");
                 return;
             }
-
-            // Body may be partially in the initial read
-            const header_end = parsed.header_end;
-            const body_in_buf = request_data.len - header_end;
-
-            if (body_in_buf >= len) {
-                // Body already fully read
-                body = request_data[header_end..][0..len];
-            } else {
-                // Need to read more body data
-                @memcpy(body_buf[0..body_in_buf], request_data[header_end..]);
-                const remaining = len - body_in_buf;
-                const more_read = stream.read(body_buf[body_in_buf..][0..remaining]) catch |err| {
-                    std.log.warn("Failed to read body: {}", .{err});
-                    return;
-                };
-                body = body_buf[0 .. body_in_buf + more_read];
-            }
+            // The body may be partly or wholly in what was read with the head.
+            reader.interface.fill(parsed.header_end + len) catch |err| {
+                std.log.warn("Failed to read body: {}", .{err});
+                return;
+            };
+            body = reader.interface.buffered()[parsed.header_end..][0..len];
         }
 
         // Log request
@@ -141,13 +141,13 @@ pub const Server = struct {
             .body = body,
         }) catch |err| {
             std.log.err("Command handler error: {}", .{err});
-            try self.sendRawResponse(stream, 500, "{\"value\":{\"error\":\"unknown error\",\"message\":\"Internal error\"}}");
+            try self.sendRawResponse(io, stream, 500, "{\"value\":{\"error\":\"unknown error\",\"message\":\"Internal error\"}}");
             return;
         };
         defer self.allocator.free(result.body);
 
         // Send response
-        try self.sendRawResponse(stream, @intFromEnum(result.status), result.body);
+        try self.sendRawResponse(io, stream, @intFromEnum(result.status), result.body);
     }
 
     /// Parse HTTP request (simple implementation)
@@ -204,7 +204,7 @@ pub const Server = struct {
     }
 
     /// Send raw HTTP response
-    fn sendRawResponse(self: *Server, stream: net.Stream, status_code: u16, body: []const u8) !void {
+    fn sendRawResponse(self: *Server, io: std.Io, stream: net.Stream, status_code: u16, body: []const u8) !void {
         _ = self;
         const status_text = switch (status_code) {
             200 => "OK",
@@ -216,9 +216,11 @@ pub const Server = struct {
         };
 
         var response_buf: [256]u8 = undefined;
-        const header = std.fmt.bufPrint(&response_buf, "HTTP/1.1 {d} {s}\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {d}\r\nConnection: close\r\n\r\n", .{ status_code, status_text, body.len }) catch return error.BufferOverflow;
-
-        _ = stream.write(header) catch return;
-        _ = stream.write(body) catch return;
+        var writer = stream.writer(io, &response_buf);
+        // A client that has gone away gets nothing more; that is not an error
+        // of this server's.
+        writer.interface.print("HTTP/1.1 {d} {s}\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {d}\r\nConnection: close\r\n\r\n", .{ status_code, status_text, body.len }) catch return;
+        writer.interface.writeAll(body) catch return;
+        writer.interface.flush() catch return;
     }
 };

@@ -294,6 +294,8 @@ zig build test       -j2 --cache-dir ~/Library/Caches/crane-z16-cache   # includ
 boundary"), so it fails on any new reference into an impl from code that does
 not own it.
 
+`zig build test` also includes `crane-check` (crane compiled without linking); the integrator's merge check runs `zig build check-linux -j2` and the full `zig build crane -j2`.
+
 **Local builds use `--cache-dir ~/Library/Caches/crane-z16-cache`, never a cache in `/tmp`.** macOS
 deletes `/tmp` files untouched for three days (`com.apple.tmp_cleaner`, nightly at 00:00), and Zig trusts a
 cache hit without re-checking its output, so a half-pruned cache entry stays a "hit" with files missing: on

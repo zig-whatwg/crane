@@ -56,15 +56,18 @@ fn darwinResident() ?usize {
 }
 
 fn linuxResident() ?usize {
-    // statm's second field is resident pages. Read with a plain syscall rather than
+    // statm's second field is resident pages. Read with plain libc calls rather than
     // std.Io: this is called from measurement loops that must not perturb the thing
     // being measured, and a procfs read has no meaningful failure mode beyond
-    // "no answer".
+    // "no answer". libc, as darwinResident's task_info: Zig 0.16 removed
+    // std.posix.open and std.posix.close, and this module links libc anyway.
     var buf: [128]u8 = undefined;
-    const fd = std.posix.open("/proc/self/statm", .{ .ACCMODE = .RDONLY }, 0) catch return null;
-    defer std.posix.close(fd);
-    const n = std.posix.read(fd, &buf) catch return null;
-    if (n == 0) return null;
+    const fd = std.c.open("/proc/self/statm", .{ .ACCMODE = .RDONLY, .CLOEXEC = true });
+    if (fd < 0) return null;
+    defer _ = std.c.close(fd);
+    const rc = std.c.read(fd, &buf, buf.len);
+    if (rc <= 0) return null;
+    const n: usize = @intCast(rc);
 
     var it = std.mem.tokenizeScalar(u8, buf[0..n], ' ');
     _ = it.next() orelse return null; // total program size
