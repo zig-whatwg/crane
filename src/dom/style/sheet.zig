@@ -570,6 +570,8 @@ const Compiler = struct {
             // Anchor Position 1 §6.5 applies these only while trying a
             // geometry-dependent fallback; they are not author rules.
             .position_try => {},
+            // Keyframes store CSSOM data; animation execution is separate.
+            .keyframes, .keyframe => {},
         };
     }
 

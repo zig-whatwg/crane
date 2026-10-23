@@ -79,6 +79,8 @@ pub fn ruleObject(rule: *Rule, realm: runtime.Context) anyerror!*runtime.Instanc
         .font_face => interfaces.CSSFontFaceRule.initWith(a, realm, args),
         .page => interfaces.CSSPageRule.initWith(a, realm, args),
         .position_try => interfaces.CSSPositionTryRule.initWith(a, realm, args),
+        .keyframes => interfaces.CSSKeyframesRule.initWith(a, realm, args),
+        .keyframe => interfaces.CSSKeyframeRule.initWith(a, realm, args),
     };
     rule.object.set(object);
     if (try parentObject(rule, realm)) |parent| engine.traceChild(object, parent, slots.parent);
