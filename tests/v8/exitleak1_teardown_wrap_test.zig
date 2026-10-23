@@ -166,15 +166,25 @@ const Spawner = struct {
     }
 
     fn spawn(self: *Spawner, owner: *runtime.Instance) void {
-        // For `trace`, an object made first takes the freed address, so that
-        // the traced one has an address the cache never held: its wrap would
-        // be a new entry in the map being iterated.
-        const filler: ?*runtime.Instance = if (self.how == .trace) interfaces.TextEncoder.init(std.heap.c_allocator, self.realm) catch return else null;
-        defer if (filler) |f| runtime.Instance.deinit(f);
-        const made = interfaces.TextEncoder.init(std.heap.c_allocator, self.realm) catch return;
+        // The object each case needs: for `ask`, one at the address of an
+        // entry the sweep has already handled (a hooked object freed before
+        // this teardown); for `trace`, one at an address the cache never
+        // held, whose wrap would be a new entry in the map being iterated.
+        // The slab hands freed slots out again; objects made on the way to
+        // the one wanted are let go after.
+        var fillers: [32]*runtime.Instance = undefined;
+        var filled: usize = 0;
+        defer for (fillers[0..filled]) |f| runtime.Instance.deinit(f);
+        const made = while (true) {
+            const candidate = interfaces.TextEncoder.init(std.heap.c_allocator, self.realm) catch return;
+            const reused = self.wasFreed(candidate);
+            if (reused == (self.how == .ask) or filled == fillers.len) break candidate;
+            fillers[filled] = candidate;
+            filled += 1;
+        };
         made.vtable = &self.counting_vtable;
         self.made = made;
-        self.made_reused_an_address = @intFromPtr(made) == self.freed[0];
+        self.made_reused_an_address = self.wasFreed(made);
         const generation = runtime.SlabAllocator.generationOf(made);
         switch (self.how) {
             .ask => {},
@@ -182,6 +192,16 @@ const Spawner = struct {
         }
         self.made_reported_wrapped = protocol.hasWrapper(made);
         made.releaseIfUnwrapped(generation);
+    }
+
+    /// Whether `instance` has the address of a hooked object torn down
+    /// before (an entry the sweep has handled).
+    fn wasFreed(self: *const Spawner, instance: *runtime.Instance) bool {
+        const n = @min(self.torn_down, self.freed.len);
+        for (self.freed[0..n]) |address| {
+            if (address == @intFromPtr(instance)) return true;
+        }
+        return false;
     }
 };
 
@@ -199,10 +219,9 @@ fn expectMadeObjectFreed(kind: Page.Kind, how: Spawner.How) !void {
 
     try testing.expect(spawner.torn_down >= 2);
     try testing.expect(spawner.made != null);
-    // The case each test is about: the slab hands a freed handle out again
-    // (last freed, first out), so the object made for `ask` has the address
-    // of an entry the sweep has handled, and the one made for `trace` a new
-    // one.
+    // The case each test is about: the object made for `ask` has the
+    // address of an entry the sweep has handled, the one made for `trace` an
+    // address the cache never held.
     try testing.expectEqual(how == .ask, spawner.made_reused_an_address);
     // Not wrapped in a cache that is being torn down...
     try testing.expect(!spawner.made_reported_wrapped);
