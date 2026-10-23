@@ -134,11 +134,9 @@ const Checks = struct {
         const fragment = try value(options(s), "background-image", "url(\\23 icon)");
         defer fragment.release();
         try testing.expect(fragment.resourceUrls()[0].local_fragment);
-        // The existing resolver and serialization are unchanged. The local
-        // flag, not a comparison with the sheet URL, decides fetch eligibility.
-        // Re-parsing BASE's absolute serialization cannot recover this flag;
-        // that pre-existing literal-string round-trip limit is separate (Q9).
-        try testing.expectEqualStrings("url(\"https://example.test/css/main.css#icon\")", fragment.text.bytes);
+        // Values4 §4.5.1.1: authored text retains the local fragment, while
+        // the frozen metadata and local flag decide fetch eligibility.
+        try testing.expectEqualStrings("url(\"#icon\")", fragment.text.bytes);
         const bare = try value(.{ .allocator = testing.allocator }, "background-image", "src('relative.svg')");
         defer bare.release();
         try testing.expect(bare.resourceUrls()[0].source == null);
@@ -154,7 +152,7 @@ const Checks = struct {
         try testing.expect(!missing.valid);
         try testing.expect(!missing.local_fragment);
         try testing.expectEqualStrings("", missing.url);
-        try testing.expectEqualStrings("url(\"https://example.test/css/main.css\")", empty.text.bytes);
+        try testing.expectEqualStrings("url(\"\")", empty.text.bytes);
         const failure = try value(options(s), "background-image", "url('bad[')");
         defer failure.release();
         try testing.expect(!failure.resourceUrls()[0].valid);
@@ -192,6 +190,10 @@ const Checks = struct {
         var last = second.resourceUrls()[0];
         last.range.start += image.text.bytes.len + 2;
         last.range.end += image.text.bytes.len + 2;
+        if (last.argument_range) |*argument| {
+            argument.start += image.text.bytes.len + 2;
+            argument.end += image.text.bytes.len + 2;
+        }
         const joined = try values.SharedText.createWithResources(testing.allocator, combined, &.{ image.resourceUrls()[0], last });
         defer joined.unref();
         try testing.expect(joined.resource_urls[0].source == s);
@@ -243,7 +245,7 @@ const Checks = struct {
         const urls = computed.resourceUrls();
         try testing.expectEqual(@as(usize, 3), urls.len);
         try testing.expect(urls[0].local_fragment);
-        try testing.expectEqualStrings("url(\"https://example.test/css/main.css#icon\")", computed_content.serialization[urls[0].range.start..urls[0].range.end]);
+        try testing.expectEqualStrings("url(\"#icon\")", computed_content.serialization[urls[0].range.start..urls[0].range.end]);
         try testing.expectEqualStrings("no-referrer", urls[2].source.?.referrer_policy);
         const counter = try value(options(s), "content", "counter(item, symbols(url(#marker) 'x'))");
         defer counter.release();

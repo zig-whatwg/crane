@@ -1016,7 +1016,8 @@ fn urlValue(options: ParseOptions, raw: []const u8) Allocator.Error!Value {
     var out: std.ArrayList(u8) = .empty;
     defer out.deinit(options.allocator);
     try out.appendSlice(options.allocator, "url(");
-    try values.appendString(resolved orelse raw, &out, options.allocator);
+    // Values4 §4.5: keep authored text separate from frozen resolution.
+    try values.appendString(raw, &out, options.allocator);
     try out.append(options.allocator, ')');
     const url = values.ResourceUrl.describe(raw, resolved, options.url_resolver != null, options.resource_source, .{ .start = 0, .end = out.items.len });
     return .{ .text = try SharedText.createWithResources(options.allocator, out.items, &.{url}) };
@@ -1735,7 +1736,7 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
             if (mode == .computed) {
                 try serializeValue(.background_color, color, out, allocator);
                 try out.append(allocator, ' ');
-                try serializeValue(.background_image, image, out, allocator);
+                try @import("resolved_urls.zig").serialize(.background_image, image, out, allocator);
                 return true;
             }
             if (image_initial and color_initial) {
