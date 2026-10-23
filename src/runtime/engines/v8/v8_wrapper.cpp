@@ -13385,52 +13385,168 @@ bool v8_Context_IsCodeGenerationFromStringsAllowed(Global<Context>* context) {
 
 } // extern "C"
 // ---- end lane: cspenforce ----
-// ---- lane: wasmh (WebAssembly descriptors' `address` member) ----
-// DELETE THIS SECTION WITH THE V8 UPGRADE: V8 >= 13.3 reads `address` itself.
-//
-// The WebAssembly JS API's Memory and Table constructors take the address
-// type from `descriptor["address"]` (AddressType "i32" | "i64"; the memory64
-// proposal named the member `index` until late 2024). V8 13.1.203, which
-// Crane links, reads only `index` (13.1 wasm-js.cc GetIndexType, called from
-// WebAssemblyMemoryImpl and WebAssemblyTableImpl), so `{address: "i64",
-// initial: 10n}` was an i32 descriptor and ToNumber(10n) threw - the first
-// step of every wasm/core file (async_index.js reinitializeRegistry builds
-// such a table). Chrome (V8 >= 13.3), Firefox and Safari read `address`.
-//
-// So every realm's WebAssembly.Memory and WebAssembly.Table are replaced by
-// native constructors that convert the `address` member - first, as WebIDL
-// converts dictionary members in lexicographic order - and construct V8's
-// own constructor with a descriptor whose [[Prototype]] is the caller's and
-// whose one own property is `index`. V8 then reads every other member
-// through the caller's getters, in their order, and converts them itself.
+// ---- WebAssembly JS API adaptation for V8 13.1 ----
+// V8 13.1 reads the memory64 descriptor's old `index` spelling, not
+// `address`. It also chooses the constructor's own intrinsic prototype when
+// NewTarget.prototype is primitive. Firefox/Safari and WebIDL instead use
+// NewTarget's realm (wpt.fyi stable runs 5195601938743296/5351410937102336/
+// 5184406099853312: proto-from-ctor-realm 45/120, 120/120, 120/120).
+// Remove the address adaptation when upgrading to V8 >= 13.3; independently
+// recheck prototype fallback, which Chrome 156 still fails.
 extern "C" {
 
-static void WasmAddressDescriptorConstructor(const FunctionCallbackInfo<Value>& info) {
+static Local<Private> wasmIntrinsicPrototypesKey(Isolate* isolate) {
+    return Private::ForApi(isolate, String::NewFromUtf8Literal(isolate, "crane.wasm.intrinsicPrototypes"));
+}
+
+static Local<Private> wasmPreparationKey(Isolate* isolate) {
+    return Private::ForApi(isolate, String::NewFromUtf8Literal(isolate, "crane.wasm.preparation"));
+}
+
+// Only traced references are retained before first use. The private constructor
+// factory below reads these same slots into its original constant bindings.
+enum WasmPreparationSlot : uint32_t {
+    kWasmNamespace,
+    kWasmConstruct, kWasmGet, kWasmApply, kWasmProxy, kWasmTypeError, kWasmObject,
+    kWasmDefine, kWasmOwnKeys, kWasmDescriptor, kWasmSetPrototype, kWasmPrototype,
+    kWasmFunctionPrototype, kWasmBind, kWasmHasInstanceKey, kWasmHasInstance, kWasmSlice,
+    kWasmPromise, kWasmPromiseResolve, kWasmPreparationSize,
+};
+
+static bool ensureWasmAdapters(Local<Context> context);
+
+static Local<Private> wasmExceptionStackKey(Isolate* isolate) {
+    return Private::ForApi(isolate, String::NewFromUtf8Literal(isolate, "crane.wasm.exceptionStack"));
+}
+
+static bool wasmCaptureExceptionStack(Local<Context> context, Local<Object> exception) {
+    Isolate* isolate = context->GetIsolate();
+    Local<String> stack_name = String::NewFromUtf8Literal(isolate, "stack");
+    Maybe<bool> captured = exception->HasOwnProperty(context, stack_name);
+    if (captured.IsNothing()) return false;
+    if (!captured.FromJust()) return true;
+
+    // JS API 5.9 constructor step 11: capture a DOMString now. V8 13.1.203
+    // messages.cc:1203-1240 installs a lazy own accessor instead. Reading it
+    // would invoke Error.prepareStackTrace, a callback the spec never calls.
+    // No script runs between native construction and this public native-frame
+    // snapshot. Its format is implementation-defined; no Error properties or
+    // user functions participate. An untraced/native-wasm exception has no slot.
+    Local<StackTrace> trace = StackTrace::CurrentStackTrace(isolate, 64, StackTrace::kDetailed);
+    std::string formatted = "WebAssembly.Exception";
+    if (!trace.IsEmpty()) {
+        for (int i = 0; i < trace->GetFrameCount(); ++i) {
+            Local<StackFrame> frame = trace->GetFrame(isolate, i);
+            formatted += "\n    at ";
+            Local<String> name = frame->GetFunctionName();
+            if (!name.IsEmpty() && name->Length() > 0) {
+                String::Utf8Value utf8(isolate, name);
+                if (*utf8) formatted.append(*utf8, utf8.length());
+            } else {
+                formatted += "<anonymous>";
+            }
+            formatted += " (";
+            Local<String> source = frame->GetScriptNameOrSourceURL();
+            if (!source.IsEmpty() && source->Length() > 0) {
+                String::Utf8Value utf8(isolate, source);
+                if (*utf8) formatted.append(*utf8, utf8.length());
+            } else {
+                formatted += "<anonymous>";
+            }
+            formatted += ":" + std::to_string(frame->GetLineNumber()) + ":" + std::to_string(frame->GetColumn()) + ")";
+        }
+    }
+    Local<String> stack;
+    if (!String::NewFromUtf8(isolate, formatted.c_str(), NewStringType::kNormal,
+            static_cast<int>(formatted.size())).ToLocal(&stack)) return false;
+    return exception->SetPrivate(context, wasmExceptionStackKey(isolate), stack).FromMaybe(false) &&
+        exception->Delete(context, stack_name).FromMaybe(false);
+}
+
+static void WasmExceptionStackGet(const FunctionCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
     Local<Context> context = isolate->GetCurrentContext();
-    // The constructor V8 installed, kept as the function's data.
-    Local<Function> original = info.Data().As<Function>();
-    std::vector<Local<Value>> args;
-    args.reserve(static_cast<size_t>(info.Length()));
-    for (int i = 0; i < info.Length(); ++i) args.push_back(info[i]);
-    const int argc = static_cast<int>(args.size());
-    Local<Value> result;
-    if (!info.IsConstructCall()) {
-        // V8's own TypeError: the constructor must be invoked with new.
-        if (original->Call(context, Undefined(isolate), argc, args.data()).ToLocal(&result)) info.GetReturnValue().Set(result);
-        return;
+    Local<Array> brand = info.Data().As<Array>();
+    Local<Value> is_exception, tag, ignored, stack;
+    if (!brand->Get(context, 0).ToLocal(&is_exception) || !brand->Get(context, 1).ToLocal(&tag)) return;
+    // The captured native is() performs the real internal-slot brand check.
+    // The private tag never escapes, and the method's boolean result is unused.
+    if (!is_exception.As<Function>()->Call(context, info.This(), 1, &tag).ToLocal(&ignored)) return;
+    if (!info.This()->GetPrivate(context, wasmExceptionStackKey(isolate)).ToLocal(&stack)) return;
+    info.GetReturnValue().Set(stack);
+}
+
+// ECMAScript GetFunctionRealm, following V8 13.1.203's iterative walk in
+// src/objects/js-objects.cc:647-685, through public APIs only. No Global is
+// acquired: these handles live only for the native construct trap.
+static MaybeLocal<Context> wasmConstructorRealm(Isolate* isolate, Local<Value> target) {
+    for (;;) {
+        if (target->IsProxy()) {
+            Local<Proxy> proxy = target.As<Proxy>();
+            // GetFunctionRealm step 4.a: validation can fail after the
+            // prototype getter revokes the proxy.
+            if (proxy->IsRevoked()) {
+                isolate->ThrowException(Exception::TypeError(
+                    String::NewFromUtf8Literal(isolate, "Cannot construct with a revoked Proxy")));
+                return {};
+            }
+            target = proxy->GetTarget();
+            continue;
+        }
+        // Step 3: a bound function has its target's realm, including when
+        // its bind method came from a third realm.
+        if (target->IsFunction()) {
+            Local<Value> bound = target.As<Function>()->GetBoundFunction();
+            if (!bound->IsUndefined()) {
+                target = bound;
+                continue;
+            }
+        }
+        return target.As<Object>()->GetCreationContext(isolate);
     }
-    // GetPrototypeFromConstructor(newTarget): read before the arguments are
-    // converted, as V8 itself reads it (it makes the receiver first).
-    Local<Value> new_target_prototype;
-    if (!info.NewTarget().As<Object>()->Get(context, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&new_target_prototype)) return;
-    // A descriptor that is no object is V8's to reject (a TypeError, as
-    // WebIDL's dictionary conversion of a non-object gives).
-    if (argc > 0 && args[0]->IsObject()) {
+}
+
+static void WasmConstructorConstruct(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Context> context = isolate->GetCurrentContext();
+    // The private derived constructor supplies the original, an argument
+    // array and the actual NewTarget. This nonconstructor callback has no
+    // preallocated receiver and causes no extra prototype Get.
+    Local<Function> original = info[0].As<Function>();
+    Local<Array> arguments = info[1].As<Array>();
+    Local<Object> new_target = info[2].As<Object>();
+    const uint32_t index = info.Data().As<Uint32>()->Value();
+
+    // WebIDL "internally create a new object" steps 3.2-3.3: exactly one
+    // Get, before any descriptor conversion; primitive values select the
+    // original interface prototype in GetFunctionRealm(NewTarget).
+    Local<Value> prototype;
+    if (!new_target->Get(context, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&prototype)) return;
+    if (!prototype->IsObject()) {
+        Local<Context> target_realm;
+        if (!wasmConstructorRealm(isolate, new_target).ToLocal(&target_realm)) return;
+        if (!ensureWasmAdapters(target_realm)) return;
+        Local<Value> intrinsics;
+        if (!target_realm->Global()->GetPrivate(target_realm, wasmIntrinsicPrototypesKey(isolate)).ToLocal(&intrinsics)) return;
+        if (!intrinsics->IsArray()) {
+            isolate->ThrowException(Exception::TypeError(
+                String::NewFromUtf8Literal(isolate, "WebAssembly constructor realm is not initialized")));
+            return;
+        }
+        if (!intrinsics.As<Array>()->Get(target_realm, index).ToLocal(&prototype)) return;
+    }
+
+    std::vector<Local<Value>> args;
+    args.reserve(arguments->Length());
+    for (uint32_t i = 0; i < arguments->Length(); ++i) {
+        Local<Value> value;
+        if (!arguments->Get(context, i).ToLocal(&value)) return;
+        args.push_back(value);
+    }
+    // Indices 2 and 3 are Memory and Table. No other constructor takes an
+    // address descriptor. V8 still validates every other argument itself.
+    if ((index == 2 || index == 3) && !args.empty() && args[0]->IsObject()) {
         Local<Object> descriptor = args[0].As<Object>();
-        // 1. If descriptor["address"] exists, the AddressType it converts to
-        //    (WebIDL enumeration: ToString, then one of the values or a
-        //    TypeError); otherwise i32.
         Local<Value> address;
         if (!descriptor->Get(context, String::NewFromUtf8Literal(isolate, "address")).ToLocal(&address)) return;
         Local<String> address_type = String::NewFromUtf8Literal(isolate, "i32");
@@ -13445,75 +13561,437 @@ static void WasmAddressDescriptorConstructor(const FunctionCallbackInfo<Value>& 
             }
             address_type = converted;
         }
-        // V8 13.1's name for it, as the one own property of a descriptor that
-        // inherits every other member from the caller's. A caller's own
-        // `index` is no member of the dictionary, and is shadowed.
-        Local<Name> names[] = {String::NewFromUtf8Literal(isolate, "index")};
-        Local<Value> values[] = {address_type};
-        args[0] = Object::New(isolate, descriptor, names, values, 1);
+        // WebIDL dictionary conversion 4.1.3.1 is Get(jsDict, key), with
+        // the original receiver. The captured JS factory keeps those reads
+        // inside V8, without a native callback per dictionary member.
+        Local<Value> intrinsics_value, descriptor_factory, adapted;
+        if (!context->Global()->GetPrivate(context, wasmIntrinsicPrototypesKey(isolate)).ToLocal(&intrinsics_value) ||
+            !intrinsics_value->IsArray() || !intrinsics_value.As<Array>()->Get(context, 8).ToLocal(&descriptor_factory) ||
+            !descriptor_factory->IsFunction()) return;
+        Local<Value> factory_args[] = {descriptor, address_type};
+        if (!descriptor_factory.As<Function>()->Call(context, Undefined(isolate), 2, factory_args).ToLocal(&adapted)) return;
+        args[0] = adapted;
     }
     Local<Object> made;
-    if (!original->NewInstance(context, argc, args.data()).ToLocal(&made)) return;
-    // V8 gave it the original's prototype, which is this constructor's too;
-    // a subclass, or Reflect.construct's newTarget, names another.
-    if (new_target_prototype->IsObject() && !made->GetPrototypeV2()->StrictEquals(new_target_prototype)) {
-        if (!made->SetPrototypeV2(context, new_target_prototype).FromMaybe(false)) return;
-    }
+    if (!original->NewInstance(context, static_cast<int>(args.size()), args.data()).ToLocal(&made)) return;
+    // Index 7 is Exception; 5/6 hold the JSPI Promise intrinsics.
+    if (index == 7 && !wasmCaptureExceptionStack(context, made)) return;
+    // WebIDL step 9. The native constructor makes the Wasm internal slots;
+    // only its externally observable prototype needs adapting.
+    if (!made->GetPrototypeV2()->StrictEquals(prototype) && !made->SetPrototypeV2(context, prototype).FromMaybe(false)) return;
     info.GetReturnValue().Set(made);
 }
 
-/// Replace `wasm[name]` with WasmAddressDescriptorConstructor over it. The
-/// interface object's observable shape stays WebIDL's: the same prototype
-/// object (the one V8 gives the memories and tables it makes) as a
-/// non-writable, non-enumerable, non-configurable `prototype`, that
-/// prototype's `constructor` pointing back, the original's `name` and
-/// `length`, and a writable, configurable, non-enumerable namespace member.
-static bool installWasmAddressDescriptorConstructor(Isolate* isolate, Local<Context> context, Local<Object> wasm, const char* name) {
-    Local<String> key = String::NewFromUtf8(isolate, name).ToLocalChecked();
-    Local<Value> value;
-    if (!wasm->Get(context, key).ToLocal(&value) || !value->IsFunction()) return false;
-    Local<Function> original = value.As<Function>();
-    Local<Value> prototype;
-    if (!original->Get(context, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&prototype) || !prototype->IsObject()) return false;
-    Local<Value> length_value;
-    if (!original->Get(context, String::NewFromUtf8Literal(isolate, "length")).ToLocal(&length_value) || !length_value->IsInt32()) return false;
-    Local<Function> constructor;
-    if (!Function::New(context, WasmAddressDescriptorConstructor, original, length_value.As<Int32>()->Value(), ConstructorBehavior::kAllow)
-             .ToLocal(&constructor)) {
-        return false;
-    }
-    constructor->SetName(key);
-    PropertyDescriptor prototype_descriptor(prototype, /*writable=*/false);
-    if (!constructor->DefineProperty(context, String::NewFromUtf8Literal(isolate, "prototype"), prototype_descriptor).FromMaybe(false)) return false;
-    if (!prototype.As<Object>()->DefineOwnProperty(context, String::NewFromUtf8Literal(isolate, "constructor"), constructor, DontEnum).FromMaybe(false)) return false;
-    return wasm->DefineOwnProperty(context, key, constructor, DontEnum).FromMaybe(false);
+static void WasmGlobalValueSet(const FunctionCallbackInfo<Value>& info) {
+    // WebIDL's attribute setter steps now convert a missing argument as
+    // undefined. PR whatwg/webidl#1498 (2025), WebAssembly/spec#2075 and WPT
+    // 5078da54e150d8d380062402eb09ada3aa0857fd record this newer behavior:
+    // Chrome ships it; Firefox bug 2078950 and Safari still lag. V8 13.1's
+    // wasm-js.cc WebAssemblyGlobalSetValue rejects Length() == 0, so supply
+    // exactly one argument and let V8 retain branding and value conversion.
+    Isolate* isolate = info.GetIsolate();
+    Local<Value> argument = info[0];
+    Local<Value> result;
+    if (!info.Data().As<Function>()->Call(isolate->GetCurrentContext(), info.This(), 1, &argument).ToLocal(&result)) return;
+    info.GetReturnValue().Set(result);
 }
 
-/// Every realm the adapter makes calls this once, before any script runs
-/// in it (protocol_realms.createWindowRealm, worker_realm.createWorkerRealm).
-/// A context with no WebAssembly (a jitless V8) is left alone; so is one
-/// where the replacement fails, which keeps V8's constructors.
+static void WasmSuspendingApply(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Context> context = isolate->GetCurrentContext();
+    Local<Function> target = info[0].As<Function>();
+    Local<Context> import_realm;
+    if (!wasmConstructorRealm(isolate, target).ToLocal(&import_realm)) return;
+    if (!ensureWasmAdapters(import_realm)) return;
+    Local<Value> intrinsics_value;
+    if (!import_realm->Global()->GetPrivate(import_realm, wasmIntrinsicPrototypesKey(isolate)).ToLocal(&intrinsics_value)) return;
+    if (!intrinsics_value->IsArray()) {
+        isolate->ThrowException(Exception::TypeError(
+            String::NewFromUtf8Literal(isolate, "WebAssembly import realm is not initialized")));
+        return;
+    }
+    Local<Array> intrinsics = intrinsics_value.As<Array>();
+    Local<Value> promise_constructor, promise_resolve;
+    if (!intrinsics->Get(import_realm, 5).ToLocal(&promise_constructor) ||
+        !intrinsics->Get(import_realm, 6).ToLocal(&promise_resolve)) return;
+    Local<Array> arguments = info[2].As<Array>();
+    std::vector<Local<Value>> args;
+    args.reserve(arguments->Length());
+    for (uint32_t i = 0; i < arguments->Length(); ++i) {
+        Local<Value> value;
+        if (!arguments->Get(context, i).ToLocal(&value)) return;
+        args.push_back(value);
+    }
+    // JSPI "create a suspending function" 3.10/3.14: preserve the receiver,
+    // argument list and abrupt completion. An apply trap exposes the actual
+    // receiver; a plain native Function callback would box it as info.This().
+    Local<Value> result;
+    if (!target->Call(context, info[1], static_cast<int>(args.size()), args.data()).ToLocal(&result)) return;
+    // Step 3.15: intrinsic PromiseResolve in the import's realm. Capturing
+    // both intrinsics preserves same-constructor Promise identity, including
+    // when script replaces Promise or Promise.resolve. Resolver::New would
+    // instead allocate a new promise and assimilate the original.
+    Local<Value> promise;
+    if (!promise_resolve.As<Function>()->Call(import_realm, promise_constructor, 1, &result).ToLocal(&promise)) return;
+    info.GetReturnValue().Set(promise);
+}
+
+static void WasmSuspendingConstruct(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Context> context = isolate->GetCurrentContext();
+    Local<Function> original = info[0].As<Function>();
+    Local<Array> arguments = info[1].As<Array>();
+    std::vector<Local<Value>> args;
+    args.reserve(arguments->Length());
+    for (uint32_t i = 0; i < arguments->Length(); ++i) {
+        Local<Value> value;
+        if (!arguments->Get(context, i).ToLocal(&value)) return;
+        args.push_back(value);
+    }
+    if (!args.empty() && args[0]->IsFunction() && !args[0].As<Function>()->GetScriptOrigin().Options().IsWasm()) {
+        Local<Proxy> callable;
+        if (!Proxy::New(context, args[0].As<Object>(), info.Data().As<Object>()).ToLocal(&callable)) return;
+        args[0] = callable;
+    }
+    // V8 13.1.203 wasm-js.cc:2393-2397 rejects native wasm exports here.
+    // Do not hide their identity behind a Proxy and bypass that check.
+    // Step 3.15 is emulated only for JS callables. Step 3.5 (the pre-call active-suspender check) and catchable
+    // SuspendError still require V8 support: wrappers.cc 1166-1228 and
+    // runtime-wasm.cc 143-159, 329-332 expose no public suspension hook.
+    Local<Object> made;
+    if (!original->NewInstance(context, static_cast<int>(args.size()), args.data()).ToLocal(&made)) return;
+    info.GetReturnValue().Set(made);
+}
+
+// Materialize only on a namespace read or an indirect use of this realm's
+// Wasm intrinsics. Public deletion/assignment never removes the private state.
+static bool initializeWasmAdapters(Local<Context> context, Local<Array> preparation) {
+    Isolate* isolate = context->GetIsolate();
+    Context::Scope context_scope(context);
+    NativeStepScope native_step(isolate);
+    Local<Value> wasm_value;
+    if (!preparation->Get(context, kWasmNamespace).ToLocal(&wasm_value)) return false;
+    Local<Object> wasm = wasm_value.As<Object>();
+    const char* const names[] = {"Module", "Instance", "Memory", "Table", "Global", "Exception"};
+    Local<Function> originals[6];
+    Local<Value> prototypes[6];
+    Local<Function> replacements[6];
+    // These prototype-realm wrappers for Module, Instance, Memory, Table,
+    // Global and Exception exist ONLY because V8 13.1 picks the wrong
+    // prototype realm. RE-CHECK at EVERY V8 upgrade: delete the wrappers
+    // when V8 supplies the native NewTarget-realm fallback. The independent
+    // Memory/Table address and Exception stack adaptations need their own
+    // upgrade checks; they are not reasons to retain prototype wrapping.
+    // Ordinary new calls the original directly; only a custom NewTarget uses
+    // the native prototype/realm adapter. A derived class returns the native
+    // object without super, avoiding a receiver allocation/prototype Get before
+    // its body. Expose its bound function so toString stays NativeFunction.
+    // OrdinaryHasInstance follows the hidden class, whose private forwarder
+    // uses the original's immutable prototype. The exposed function has only
+    // the original interface's own properties, with their exact descriptors.
+    //
+    // Memory/Table share a private empty-target descriptor Proxy. Each call
+    // saves/restores its pair, including on nested construction and throws.
+    // No caller descriptor survives an outermost call. The original receiver
+    // is used for every Get; a legacy nonconfigurable `index` is still ignored.
+    Local<String> fast_source = String::NewFromUtf8Literal(isolate,
+        "(function(saved) { 'use strict';"
+        "const construct = saved[1], get = saved[2], apply = saved[3];"
+        "const P = saved[4], TypeErrorCtor = saved[5], Base = saved[6];"
+        "const define = saved[7], ownKeys = saved[8], descriptorOf = saved[9];"
+        "const setPrototype = saved[10], prototypeOf = saved[11];"
+        "const functionPrototype = saved[12], bind = saved[13];"
+        "const hasInstanceKey = saved[14], hasInstance = saved[15], slice = saved[16];"
+        "let currentDescriptor, currentAddress;"
+        "const descriptor = new P({__proto__:null}, {__proto__:null, get(_, key) {"
+        "return key === 'index' ? currentAddress : get(currentDescriptor, key, currentDescriptor); }});"
+        "return function(target, native, kind) {"
+        "const W = {[target.name]: class extends Base { constructor(a0, a1, a2) {"
+        "const newTarget = new.target;"
+        "if (newTarget !== W) return native(target, apply(slice, arguments, []), newTarget);"
+        "const count = arguments.length;"
+        "if (kind === 2 || kind === 3) {"
+        "if (count === 0) return construct(target, arguments);"
+        "const original = a0;"
+        "if ((typeof original !== 'object' || original === null) && typeof original !== 'function') return construct(target, arguments);"
+        "let address = original.address;"
+        // Template substitution applies ToString (including Symbol rejection
+        // and the string primitive hint), unlike String(x) or '' + x.
+        "address = address === undefined ? 'i32' : `${address}`;"
+        "if (address !== 'i32' && address !== 'i64') throw new TypeErrorCtor('Invalid WebAssembly address type');"
+        "const previousDescriptor = currentDescriptor, previousAddress = currentAddress;"
+        "currentDescriptor = original; currentAddress = address;"
+        "try {"
+        "if (count === 1) return new target(descriptor);"
+        "if (count === 2) return new target(descriptor, a1);"
+        "const args = apply(slice, arguments, []); args[0] = descriptor; return construct(target, args);"
+        "} finally { currentDescriptor = previousDescriptor; currentAddress = previousAddress; }"
+        "}"
+        // Exception's optional trace requires the captured-string adapter.
+        // Missing/null/undefined options request no trace and need no work.
+        "if (kind === 5 && count >= 3 && a2 !== undefined && a2 !== null) return native(target, apply(slice, arguments, []), replacement);"
+        "if (count === 1) return new target(a0);"
+        "if (count === 2) return new target(a0, a1);"
+        "return construct(target, arguments);"
+        "}}}[target.name];"
+        "setPrototype(W, functionPrototype);"
+        "define(W, hasInstanceKey, {__proto__:null, value(value) { return apply(hasInstance, target, [value]); }});"
+        "const replacement = apply(bind, W, [undefined]);"
+        "setPrototype(replacement, prototypeOf(target));"
+        "const keys = ownKeys(target);"
+        "for (let i = 0; i < keys.length; ++i) define(replacement, keys[i], setPrototype(descriptorOf(target, keys[i]), null));"
+        "return replacement; }; })");
+    Local<Script> fast_script;
+    Local<Value> fast_maker, fast_factory;
+    if (!Script::Compile(context, fast_source).ToLocal(&fast_script) ||
+        !fast_script->Run(context).ToLocal(&fast_maker) || !fast_maker->IsFunction()) return false;
+    Local<Value> fast_args[] = {preparation};
+    if (!fast_maker.As<Function>()->Call(context, Undefined(isolate), 1, fast_args).ToLocal(&fast_factory) ||
+        !fast_factory->IsFunction()) return false;
+    // Prepare everything before publishing a replacement. The original
+    // functions preserve name, length, statics and call-without-new errors.
+    for (uint32_t i = 0; i < 6; ++i) {
+        Local<String> name = String::NewFromUtf8(isolate, names[i]).ToLocalChecked();
+        Local<Value> original;
+        if (!wasm->Get(context, name).ToLocal(&original) || !original->IsFunction()) return false;
+        originals[i] = original.As<Function>();
+        if (!originals[i]->Get(context, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&prototypes[i]) || !prototypes[i]->IsObject()) return false;
+        Local<Function> construct;
+        const uint32_t intrinsic_index = i == 5 ? 7 : i;
+        if (!Function::New(context, WasmConstructorConstruct, Integer::NewFromUnsigned(isolate, intrinsic_index), 3, ConstructorBehavior::kThrow).ToLocal(&construct)) return false;
+        Local<Value> factory_args[] = {originals[i], construct, Integer::NewFromUnsigned(isolate, i)};
+        Local<Value> replacement;
+        if (!fast_factory.As<Function>()->Call(context, Undefined(isolate), 3, factory_args).ToLocal(&replacement) || !replacement->IsFunction()) return false;
+        replacements[i] = replacement.As<Function>();
+    }
+    Local<Value> promise_constructor, promise_resolve;
+    if (!preparation->Get(context, kWasmPromise).ToLocal(&promise_constructor) ||
+        !preparation->Get(context, kWasmPromiseResolve).ToLocal(&promise_resolve)) return false;
+    // An empty target avoids Proxy invariants from a user's nonconfigurable
+    // `index`. Both the target and handler have null prototypes; only the
+    // captured Reflect.get and Proxy intrinsics can participate after setup.
+    Local<String> descriptor_source = String::NewFromUtf8Literal(isolate,
+        "(function(get, P) { 'use strict'; return function(original, address) {"
+        "return new P({__proto__:null}, {__proto__:null, get(target, key) {"
+        "return key === 'index' ? address : get(original, key, original); }}); }; })");
+    Local<Script> descriptor_script;
+    Local<Value> descriptor_maker, descriptor_factory;
+    if (!Script::Compile(context, descriptor_source).ToLocal(&descriptor_script) ||
+        !descriptor_script->Run(context).ToLocal(&descriptor_maker) || !descriptor_maker->IsFunction()) return false;
+    Local<Value> descriptor_args[2];
+    if (!preparation->Get(context, kWasmGet).ToLocal(&descriptor_args[0]) ||
+        !preparation->Get(context, kWasmProxy).ToLocal(&descriptor_args[1])) return false;
+    if (!descriptor_maker.As<Function>()->Call(context, Undefined(isolate), 2, descriptor_args).ToLocal(&descriptor_factory) || !descriptor_factory->IsFunction()) return false;
+    // The private JS constructor is embedding machinery, not the script
+    // responsible for a CSP violation. Retain its unforgeable script ID for
+    // running-script attribution below, without retaining a native handle.
+    // Slots 10/11 also serve a cloned Module/Memory's lazy constructor. They
+    // must not consult the mutable namespace after initialization.
+    Local<Value> intrinsic_values[] = {prototypes[0], prototypes[1], prototypes[2], prototypes[3], prototypes[4], promise_constructor, promise_resolve, prototypes[5], descriptor_factory,
+        Integer::New(isolate, fast_script->GetUnboundScript()->GetId()), replacements[0], replacements[2]};
+    Local<Array> intrinsics = Array::New(isolate, intrinsic_values, 12);
+    if (!intrinsics->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return false;
+    if (!context->Global()->SetPrivate(context, wasmIntrinsicPrototypesKey(isolate), intrinsics).FromMaybe(false)) return false;
+    for (uint32_t i = 0; i < 6; ++i) {
+        // A received Module/Memory can expose its prototype before namespace
+        // access. Leave its lazy constructor alone: its getter returns the
+        // private replacement, and any user overwrite/deletion must survive.
+        if (i != 0 && i != 2) {
+            if (!prototypes[i].As<Object>()->DefineOwnProperty(context, String::NewFromUtf8Literal(isolate, "constructor"), replacements[i], DontEnum).FromMaybe(false)) return false;
+        }
+        Local<String> name = String::NewFromUtf8(isolate, names[i]).ToLocalChecked();
+        if (!wasm->DefineOwnProperty(context, name, replacements[i], DontEnum).FromMaybe(false)) return false;
+    }
+    Local<Object> global_prototype = prototypes[4].As<Object>();
+    Local<String> value_name = String::NewFromUtf8Literal(isolate, "value");
+    Local<Value> descriptor_value;
+    if (!global_prototype->GetOwnPropertyDescriptor(context, value_name).ToLocal(&descriptor_value) || !descriptor_value->IsObject()) return false;
+    Local<Object> descriptor = descriptor_value.As<Object>();
+    Local<Value> getter, setter, enumerable, configurable;
+    if (!descriptor->Get(context, String::NewFromUtf8Literal(isolate, "get")).ToLocal(&getter) ||
+        !descriptor->Get(context, String::NewFromUtf8Literal(isolate, "set")).ToLocal(&setter) || !setter->IsFunction() ||
+        !descriptor->Get(context, String::NewFromUtf8Literal(isolate, "enumerable")).ToLocal(&enumerable) ||
+        !descriptor->Get(context, String::NewFromUtf8Literal(isolate, "configurable")).ToLocal(&configurable)) return false;
+    Local<Function> setter_adapter;
+    if (!Function::New(context, WasmGlobalValueSet, setter, 1, ConstructorBehavior::kThrow).ToLocal(&setter_adapter)) return false;
+    setter_adapter->SetName(String::NewFromUtf8Literal(isolate, "set value"));
+    PropertyDescriptor value_descriptor(getter, setter_adapter);
+    value_descriptor.set_enumerable(enumerable->IsTrue());
+    value_descriptor.set_configurable(configurable->IsTrue());
+    if (!global_prototype->DefineProperty(context, value_name, value_descriptor).FromMaybe(false)) return false;
+
+    // Golden rule 2: Exception.length remains V8's 1. The spec's 2 dates
+    // to 2019, while Firefox/Safari still expose 1 (pinned runs above).
+    // For stack, Chrome/Firefox expose a prototype member, but disagree on
+    // enumerability; Safari has no member. With no enumerability majority,
+    // follow the spec's enumerable getter (exception-handling PR 218, 2022).
+    Local<Object> exception_prototype = prototypes[5].As<Object>();
+    Local<Value> is_exception, tag_constructor;
+    if (!exception_prototype->Get(context, String::NewFromUtf8Literal(isolate, "is")).ToLocal(&is_exception) || !is_exception->IsFunction() ||
+        !wasm->Get(context, String::NewFromUtf8Literal(isolate, "Tag")).ToLocal(&tag_constructor) || !tag_constructor->IsFunction()) return false;
+    Local<Name> tag_names[] = {String::NewFromUtf8Literal(isolate, "parameters")};
+    Local<Value> tag_values[] = {Array::New(isolate)};
+    Local<Value> tag_descriptor = Object::New(isolate, Null(isolate), tag_names, tag_values, 1);
+    Local<Object> brand_tag;
+    if (!tag_constructor.As<Function>()->NewInstance(context, 1, &tag_descriptor).ToLocal(&brand_tag)) return false;
+    Local<Value> brand_values[] = {is_exception, brand_tag};
+    Local<Array> brand = Array::New(isolate, brand_values, 2);
+    if (!brand->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return false;
+    Local<Function> stack_getter;
+    if (!Function::New(context, WasmExceptionStackGet, brand, 0, ConstructorBehavior::kThrow).ToLocal(&stack_getter)) return false;
+    stack_getter->SetName(String::NewFromUtf8Literal(isolate, "get stack"));
+    PropertyDescriptor stack_descriptor(stack_getter, Undefined(isolate));
+    stack_descriptor.set_enumerable(true);
+    stack_descriptor.set_configurable(true);
+    if (!exception_prototype->DefineProperty(context, String::NewFromUtf8Literal(isolate, "stack"), stack_descriptor).FromMaybe(false)) return false;
+
+    // JSPI is optional in this V8 build (disabled under --jitless).
+    Local<String> suspending_name = String::NewFromUtf8Literal(isolate, "Suspending");
+    Local<Value> suspending;
+    if (!wasm->Get(context, suspending_name).ToLocal(&suspending)) return false;
+    if (!suspending->IsFunction()) return true;
+    Local<Function> apply;
+    if (!Function::New(context, WasmSuspendingApply, {}, 3, ConstructorBehavior::kThrow).ToLocal(&apply)) return false;
+    Local<Object> apply_handler = Object::New(isolate);
+    if (!apply_handler->SetPrototypeV2(context, Null(isolate)).FromMaybe(false) ||
+        !apply_handler->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "apply"), apply).FromMaybe(false) ||
+        !apply_handler->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return false;
+    Local<Function> construct;
+    if (!Function::New(context, WasmSuspendingConstruct, apply_handler, 3, ConstructorBehavior::kThrow).ToLocal(&construct)) return false;
+    Local<Object> construct_handler = Object::New(isolate);
+    if (!construct_handler->SetPrototypeV2(context, Null(isolate)).FromMaybe(false) ||
+        !construct_handler->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "construct"), construct).FromMaybe(false) ||
+        !construct_handler->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return false;
+    Local<Proxy> suspending_adapter;
+    if (!Proxy::New(context, suspending.As<Object>(), construct_handler).ToLocal(&suspending_adapter)) return false;
+    Local<Value> suspending_prototype;
+    if (!suspending.As<Object>()->Get(context, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&suspending_prototype) || !suspending_prototype->IsObject()) return false;
+    if (!suspending_prototype.As<Object>()->DefineOwnProperty(context, String::NewFromUtf8Literal(isolate, "constructor"), suspending_adapter, DontEnum).FromMaybe(false) ||
+        !wasm->DefineOwnProperty(context, suspending_name, suspending_adapter, DontEnum).FromMaybe(false)) return false;
+    return true;
+}
+
+static bool ensureWasmAdapters(Local<Context> context) {
+    Isolate* isolate = context->GetIsolate();
+    Local<Value> intrinsics, preparation;
+    if (!context->Global()->GetPrivate(context, wasmIntrinsicPrototypesKey(isolate)).ToLocal(&intrinsics)) return false;
+    if (intrinsics->IsArray()) return true;
+    if (!context->Global()->GetPrivate(context, wasmPreparationKey(isolate)).ToLocal(&preparation)) return false;
+    // Unprepared contexts retain the caller's existing missing-intrinsics
+    // check. Do not recreate a deleted or overwritten public namespace.
+    if (!preparation->IsArray()) return true;
+    if (!initializeWasmAdapters(context, preparation.As<Array>())) return false;
+    return context->Global()->DeletePrivate(context, wasmPreparationKey(isolate)).FromMaybe(false);
+}
+
+static void WasmNamespaceGet(Local<Name>, const PropertyCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Array> preparation = info.Data().As<Array>();
+    Local<Context> context;
+    // A different realm (or an inheriting receiver) may perform the first
+    // read. All adapters and intrinsics must belong to the namespace's realm.
+    if (!preparation->GetCreationContext(isolate).ToLocal(&context)) return;
+    Context::Scope context_scope(context);
+    if (!ensureWasmAdapters(context)) return;
+    Local<Value> wasm;
+    if (preparation->Get(context, kWasmNamespace).ToLocal(&wasm)) info.GetReturnValue().Set(wasm);
+}
+
+static void WasmPrototypeConstructorGet(const PropertyCallbackInfo<Value>& info, uint32_t intrinsic_index) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Array> preparation = info.Data().As<Array>();
+    Local<Context> context;
+    if (!preparation->GetCreationContext(isolate).ToLocal(&context)) return;
+    Context::Scope context_scope(context);
+    if (!ensureWasmAdapters(context)) return;
+    Local<Value> intrinsics, constructor;
+    if (!context->Global()->GetPrivate(context, wasmIntrinsicPrototypesKey(isolate)).ToLocal(&intrinsics) || !intrinsics->IsArray()) return;
+    if (intrinsics.As<Array>()->Get(context, intrinsic_index).ToLocal(&constructor)) info.GetReturnValue().Set(constructor);
+}
+
+static void WasmModuleConstructorGet(Local<Name>, const PropertyCallbackInfo<Value>& info) {
+    WasmPrototypeConstructorGet(info, 10);
+}
+
+static void WasmMemoryConstructorGet(Local<Name>, const PropertyCallbackInfo<Value>& info) {
+    WasmPrototypeConstructorGet(info, 11);
+}
+
+/// Prepare once before script in every Window, worker, worklet and ShadowRealm.
+/// V8 13.1.203 v8-object.h:367-387 and test-accessors.cc:860-894 guarantee
+/// that SetLazyDataProperty reads once, then becomes a data property; assignment
+/// bypasses its getter. GetOwnPropertyDescriptor resolves it as a data property
+/// (js-objects.cc:1890-1958). Deletion and replacement can skip initialization.
+/// No scripts, class factories, Tags or adapter functions are made here. The
+/// private array owns only traced references: no Global, registry or teardown.
 void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>* context_handle) {
     HandleScope handle_scope(isolate);
     Local<Context> context = context_handle->Get(isolate);
     Context::Scope context_scope(context);
-    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
+    NativeStepScope native_step(isolate);
     TryCatch try_catch(isolate);
-    Local<Value> wasm;
-    if (!context->Global()->Get(context, String::NewFromUtf8Literal(isolate, "WebAssembly")).ToLocal(&wasm) || !wasm->IsObject()) return;
-    installWasmAddressDescriptorConstructor(isolate, context, wasm.As<Object>(), "Memory");
-    installWasmAddressDescriptorConstructor(isolate, context, wasm.As<Object>(), "Table");
+    Local<Object> global = context->Global();
+    Local<Value> values[kWasmPreparationSize];
+    Local<Value> reflect, function, array, array_prototype, symbol;
+    auto get = [&](Local<Value> object, const char* name, Local<Value>* value) {
+        return object->IsObject() && object.As<Object>()->Get(context,
+            String::NewFromUtf8(isolate, name, NewStringType::kInternalized).ToLocalChecked()).ToLocal(value);
+    };
+    // Capture function references now, not mutable helper objects to inspect
+    // on first access. PromiseResolve must likewise predate script tampering.
+    if (!get(global, "WebAssembly", &values[kWasmNamespace]) || !values[kWasmNamespace]->IsObject() ||
+        !get(global, "Reflect", &reflect) ||
+        !get(reflect, "construct", &values[kWasmConstruct]) ||
+        !get(reflect, "get", &values[kWasmGet]) ||
+        !get(reflect, "apply", &values[kWasmApply]) ||
+        !get(global, "Proxy", &values[kWasmProxy]) ||
+        !get(global, "TypeError", &values[kWasmTypeError]) ||
+        !get(global, "Object", &values[kWasmObject]) ||
+        !get(values[kWasmObject], "defineProperty", &values[kWasmDefine]) ||
+        !get(reflect, "ownKeys", &values[kWasmOwnKeys]) ||
+        !get(values[kWasmObject], "getOwnPropertyDescriptor", &values[kWasmDescriptor]) ||
+        !get(values[kWasmObject], "setPrototypeOf", &values[kWasmSetPrototype]) ||
+        !get(values[kWasmObject], "getPrototypeOf", &values[kWasmPrototype]) ||
+        !get(global, "Function", &function) ||
+        !get(function, "prototype", &values[kWasmFunctionPrototype]) ||
+        !get(values[kWasmFunctionPrototype], "bind", &values[kWasmBind]) ||
+        !get(global, "Symbol", &symbol) ||
+        !get(symbol, "hasInstance", &values[kWasmHasInstanceKey]) ||
+        !values[kWasmFunctionPrototype].As<Object>()->Get(context, values[kWasmHasInstanceKey]).ToLocal(&values[kWasmHasInstance]) ||
+        !get(global, "Array", &array) || !get(array, "prototype", &array_prototype) ||
+        !get(array_prototype, "slice", &values[kWasmSlice]) ||
+        !get(global, "Promise", &values[kWasmPromise]) ||
+        !get(values[kWasmPromise], "resolve", &values[kWasmPromiseResolve])) return;
+    Local<Array> preparation = Array::New(isolate, values, kWasmPreparationSize);
+    if (!preparation->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false) ||
+        !global->SetPrivate(context, wasmPreparationKey(isolate), preparation).FromMaybe(false)) return;
+    // A native Module or shared Memory can arrive by structured clone before
+    // this realm reads WebAssembly (V8 13.1.203 value-serializer.cc:654-658).
+    // These are the only cloneable native Wasm object types. Their constructor
+    // data properties are another first-use trigger; no deserializer runs JS.
+    const char* const constructor_names[] = {"Module", "Memory"};
+    AccessorNameGetterCallback constructor_getters[] = {WasmModuleConstructorGet, WasmMemoryConstructorGet};
+    for (uint32_t i = 0; i < 2; ++i) {
+        Local<Value> constructor, prototype;
+        if (!get(values[kWasmNamespace], constructor_names[i], &constructor) || !constructor->IsFunction() ||
+            !get(constructor, "prototype", &prototype) || !prototype->IsObject() ||
+            !prototype.As<Object>()->SetLazyDataProperty(context, String::NewFromUtf8Literal(isolate, "constructor"),
+                constructor_getters[i], preparation, DontEnum).FromMaybe(false)) return;
+    }
+    (void)global->SetLazyDataProperty(context, String::NewFromUtf8Literal(isolate, "WebAssembly"),
+        WasmNamespaceGet, preparation, DontEnum).FromMaybe(false);
 }
 
 } // extern "C"
-// ---- end lane: wasmh ----
+// ---- end WebAssembly JS API adaptation ----
 // ---- lane: csp2 ----
 extern "C" {
 
 /// CSP 2.4.1 step 2's running script position: the top frame of the
-/// current stack trace (StackTrace::CurrentStackTrace with one frame - the
-/// topmost JavaScript frame; Blink's SourceLocation::Capture reads the
-/// same). `*url` gets its GetScriptNameOrSourceURL as malloc'd UTF-8 (null
+/// current stack trace (the topmost application JavaScript frame; Blink's
+/// SourceLocation::Capture reads the same). Skip only the private Wasm
+/// adapter's exact ScriptId, never a caller-controlled name or sourceURL.
+/// `*url` gets its GetScriptNameOrSourceURL as malloc'd UTF-8 (null
 /// when the frame names none), `*line` and `*column` its 1-based position
 /// (Message::kNoLineNumberInfo / kNoColumnInfo, 0, when unknown). False
 /// when the stack has no frame. `isolate` must be the current isolate.
@@ -13527,11 +14005,32 @@ bool v8_Isolate_RunningScriptLocation(Isolate* isolate, char** url, size_t* url_
     *line = 0;
     *column = 0;
     HandleScope handle_scope(isolate);
-    Local<StackTrace> trace = StackTrace::CurrentStackTrace(
-        isolate, 1, static_cast<StackTrace::StackTraceOptions>(StackTrace::kDetailed | StackTrace::kExposeFramesAcrossSecurityOrigins));
+    const auto options = static_cast<StackTrace::StackTraceOptions>(
+        StackTrace::kDetailed | StackTrace::kScriptId | StackTrace::kExposeFramesAcrossSecurityOrigins);
+    Local<StackTrace> trace = StackTrace::CurrentStackTrace(isolate, 1, options);
     if (trace.IsEmpty() || trace->GetFrameCount() < 1) return false;
     Local<StackFrame> frame = trace->GetFrame(isolate, 0);
     if (frame.IsEmpty()) return false;
+    Local<Context> context = isolate->GetCurrentContext();
+    Local<Value> intrinsics, script_id;
+    if (!context.IsEmpty() &&
+        context->Global()->GetPrivate(context, wasmIntrinsicPrototypesKey(isolate)).ToLocal(&intrinsics) && intrinsics->IsArray() &&
+        intrinsics.As<Array>()->Get(context, 9).ToLocal(&script_id) && script_id->IsInt32() &&
+        frame->GetScriptId() == script_id.As<Int32>()->Value()) {
+        // Usually just the constructor frame precedes the caller. Capture
+        // more only on this rare path, and stop at the first different ID.
+        trace = StackTrace::CurrentStackTrace(isolate, 64, options);
+        if (trace.IsEmpty()) return false;
+        frame.Clear();
+        for (int i = 0; i < trace->GetFrameCount(); ++i) {
+            Local<StackFrame> candidate = trace->GetFrame(isolate, i);
+            if (!candidate.IsEmpty() && candidate->GetScriptId() != script_id.As<Int32>()->Value()) {
+                frame = candidate;
+                break;
+            }
+        }
+        if (frame.IsEmpty()) return false;
+    }
     *line = frame->GetLineNumber();
     *column = frame->GetColumn();
     Local<String> name = frame->GetScriptNameOrSourceURL();
