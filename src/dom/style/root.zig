@@ -72,3 +72,9 @@ pub fn deliverSheet(owner: *@import("runtime").Instance, path: []const u16, byte
 // No refAllDecls here: the dom module's own tests are not V8-linked, and
 // the resolver's functions reach the engine. Each file's tests run as it
 // is imported; tests/v8/style_engine_test.zig drives the resolver.
+
+// Q73/Q95: discover the private helper's pure inline test without forcing
+// resolver functions that reach the engine. Deliberately not refAllDecls.
+test {
+    _ = engine;
+}
