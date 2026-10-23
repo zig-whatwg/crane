@@ -61,6 +61,8 @@ pub const Longhand = enum(u8) {
     align_content,
     align_items,
     align_self,
+    anchor_name,
+    anchor_scope,
     appearance,
     background_color,
     background_image,
@@ -130,6 +132,10 @@ pub const Longhand = enum(u8) {
     padding_right,
     padding_top,
     position,
+    position_anchor,
+    position_area,
+    position_try_fallbacks,
+    position_try_order,
     right,
     text_orientation,
     text_transform,
@@ -284,6 +290,11 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 /// A longhand's grammar.
 pub const Grammar = enum {
     alignment,
+    anchor_names,
+    anchor_scope,
+    position_anchor,
+    position_area,
+    position_try_fallbacks,
     keywords,
     /// <length-percentage> | auto (margins, insets)
     length_percentage_auto,
@@ -340,6 +351,8 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .justify_content, .inherited = false, .initial = .{ .alignment = .{ .position = .normal } }, .grammar = .alignment },
         .{ .longhand = .justify_items, .inherited = false, .initial = .{ .alignment = .{ .position = .legacy } }, .grammar = .alignment },
         .{ .longhand = .justify_self, .inherited = false, .initial = .{ .alignment = .{ .position = .auto } }, .grammar = .alignment },
+        .{ .longhand = .anchor_name, .inherited = false, .initial = Value.kw(.none), .grammar = .anchor_names },
+        .{ .longhand = .anchor_scope, .inherited = false, .initial = Value.kw(.none), .grammar = .anchor_scope },
         .{ .longhand = .appearance, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .auto, .base, .base_select, .searchfield, .textarea, .checkbox, .radio, .menulist, .listbox, .meter, .progress_bar, .button, .textfield, .menulist_button } },
         .{ .longhand = .background_color, .inherited = false, .initial = .{ .color = Color.transparent }, .grammar = .color, .quirky_color = true },
         .{ .longhand = .background_image, .inherited = false, .initial = Value.kw(.none), .grammar = .image },
@@ -417,6 +430,10 @@ const infos: [Longhand.count]Info = blk: {
         // CSSWG reversed the position shorthand/reset resolution on 2024-09-04:
         // https://github.com/w3c/csswg-drafts/issues/10321#issuecomment-2330338181
         // Both pinned/upstream WPT and C/F/S ship normal as the initial value.
+        .{ .longhand = .position_anchor, .inherited = false, .initial = Value.kw(.normal), .grammar = .position_anchor },
+        .{ .longhand = .position_area, .inherited = false, .initial = Value.kw(.none), .grammar = .position_area },
+        .{ .longhand = .position_try_fallbacks, .inherited = false, .initial = Value.kw(.none), .grammar = .position_try_fallbacks },
+        .{ .longhand = .position_try_order, .inherited = false, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .normal, .most_width, .most_height, .most_block_size, .most_inline_size } },
         .{ .longhand = .right, .inherited = false, .initial = Value.kw(.auto), .grammar = .length_percentage_auto, .quirky_length = true },
         // Writing Modes 4 §5.1: computed as specified, including horizontal boxes.
         .{ .longhand = .text_orientation, .inherited = true, .initial = Value.kw(.mixed), .grammar = .keywords, .keywords = &.{ .mixed, .upright, .sideways, .sideways_right } },
@@ -486,6 +503,7 @@ pub const Shorthand = enum(u8) {
     place_content,
     place_items,
     place_self,
+    position_try,
     white_space,
 
     pub fn name(self: Shorthand) []const u8 {
@@ -533,6 +551,7 @@ pub const Shorthand = enum(u8) {
             .place_content => &.{ .align_content, .justify_content },
             .place_items => &.{ .align_items, .justify_items },
             .place_self => &.{ .align_self, .justify_self },
+            .position_try => &.{ .position_try_order, .position_try_fallbacks },
             .white_space => &.{ .white_space_collapse, .text_wrap_mode },
         };
     }
@@ -825,6 +844,20 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
     const def = l.info();
     switch (def.grammar) {
         .alignment => return .{ .alignment = @import("alignment.zig").Value.consume(stream, std.meta.stringToEnum(@import("alignment.zig").Mode, @tagName(l)).?) orelse return null },
+        .anchor_names, .anchor_scope => {
+            if (takeKeyword(stream, &.{.none})) |k| return Value.kw(k);
+            if (def.grammar == .anchor_scope) if (takeKeyword(stream, &.{.all})) |k| return Value.kw(k);
+            return anchorNames(options, stream, true);
+        },
+        .position_anchor => {
+            if (takeKeyword(stream, &.{ .normal, .none, .auto, .match_parent })) |k| return Value.kw(k);
+            return anchorNames(options, stream, false);
+        },
+        .position_area => {
+            if (takeKeyword(stream, &.{.none})) |k| return Value.kw(k);
+            return .{ .position_area = @import("position_area.zig").Area.consume(stream) orelse return null };
+        },
+        .position_try_fallbacks => return positionTryFallbacks(options, stream),
         .keywords => {
             const k = identKeyword(stream.peek()) orelse return null;
             for (def.keywords) |allowed| if (allowed == k) {
@@ -835,12 +868,13 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         },
         .length_percentage_auto => {
             if (takeKeyword(stream, &.{.auto})) |k| return Value.kw(k);
-            return lengthPercentage(options, stream, .{ .negative = true, .quirky = def.quirky_length });
+            const inset = if (def.logical) |logical| logical.group == .inset else l == .top or l == .right or l == .bottom or l == .left;
+            return lengthPercentage(options, stream, .{ .negative = true, .quirky = def.quirky_length, .anchor_position = inset, .anchor_size = true });
         },
         .length_percentage_nonneg => return lengthPercentage(options, stream, .{ .negative = false, .quirky = def.quirky_length }),
         .size => {
             if (takeKeyword(stream, &.{ .auto, .min_content, .max_content, .fit_content })) |k| return Value.kw(k);
-            return lengthPercentage(options, stream, .{ .negative = false, .quirky = def.quirky_length });
+            return lengthPercentage(options, stream, .{ .negative = false, .quirky = def.quirky_length, .anchor_size = true });
         },
         .line_width => {
             if (takeKeyword(stream, &.{ .thin, .medium, .thick })) |k| return Value.kw(k);
@@ -912,6 +946,28 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
 
 /// Anchor Position 1 §§2.1–2.2: names remain case-sensitive, including
 /// duplicates. Only CSS identifier serialization changes their spelling.
+fn anchorNames(options: ParseOptions, stream: *Stream, list: bool) Allocator.Error!?Value {
+    const allocator = options.allocator;
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(allocator);
+    while (true) {
+        const name = try @import("anchor_fallbacks.zig").dashedName(allocator, stream) orelse return null;
+        defer allocator.free(name);
+        const escaped = try serialize_mod.serializeIdentifier(allocator, name);
+        defer allocator.free(escaped);
+        try out.appendSlice(allocator, escaped);
+        if (!list or stream.peek().token_type != .comma) break;
+        _ = stream.next();
+        try out.appendSlice(allocator, ", ");
+    }
+    return .{ .text = try SharedText.create(allocator, out.items) };
+}
+
+fn positionTryFallbacks(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
+    if (takeKeyword(stream, &.{.none})) |k| return Value.kw(k);
+    return .{ .try_fallbacks = .{ .list = try @import("anchor_fallbacks.zig").Fallbacks.parse(options.allocator, stream) orelse return null } };
+}
+
 fn identKeyword(t: Token) ?Keyword {
     if (t.token_type != .ident) return null;
     if (std.mem.indexOfScalar(u8, t.value, '\\') != null) {
@@ -1389,6 +1445,20 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
             out.appendAssumeCapacity(.{ .longhand = ls[1], .value = .{ .value = second } });
             return true;
         },
+        .position_try => {
+            // Anchor Position 1 §6.3: the optional order precedes the list.
+            const order = (try parseLonghand(options, .position_try_order, stream)) orelse Value.kw(.normal);
+            const fallbacks = (try positionTryFallbacks(options, stream)) orelse return false;
+            errdefer fallbacks.release();
+            if (!stream.atEnd()) {
+                fallbacks.release();
+                return false;
+            }
+            try out.ensureUnusedCapacity(options.allocator, 2);
+            out.appendAssumeCapacity(.{ .longhand = .position_try_order, .value = .{ .value = order } });
+            out.appendAssumeCapacity(.{ .longhand = .position_try_fallbacks, .value = .{ .value = fallbacks } });
+            return true;
+        },
         ._webkit_text_orientation => {
             // Both shippers (Blink/WebKit) accept these three spellings.
             // mixed/vertical-right each have one shipper and no spec rule;
@@ -1753,6 +1823,8 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .content => |c| try out.appendSlice(allocator, c.serialization),
         .calculation => |c| try c.serialize(out, allocator),
         .alignment => |a| try a.serialize(out, allocator),
+        .position_area => |a| try a.serialize(out, allocator),
+        .try_fallbacks => |f| try f.list.serialize(f.computed, out, allocator),
         .text => |t| try out.appendSlice(allocator, t.bytes),
         .pending => |pending| if (pending.property == .longhand) try out.appendSlice(allocator, pending.text),
     }
@@ -1803,6 +1875,14 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
     if (s == .all) return false;
     const ls = s.longhands();
     switch (s) {
+        .position_try => {
+            if (!vs[0].value.isKeyword(.normal)) {
+                try serializeValue(.position_try_order, vs[0].value, out, allocator);
+                try out.append(allocator, ' ');
+            }
+            try serializeValue(.position_try_fallbacks, vs[1].value, out, allocator);
+            return true;
+        },
         ._webkit_text_orientation => {
             try serializeValue(.text_orientation, vs[0].value, out, allocator);
             return true;

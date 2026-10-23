@@ -705,6 +705,8 @@ pub const Value = union(enum) {
     content: *Content,
     calculation: *@import("math_values.zig").Expression,
     alignment: @import("alignment.zig").Value,
+    position_area: @import("position_area.zig").Area,
+    try_fallbacks: struct { list: *@import("anchor_fallbacks.zig").Fallbacks, computed: bool = false },
     /// Kept as its serialization (a font-family list, an <image>).
     text: *SharedText,
     pending: *@import("pending_values.zig").Pending,
@@ -731,6 +733,7 @@ pub const Value = union(enum) {
         if (self == .content) return self.content.ref();
         if (self == .calculation) return self.calculation.ref();
         if (self == .pending) return self.pending.ref();
+        if (self == .try_fallbacks) return self.try_fallbacks.list.ref();
         if (self.sharedText()) |t| t.ref();
     }
 
@@ -740,6 +743,7 @@ pub const Value = union(enum) {
         if (self == .content) return self.content.unref();
         if (self == .calculation) return self.calculation.unref();
         if (self == .pending) return self.pending.unref();
+        if (self == .try_fallbacks) return self.try_fallbacks.list.unref();
         if (self.sharedText()) |t| t.unref();
     }
 
@@ -767,6 +771,8 @@ pub const Value = union(enum) {
             .content => |c| c.eql(b.content),
             .calculation => |c| c.eql(b.calculation),
             .alignment => |a_value| a_value.eql(b.alignment),
+            .position_area => |a_area| a_area.eql(b.position_area),
+            .try_fallbacks => |f| f.computed == b.try_fallbacks.computed and f.list.eql(b.try_fallbacks.list),
             .text => |t| t == b.text or std.mem.eql(u8, t.bytes, b.text.bytes),
             .pending => |pending| pending.eql(b.pending),
         };
@@ -791,6 +797,8 @@ pub const Value = union(enum) {
             .color_scheme,
             .content,
             .alignment,
+            .position_area,
+            .try_fallbacks,
             .text,
             .pending, // Q88: inspect only the resolved, selected branch.
             => false,
@@ -812,6 +820,8 @@ pub const Value = union(enum) {
             .color_scheme,
             .content,
             .alignment,
+            .position_area,
+            .try_fallbacks,
             .text,
             .pending, // Q88: inspect only the resolved, selected branch.
             => false,
@@ -831,6 +841,8 @@ pub const Value = union(enum) {
             .color_scheme,
             .content,
             .alignment,
+            .position_area,
+            .try_fallbacks,
             .text,
             .pending, // Q88: inspect only the resolved, selected branch.
             => false,

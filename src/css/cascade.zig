@@ -539,6 +539,11 @@ const Builder = struct {
             const parent = if (self.ctx.parent) |p| p.get(l) else null;
             return .{ .alignment = v.alignment.computed(if (parent) |p| if (p == .alignment) p.alignment else null else null) };
         }
+        if (v == .position_area) return .{ .position_area = v.position_area.computed() };
+        if (v == .try_fallbacks) {
+            v.retain();
+            return .{ .try_fallbacks = .{ .list = v.try_fallbacks.list, .computed = true } };
+        }
         if (v == .calculation) {
             const expression = try v.calculation.compute(self.ctx.allocator, self.computationContext(l, v, source));
             if (expression.computedNumber()) |number| {
