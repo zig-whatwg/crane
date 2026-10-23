@@ -2440,6 +2440,8 @@ pub fn build(b: *std.Build) void {
             .{ .name = "clock", .module = testing_graph.clock },
             .{ .name = "host", .module = testing_graph.host },
             .{ .name = "storage", .module = testing_graph.storage },
+            // infra.tombstones: the slot counts of storage's long-lived maps.
+            .{ .name = "infra", .module = testing_graph.infra },
         };
         addTestFilesFromDir(b, test_step, "tests/storage", target, &storage_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add storage test files: {}\n", .{err});
