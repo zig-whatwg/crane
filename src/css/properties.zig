@@ -203,6 +203,9 @@ pub const Longhand = enum(u8) {
     scale,
 
     // CSS Flexbox 1 §7: values independent of flex layout.
+    flex_grow,
+    flex_shrink,
+    flex_basis,
 
     // CSS Transitions 1/2 §2: five lists; execution is separate.
 
@@ -353,6 +356,8 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 pub const Grammar = enum {
     animation_list,
     individual_transform,
+    flex_factor,
+    flex_basis,
     grid_line,
     grid_tracks,
     grid_areas,
@@ -420,6 +425,9 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .translate, .inherited = false, .initial = Value.kw(.none), .grammar = .individual_transform },
         .{ .longhand = .rotate, .inherited = false, .initial = Value.kw(.none), .grammar = .individual_transform },
         .{ .longhand = .scale, .inherited = false, .initial = Value.kw(.none), .grammar = .individual_transform },
+        .{ .longhand = .flex_grow, .inherited = false, .initial = .{ .number = 0 }, .grammar = .flex_factor },
+        .{ .longhand = .flex_shrink, .inherited = false, .initial = .{ .number = 1 }, .grammar = .flex_factor },
+        .{ .longhand = .flex_basis, .inherited = false, .initial = Value.kw(.auto), .grammar = .flex_basis },
         // Row118 animation properties; execution is outside this value layer.
         .{ .longhand = .animation_duration, .inherited = false, .initial = Value.kw(.auto), .grammar = .animation_list },
         .{ .longhand = .animation_timing_function, .inherited = false, .initial = Value.kw(.ease), .grammar = .animation_list },
@@ -638,6 +646,7 @@ pub const Shorthand = enum(u8) {
     white_space,
     animation,
     animation_range,
+    flex,
 
     pub fn name(self: Shorthand) []const u8 {
         return switch (self) {
@@ -695,6 +704,7 @@ pub const Shorthand = enum(u8) {
             .white_space => &.{ .white_space_collapse, .text_wrap_mode },
             .animation => &.{ .animation_duration, .animation_timing_function, .animation_delay, .animation_iteration_count, .animation_direction, .animation_fill_mode, .animation_play_state, .animation_name, .animation_timeline, .animation_range_start, .animation_range_end },
             .animation_range => &.{ .animation_range_start, .animation_range_end },
+            .flex => &.{ .flex_grow, .flex_shrink, .flex_basis },
         };
     }
 };
@@ -989,6 +999,7 @@ pub const Stream = struct {
 pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Allocator.Error!?Value {
     const def = l.info();
     switch (def.grammar) {
+        .flex_factor => return @import("flex_values.zig").consumeFactor(options, stream),
         .individual_transform => {
             if (takeKeyword(stream, &.{.none})) |keyword| return Value.kw(keyword);
             const transforms = @import("transform_values.zig");
@@ -1059,11 +1070,12 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
             return lengthPercentage(options, stream, .{ .negative = true, .quirky = def.quirky_length, .anchor_position = inset, .anchor_size = true });
         },
         .length_percentage_nonneg => return lengthPercentage(options, stream, .{ .negative = false, .quirky = def.quirky_length }),
-        .size, .max_size => {
+        .size, .max_size, .flex_basis => {
             // Anchor Positioning §5 limits anchor-size() to the accepted
             // positioning properties. Flexbox's width-like basis grammar
             // does not give flex-basis that positioning context.
-            const allow_anchor_size = true;
+            const allow_anchor_size = def.grammar != .flex_basis;
+            if (def.grammar == .flex_basis) if (takeKeyword(stream, &.{.content})) |keyword| return Value.kw(keyword);
             if (takeKeyword(stream, &.{def.initial.keyword})) |k| return Value.kw(k);
             if (takeKeyword(stream, &.{ .min_content, .max_content, .fit_content, .stretch })) |k| return Value.kw(k);
             if (stream.peek().token_type == .function and tokenizer_mod.nameEql(stream.peek().value, "fit-content")) {
@@ -1631,6 +1643,7 @@ fn append(options: ParseOptions, out: *std.ArrayList(Assignment), l: Longhand, v
 
 fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
     switch (s) {
+        .flex => return @import("flex_values.zig").consumeShorthand(options, stream, out),
         .animation, .animation_range => return @import("animation_values.zig").consumeShorthand(options, s, stream, out),
         .grid_template, .grid => {
             const ls = s.longhands();
@@ -2145,6 +2158,7 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
     if (s == .all) return false;
     const ls = s.longhands();
     switch (s) {
+        .flex => return @import("flex_values.zig").serializeShorthand(vs, out, allocator),
         .animation, .animation_range => return @import("animation_values.zig").serializeShorthand(s, vs, mode, out, allocator),
         .grid_template => return @import("grid_tracks.zig").serializeTemplate(.{ .rows = vs[0].value, .columns = vs[1].value, .areas = vs[2].value }, out, allocator),
         .grid => return @import("grid_tracks.zig").serializeGrid(.{

@@ -80,3 +80,12 @@ test "justify items legacy resolves from the parent while other alignment initia
     try testing.expectEqualStrings("auto", out.items);
     try check("justify-items", "legacy", "legacy", "normal");
 }
+
+test "alignment flex aliases preserve specified spelling and compute flow aliases" {
+    for ([_][]const u8{ "align-content", "justify-content", "align-items", "justify-items", "align-self", "justify-self" }) |name| {
+        try check(name, "flex-start", "flex-start", "flow-start");
+        try check(name, "safe flex-end", "safe flex-end", "safe flow-end");
+        try check(name, "flow-end", "flow-end", "flow-end");
+    }
+    try check("place-content", "flex-start flex-end", "flex-start flex-end", "flow-start flow-end");
+}

@@ -178,6 +178,24 @@ test "missing random input skips to retained candidates and inherited or initial
     try testing.expectEqual(@as(f64, 15), style.get(.right).length.value);
 }
 
+test "a new random-bearing property requires its provider by default including nested fixed inputs" {
+    if (comptime !@hasDecl(css.style_values.Value, "needsRandomBase") or !@hasField(css.properties.Longhand, "flex_grow")) return error.RandomDependencyApiNotImplemented;
+    var block = try css.declarations.DeclarationBlock.parse(.{ .allocator = testing.allocator }, "flex-grow:random(2,4);left:random(fixed random(0,1),10px,20px);top:random(fixed .5,10px,20px)");
+    defer block.deinit();
+    var it = block.typed();
+    var seen: usize = 0;
+    while (it.next()) |decl| {
+        try testing.expectEqual(decl.longhand != .top, decl.value.value.needsRandomBase());
+        seen += 1;
+    }
+    try testing.expectEqual(@as(usize, 3), seen);
+    const style = try css.cascade.cascade(.{ .allocator = testing.allocator, .parent = null }, &.{.{ .block = &block, .source = .{ .origin = .author } }});
+    defer style.destroy();
+    try testing.expectEqual(@as(f64, 0), style.get(.flex_grow).number);
+    try testing.expect(style.get(.left).isKeyword(.auto));
+    try testing.expectEqual(@as(f64, 15), style.get(.top).length.value);
+}
+
 test "random key normalization owns names and keeps function buckets separate only for indexed keys" {
     if (comptime !@hasDecl(css, "random_values")) return error.RandomValuesNotImplemented;
     const random = css.random_values;
