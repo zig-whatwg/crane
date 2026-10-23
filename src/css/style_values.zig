@@ -409,6 +409,76 @@ pub const Color = union(enum) {
     pub const transparent: Color = .{ .rgba = RgbaColor.transparent };
     pub const black: Color = .{ .rgba = RgbaColor.black };
 
+    /// Borrowed inputs; a computed result always owns the references it needs.
+    /// null current keeps currentcolor symbolic for inheritance through other
+    /// color properties. For the color property, pass the parent's color.
+    pub const Context = struct {
+        scheme: color_scheme_mod.Scheme = .light,
+        current: ?Color = null,
+        math: @import("math_values.zig").Context = .{},
+    };
+
+    /// Every holder of a Color takes a reference, including nested paint data.
+    /// Scalar colors are allocation-free and need no work here.
+    pub fn retain(self: Color) void {
+        if (self == .named) self.named.name.ref();
+    }
+
+    pub fn release(self: Color) void {
+        if (self == .named) self.named.name.unref();
+    }
+
+    /// Color 4 §§6.4, 15: specified keywords keep their lowercase spelling.
+    pub fn serializeSpecified(self: Color, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+        switch (self) {
+            .rgba => |c| try serializeRgba(c, out, allocator),
+            .current => try out.appendSlice(allocator, "currentcolor"),
+            .named => |n| try out.appendSlice(allocator, n.name.bytes),
+            .system => |s| try out.appendSlice(allocator, s.keyword()),
+        }
+    }
+
+    /// A computed color's own serialization. Resolve currentcolor with the
+    /// destination's current color first when CSSOM requires a used color.
+    pub fn serializeComputed(self: Color, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+        if (self.absolute()) |c| return serializeRgba(c, out, allocator);
+        return out.appendSlice(allocator, "currentcolor");
+    }
+
+    /// Returns an OWNED value; neither self nor Context's borrowed current
+    /// color is consumed. Allocation errors are part of the stable API for
+    /// future typed components even though today's scalar resolution cannot
+    /// allocate. The caller releases every successful result.
+    pub fn resolveComputed(self: Color, allocator: Allocator, context: Context) Allocator.Error!Color {
+        _ = allocator;
+        return switch (self) {
+            .current => blk: {
+                const result = context.current orelse self;
+                result.retain();
+                break :blk result;
+            },
+            .rgba => self,
+            .named => |n| .{ .rgba = n.rgba },
+            .system => |s| .{ .rgba = s.color(context.scheme) },
+        };
+    }
+
+    /// Aggregates forward this query without inspecting Color's variants.
+    /// A future typed variant must explicitly describe its dependencies.
+    pub fn needsTreeCounts(self: Color) bool {
+        return switch (self) {
+            .rgba, .current, .named, .system => false,
+        };
+    }
+
+    /// Scalar colors need no font or layout metrics, for either destination.
+    pub fn needsUnavailableMetrics(self: Color, geometry_length: bool) bool {
+        _ = geometry_length;
+        return switch (self) {
+            .rgba, .current, .named, .system => false,
+        };
+    }
+
     pub fn eql(a: Color, b: Color) bool {
         return switch (a) {
             .current => b == .current,
