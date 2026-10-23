@@ -106,6 +106,18 @@ pub fn freeDeclarationList(allocator: Allocator, declarations: []Declaration) vo
     freeDeclarations(allocator, declarations);
 }
 
+/// CSS Syntax 3 section 7.2 excludes bad-string/bad-url from an ordinary
+/// <declaration-value>. The generic rule parser preserves them: forgiving
+/// descriptor lists, such as Fonts 4 section 4.3.1 src, recover per component.
+pub fn declarationValueHasBadToken(text: []const u8) bool {
+    var tokens = tokenizer.Tokenizer.init(text);
+    while (true) switch (tokens.next().token_type) {
+        .bad_string, .bad_url => return true,
+        .eof => return false,
+        else => {},
+    };
+}
+
 /// A style sheet's top-level rules, in order. Owned: `deinit`.
 pub const Rules = struct {
     allocator: Allocator,
@@ -669,13 +681,21 @@ const Serializer = struct {
                 try self.out.append(a, '#');
                 try self.identifier(t.value[1..]);
             },
-            .string, .bad_string => try self.string(t.stringContents()),
+            .string => try self.string(t.stringContents()),
+            .bad_string => {
+                // Syntax 3 section 4.3.5: the newline is reconsumed and
+                // omitted from the token span. Keep it here so another
+                // tokenizer cannot turn this token into a valid string.
+                try self.out.appendSlice(a, t.value);
+                try self.out.append(a, '\n');
+            },
             .url => {
                 try self.out.appendSlice(a, "url(");
                 try self.string(t.value);
                 try self.out.append(a, ')');
             },
-            .bad_url => try self.out.appendSlice(a, "url()"),
+            // Section 4.3.6: a malformed URL is not an empty valid URL.
+            .bad_url => try self.out.appendSlice(a, t.value),
             .cdo => try self.out.appendSlice(a, "<!--"),
             .cdc => try self.out.appendSlice(a, "-->"),
             .colon => try self.out.append(a, ':'),

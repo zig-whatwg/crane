@@ -134,6 +134,7 @@ pub const DeclarationBlock = struct {
     }
 
     fn setUnparsed(self: *DeclarationBlock, name: []const u8, value_text: []const u8, important: bool) Allocator.Error!void {
+        if (rules.declarationValueHasBadToken(value_text)) return;
         const custom = std.mem.startsWith(u8, name, "--");
         const name_copy = try self.allocator.dupe(u8, name);
         errdefer self.allocator.free(name_copy);
