@@ -3120,6 +3120,8 @@ pub fn build(b: *std.Build) void {
     crane_exe.root_module.addImport("browser", browser_mod);
     crane_exe.root_module.addImport("fetch", fetch_mod);
     crane_exe.root_module.addImport("webdriver", webdriver_mod);
+    // main adopts std.start's Io as the process Io (src/platform/host.zig).
+    crane_exe.root_module.addImport("host", host_mod);
 
     // Add V8 C++ wrapper
     crane_exe.root_module.addCSourceFile(.{
