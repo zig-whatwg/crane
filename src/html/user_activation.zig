@@ -16,6 +16,7 @@ const dom = @import("dom");
 const html_core = @import("html_core");
 
 const engine = @import("engine");
+const close_watchers = @import("close_watchers.zig");
 
 const Instance = runtime.Instance;
 const BrowsingContext = html_core.window.BrowsingContext;
@@ -79,15 +80,17 @@ pub fn notifyActivation(document: *Instance) void {
             }
         }
     }
-    // Step 5: "For each window in windows: set window's last activation
-    // timestamp to the current high resolution time" - and "notify the
-    // close watcher manager about user activation", which Crane has no
-    // close watchers for.
+    // Step 5: "For each window in windows:"
     const now = state.sharedCurrentTime();
     for (windows[0..count]) |w| {
+        // 5.1. "Set window's last activation timestamp to the current high
+        // resolution time."
         var timestamps = state.get(w);
         timestamps.last_activation = now;
         state.set(w, timestamps);
+        // 5.2. "Notify the close watcher manager about user activation given
+        // window."
+        close_watchers.notifyUserActivation(w);
     }
 }
 

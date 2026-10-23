@@ -1,5 +1,5 @@
 //! The testing platform's PNG decoder (decision 19): PNG datastreams to
-//! RGBA8, in Zig - its zlib data through inflate.zig, which stops exactly
+//! RGBA8, in Zig - its zlib data through kit/inflate, which stops exactly
 //! where truncated data does - so the WPT runner's results do not depend on
 //! the machine's image libraries. W3C PNG (Third Edition),
 //! specs/w3c/png-3.md, as a decoder that extracts the image:
@@ -41,7 +41,7 @@
 
 const std = @import("std");
 const platform = @import("platform");
-const inflate = @import("inflate.zig");
+const inflate = @import("kit_inflate");
 
 const ImageError = platform.ImageError;
 

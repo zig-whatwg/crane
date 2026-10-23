@@ -28,7 +28,7 @@
 //! parse, an @import after any rule but @charset, @layer statements and
 //! other @imports, an @namespace after any other rule, an unknown at-rule.
 //! Stated deviations: @charset is dropped (CSSOM has no object for it);
-//! @keyframes, @counter-style, @property, @container, @scope,
+//! @counter-style, @property, @container, @scope,
 //! @starting-style and the other at-rules Crane does not model are left out
 //! of the rule lists, as the cascade left them out before; nested style
 //! rules (CSS Nesting) are dropped, as css.rules drops them.
@@ -82,6 +82,9 @@ pub const Kind = enum {
     namespace,
     font_face,
     page,
+    position_try,
+    keyframes,
+    keyframe,
 
     /// CSSOM's CSSRule `type` constant for the kind ("new rule types ...
     /// return 0": the layer rules).
@@ -92,9 +95,12 @@ pub const Kind = enum {
             .media => 4,
             .font_face => 5,
             .page => 6,
+            .keyframes => 7,
+            .keyframe => 8,
             .namespace => 10,
             .supports => 12,
             .layer_block, .layer_statement => 0,
+            .position_try => 0,
         };
     }
 
@@ -152,6 +158,9 @@ pub const Data = union(Kind) {
     },
     font_face: DeclarationBlock,
     page: DeclarationBlock,
+    position_try: DeclarationBlock,
+    keyframes: struct { children: std.ArrayList(*Rule) = .empty },
+    keyframe: struct { selectors: css.keyframe_values.Selectors, block: DeclarationBlock },
 };
 
 pub const Rule = struct {
@@ -198,6 +207,12 @@ pub const Rule = struct {
                 }
             },
             .font_face, .page => |*b| b.deinit(),
+            .position_try => |*b| b.deinit(),
+            .keyframes => |*k| releaseChildren(a, &k.children),
+            .keyframe => |*k| {
+                k.selectors.deinit();
+                k.block.deinit();
+            },
             .namespace => |n| {
                 a.free(n.prefix);
                 a.free(n.uri);
@@ -226,6 +241,7 @@ pub const Rule = struct {
             .media => |*m| &m.children,
             .supports => |*s| &s.children,
             .layer_block => |*l| &l.children,
+            .keyframes => |*k| &k.children,
             else => null,
         };
     }
@@ -235,6 +251,8 @@ pub const Rule = struct {
         return switch (self.data) {
             .style => |*s| &s.block,
             .font_face, .page => |*b| b,
+            .position_try => |*b| b,
+            .keyframe => |*k| &k.block,
             else => null,
         };
     }
@@ -344,6 +362,31 @@ pub const Rule = struct {
                 }
                 try serializeUrl(allocator, out, n.uri);
                 try out.append(allocator, ';');
+            },
+            .keyframes => |k| {
+                try out.appendSlice(allocator, "@keyframes ");
+                try css.keyframe_values.serializeName(self.prelude, out, allocator);
+                try out.appendSlice(allocator, " {");
+                try serializeChildren(allocator, out, k.children.items);
+            },
+            .keyframe => |*k| {
+                try out.appendSlice(allocator, self.prelude);
+                try out.appendSlice(allocator, " { ");
+                const start = out.items.len;
+                try k.block.serialize(out);
+                if (out.items.len != start) try out.append(allocator, ' ');
+                try out.append(allocator, '}');
+            },
+            // Anchor Position 1 §8.1: the serialized dashed identifier
+            // followed by the restricted descriptor block.
+            .position_try => |*b| {
+                try out.appendSlice(allocator, "@position-try ");
+                try out.appendSlice(allocator, self.prelude);
+                try out.appendSlice(allocator, " { ");
+                const start = out.items.len;
+                try b.serialize(out);
+                if (out.items.len != start) try out.append(allocator, ' ');
+                try out.append(allocator, '}');
             },
             // "@font-face {", each descriptor, " }" (CSSOM leaves the
             // descriptors' serialization undefined: the block's own).
@@ -522,6 +565,44 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
         try buildChildren(options, rule, parsed.children);
         return rule;
     }
+    if (std.mem.eql(u8, name, "keyframes") or std.mem.eql(u8, name, "-webkit-keyframes")) {
+        if (!parsed.has_block) return null;
+        var stream = css.properties.Stream.init(parsed.prelude);
+        const decoded = try css.keyframe_values.consumeName(a, &stream) orelse return null;
+        if (!stream.atEnd()) {
+            a.free(decoded);
+            return null;
+        }
+        // make consumes decoded, including failure. The parent then owns
+        // every successfully appended child; malformed blocks are discarded.
+        const parent = try make(a, decoded, .{ .keyframes = .{} });
+        errdefer parent.unref();
+        for (parsed.children) |*child| {
+            const keyframe = try buildKeyframe(options, child) orelse continue;
+            parent.data.keyframes.children.append(a, keyframe) catch |err| {
+                keyframe.unref();
+                return err;
+            };
+            keyframe.parent_rule = parent;
+        }
+        return parent;
+    }
+    if (std.mem.eql(u8, name, "position-try")) {
+        // Anchor Position 1 §6.4: exactly one dashed identifier, with a
+        // declaration block. Nested rules have no place in this model.
+        if (!parsed.has_block) return null;
+        var stream = css.properties.Stream.init(parsed.prelude);
+        const token = stream.next();
+        if (token.token_type != .ident or !stream.atEnd()) return null;
+        const decoded = try css.tokenizer.decode(a, token.value);
+        defer a.free(decoded);
+        if (!std.mem.startsWith(u8, decoded, "--")) return null;
+        var declarations = try DeclarationBlock.fromDeclarationsInContext(options.parse, parsed.declarations, .position_try);
+        errdefer declarations.deinit();
+        // make consumes the owned prelude, including allocation failure.
+        const prelude = try css.serialize.serializeIdentifier(a, decoded);
+        return make(a, prelude, .{ .position_try = declarations });
+    }
     if (std.mem.eql(u8, name, "font-face") or std.mem.eql(u8, name, "page")) {
         if (!parsed.has_block) return null;
         // Descriptors are not properties: the block keeps them as
@@ -534,6 +615,19 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
         return make(a, prelude, if (std.mem.eql(u8, name, "font-face")) .{ .font_face = declarations } else .{ .page = declarations });
     }
     return null;
+}
+
+/// Animations 1 §3: a qualified keyframe block, not a style selector.
+/// Shared by stylesheet parsing and appendRule, with identical restrictions.
+pub fn buildKeyframe(options: BuildOptions, parsed: *const css.rules.Rule) Allocator.Error!?*Rule {
+    if (parsed.kind != .qualified or !parsed.has_block) return null;
+    const a = options.parse.allocator;
+    var selectors = try css.keyframe_values.Selectors.parse(a, parsed.prelude) orelse return null;
+    errdefer selectors.deinit();
+    var block = try DeclarationBlock.fromDeclarationsInContext(options.parse, parsed.declarations, .keyframe);
+    errdefer block.deinit();
+    const prelude = try selectors.serialize(a);
+    return make(a, prelude, .{ .keyframe = .{ .selectors = selectors, .block = block } });
 }
 
 fn make(a: Allocator, prelude: []u8, data: Data) Allocator.Error!*Rule {

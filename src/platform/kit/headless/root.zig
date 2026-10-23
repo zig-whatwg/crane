@@ -270,6 +270,34 @@ pub fn decodeImage(allocator: std.mem.Allocator, mime: Str, bytes: Bytes, limits
     return error.NotSupported;
 }
 
+/// No font decodes: every web font fails to load (CSS Font Loading 2.2 step
+/// 5.2), and no face has metrics.
+pub fn decodeFont(allocator: std.mem.Allocator, bytes: Bytes, postscript_name: Str, limits: platform.FontLimits) platform.FontError!platform.DecodedFont {
+    _ = .{ allocator, bytes, postscript_name, limits };
+    return error.NotSupported;
+}
+
+pub fn genericFontFace(allocator: std.mem.Allocator, generic: platform.GenericFontFamily, request: platform.FontRequest) platform.FontError!?platform.DecodedFont {
+    _ = .{ allocator, generic, request };
+    return error.NotSupported;
+}
+
+pub fn installedFontFace(allocator: std.mem.Allocator, family: Str, request: platform.FontRequest) platform.FontError!?platform.DecodedFont {
+    _ = .{ allocator, family, request };
+    return error.NotSupported;
+}
+
+pub fn localFontFace(allocator: std.mem.Allocator, face_name: Str) platform.FontError!?platform.DecodedFont {
+    _ = .{ allocator, face_name };
+    return error.NotSupported;
+}
+
+/// The system font keywords take CSS Fonts 4 2.7's initial values.
+pub fn systemFont(allocator: std.mem.Allocator, keyword: platform.SystemFontKeyword, language: Str) platform.FontError!platform.SystemFont {
+    _ = .{ allocator, keyword, language };
+    return error.NotSupported;
+}
+
 /// supported false.
 pub fn mediaDecodingInfo(browser: *BrowserPlatform, config: *const platform.MediaDecodingConfig) platform.DecodingInfo {
     _ = .{ browser, config };

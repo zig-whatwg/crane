@@ -105,10 +105,18 @@ fn repeatedOpenClose() !void {
         \\ return !p.matches(':popover-open');
         \\})()
     );
+    // Each show and hide queues a popover toggle event task that keeps the
+    // element until it runs (HTML 6.12; node_holds.ElementTask): coalesced,
+    // one is left holding it, behind the 19,999 cancelled ones. Let them
+    // run (the loop returns once it is idle), then nothing may hold it.
+    _ = try browser.runEventLoopBlocking(10_000);
     const document = browser.current_context.?.document_instance.?;
     const popover = (try interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned("popover"))).?;
     const base = dom.instance_bridge.getNodeBase(popover).?;
     try std.testing.expect(base.holds == null);
+    const tasks = dom.node_holds.ElementTasks.existingOf(browser.getRealm().?).?;
+    try std.testing.expectEqual(tasks.holds_taken, tasks.holds_released);
+    try std.testing.expectEqual(tasks.queued, tasks.ended);
     const state = (try dom.top_layer.ofDocument(document, false)).?;
     try std.testing.expectEqual(@as(usize, 0), state.entries.items.len);
     try std.testing.expect(state.pointerdown_target.get() == null);

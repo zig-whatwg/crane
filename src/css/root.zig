@@ -125,3 +125,16 @@ test {
     // Run all submodule tests
     std.testing.refAllDecls(@This());
 }
+
+pub const grid_tracks = @import("grid_tracks.zig");
+pub const ui_values = @import("ui_values.zig");
+
+pub const keyframe_values = @import("keyframe_values.zig");
+
+pub const animation_values = @import("animation_values.zig");
+pub const easing_values = @import("easing_values.zig");
+pub const numeric_values = @import("numeric_values.zig");
+
+pub const color_values = @import("color_values.zig");
+pub const color_spaces = @import("color_spaces.zig");
+pub const random_values = @import("random_values.zig");

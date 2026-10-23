@@ -58,8 +58,52 @@ pub const Entry = union(enum) {
 
 pub const DeclarationBlock = struct {
     allocator: Allocator,
+    /// Anchor Position 1 §6.4 limits position-try descriptors at every
+    /// entry point, including later CSSOM mutation. Ordinary blocks keep
+    /// their existing property and unsupported-descriptor behavior.
+    context: Context = .style,
     /// CSSOM "declarations", in order.
     entries: std.ArrayList(Entry) = .empty,
+
+    pub const Context = enum {
+        style,
+        position_try,
+        keyframe,
+
+        fn allows(self: Context, property: Property, important: bool) bool {
+            if (self == .style) return true;
+            if (important) return false;
+            const longhands: []const Longhand = switch (property) {
+                .longhand => |l| &.{l},
+                .shorthand => |s| s.longhands(),
+            };
+            for (longhands) |l| {
+                if (self == .keyframe) {
+                    if (!keyframePropertyAllowed(l.name())) return false;
+                } else if (!position_try_properties.has(l.name())) return false;
+            }
+            return true;
+        }
+    };
+
+    // Animations 1 §3 and Animations 2 §4.10 permit timing-function and
+    // composition inside keyframes, but none of the other animation controls.
+    fn keyframePropertyAllowed(name: []const u8) bool {
+        if (std.ascii.eqlIgnoreCase(name, "animation-timing-function") or
+            std.ascii.eqlIgnoreCase(name, "animation-composition")) return true;
+        return !std.ascii.eqlIgnoreCase(name, "animation") and !std.ascii.startsWithIgnoreCase(name, "animation-");
+    }
+
+    const position_try_properties = std.StaticStringMap(void).initComptime(.{
+        .{ "top", {} },                .{ "right", {} },            .{ "bottom", {} },              .{ "left", {} },
+        .{ "inset-block-start", {} },  .{ "inset-block-end", {} },  .{ "inset-inline-start", {} },  .{ "inset-inline-end", {} },
+        .{ "margin-top", {} },         .{ "margin-right", {} },     .{ "margin-bottom", {} },       .{ "margin-left", {} },
+        .{ "margin-block-start", {} }, .{ "margin-block-end", {} }, .{ "margin-inline-start", {} }, .{ "margin-inline-end", {} },
+        .{ "width", {} },              .{ "min-width", {} },        .{ "max-width", {} },           .{ "height", {} },
+        .{ "min-height", {} },         .{ "max-height", {} },       .{ "block-size", {} },          .{ "min-block-size", {} },
+        .{ "max-block-size", {} },     .{ "inline-size", {} },      .{ "min-inline-size", {} },     .{ "max-inline-size", {} },
+        .{ "align-self", {} },         .{ "justify-self", {} },     .{ "position-anchor", {} },     .{ "position-area", {} },
+    });
 
     pub fn init(allocator: Allocator) DeclarationBlock {
         return .{ .allocator = allocator };
@@ -89,15 +133,24 @@ pub const DeclarationBlock = struct {
     /// CSSOM "parse a CSS declaration block" from `text` (a style
     /// attribute's value, a cssText). `options.allocator` is the block's.
     pub fn parse(options: properties.ParseOptions, text: []const u8) Allocator.Error!DeclarationBlock {
+        return parseInContext(options, text, .style);
+    }
+
+    pub fn parseInContext(options: properties.ParseOptions, text: []const u8, context: Context) Allocator.Error!DeclarationBlock {
         const parsed = try rules.parseDeclarationList(options.allocator, text);
         defer rules.freeDeclarationList(options.allocator, parsed);
-        return fromDeclarations(options, parsed);
+        return fromDeclarationsInContext(options, parsed, context);
     }
 
     /// A block from a rule's parsed declarations: each property's grammar
     /// applied, an invalid declaration dropped.
     pub fn fromDeclarations(options: properties.ParseOptions, parsed: []const rules.Declaration) Allocator.Error!DeclarationBlock {
+        return fromDeclarationsInContext(options, parsed, .style);
+    }
+
+    pub fn fromDeclarationsInContext(options: properties.ParseOptions, parsed: []const rules.Declaration, context: Context) Allocator.Error!DeclarationBlock {
         var block = DeclarationBlock.init(options.allocator);
+        block.context = context;
         errdefer block.deinit();
         for (parsed) |d| try block.addParsed(options, d.name, d.value, d.important);
         return block;
@@ -110,9 +163,12 @@ pub const DeclarationBlock = struct {
     /// same).
     fn addParsed(self: *DeclarationBlock, options: properties.ParseOptions, name: []const u8, value_text: []const u8, important: bool) Allocator.Error!void {
         const property = properties.lookup(name) orelse {
+            if (self.context == .position_try) return;
+            if (self.context == .keyframe and (important or !keyframePropertyAllowed(name))) return;
             try self.setUnparsed(name, value_text, important);
             return;
         };
+        if (!self.context.allows(property, important)) return;
         var assignments: std.ArrayList(Assignment) = .empty;
         defer assignments.deinit(self.allocator);
         if (!try properties.parseDeclaration(options, property, value_text, &assignments)) return;
@@ -134,6 +190,7 @@ pub const DeclarationBlock = struct {
     }
 
     fn setUnparsed(self: *DeclarationBlock, name: []const u8, value_text: []const u8, important: bool) Allocator.Error!void {
+        if (rules.declarationValueHasBadToken(value_text)) return;
         const custom = std.mem.startsWith(u8, name, "--");
         const name_copy = try self.allocator.dupe(u8, name);
         errdefer self.allocator.free(name_copy);
@@ -266,6 +323,7 @@ pub const DeclarationBlock = struct {
         //    declaration for read-back; setProperty, as the spec says, does
         //    not - ruling Q7.)
         const property = properties.lookup(property_name) orelse return false;
+        if (!self.context.allows(property, important)) return false;
         // 5. "Let component value list be the result of parsing value for
         //    property property. If component value list is null, then return."
         var assignments: std.ArrayList(Assignment) = .empty;
@@ -359,7 +417,7 @@ pub const DeclarationBlock = struct {
     /// the empty list, insert the items in the list into the declarations,
     /// in specified order."
     pub fn setCssText(self: *DeclarationBlock, options: properties.ParseOptions, text: []const u8) Allocator.Error!void {
-        var parsed = try parse(options, text);
+        var parsed = try parseInContext(options, text, self.context);
         self.clear();
         self.entries.deinit(self.allocator);
         self.entries = parsed.entries;
@@ -477,11 +535,12 @@ fn containsLonghand(ls: []const Longhand, l: Longhand) bool {
 const preferred_shorthands = blk: {
     @setEvalBranchQuota(100_000);
     const fields = @typeInfo(Shorthand).@"enum".fields;
-    var out: [fields.len - 1]Shorthand = undefined;
+    var out: [fields.len - 2]Shorthand = undefined;
     var n: usize = 0;
     for (fields) |f| {
         const s: Shorthand = @enumFromInt(f.value);
-        if (s == .all) continue;
+        // Legacy one-member aliases are emitted with their canonical longhand.
+        if (s == .all or s == ._webkit_text_orientation) continue;
         out[n] = s;
         n += 1;
     }
@@ -503,6 +562,12 @@ const preferred_shorthands = blk: {
 
 fn logicalGroup(l: Longhand) ?properties.Logical.Group {
     if (l.logical()) |lg| return lg.group;
+    switch (l) {
+        .width, .height => return .size,
+        .min_width, .min_height => return .min_size,
+        .max_width, .max_height => return .max_size,
+        else => {},
+    }
     const sides = [_]PhysicalSides{
         .{ .group = .margin, .ls = .{ .margin_top, .margin_right, .margin_bottom, .margin_left } },
         .{ .group = .padding, .ls = .{ .padding_top, .padding_right, .padding_bottom, .padding_left } },
@@ -576,10 +641,10 @@ test "a shorthand with mixed importance or a missing longhand reads as empty" {
 }
 
 test "unsupported properties are kept for read-back only" {
-    var block = try DeclarationBlock.parse(testOptions(), "animation: spin 1s; --x: { a }; color: red");
+    var block = try DeclarationBlock.parse(testOptions(), "not-a-property: spin 1s; --x: { a }; color: red");
     defer block.deinit();
-    try expectValue(&block, "animation", "spin 1s");
-    try expectValue(&block, "ANIMATION", "spin 1s");
+    try expectValue(&block, "not-a-property", "spin 1s");
+    try expectValue(&block, "NOT-A-PROPERTY", "spin 1s");
     var it = block.typed();
     try testing.expectEqual(Longhand.color, it.next().?.longhand);
     try testing.expect(it.next() == null);
@@ -592,7 +657,7 @@ test "setProperty and removeProperty (CSSOM 6.6.1)" {
     try testing.expect(!try block.setProperty(testOptions(), "color", "red", ""));
     try testing.expect(!try block.setProperty(testOptions(), "color", "nope", ""));
     try testing.expect(!try block.setProperty(testOptions(), "color", "blue", "bogus"));
-    try testing.expect(!try block.setProperty(testOptions(), "animation", "spin 1s", ""));
+    try testing.expect(!try block.setProperty(testOptions(), "not-a-property", "spin 1s", ""));
     try testing.expect(try block.setProperty(testOptions(), "Margin", "1px", "IMPORTANT"));
     try expectCssText(&block, "color: red; margin: 1px !important;");
     var old: std.ArrayList(u8) = .empty;

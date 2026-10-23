@@ -268,3 +268,50 @@ const ReplaceTask = struct {
         allocator.destroy(self);
     }
 };
+
+/// CSS Animations 1 §6.3.4: parse exactly one qualified keyframe rule,
+/// then append it even if an identical selector already exists. Invalid
+/// syntax is an atomic no-op. No declaration is applied as an author rule.
+pub fn appendKeyframe(object: *runtime.Instance, parent: *Rule, text: []const u8) !void {
+    if (parent.kind() != .keyframes) return;
+    const a = parent.allocator;
+    var parsed = try css.rules.parseRule(a, text) orelse return;
+    defer parsed.deinitOwned(a);
+    const record = parent.sheet();
+    var url_context: sheet_mod.UrlContext = .{ .instance = object, .base = if (record) |r| r.base_url else "" };
+    const parse_options: css.properties.ParseOptions = .{
+        .allocator = a,
+        .quirks = if (record) |r| r.mode.quirks else false,
+        .url_resolver = url_context.resolver(),
+    };
+    const child = try rules_mod.buildKeyframe(.{ .parse = parse_options }, &parsed) orelse return;
+    errdefer child.unref();
+    try parent.data.keyframes.children.append(a, child);
+    child.parent_rule = parent;
+    if (record) |r| r.changed();
+}
+
+/// §§6.3.5–6.3.6: the final exact ordered selector list wins. Comparing
+/// parsed numeric lists preserves distinctions hidden by CSSOM rounding.
+pub fn keyframeIndex(parent: *Rule, text: []const u8) !?usize {
+    if (parent.kind() != .keyframes) return null;
+    var selectors = try css.keyframe_values.Selectors.parse(parent.allocator, text) orelse return null;
+    defer selectors.deinit();
+    const children = parent.data.keyframes.children.items;
+    var i = children.len;
+    while (i > 0) {
+        i -= 1;
+        if (selectors.eql(children[i].data.keyframe.selectors)) return i;
+    }
+    return null;
+}
+
+/// §6.3.5 uses the same detachment and bidirectional traced slots as every
+/// CSSOM removal. A removed object continues to own its native rule model.
+pub fn deleteKeyframe(parent: *Rule, text: []const u8) !void {
+    const index = try keyframeIndex(parent, text) orelse return;
+    const old = parent.data.keyframes.children.orderedRemove(index);
+    objects.ruleRemoved(old);
+    if (parent.sheet()) |record| record.changed();
+    old.unref();
+}

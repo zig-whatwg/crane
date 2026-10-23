@@ -81,6 +81,13 @@ pub fn ownGlobal(at: anytype, value: engine.JSValue) Error!*ffi.Value {
 /// not this agent's to wrap.
 pub fn relevantWrapper(isolate: *ffi.Isolate, instance: *engine.Instance) Error!*ffi.Value {
     const relevant = instance.ctx;
+    // A realm whose wrapper cache is being torn down wraps nothing more
+    // (WrapperCache.set refuses, and its sweep would not meet the entry):
+    // the object stays its maker's to free.
+    if (relevant.getV8WrapperCacheStorage()) |storage| {
+        const cache: *const @import("wrapper_cache.zig").WrapperCache = @ptrCast(@alignCast(storage));
+        if (cache.is_tearing_down) return error.OperationFailed;
+    }
     const home: ?Entered = if (relevant.engine_ctx != null) blk: {
         if (realm_entry.agentOf(relevant) != isolate) return error.OperationFailed;
         break :blk realm_entry.enter(relevant) catch null;

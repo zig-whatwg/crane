@@ -16,6 +16,7 @@ pub const element_style = @import("element_style.zig");
 pub const ua_sheet = @import("ua_sheet.zig");
 pub const engine = @import("engine.zig");
 pub const inline_style = @import("inline_style.zig");
+pub const content_visibility = @import("content_visibility.zig");
 
 pub const StyleEngine = engine.StyleEngine;
 pub const SheetRecord = sheet.SheetRecord;
@@ -71,3 +72,9 @@ pub fn deliverSheet(owner: *@import("runtime").Instance, path: []const u16, byte
 // No refAllDecls here: the dom module's own tests are not V8-linked, and
 // the resolver's functions reach the engine. Each file's tests run as it
 // is imported; tests/v8/style_engine_test.zig drives the resolver.
+
+// Q73/Q95: discover the private helper's pure inline test without forcing
+// resolver functions that reach the engine. Deliberately not refAllDecls.
+test {
+    _ = engine;
+}

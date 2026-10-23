@@ -1142,12 +1142,43 @@ pub fn removeContextByKey(key: usize, v8_ctx: ?*v8.Context) void {
             // 2. DOM nodes already removed themselves
             // 3. HTMLIFrameElement instances explicitly cleaned up above
             coordinator.cleanupPhase(.wrapper_cache);
+            // A worker's or worklet's global scope goes after every other
+            // object of its realm, not in the walk's hash order: Blink
+            // disposes a worker's global scope only once its context's end
+            // has been notified and its script is gone
+            // (WorkerThread::PerformShutdownOnWorkerThread), and WebKit
+            // releases it after prepareForDestruction and clearScript
+            // (WorkerOrWorkletThread::destroyWorkerGlobalScope). A teardown
+            // the walk runs can read the realm's global; ahead of it, the
+            // global was read freed (lane workerteardown1: a fetch body's
+            // end reported timing to it). A guard: the host ends what still
+            // works for the realm before its end (a worker's fetch group,
+            // WorkerHost.teardownRealm). A Window went above, with its
+            // document. The realm's end cleared the global object's fields
+            // before this (worker_realm.bindGlobalFields), so only the cache
+            // entry is left to take out.
+            const last_global: ?*runtime.Instance = last: {
+                if (window_instance_dom != null) break :last null;
+                const record = entry.realm orelse break :last null;
+                // Only the kinds whose end is ordered so (an allowlist: any
+                // other realm keeps the walk's order).
+                if (!record.info.isWorker() and !record.info.isWorklet()) break :last null;
+                const global = record.global_object orelse break :last null;
+                break :last @ptrCast(@alignCast(global));
+            };
+            var free_last_global = false;
             if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
                 const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+                // Only one the walk would have freed: an entry of this cache.
+                if (last_global) |global| free_last_global = cache_ptr.remove(global);
                 cache_ptr.deinit();
                 ctx_data.getAllocator().destroy(cache_ptr);
                 ctx_data.clearV8WrapperCacheStorage();
             }
+            // With no cache left to answer for it: its teardown's engine
+            // calls (traced edges, wrapper lookups) find none and do nothing,
+            // its Pins dispose their handles in the agent still entered.
+            if (free_last_global) runtime.gc.onObjectFreed(last_global.?);
 
             // Clean up V8 event loop
             coordinator.cleanupPhase(.event_loop);

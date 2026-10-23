@@ -117,6 +117,10 @@ pub const IFrameState = enum {
 pub const ByteStream = struct {
     content_type: ?[]const u8,
     parent_same_origin: bool,
+    /// The rest of the body, still arriving, when the document is parsed as
+    /// it arrives (HTML 7.5.1); the bytes given with it are empty. The
+    /// response's: the parse callback takes it (`BodyHandoff.take`).
+    body: ?*navigation_fetch.BodyHandoff = null,
 };
 
 /// What "load an XML document" is given besides the response's bytes: its
@@ -850,6 +854,16 @@ pub const IFrameIntegration = struct {
         return nested_ctx;
     }
 
+    /// The navigable's navigation in flight ends - the owner's abandon hook
+    /// sets its ongoing navigation to null, so a fetch or a commit it queued
+    /// finds it gone - because the navigable is going: its container's
+    /// document was destroyed with an ancestor navigable
+    /// (dom.navigables.destroyChildNavigable).
+    pub fn abandonNavigations(self: *IFrameIntegration) void {
+        if (self.abandon_navigations_callback) |abandon| abandon(self);
+        self.ongoing_navigation = .none;
+    }
+
     /// Called when iframe is removed from a document
     /// Per WHATWG HTML §7.3.1.6 "destroy a child navigable", the browsing context
     /// is destroyed synchronously when the iframe element is removed from the document.
@@ -1148,6 +1162,7 @@ pub const IFrameIntegration = struct {
             .html => _ = try self.commitHtmlDocument(body, .{
                 .content_type = response.content_type,
                 .parent_same_origin = new_origin.isSameOrigin(self.container_origin),
+                .body = response.body_stream,
             }),
             .text => try self.commitTextDocument(body, response.content_type, computed),
             .media => try self.commitMediaDocument(final_url, document_type.mediaHostElement(computed), computed),

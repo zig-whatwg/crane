@@ -66,3 +66,43 @@ kind = user-ruling
 why = The WebSocket handshake is cross-SITE ({{hosts[alt][www]}}); its Set-Cookie has no SameSite attribute, which is Lax again under the restored Lax-by-default (revert d26c5f1ec8f + 387ac80b403), so a cross-site response may not store it - Chrome's behaviour. It passed only under the reverted None-by-default.
 date = 2026-10-20
 decision = the user chose "Restore Lax-by-default" for cookies without SameSite (Chrome's behaviour; +21 cookies/samesite subtests), in this session's SameSite question
+
+[xhr/send-redirect.htm]
+generation = 173
+kind = flake
+why = The (302, HEAD, redirect.py) subtest flips with no code involved: Codex row 87 ran three isolated pairs on identical product source (BASE 34,33,34; TIP 34,34,34 - tmp/plans/codex-wsregress-report.md), and rows 86, 105 and 112 recorded the same unreproduced loss on unrelated changes.
+pair.1 = base 34/34; tip 34/34
+pair.2 = base 33/34; tip 34/34
+pair.3 = base 34/34; tip 34/34
+
+[navigation-timing/test-performance-attributes.sub.html]
+generation = 175
+kind = flake
+why = Its one subtest flips on BOTH runners: three alternating serial pairs on chat (2026-10-23, no --parallel, frozen runners main-33cda67b1e BASE and main-39db83dc56 TIP, each run alone through crane-measure.sh) passed base 0,0,1 and tip 0,1,0. The failing assertion is the same in every failed run, on both sides: "performance.timing.secureConnectionStart >= performance.timing.connectStart". This is a real intermittent timing-order defect that predates this generation (queued in tmp/plans/feature-queue.md), not a regression from the merges in 39db83dc56e. Evidence: tmp/debug/flake175.out.
+pair.1 = base 0/1; tip 0/1
+pair.2 = base 0/1; tip 1/1
+pair.3 = base 1/1; tip 0/1
+
+[service-workers/service-worker/static-router-main-resource.https.html]
+generation = 175
+kind = flake
+why = The sweep run lost one of nine subtests; three alternating serial pairs on chat (2026-10-23, no --parallel, frozen runners main-33cda67b1e BASE and main-39db83dc56 TIP, each run alone through crane-measure.sh) passed 9/9 every time on both sides, so the loss was sweep-only and does not reproduce. Evidence: tmp/debug/flake175.out.
+pair.1 = base 9/9; tip 9/9
+pair.2 = base 9/9; tip 9/9
+pair.3 = base 9/9; tip 9/9
+
+[html/cross-origin-opener-policy/coep-with-same-origin.https.html]
+generation = 176
+kind = flake
+why = The sweep run lost the file's one passing subtest; three alternating serial pairs on chat (2026-10-23, no --parallel, frozen runners main-39db83dc56 BASE and main-9f06884a3c TIP, each run alone through crane-measure.sh) passed 1/5 every time on both sides, with the same four failures ("Popup is closed from opener?"), so the loss was sweep-only and does not reproduce. Evidence: tmp/debug/flake176.out.
+pair.1 = base 1/5; tip 1/5
+pair.2 = base 1/5; tip 1/5
+pair.3 = base 1/5; tip 1/5
+
+[xhr/send-redirect.htm]
+generation = 176
+kind = flake
+why = The same intermittent redirect subtest family as the generation-173 disposition (there "(302, HEAD, redirect.py)" with BASE failing; here "(302, POST, content.py)": expected "GET" got null). Three alternating serial pairs on chat (2026-10-23, frozen main-39db83dc56 BASE and main-9f06884a3c TIP) passed base 34,34,34 and tip 33,34,34; nothing in 9f06884a3c touches XHR or redirects (fontcap1: platform fonts; streamnav: frame/popup navigation bodies). Evidence: tmp/debug/flake176.out.
+pair.1 = base 34/34; tip 33/34
+pair.2 = base 34/34; tip 34/34
+pair.3 = base 34/34; tip 34/34

@@ -602,7 +602,7 @@ fn writeManifestTree(dir: std.Io.Dir, manifest_json: []const u8, files: []const 
 const full_corpus_manifest =
     \\{"version": 9, "url_base": "/", "items": {"testharness": {
     \\  "dom": {"nodes": {"Node-appendChild.html": ["h", [null, {}]]}},
-    \\  "css": {"selectors": {"focus-visible.html": ["h", [null, {}]]}},
+    \\  "webgl": {"test.html": ["h", [null, {}]]},
     \\  "html": {"rendering": {"replaced.html": ["h", [null, {}]]}},
     \\  "svg": {"types": {"SVGLength.svg": ["h", [null, {}]]}}
     \\}}}
@@ -610,7 +610,7 @@ const full_corpus_manifest =
 
 const full_corpus_files = [_][]const u8{
     "dom/nodes/Node-appendChild.html",
-    "css/selectors/focus-visible.html",
+    "webgl/test.html",
     "html/rendering/replaced.html",
     "svg/types/SVGLength.svg",
 };
@@ -632,17 +632,28 @@ test "a full-corpus discovery includes XML documents" {
     var result = try discoverTests(allocator, options);
     defer result.deinit();
 
-    // css/ is off the allowlist and html/rendering/ is excluded; the full
-    // corpus runs both.
+    // webgl/ is off the allowlist and html/rendering/ is excluded; the full
+    // corpus runs both, and the XML document too. Sort the paths so the check
+    // does not depend on discovery order.
     try testing.expectEqual(@as(usize, 4), result.test_files.items.len);
-    try testing.expectEqualStrings("css/selectors/focus-visible.html", result.test_files.items[0].path);
-    try testing.expectEqualStrings("dom/nodes/Node-appendChild.html", result.test_files.items[1].path);
-    try testing.expectEqualStrings("html/rendering/replaced.html", result.test_files.items[2].path);
+    var paths: [4][]const u8 = undefined;
+    for (result.test_files.items, 0..) |file, i| paths[i] = file.path;
+    std.mem.sort([]const u8, &paths, {}, struct {
+        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.lessThan(u8, a, b);
+        }
+    }.lessThan);
+    try testing.expectEqualStrings("dom/nodes/Node-appendChild.html", paths[0]);
+    try testing.expectEqualStrings("html/rendering/replaced.html", paths[1]);
+    try testing.expectEqualStrings("svg/types/SVGLength.svg", paths[2]);
+    try testing.expectEqualStrings("webgl/test.html", paths[3]);
     try testing.expectEqual(@as(usize, 4), result.total_in_scope_urls);
     try testing.expectEqual(@as(usize, 4), result.total_manifest_urls);
 
-    try testing.expectEqualStrings("svg/types/SVGLength.svg", result.test_files.items[3].path);
-    try testing.expectEqual(config.FileType.xml, result.test_files.items[3].file_type);
+    for (result.test_files.items) |file| {
+        if (std.mem.eql(u8, file.path, "svg/types/SVGLength.svg"))
+            try testing.expectEqual(config.FileType.xml, file.file_type);
+    }
     try testing.expectEqual(@as(usize, 0), result.skipped.items.len);
 }
 

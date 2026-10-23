@@ -274,6 +274,10 @@ pub const InternalState = struct {
     /// first activation notification. Read and written by
     /// src/html/user_activation.zig through dom.user_activation_state.
     user_activation: @import("dom").user_activation_state.Timestamps = .{},
+    /// HTML 6.10.2: "Each Window has a close watcher manager." Read and
+    /// written by src/html/close_watchers.zig through
+    /// dom.close_watcher_manager.
+    close_watcher_manager: @import("dom").close_watcher_manager.Manager,
     reporting: @import("dom").reporting.State = .{},
     /// Fetch 2.4: this global's settings object's fetch group - its
     /// in-flight keepalive bytes (dom.keepalive_fetch). Plain data.
@@ -287,10 +291,13 @@ pub const InternalState = struct {
             .stub_timing_backend = StubFrameTimingBackend.init(),
             .ui_backend = undefined, // Set by caller after init
             .time_origin_ns = @intCast(@import("hr_time").MonotonicClock.unsafeCurrentTime()),
+            .close_watcher_manager = @import("dom").close_watcher_manager.Manager.init(allocator),
         };
     }
 
     pub fn deinit(self: *InternalState) void {
+        // The close watchers stop being active, and let their owners go.
+        self.close_watcher_manager.deinit();
         self.reporting.deinit(self.allocator);
         if (self.crypto) |*crypto| crypto.edge.release(crypto.owner);
         if (self.own_performance) |*performance| performance.edge.release(performance.owner);
@@ -479,6 +486,9 @@ pub fn installHooks() void {
     // The user activation algorithms (src/html/user_activation.zig) keep a
     // window's activation timestamps here.
     @import("dom").user_activation_state.install(.{ .get = &userActivationTimestamps, .set = &setUserActivationTimestamps });
+    // The close watcher algorithms (src/html/close_watchers.zig) keep a
+    // window's close watcher manager here.
+    @import("dom").close_watcher_manager.install(.{ .of = &closeWatcherManager });
     // The WindowOrWorkerGlobalScope mixin reads a window's settings here.
     @import("dom").global_settings.install(.{
         .owns = &isWindow,
@@ -542,6 +552,14 @@ fn setUserActivationTimestamps(window: *runtime.Instance, timestamps: @import("d
     if (!isWindow(window)) return;
     const internal = getInternal(window) orelse return;
     internal.user_activation = timestamps;
+}
+
+/// dom.close_watcher_manager: `window`'s close watcher manager.
+fn closeWatcherManager(window: *runtime.Instance) ?*@import("dom").close_watcher_manager.Manager {
+    if (!isWindow(window)) return null;
+    const internal = getInternal(window) orelse return null;
+    internal.close_watcher_manager.window = window;
+    return &internal.close_watcher_manager;
 }
 
 /// The settings object's origin, serialized; the caller owns it.
