@@ -86,8 +86,13 @@ pub const capabilities: engine.Capabilities = .{
     // instantiateStreaming and hands each fulfilled source to the host
     // (protocol_webassembly.zig).
     .webassembly_streaming = .native,
-    // Not until every bind path marks (runtime.instance_lifecycle.markWrapped).
-    .wrap_tracking = .unsupported,
+    // runtime.instance_lifecycle.markWrapped where the instance is written
+    // into the object: template_registry.wrapInstanceAsV8Object (every
+    // outcome of its cache step), interface.zig setInstance and
+    // setInstanceWithTypeInfo (constructors, custom element construction
+    // and upgrade), and the Window and worker global bindings
+    // (tests/v8/wrap_tracking_test.zig).
+    .wrap_tracking = .native,
 };
 
 /// Every operation is V8 code: a test binary that compiles them all links V8.

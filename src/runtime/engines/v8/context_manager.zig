@@ -1282,6 +1282,8 @@ fn createWindowBoundToGlobal(
         0,
         @ptrCast(window_instance),
     );
+    // [wrap_tracking]: the global object reaches the Window from here.
+    runtime.instance_lifecycle.markWrapped(window_instance);
 
     // Use dom_type_info which has the actual type info definitions
     const dom_type_info = @import("dom_type_info.zig");
@@ -2167,6 +2169,8 @@ pub fn hydrateWindowContext(comptime namespaces_module: type, options: Hydration
     // Use dom_type_info which has the actual type info definitions
     const dom_type_info_3 = @import("dom_type_info.zig");
     v8.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
+    // [wrap_tracking]: the global object reaches the Window from here.
+    runtime.instance_lifecycle.markWrapped(window_instance);
     if (dom_type_info_3.getTypeInfoByName("Window")) |type_info| {
         v8.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
     }

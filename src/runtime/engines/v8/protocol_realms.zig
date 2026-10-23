@@ -546,6 +546,8 @@ fn bindWindowToGlobal(
 ) void {
     // Internal field 0: the Window; 1: its type info.
     ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window));
+    // [wrap_tracking]: the global object reaches the Window from here.
+    runtime.instance_lifecycle.markWrapped(window);
     if (dom_type_info.getTypeInfoByName("Window")) |type_info| {
         ffi.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
     }

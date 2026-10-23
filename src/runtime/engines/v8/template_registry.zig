@@ -341,6 +341,10 @@ pub fn wrapInstanceAsV8Object(
         0,
         @ptrCast(instance),
     );
+    // [wrap_tracking]: an object reaches the instance from here, whatever
+    // the cache step below makes of it - cached, discarded after a failed
+    // insert, or bound to the NodeBase with no cache at all.
+    runtime.instance_lifecycle.markWrapped(instance);
 
     // Store WrapperTypeInfo in internal field 1 (for type-safe unwrapping)
     if (dom_type_info.getTypeInfoByName(interface_name)) |type_info| {
