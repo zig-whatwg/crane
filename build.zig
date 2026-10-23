@@ -2783,7 +2783,10 @@ pub fn build(b: *std.Build) void {
     // C LIBRARY TARGET (for Swift/Kotlin/C integration)
     // ========================================================================
 
-    // Static library (libwhatwg.a)
+    // Static library (libwhatwg.a). exports.zig allocates with
+    // std.heap.c_allocator, so it links libc: a Darwin target links libSystem
+    // whatever the module says, a Linux target only when asked, and without
+    // it c_allocator is a compile error there.
     const static_lib = b.addLibrary(.{
         .linkage = .static,
         .name = "whatwg",
@@ -2791,11 +2794,12 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/platform/exports.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
         }),
     });
     b.installArtifact(static_lib);
 
-    // Shared library (libwhatwg.so / libwhatwg.dylib)
+    // Shared library (libwhatwg.so / libwhatwg.dylib), libc as above.
     const shared_lib = b.addLibrary(.{
         .linkage = .dynamic,
         .name = "whatwg",
@@ -2803,6 +2807,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/platform/exports.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
         }),
     });
     b.installArtifact(shared_lib);
