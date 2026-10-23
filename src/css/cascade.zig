@@ -112,6 +112,9 @@ pub const Context = struct {
     /// The root element's computed font-size (rem); the initial 16px for
     /// the root itself.
     root_font_size: f64 = 16,
+    root_line_height: ?f64 = null,
+    root_vertical: bool = false,
+    root_upright: bool = false,
     /// The viewport (vw, vh).
     viewport_width: f64 = 1024,
     viewport_height: f64 = 768,
@@ -255,6 +258,17 @@ const Builder = struct {
         for (self.candidates) |c| {
             if (self.target(c.decl.longhand) != l) continue;
             if (excluded.excludes(c)) continue;
+            // Q17/Q23–25: unavailable cap-height/ascent cannot enter scalar
+            // consumers. Only geometry lengths may remain unresolved; the
+            // next retained candidate/default wins, with no hidden CSSOM history.
+            if (c.decl.value == .value) {
+                const value = c.decl.value.value;
+                const geometry_length = switch (l.info().grammar) {
+                    .length_percentage_auto, .length_percentage_nonneg, .size, .line_width => true,
+                    else => false,
+                };
+                if (value.needsUnavailableMetrics(geometry_length)) continue;
+            }
             return c;
         }
         return null;
@@ -267,15 +281,17 @@ const Builder = struct {
         // (currentcolor).
         self.writing_mode = (try self.computeAndStore(.writing_mode)).keyword;
         self.direction = (try self.computeAndStore(.direction)).keyword;
+        _ = try self.computeAndStore(.text_orientation);
         self.used_scheme = self.elementColorScheme(try self.computeAndStore(.color_scheme));
         self.style.used_color_scheme = self.used_scheme;
         _ = try self.computeAndStore(.font_size);
+        _ = try self.computeAndStore(.line_height);
         _ = try self.computeAndStore(.color);
         for (0..Longhand.count) |i| {
             const l: Longhand = @enumFromInt(i);
             if (l.logical() != null) continue;
             switch (l) {
-                .writing_mode, .direction, .color_scheme, .font_size, .color => continue,
+                .writing_mode, .direction, .text_orientation, .color_scheme, .font_size, .line_height, .color => continue,
                 else => {},
             }
             _ = try self.computeAndStore(l);
@@ -340,7 +356,31 @@ const Builder = struct {
     }
 
     fn computeValue(self: *Builder, l: Longhand, v: Value) Allocator.Error!Value {
+        if (v == .calculation) {
+            const expression = try v.calculation.compute(self.ctx.allocator, self.mathContext(l));
+            if (expression.computedNumber()) |number| {
+                defer expression.unref();
+                const scalar: Value = switch (number.unit) {
+                    .number => if (expression.grammar.kind == .integer)
+                        .{ .integer = @intFromFloat(number.value) }
+                    else
+                        .{ .number = number.value },
+                    .px => Value.px(number.value),
+                    .percent => .{ .length = Length.percent(number.value) },
+                    else => {
+                        // No scalar longhand currently consumes other dimensions.
+                        expression.ref();
+                        return .{ .calculation = expression };
+                    },
+                };
+                return self.computeValue(l, scalar);
+            }
+            return .{ .calculation = expression };
+        }
         switch (l) {
+            // Writing Modes 4 §5.1: retain the legacy spelling only until
+            // computation (Blink/Gecko ship it; their specified forms differ).
+            .text_orientation => if (v.isKeyword(.sideways_right)) return Value.kw(.sideways),
             .content => {
                 if (v == .content) {
                     if (try v.content.compute(self.ctx.allocator, self.ctx.content_attributes)) |content| return .{ .content = content };
@@ -388,7 +428,7 @@ const Builder = struct {
                         .thick => 5,
                         else => 3,
                     },
-                    .length => |len| self.absolute(len),
+                    .length => |len| self.absolute(len, l),
                     else => 0,
                 };
                 return Value.px(snapBorderWidth(px));
@@ -398,7 +438,7 @@ const Builder = struct {
         switch (v) {
             .length => |len| {
                 if (len.unit == .percent) return v;
-                return Value.px(self.absolute(len));
+                return Value.px(self.absolute(len, l));
             },
             else => {
                 v.retain();
@@ -407,36 +447,55 @@ const Builder = struct {
         }
     }
 
-    /// CSS Values 4 section 6: a length's absolute value, in px, its em
-    /// the element's own font size.
-    fn absolute(self: *const Builder, len: Length) f64 {
-        return self.absoluteWith(len, self.fontSize());
+    fn usedLineHeight(style: *const ComputedStyle) f64 {
+        const em = style.get(.font_size).length.value;
+        return switch (style.get(.line_height)) {
+            .number => |n| n * em,
+            .length => |length| length.value,
+            else => em * 1.2, // Existing normal-line-height estimate, Q17.
+        };
     }
 
-    /// A length's absolute value with `em` as the font size its
-    /// font-relative units read. ex and ch have no font metrics to read:
-    /// "it must be assumed to be 0.5em". lh and rlh take `normal`'s
-    /// customary 1.2 (stated).
-    fn absoluteWith(self: *const Builder, len: Length, em: f64) f64 {
-        return switch (len.unit) {
-            .px => len.value,
-            .cm => len.value * 96.0 / 2.54,
-            .mm => len.value * 96.0 / 25.4,
-            .Q => len.value * 96.0 / 101.6,
-            .in => len.value * 96.0,
-            .pt => len.value * 96.0 / 72.0,
-            .pc => len.value * 16.0,
-            .em => len.value * em,
-            .rem => len.value * self.ctx.root_font_size,
-            .ex, .ch => len.value * em * 0.5,
-            .lh => len.value * em * 1.2,
-            .rlh => len.value * self.ctx.root_font_size * 1.2,
-            .vw, .vi => len.value * self.ctx.viewport_width / 100,
-            .vh, .vb => len.value * self.ctx.viewport_height / 100,
-            .vmin => len.value * @min(self.ctx.viewport_width, self.ctx.viewport_height) / 100,
-            .vmax => len.value * @max(self.ctx.viewport_width, self.ctx.viewport_height) / 100,
-            .percent => len.value * em / 100,
+    fn mathContext(self: *const Builder, l: Longhand) @import("math_values.zig").Context {
+        // Values 4 §6.1.1: font-affecting properties use parent metrics;
+        // line-height additionally uses its parent's lh to avoid a cycle.
+        const font_affecting = l == .font_size or l == .font_weight;
+        const parent_em = self.parentValue(.font_size).length.value;
+        const em = if (font_affecting) parent_em else self.fontSize();
+        const parent_lh = if (self.ctx.parent) |parent| usedLineHeight(parent) else 19.2;
+        const own_lh = if (font_affecting or l == .line_height) parent_lh else usedLineHeight(self.style);
+        const root_self = self.ctx.is_root and !font_affecting;
+        const root_em = if (root_self) self.fontSize() else self.ctx.root_font_size;
+        const mode = if (font_affecting) self.parentValue(.writing_mode).keyword else self.writing_mode;
+        const orientation = if (font_affecting) self.parentValue(.text_orientation).keyword else self.style.keyword(.text_orientation);
+        return .{
+            .font_size = em,
+            .root_font_size = root_em,
+            .line_height = own_lh,
+            .root_line_height = if (self.ctx.is_root)
+                (if (font_affecting or l == .line_height) parent_lh else own_lh)
+            else
+                self.ctx.root_line_height orelse self.ctx.root_font_size * 1.2,
+            .vertical = mode == .vertical_rl or mode == .vertical_lr,
+            .upright = orientation == .upright,
+            .root_vertical = if (root_self) self.writing_mode == .vertical_rl or self.writing_mode == .vertical_lr else self.ctx.root_vertical,
+            .root_upright = if (root_self) self.style.keyword(.text_orientation) == .upright else self.ctx.root_upright,
+            .viewport_vertical = self.writing_mode != .horizontal_tb,
+            .viewport_width = self.ctx.viewport_width,
+            .viewport_height = self.ctx.viewport_height,
+            .percentage_basis = if (l == .font_size) parent_em else if (l == .line_height) self.fontSize() else null,
         };
+    }
+
+    /// CSS Values 4 section 6: a length's absolute value, in px, its em
+    /// the element's own font size.
+    fn absolute(self: *const Builder, len: Length, l: Longhand) f64 {
+        if (len.unit == .px) return len.value;
+        const unit: @import("math_values.zig").Unit = switch (len.unit) {
+            .Q => .q,
+            inline else => |u| @field(@import("math_values.zig").Unit, @tagName(u)),
+        };
+        return self.mathContext(l).resolve(.{ .value = len.value, .unit = unit }).value;
     }
 
     /// CSS Fonts 4 2.5 font-size, against the parent's computed size. The
@@ -461,7 +520,7 @@ const Builder = struct {
             },
             // "Percentages: refer to parent element's font size"; em and ex
             // likewise refer to the parent's font.
-            .length => |len| self.absoluteWith(len, parent),
+            .length => |len| self.absolute(len, .font_size),
             else => parent,
         };
     }
@@ -528,7 +587,11 @@ const Builder = struct {
         };
         for (sides) |pair| {
             const style_kw = s.keyword(pair[0]);
-            if (style_kw == .none or style_kw == .hidden) s.values[@intFromEnum(pair[1])] = Value.px(0);
+            if (style_kw == .none or style_kw == .hidden) {
+                const slot = &s.values[@intFromEnum(pair[1])];
+                slot.release();
+                slot.* = Value.px(0);
+            }
         }
     }
 };

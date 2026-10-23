@@ -39,7 +39,7 @@ test "CSSOM replacement preserves the new resource source even for identical tex
     return error.ResourceProvenanceNotImplemented;
 }
 
-test "non-resource values and unsupported variable substitution keep their existing behavior" {
+test "non-resource values carry no URLs and unsupported substitutions remain rejected" {
     if (comptime @hasDecl(values, "ResourceSource")) return Checks.nonResources();
     return error.ResourceProvenanceNotImplemented;
 }
@@ -283,9 +283,16 @@ const Checks = struct {
         var block = try Block.parse(options(s), "--image: url(a.png); background-image: var(--image); width: calc(2px + 1px); padding-top: env(safe-area-inset-top)");
         defer block.deinit();
         try testing.expect(block.get(.background_image) == null);
-        try testing.expect(block.get(.width) == null);
+        // The typed math prerequisite now accepts width calculations. They
+        // still carry no resource provenance, including under a sheet source.
+        const width = block.get(.width).?.value.value;
+        try testing.expectEqual(@as(usize, 0), width.resourceUrls().len);
+        var width_text: std.ArrayList(u8) = .empty;
+        defer width_text.deinit(testing.allocator);
+        try block.getPropertyValue("width", &width_text);
+        try testing.expectEqualStrings("calc(3px)", width_text.items);
         try testing.expect(block.get(.padding_top) == null);
-        try testing.expectEqual(@as(usize, 1), block.length());
+        try testing.expectEqual(@as(usize, 2), block.length());
         const literal = try value(options(s), "content", "'url(fake.png)' attr(label, 'url(also-fake.png)')");
         defer literal.release();
         try testing.expectEqual(@as(usize, 0), literal.resourceUrls().len);

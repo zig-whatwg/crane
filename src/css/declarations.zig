@@ -116,16 +116,20 @@ pub const DeclarationBlock = struct {
         var assignments: std.ArrayList(Assignment) = .empty;
         defer assignments.deinit(self.allocator);
         if (!try properties.parseDeclaration(options, property, value_text, &assignments)) return;
+        var consumed: usize = 0;
+        defer for (assignments.items[consumed..]) |a| a.value.release();
         for (assignments.items) |a| {
             if (self.indexOf(a.longhand)) |i| {
                 if (self.entries.items[i].important() and !important) {
                     a.value.release();
+                    consumed += 1;
                     continue;
                 }
                 var old = self.entries.orderedRemove(i);
                 self.freeEntry(&old);
             }
             try self.entries.append(self.allocator, .{ .typed = .{ .longhand = a.longhand, .value = a.value, .important = important } });
+            consumed += 1;
         }
     }
 
@@ -267,9 +271,13 @@ pub const DeclarationBlock = struct {
         var assignments: std.ArrayList(Assignment) = .empty;
         defer assignments.deinit(self.allocator);
         if (!try properties.parseDeclaration(options, property, value_text, &assignments)) return false;
+        var consumed: usize = 0;
+        defer for (assignments.items[consumed..]) |a| a.value.release();
         // 6-9: "set the CSS declaration" each longhand.
         var updated = false;
         for (assignments.items) |a| {
+            // setDeclaration consumes this reference on success AND error.
+            consumed += 1;
             if (try self.setDeclaration(a.longhand, a.value, important)) updated = true;
         }
         return updated;

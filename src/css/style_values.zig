@@ -74,6 +74,11 @@ pub const Keyword = enum(u8) {
     vertical_lr,
     sideways_rl,
     sideways_lr,
+    // Writing Modes 4 §5.1, also an input to relative font units.
+    mixed,
+    upright,
+    sideways,
+    sideways_right,
     // border styles
     dotted,
     dashed,
@@ -543,6 +548,7 @@ pub const Value = union(enum) {
     text_transform: TextTransform,
     color_scheme: ColorScheme,
     content: *Content,
+    calculation: *@import("math_values.zig").Expression,
     /// Kept as its serialization (a font-family list, an <image>).
     text: *SharedText,
 
@@ -565,12 +571,14 @@ pub const Value = union(enum) {
     /// Take a reference to what the value holds (a copy of it is kept).
     pub fn retain(self: Value) void {
         if (self == .content) return self.content.ref();
+        if (self == .calculation) return self.calculation.ref();
         if (self.sharedText()) |t| t.ref();
     }
 
     /// Drop the reference `retain` took.
     pub fn release(self: Value) void {
         if (self == .content) return self.content.unref();
+        if (self == .calculation) return self.calculation.unref();
         if (self.sharedText()) |t| t.unref();
     }
 
@@ -596,12 +604,31 @@ pub const Value = union(enum) {
             .text_transform => |t| t.eql(b.text_transform),
             .color_scheme => |c| c.support.eql(b.color_scheme.support) and std.mem.eql(u8, c.text.bytes, b.color_scheme.text.bytes),
             .content => |c| c.eql(b.content),
+            .calculation => |c| c.eql(b.calculation),
             .text => |t| t == b.text or std.mem.eql(u8, t.bytes, b.text.bytes),
         };
     }
 
     pub fn kw(k: Keyword) Value {
         return .{ .keyword = k };
+    }
+
+    /// Q25: exhaustive so a future aggregate must choose its metric rule.
+    pub fn needsUnavailableMetrics(self: Value, geometry_length: bool) bool {
+        return switch (self) {
+            .calculation => |c| c.needsUnavailableMetrics(geometry_length),
+            .keyword,
+            .length,
+            .number,
+            .integer,
+            .color,
+            .display,
+            .text_transform,
+            .color_scheme,
+            .content,
+            .text,
+            => false,
+        };
     }
 
     pub fn px(v: f64) Value {
@@ -630,8 +657,10 @@ pub fn appendNumber(value: f64, out: *std.ArrayList(u8), allocator: Allocator) A
     // Six significant digits, and never more than CSSOM's 6 decimals.
     const exponent: i32 = @intFromFloat(@floor(std.math.log10(magnitude)));
     const decimals: usize = @intCast(std.math.clamp(5 - exponent, 0, 6));
-    var buffer: [64]u8 = undefined;
-    const text = std.fmt.bufPrint(&buffer, "{d:.[1]}", .{ value, decimals }) catch return out.appendSlice(allocator, "0");
+    // f64's largest finite value has 309 integer digits. Include sign and
+    // all six fractional digits: finite overflow must never serialize as 0.
+    var buffer: [320]u8 = undefined;
+    const text = std.fmt.bufPrint(&buffer, "{d:.[1]}", .{ value, decimals }) catch unreachable;
     var end = text.len;
     if (std.mem.indexOfScalar(u8, text, '.') != null) {
         while (end > 0 and text[end - 1] == '0') end -= 1;
