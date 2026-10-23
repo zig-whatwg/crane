@@ -45,8 +45,8 @@ const Worst = struct {
     starved: usize = 0,
 
     fn note(self: *Worst, mgr: *NativeTimerManager) void {
-        self.probe = @max(self.probe, tombstones.meanMissProbe(&mgr.timers));
-        if (!tombstones.slotCounts(&mgr.timers).halfOfUnusedFree()) self.starved += 1;
+        self.probe = @max(self.probe, tombstones.meanMissProbe(&mgr.timers.map));
+        if (!tombstones.slotCounts(&mgr.timers.map).halfOfUnusedFree()) self.starved += 1;
     }
 };
 
@@ -57,7 +57,7 @@ test "a runner's pages of timers keep half the timer map's unused slots free, an
     const resident = mgr.setTimeout(3_600_000, noop, null);
     var worst: Worst = .{};
     for (0..300) |_| try page(mgr, &worst);
-    const counts = tombstones.slotCounts(&mgr.timers);
+    const counts = tombstones.slotCounts(&mgr.timers.map);
     if (worst.starved != 0 or worst.probe > 8) {
         std.debug.print("timers: {d} of 300 pages began with fewer than half the unused slots free; worst mean miss {d} slots (capacity {d}, live {d}, free {d})\n", .{ worst.starved, worst.probe, counts.capacity, counts.live, counts.free });
         return error.TombstonesFilledTheMap;
@@ -89,11 +89,11 @@ const Rearm = struct {
         if (to_clear.pop()) |old| {
             if (!m.clearTimeout(old)) fail = true;
         }
-        const before = m.guard.removals;
+        const before = m.timers.guard.removals;
         const next = armed.items.len + 1_000_000;
         const new_id = m.setTimeout(0, callback, @ptrFromInt(next));
         if (new_id == 0) fail = true;
-        if (m.guard.removals < before) rehashes += 1;
+        if (m.timers.guard.removals < before) rehashes += 1;
         armed.append(testing.allocator, @intCast(next)) catch {
             fail = true;
         };
