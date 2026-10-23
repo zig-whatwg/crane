@@ -219,6 +219,29 @@ pub const Longhand = enum(u8) {
     cursor,
     list_style_image,
     text_indent,
+    fill,
+    stroke,
+    marker_start,
+    marker_mid,
+    marker_end,
+    clip_path,
+    filter,
+    object_position,
+    mask_image,
+    mask_position,
+    mask_size,
+    mask_repeat,
+    mask_origin,
+    mask_clip,
+    mask_composite,
+    mask_mode,
+    mask_border_source,
+    mask_border_slice,
+    mask_border_width,
+    mask_border_outset,
+    mask_border_repeat,
+    stroke_width,
+    mask_type,
 
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
@@ -412,6 +435,13 @@ pub const Grammar = enum {
     content,
     cursor,
     text_indent,
+    paint,
+    reference,
+    shape,
+    filter,
+    image_position,
+    mask,
+    stroke_width,
 };
 
 pub const Info = struct {
@@ -607,6 +637,29 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .cursor, .inherited = true, .initial = Value.kw(.auto), .grammar = .cursor },
         .{ .longhand = .list_style_image, .inherited = true, .initial = Value.kw(.none), .grammar = .image },
         .{ .longhand = .text_indent, .inherited = true, .initial = Value.px(0), .grammar = .text_indent },
+        .{ .longhand = .fill, .inherited = true, .initial = .{ .color = Color.black }, .grammar = .paint },
+        .{ .longhand = .stroke, .inherited = true, .initial = Value.kw(.none), .grammar = .paint },
+        .{ .longhand = .marker_start, .inherited = true, .initial = Value.kw(.none), .grammar = .reference },
+        .{ .longhand = .marker_mid, .inherited = true, .initial = Value.kw(.none), .grammar = .reference },
+        .{ .longhand = .marker_end, .inherited = true, .initial = Value.kw(.none), .grammar = .reference },
+        .{ .longhand = .clip_path, .inherited = false, .initial = Value.kw(.none), .grammar = .shape },
+        .{ .longhand = .filter, .inherited = false, .initial = Value.kw(.none), .grammar = .filter },
+        .{ .longhand = .object_position, .inherited = false, .initial = Value.kw(.center), .grammar = .image_position },
+        .{ .longhand = .mask_image, .inherited = false, .initial = Value.kw(.none), .grammar = .mask },
+        .{ .longhand = .mask_position, .inherited = false, .initial = .{ .length = .percent(0) }, .grammar = .mask },
+        .{ .longhand = .mask_size, .inherited = false, .initial = Value.kw(.auto), .grammar = .mask },
+        .{ .longhand = .mask_repeat, .inherited = false, .initial = .{ .image_repeat = .{ .x = .repeat, .y = .repeat } }, .grammar = .mask },
+        .{ .longhand = .mask_origin, .inherited = false, .initial = .{ .image_keyword = .border_box }, .grammar = .mask },
+        .{ .longhand = .mask_clip, .inherited = false, .initial = .{ .image_keyword = .border_box }, .grammar = .mask },
+        .{ .longhand = .mask_composite, .inherited = false, .initial = .{ .image_keyword = .add }, .grammar = .mask },
+        .{ .longhand = .mask_mode, .inherited = false, .initial = .{ .image_keyword = .match_source }, .grammar = .mask },
+        .{ .longhand = .mask_border_source, .inherited = false, .initial = Value.kw(.none), .grammar = .mask },
+        .{ .longhand = .mask_border_slice, .inherited = false, .initial = .{ .number = 0 }, .grammar = .mask },
+        .{ .longhand = .mask_border_width, .inherited = false, .initial = Value.kw(.auto), .grammar = .mask },
+        .{ .longhand = .mask_border_outset, .inherited = false, .initial = .{ .number = 0 }, .grammar = .mask },
+        .{ .longhand = .mask_border_repeat, .inherited = false, .initial = .{ .image_repeat = .{ .x = .stretch, .y = .stretch, .border = true } }, .grammar = .mask },
+        .{ .longhand = .stroke_width, .inherited = true, .initial = Value.px(1), .grammar = .stroke_width },
+        .{ .longhand = .mask_type, .inherited = false, .initial = .{ .image_keyword = .luminance }, .grammar = .mask },
     };
     for (defs) |def| {
         const i = @intFromEnum(def.longhand);
@@ -672,6 +725,9 @@ pub const Shorthand = enum(u8) {
     animation_range,
     flex,
     transition,
+    marker,
+    mask,
+    mask_border,
 
     pub fn name(self: Shorthand) []const u8 {
         return switch (self) {
@@ -731,6 +787,9 @@ pub const Shorthand = enum(u8) {
             .animation_range => &.{ .animation_range_start, .animation_range_end },
             .flex => &.{ .flex_grow, .flex_shrink, .flex_basis },
             .transition => &.{ .transition_property, .transition_duration, .transition_timing_function, .transition_delay, .transition_behavior },
+            .marker => &.{ .marker_start, .marker_mid, .marker_end },
+            .mask => &@import("mask_values.zig").longhands,
+            .mask_border => &@import("mask_values.zig").border_longhands,
         };
     }
 };
@@ -820,6 +879,8 @@ pub const ParseOptions = struct {
     resource_source: ?*values.ResourceSource = null,
     /// Borrowed, immutable source ordinals for numeric random() functions.
     random_scope: ?*const @import("random_values.zig").ParseScope = null,
+    /// SVG2 §4.2 presentation-attribute number-to-length parsing context.
+    svg_presentation: bool = false,
 };
 
 pub const UrlResolver = resources.UrlResolver;
@@ -1190,6 +1251,13 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         },
         .cursor => return @import("cursor_values.zig").parse(options, stream),
         .text_indent => return @import("text_indent.zig").parse(options, stream),
+        .paint => return @import("svg_paint.zig").parse(options, stream),
+        .reference => return @import("svg_paint.zig").parseReference(options, stream),
+        .shape => return @import("shape_values.zig").parse(options, stream),
+        .filter => return @import("filter_values.zig").parse(options, stream),
+        .image_position => return if (try @import("position_values.zig").parse(options, stream, .position)) |position| .{ .image_position = position } else null,
+        .mask => return @import("mask_values.zig").parse(options, l, stream),
+        .stroke_width => return @import("svg_paint.zig").parseStrokeWidth(options, stream),
     }
 }
 
@@ -1807,6 +1875,9 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
         },
         .white_space => return whiteSpace(options, stream, out),
         .background => return background(options, stream, out),
+        .marker => return @import("svg_paint.zig").parseMarker(options, stream, out),
+        .mask => return @import("mask_values.zig").parseShorthand(options, stream, out),
+        .mask_border => return @import("mask_values.zig").parseBorder(options, stream, out),
     }
 }
 
@@ -2119,6 +2190,13 @@ fn backgroundRepeat(stream: *Stream) bool {
 
 /// CSSOM "serialize a CSS value" for one longhand's value.
 pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+    // Scalar initial sentinels avoid one allocation per untouched style.
+    if (l == .object_position and value.isKeyword(.center)) return out.appendSlice(allocator, "50% 50%");
+    if (l == .mask_position and value == .length) {
+        try values.appendLength(value.length, out, allocator);
+        try out.append(allocator, ' ');
+        return values.appendLength(value.length, out, allocator);
+    }
     switch (value) {
         .keyword => |k| try out.appendSlice(allocator, k.name()),
         .length => |len| try values.appendLength(len, out, allocator),
@@ -2152,6 +2230,15 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .pending => |pending| if (pending.property == .longhand) try out.appendSlice(allocator, pending.text),
         .cursor => |c| try out.appendSlice(allocator, c.text.bytes),
         .indent => |v| try v.serialize(out, allocator),
+        .paint => |v| try v.serialize(out, allocator, null),
+        .filter => |v| try out.appendSlice(allocator, v.text.bytes),
+        .shape => |v| try v.serialize(out, allocator),
+        .image_position => |v| try v.serialize(out, allocator),
+        .image_size => |v| try v.serialize(out, allocator),
+        .image_quad => |v| try v.serialize(out, allocator),
+        .layers => |v| try out.appendSlice(allocator, v.text.bytes),
+        .image_keyword => |v| try out.appendSlice(allocator, v.name()),
+        .image_repeat => |v| try v.serialize(out, allocator),
     }
 }
 
@@ -2327,6 +2414,9 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
             }
             return true;
         },
+        .marker => return @import("svg_paint.zig").serializeMarker(vs, mode, out, allocator),
+        .mask => return @import("mask_values.zig").serialize(vs, mode, out, allocator),
+        .mask_border => return @import("mask_values.zig").serializeBorder(vs, mode, out, allocator),
         .all => return false,
     }
 }

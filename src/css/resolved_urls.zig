@@ -39,6 +39,7 @@ pub fn serialize(longhand: properties.Longhand, value: values.Value, out: *std.A
         .text => |v| v.bytes,
         .content => |v| v.serialization,
         .cursor => |v| v.text.bytes,
+        .layers => |v| v.text.bytes,
         else => return properties.serializeValue(longhand, value, out, allocator),
     };
     try append(text, value.resourceUrls(), out, allocator);
