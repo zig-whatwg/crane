@@ -1319,6 +1319,10 @@ const PlatformBinding = struct {
     /// a graph whose `fetch` is compiled beside the old platform root (tests/
     /// platform/retained_old_platform.zig) must not reach the facade's files.
     kit_curl_share: *std.Build.Module,
+    /// kit/sfnt and kit/inflate, whose own test blocks the platform tests
+    /// run (decision 20).
+    kit_sfnt: *std.Build.Module,
+    kit_inflate: *std.Build.Module,
 };
 
 const PlatformBindingOptions = struct {
@@ -1370,7 +1374,10 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     const brotli_enabled = for (options.without) |name| {
         if (std.mem.eql(u8, name, "brotli")) break false;
     } else true;
-    const kit_parts = [_][]const u8{ "posix", "headless", "memory_store", "curl", "crypto", "memory_clipboard", "browser_state", "brotli", "image_codecs" };
+    const font_decoding_enabled = for (options.without) |name| {
+        if (std.mem.eql(u8, name, "font_decoding")) break false;
+    } else true;
+    const kit_parts = [_][]const u8{ "posix", "headless", "memory_store", "curl", "crypto", "memory_clipboard", "browser_state", "brotli", "image_codecs", "inflate", "sfnt" };
     var kit: [kit_parts.len]*std.Build.Module = undefined;
     for (kit_parts, 0..) |part, i| {
         kit[i] = b.createModule(.{
@@ -1384,10 +1391,17 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
         // even when the conformance test compiles every adapter operation.
         impl.addImport(b.fmt("kit_{s}", .{part}), if (i == 7 and !brotli_enabled) kit[1] else kit[i]);
     }
-    if (brotli_enabled) if (options.brotli) |codec| {
+    // font_decoding brings the Brotli decoder WOFF2 needs whether or not the
+    // `brotli` capability is compiled in (decision 20, Q3): kit/sfnt reaches
+    // kit/brotli by its own import, which only a font decode calls.
+    if (brotli_enabled or font_decoding_enabled) if (options.brotli) |codec| {
         kit[7].linkLibrary(codec.decoder);
         kit[7].linkLibrary(codec.encoder);
     };
+    // kit/sfnt (decision 20): WOFF through kit/inflate, WOFF2 through
+    // kit/brotli - headless's NotSupported when no Brotli library is built.
+    kit[10].addImport("kit_inflate", kit[9]);
+    kit[10].addImport("kit_brotli", if (options.brotli != null) kit[7] else kit[1]);
     if (options.image_codecs) |codecs| kit[8].linkLibrary(codecs);
     if (target.result.os.tag == .ios) {
         addIosSdkPaths(kit[7], iosSdkPath(b));
@@ -1411,7 +1425,7 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     } else {
         kit[3].linkSystemLibrary("curl", .{});
     }
-    return .{ .facade = facade, .options = options_mod, .kit_curl_share = kit_curl_share };
+    return .{ .facade = facade, .options = options_mod, .kit_curl_share = kit_curl_share, .kit_sfnt = kit[10], .kit_inflate = kit[9] };
 }
 
 /// A module of a graph: registered by name when the graph is public, private
@@ -2654,6 +2668,14 @@ pub fn build(b: *std.Build) void {
             // The file tests write under tmp/, relative to the repo root.
             run_conformance.setCwd(b.path("."));
             test_step.dependOn(&run_conformance.step);
+            // The kit parts with test blocks of their own, once (they do
+            // not depend on the platform they are bound with).
+            if (std.mem.eql(u8, binding.name, "darwin")) {
+                for ([_]*std.Build.Module{ bound.kit_sfnt, bound.kit_inflate }, [_][]const u8{ "kit_sfnt", "kit_inflate" }) |module, name| {
+                    const kit_tests = b.addTest(.{ .name = name, .root_module = module });
+                    test_step.dependOn(&b.addRunArtifact(kit_tests).step);
+                }
+            }
         }
 
         // The WPT runner's media backends (host decoders built only into
