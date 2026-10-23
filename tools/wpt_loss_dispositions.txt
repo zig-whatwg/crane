@@ -90,3 +90,19 @@ why = The sweep run lost one of nine subtests; three alternating serial pairs on
 pair.1 = base 9/9; tip 9/9
 pair.2 = base 9/9; tip 9/9
 pair.3 = base 9/9; tip 9/9
+
+[html/cross-origin-opener-policy/coep-with-same-origin.https.html]
+generation = 176
+kind = flake
+why = The sweep run lost the file's one passing subtest; three alternating serial pairs on chat (2026-10-23, no --parallel, frozen runners main-39db83dc56 BASE and main-9f06884a3c TIP, each run alone through crane-measure.sh) passed 1/5 every time on both sides, with the same four failures ("Popup is closed from opener?"), so the loss was sweep-only and does not reproduce. Evidence: tmp/debug/flake176.out.
+pair.1 = base 1/5; tip 1/5
+pair.2 = base 1/5; tip 1/5
+pair.3 = base 1/5; tip 1/5
+
+[xhr/send-redirect.htm]
+generation = 176
+kind = flake
+why = The same intermittent redirect subtest family as the generation-173 disposition (there "(302, HEAD, redirect.py)" with BASE failing; here "(302, POST, content.py)": expected "GET" got null). Three alternating serial pairs on chat (2026-10-23, frozen main-39db83dc56 BASE and main-9f06884a3c TIP) passed base 34,34,34 and tip 33,34,34; nothing in 9f06884a3c touches XHR or redirects (fontcap1: platform fonts; streamnav: frame/popup navigation bodies). Evidence: tmp/debug/flake176.out.
+pair.1 = base 34/34; tip 33/34
+pair.2 = base 34/34; tip 34/34
+pair.3 = base 34/34; tip 34/34
