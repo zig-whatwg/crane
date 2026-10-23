@@ -218,10 +218,15 @@ pub const List = struct {
             _ = stream.next();
         }
         // Transitions 1 §2.1: none is the entire property list.
+        if (l == .transition_property and !self.validTransitionProperties()) return null;
         success = true;
         return self;
     }
-
+    fn validTransitionProperties(self: *const List) bool {
+        if (self.items.items.len <= 1) return true;
+        for (self.items.items) |item| if (item.isKeyword(.none)) return false;
+        return true;
+    }
     pub fn compute(self: *const List, allocator: Allocator, context: math.Context) Allocator.Error!*List {
         const result = try create(allocator, self.property);
         errdefer result.unref();
@@ -261,6 +266,8 @@ fn parseItem(options: properties.ParseOptions, l: Longhand, stream: *Stream) All
         .animation_name, .animation_fill_mode => &.{.none},
         .animation_iteration_count => &.{.infinite},
         .animation_range_start, .animation_range_end => &.{.normal},
+        .transition_property => &.{ .all, .none },
+        .transition_behavior => &.{ .normal, .allow_discrete },
         .animation_direction => &.{ .normal, .reverse, .alternate, .alternate_reverse },
         .animation_play_state => &.{ .running, .paused },
         .animation_composition => &.{ .replace, .add, .accumulate },
@@ -268,10 +275,21 @@ fn parseItem(options: properties.ParseOptions, l: Longhand, stream: *Stream) All
     };
     for (keywords) |keyword| if (ident(stream, keyword.name())) return .{ .keyword = keyword };
     switch (l) {
-        .animation_duration => return consumeNumber(options, stream, .{ .kind = .time, .minimum = 0 }, false),
-        .animation_delay => return consumeNumber(options, stream, .{ .kind = .time }, false),
+        .animation_duration, .transition_duration => return consumeNumber(options, stream, .{ .kind = .time, .minimum = 0 }, false),
+        .animation_delay, .transition_delay => return consumeNumber(options, stream, .{ .kind = .time }, false),
         .animation_iteration_count => return consumeNumber(options, stream, .{ .kind = .number, .minimum = 0 }, false),
-        .animation_timing_function => return .{ .easing = try Easing.consume(options, stream) orelse return null },
+        .animation_timing_function, .transition_timing_function => return .{ .easing = try Easing.consume(options, stream) orelse return null },
+        .transition_property => {
+            if (stream.peek().token_type != .ident) return null;
+            const name = try names.consumeName(options.allocator, stream) orelse return null;
+            // Transitions 1 §2.1 / Blink ConsumeTransitionProperty: known
+            // property names are ASCII-insensitive; unknown identifiers keep
+            // their case. Preserve a recognized legacy alias's own spelling.
+            if (properties.lookup(name) != null) for (name) |*c| {
+                c.* = std.ascii.toLower(c.*);
+            };
+            return .{ .name = name };
+        },
         .animation_name => return .{ .name = try names.consumeName(options.allocator, stream) orelse return null },
         .animation_fill_mode => {
             for ([_]values.Keyword{ .forwards, .backwards, .both }) |k| if (ident(stream, k.name())) return .{ .keyword = k };
@@ -362,7 +380,7 @@ fn parseTimeline(options: properties.ParseOptions, stream: *Stream) Error!Item {
 }
 
 fn isTimeProperty(l: Longhand) bool {
-    return l == .animation_delay;
+    return l == .animation_delay or l == .transition_duration or l == .transition_delay;
 }
 fn initialItem(l: Longhand) Item {
     const v = l.info().initial;
@@ -391,6 +409,7 @@ fn omittedEnd(start: Item) Item {
 /// Animations 1 §4.9: take each token as another component before name.
 /// Both time positions are ordered; other components are unordered.
 pub fn consumeShorthand(options: properties.ParseOptions, shorthand: properties.Shorthand, stream: *Stream, out: *std.ArrayList(properties.Assignment)) Allocator.Error!bool {
+    if (shorthand == .transition) return consumeTransition(options, stream, out);
     const longhands = shorthand.longhands();
     const count: usize = if (shorthand == .animation) 8 else 2;
     var lists: [8]?*List = .{null} ** 8;
@@ -447,6 +466,7 @@ pub fn serializeDurationResolved(duration: Value, timeline: Value, out: *std.Arr
 }
 
 pub fn serializeShorthand(shorthand: properties.Shorthand, assigned: []const properties.Assigned, mode: properties.ShorthandMode, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!bool {
+    if (shorthand == .transition) return serializeTransition(assigned, mode, out, allocator);
     const longhands = shorthand.longhands();
     const count: usize = if (shorthand == .animation) 8 else 2;
     const length = valueCount(assigned[0].value);
@@ -504,6 +524,90 @@ fn isInitial(item: Item, l: Longhand) bool {
     // The shorthand's omitted duration has the legacy 0s serialization;
     // the longhand's computed auto is kept until resolved-value access.
     if (l == .animation_duration and item == .number and item.number == .literal and item.number.literal.value == 0) return true;
-    if ((l == .animation_timing_function) and item == .easing and item.easing.kind == .keyword and std.mem.eql(u8, item.easing.keyword, "ease")) return true;
+    if ((l == .animation_timing_function or l == .transition_timing_function) and item == .easing and item.easing.kind == .keyword and std.mem.eql(u8, item.easing.keyword, "ease")) return true;
     return false;
+}
+
+/// Transitions 1 §2.5 / Transitions 2 §2.6: duration precedes delay;
+/// consume all the other grammar components before the property identifier.
+fn consumeTransition(options: properties.ParseOptions, stream: *Stream, out: *std.ArrayList(properties.Assignment)) Allocator.Error!bool {
+    const longhands = properties.Shorthand.transition.longhands();
+    var lists: [5]?*List = .{null} ** 5;
+    defer for (lists) |list| if (list) |owned| owned.unref();
+    for (longhands, 0..) |longhand, index| lists[index] = try List.create(options.allocator, longhand);
+    while (true) {
+        var items: [5]?Item = .{null} ** 5;
+        defer for (items) |item| if (item) |owned| owned.release(options.allocator);
+        var consumed: usize = 0;
+        while (!stream.atEnd() and stream.peek().token_type != .comma) {
+            var found = false;
+            // Canonical output order is property, duration, easing, delay,
+            // behavior. Parsing reserves property-like keywords for the other
+            // components first, and a first negative time is never a delay.
+            for ([_]usize{ 1, 2, 3, 4, 0 }) |index| {
+                if (items[index] != null or (index == 3 and items[1] == null)) continue;
+                if (try consumeItem(options, longhands[index], stream)) |item| {
+                    items[index] = item;
+                    found = true;
+                    consumed += 1;
+                    break;
+                }
+            }
+            if (!found) return false;
+        }
+        if (consumed == 0) return false;
+        for (longhands, 0..) |longhand, index| {
+            const item = items[index] orelse initialItem(longhand);
+            items[index] = null;
+            try lists[index].?.append(item);
+        }
+        if (stream.atEnd()) break;
+        if (stream.next().token_type != .comma) return false;
+    }
+    if (!lists[0].?.validTransitionProperties()) return false;
+    try out.ensureUnusedCapacity(options.allocator, longhands.len);
+    for (longhands, 0..) |longhand, index| {
+        out.appendAssumeCapacity(.{ .longhand = longhand, .value = .{ .value = .{ .animation_list = lists[index].? } } });
+        lists[index] = null;
+    }
+    return true;
+}
+
+fn serializeTransition(assigned: []const properties.Assigned, mode: properties.ShorthandMode, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!bool {
+    const longhands = properties.Shorthand.transition.longhands();
+    var length = valueCount(assigned[0].value);
+    if (mode != .computed) {
+        // Q85: all five declared longhands must be present (the caller's
+        // contract); unequal lists serialize their existing entries only.
+        for (assigned[1..]) |value| length = @max(length, valueCount(value.value));
+    }
+    for (0..length) |index| {
+        if (index != 0) try out.appendSlice(allocator, ", ");
+        var items: [5]Item = undefined;
+        var include: [5]bool = undefined;
+        for (longhands, 0..) |longhand, component| {
+            const count = valueCount(assigned[component].value);
+            // Transitions1 §2, Q89: computed serialization follows the
+            // property-list length, repeating shorter ancillary lists and
+            // ignoring their excess entries. Declared lists retain omissions.
+            const present = mode == .computed or index < count;
+            items[component] = if (present) valueItem(longhand, assigned[component].value, if (mode == .computed) index % count else index) else initialItem(longhand);
+            include[component] = present and !isInitial(items[component], longhand);
+        }
+        if (length > 1 and items[0].isKeyword(.none)) return false;
+        // Q85: the three-browser majority omits initial components even
+        // for keyword-like property names, despite reparse-role changes.
+        // Q86: computed serialization keeps 0s before a nonzero delay;
+        // declared serialization omits it (Chrome/Safari majority).
+        if (mode == .computed and include[3]) include[1] = true;
+        var wrote = false;
+        for (longhands, 0..) |longhand, component| {
+            if (!include[component]) continue;
+            if (wrote) try out.append(allocator, ' ');
+            try items[component].serialize(longhand, out, allocator);
+            wrote = true;
+        }
+        if (!wrote) try out.appendSlice(allocator, "all");
+    }
+    return true;
 }

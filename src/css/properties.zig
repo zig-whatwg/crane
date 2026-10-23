@@ -208,6 +208,11 @@ pub const Longhand = enum(u8) {
     flex_basis,
 
     // CSS Transitions 1/2 §2: five lists; execution is separate.
+    transition_property,
+    transition_duration,
+    transition_timing_function,
+    transition_delay,
+    transition_behavior,
 
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
@@ -428,6 +433,11 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .flex_grow, .inherited = false, .initial = .{ .number = 0 }, .grammar = .flex_factor },
         .{ .longhand = .flex_shrink, .inherited = false, .initial = .{ .number = 1 }, .grammar = .flex_factor },
         .{ .longhand = .flex_basis, .inherited = false, .initial = Value.kw(.auto), .grammar = .flex_basis },
+        .{ .longhand = .transition_property, .inherited = false, .initial = Value.kw(.all), .grammar = .animation_list },
+        .{ .longhand = .transition_duration, .inherited = false, .initial = .{ .number = 0 }, .grammar = .animation_list },
+        .{ .longhand = .transition_timing_function, .inherited = false, .initial = Value.kw(.ease), .grammar = .animation_list },
+        .{ .longhand = .transition_delay, .inherited = false, .initial = .{ .number = 0 }, .grammar = .animation_list },
+        .{ .longhand = .transition_behavior, .inherited = false, .initial = Value.kw(.normal), .grammar = .animation_list },
         // Row118 animation properties; execution is outside this value layer.
         .{ .longhand = .animation_duration, .inherited = false, .initial = Value.kw(.auto), .grammar = .animation_list },
         .{ .longhand = .animation_timing_function, .inherited = false, .initial = Value.kw(.ease), .grammar = .animation_list },
@@ -647,6 +657,7 @@ pub const Shorthand = enum(u8) {
     animation,
     animation_range,
     flex,
+    transition,
 
     pub fn name(self: Shorthand) []const u8 {
         return switch (self) {
@@ -705,6 +716,7 @@ pub const Shorthand = enum(u8) {
             .animation => &.{ .animation_duration, .animation_timing_function, .animation_delay, .animation_iteration_count, .animation_direction, .animation_fill_mode, .animation_play_state, .animation_name, .animation_timeline, .animation_range_start, .animation_range_end },
             .animation_range => &.{ .animation_range_start, .animation_range_end },
             .flex => &.{ .flex_grow, .flex_shrink, .flex_basis },
+            .transition => &.{ .transition_property, .transition_duration, .transition_timing_function, .transition_delay, .transition_behavior },
         };
     }
 };
@@ -1644,7 +1656,7 @@ fn append(options: ParseOptions, out: *std.ArrayList(Assignment), l: Longhand, v
 fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
     switch (s) {
         .flex => return @import("flex_values.zig").consumeShorthand(options, stream, out),
-        .animation, .animation_range => return @import("animation_values.zig").consumeShorthand(options, s, stream, out),
+        .animation, .animation_range, .transition => return @import("animation_values.zig").consumeShorthand(options, s, stream, out),
         .grid_template, .grid => {
             const ls = s.longhands();
             try out.ensureUnusedCapacity(options.allocator, ls.len);
@@ -2084,7 +2096,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .length => |len| try values.appendLength(len, out, allocator),
         .number => |n| {
             try values.appendNumber(n, out, allocator);
-            if (l == .animation_delay) try out.append(allocator, 's');
+            if (l == .animation_delay or l == .transition_duration or l == .transition_delay) try out.append(allocator, 's');
         },
         .integer => |n| try out.print(allocator, "{d}", .{n}),
         .color => |c| try c.serializeSpecified(out, allocator),
@@ -2159,7 +2171,7 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
     const ls = s.longhands();
     switch (s) {
         .flex => return @import("flex_values.zig").serializeShorthand(vs, out, allocator),
-        .animation, .animation_range => return @import("animation_values.zig").serializeShorthand(s, vs, mode, out, allocator),
+        .animation, .animation_range, .transition => return @import("animation_values.zig").serializeShorthand(s, vs, mode, out, allocator),
         .grid_template => return @import("grid_tracks.zig").serializeTemplate(.{ .rows = vs[0].value, .columns = vs[1].value, .areas = vs[2].value }, out, allocator),
         .grid => return @import("grid_tracks.zig").serializeGrid(.{
             .template = .{ .rows = vs[0].value, .columns = vs[1].value, .areas = vs[2].value },
