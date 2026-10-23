@@ -855,7 +855,15 @@ pub const WorkerHost = struct {
     /// own, and clearTimeout(id) removes this global's entry and nothing in
     /// any other - it used to be one map for every worker on the thread, so a
     /// worker clearing an id it never armed cancelled another worker's timer.
-    timers: std.AutoHashMapUnmanaged(runtime.TimerId, *WorkerTimerContext) = .empty,
+    /// Its ids only grow, so every key is one it never saw: a
+    /// runtime.native_timer.TimerIdMap keeps its tombstones from taking the
+    /// free slots (as a std map, 299 of 300 rounds of a worker's churn left
+    /// none, and every setTimeout walked the table) and gives back what a
+    /// burst took (lane timerheap1, tests/html/workers/worker_timer_table_test.zig).
+    /// Both happen only before an insert (setTimer's ensureUnusedCapacity):
+    /// cancelWorkerTimers walks it with no insert, and a removal never
+    /// moves an entry. Values are their own allocations.
+    timers: runtime.native_timer.TimerIdMap(*WorkerTimerContext) = .empty,
 
     /// The next id this global's script is handed: greater than zero, and
     /// never one in `timers` (timer initialization step 2). Its own counter,

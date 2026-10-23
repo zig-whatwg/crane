@@ -24,7 +24,6 @@ src/html/navigation/joint_history.zig JointHistory.update_only 1
 src/html/parser/tokens.zig TagToken.attribute_names 1
 src/html/stylesheet_blocking.zig StylesheetBlockingTracker.pending_stylesheets 1
 src/html/window/animation_frame.zig AnimationFrameScheduler.callbacks 1
-src/html/worker_host.zig WorkerHost.timers 1
 src/html/worklet_host.zig GlobalScope.module_map 1
 src/permissions/storage.zig PermissionStorage.cache 1
 src/platform/filesystem_adapter.zig InMemoryFileSystem.directories 1
