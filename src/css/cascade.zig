@@ -514,6 +514,27 @@ const Builder = struct {
     }
 
     fn computeValue(self: *Builder, l: Longhand, v: Value, source: ValueSource) Allocator.Error!Value {
+        if (v == .color) {
+            // Color4 §6.4: currentcolor in color inherits. Every other
+            // destination keeps it symbolic until the receiving element
+            // resolves the value, including nested expression origins.
+            var root_color: ?values.Color = null;
+            defer if (root_color) |color| color.release();
+            const current: ?values.Color = if (l != .color) null else if (self.ctx.parent) |parent|
+                parent.get(.color).color
+            else blk: {
+                // Cascade5 §7.3.2: the root inherits its initial color in
+                // its own scheme, including a nested currentcolor origin.
+                root_color = try l.info().initial.color.resolveComputed(self.ctx.allocator, .{ .scheme = self.used_scheme });
+                break :blk root_color;
+            };
+            return .{ .color = try v.color.resolveComputed(self.ctx.allocator, .{
+                .scheme = self.used_scheme,
+                .current = current,
+                .math = self.computationContext(l, v, source),
+            }) };
+        }
+
         if (v == .calculation) {
             const expression = try v.calculation.compute(self.ctx.allocator, self.computationContext(l, v, source));
             if (expression.computedNumber()) |number| {
@@ -556,26 +577,7 @@ const Builder = struct {
             .font_size => return Value.px(self.computeFontSize(v)),
             .font_weight => return .{ .number = self.computeFontWeight(v) },
             // CSS Text4 §8.2: normal is zero in the computed value.
-            // CSS Color 4 6.4: "if currentcolor is the specified value of
-            // the color property, it is treated as if it were inherit."
-            .color => if (v == .color) switch (v.color) {
-                .current => {
-                    const p = self.parentValue(.color);
-                    p.retain();
-                    return p;
-                },
-                .named => |n| return .{ .color = .{ .rgba = n.rgba } },
-                .system => |s| return .{ .color = .{ .rgba = s.color(self.used_scheme) } },
-                .rgba => {},
-            },
             .opacity => return .{ .number = std.math.clamp(v.number, 0, 1) },
-            // A named color computes to its color; a system color to its
-            // color in the element color scheme (CSS Color 4 15.5).
-            .background_color, .border_top_color, .border_right_color, .border_bottom_color, .border_left_color => if (v == .color) switch (v.color) {
-                .named => |n| return .{ .color = .{ .rgba = n.rgba } },
-                .system => |s| return .{ .color = .{ .rgba = s.color(self.used_scheme) } },
-                .rgba, .current => {},
-            },
             .line_height => switch (v) {
                 .length => |len| if (len.unit == .percent) return Value.px(len.value / 100 * self.fontSize()),
                 else => {},

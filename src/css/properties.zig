@@ -965,6 +965,10 @@ pub fn mathValue(options: ParseOptions, stream: *Stream, grammar: math_values.Gr
 
 fn colorValue(options: ParseOptions, stream: *Stream, def: *const Info) Allocator.Error!?Value {
     const t = stream.peek();
+    if (@import("color_values.zig").isFunction(t)) {
+        const color = try @import("color_values.zig").parse(options, stream) orelse return null;
+        return .{ .color = color };
+    }
     if (t.token_type == .ident) {
         if (tokenizer_mod.nameEql(t.value, "currentcolor")) {
             _ = stream.next();

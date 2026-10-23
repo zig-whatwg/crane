@@ -127,4 +127,6 @@ test {
 
 pub const numeric_values = @import("numeric_values.zig");
 
+pub const color_values = @import("color_values.zig");
+pub const color_spaces = @import("color_spaces.zig");
 pub const random_values = @import("random_values.zig");

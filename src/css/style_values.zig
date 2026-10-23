@@ -444,6 +444,8 @@ pub const Display = struct {
 /// section 6.4), which a computed value keeps as the keyword.
 pub const Color = union(enum) {
     rgba: RgbaColor,
+    /// Immutable owned CSS components, with precision and missingness intact.
+    expression: *@import("color_values.zig").Expression,
     current,
     /// A <named-color> or <system-color> keyword: its color, and the
     /// keyword (lowercase), which a specified value serializes as written
@@ -472,19 +474,36 @@ pub const Color = union(enum) {
         math: @import("math_values.zig").Context = .{},
     };
 
+    /// Query the original stop graph before computed color resolution. The
+    /// computed stage carries the receiving element's own used scheme.
+    pub const GradientStage = union(enum) {
+        specified,
+        computed: color_scheme_mod.Scheme,
+    };
+
+    pub fn usesLegacyGradientInterpolation(self: Color, stage: GradientStage) bool {
+        return switch (self) {
+            .expression => |e| e.usesLegacyGradientInterpolation(stage),
+            .rgba, .current, .named, .system => true,
+        };
+    }
+
     /// Every holder of a Color takes a reference, including nested paint data.
     /// Scalar colors are allocation-free and need no work here.
     pub fn retain(self: Color) void {
         if (self == .named) self.named.name.ref();
+        if (self == .expression) self.expression.ref();
     }
 
     pub fn release(self: Color) void {
         if (self == .named) self.named.name.unref();
+        if (self == .expression) self.expression.unref();
     }
 
     /// Color 4 §§6.4, 15: specified keywords keep their lowercase spelling.
     pub fn serializeSpecified(self: Color, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
         switch (self) {
+            .expression => |e| try e.serialize(out, allocator),
             .rgba => |c| try serializeRgba(c, out, allocator),
             .current => try out.appendSlice(allocator, "currentcolor"),
             .named => |n| try out.appendSlice(allocator, n.name.bytes),
@@ -495,17 +514,17 @@ pub const Color = union(enum) {
     /// A computed color's own serialization. Resolve currentcolor with the
     /// destination's current color first when CSSOM requires a used color.
     pub fn serializeComputed(self: Color, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+        if (self == .expression) return self.expression.serialize(out, allocator);
         if (self.absolute()) |c| return serializeRgba(c, out, allocator);
         return out.appendSlice(allocator, "currentcolor");
     }
 
     /// Returns an OWNED value; neither self nor Context's borrowed current
     /// color is consumed. Allocation errors are part of the stable API for
-    /// future typed components even though today's scalar resolution cannot
-    /// allocate. The caller releases every successful result.
+    /// typed components. The caller releases every successful result.
     pub fn resolveComputed(self: Color, allocator: Allocator, context: Context) Allocator.Error!Color {
-        _ = allocator;
         return switch (self) {
+            .expression => |e| try e.resolve(allocator, context),
             .current => blk: {
                 const result = context.current orelse self;
                 result.retain();
@@ -521,24 +540,29 @@ pub const Color = union(enum) {
     /// A future typed variant must explicitly describe its dependencies.
     pub fn needsTreeCounts(self: Color) bool {
         return switch (self) {
+            .expression => |e| e.needsTreeCounts(),
+            .rgba, .current, .named, .system => false,
+        };
+    }
+
+    pub fn needsRandomBase(self: Color) bool {
+        return switch (self) {
+            .expression => |e| e.needsRandomBase(),
             .rgba, .current, .named, .system => false,
         };
     }
 
     /// Scalar colors need no font or layout metrics, for either destination.
-    pub fn needsRandomBase(_: Color) bool {
-        return false;
-    }
-
     pub fn needsUnavailableMetrics(self: Color, geometry_length: bool) bool {
-        _ = geometry_length;
         return switch (self) {
+            .expression => |e| e.needsUnavailableMetrics(geometry_length),
             .rgba, .current, .named, .system => false,
         };
     }
 
     pub fn eql(a: Color, b: Color) bool {
         return switch (a) {
+            .expression => |e| b == .expression and e.eql(b.expression),
             .current => b == .current,
             .rgba => |x| switch (b) {
                 .rgba => |y| x.eql(y),
@@ -556,6 +580,7 @@ pub const Color = union(enum) {
     /// with no element to take a scheme from is the UA default's (light).
     pub fn absolute(self: Color) ?RgbaColor {
         return switch (self) {
+            .expression => |e| e.bytes(),
             .rgba => |c| c,
             .named => |n| n.rgba,
             .system => |s| s.color(.light),
