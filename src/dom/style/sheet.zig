@@ -567,6 +567,9 @@ const Compiler = struct {
             },
             // Descriptors, not style rules.
             .font_face, .page => {},
+            // Anchor Position 1 §6.5 applies these only while trying a
+            // geometry-dependent fallback; they are not author rules.
+            .position_try => {},
         };
     }
 

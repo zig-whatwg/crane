@@ -82,6 +82,7 @@ pub const Kind = enum {
     namespace,
     font_face,
     page,
+    position_try,
 
     /// CSSOM's CSSRule `type` constant for the kind ("new rule types ...
     /// return 0": the layer rules).
@@ -95,6 +96,7 @@ pub const Kind = enum {
             .namespace => 10,
             .supports => 12,
             .layer_block, .layer_statement => 0,
+            .position_try => 0,
         };
     }
 
@@ -152,6 +154,7 @@ pub const Data = union(Kind) {
     },
     font_face: DeclarationBlock,
     page: DeclarationBlock,
+    position_try: DeclarationBlock,
 };
 
 pub const Rule = struct {
@@ -198,6 +201,7 @@ pub const Rule = struct {
                 }
             },
             .font_face, .page => |*b| b.deinit(),
+            .position_try => |*b| b.deinit(),
             .namespace => |n| {
                 a.free(n.prefix);
                 a.free(n.uri);
@@ -235,6 +239,7 @@ pub const Rule = struct {
         return switch (self.data) {
             .style => |*s| &s.block,
             .font_face, .page => |*b| b,
+            .position_try => |*b| b,
             else => null,
         };
     }
@@ -344,6 +349,17 @@ pub const Rule = struct {
                 }
                 try serializeUrl(allocator, out, n.uri);
                 try out.append(allocator, ';');
+            },
+            // Anchor Position 1 §8.1: the serialized dashed identifier
+            // followed by the restricted descriptor block.
+            .position_try => |*b| {
+                try out.appendSlice(allocator, "@position-try ");
+                try out.appendSlice(allocator, self.prelude);
+                try out.appendSlice(allocator, " { ");
+                const start = out.items.len;
+                try b.serialize(out);
+                if (out.items.len != start) try out.append(allocator, ' ');
+                try out.append(allocator, '}');
             },
             // "@font-face {", each descriptor, " }" (CSSOM leaves the
             // descriptors' serialization undefined: the block's own).
@@ -521,6 +537,22 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
         errdefer rule.unref();
         try buildChildren(options, rule, parsed.children);
         return rule;
+    }
+    if (std.mem.eql(u8, name, "position-try")) {
+        // Anchor Position 1 §6.4: exactly one dashed identifier, with a
+        // declaration block. Nested rules have no place in this model.
+        if (!parsed.has_block) return null;
+        var stream = css.properties.Stream.init(parsed.prelude);
+        const token = stream.next();
+        if (token.token_type != .ident or !stream.atEnd()) return null;
+        const decoded = try css.tokenizer.decode(a, token.value);
+        defer a.free(decoded);
+        if (!std.mem.startsWith(u8, decoded, "--")) return null;
+        var declarations = try DeclarationBlock.fromDeclarationsInContext(options.parse, parsed.declarations, .position_try);
+        errdefer declarations.deinit();
+        // make consumes the owned prelude, including allocation failure.
+        const prelude = try css.serialize.serializeIdentifier(a, decoded);
+        return make(a, prelude, .{ .position_try = declarations });
     }
     if (std.mem.eql(u8, name, "font-face") or std.mem.eql(u8, name, "page")) {
         if (!parsed.has_block) return null;
