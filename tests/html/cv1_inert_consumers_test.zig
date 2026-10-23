@@ -63,6 +63,10 @@ test "CSS inertness filters explicit and sequential focus while HTML inertness s
     try helpers.onFreshThread(navigation);
 }
 
+test "modal UA interactivity escapes inherited inertness but keeps its own inert state" {
+    try helpers.onFreshThread(modal);
+}
+
 fn foreignAttribute() !void {
     const page = try helpers.Page.open();
     defer page.close();
@@ -100,4 +104,8 @@ fn modalForeignAttribute() !void {
 
 test "inert attributes apply only to HTML while CSS inertness reaches foreign elements" {
     try helpers.onFreshThread(foreignAttribute);
+}
+
+test "modal inertness ignores foreign attributes inside and blocks the outside subtree" {
+    try helpers.onFreshThread(modalForeignAttribute);
 }
