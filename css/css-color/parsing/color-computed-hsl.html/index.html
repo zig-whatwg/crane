@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../css/"><code>css/</code></a></li><li><a href="../../../../css/css-color/"><code>css-<wbr>color/</code></a></li><li><a href="../../../../css/css-color/parsing/"><code>parsing/</code></a></li><li aria-current="page"><code>color-<wbr>computed-<wbr>hsl.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>color-<wbr>computed-<wbr>hsl.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="css/css-color/parsing/color-computed-hsl.html">
-<p class="figures-main"><span class="fg-pass">3,726</span><span class="fg-of"> / 3,753</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>27</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">3,752</span><span class="fg-of"> / 3,753</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-9f06884a3c</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9f06884a3c"><code>9f06884a3c</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-color/parsing/color-computed-hsl.html"><code>css/<wbr>css-<wbr>color/<wbr>parsing/<wbr>color-<wbr>computed-<wbr>hsl.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,62 +35,12 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-f6a5c30e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsl(none none none)&#39;</span></summary><pre class="msg">Colors do not match.
-Actual:   rgb(0, 0, 0)
-Expected: hsl(none none none).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 0 got 3</pre></details><a class="self" href="#s-f6a5c30e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-60786d80"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsl(none none none / none)&#39;</span></summary><pre class="msg">Colors do not match.
-Actual:   rgba(0, 0, 0, 0)
-Expected: hsl(none none none / none).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 0 got 4</pre></details><a class="self" href="#s-60786d80" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7e22923f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsla(none none none)&#39;</span></summary><pre class="msg">Colors do not match.
-Actual:   rgb(0, 0, 0)
-Expected: hsl(none none none).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 0 got 3</pre></details><a class="self" href="#s-7e22923f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7490859d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsla(none none none / none)&#39;</span></summary><pre class="msg">Colors do not match.
-Actual:   rgba(0, 0, 0, 0)
-Expected: hsl(none none none / none).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 0 got 4</pre></details><a class="self" href="#s-7490859d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-478c4827"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsl(120 none none)&#39;</span></summary><pre class="msg">Colors do not match.
-Actual:   rgb(0, 0, 0)
-Expected: hsl(120 none none).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 1 got 3</pre></details><a class="self" href="#s-478c4827" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-58d8febd"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsl(120 80% none)&#39;</span></summary><pre class="msg">Colors do not match.
-Actual:   rgb(0, 0, 0)
-Expected: hsl(120 80% none).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 2 got 3</pre></details><a class="self" href="#s-58d8febd" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-549b32e9"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsl(120 none 50%)&#39;</span></summary><pre class="msg">Colors do not match.
-Actual:   rgb(128, 128, 128)
-Expected: hsl(120 none 50%).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 2 got 3</pre></details><a class="self" href="#s-549b32e9" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-aef621eb"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsl(120 100% 50% / none)&#39;</span></summary><pre class="msg">Colors do not match.
-Actual:   rgba(0, 255, 0, 0)
-Expected: hsl(120 100% 50% / none).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 4</pre></details><a class="self" href="#s-aef621eb" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-41245f84"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsl(none 100% 50%)&#39;</span></summary><pre class="msg">Colors do not match.
-Actual:   rgb(255, 0, 0)
-Expected: hsl(none 100% 50%).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 2 got 3</pre></details><a class="self" href="#s-41245f84" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-15006bb5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsl(calc(50deg + (sign(1em - 10px) * 10deg)), 100%, 37.5%, 50%)&#39;</span></summary><pre class="msg">assert_true: &#39;hsl(calc(50deg + (sign(1em - 10px) * 10deg)), 100%, 37.5%, 50%)&#39; is a supported value for color. expected true got false</pre></details><a class="self" href="#s-15006bb5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6c762177"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsla(calc(50deg + (sign(1em - 10px) * 10deg)), 100%, 37.5%, 50%)&#39;</span></summary><pre class="msg">assert_true: &#39;hsla(calc(50deg + (sign(1em - 10px) * 10deg)), 100%, 37.5%, 50%)&#39; is a supported value for color. expected true got false</pre></details><a class="self" href="#s-6c762177" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6bd1d7f6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsl(calc(50 + (sign(1em - 10px) * 10)), 100%, 37.5%, 50%)&#39;</span></summary><pre class="msg">assert_true: &#39;hsl(calc(50 + (sign(1em - 10px) * 10)), 100%, 37.5%, 50%)&#39; is a supported value for color. expected true got false</pre></details><a class="self" href="#s-6bd1d7f6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e44531c4"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsla(calc(50 + (sign(1em - 10px) * 10)), 100%, 37.5%, 50%)&#39;</span></summary><pre class="msg">assert_true: &#39;hsla(calc(50 + (sign(1em - 10px) * 10)), 100%, 37.5%, 50%)&#39; is a supported value for color. expected true got false</pre></details><a class="self" href="#s-e44531c4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-cd13828b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsl(60deg, 100%, 37.5%, calc(50% + (sign(1em - 10px) * 10%)))&#39;</span></summary><pre class="msg">assert_true: &#39;hsl(60deg, 100%, 37.5%, calc(50% + (sign(1em - 10px) * 10%)))&#39; is a supported value for color. expected true got false</pre></details><a class="self" href="#s-cd13828b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9e46f60b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsla(60deg, 100%, 37.5%, calc(50% + (sign(1em - 10px) * 10%)))&#39;</span></summary><pre class="msg">assert_true: &#39;hsla(60deg, 100%, 37.5%, calc(50% + (sign(1em - 10px) * 10%)))&#39; is a supported value for color. expected true got false</pre></details><a class="self" href="#s-9e46f60b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c8c34d59"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsl(60, 100%, 37.5%, calc(50% + (sign(1em - 10px) * 10%)))&#39;</span></summary><pre class="msg">assert_true: &#39;hsl(60, 100%, 37.5%, calc(50% + (sign(1em - 10px) * 10%)))&#39; is a supported value for color. expected true got false</pre></details><a class="self" href="#s-c8c34d59" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-35237347"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsla(60, 100%, 37.5%, calc(50% + (sign(1em - 10px) * 10%)))&#39;</span></summary><pre class="msg">assert_true: &#39;hsla(60, 100%, 37.5%, calc(50% + (sign(1em - 10px) * 10%)))&#39; is a supported value for color. expected true got false</pre></details><a class="self" href="#s-35237347" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-69078d03"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsl(calc(50deg + (sign(1em - 10px) * 10deg)) 100% 37.5% / 50%)&#39;</span></summary><pre class="msg">assert_true: &#39;hsl(calc(50deg + (sign(1em - 10px) * 10deg)) 100% 37.5% / 50%)&#39; is a supported value for color. expected true got false</pre></details><a class="self" href="#s-69078d03" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-539aa52f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsla(calc(50deg + (sign(1em - 10px) * 10deg)) 100% 37.5% / 50%)&#39;</span></summary><pre class="msg">assert_true: &#39;hsla(calc(50deg + (sign(1em - 10px) * 10deg)) 100% 37.5% / 50%)&#39; is a supported value for color. expected true got false</pre></details><a class="self" href="#s-539aa52f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-15e0c7fd"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsl(calc(50 + (sign(1em - 10px) * 10)) 100 37.5 / 0.5)&#39;</span></summary><pre class="msg">assert_true: &#39;hsl(calc(50 + (sign(1em - 10px) * 10)) 100 37.5 / 0.5)&#39; is a supported value for color. expected true got false</pre></details><a class="self" href="#s-15e0c7fd" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-464e24b1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsla(calc(50 + (sign(1em - 10px) * 10)) 100 37.5 / 0.5)&#39;</span></summary><pre class="msg">assert_true: &#39;hsla(calc(50 + (sign(1em - 10px) * 10)) 100 37.5 / 0.5)&#39; is a supported value for color. expected true got false</pre></details><a class="self" href="#s-464e24b1" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-112d8476"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsl(60deg 100% 37.5% / calc(50% + (sign(1em - 10px) * 10%)))&#39;</span></summary><pre class="msg">assert_true: &#39;hsl(60deg 100% 37.5% / calc(50% + (sign(1em - 10px) * 10%)))&#39; is a supported value for color. expected true got false</pre></details><a class="self" href="#s-112d8476" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ab885334"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsla(60deg 100% 37.5% / calc(50% + (sign(1em - 10px) * 10%)))&#39;</span></summary><pre class="msg">assert_true: &#39;hsla(60deg 100% 37.5% / calc(50% + (sign(1em - 10px) * 10%)))&#39; is a supported value for color. expected true got false</pre></details><a class="self" href="#s-ab885334" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-bc118adf"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsl(60 100 37.5 / calc(0.75 + (sign(1em - 10px) * 0.1)))&#39;</span></summary><pre class="msg">assert_true: &#39;hsl(60 100 37.5 / calc(0.75 + (sign(1em - 10px) * 0.1)))&#39; is a supported value for color. expected true got false</pre></details><a class="self" href="#s-bc118adf" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c4dcfc04"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsla(60 100 37.5 / calc(0.75 + (sign(1em - 10px) * 0.1)))&#39;</span></summary><pre class="msg">assert_true: &#39;hsla(60 100 37.5 / calc(0.75 + (sign(1em - 10px) * 0.1)))&#39; is a supported value for color. expected true got false</pre></details><a class="self" href="#s-c4dcfc04" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-570a0654"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsla(calc(50deg + (sign(2cqw - 10px) * 10deg)), 100%, 37.5%, 51%)&#39;</span></summary><pre class="msg">assert_true: &#39;hsla(calc(50deg + (sign(2cqw - 10px) * 10deg)), 100%, 37.5%, 51%)&#39; is a supported value for color. expected true got false</pre></details><a class="self" href="#s-570a0654" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f0484266"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsla(calc(50deg + (sign(2cqw - 10px) * 10deg)), 100%, 37.5%, 52%)&#39;</span></summary><pre class="msg">assert_true: &#39;hsla(calc(50deg + (sign(2cqw - 10px) * 10deg)), 100%, 37.5%, 52%)&#39; is a supported value for color. expected true got false</pre></details><a class="self" href="#s-f0484266" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f0484266"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsla(calc(50deg + (sign(2cqw - 10px) * 10deg)), 100%, 37.5%, 52%)&#39;</span></summary><pre class="msg">Colors do not match.
+Actual:   rgba(191, 191, 0, 0.52)
+Expected: rgba(191, 128, 0, 0.52).
+Error: assert_array_approx_equals: Numeric parameters are approximately equal. property 1, expected 128 +/- 0.01, expected 128 but got 191</pre></details><a class="self" href="#s-f0484266" aria-label="Link to this subtest">&para;</a></li>
 </ol>
-<p class="omitted">3,726 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+<p class="omitted">3,752 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
 </div>
 </section>
 <footer class="foot">

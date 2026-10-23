@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../css/"><code>css/</code></a></li><li><a href="../../../css/css-anchor-position/"><code>css-<wbr>anchor-<wbr>position/</code></a></li><li aria-current="page"><code>at-<wbr>position-<wbr>try-<wbr>parse.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>at-<wbr>position-<wbr>try-<wbr>parse.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="css/css-anchor-position/at-position-try-parse.html">
-<p class="figures-main"><span class="fg-pass">4</span><span class="fg-of"> / 12</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>8</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">12</span><span class="fg-of"> / 12</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-9f06884a3c</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9f06884a3c"><code>9f06884a3c</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-anchor-position/at-position-try-parse.html"><code>css/<wbr>css-<wbr>anchor-<wbr>position/<wbr>at-<wbr>position-<wbr>try-<wbr>parse.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,18 +35,18 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-b79cd8af"><details><summary><span class="mark">FAIL</span><span class="sub-name">@position-try --foo { } should be a valid rule</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-b79cd8af" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-85595bb4"><details><summary><span class="mark">FAIL</span><span class="sub-name">@position-try --foo { top: 1px; } should be a valid rule</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-85595bb4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b79cd8af"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@position-try --foo { } should be a valid rule</span></div><a class="self" href="#s-b79cd8af" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-85595bb4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@position-try --foo { top: 1px; } should be a valid rule</span></div><a class="self" href="#s-85595bb4" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-a8d6881d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@position-try { } should be an invalid rule</span></div><a class="self" href="#s-a8d6881d" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-4cf765db"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@position-try foo { } should be an invalid rule</span></div><a class="self" href="#s-4cf765db" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-7237c3a4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@position-try --foo --bar { } should be an invalid rule</span></div><a class="self" href="#s-7237c3a4" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-659d3e9f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@position-try --foo, --bar { } should be an invalid rule</span></div><a class="self" href="#s-659d3e9f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-87224169"><details><summary><span class="mark">FAIL</span><span class="sub-name">@position-try --foo { backround-color: green; } should be a valid rule</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-87224169" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-46fb9add"><details><summary><span class="mark">FAIL</span><span class="sub-name">@position-try --foo { @keyframes bar {} } should be a valid rule</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-46fb9add" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e625fcbd"><details><summary><span class="mark">FAIL</span><span class="sub-name">@position-try --foo { @font-face {} } should be a valid rule</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-e625fcbd" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3ce70996"><details><summary><span class="mark">FAIL</span><span class="sub-name">@position-try --foo { @media print {} } should be a valid rule</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-3ce70996" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-33a76517"><details><summary><span class="mark">FAIL</span><span class="sub-name">@position-try --foo { &amp; {} } should be a valid rule</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-33a76517" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6e946878"><details><summary><span class="mark">FAIL</span><span class="sub-name">@position-try --foo { arbitrary garbage } should be a valid rule</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-6e946878" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-87224169"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@position-try --foo { backround-color: green; } should be a valid rule</span></div><a class="self" href="#s-87224169" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-46fb9add"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@position-try --foo { @keyframes bar {} } should be a valid rule</span></div><a class="self" href="#s-46fb9add" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e625fcbd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@position-try --foo { @font-face {} } should be a valid rule</span></div><a class="self" href="#s-e625fcbd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3ce70996"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@position-try --foo { @media print {} } should be a valid rule</span></div><a class="self" href="#s-3ce70996" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-33a76517"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@position-try --foo { &amp; {} } should be a valid rule</span></div><a class="self" href="#s-33a76517" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6e946878"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@position-try --foo { arbitrary garbage } should be a valid rule</span></div><a class="self" href="#s-6e946878" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../quirks/"><code>quirks/</code></a></li><li><a href="../../../quirks/hashless-hex-color/"><code>hashless-<wbr>hex-<wbr>color/</code></a></li><li aria-current="page"><code>quirks.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>quirks.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="quirks/hashless-hex-color/quirks.html">
-<p class="figures-main"><span class="fg-pass">637</span><span class="fg-of"> / 692</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>55</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">642</span><span class="fg-of"> / 692</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>50</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-9f06884a3c</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9f06884a3c"><code>9f06884a3c</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/quirks/hashless-hex-color/quirks.html"><code>quirks/<wbr>hashless-<wbr>hex-<wbr>color/<wbr>quirks.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -76,11 +76,6 @@
 <li class="sub s-fail" id="s-c450447c"><details><summary><span class="mark">FAIL</span><span class="sub-name">+12345A</span></summary><pre class="msg">assert_equals: background-color expected &quot;rgb(18, 52, 90)&quot; but got &quot;rgba(0, 0, 0, 0)&quot;</pre></details><a class="self" href="#s-c450447c" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-bd4676cb"><details><summary><span class="mark">FAIL</span><span class="sub-name">@abc</span></summary><pre class="msg">assert_equals: background-color expected &quot;rgba(0, 0, 0, 0)&quot; but got &quot;rgb(170, 187, 204)&quot;</pre></details><a class="self" href="#s-bd4676cb" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-33c9554d"><details><summary><span class="mark">FAIL</span><span class="sub-name">@abcdef</span></summary><pre class="msg">assert_equals: background-color expected &quot;rgba(0, 0, 0, 0)&quot; but got &quot;rgb(171, 205, 239)&quot;</pre></details><a class="self" href="#s-33c9554d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-eb275592"><details><summary><span class="mark">FAIL</span><span class="sub-name">rgb(calc(100 + 155), 255, 255)</span></summary><pre class="msg">assert_equals: background-color expected &quot;rgb(255, 255, 255)&quot; but got &quot;rgba(0, 0, 0, 0)&quot;</pre></details><a class="self" href="#s-eb275592" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-18a1c994"><details><summary><span class="mark">FAIL</span><span class="sub-name">rgba(calc(100 + 155), 255, 255, 001)</span></summary><pre class="msg">assert_equals: background-color expected &quot;rgb(255, 255, 255)&quot; but got &quot;rgba(0, 0, 0, 0)&quot;</pre></details><a class="self" href="#s-18a1c994" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a14e8781"><details><summary><span class="mark">FAIL</span><span class="sub-name">hsl(calc(050 + 050), 100%, 100%)</span></summary><pre class="msg">assert_equals: background-color expected &quot;rgb(255, 255, 255)&quot; but got &quot;rgba(0, 0, 0, 0)&quot;</pre></details><a class="self" href="#s-a14e8781" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-47e3f719"><details><summary><span class="mark">FAIL</span><span class="sub-name">hsla(calc(050 + 050), 100%, 100%, 001)</span></summary><pre class="msg">assert_equals: background-color expected &quot;rgb(255, 255, 255)&quot; but got &quot;rgba(0, 0, 0, 0)&quot;</pre></details><a class="self" href="#s-47e3f719" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7c62c1e2"><details><summary><span class="mark">FAIL</span><span class="sub-name">rgb(calc(/**/100/**/ + /**/155/**/), 255, 255)</span></summary><pre class="msg">assert_equals: background-color expected &quot;rgb(255, 255, 255)&quot; but got &quot;rgba(0, 0, 0, 0)&quot;</pre></details><a class="self" href="#s-7c62c1e2" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-e0928241"><details><summary><span class="mark">FAIL</span><span class="sub-name">#123 123 abc 12a</span></summary><pre class="msg">assert_equals: border-color expected &quot;rgb(17, 34, 51)&quot; but got &quot;rgb(0, 0, 0)&quot;</pre></details><a class="self" href="#s-e0928241" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-20dacc21"><details><summary><span class="mark">FAIL</span><span class="sub-name">rgb(119, 255, 255) 123</span></summary><pre class="msg">assert_equals: border-color expected &quot;rgb(119, 255, 255)&quot; but got &quot;rgb(0, 0, 0)&quot;</pre></details><a class="self" href="#s-20dacc21" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-e1870712"><details><summary><span class="mark">FAIL</span><span class="sub-name">123 rgb(119, 255, 255)</span></summary><pre class="msg">assert_equals: border-color expected &quot;rgb(0, 1, 35)&quot; but got &quot;rgb(0, 0, 0)&quot;</pre></details><a class="self" href="#s-e1870712" aria-label="Link to this subtest">&para;</a></li>
@@ -91,7 +86,7 @@
 <li class="sub s-fail" id="s-509206ca"><details><summary><span class="mark">FAIL</span><span class="sub-name">The hashless hex color quirk (quirks), excluded property border-left:1px solid abc</span></summary><pre class="msg">assert_equals: quirk was supported expected &quot;rgb(0, 0, 0)&quot; but got &quot;rgb(170, 187, 204)&quot;</pre></details><a class="self" href="#s-509206ca" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-c367701f"><details><summary><span class="mark">FAIL</span><span class="sub-name">The hashless hex color quirk (quirks), excluded property border:1px solid abc</span></summary><pre class="msg">assert_equals: quirk was supported expected &quot;rgb(0, 0, 0)&quot; but got &quot;rgb(170, 187, 204)&quot;</pre></details><a class="self" href="#s-c367701f" aria-label="Link to this subtest">&para;</a></li>
 </ol>
-<p class="omitted">637 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+<p class="omitted">642 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
 </div>
 </section>
 <footer class="foot">

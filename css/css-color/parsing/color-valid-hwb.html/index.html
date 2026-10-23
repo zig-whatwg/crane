@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../css/"><code>css/</code></a></li><li><a href="../../../../css/css-color/"><code>css-<wbr>color/</code></a></li><li><a href="../../../../css/css-color/parsing/"><code>parsing/</code></a></li><li aria-current="page"><code>color-<wbr>valid-<wbr>hwb.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>color-<wbr>valid-<wbr>hwb.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="css/css-color/parsing/color-valid-hwb.html">
-<p class="figures-main"><span class="fg-pass">7</span><span class="fg-of"> / 39</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>32</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">39</span><span class="fg-of"> / 39</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-9f06884a3c</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9f06884a3c"><code>9f06884a3c</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-color/parsing/color-valid-hwb.html"><code>css/<wbr>css-<wbr>color/<wbr>parsing/<wbr>color-<wbr>valid-<wbr>hwb.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,108 +35,45 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-19ed0420"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30% 50%)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgb(77, 127, 77)
-Expected: rgb(77, 128, 77).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. property 1, expected 128 +/- 0.01, expected 128 but got 127</pre></details><a class="self" href="#s-19ed0420" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1a011831"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30% 50% / 0.5)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgba(77, 127, 77, 0.5)
-Expected: rgba(77, 128, 77, 0.5).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. property 1, expected 128 +/- 0.01, expected 128 but got 127</pre></details><a class="self" href="#s-1a011831" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-caea4bb4"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(none none none)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgb(255, 0, 0)
-Expected: hwb(none none none).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 0 got 3</pre></details><a class="self" href="#s-caea4bb4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-19ed0420"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30% 50%)&quot; should set the property value</span></div><a class="self" href="#s-19ed0420" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1a011831"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30% 50% / 0.5)&quot; should set the property value</span></div><a class="self" href="#s-1a011831" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-caea4bb4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(none none none)&quot; should set the property value</span></div><a class="self" href="#s-caea4bb4" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-c877addc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(0 0% 0%)&quot; should set the property value</span></div><a class="self" href="#s-c877addc" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e7ed7cf9"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(none none none / none)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgba(255, 0, 0, 0)
-Expected: hwb(none none none / none).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 0 got 4</pre></details><a class="self" href="#s-e7ed7cf9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e7ed7cf9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(none none none / none)&quot; should set the property value</span></div><a class="self" href="#s-e7ed7cf9" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ee83832f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(0 0% 0% / 0)&quot; should set the property value</span></div><a class="self" href="#s-ee83832f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c36fd808"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 none none)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgb(0, 255, 0)
-Expected: hwb(120 none none).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 1 got 3</pre></details><a class="self" href="#s-c36fd808" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c36fd808"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 none none)&quot; should set the property value</span></div><a class="self" href="#s-c36fd808" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-d9b7063f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 0% 0%)&quot; should set the property value</span></div><a class="self" href="#s-d9b7063f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-28851fac"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 80% none)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgb(204, 255, 204)
-Expected: hwb(120 80% none).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 2 got 3</pre></details><a class="self" href="#s-28851fac" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-28851fac"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 80% none)&quot; should set the property value</span></div><a class="self" href="#s-28851fac" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ff60b822"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 80% 0%)&quot; should set the property value</span></div><a class="self" href="#s-ff60b822" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d1273251"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 none 50%)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgb(0, 128, 0)
-Expected: hwb(120 none 50%).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 2 got 3</pre></details><a class="self" href="#s-d1273251" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d1273251"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 none 50%)&quot; should set the property value</span></div><a class="self" href="#s-d1273251" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-e1818ed3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 0% 50%)&quot; should set the property value</span></div><a class="self" href="#s-e1818ed3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-00115536"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30% 50% / none)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgba(77, 127, 77, 0)
-Expected: hwb(120 30% 50% / none).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 4</pre></details><a class="self" href="#s-00115536" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b4587377"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30% 50% / 0)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgba(77, 127, 77, 0)
-Expected: rgba(77, 128, 77, 0).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. property 1, expected 128 +/- 0.01, expected 128 but got 127</pre></details><a class="self" href="#s-b4587377" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-40275b1a"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(none 100% 50% / none)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgba(170, 170, 170, 0)
-Expected: hwb(none 100% 50% / none).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 2 got 4</pre></details><a class="self" href="#s-40275b1a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-00115536"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30% 50% / none)&quot; should set the property value</span></div><a class="self" href="#s-00115536" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b4587377"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30% 50% / 0)&quot; should set the property value</span></div><a class="self" href="#s-b4587377" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-40275b1a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(none 100% 50% / none)&quot; should set the property value</span></div><a class="self" href="#s-40275b1a" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-813601b1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(0 100% 50% / 0)&quot; should set the property value</span></div><a class="self" href="#s-813601b1" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6ce10a19"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30 50)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgb(77, 127, 77)
-Expected: rgb(77, 128, 77).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. property 1, expected 128 +/- 0.01, expected 128 but got 127</pre></details><a class="self" href="#s-6ce10a19" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-84cf172a"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30 50 / 0.5)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgba(77, 127, 77, 0.5)
-Expected: rgba(77, 128, 77, 0.5).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. property 1, expected 128 +/- 0.01, expected 128 but got 127</pre></details><a class="self" href="#s-84cf172a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6403a479"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30% 50)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgb(77, 127, 77)
-Expected: rgb(77, 128, 77).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. property 1, expected 128 +/- 0.01, expected 128 but got 127</pre></details><a class="self" href="#s-6403a479" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-4b8a3d7b"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30% 50 / 0.5)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgba(77, 127, 77, 0.5)
-Expected: rgba(77, 128, 77, 0.5).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. property 1, expected 128 +/- 0.01, expected 128 but got 127</pre></details><a class="self" href="#s-4b8a3d7b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b90c1407"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30 50%)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgb(77, 127, 77)
-Expected: rgb(77, 128, 77).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. property 1, expected 128 +/- 0.01, expected 128 but got 127</pre></details><a class="self" href="#s-b90c1407" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-397785d4"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30 50% / 0.5)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgba(77, 127, 77, 0.5)
-Expected: rgba(77, 128, 77, 0.5).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. property 1, expected 128 +/- 0.01, expected 128 but got 127</pre></details><a class="self" href="#s-397785d4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9f2c4c8a"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 none 50)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgb(0, 128, 0)
-Expected: hwb(120 none 50%).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 2 got 3</pre></details><a class="self" href="#s-9f2c4c8a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2267e4fd"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 none 50 / 0.5)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgba(0, 128, 0, 0.5)
-Expected: hwb(120 none 50% / 0.5).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 4</pre></details><a class="self" href="#s-2267e4fd" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e4ef0e8f"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30 none)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgb(77, 255, 77)
-Expected: hwb(120 30% none).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 2 got 3</pre></details><a class="self" href="#s-e4ef0e8f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f60dd5e7"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30 none / 0.5)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgba(77, 255, 77, 0.5)
-Expected: hwb(120 30% none / 0.5).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 4</pre></details><a class="self" href="#s-f60dd5e7" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ede6ed97"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30 50 / none)&quot; should set the property value</span></summary><pre class="msg">Colors do not match.
-Actual:   rgba(77, 127, 77, 0)
-Expected: hwb(120 30% 50% / none).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 3 got 4</pre></details><a class="self" href="#s-ede6ed97" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6ce10a19"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30 50)&quot; should set the property value</span></div><a class="self" href="#s-6ce10a19" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-84cf172a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30 50 / 0.5)&quot; should set the property value</span></div><a class="self" href="#s-84cf172a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6403a479"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30% 50)&quot; should set the property value</span></div><a class="self" href="#s-6403a479" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4b8a3d7b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30% 50 / 0.5)&quot; should set the property value</span></div><a class="self" href="#s-4b8a3d7b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b90c1407"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30 50%)&quot; should set the property value</span></div><a class="self" href="#s-b90c1407" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-397785d4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30 50% / 0.5)&quot; should set the property value</span></div><a class="self" href="#s-397785d4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9f2c4c8a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 none 50)&quot; should set the property value</span></div><a class="self" href="#s-9f2c4c8a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2267e4fd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 none 50 / 0.5)&quot; should set the property value</span></div><a class="self" href="#s-2267e4fd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e4ef0e8f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30 none)&quot; should set the property value</span></div><a class="self" href="#s-e4ef0e8f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f60dd5e7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30 none / 0.5)&quot; should set the property value</span></div><a class="self" href="#s-f60dd5e7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ede6ed97"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30 50 / none)&quot; should set the property value</span></div><a class="self" href="#s-ede6ed97" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-f348b015"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(320deg 30% 40%)&quot; should set the property value</span></div><a class="self" href="#s-f348b015" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d8079398"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(calc(infinity) 20% 10%)&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-d8079398" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5c7c3143"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(calc(-infinity) 20% 10%)&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-5c7c3143" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-bb2793c9"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(calc(0 / 0) 20% 10%)&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-bb2793c9" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-210ff9de"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(90 20% 10% / calc(infinity))&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-210ff9de" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-deaaffb5"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(90 20% 10% / calc(-infinity))&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-deaaffb5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-bf262a5d"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(90 20% 10% / calc(0 / 0))&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-bf262a5d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-58b83a54"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(90 20% 10% / calc(NaN))&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-58b83a54" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-839841e2"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(calc(110deg + (sign(1em - 10px) * 10deg)) 30% 50% / 50%)&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-839841e2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-bb9f61c8"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(calc(110 + (sign(1em - 10px) * 10)) 30 50 / 0.5)&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-bb9f61c8" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-12dcdcc5"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120deg 30% 50% / calc(50% + (sign(1em - 10px) * 10%)))&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-12dcdcc5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e6f4a60c"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30 50 / calc(0.75 + (sign(1em - 10px) * 0.1)))&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-e6f4a60c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d8079398"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(calc(infinity) 20% 10%)&quot; should set the property value</span></div><a class="self" href="#s-d8079398" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5c7c3143"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(calc(-infinity) 20% 10%)&quot; should set the property value</span></div><a class="self" href="#s-5c7c3143" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bb2793c9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(calc(0 / 0) 20% 10%)&quot; should set the property value</span></div><a class="self" href="#s-bb2793c9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-210ff9de"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(90 20% 10% / calc(infinity))&quot; should set the property value</span></div><a class="self" href="#s-210ff9de" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-deaaffb5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(90 20% 10% / calc(-infinity))&quot; should set the property value</span></div><a class="self" href="#s-deaaffb5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bf262a5d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(90 20% 10% / calc(0 / 0))&quot; should set the property value</span></div><a class="self" href="#s-bf262a5d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-58b83a54"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(90 20% 10% / calc(NaN))&quot; should set the property value</span></div><a class="self" href="#s-58b83a54" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-839841e2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(calc(110deg + (sign(1em - 10px) * 10deg)) 30% 50% / 50%)&quot; should set the property value</span></div><a class="self" href="#s-839841e2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bb9f61c8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(calc(110 + (sign(1em - 10px) * 10)) 30 50 / 0.5)&quot; should set the property value</span></div><a class="self" href="#s-bb9f61c8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-12dcdcc5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120deg 30% 50% / calc(50% + (sign(1em - 10px) * 10%)))&quot; should set the property value</span></div><a class="self" href="#s-12dcdcc5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e6f4a60c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hwb(120 30 50 / calc(0.75 + (sign(1em - 10px) * 0.1)))&quot; should set the property value</span></div><a class="self" href="#s-e6f4a60c" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

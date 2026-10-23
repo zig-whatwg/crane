@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../css/"><code>css/</code></a></li><li><a href="../../../../css/css-logical/"><code>css-<wbr>logical/</code></a></li><li><a href="../../../../css/css-logical/parsing/"><code>parsing/</code></a></li><li aria-current="page"><code>inline-<wbr>size-<wbr>computed.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>inline-<wbr>size-<wbr>computed.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="css/css-logical/parsing/inline-size-computed.html">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 7</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>7</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">3</span><span class="fg-of"> / 7</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>4</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-9f06884a3c</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9f06884a3c"><code>9f06884a3c</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-logical/parsing/inline-size-computed.html"><code>css/<wbr>css-<wbr>logical/<wbr>parsing/<wbr>inline-<wbr>size-<wbr>computed.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,13 +35,13 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-e8796495"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property inline-size value &#39;auto&#39;</span></summary><pre class="msg">assert_true: inline-size doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-e8796495" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-222d2344"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property inline-size value &#39;10px&#39;</span></summary><pre class="msg">assert_true: inline-size doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-222d2344" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-337b0e28"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property inline-size value &#39;20%&#39;</span></summary><pre class="msg">assert_true: inline-size doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-337b0e28" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c67fa260"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property inline-size value &#39;calc(0.5em + 10px)&#39;</span></summary><pre class="msg">assert_true: inline-size doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-c67fa260" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-cc0780ad"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property inline-size value &#39;calc(-0.5em + 10px)&#39;</span></summary><pre class="msg">assert_true: inline-size doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-cc0780ad" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2c98d2c2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property inline-size value &#39;min-content&#39;</span></summary><pre class="msg">assert_true: inline-size doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-2c98d2c2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7f6f5216"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property inline-size value &#39;max-content&#39;</span></summary><pre class="msg">assert_true: inline-size doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-7f6f5216" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e8796495"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property inline-size value &#39;auto&#39;</span></summary><pre class="msg">assert_equals: expected &quot;200px&quot; but got &quot;auto&quot;</pre></details><a class="self" href="#s-e8796495" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-222d2344"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Property inline-size value &#39;10px&#39;</span></div><a class="self" href="#s-222d2344" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-337b0e28"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property inline-size value &#39;20%&#39;</span></summary><pre class="msg">assert_equals: expected &quot;40px&quot; but got &quot;20%&quot;</pre></details><a class="self" href="#s-337b0e28" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c67fa260"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Property inline-size value &#39;calc(0.5em + 10px)&#39;</span></div><a class="self" href="#s-c67fa260" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cc0780ad"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Property inline-size value &#39;calc(-0.5em + 10px)&#39;</span></div><a class="self" href="#s-cc0780ad" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2c98d2c2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property inline-size value &#39;min-content&#39;</span></summary><pre class="msg">assert_equals: expected &quot;60px&quot; but got &quot;min-content&quot;</pre></details><a class="self" href="#s-2c98d2c2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7f6f5216"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property inline-size value &#39;max-content&#39;</span></summary><pre class="msg">assert_equals: expected &quot;60px&quot; but got &quot;max-content&quot;</pre></details><a class="self" href="#s-7f6f5216" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
