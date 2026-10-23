@@ -766,6 +766,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A test block in src/ that reaches an engine operation cannot link](testing-a-test-block-in-src-that-reaches-an-engine-operation-cannot-link.md) - Read the step count, not only the test count: a src/ test block that reaches the engine fails to LINK, while every test still passes.
 - [New Formats Need a Runner-Only Comparison](testing-new-formats-need-a-runner-only-comparison.md) - A baseline that cannot execute a test cannot detect regressions within that test.
 - [XML Runner Metadata Needs the XML Byte Stream](testing-xml-runner-metadata-needs-the-xml-byte-stream.md) - Corpus parity proves today's files; encoded and namespace-aware fixtures prove the format. Keep response MIME routing separate from metadata extraction.
+- [Compare WPT results through the manifest](testing-compare-wpt-results-through-the-manifest.md) - A shared directory name is not a shared test population. Preserve source identity, URL identity and coverage before interpreting a pass-count difference.
 
 ### Debugging
 - [Missing event handlers can start with the element factory](debugging-missing-event-handlers-can-start-with-the-element-factory.md) - Check the receiver's interface before debugging a getter that may never have been called.
