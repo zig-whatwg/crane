@@ -1,5 +1,5 @@
 //! Side tables keyed by an object's address stay fast when page after page of
-//! entries comes and goes (src/webidl/utils/tombstones.zig).
+//! entries comes and goes (src/infra/tombstones.zig, re-exported as webidl.utils.tombstones).
 //!
 //! The churn is a runner's: a page's worth of objects at addresses never used
 //! before is registered and then released, forty times over, while a few

@@ -28,8 +28,10 @@
 //! const Accessor = utils.InternalStateAccessor(InternalState, State);
 //! ```
 
-/// When to rehash a long-lived address-keyed side table (see tombstones.zig).
-pub const tombstones = @import("tombstones.zig");
+/// When to rehash a long-lived std hash map whose keys come and go: infra's
+/// (src/infra/tombstones.zig), so that maps below webidl - fetch's caches,
+/// the blob URL store, storage - reach it too.
+pub const tombstones = @import("infra").tombstones;
 pub const InternalStateAccessor = @import("internal_state.zig").InternalStateAccessor;
 pub const OptionalInternalStateAccessor = @import("internal_state.zig").OptionalInternalStateAccessor;
 
@@ -52,7 +54,6 @@ pub const extractOptionalDictionary = typed_extraction.extractOptionalDictionary
 
 test {
     @import("std").testing.refAllDecls(@This());
-    _ = @import("tombstones.zig");
     _ = @import("internal_state.zig");
     _ = @import("typed_extraction.zig");
     // Note: collection.zig tests are run separately, not through this root
