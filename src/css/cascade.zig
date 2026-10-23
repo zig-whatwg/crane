@@ -202,13 +202,68 @@ fn collectCandidates(allocator: Allocator, matched: []const Matched) Allocator.E
     return candidates;
 }
 
+/// Cascade 5 §§6–7.3: a property owns a priority-ordered fallback chain.
+/// Like Blink's CascadeMap and WebKit's PropertyCascade, lookup starts at
+/// that property's head. Candidate order and borrowed Source identity stay
+/// unchanged; the separate links keep Candidate at 32 bytes.
+const CandidateIndex = struct {
+    const none = std.math.maxInt(usize);
+    heads: [Longhand.count]usize = @splat(none),
+    links: []usize,
+
+    fn init(candidates: []const Candidate, links: []usize) CandidateIndex {
+        std.debug.assert(candidates.len == links.len);
+        var index: CandidateIndex = .{ .links = links };
+        // Candidates are already strongest-first. Prepending backwards
+        // preserves that order, including equal-priority declarations.
+        var i = candidates.len;
+        while (i > 0) {
+            i -= 1;
+            const property = @intFromEnum(candidates[i].decl.longhand);
+            links[i] = index.heads[property];
+            index.heads[property] = i;
+        }
+        return index;
+    }
+
+    /// Logical 1 §4: merge a logical chain into its mapped physical chain
+    /// only after writing-mode and direction have computed. Global sorted
+    /// positions are sufficient to merge without recalculating priorities.
+    fn merge(self: *CandidateIndex, logical: Longhand, physical: Longhand) void {
+        var a = self.heads[@intFromEnum(logical)];
+        if (a == none) return;
+        self.heads[@intFromEnum(logical)] = none;
+        var b = self.heads[@intFromEnum(physical)];
+        var destination = &self.heads[@intFromEnum(physical)];
+        while (a != none and b != none) {
+            const use_a = a < b;
+            const chosen = if (use_a) a else b;
+            const next = self.links[chosen];
+            destination.* = chosen;
+            destination = &self.links[chosen];
+            if (use_a) a = next else b = next;
+        }
+        destination.* = if (a != none) a else b;
+    }
+};
+
 /// The cascade and the computed-value step for one element. The style is
 /// the caller's (`destroy`). Matched blocks must remain stable for this call.
 pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*ComputedStyle {
     const allocator = ctx.allocator;
     var candidates = try collectCandidates(allocator, matched);
     defer candidates.deinit(allocator);
-    var builder: Builder = .{ .ctx = ctx, .candidates = candidates.items };
+    var stack_links: [64]usize = undefined;
+    const links = if (candidates.items.len <= stack_links.len)
+        stack_links[0..candidates.items.len]
+    else
+        try allocator.alloc(usize, candidates.items.len);
+    defer if (links.len > stack_links.len) allocator.free(links);
+    var builder: Builder = .{
+        .ctx = ctx,
+        .candidates = candidates.items,
+        .index = CandidateIndex.init(candidates.items, links),
+    };
     const style = try allocator.create(ComputedStyle);
     style.* = .{ .allocator = allocator, .values = computed_mod.initial_values };
     // `initial_values` holds no counted text; every slot is overwritten
@@ -222,6 +277,7 @@ pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*Computed
 const Builder = struct {
     ctx: Context,
     candidates: []const Candidate,
+    index: CandidateIndex,
     style: *ComputedStyle = undefined,
     writing_mode: Keyword = .horizontal_tb,
     direction: Keyword = .ltr,
@@ -283,8 +339,9 @@ const Builder = struct {
     }
 
     fn pick(self: *const Builder, l: Longhand, excluded: *const Exclusions) ?Candidate {
-        for (self.candidates) |c| {
-            if (self.target(c.decl.longhand) != l) continue;
+        var position = self.index.heads[@intFromEnum(l)];
+        while (position != CandidateIndex.none) : (position = self.index.links[position]) {
+            const c = self.candidates[position];
             if (excluded.excludes(c)) continue;
             // Q17/Q23–25: unavailable cap-height/ascent cannot enter scalar
             // consumers. Only geometry lengths may remain unresolved; the
@@ -302,6 +359,14 @@ const Builder = struct {
         return null;
     }
 
+    fn mapLogicalChains(self: *Builder) void {
+        for (0..Longhand.count) |i| {
+            const l: Longhand = @enumFromInt(i);
+            if (self.index.heads[i] == CandidateIndex.none or l.logical() == null) continue;
+            self.index.merge(l, self.target(l));
+        }
+    }
+
     fn run(self: *Builder) Allocator.Error!void {
         // The high-priority longhands: the mapping of logical ones, then
         // color-scheme (what every system color resolves against - Blink
@@ -309,6 +374,7 @@ const Builder = struct {
         // (currentcolor).
         self.writing_mode = (try self.computeAndStore(.writing_mode)).keyword;
         self.direction = (try self.computeAndStore(.direction)).keyword;
+        self.mapLogicalChains();
         _ = try self.computeAndStore(.text_orientation);
         self.used_scheme = self.elementColorScheme(try self.computeAndStore(.color_scheme));
         self.style.used_color_scheme = self.used_scheme;
@@ -968,12 +1034,16 @@ const cv1HasSourceApi = @hasDecl(Cv1Cascade, "TreeScopeRef") and
 fn cv1SourceSpecified(matched: []const Matched, longhand: Longhand, mode: Keyword, direction: Keyword) !Specified {
     var candidates = try Cv1Cascade.collectCandidates(testing.allocator, matched);
     defer candidates.deinit(testing.allocator);
-    const builder = Builder{
+    const links = try testing.allocator.alloc(usize, candidates.items.len);
+    defer testing.allocator.free(links);
+    var builder = Builder{
         .ctx = .{ .allocator = testing.allocator, .parent = null },
         .candidates = candidates.items,
+        .index = CandidateIndex.init(candidates.items, links),
         .writing_mode = mode,
         .direction = direction,
     };
+    builder.mapLogicalChains();
     return builder.specified(longhand);
 }
 
@@ -1103,4 +1173,154 @@ fn cv1SourceInheritanceRoundTrip(allocator: Allocator) !void {
         try child.serializeResolved(.font_family, &out, allocator);
         try testing.expectEqualStrings("parent-scope", out.items);
     }
+}
+
+test "cv1 index absent properties have empty heads without reading candidates" {
+    if (comptime !@hasDecl(@This(), "CandidateIndex")) return error.CascadePropertyIndexMissing;
+    const Index = @field(@This(), "CandidateIndex");
+    var no_links: [0]usize = .{};
+    const index = Index.init(&.{}, &no_links);
+    for (index.heads) |head| try testing.expectEqual(Index.none, head);
+}
+
+test "cv1 index defaults inherit and initialize independently of unrelated declarations" {
+    var parent_block = try TestBlock.make("color:green;font-family:parent-family;opacity:.2");
+    defer parent_block.deinit();
+    const parent = try cascade(.{ .allocator = testing.allocator, .parent = null }, &.{.{ .block = &parent_block.block, .source = .{ .origin = .author } }});
+    defer parent.destroy();
+    var child_block = try TestBlock.make("width:17px;margin-top:9px");
+    defer child_block.deinit();
+    const child = try cascade(.{ .allocator = testing.allocator, .parent = parent }, &.{.{ .block = &child_block.block, .source = .{ .origin = .author } }});
+    defer child.destroy();
+    try expectResolved(child, .color, "rgb(0, 128, 0)");
+    try expectResolved(child, .font_family, "parent-family");
+    try expectResolved(child, .opacity, "1");
+    try expectResolved(child, .margin_left, "0px");
+}
+
+test "cv1 index retains origin importance layer specificity and appearance ordering" {
+    const Case = struct { first: Source, second: Source, important: bool = false, expected: []const u8 };
+    const cases = [_]Case{
+        .{ .first = .{ .origin = .user_agent }, .second = .{ .origin = .author }, .expected = "2px" },
+        .{ .first = .{ .origin = .user_agent }, .second = .{ .origin = .author }, .important = true, .expected = "1px" },
+        .{ .first = .{ .origin = .author, .layer = 0 }, .second = .{ .origin = .author, .layer = 1 }, .expected = "2px" },
+        .{ .first = .{ .origin = .author, .layer = 0 }, .second = .{ .origin = .author, .layer = 1 }, .important = true, .expected = "1px" },
+        .{ .first = .{ .origin = .author, .specificity = .{ .a = 1 } }, .second = .{ .origin = .author, .specificity = .{ .b = 9 }, .order = 10 }, .expected = "1px" },
+        .{ .first = .{ .origin = .author, .order = 7 }, .second = .{ .origin = .author, .order = 8 }, .expected = "2px" },
+        .{ .first = .{ .origin = .author, .element_attached = true }, .second = .{ .origin = .author, .specificity = .{ .a = 9 }, .order = 10 }, .expected = "1px" },
+    };
+    for (cases) |case| {
+        var first = try TestBlock.make(if (case.important) "margin-left:1px!important;color:red" else "margin-left:1px;color:red");
+        defer first.deinit();
+        var second = try TestBlock.make(if (case.important) "opacity:.5;margin-left:2px!important" else "opacity:.5;margin-left:2px");
+        defer second.deinit();
+        const style = try cascade(.{ .allocator = testing.allocator, .parent = null }, &.{
+            .{ .block = &second.block, .source = case.second },
+            .{ .block = &first.block, .source = case.first },
+        });
+        defer style.destroy();
+        try expectResolved(style, .margin_left, case.expected);
+        try expectResolved(style, .opacity, "0.5");
+    }
+}
+
+test "cv1 index shadow priority preserves the actual winning tree scope" {
+    inline for (.{ false, true }) |important| {
+        var outer = try TestBlock.make(if (important) "opacity:.2!important" else "opacity:.2");
+        defer outer.deinit();
+        var inner = try TestBlock.make(if (important) "opacity:.8!important" else "opacity:.8");
+        defer inner.deinit();
+        const result = try cv1SourceSpecified(&.{
+            .{ .block = &inner.block, .source = .{ .origin = .author, .tree_depth = 2, .tree_scope = .{ .serial = 88 } } },
+            .{ .block = &outer.block, .source = .{ .origin = .author, .tree_depth = 0, .tree_scope = .{ .serial = 22 } } },
+        }, .opacity, .horizontal_tb, .ltr);
+        try testing.expectEqual(@as(u64, if (important) 88 else 22), result.value.source.tree_scope.serial);
+        try testing.expectEqual(@as(f64, if (important) 0.8 else 0.2), result.value.value.number);
+    }
+}
+
+test "cv1 index revert and revert layer traverse only the property's fallback chain" {
+    var ua = try TestBlock.make("margin-left:1px;opacity:.1");
+    defer ua.deinit();
+    var low = try TestBlock.make("margin-left:3px;opacity:.3;color:green");
+    defer low.deinit();
+    var middle = try TestBlock.make("margin-left:revert;opacity:.5;display:block");
+    defer middle.deinit();
+    var high = try TestBlock.make("margin-left:revert-layer;opacity:revert-layer;width:99px");
+    defer high.deinit();
+    const matched = [_]Matched{
+        .{ .block = &high.block, .source = .{ .origin = .author, .layer = 2, .tree_scope = .{ .serial = 4 } } },
+        .{ .block = &ua.block, .source = .{ .origin = .user_agent, .tree_scope = .{ .serial = 1 } } },
+        .{ .block = &middle.block, .source = .{ .origin = .author, .layer = 1, .tree_scope = .{ .serial = 3 } } },
+        .{ .block = &low.block, .source = .{ .origin = .author, .layer = 0, .tree_scope = .{ .serial = 2 } } },
+    };
+    const margin = try cv1SourceSpecified(&matched, .margin_left, .horizontal_tb, .ltr);
+    const opacity = try cv1SourceSpecified(&matched, .opacity, .horizontal_tb, .ltr);
+    try testing.expectEqual(@as(f64, 1), margin.value.value.length.value);
+    try testing.expectEqual(@as(u64, 1), margin.value.source.tree_scope.serial);
+    try testing.expectEqual(@as(f64, 0.5), opacity.value.value.number);
+    try testing.expectEqual(@as(u64, 3), opacity.value.source.tree_scope.serial);
+}
+
+test "cv1 index merges logical and physical chains after both mapping properties compute" {
+    const Case = struct { mode: []const u8, direction: []const u8, inline_start: Longhand, block_start: Longhand };
+    const cases = [_]Case{
+        .{ .mode = "horizontal-tb", .direction = "ltr", .inline_start = .margin_left, .block_start = .margin_top },
+        .{ .mode = "horizontal-tb", .direction = "rtl", .inline_start = .margin_right, .block_start = .margin_top },
+        .{ .mode = "vertical-rl", .direction = "ltr", .inline_start = .margin_top, .block_start = .margin_right },
+        .{ .mode = "vertical-rl", .direction = "rtl", .inline_start = .margin_bottom, .block_start = .margin_right },
+        .{ .mode = "vertical-lr", .direction = "ltr", .inline_start = .margin_top, .block_start = .margin_left },
+        .{ .mode = "vertical-lr", .direction = "rtl", .inline_start = .margin_bottom, .block_start = .margin_left },
+        .{ .mode = "sideways-rl", .direction = "ltr", .inline_start = .margin_top, .block_start = .margin_right },
+        .{ .mode = "sideways-rl", .direction = "rtl", .inline_start = .margin_bottom, .block_start = .margin_right },
+        .{ .mode = "sideways-lr", .direction = "ltr", .inline_start = .margin_bottom, .block_start = .margin_left },
+        .{ .mode = "sideways-lr", .direction = "rtl", .inline_start = .margin_top, .block_start = .margin_left },
+    };
+    for (cases) |case| {
+        var physical = try TestBlock.make("margin:3px");
+        defer physical.deinit();
+        const text = try std.fmt.allocPrint(testing.allocator, "writing-mode:{s};direction:{s};margin-inline-start:7px;margin-block-start:11px", .{ case.mode, case.direction });
+        defer testing.allocator.free(text);
+        var logical = try TestBlock.make(text);
+        defer logical.deinit();
+        const style = try cascade(.{ .allocator = testing.allocator, .parent = null }, &.{
+            .{ .block = &logical.block, .source = .{ .origin = .author, .order = 2 } },
+            .{ .block = &physical.block, .source = .{ .origin = .author, .order = 1 } },
+        });
+        defer style.destroy();
+        try expectResolved(style, case.inline_start, "7px");
+        try expectResolved(style, case.block_start, "11px");
+        try expectResolved(style, .margin_inline_start, "7px");
+        try expectResolved(style, .margin_block_start, "11px");
+    }
+}
+
+test "cv1 index preserves cross logical physical rollback and unavailable scalar fallback" {
+    var low = try TestBlock.make("margin-inline-start:7px;opacity:.4;direction:rtl");
+    defer low.deinit();
+    var high = try TestBlock.make("margin-right:revert-layer;opacity:calc(1cap / 1px)");
+    defer high.deinit();
+    const style = try cascade(.{ .allocator = testing.allocator, .parent = null }, &.{
+        .{ .block = &high.block, .source = .{ .origin = .author, .layer = 1 } },
+        .{ .block = &low.block, .source = .{ .origin = .author, .layer = 0 } },
+    });
+    defer style.destroy();
+    try expectResolved(style, .margin_right, "7px");
+    try expectResolved(style, .opacity, "0.4");
+}
+
+test "cv1 index large candidate storage releases every allocation failure" {
+    try cv1IndexLarge(testing.allocator);
+    try testing.checkAllAllocationFailures(testing.allocator, cv1IndexLarge, .{});
+}
+
+fn cv1IndexLarge(allocator: Allocator) !void {
+    var block = try DeclarationBlock.parse(.{ .allocator = allocator }, "opacity:.25;direction:rtl;margin-inline-start:7px");
+    defer block.deinit();
+    var matched: [80]Matched = undefined;
+    for (&matched, 0..) |*entry, i| entry.* = .{ .block = &block, .source = .{ .origin = .author, .order = @intCast(i), .tree_scope = .{ .serial = i } } };
+    const style = try cascade(.{ .allocator = allocator, .parent = null }, &matched);
+    defer style.destroy();
+    try testing.expectEqual(@as(f64, 0.25), style.get(.opacity).number);
+    try testing.expectEqual(@as(f64, 7), style.get(.margin_right).length.value);
 }
