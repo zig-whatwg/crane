@@ -6,7 +6,6 @@
 # above it. A ratchet - `zig build lint-tombstones`, part of `zig build test`, fails if
 # a count rises or a new key appears. After paying some off, lower it with
 # `zig build lint-tombstones -- --update`. Never raise it by hand.
-src/browser/Context.zig timer_contexts 1
 src/browser/storage/Storage.zig LocalStorage.data 1
 src/browser/storage/Storage.zig SessionStorage.data 1
 src/dom/agent_cluster_keys.zig HistoricalKeys.groups 1
@@ -22,10 +21,8 @@ src/file/blob_url_store.zig BlobURLStore.entries 1
 src/fs/bucket.zig BucketManager.buckets 1
 src/fs/entry.zig DirectoryEntry.children 1
 src/html/custom_elements.zig ElementReactionQueues.queues 1
-src/html/custom_elements/agent.zig AgentState.elements 1
 src/html/custom_elements/form_observers.zig FormIdObservers.by_element 1
 src/html/custom_elements/form_observers.zig FormIdObservers.by_id 1
-src/html/custom_elements/reactions.zig Reactions.pending 1
 src/html/event_loop/timers.zig TimerManager.timers 1
 src/html/module_script.zig AsyncModuleLoader.pending 1
 src/html/navigation/joint_history.zig JointHistory.update_only 1
@@ -48,7 +45,6 @@ src/runtime/engines/v8/shadow_realm.zig ShadowRealmCallbackData.tracked_realms 1
 src/runtime/engines/v8/wrapper_cache.zig WrapperCache.edges_before_wrap 1
 src/runtime/engines/v8/wrapper_cache.zig WrapperCache.pending_before_wrap 1
 src/runtime/internal_state.zig Registry.map 1
-src/runtime/native_timer.zig NativeTimerManager.timers 1
 src/selector/cache.zig SelectorQueryCache.entries 1
 src/service_worker/cache/store.zig Storage.handles 1
 src/storage/backends/leveldb.zig LevelDBBackend.cursors 1
