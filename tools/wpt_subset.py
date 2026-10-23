@@ -20,7 +20,7 @@ it. This emits a path worklist the runner consumes directly:
 Every entry below carries the reason it is in or out. When something is added,
 add the reason too - a bare path list rots into folklore within a month.
 
-Scope decisions this encodes (updated 2026-10-21):
+Scope decisions this encodes (updated 2026-10-22):
   * Headless. No iOS build. WPT compliance gates the iOS move.
   * A file blocks when its harness is not OK or its nonempty subtest set has
     no passes (tools/wpt_progress.py gate_status).
@@ -42,6 +42,80 @@ WORKLIST = os.path.join(REPO, 'tests', 'wpt_0_1_worklist.txt')
 
 # Prefix -> why it is in. Checked in order; first match wins.
 INCLUDE = [
+    # Tentative-named files approved within groups d, f and e, 2026-10-22.
+    # Exact paths bypass only the two blanket tentative exclusions below.
+    ('css/css-display/reading-flow/tentative/reading-flow-computed.html',
+     'display computed style and inheritance; no rendered box assertions; f: CSS outside parsing directories approved by the user 2026-10-22'),
+    ('css/css-display/reading-flow/tentative/reading-order-computed.html',
+     'display computed style and inheritance; no rendered box assertions; f: CSS outside parsing directories approved by the user 2026-10-22'),
+    ('css/css-fonts/system-fonts-serialization.tentative.html',
+     'fonts value or rule serialization; no rendered boxes; f: CSS outside parsing directories approved by the user 2026-10-22'),
+    ('css/css-grid/grid-lanes/tentative/parsing/grid-subgridded-to-grid-lanes/grid-lanes-column-subgrid-computed.html',
+     'grid-lanes computed values, including mixed geometry assertions; d: mixed functional/layout approved by the user 2026-10-22'),
+    ('css/css-grid/grid-lanes/tentative/parsing/grid-subgridded-to-grid-lanes/grid-lanes-row-subgrid-computed.html',
+     'grid-lanes computed values, including mixed geometry assertions; d: mixed functional/layout approved by the user 2026-10-22'),
+    ('css/css-highlight-api/custom-highlight-universal-parsing-and-computed-style.tentative.html',
+     'highlight api syntax and value parsing outside the parsing directory; f: CSS outside parsing directories approved by the user 2026-10-22'),
+    ('css/css-mixins/private/private-cssom-serialization.tentative.html',
+     'mixins value or rule serialization; no rendered boxes; f: CSS outside parsing directories approved by the user 2026-10-22'),
+    ('css/css-navigation/tentative/parsing/navigation-rule-invalid.html',
+     'navigation rule and property parsing; d: mixed functional/layout approved by the user 2026-10-22'),
+    ('css/css-pseudo/highlight-cascade/highlight-pseudos-computed-search-text.tentative.html',
+     'pseudo computed style and inheritance; no rendered box assertions; f: CSS outside parsing directories approved by the user 2026-10-22'),
+    ('css/css-sizing/size-shorthand-serialization.tentative.html',
+     'sizing value or rule serialization; no rendered boxes; f: CSS outside parsing directories approved by the user 2026-10-22'),
+    ('css/css-typed-om/stylevalue-serialization/cssKeywordValue.tentative.html',
+     'typed om value or rule serialization; no rendered boxes; f: CSS outside parsing directories approved by the user 2026-10-22'),
+    ('css/css-typed-om/stylevalue-serialization/cssMathValue.tentative.html',
+     'typed om value or rule serialization; no rendered boxes; f: CSS outside parsing directories approved by the user 2026-10-22'),
+    ('css/css-typed-om/stylevalue-serialization/cssTransformValue.tentative.html',
+     'typed om value or rule serialization; no rendered boxes; f: CSS outside parsing directories approved by the user 2026-10-22'),
+    ('css/css-typed-om/stylevalue-serialization/cssUnitValue.tentative.html',
+     'typed om value or rule serialization; no rendered boxes; f: CSS outside parsing directories approved by the user 2026-10-22'),
+    ('css/css-typed-om/stylevalue-subclasses/numeric-objects/parse.tentative.html',
+     'typed om syntax and value parsing outside the parsing directory; f: CSS outside parsing directories approved by the user 2026-10-22'),
+    ('css/css-values/calc-mix-computed.tentative.html',
+     'weighted CSS numeric computation; mixed percentage/used-width cases retained; d: mixed functional/layout approved by the user 2026-10-22'),
+    ('dom/ranges/tentative/OpaqueRange-disconnect.html',
+     'Range and selection; d: mixed functional/layout approved by the user 2026-10-22'),
+    ('dom/ranges/tentative/OpaqueRange-display-none.html',
+     'Range and selection; d: mixed functional/layout approved by the user 2026-10-22'),
+    ('fetch/content-encoding/zstd/big-window-zstd-body.tentative.https.any.js',
+     'HTTP Zstandard content decoding; e: fetch/content-encoding/zstd/ approved by the user 2026-10-22'),
+    ('fetch/metadata/embed.https.sub.tentative.html',
+     'Sec-Fetch request metadata and redirect behavior; e: fetch/metadata/ approved by the user 2026-10-22'),
+    ('fetch/metadata/generated/css-font-face.https.sub.tentative.html',
+     'Sec-Fetch request metadata and redirect behavior; e: fetch/metadata/ approved by the user 2026-10-22'),
+    ('fetch/metadata/generated/css-font-face.sub.tentative.html',
+     'Sec-Fetch request metadata and redirect behavior; e: fetch/metadata/ approved by the user 2026-10-22'),
+    ('fetch/metadata/generated/css-images.https.sub.tentative.html',
+     'Sec-Fetch request metadata and redirect behavior; e: fetch/metadata/ approved by the user 2026-10-22'),
+    ('fetch/metadata/generated/css-images.sub.tentative.html',
+     'Sec-Fetch request metadata and redirect behavior; e: fetch/metadata/ approved by the user 2026-10-22'),
+    ('fetch/metadata/generated/header-link.https.sub.tentative.html',
+     'Sec-Fetch request metadata and redirect behavior; e: fetch/metadata/ approved by the user 2026-10-22'),
+    ('html/browsers/browsing-the-web/back-forward-cache/broadcastchannel/dedicatedworker.tentative.window.js',
+     'history document preservation and restoration; geometry exceptions below; e: html/browsers/browsing-the-web/back-forward-cache/ approved by the user 2026-10-22'),
+    ('html/browsers/browsing-the-web/back-forward-cache/broadcastchannel/evict-on-message.tentative.window.js',
+     'history document preservation and restoration; geometry exceptions below; e: html/browsers/browsing-the-web/back-forward-cache/ approved by the user 2026-10-22'),
+    ('html/cross-origin-embedder-policy/reflection-credentialless.tentative.https.any.js',
+     'cross-origin policies, isolation and navigation; COOP/COEP implementation is separately queued; e: html/cross-origin-embedder-policy/ approved by the user 2026-10-22'),
+    ('html/cross-origin-embedder-policy/reflection-require-corp.tentative.https.any.js',
+     'cross-origin policies, isolation and navigation; COOP/COEP implementation is separately queued; e: html/cross-origin-embedder-policy/ approved by the user 2026-10-22'),
+    ('html/cross-origin-embedder-policy/reflection-unsafe-none.tentative.https.any.js',
+     'cross-origin policies, isolation and navigation; COOP/COEP implementation is separately queued; e: html/cross-origin-embedder-policy/ approved by the user 2026-10-22'),
+    ('html/cross-origin-opener-policy/reporting/tentative/access-to-noopener-page-from-no-coop-ro.https.html',
+     'cross-origin policies, isolation and navigation; COOP/COEP implementation is separately queued; e: html/cross-origin-opener-policy/ approved by the user 2026-10-22'),
+    ('html/cross-origin-opener-policy/tentative/noopener/coop-noopener-allow-popups-restrict-properties.https.html',
+     'cross-origin policies, isolation and navigation; COOP/COEP implementation is separately queued; e: html/cross-origin-opener-policy/ approved by the user 2026-10-22'),
+    ('html/semantics/forms/the-select-element/filterable-select/filterable-select-keyboard-behavior.tentative.html',
+     'form controls: value, checkedness, validation, submission; d: mixed functional/layout approved by the user 2026-10-22'),
+    ('html/semantics/forms/the-select-element/select-option-display-inherit.tentative.html',
+     'form controls: value, checkedness, validation, submission; d: mixed functional/layout approved by the user 2026-10-22'),
+    # Shipping evidence: https://bugzilla.mozilla.org/show_bug.cgi?id=2062374
+    ('wasm/proposals/wide-arithmetic/core/wide-arithmetic.wast.js.tentative.html',
+     'wide arithmetic, Phase 4, Firefox 155 shipping; linked-V8 capability follow-up, not a jsapi fix; e: wasm/proposals/wide-arithmetic/ approved by the user 2026-10-22'),
+
     # --- Core DOM. ---------------------------------------------------------
     ('dom/nodes/',            'node tree, attributes, createElement'),
     ('dom/events/',           'event dispatch: capture, bubble, propagation, listener options'),
@@ -52,7 +126,6 @@ INCLUDE = [
     ('dom/traversal/',        'NodeIterator / TreeWalker'),
     ('dom/idlharness',        'interface shape conformance'),
     ('dom/interface-objects', 'interface shape conformance'),
-    ('dom/observable/',       'Observable API ships in Chrome 135; separate one-browser scope proposal'),
 
     # --- Custom elements, full support. ------------------------------------
     ('custom-elements/',      'full support; registry, reactions, upgrades, is='),
@@ -80,7 +153,6 @@ INCLUDE = [
     ('css/css-anchor-position/parsing/', 'anchor property syntax and computed values, not anchor geometry'),
     ('css/css-animations/parsing/', 'animation property syntax and computed values'),
     ('css/css-backgrounds/parsing/', 'background property syntax and computed values, not painting'),
-    ('css/css-borders/tentative/parsing/', 'border property syntax and computed values, not painting'),
     ('css/css-box/parsing/', 'box property syntax and computed values'),
     ('css/css-break/parsing/', 'fragmentation property syntax and computed values, not pagination'),
     ('css/css-cascade/parsing/', 'cascade property syntax'),
@@ -96,7 +168,6 @@ INCLUDE = [
     ('css/css-forced-color-adjust/parsing/', 'forced color property syntax and computed values'),
     ('css/css-forms/parsing/', 'form appearance property syntax and computed values'),
     ('css/css-gaps/parsing/', 'gap property syntax and computed values, not layout'),
-    ('css/css-grid/grid-lanes/tentative/parsing/', 'grid-lanes property syntax and computed values, not grid layout'),
     ('css/css-grid/parsing/', 'grid property syntax and computed values, not grid layout'),
     ('css/css-images/parsing/', 'image value syntax and serialization, not decoding or painting'),
     ('css/css-inline/parsing/', 'inline property syntax and computed values, not line boxes'),
@@ -105,7 +176,6 @@ INCLUDE = [
     ('css/css-logical/parsing/', 'logical property syntax and computed values'),
     ('css/css-masking/parsing/', 'mask property syntax and computed values, not masking pixels'),
     ('css/css-multicol/parsing/', 'column property syntax and computed values, not multicolumn layout'),
-    ('css/css-navigation/tentative/parsing/', 'navigation rule and property parsing'),
     ('css/css-overflow/parsing/', 'overflow property syntax and computed values, not scrolling'),
     ('css/css-overscroll-behavior/parsing/', 'overscroll property syntax and computed values'),
     ('css/css-page/parsing/', 'page descriptor syntax and computed values, not printing'),
@@ -149,7 +219,6 @@ INCLUDE = [
     ('css/css-properties-values-api/non-computed-unit-cycles.html', 'custom property dependency-cycle computation'),
     ('css/css-values/acos-asin-atan-atan2-computed.html', 'inverse trigonometric CSS value computation'),
     ('css/css-values/calc-infinity-nan-computed.html', 'CSS numeric infinity and NaN computation'),
-    ('css/css-values/calc-mix-computed.tentative.html', 'weighted CSS numeric computation; mixed percentage/used-width cases retained'),
     ('css/css-values/clamp-color-computed.html', 'clamping computed color channels'),
     ('css/css-values/clamp-integer-computed.html', 'clamping computed integer values'),
     ('css/css-values/clamp-length-computed.html', 'computed length math before percentage resolution'),
@@ -161,13 +230,11 @@ INCLUDE = [
     ('css/css-values/minmax-number-computed.html', 'computed min/max numbers'),
     ('css/css-values/minmax-time-computed.html', 'computed min/max time values'),
     ('css/css-values/progress-computed.html', 'computed numeric progress ratios'),
-    ('css/css-values/random-computed.tentative.html', 'computed random values and value-sharing semantics'),
     ('css/css-values/random-item-computed.html', 'computed random item substitution and value-sharing semantics'),
     ('css/css-values/round-mod-rem-computed.html', 'computed rounding, modulus and remainder'),
     ('css/css-values/signs-abs-computed.html', 'computed signs and absolute values'),
     ('css/css-values/sin-cos-tan-computed.html', 'computed trigonometric functions'),
     ('css/css-values/calc-size/interpolate-size-computed.html', 'computed interpolate-size keyword'),
-    ('css/css-values/position/position-computed.tentative.html', 'computed object-position percentages and logical keyword mapping'),
     ('css/css-values/urls/url-request-modifiers-computed.sub.html', 'computed URL request modifier serialization'),
     # minmax-percentage-computed and minmax-length-percent-computed use
     # test_math_used's margin-left and require containing-block width. They
@@ -274,8 +341,6 @@ INCLUDE = [
     ('css/css-content/computed-value.html', 'content computed style and inheritance; no rendered box assertions'),
     ('css/css-display/display-contents-computed-style.html', 'display computed style and inheritance; no rendered box assertions'),
     ('css/css-display/display-contents-parsing-001.html', 'display syntax and value parsing outside the parsing directory'),
-    ('css/css-display/reading-flow/tentative/reading-flow-computed.html', 'display computed style and inheritance; no rendered box assertions'),
-    ('css/css-display/reading-flow/tentative/reading-order-computed.html', 'display computed style and inheritance; no rendered box assertions'),
     ('css/css-env/env-parsing.html', 'env syntax and value parsing outside the parsing directory'),
     ('css/css-flexbox/balance/flex-line-count-computed.html', 'flexbox computed style and inheritance; no rendered box assertions'),
     ('css/css-flexbox/balance/flex-wrap-computed.html', 'flexbox computed style and inheritance; no rendered box assertions'),
@@ -289,7 +354,6 @@ INCLUDE = [
     ('css/css-fonts/font-variant-alternates-parsing.html', 'fonts syntax and value parsing outside the parsing directory'),
     ('css/css-fonts/font-variation-settings-serialization-001.html', 'fonts value or rule serialization; no rendered boxes'),
     ('css/css-fonts/font-variation-settings-serialization-002.html', 'fonts value or rule serialization; no rendered boxes'),
-    ('css/css-fonts/system-fonts-serialization.tentative.html', 'fonts value or rule serialization; no rendered boxes'),
     ('css/css-fonts/test_font_family_parsing.html', 'fonts syntax and value parsing outside the parsing directory'),
     ('css/css-fonts/test_font_feature_values_parsing.html', 'fonts syntax and value parsing outside the parsing directory'),
     ('css/css-fonts/variations/font-parse-numeric-stretch-style-weight.html', 'fonts syntax and value parsing outside the parsing directory'),
@@ -302,7 +366,6 @@ INCLUDE = [
     ('css/css-grid/grid-model/grid-computed-value-display-floated-items-001.html', 'grid computed style and inheritance; no rendered box assertions'),
     ('css/css-grid/subgrid/grid-template-computed-invalid-subgrid.html', 'grid computed style and inheritance; no rendered box assertions'),
     ('css/css-grid/subgrid/grid-template-computed-nogrid.html', 'grid computed style and inheritance; no rendered box assertions'),
-    ('css/css-highlight-api/custom-highlight-universal-parsing-and-computed-style.tentative.html', 'highlight api syntax and value parsing outside the parsing directory'),
     ('css/css-highlight-api/highlight-pseudo-computed.html', 'highlight api computed style and inheritance; no rendered box assertions'),
     ('css/css-highlight-api/highlight-pseudo-from-font-computed.html', 'highlight api computed style and inheritance; no rendered box assertions'),
     ('css/css-highlight-api/highlight-pseudo-parsing.html', 'highlight api syntax and value parsing outside the parsing directory'),
@@ -317,7 +380,6 @@ INCLUDE = [
     ('css/css-mixins/functions/at-function-parsing.html', 'mixins syntax and value parsing outside the parsing directory'),
     ('css/css-mixins/functions/dashed-function-parsing.html', 'mixins syntax and value parsing outside the parsing directory'),
     ('css/css-mixins/mixins/mixin-parsing.html', 'mixins syntax and value parsing outside the parsing directory'),
-    ('css/css-mixins/private/private-cssom-serialization.tentative.html', 'mixins value or rule serialization; no rendered boxes'),
     ('css/css-multicol/zero-column-width-computed-style.html', 'multicol computed style and inheritance; no rendered box assertions'),
     ('css/css-nesting/parsing.html', 'nesting syntax and value parsing outside the parsing directory'),
     ('css/css-overflow/column-creates-computed-style.html', 'overflow computed style and inheritance; no rendered box assertions'),
@@ -330,7 +392,6 @@ INCLUDE = [
     ('css/css-pseudo/highlight-cascade/highlight-currentcolor-computed-inheritance.html', 'pseudo computed style and inheritance; no rendered box assertions'),
     ('css/css-pseudo/highlight-cascade/highlight-currentcolor-computed-visited.html', 'pseudo computed style and inheritance; no rendered box assertions'),
     ('css/css-pseudo/highlight-cascade/highlight-currentcolor-computed.html', 'pseudo computed style and inheritance; no rendered box assertions'),
-    ('css/css-pseudo/highlight-cascade/highlight-pseudos-computed-search-text.tentative.html', 'pseudo computed style and inheritance; no rendered box assertions'),
     ('css/css-pseudo/highlight-cascade/highlight-pseudos-computed.html', 'pseudo computed style and inheritance; no rendered box assertions'),
     ('css/css-pseudo/highlight-cascade/highlight-pseudos-inheritance-computed-001.html', 'pseudo computed style and inheritance; no rendered box assertions'),
     ('css/css-pseudo/highlight-cascade/highlight-pseudos-visited-computed-001.html', 'pseudo computed style and inheritance; no rendered box assertions'),
@@ -357,7 +418,6 @@ INCLUDE = [
     ('css/css-shapes/shape-outside/values/shape-outside-computed-shape-000.html', 'shapes computed style and inheritance; no rendered box assertions'),
     ('css/css-shapes/shape-outside/values/shape-outside-computed-shape-001.html', 'shapes computed style and inheritance; no rendered box assertions'),
     ('css/css-shapes/shape-outside/values/shape-outside-gradient-computed.html', 'shapes computed style and inheritance; no rendered box assertions'),
-    ('css/css-sizing/size-shorthand-serialization.tentative.html', 'sizing value or rule serialization; no rendered boxes'),
     ('css/css-sizing/stretch/parsing.html', 'sizing syntax and value parsing outside the parsing directory'),
     ('css/css-tables/table-cell-writing-mode-computed.html', 'tables computed style and inheritance; no rendered box assertions'),
     ('css/css-tables/table-position-sticky-computed.html', 'tables computed style and inheritance; no rendered box assertions'),
@@ -373,19 +433,14 @@ INCLUDE = [
     ('css/css-typed-om/stylevalue-objects/parseAll-invalid.html', 'typed om syntax and value parsing outside the parsing directory'),
     ('css/css-typed-om/stylevalue-objects/parseAll.html', 'typed om syntax and value parsing outside the parsing directory'),
     ('css/css-typed-om/stylevalue-serialization/cssImageValue.html', 'typed om value or rule serialization; no rendered boxes'),
-    ('css/css-typed-om/stylevalue-serialization/cssKeywordValue.tentative.html', 'typed om value or rule serialization; no rendered boxes'),
-    ('css/css-typed-om/stylevalue-serialization/cssMathValue.tentative.html', 'typed om value or rule serialization; no rendered boxes'),
     ('css/css-typed-om/stylevalue-serialization/cssStyleValue-cssom.html', 'typed om value or rule serialization; no rendered boxes'),
     ('css/css-typed-om/stylevalue-serialization/cssStyleValue-string.html', 'typed om value or rule serialization; no rendered boxes'),
-    ('css/css-typed-om/stylevalue-serialization/cssTransformValue.tentative.html', 'typed om value or rule serialization; no rendered boxes'),
-    ('css/css-typed-om/stylevalue-serialization/cssUnitValue.tentative.html', 'typed om value or rule serialization; no rendered boxes'),
     ('css/css-typed-om/stylevalue-serialization/cssUnparsedValue.html', 'typed om value or rule serialization; no rendered boxes'),
     ('css/css-typed-om/stylevalue-subclasses/cssUnparsedValue-empty.any.js', 'typed om style value object and CSSOM behavior'),
     ('css/css-typed-om/stylevalue-subclasses/cssUnparsedValue-indexed-getter-setter.html', 'typed om style value object and CSSOM behavior'),
     ('css/css-typed-om/stylevalue-subclasses/cssUnparsedValue-iterable.html', 'typed om style value object and CSSOM behavior'),
     ('css/css-typed-om/stylevalue-subclasses/cssUnparsedValue-length.html', 'typed om style value object and CSSOM behavior'),
     ('css/css-typed-om/stylevalue-subclasses/cssUnparsedValue.html', 'typed om style value object and CSSOM behavior'),
-    ('css/css-typed-om/stylevalue-subclasses/numeric-objects/parse.tentative.html', 'typed om syntax and value parsing outside the parsing directory'),
     ('css/css-ui/accent-color-computed.html', 'ui computed style and inheritance; no rendered box assertions'),
     ('css/css-ui/accent-color-parsing.html', 'ui syntax and value parsing outside the parsing directory'),
     ('css/css-ui/animation/caret-animation-parsing.html', 'ui syntax and value parsing outside the parsing directory'),
@@ -490,22 +545,14 @@ INCLUDE = [
     ('html/browsers/browsing-the-web/back-forward-cache/', 'history document preservation and restoration; geometry exceptions below'),
     ('html/browsers/browsing-the-web/overlapping-navigations-and-traversals/', 'ordering and cancellation of concurrent navigations'),
     ('html/cross-origin-', 'cross-origin policies, isolation and navigation; COOP/COEP implementation is separately queued'),
-    ('html/document-isolation-policy/', 'per-document isolation and credential policy; separate scope proposal'),
-    ('html/anonymous-iframe/', 'credentialless iframe origin, storage and request semantics'),
 
     # --- Networking. All of it through libcurl. ----------------------------
     ('fetch/api/',     'Fetch API; already reaches LibcurlBackend'),
     ('fetch/metadata/', 'Sec-Fetch request metadata and redirect behavior'),
-    ('fetch/orb/', 'opaque response blocking, including response classification'),
     ('fetch/content-encoding/zstd/', 'HTTP Zstandard content decoding'),
-    ('fetch/fetch-later/', 'deferred Fetch API ships in Chrome 135; separate one-browser scope proposal'),
+    ('fetch/fetch-later/', 'deferred Fetch API; merged Fetch spec, approved by the user 2026-10-22'),
     ('xhr/',           'XMLHttpRequest; today calls simulateFetch, must route to fetch'),
-    # WebSocketStream is stable in Chromium's runtime_enabled_features.json5
-    # (2026-10-21; row 114 tmp/wl2/chromium-runtime-feature-extract.txt).
-    # https://github.com/whatwg/websockets/pull/48 is still unmerged: the
-    # stream directory is a separate one-browser proposal, including its
-    # explicitly labelled experimental binary-chunk cases.
-    ('websockets/',    'WebSocket and the shipping WebSocketStream API'),
+    ('websockets/',    'WebSocket API; WebSocketStream remains deferred below'),
     ('cookiestore/',   "CookieStore; must unify onto curl's cookie engine"),
 
     # --- Already in the runner's scope and largely working. ----------------
@@ -528,11 +575,8 @@ INCLUDE = [
     ('wasm/webapi/',   'WebAssembly Web API integration'),
     ('wasm/serialization/', 'WebAssembly module serialization'),
     ('wasm/create_multiple_memory.worker.js', 'WebAssembly memory creation in workers'),
-    # Proposals are reviewed individually. Wide arithmetic is Phase 4 and
-    # ships in Firefox 155 (https://bugzilla.mozilla.org/show_bug.cgi?id=2062374).
-    # Other proposal paths do not match these explicit wasm entries.
-    ('wasm/proposals/wide-arithmetic/core/wide-arithmetic.wast.js.tentative.html',
-     'wide arithmetic, Phase 4, Firefox 155 shipping; linked-V8 capability follow-up, not a jsapi fix'),
+    # Wide arithmetic is the explicit approved tentative entry above.
+    # Other WebAssembly proposals remain outside these core/API prefixes.
     ('FileAPI/',       'Blob, File, FileReader, blob URLs'),
     ('workers/',       'dedicated and shared workers'),
 
@@ -559,8 +603,21 @@ INCLUDE = [
     ('permissions/',               'Permissions API'),
 ]
 
-# Substring or prefix -> why it is out. Applied before INCLUDE.
+# Substring or prefix -> why it is out. Only the two tentative rules below
+# allow an exact-path INCLUDE exception; every other exclusion wins.
 EXCLUDE = [
+    # Group a remains deferred. Exact-path INCLUDE entries above record the
+    # user's approved exceptions; they bypass only these tentative patterns.
+    ('/tentative/', 'tentative features await individual scope approval'),
+    ('.tentative.', 'tentative features await individual scope approval'),
+    # Group e decisions, 2026-10-22: drafts/unmerged proposals are not yet in
+    # the 0.1 worklist, even when one browser ships them.
+    ('dom/observable/', 'WICG draft; deferred by the user 2026-10-22'),
+    ('html/anonymous-iframe/', 'WICG draft; deferred by the user 2026-10-22'),
+    ('html/document-isolation-policy/', 'WICG draft; deferred by the user 2026-10-22'),
+    ('fetch/orb/', 'unmerged Fetch proposal; deferred by the user 2026-10-22'),
+    ('websockets/stream/', 'unmerged WebSocketStream proposal; deferred by the user 2026-10-22'),
+
     # Anything that needs layout or paint. Crane is the web platform; the host
     # supplies pixels.
     ('html/rendering/',                         'rendering'),
@@ -982,6 +1039,11 @@ def walk(node, prefix=()):
 def excluded(path):
     for pattern, _ in EXCLUDE:
         if pattern in path or path.startswith(pattern.lstrip('/')):
+            # Explicitly reviewed tentative files do not waive any other
+            # exclusion (geometry, unsupported formats, hardware, etc.).
+            if pattern in ('/tentative/', '.tentative.') and any(
+                    path == prefix for prefix, _ in INCLUDE):
+                continue
             return True
     return False
 
