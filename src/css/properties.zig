@@ -89,6 +89,7 @@ pub const Longhand = enum(u8) {
     color,
     color_scheme,
     content,
+    content_visibility,
     direction,
     display,
     float,
@@ -129,6 +130,7 @@ pub const Longhand = enum(u8) {
     text_wrap_mode,
     top,
     unicode_bidi,
+    user_select,
     visibility,
     white_space_collapse,
     width,
@@ -361,6 +363,7 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .color_scheme, .inherited = true, .initial = Value.kw(.normal), .grammar = .color_scheme },
         .{ .longhand = .content, .inherited = false, .initial = Value.kw(.normal), .grammar = .content },
         // CSS Contain 2 §4: non-inherited; the computed value is as specified.
+        .{ .longhand = .content_visibility, .inherited = false, .initial = Value.kw(.visible), .grammar = .keywords, .keywords = &.{ .visible, .auto, .hidden } },
         .{ .longhand = .direction, .inherited = true, .initial = Value.kw(.ltr), .grammar = .keywords, .keywords = &.{ .ltr, .rtl } },
         .{ .longhand = .display, .inherited = false, .initial = .{ .display = Display.inline_flow }, .grammar = .display },
         .{ .longhand = .float, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .left, .right, .inline_start, .inline_end } },
@@ -412,6 +415,7 @@ const infos: [Longhand.count]Info = blk: {
         // used value against the parent. Explicit inherit uses the cascade.
         // contain remains in the current grammar: Gecko bug 1036853 is open;
         // Blink/WebKit also describe it as unimplemented, not declined (Q2).
+        .{ .longhand = .user_select, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .text, .none, .contain, .all } },
         .{ .longhand = .visibility, .inherited = true, .initial = Value.kw(.visible), .grammar = .keywords, .keywords = &.{ .visible, .hidden, .collapse } },
         .{ .longhand = .white_space_collapse, .inherited = true, .initial = Value.kw(.collapse), .grammar = .keywords, .keywords = &.{ .collapse, .discard, .preserve, .preserve_breaks, .preserve_spaces, .break_spaces } },
         .{ .longhand = .width, .inherited = false, .initial = Value.kw(.auto), .grammar = .size, .quirky_length = true },
@@ -543,6 +547,7 @@ const legacy_aliases = .{
     // CSS Gaps 1 §2.4: aliases share the canonical property entries.
     .{ "-webkit-appearance", Property{ .longhand = .appearance } },
     // CSS UI 4 §6.1 requires the legacy spelling to alias user-select.
+    .{ "-webkit-user-select", Property{ .longhand = .user_select } },
 };
 
 /// Names exposed by CSSStyleProperties as attributes, but not as separate
