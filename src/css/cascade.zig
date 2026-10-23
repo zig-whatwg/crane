@@ -609,6 +609,8 @@ const Builder = struct {
                 // Firefox and Safari (CSS Content's contents is a used rule).
                 return v;
             },
+            .fill, .stroke => return @import("svg_paint.zig").compute(v, self.ctx.allocator, .{ .scheme = self.used_scheme, .math = self.computationContext(l, v, source) }),
+            .stroke_width => if (v == .number) return Value.px(v.number),
             .font_size => return Value.px(self.computeFontSize(v)),
             .font_weight => return .{ .number = self.computeFontWeight(v) },
             // CSS Text4 §8.2: normal is zero in the computed value.
@@ -637,6 +639,17 @@ const Builder = struct {
                 if (len.unit == .percent) return v;
                 return Value.px(self.absolute(len, l));
             },
+            .indent => |indent| {
+                const offset = try self.computeValue(.margin_left, indent.offset, source);
+                defer offset.release();
+                return .{ .indent = try @import("text_indent.zig").Indent.create(self.ctx.allocator, offset, indent.flags) };
+            },
+            .filter => |value| return .{ .filter = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .shape => |value| return .{ .shape = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .image_position => |value| return .{ .image_position = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .image_size => |value| return .{ .image_size = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .image_quad => |value| return .{ .image_quad = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .layers => |value| return .{ .layers = try value.compute(self.ctx.allocator, l, ComponentContext.init(self, source)) },
             else => {
                 v.retain();
                 return v;
@@ -1452,4 +1465,126 @@ fn cv1IndexLarge(allocator: Allocator) !void {
     defer style.destroy();
     try testing.expectEqual(@as(f64, 0.25), style.get(.opacity).number);
     try testing.expectEqual(@as(f64, 7), style.get(.margin_right).length.value);
+}
+
+// Component computation for structured CSS image/shape values, without layout.
+const ComponentContext = struct {
+    builder: *Builder,
+    source: ValueSource,
+    writing_mode: values.Keyword,
+    direction: values.Keyword,
+
+    fn init(builder: *Builder, source: ValueSource) ComponentContext {
+        return .{ .builder = builder, .source = source, .writing_mode = builder.writing_mode, .direction = builder.direction };
+    }
+    pub fn length(self: ComponentContext, value: Value) Allocator.Error!Value {
+        return self.builder.computeValue(.margin_left, value, self.source);
+    }
+    pub fn color(self: ComponentContext, value: values.Color) Allocator.Error!values.Color {
+        return value.resolveComputed(self.builder.ctx.allocator, .{
+            .scheme = self.builder.used_scheme,
+            .math = self.builder.computationContext(.filter, .{ .color = value }, self.source),
+        });
+    }
+    pub fn component(self: ComponentContext, longhand: Longhand, value: Value) Allocator.Error!Value {
+        return self.builder.computeValue(longhand, value, self.source);
+    }
+};
+
+// Q73/Q74: pin source capture separately from the nested Color consumer below.
+test "ci1 nested component context copies its winning declaration source" {
+    const allocator = testing.allocator;
+    var block = try DeclarationBlock.parse(.{ .allocator = allocator }, "mask-size: 1em 2em");
+    defer block.deinit();
+    try testing.expect(block.entries.items.len > 0);
+    var matched = [_]Matched{.{
+        .block = &block,
+        .source = .{ .origin = .author, .tree_scope = .{ .serial = 71 }, .tree_count_allowed = false },
+    }};
+    var candidates = try collectCandidates(allocator, &matched);
+    defer candidates.deinit(allocator);
+    const links = try allocator.alloc(usize, candidates.items.len);
+    defer allocator.free(links);
+    var builder = Builder{
+        .ctx = .{ .allocator = allocator, .parent = null },
+        .candidates = candidates.items,
+        .index = CandidateIndex.init(candidates.items, links),
+    };
+    const style = try allocator.create(ComputedStyle);
+    style.* = .{ .allocator = allocator, .values = computed_mod.initial_values };
+    defer style.destroy();
+    builder.style = style;
+    try builder.run();
+    const winner = try builder.specified(.mask_size);
+    try testing.expect(winner == .value);
+    const context = ComponentContext.init(&builder, winner.value.source);
+    matched[0].source.tree_scope.serial = 999;
+    matched[0].source.tree_count_allowed = true;
+    const length = try context.length(.{ .length = .{ .value = 2, .unit = .em } });
+    defer length.release();
+    try testing.expect(length.eql(Value.px(32)));
+    const nested_value = try context.component(.mask_size, winner.value.value);
+    defer nested_value.release();
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(allocator);
+    try properties.serializeValue(.mask_size, nested_value, &out, allocator);
+    try testing.expectEqualStrings("16px 32px", out.items);
+    try testing.expectEqual(@as(u64, 71), context.source.tree_scope.serial);
+    try testing.expect(!context.source.tree_count_allowed);
+}
+
+fn ci1NestedColorSource(allocator: Allocator, allowed: bool) !void {
+    var low = try DeclarationBlock.parse(.{ .allocator = allocator }, "filter:drop-shadow(rgb(calc(sibling-index() * 20) 0 0) 1px 2px)");
+    defer low.deinit();
+    try testing.expect(low.get(.filter) != null);
+    var high = try DeclarationBlock.parse(.{ .allocator = allocator }, "filter:revert");
+    defer high.deinit();
+    var matched = [_]Matched{
+        .{ .block = &low, .source = .{ .origin = .user, .tree_scope = .{ .serial = 71 }, .tree_count_allowed = allowed } },
+        .{ .block = &high, .source = .{ .origin = .author, .tree_scope = .{ .serial = 999 }, .tree_count_allowed = !allowed } },
+    };
+    const Probe = struct {
+        calls: usize = 0,
+        fn get(raw: *anyopaque) @import("math_values.zig").TreeCounts {
+            const self: *@This() = @ptrCast(@alignCast(raw));
+            self.calls += 1;
+            return .{ .index = 3, .count = 7 };
+        }
+    };
+    var probe: Probe = .{};
+    var candidates = try collectCandidates(allocator, &matched);
+    defer candidates.deinit(allocator);
+    const links = try allocator.alloc(usize, candidates.items.len);
+    defer allocator.free(links);
+    var builder = Builder{
+        .ctx = .{ .allocator = allocator, .parent = null, .tree_counts = .{ .context = &probe, .get = Probe.get } },
+        .candidates = candidates.items,
+        .index = CandidateIndex.init(candidates.items, links),
+    };
+    const style = try allocator.create(ComputedStyle);
+    style.* = .{ .allocator = allocator, .values = computed_mod.initial_values };
+    defer style.destroy();
+    builder.style = style;
+    try builder.run();
+    const winner = try builder.specified(.filter);
+    try testing.expect(winner == .value);
+    const context = ComponentContext.init(&builder, winner.value.source);
+    matched[0].source.tree_scope.serial = 1234;
+    matched[0].source.tree_count_allowed = !allowed;
+    // Q74/Q93: the actual nested Color consumer sees the retained winner's
+    // scope and permission even after the caller changes its Source record.
+    try testing.expectEqual(@as(u64, 71), context.source.tree_scope.serial);
+    try testing.expectEqual(allowed, context.source.tree_count_allowed);
+    const nested = try context.component(.filter, winner.value.value);
+    defer nested.release();
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(allocator);
+    try nested.filter.serializeResolved(values.Color.black, &out, allocator);
+    try testing.expectEqualStrings(if (allowed) "drop-shadow(rgb(60, 0, 0) 1px 2px 0px)" else "drop-shadow(rgb(0, 0, 0) 1px 2px 0px)", out.items);
+    try testing.expectEqual(@as(usize, if (allowed) 1 else 0), probe.calls);
+}
+
+test "ci1 winning source survives to a nested typed filter color consumer" {
+    try testing.checkAllAllocationFailures(testing.allocator, ci1NestedColorSource, .{false});
+    try testing.checkAllAllocationFailures(testing.allocator, ci1NestedColorSource, .{true});
 }

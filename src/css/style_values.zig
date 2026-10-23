@@ -188,6 +188,44 @@ pub const Keyword = enum(u8) {
     accumulate,
     // CSS Transitions 2 §2.5.
     allow_discrete,
+    // CSS UI4 §5.1.1 cursor keywords.
+    default,
+    context_menu,
+    help,
+    pointer,
+    progress,
+    wait,
+    cell,
+    crosshair,
+    vertical_text,
+    alias,
+    copy,
+    move,
+    no_drop,
+    not_allowed,
+    grab,
+    grabbing,
+    e_resize,
+    n_resize,
+    ne_resize,
+    nw_resize,
+    s_resize,
+    se_resize,
+    sw_resize,
+    w_resize,
+    ew_resize,
+    ns_resize,
+    nesw_resize,
+    nwse_resize,
+    col_resize,
+    row_resize,
+    all_scroll,
+    zoom_in,
+    zoom_out,
+
+    context_fill,
+    context_stroke,
+    center,
 
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
@@ -741,6 +779,17 @@ pub const Value = union(enum) {
     /// Kept as its serialization (a font-family list, an <image>).
     text: *SharedText,
     pending: *@import("pending_values.zig").Pending,
+    cursor: *@import("cursor_values.zig").Cursor,
+    indent: *@import("text_indent.zig").Indent,
+    paint: *@import("svg_paint.zig").Paint,
+    filter: *@import("filter_values.zig").Filter,
+    shape: *@import("shape_values.zig").Shape,
+    image_position: *@import("position_values.zig").Position,
+    image_size: *@import("image_size.zig").Size,
+    image_quad: *@import("image_quad.zig").Quad,
+    layers: *@import("image_layers.zig").Layers,
+    image_keyword: @import("image_keywords.zig").Keyword,
+    image_repeat: @import("image_keywords.zig").Repeat,
 
     /// Borrowed URL candidates in serialization order, valid while this
     /// value is retained. No sheet or document lookup is needed to use them.
@@ -748,6 +797,10 @@ pub const Value = union(enum) {
         return switch (self) {
             .text => |t| t.resource_urls,
             .content => |c| c.resource_urls,
+            .cursor => |c| c.text.resource_urls,
+            .paint => |v| v.url.resourceUrls(),
+            .filter => |v| v.text.resource_urls,
+            .layers => |v| v.text.resource_urls,
             else => &.{},
         };
     }
@@ -762,6 +815,8 @@ pub const Value = union(enum) {
     pub fn retain(self: Value) void {
         if (self == .color) return self.color.retain();
         if (self == .content) return self.content.ref();
+        if (self == .cursor) return self.cursor.ref();
+        if (self == .indent) return self.indent.ref();
         if (self == .calculation) return self.calculation.ref();
         if (self == .sizing_function) return self.sizing_function.ref();
         if (self == .grid_line) return self.grid_line.ref();
@@ -772,6 +827,13 @@ pub const Value = union(enum) {
         if (self == .transform) return self.transform.ref();
         if (self == .pending) return self.pending.ref();
         if (self == .try_fallbacks) return self.try_fallbacks.list.ref();
+        if (self == .paint) return self.paint.ref();
+        if (self == .filter) return self.filter.ref();
+        if (self == .shape) return self.shape.ref();
+        if (self == .image_position) return self.image_position.ref();
+        if (self == .image_size) return self.image_size.ref();
+        if (self == .image_quad) return self.image_quad.ref();
+        if (self == .layers) return self.layers.ref();
         if (self.sharedText()) |t| t.ref();
     }
 
@@ -779,6 +841,8 @@ pub const Value = union(enum) {
     pub fn release(self: Value) void {
         if (self == .color) return self.color.release();
         if (self == .content) return self.content.unref();
+        if (self == .cursor) return self.cursor.unref();
+        if (self == .indent) return self.indent.unref();
         if (self == .calculation) return self.calculation.unref();
         if (self == .sizing_function) return self.sizing_function.unref();
         if (self == .grid_line) return self.grid_line.unref();
@@ -789,6 +853,13 @@ pub const Value = union(enum) {
         if (self == .transform) return self.transform.unref();
         if (self == .pending) return self.pending.unref();
         if (self == .try_fallbacks) return self.try_fallbacks.list.unref();
+        if (self == .paint) return self.paint.unref();
+        if (self == .filter) return self.filter.unref();
+        if (self == .shape) return self.shape.unref();
+        if (self == .image_position) return self.image_position.unref();
+        if (self == .image_size) return self.image_size.unref();
+        if (self == .image_quad) return self.image_quad.unref();
+        if (self == .layers) return self.layers.unref();
         if (self.sharedText()) |t| t.unref();
     }
 
@@ -828,6 +899,17 @@ pub const Value = union(enum) {
             .try_fallbacks => |f| f.computed == b.try_fallbacks.computed and f.list.eql(b.try_fallbacks.list),
             .text => |t| t == b.text or std.mem.eql(u8, t.bytes, b.text.bytes),
             .pending => |pending| pending.eql(b.pending),
+            .cursor => |c| c.eql(b.cursor),
+            .indent => |v| v.eql(b.indent),
+            .paint => |v| v.eql(b.paint),
+            .filter => |v| v.eql(b.filter),
+            .shape => |v| v.eql(b.shape),
+            .image_position => |v| v.eql(b.image_position),
+            .image_size => |v| v.eql(b.image_size),
+            .image_quad => |v| v.eql(b.image_quad),
+            .layers => |v| v.eql(b.layers),
+            .image_keyword => |v| v == b.image_keyword,
+            .image_repeat => |v| std.meta.eql(v, b.image_repeat),
         };
     }
 
@@ -863,6 +945,16 @@ pub const Value = union(enum) {
             .text,
             .pending, // Q88: inspect only the resolved, selected branch.
             => false,
+            .cursor => false,
+            .indent => |v| v.offset.needsUnavailableMetrics(geometry_length),
+            .image_keyword, .image_repeat => false,
+            .paint => |v| v.needsUnavailableMetrics(geometry_length),
+            .filter => |v| v.needsUnavailableMetrics(geometry_length),
+            .shape => |v| v.needsUnavailableMetrics(geometry_length),
+            .image_position => |v| v.needsUnavailableMetrics(geometry_length),
+            .image_size => |v| v.needsUnavailableMetrics(geometry_length),
+            .image_quad => |v| v.needsUnavailableMetrics(geometry_length),
+            .layers => |v| v.needsUnavailableMetrics(geometry_length),
         };
     }
 
@@ -894,6 +986,16 @@ pub const Value = union(enum) {
             .text,
             .pending, // Q88: inspect only the resolved, selected branch.
             => false,
+            .cursor => false,
+            .indent => |v| v.offset.needsTreeCounts(),
+            .image_keyword, .image_repeat => false,
+            .paint => |v| v.needsTreeCounts(),
+            .filter => |v| v.needsTreeCounts(),
+            .shape => |v| v.needsTreeCounts(),
+            .image_position => |v| v.needsTreeCounts(),
+            .image_size => |v| v.needsTreeCounts(),
+            .image_quad => |v| v.needsTreeCounts(),
+            .layers => |v| v.needsTreeCounts(),
         };
     }
 
@@ -923,6 +1025,16 @@ pub const Value = union(enum) {
             .text,
             .pending, // Q88: inspect only the resolved, selected branch.
             => false,
+            .cursor => false,
+            .indent => |v| v.offset.needsRandomBase(),
+            .image_keyword, .image_repeat => false,
+            .paint => |v| v.needsRandomBase(),
+            .filter => |v| v.needsRandomBase(),
+            .shape => |v| v.needsRandomBase(),
+            .image_position => |v| v.needsRandomBase(),
+            .image_size => |v| v.needsRandomBase(),
+            .image_quad => |v| v.needsRandomBase(),
+            .layers => |v| v.needsRandomBase(),
         };
     }
 

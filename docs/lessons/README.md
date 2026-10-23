@@ -359,6 +359,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A lazy namespace must cover native objects received first](architecture-a-lazy-namespace-must-cover-native-objects-received-first.md) - Lazy setup must preserve every observation path, including objects received before the namespace; put first-use triggers on those paths and never overwrite intervening user changes.
 
 ### Spec Compliance
+- [Currentcolor must survive filter inheritance](spec-compliance-currentcolor-must-survive-filter-inheritance.md) - Preserve symbolic currentcolor during computation and resolve it for the receiving element at CSSOM read time.
+- [Reusing a scalar parser must not inherit its quirks](spec-compliance-reusing-a-scalar-parser-must-not-inherit-its-quirks.md) - A component parser must receive its own grammar policy instead of inheriting a property's unitless quirks.
 - [Spec Compliance: Cascade Order Includes Each Declaration](spec-compliance-cascade-order-includes-each-declaration.md) - Preserve declaration order inside a rule as the final cascade tie-break, especially when logical and physical properties map to the same computed slot.
 - [Spec Compliance: Color contrast conversion has an observable precision boundary](spec-compliance-color-contrast-has-a-precision-boundary.md) - Preserve CSS color data at its own precision, then follow the browser's numeric precision at an explicitly lossy destination.
 - [Spec Compliance: Convert Between sRGB Coordinates Directly](spec-compliance-convert-between-srgb-coordinates-directly.md) - HSL, HWB and sRGB conversions should use their direct coordinate algorithms, without an unnecessary XYZ round trip.
@@ -866,6 +868,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Read the Linked V8 Patch Version](debugging-read-the-linked-v8-patch-version.md) - Measure the linked binary, then read its exact source tag before designing around an internal behavior.
 
 ### Workflow
+- [Cancelling a remote wrapper can leave build children](workflow-cancelling-a-remote-wrapper-can-leave-build-children.md) - Verify that a cancelled wrapper's own build and test descendants have exited before starting its replacement.
 - [Workflow: A Partial WPT Submodule Replaces the Remote Fixture Tree](workflow-a-partial-wpt-submodule-replaces-the-remote-fixture-tree.md) - Keep an uninitialized lane WPT submodule empty when crane-remote supplies the shared fixture tree.
 - [A gate that builds one target cannot see another target's code](workflow-a-gate-that-builds-one-target-cannot-see-another-targets-code.md) - A platform you claim is a target you build in a gate. Code behind a target branch, a libc the OS links for you, and a step no gate runs are all unchecked until that target or step is compiled.
 - [Link jsengines/v8 into a worktree before building crane](workflow-link-jsengines-v8-into-a-worktree-before-building-crane.md) - A worktree has no jsengines/: link the V8 prebuilt before building anything that links V8, or `crane` fetches V8 from source.
