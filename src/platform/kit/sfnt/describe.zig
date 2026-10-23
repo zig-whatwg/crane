@@ -25,7 +25,7 @@ pub const Error = error{ Corrupt, OutOfMemory };
 /// CSS Fonts 4 2.3's font-width percentages for usWidthClass 1-9.
 const width_percent = [9]f32{ 50, 62.5, 75, 87.5, 100, 112.5, 125, 150, 200 };
 
-pub fn metrics(allocator: std.mem.Allocator, face: tables.Checked) Error!platform.FontMetrics {
+pub fn metrics(face: tables.Checked) Error!platform.FontMetrics {
     const os2 = face.os2;
     var m: platform.FontMetrics = .{
         .units_per_em = face.units_per_em,
@@ -58,12 +58,12 @@ pub fn metrics(allocator: std.mem.Allocator, face: tables.Checked) Error!platfor
 
     if (os2.version >= 2 and os2.x_height > 0) {
         m.x_height = .of(@floatFromInt(os2.x_height));
-    } else if (try top(allocator, face, 'x')) |y| {
+    } else if (try top(face, 'x')) |y| {
         m.x_height = .of(@floatFromInt(y));
     }
     if (os2.version >= 2 and os2.cap_height > 0) {
         m.cap_height = .of(@floatFromInt(os2.cap_height));
-    } else if (try top(allocator, face, 'H')) |y| {
+    } else if (try top(face, 'H')) |y| {
         m.cap_height = .of(@floatFromInt(y));
     }
     if (tables.glyphFor(face, '0')) |glyph| {
@@ -77,10 +77,10 @@ pub fn metrics(allocator: std.mem.Allocator, face: tables.Checked) Error!platfor
     return m;
 }
 
-fn top(allocator: std.mem.Allocator, face: tables.Checked, code_point: u21) Error!?i32 {
+fn top(face: tables.Checked, code_point: u21) Error!?i32 {
     if (face.outlines != .truetype) return null;
     const glyph = tables.glyphFor(face, code_point) orelse return null;
-    return tables.outlineTop(allocator, face, glyph);
+    return tables.outlineTop(face, glyph);
 }
 
 /// The face's names, weight, style and width with `face_metrics`, its

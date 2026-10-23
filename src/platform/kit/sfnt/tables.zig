@@ -702,6 +702,10 @@ const WE_HAVE_INSTRUCTIONS = 1 << 8;
 /// coordinates within its data, a composite's components in range and their
 /// nesting and point total at most 0xFFFF.
 fn checkGlyf(allocator: std.mem.Allocator, glyf: []const u8, loca: []const u8, num_glyphs: u16, format: i16) Error!void {
+    // One stack for every composite's components: a font's glyphs cost no
+    // allocation each.
+    var stack: std.ArrayList(Pending) = .empty;
+    defer stack.deinit(allocator);
     for (0..num_glyphs) |i| {
         const glyph = try glyphData(glyf, loca, format, @intCast(i));
         if (glyph.len == 0) continue;
@@ -721,10 +725,10 @@ fn checkGlyf(allocator: std.mem.Allocator, glyf: []const u8, loca: []const u8, n
         if (x_min > x_max or y_min > y_max) return error.Corrupt;
         if (contours == 0) continue;
         if (contours > 0) {
-            _ = try simpleGlyph(allocator, glyph);
+            _ = try simpleGlyph(glyph);
         } else {
             try compositeGlyph(glyph, num_glyphs);
-            try countComponentPoints(allocator, glyf, loca, format, glyph);
+            try countComponentPoints(allocator, &stack, glyf, loca, format, glyph);
         }
     }
 }
@@ -734,7 +738,7 @@ fn checkGlyf(allocator: std.mem.Allocator, glyf: []const u8, loca: []const u8, n
 /// point's y - the outline top a missing x-height or cap-height is measured
 /// from, as FreeType's control box gives Skia and Gecko (OTS widens a header
 /// bbox that misses a point, so the points are what counts).
-pub fn simpleGlyph(allocator: std.mem.Allocator, glyph: []const u8) Error!i32 {
+pub fn simpleGlyph(glyph: []const u8) Error!i32 {
     var r = Reader.init(glyph);
     const contours: u16 = @intCast(try r.i16_());
     try r.skip(8);
@@ -747,51 +751,54 @@ pub fn simpleGlyph(allocator: std.mem.Allocator, glyph: []const u8) Error!i32 {
     }
     const instructions = try r.u16_();
     try r.skip(instructions);
-    const flags = try allocator.alloc(u8, num_points);
-    defer allocator.free(flags);
+    // The flags (OTS ParseFlagsForSimpleGlyph), read twice rather than
+    // stored: once to check them and size the x coordinates, once to read
+    // the y coordinates after those.
+    const flags_at = r.pos;
     var coordinates: u32 = 0;
+    var x_bytes: u32 = 0;
     var i: u32 = 0;
     while (i < num_points) : (i += 1) {
         const flag = try r.u8_();
-        var delta: u32 = 0;
-        if (flag & 0x02 != 0) delta += 1 else if (flag & 0x10 == 0) delta += 2;
-        if (flag & 0x04 != 0) delta += 1 else if (flag & 0x20 == 0) delta += 2;
+        const x_size: u32 = if (flag & 0x02 != 0) 1 else if (flag & 0x10 == 0) 2 else 0;
+        const y_size: u32 = if (flag & 0x04 != 0) 1 else if (flag & 0x20 == 0) 2 else 0;
         if (flag & 0x40 != 0 and i != 0) return error.Corrupt;
-        flags[i] = flag & ~@as(u8, 0x08);
+        var count: u32 = 1;
         if (flag & 0x08 != 0) {
             if (i + 1 >= num_points) return error.Corrupt;
             const repeat = try r.u8_();
             if (repeat == 0) return error.Corrupt;
-            delta += delta * repeat;
             if (i + repeat >= num_points) return error.Corrupt;
-            for (0..repeat) |_| {
-                i += 1;
-                flags[i] = flag & ~@as(u8, 0x08);
-            }
+            count += repeat;
+            i += repeat;
         }
         if (flag & 0x80 != 0) return error.Corrupt;
-        coordinates += delta;
+        x_bytes += x_size * count;
+        coordinates += (x_size + y_size) * count;
+        // OTS compares the running total with the whole glyph's length.
         if (glyph.len < coordinates) return error.Corrupt;
     }
-    for (flags) |flag| {
-        if (flag & 0x02 != 0) {
-            _ = try r.u8_();
-        } else if (flag & 0x10 == 0) {
-            _ = try r.i16_();
-        }
-    }
+    try r.skip(x_bytes);
+    var flags = try Reader.at(glyph, flags_at);
     var y: i32 = 0;
     var top: i32 = std.math.minInt(i32);
-    for (flags) |flag| {
-        if (flag & 0x04 != 0) {
-            const dy = try r.u8_();
-            y += if (flag & 0x20 != 0) @as(i32, dy) else -@as(i32, dy);
-        } else if (flag & 0x20 == 0) {
-            y += try r.i16_();
+    var point: u32 = 0;
+    while (point < num_points) {
+        const flag = try flags.u8_();
+        var count: u32 = 1;
+        if (flag & 0x08 != 0) count += try flags.u8_();
+        for (0..count) |_| {
+            if (flag & 0x04 != 0) {
+                const dy = try r.u8_();
+                y += if (flag & 0x20 != 0) @as(i32, dy) else -@as(i32, dy);
+            } else if (flag & 0x20 == 0) {
+                y += try r.i16_();
+            }
+            // OTS's coordinates are int16_t and wrap.
+            y = @as(i16, @truncate(y));
+            top = @max(top, y);
         }
-        // OTS's coordinates are int16_t and wrap.
-        y = @as(i16, @truncate(y));
-        top = @max(top, y);
+        point += count;
     }
     return top;
 }
@@ -830,11 +837,11 @@ fn compositeGlyph(glyph: []const u8, num_glyphs: u16) Error!void {
 /// nested, are at most 0xFFFF levels deep and add up to at most 0xFFFF
 /// points. Bounded here also in the work it does: a component graph that
 /// would make more visits than any font needs is Corrupt.
-fn countComponentPoints(allocator: std.mem.Allocator, glyf: []const u8, loca: []const u8, format: i16, root: []const u8) Error!void {
-    const Pending = struct { glyph: u16, level: u32 };
-    var stack: std.ArrayList(Pending) = .empty;
-    defer stack.deinit(allocator);
-    try pushComponents(allocator, &stack, root, 1);
+const Pending = struct { glyph: u16, level: u32 };
+
+fn countComponentPoints(allocator: std.mem.Allocator, stack: *std.ArrayList(Pending), glyf: []const u8, loca: []const u8, format: i16, root: []const u8) Error!void {
+    stack.clearRetainingCapacity();
+    try pushComponents(allocator, stack, root, 1);
     var points: u32 = 0;
     var visits: u32 = 0;
     while (stack.pop()) |pending| {
@@ -854,11 +861,11 @@ fn countComponentPoints(allocator: std.mem.Allocator, glyf: []const u8, loca: []
             continue;
         }
         if (pending.level > 0xffff) return error.Corrupt;
-        try pushComponents(allocator, &stack, data, pending.level + 1);
+        try pushComponents(allocator, stack, data, pending.level + 1);
     }
 }
 
-fn pushComponents(allocator: std.mem.Allocator, stack: anytype, glyph: []const u8, level: u32) Error!void {
+fn pushComponents(allocator: std.mem.Allocator, stack: *std.ArrayList(Pending), glyph: []const u8, level: u32) Error!void {
     var r = Reader.init(glyph);
     try r.skip(10);
     while (true) {
@@ -879,7 +886,7 @@ fn pushComponents(allocator: std.mem.Allocator, stack: anytype, glyph: []const u
 
 /// The top of glyph `glyph`'s outline, or null for an empty glyph. A
 /// composite's is its header's yMax (OTS adjusts only simple glyphs).
-pub fn outlineTop(allocator: std.mem.Allocator, checked: Checked, glyph: u16) Error!?i32 {
+pub fn outlineTop(checked: Checked, glyph: u16) Error!?i32 {
     const glyf = checked.glyf orelse return null;
     const loca = checked.loca orelse return null;
     const data = try glyphData(glyf, loca, checked.index_to_loc_format, glyph);
@@ -887,7 +894,7 @@ pub fn outlineTop(allocator: std.mem.Allocator, checked: Checked, glyph: u16) Er
     const contours = try bytes.i16At(data, 0);
     if (contours == 0) return null;
     if (contours < 0) return try bytes.i16At(data, 8);
-    return try simpleGlyph(allocator, data);
+    return try simpleGlyph(data);
 }
 
 // ---------------------------------------------------------------------------

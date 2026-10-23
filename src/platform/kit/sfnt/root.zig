@@ -98,7 +98,7 @@ fn decodeSfnt(allocator: std.mem.Allocator, data: []const u8, postscript_name: [
     var face = try sfnt.parseFace(allocator, data, offsets[chosen]);
     defer face.deinit(allocator);
     const checked = try tables.check(allocator, face);
-    var font = try describe_.describe(allocator, checked, try describe_.metrics(allocator, checked));
+    var font = try describe_.describe(allocator, checked, try describe_.metrics(checked));
     errdefer font.deinit(allocator);
     font.matched_name = matched;
     const standalone = if (options.standalone) try sfnt.writeStandalone(allocator, face) else null;
@@ -127,7 +127,7 @@ fn describeFileInner(allocator: std.mem.Allocator, data: []const u8, index: u32)
     var face = try sfnt.parseFace(allocator, data, offset);
     defer face.deinit(allocator);
     const checked = try tables.check(allocator, face);
-    return describe_.describe(allocator, checked, try describe_.metrics(allocator, checked));
+    return describe_.describe(allocator, checked, try describe_.metrics(checked));
 }
 
 /// A face given as its tables (darwin reads an installed face's tables
@@ -138,7 +138,7 @@ pub fn describeTables(allocator: std.mem.Allocator, face: sfnt.Face, face_metric
         error.Corrupt => error.Corrupt,
         error.OutOfMemory => error.OutOfMemory,
     };
-    const m = face_metrics orelse describe_.metrics(allocator, checked) catch |err| return switch (err) {
+    const m = face_metrics orelse describe_.metrics(checked) catch |err| return switch (err) {
         error.Corrupt => error.Corrupt,
         error.OutOfMemory => error.OutOfMemory,
     };

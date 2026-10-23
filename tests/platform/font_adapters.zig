@@ -126,39 +126,51 @@ test "darwin: the system font keywords at macOS's UI sizes" {
     }
 }
 
-test "linux without fontconfig: no installed faces, the initial system font values" {
-    if (comptime !is_linux or builtin.os.tag == .linux or platform.capabilities.font_decoding == .unsupported) return error.SkipZigTest;
-    try testing.expect(try platform.genericFontFace(testing.allocator, .serif, .{}) == null);
-    try testing.expect(try platform.installedFontFace(testing.allocator, .from("DejaVu Sans"), .{}) == null);
-    try testing.expect(try platform.localFontFace(testing.allocator, .from("DejaVuSans")) == null);
-    var font = try platform.systemFont(testing.allocator, .menu, .{});
-    defer font.deinit(testing.allocator);
-    try testing.expectEqual(@as(usize, 0), font.family.len);
-    try testing.expectEqual(@as(f32, 0), font.size);
-    try testing.expectEqual(@as(u16, 400), font.weight);
-}
-
-test "linux with fontconfig: the generic families resolve to installed faces" {
-    if (comptime !is_linux or builtin.os.tag != .linux or platform.capabilities.font_decoding == .unsupported) return error.SkipZigTest;
-    var serif = (try platform.genericFontFace(testing.allocator, .serif, .{})) orelse return error.SkipZigTest;
+test "linux: fontconfig's faces where the machine has fontconfig; none and the initial system font values where it has not" {
+    if (comptime !is_linux or platform.capabilities.font_decoding == .unsupported) return error.SkipZigTest;
+    const found = try platform.genericFontFace(testing.allocator, .serif, .{});
+    if (found == null) {
+        // No fontconfig (any non-linux host; a minimal container).
+        try testing.expect(try platform.installedFontFace(testing.allocator, .from("DejaVu Sans"), .{}) == null);
+        try testing.expect(try platform.localFontFace(testing.allocator, .from("DejaVuSans")) == null);
+        var font = try platform.systemFont(testing.allocator, .menu, .{});
+        defer font.deinit(testing.allocator);
+        try testing.expectEqual(@as(usize, 0), font.family.len);
+        try testing.expect(!font.system_ui);
+        try testing.expectEqual(@as(f32, 0), font.size);
+        try testing.expectEqual(@as(u16, 400), font.weight);
+        return;
+    }
+    if (builtin.os.tag != .linux) return error.TestUnexpectedResult;
+    var serif = found.?;
     defer serif.deinit(testing.allocator);
+    std.debug.print("linux fontconfig: serif is {s} ({s})\n", .{ serif.family.slice(), serif.postscript_name.slice() });
     try testing.expect(serif.family.len > 0);
     try testing.expect(serif.metrics.units_per_em > 0);
+    try testing.expect(serif.metrics.x_height.present);
     var mono = (try platform.genericFontFace(testing.allocator, .monospace, .{})).?;
     defer mono.deinit(testing.allocator);
     try testing.expect(mono.metrics.zero_advance.present);
     var named = (try platform.installedFontFace(testing.allocator, serif.family, .{})).?;
     defer named.deinit(testing.allocator);
     try testing.expectEqualStrings(serif.family.slice(), named.family.slice());
+    var bold = (try platform.installedFontFace(testing.allocator, serif.family, .{ .weight = 700 })).?;
+    defer bold.deinit(testing.allocator);
+    std.debug.print("linux fontconfig: {s} at 700 is {s}, weight {d}\n", .{ serif.family.slice(), bold.postscript_name.slice(), bold.weight });
     var local = (try platform.localFontFace(testing.allocator, serif.postscript_name)).?;
     defer local.deinit(testing.allocator);
     try testing.expectEqualStrings(serif.postscript_name.slice(), local.postscript_name.slice());
+    var by_full = (try platform.localFontFace(testing.allocator, serif.full_name)).?;
+    defer by_full.deinit(testing.allocator);
+    try testing.expectEqualStrings(serif.full_name.slice(), by_full.full_name.slice());
     try testing.expect(try platform.installedFontFace(testing.allocator, .from("No Such Family 9a1a9f78"), .{}) == null);
+    try testing.expect(try platform.localFontFace(testing.allocator, .from("nonexistentfont-9a1a9f78-c8d4-11e9-af16-448a5b2c326f")) == null);
     try testing.expect(try platform.genericFontFace(testing.allocator, .ui_rounded, .{}) == null);
     var font = try platform.systemFont(testing.allocator, .caption, .{});
     defer font.deinit(testing.allocator);
     try testing.expect(font.family.len > 0);
     try testing.expect(font.system_ui);
+    try testing.expectEqual(@as(f32, 0), font.size);
 }
 
 test "every font operation fails cleanly at every allocation" {
