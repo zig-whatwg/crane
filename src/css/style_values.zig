@@ -732,6 +732,7 @@ pub const Value = union(enum) {
     grid_tracks: *@import("grid_tracks.zig").Tracks,
     grid_areas: *@import("grid_tracks.zig").Areas,
     grid_flow: @import("grid_tracks.zig").Flow,
+    caret_pair: *@import("ui_values.zig").CaretPair,
     alignment: @import("alignment.zig").Value,
     position_area: @import("position_area.zig").Area,
     try_fallbacks: struct { list: *@import("anchor_fallbacks.zig").Fallbacks, computed: bool = false },
@@ -764,6 +765,7 @@ pub const Value = union(enum) {
         if (self == .grid_line) return self.grid_line.ref();
         if (self == .grid_tracks) return self.grid_tracks.ref();
         if (self == .grid_areas) return self.grid_areas.ref();
+        if (self == .caret_pair) return self.caret_pair.ref();
         if (self == .pending) return self.pending.ref();
         if (self == .try_fallbacks) return self.try_fallbacks.list.ref();
         if (self.sharedText()) |t| t.ref();
@@ -778,6 +780,7 @@ pub const Value = union(enum) {
         if (self == .grid_line) return self.grid_line.unref();
         if (self == .grid_tracks) return self.grid_tracks.unref();
         if (self == .grid_areas) return self.grid_areas.unref();
+        if (self == .caret_pair) return self.caret_pair.unref();
         if (self == .pending) return self.pending.unref();
         if (self == .try_fallbacks) return self.try_fallbacks.list.unref();
         if (self.sharedText()) |t| t.unref();
@@ -811,6 +814,7 @@ pub const Value = union(enum) {
             .grid_tracks => |tracks| tracks.eql(b.grid_tracks),
             .grid_areas => |areas| areas.eql(b.grid_areas),
             .grid_flow => |flow| std.meta.eql(flow, b.grid_flow),
+            .caret_pair => |pair| pair.eql(b.caret_pair),
             .alignment => |a_value| a_value.eql(b.alignment),
             .position_area => |a_area| a_area.eql(b.position_area),
             .try_fallbacks => |f| f.computed == b.try_fallbacks.computed and f.list.eql(b.try_fallbacks.list),
@@ -832,6 +836,7 @@ pub const Value = union(enum) {
             .sizing_function => |s| s.argument.needsUnavailableMetrics(geometry_length),
             .grid_line => |line| line.needsUnavailableMetrics(),
             .grid_tracks => |tracks| tracks.needsUnavailableMetrics(),
+            .caret_pair => |pair| pair.needsUnavailableMetrics(),
             .grid_areas,
             .grid_flow,
             .keyword,
@@ -856,6 +861,7 @@ pub const Value = union(enum) {
     pub fn needsTreeCounts(self: Value) bool {
         return switch (self) {
             .color => |c| c.needsTreeCounts(),
+            .caret_pair => |p| p.needsTreeCounts(),
             .calculation => |c| c.needsTreeCounts(),
             .sizing_function => |s| s.argument.needsTreeCounts(),
             .grid_line => |line| line.needsTreeCounts(),
@@ -882,6 +888,7 @@ pub const Value = union(enum) {
     pub fn needsRandomBase(self: Value) bool {
         return switch (self) {
             .color => |c| c.needsRandomBase(),
+            .caret_pair => |p| p.needsRandomBase(),
             .calculation => |c| c.needsRandomBase(),
             .sizing_function => |s| s.argument.needsRandomBase(),
             .grid_line => |line| line.needsRandomBase(),

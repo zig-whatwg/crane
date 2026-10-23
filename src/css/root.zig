@@ -126,6 +126,7 @@ test {
 }
 
 pub const grid_tracks = @import("grid_tracks.zig");
+pub const ui_values = @import("ui_values.zig");
 
 pub const numeric_values = @import("numeric_values.zig");
 

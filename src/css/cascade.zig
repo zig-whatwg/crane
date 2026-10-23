@@ -405,7 +405,7 @@ const Builder = struct {
             const preflight = try self.resolvePending(c, l);
             const assigned = preflight.assigned;
             const geometry_length = switch (l.info().grammar) {
-                .length_percentage_auto, .length_percentage_nonneg, .size, .max_size, .line_width => true,
+                .length_percentage_auto, .length_percentage_nonneg, .size, .max_size, .line_width, .signed_length => true,
                 else => false,
             };
             // Q25/Q83/Q88: this is the single unavailable-input decision,
@@ -516,6 +516,10 @@ const Builder = struct {
     fn computeValue(self: *Builder, l: Longhand, v: Value, source: ValueSource) Allocator.Error!Value {
         if (v == .grid_line) return .{ .grid_line = try v.grid_line.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .grid_tracks) return .{ .grid_tracks = try v.grid_tracks.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
+        if (v == .caret_pair) return .{ .caret_pair = try v.caret_pair.compute(self.ctx.allocator, .{
+            .scheme = self.used_scheme,
+            .math = self.computationContext(l, v, source),
+        }) };
         if (v == .color) {
             // Color4 §6.4: currentcolor in color inherits. Every other
             // destination keeps it symbolic until the receiving element
@@ -571,6 +575,19 @@ const Builder = struct {
                 return self.computeValue(l, scalar, source);
             }
             return .{ .calculation = expression };
+        }
+        if (l == .outline_width) {
+            // UI 4 §3.4 computes width independently of outline-style:none.
+            const px: f64 = switch (v) {
+                .keyword => |k| switch (k) {
+                    .thin => 1,
+                    .thick => 5,
+                    else => 3,
+                },
+                .length => |len| self.absolute(len, l),
+                else => 0,
+            };
+            return Value.px(snapBorderWidth(px));
         }
         switch (l) {
             // Writing Modes 4 §5.1: retain the legacy spelling only until

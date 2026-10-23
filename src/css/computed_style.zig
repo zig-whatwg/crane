@@ -84,6 +84,7 @@ pub const ComputedStyle = struct {
     pub fn serializeResolved(self: *const ComputedStyle, l: Longhand, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
         const v = self.get(l);
         // CSS Text4 §8.2's legacy resolved value: every computed zero is normal.
+        if (l == .caret_color) return @import("ui_values.zig").serializeCaretResolved(v, .{ .scheme = self.used_color_scheme, .current = self.get(.color).color }, out, allocator);
         if (v == .color) {
             const color = try self.resolvedColor(l, allocator);
             defer color.release();
@@ -123,6 +124,7 @@ pub fn initialComputed(l: Longhand) Value {
         // The initial border-style is none, so the initial border-width
         // computes to 0 (CSS Backgrounds 3 "border-width" computed value).
         .border_top_width, .border_right_width, .border_bottom_width, .border_left_width, .border_block_start_width, .border_block_end_width, .border_inline_start_width, .border_inline_end_width => Value.px(0),
+        .outline_width => Value.px(3),
         .font_size => Value.px(16),
         .font_weight => .{ .number = 400 },
         // CanvasText with no element to take a color scheme from: the UA

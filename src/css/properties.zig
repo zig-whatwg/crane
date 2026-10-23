@@ -113,6 +113,18 @@ pub const Longhand = enum(u8) {
     grid_template_columns,
     grid_template_rows,
     grid_template_areas,
+    accent_color,
+    box_sizing,
+    caret_animation,
+    caret_color,
+    caret_shape,
+    field_sizing,
+    interactivity,
+    outline_color,
+    outline_offset,
+    outline_style,
+    outline_width,
+    resize,
     height,
     inline_size,
     inset_block_end,
@@ -325,6 +337,9 @@ pub const Grammar = enum {
     grid_tracks,
     grid_areas,
     grid_flow,
+    caret_color,
+    auto_color,
+    signed_length,
     alignment,
     anchor_names,
     anchor_scope,
@@ -388,6 +403,18 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .grid_template_columns, .inherited = false, .initial = Value.kw(.none), .grammar = .grid_tracks },
         .{ .longhand = .grid_template_rows, .inherited = false, .initial = Value.kw(.none), .grammar = .grid_tracks },
         .{ .longhand = .grid_template_areas, .inherited = false, .initial = Value.kw(.none), .grammar = .grid_areas },
+        .{ .longhand = .accent_color, .inherited = true, .initial = Value.kw(.auto), .grammar = .auto_color },
+        .{ .longhand = .box_sizing, .inherited = false, .initial = Value.kw(.content_box), .grammar = .keywords, .keywords = &.{ .content_box, .border_box } },
+        .{ .longhand = .caret_animation, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .manual } },
+        .{ .longhand = .caret_color, .inherited = true, .initial = Value.kw(.auto), .grammar = .caret_color },
+        .{ .longhand = .caret_shape, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .bar, .block, .underscore } },
+        .{ .longhand = .field_sizing, .inherited = false, .initial = Value.kw(.fixed), .grammar = .keywords, .keywords = &.{ .fixed, .content } },
+        .{ .longhand = .interactivity, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .inert } },
+        .{ .longhand = .outline_color, .inherited = false, .initial = .{ .color = .current }, .grammar = .color },
+        .{ .longhand = .outline_offset, .inherited = false, .initial = zero, .grammar = .signed_length },
+        .{ .longhand = .outline_style, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .auto, .none, .dotted, .dashed, .solid, .double, .groove, .ridge, .inset, .outset } },
+        .{ .longhand = .outline_width, .inherited = false, .initial = medium_width, .grammar = .line_width },
+        .{ .longhand = .resize, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .both, .horizontal, .vertical, .block, .@"inline" } },
         .{ .longhand = .grid_column_end, .inherited = false, .initial = Value.kw(.auto), .grammar = .grid_line },
         .{ .longhand = .grid_column_start, .inherited = false, .initial = Value.kw(.auto), .grammar = .grid_line },
         .{ .longhand = .grid_row_end, .inherited = false, .initial = Value.kw(.auto), .grammar = .grid_line },
@@ -552,6 +579,7 @@ pub const Shorthand = enum(u8) {
     grid_row,
     grid_template,
     grid,
+    outline,
     inset,
     inset_block,
     inset_inline,
@@ -605,6 +633,7 @@ pub const Shorthand = enum(u8) {
             .grid_row => &.{ .grid_row_start, .grid_row_end },
             .grid_template => &.{ .grid_template_rows, .grid_template_columns, .grid_template_areas },
             .grid => &.{ .grid_template_rows, .grid_template_columns, .grid_template_areas, .grid_auto_flow, .grid_auto_rows, .grid_auto_columns },
+            .outline => &.{ .outline_width, .outline_style, .outline_color },
             .inset => &.{ .top, .right, .bottom, .left },
             .inset_block => &.{ .inset_block_start, .inset_block_end },
             .inset_inline => &.{ .inset_inline_start, .inset_inline_end },
@@ -920,6 +949,9 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
             return .{ .grid_areas = try @import("grid_tracks.zig").Areas.consume(options, stream) orelse return null };
         },
         .grid_flow => return .{ .grid_flow = @import("grid_tracks.zig").Flow.consume(stream) orelse return null },
+        .caret_color => return @import("ui_values.zig").consumeCaretColor(options, stream),
+        .auto_color => return @import("ui_values.zig").consumeAutoColor(options, stream),
+        .signed_length => return lengthPercentage(options, stream, .{ .negative = true, .percent = false, .quirky = false }),
         .grid_line => {
             if (takeKeyword(stream, &.{.auto})) |k| return Value.kw(k);
             return .{ .grid_line = try @import("grid_values.zig").Line.consume(options, stream) orelse return null };
@@ -1548,6 +1580,12 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
             }
             return true;
         },
+        .outline => {
+            try out.ensureUnusedCapacity(options.allocator, 3);
+            const components = try @import("ui_values.zig").consumeGroup(options, stream, .{ .outline_width, .outline_style, .outline_color }) orelse return false;
+            for (s.longhands(), components) |l, v| out.appendAssumeCapacity(.{ .longhand = l, .value = .{ .value = v } });
+            return true;
+        },
         .grid_area, .grid_column, .grid_row => {
             // Grid 2 §8.4: row-start / column-start / row-end / column-end.
             const grid = @import("grid_values.zig");
@@ -1975,6 +2013,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .grid_tracks => |tracks| try tracks.serialize(out, allocator),
         .grid_areas => |areas| try areas.serialize(out, allocator),
         .grid_flow => |flow| try flow.serialize(out, allocator),
+        .caret_pair => |pair| try pair.serialize(out, allocator),
         .alignment => |a| try a.serialize(out, allocator),
         .position_area => |a| try a.serialize(out, allocator),
         .try_fallbacks => |f| try f.list.serialize(f.computed, out, allocator),
@@ -2035,6 +2074,19 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
             .auto_rows = vs[4].value,
             .auto_columns = vs[5].value,
         }, out, allocator),
+        .outline => {
+            // UI 4 §3.1 / CSSWG #10611: width, style, color. Safari ships
+            // the newer order; omit initial values only for specified CSSOM.
+            var wrote = false;
+            for (ls, vs) |l, v| {
+                if (mode == .specified and v.value.eql(l.info().initial)) continue;
+                if (wrote) try out.append(allocator, ' ');
+                try serializeValue(l, v.value, out, allocator);
+                wrote = true;
+            }
+            if (!wrote) try out.appendSlice(allocator, "none");
+            return true;
+        },
         .grid_area, .grid_column, .grid_row => {
             const grid = @import("grid_values.zig");
             var count = ls.len;
