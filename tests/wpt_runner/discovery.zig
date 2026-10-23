@@ -609,7 +609,7 @@ fn writeManifestTree(dir: std.Io.Dir, manifest_json: []const u8, files: []const 
 const full_corpus_manifest =
     \\{"version": 9, "url_base": "/", "items": {"testharness": {
     \\  "dom": {"nodes": {"Node-appendChild.html": ["h", [null, {}]]}},
-    \\  "css": {"selectors": {"focus-visible.html": ["h", [null, {}]]}},
+    \\  "webgl": {"test.html": ["h", [null, {}]]},
     \\  "html": {"rendering": {"replaced.html": ["h", [null, {}]]}},
     \\  "svg": {"types": {"SVGLength.svg": ["h", [null, {}]]}}
     \\}}}
@@ -617,7 +617,7 @@ const full_corpus_manifest =
 
 const full_corpus_files = [_][]const u8{
     "dom/nodes/Node-appendChild.html",
-    "css/selectors/focus-visible.html",
+    "webgl/test.html",
     "html/rendering/replaced.html",
     "svg/types/SVGLength.svg",
 };
@@ -639,12 +639,12 @@ test "a full-corpus discovery takes every manifest source and names the ones it 
     var result = try discoverTests(allocator, options);
     defer result.deinit();
 
-    // css/ is off the allowlist and html/rendering/ is excluded; the full
+    // webgl/ is off the allowlist and html/rendering/ is excluded; the full
     // corpus runs both.
     try testing.expectEqual(@as(usize, 3), result.test_files.items.len);
-    try testing.expectEqualStrings("css/selectors/focus-visible.html", result.test_files.items[0].path);
-    try testing.expectEqualStrings("dom/nodes/Node-appendChild.html", result.test_files.items[1].path);
-    try testing.expectEqualStrings("html/rendering/replaced.html", result.test_files.items[2].path);
+    try testing.expectEqualStrings("dom/nodes/Node-appendChild.html", result.test_files.items[0].path);
+    try testing.expectEqualStrings("html/rendering/replaced.html", result.test_files.items[1].path);
+    try testing.expectEqualStrings("webgl/test.html", result.test_files.items[2].path);
     try testing.expectEqual(@as(usize, 4), result.total_in_scope_urls);
     try testing.expectEqual(@as(usize, 4), result.total_manifest_urls);
 
