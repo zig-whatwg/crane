@@ -64,49 +64,41 @@ pub const ImplError = error{
 /// and ~17 other impls. This is a local workaround, not the fix; the fix is in
 /// whatever holds a block past `ArenaAllocator.destroy`.
 const StateMap = struct {
-    /// One Browser's map - a side table of its runtime.BrowserScope, so its
-    /// entries are its own and end with it (instances B1).
-    const Table = struct {
-        map: std.AutoHashMap(usize, InternalState),
+    /// One Browser's table - a side table of its runtime.BrowserScope, so
+    /// its entries are its own and end with it (instances B1) - with its
+    /// tombstones kept in check: every option script writes to enters it at
+    /// an address it has usually never seen and leaves it at its teardown
+    /// (dom.InstanceStateMap; src/infra/tombstones.zig).
+    const Table = dom.InstanceStateMap(InternalState);
 
-        pub fn init(allocator: std.mem.Allocator) Table {
-            return .{ .map = std.AutoHashMap(usize, InternalState).init(allocator) };
-        }
-
-        pub fn deinit(self: *Table) void {
-            self.map.deinit();
-        }
-    };
-
-    /// `instance`'s Browser's map, made on first use.
-    fn ensure(instance: *runtime.Instance) !*std.AutoHashMap(usize, InternalState) {
-        return &(try runtime.BrowserScope.ofInstance(instance).table(.option_states, Table)).map;
+    /// `instance`'s Browser's table, made on first use.
+    fn ensure(instance: *runtime.Instance) !*Table {
+        return runtime.BrowserScope.ofInstance(instance).table(.option_states, Table);
     }
 
-    /// `instance`'s Browser's map, if it has one.
-    fn existing(instance: *runtime.Instance) ?*std.AutoHashMap(usize, InternalState) {
-        const table = runtime.BrowserScope.ofInstance(instance).existingTable(.option_states, Table) orelse return null;
-        return &table.map;
+    /// `instance`'s Browser's table, if it has one.
+    fn existing(instance: *runtime.Instance) ?*Table {
+        return runtime.BrowserScope.ofInstance(instance).existingTable(.option_states, Table);
     }
 
     fn put(instance: *runtime.Instance, value: InternalState) !void {
-        try (try ensure(instance)).put(@intFromPtr(instance), value);
+        try (try ensure(instance)).put(instance, value);
     }
 
+    /// BORROWED until the next `put` or `getOrPut`, which may move every
+    /// entry (a growth or a rehash).
     fn get(instance: *runtime.Instance) ?*InternalState {
-        return (existing(instance) orelse return null).getPtr(@intFromPtr(instance));
+        return (existing(instance) orelse return null).get(instance);
     }
 
     fn remove(instance: *runtime.Instance) ?InternalState {
-        const map = existing(instance) orelse return null;
-        if (map.fetchRemove(@intFromPtr(instance))) |kv| return kv.value;
-        return null;
+        return (existing(instance) orelse return null).remove(instance);
     }
 
-    /// Forget every one of `scope`'s entries. The states own nothing heap-allocated.
+    /// Forget every one of `scope`'s entries (the states own nothing heap-allocated).
     fn sweep(scope: *runtime.BrowserScope) void {
         const table = scope.existingTable(.option_states, Table) orelse return;
-        table.map.clearRetainingCapacity();
+        table.clear();
     }
 };
 

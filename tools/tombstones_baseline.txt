@@ -83,7 +83,5 @@ src/webidl/impls/CustomElementRegistry.zig InternalState.when_defined 1
 src/webidl/impls/Document.zig InternalState.import_map_imports 1
 src/webidl/impls/Document.zig InternalState.module_map 1
 src/webidl/impls/HTMLIFrameElement.zig navigations 1
-src/webidl/impls/HTMLOptionElement.zig StateMap.Table.map 1
-src/webidl/impls/HTMLTextAreaElement.zig StateMap.Table.map 1
 src/webidl/impls/Navigation.zig InternalState.handed 1
 src/webidl/impls/XSLTProcessor.zig InternalState.parameters 1
