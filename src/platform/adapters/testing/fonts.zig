@@ -21,8 +21,8 @@
 //! | monospace | Courier New |
 //! | emoji, math, fangsong, ui-serif, ui-sans-serif, ui-monospace, ui-rounded | none |
 //!
-//! A request's weight, style, width and language choose nothing: each
-//! family has its one regular face (a deviation from a real platform, which
+//! A request's weight, style and oblique angle, width and language choose
+//! nothing: each family has its one regular face (a deviation from a real platform, which
 //! has bold and italic faces). Every system font keyword is Arial, the
 //! system-ui face, at no preferred size (medium), as Blink's default
 //! provider answers on Linux and Windows (layout_theme_font_provider.cc:

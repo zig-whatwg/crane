@@ -1407,6 +1407,13 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
         addIosSdkPaths(kit[7], iosSdkPath(b));
         addIosSdkPaths(kit[8], iosSdkPath(b));
     }
+    // darwin's fonts are CoreText's (decision 20), linked dynamically as
+    // the system frameworks they are; compiled out, nothing is linked.
+    if (options.platform == .darwin and target.result.os.tag.isDarwin() and font_decoding_enabled) {
+        if (target.result.os.tag == .ios) addIosSdkPaths(impl, iosSdkPath(b));
+        impl.linkFramework("CoreText", .{});
+        impl.linkFramework("CoreFoundation", .{});
+    }
     // kit/posix wraps today's clock, process Io and resident-memory bridges.
     kit[0].addImport("clock", options.clock);
     kit[0].addImport("host", options.host);
@@ -2668,6 +2675,22 @@ pub fn build(b: *std.Build) void {
             // The file tests write under tmp/, relative to the repo root.
             run_conformance.setCwd(b.path("."));
             test_step.dependOn(&run_conformance.step);
+            // The font operations on darwin and linux (decision 20):
+            // tests/platform/font_adapters.zig, bound to each.
+            if (binding.platform == .darwin or binding.platform == .linux) {
+                const font_adapters = b.addTest(.{
+                    .name = b.fmt("platform_fonts_{s}", .{binding.name}),
+                    .root_module = b.createModule(.{
+                        .root_source_file = b.path("tests/platform/font_adapters.zig"),
+                        .target = target,
+                        .imports = &.{.{ .name = "platform", .module = bound.facade }},
+                    }),
+                });
+                const run_font_adapters = b.addRunArtifact(font_adapters);
+                // WPT's fonts, relative to the repo root.
+                run_font_adapters.setCwd(b.path("."));
+                test_step.dependOn(&run_font_adapters.step);
+            }
             // The kit parts with test blocks of their own, once (they do
             // not depend on the platform they are bound with).
             if (std.mem.eql(u8, binding.name, "darwin")) {

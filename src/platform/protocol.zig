@@ -1804,6 +1804,19 @@ pub inline fn decodeImage(allocator: std.mem.Allocator, mime: Str, bytes: Bytes,
 //     } else {
 //         // No font loads; every font-relative unit takes CSS's fallback.
 //     }
+//
+// The cascade's font_size_adjust.MetricResolver (rows 117/118) reads the
+// first available font's ratio as `metric.ratio(units_per_em)` - null when
+// the font lacks it, and then the metric's CSS fallback: ex-height
+// `x_height` else 0.5; cap-height `cap_height` else ascent / units_per_em;
+// ch-width `zero_advance` (`zero_vertical_advance` typeset upright) else 0.5
+// (1 upright); ic-width `ideographic_advance` else 1; ic-height
+// `ideographic_vertical_advance` else 1. The computed font picks the face:
+// an @font-face face's decodeFont result, else installedFontFace for a
+// family name, else genericFontFace for a generic; a null from those is a
+// font known to be missing (the resolver's null, so the next family is
+// tried). Its style (with its oblique angle), weight and width are the
+// FontRequest's; its size is not needed, the ratios being size-independent.
 
 /// The limits Crane sets on one web font (decision 20, decision 19's rule:
 /// the limits sit on Crane's side of the protocol). Larger data is `TooLarge`
@@ -1959,6 +1972,12 @@ pub const GenericFontFamily = enum(u8) {
 pub const FontRequest = extern struct {
     weight: u16 = 400,
     style: FontStyle = .normal,
+    /// Degrees, positive a clockwise slant, as CSS's font-style: oblique
+    /// <angle>. Meaningful only when `style` is `.oblique` (0 otherwise); a
+    /// plain `oblique` carries 14, CSS's default. The built-in platforms
+    /// match by style class and ignore it; a platform that matches a
+    /// variable font's 'slnt' axis or several oblique faces reads it (5.2).
+    oblique_angle: f32 = 0,
     /// Percent.
     stretch: f32 = 100,
     /// The content language (BCP 47), empty for none: a platform may choose
@@ -2005,9 +2024,15 @@ pub const SystemFontKeyword = enum(u8) {
 
 /// A system font keyword's values. CSS Fonts 4 2.7: a property the
 /// platform has no preference for takes its initial value - an empty
-/// `family` (the user agent's default) and a zero `size` (medium) say so;
-/// style, weight and stretch are normal, 400 and 100% then. `family`
-/// borrows from `strings`, which is OWNED (`deinit`).
+/// `family` (initial: the user agent's default family) and a zero `size`
+/// (use medium) say so; style, weight and stretch are normal, 400 and 100%
+/// then. `family` borrows from `strings`, which is OWNED (`deinit`).
+///
+/// font_system.Resolver's SystemValues (rows 118/119) take these one for
+/// one: families from `family` (`system-ui` when `system_ui`), style and
+/// `oblique_angle`, absolute weight, width from `stretch`, size from
+/// `size`. `systemFont` failing (NotSupported, the capability
+/// compiled out) is the resolver's null: 2.7's fallback.
 pub const SystemFont = extern struct {
     family: Str,
     /// `family` is the platform's system UI face, the one system-ui maps
@@ -2017,6 +2042,9 @@ pub const SystemFont = extern struct {
     /// CSS px; 0 for no preference.
     size: f32,
     style: FontStyle,
+    /// Degrees, positive a clockwise slant, when `style` is `.oblique` and
+    /// the platform reports a real oblique system font; 0 otherwise.
+    oblique_angle: f32 = 0,
     weight: u16,
     /// Percent.
     stretch: f32,

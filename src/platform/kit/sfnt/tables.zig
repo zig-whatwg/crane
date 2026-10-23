@@ -196,7 +196,7 @@ fn checkHead(data: []const u8) Error!Head {
 /// OTS os2.cc. A table too short for its version's fields is read as the
 /// version its length allows (OTS's "weird version" fixes) - except where
 /// OTS fails it: the code page ranges or the version 2 or 5 fields cut short.
-fn checkOs2(data: []const u8) Error!Os2 {
+pub fn checkOs2(data: []const u8) Error!Os2 {
     var r = Reader.init(data);
     var os2: Os2 = undefined;
     os2.version = try r.u16_();

@@ -157,3 +157,7 @@ test {
     _ = woff;
     _ = woff2;
 }
+
+pub const Traits = describe_.Traits;
+pub const traitsFromOs2 = describe_.traitsFromOs2;
+pub const fromParts = describe_.fromParts;

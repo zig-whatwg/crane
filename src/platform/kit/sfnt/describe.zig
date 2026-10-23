@@ -141,3 +141,47 @@ pub fn hasLocalName(face: tables.Checked, wanted: []const u8) bool {
     }
     return false;
 }
+
+/// A face's weight, slope and width.
+pub const Traits = struct {
+    weight: u16 = 400,
+    style: platform.FontStyle = .normal,
+    /// Percent.
+    stretch: f32 = 100,
+};
+
+/// The traits an OS/2 table gives, as OTS's sanitizer leaves them; null
+/// when the table does not check.
+pub fn traitsFromOs2(data: []const u8) ?Traits {
+    const os2 = tables.checkOs2(data) catch return null;
+    return .{
+        .weight = os2.weight_class,
+        .style = if (os2.selection & 1 != 0) .italic else if (os2.selection & (1 << 9) != 0) .oblique else .normal,
+        .stretch = width_percent[os2.width_class - 1],
+    };
+}
+
+/// A description from its parts (a platform that reads names and metrics
+/// from its own font engine): the four names copied into one OWNED
+/// allocation.
+pub fn fromParts(allocator: std.mem.Allocator, family: []const u8, style_name: []const u8, full_name: []const u8, postscript_name: []const u8, traits: Traits, face_metrics: platform.FontMetrics) error{OutOfMemory}!platform.DecodedFont {
+    const parts = [4][]const u8{ family, style_name, full_name, postscript_name };
+    const strings = try std.mem.concat(allocator, u8, &parts);
+    var at: usize = 0;
+    var out: [4]platform.Str = undefined;
+    for (parts, &out) |text, *str| {
+        str.* = .from(strings[at..][0..text.len]);
+        at += text.len;
+    }
+    return .{
+        .family = out[0],
+        .style_name = out[1],
+        .full_name = out[2],
+        .postscript_name = out[3],
+        .weight = traits.weight,
+        .style = traits.style,
+        .stretch = traits.stretch,
+        .metrics = face_metrics,
+        .strings = .from(strings),
+    };
+}

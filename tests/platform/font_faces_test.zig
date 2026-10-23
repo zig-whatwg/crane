@@ -115,3 +115,19 @@ test "Ahem's fixed metrics are kit/sfnt's reading of WPT's fonts/Ahem.ttf" {
     try testing.expectEqual(read.metrics, fixed.metrics);
     try testing.expectEqualStrings(read.postscript_name.slice(), fixed.postscript_name.slice());
 }
+
+test "a request's oblique angle round-trips, and the testing faces match by style class alone" {
+    var request: platform.FontRequest = .{ .style = .oblique, .oblique_angle = 20 };
+    try testing.expectEqual(@as(f32, 20), request.oblique_angle);
+    try testing.expectEqual(@as(f32, 0), (platform.FontRequest{}).oblique_angle);
+    var twenty = (try platform.installedFontFace(testing.allocator, .from("Arial"), request)).?;
+    defer twenty.deinit(testing.allocator);
+    request.oblique_angle = 14;
+    var fourteen = (try platform.installedFontFace(testing.allocator, .from("Arial"), request)).?;
+    defer fourteen.deinit(testing.allocator);
+    try testing.expectEqualStrings(fourteen.postscript_name.slice(), twenty.postscript_name.slice());
+    try testing.expectEqual(fourteen.metrics, twenty.metrics);
+    var font = try platform.systemFont(testing.allocator, .caption, .{});
+    defer font.deinit(testing.allocator);
+    try testing.expectEqual(@as(f32, 0), font.oblique_angle);
+}
