@@ -2647,6 +2647,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "testing_without_brotli", .platform = .testing, .without = &.{"brotli"} },
             .{ .name = "testing_without_image_decoding", .platform = .testing, .without = &.{"image_decoding"} },
             .{ .name = "testing_without_font_decoding", .platform = .testing, .without = &.{"font_decoding"} },
+            .{ .name = "darwin_without_font_decoding", .platform = .darwin, .without = &.{"font_decoding"} },
         };
         for (conformance_bindings) |binding| {
             const bound = platformBinding(b, target, .{
@@ -2677,7 +2678,7 @@ pub fn build(b: *std.Build) void {
             test_step.dependOn(&run_conformance.step);
             // The font operations on darwin and linux (decision 20):
             // tests/platform/font_adapters.zig, bound to each.
-            if (binding.platform == .darwin or binding.platform == .linux) {
+            if ((binding.platform == .darwin or binding.platform == .linux) and binding.without.len == 0) {
                 const font_adapters = b.addTest(.{
                     .name = b.fmt("platform_fonts_{s}", .{binding.name}),
                     .root_module = b.createModule(.{
