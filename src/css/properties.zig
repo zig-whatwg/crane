@@ -1019,6 +1019,7 @@ pub const Stream = struct {
     tok: Tokenizer,
     peeked: ?Token = null,
     text: []const u8,
+    peeked_offset: usize = 0,
 
     pub fn init(text: []const u8) Stream {
         return .{ .tok = Tokenizer.init(text), .text = text };
@@ -1026,12 +1027,13 @@ pub const Stream = struct {
 
     pub fn peek(self: *Stream) Token {
         if (self.peeked) |t| return t;
-        while (true) {
-            const t = self.tok.next();
-            if (t.token_type == .whitespace) continue;
-            self.peeked = t;
-            return t;
-        }
+        // Syntax3 §4.3.1: comments precede each token. Record the stream
+        // position after trivia, before url() drops its function spelling.
+        self.tok.skipWhitespace();
+        self.peeked_offset = self.tok.pos;
+        const t = self.tok.next();
+        self.peeked = t;
+        return t;
     }
 
     pub fn next(self: *Stream) Token {
@@ -1044,22 +1046,22 @@ pub const Stream = struct {
         return self.peek().token_type == .eof;
     }
 
-    const Mark = struct { tok: Tokenizer, peeked: ?Token };
+    const Mark = struct { tok: Tokenizer, peeked: ?Token, peeked_offset: usize };
 
     fn mark(self: *const Stream) Mark {
-        return .{ .tok = self.tok, .peeked = self.peeked };
+        return .{ .tok = self.tok, .peeked = self.peeked, .peeked_offset = self.peeked_offset };
     }
 
     fn restore(self: *Stream, m: Mark) void {
         self.tok = m.tok;
         self.peeked = m.peeked;
+        self.peeked_offset = m.peeked_offset;
     }
 
     /// The position of the next token in the text.
     fn offset(self: *Stream) usize {
-        const t = self.peek();
-        if (t.token_type == .eof) return self.text.len;
-        return @intFromPtr(t.value.ptr) - @intFromPtr(self.text.ptr);
+        _ = self.peek();
+        return self.peeked_offset;
     }
 
     /// Skip a function's arguments: the `(` after its name through the
@@ -2771,4 +2773,43 @@ test "cursor sorts between content and direction" {
     const cursor_index = std.mem.indexOfScalar(Longhand, &lexicographic, .cursor).?;
     try testing.expect(cursor_index > std.mem.indexOfScalar(Longhand, &lexicographic, .content).?);
     try testing.expect(cursor_index < std.mem.indexOfScalar(Longhand, &lexicographic, .direction).?);
+}
+
+// Q71 follow-up: append inside properties.zig, where Stream's private
+// Mark/offset API can be tested without widening its public surface.
+test "ci1 stream offsets retain token starts across peek and mark restore" {
+    const text = "  /* prefix */url( a.svg )  counter(item)";
+    var stream = Stream.init(text);
+    const before_peek = stream.mark();
+    try testing.expectEqual(tokenizer_mod.TokenType.url, stream.peek().token_type);
+    try testing.expectEqual(std.mem.indexOf(u8, text, "url(").?, stream.offset());
+    const with_peek = stream.mark();
+    _ = stream.next();
+    try testing.expectEqual(tokenizer_mod.TokenType.function, stream.peek().token_type);
+    try testing.expectEqual(std.mem.indexOf(u8, text, "counter").?, stream.offset());
+    stream.restore(with_peek);
+    try testing.expectEqual(tokenizer_mod.TokenType.url, stream.peek().token_type);
+    try testing.expectEqual(std.mem.indexOf(u8, text, "url(").?, stream.offset());
+    stream.restore(before_peek);
+    try testing.expectEqual(std.mem.indexOf(u8, text, "url(").?, stream.offset());
+    while (!stream.atEnd()) _ = stream.next();
+    try testing.expectEqual(text.len, stream.offset());
+    const at_end = stream.mark();
+    _ = stream.next();
+    stream.restore(at_end);
+    try testing.expectEqual(text.len, stream.offset());
+}
+
+test "ci1 stream offsets locate quoted escaped padded and mixed URL tokens" {
+    for ([_][]const u8{ "url('a.svg')", "u\\72 l(a.svg)", "url( \ta.svg\n)" }) |text| {
+        var stream = Stream.init(text);
+        _ = stream.peek();
+        try testing.expectEqual(@as(usize, 0), stream.offset());
+    }
+    const text = "\"prefix\" url(a.svg)";
+    var stream = Stream.init(text);
+    try testing.expectEqual(tokenizer_mod.TokenType.string, stream.next().token_type);
+    try testing.expectEqual(std.mem.indexOf(u8, text, "url(").?, stream.offset());
+    try testing.expectEqual(tokenizer_mod.TokenType.url, stream.next().token_type);
+    try testing.expectEqual(text.len, stream.offset());
 }
