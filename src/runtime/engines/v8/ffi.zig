@@ -3344,8 +3344,12 @@ pub extern fn v8_Context_IsCodeGenerationFromStringsAllowed(context: *Context) b
 /// Global.value converts an absent setter argument as undefined; JSPI wraps
 /// normal JS import returns with the import realm's intrinsic PromiseResolve.
 /// Exception exposes its captured stack through a branded prototype getter.
-/// Called once per realm before script. All retained values are GC-traced
-/// realm-owned objects; no native owning handles are created. On V8 upgrade,
+/// Called once per realm before script to capture pristine helpers and arm
+/// lazy data properties on the namespace and cloneable prototype constructors.
+/// Adapter construction waits for first use, including
+/// indirect use of an untouched realm's intrinsics after namespace deletion.
+/// All retained values are GC-traced realm-owned objects; no native owning
+/// handles are created. On V8 upgrade,
 /// remove address translation at >= 13.3 and separately recheck realm fallback.
 pub extern fn v8_WebAssembly_InstallAddressDescriptors(isolate: *Isolate, context: *Context) void;
 // ---- end lane: wasmh ----

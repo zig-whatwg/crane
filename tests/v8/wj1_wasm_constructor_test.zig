@@ -144,6 +144,9 @@ fn inPlatformRealm(source: []const u8, kind: PlatformKind, from_snapshot: bool) 
     defer ffi.v8_Object_Dispose(global);
     const other_global = ffi.v8_Context_Global(other) orelse return error.NoOtherGlobal;
     defer ffi.v8_Object_Dispose(other_global);
+    // Platform setup, including snapshot restoration, must leave Wasm pending.
+    try expectWasmInstalled(global, false);
+    try expectWasmInstalled(other_global, false);
     const key = ffi.v8_String_NewFromUtf8(isolate, "other", 5) orelse return error.NoKey;
     defer ffi.v8_String_Dispose(key);
     if (!ffi.v8_Object_Set(global, context, @ptrCast(key), @ptrCast(other_global))) return error.ShareFailed;
@@ -432,9 +435,15 @@ const LifetimeRun = struct {
         for (0..3) |_| ffi.v8_Isolate_RequestGarbageCollection(isolate);
     }
 
-    fn realm(isolate: *ffi.Isolate) !*ffi.Context {
+    fn realm(isolate: *ffi.Isolate, touch_wasm: bool) !*ffi.Context {
         const context = ffi.v8_Context_New(isolate) orelse return error.NoContext;
+        errdefer ffi.v8_Context_Dispose(context);
         ffi.v8_WebAssembly_InstallAddressDescriptors(isolate, context);
+        if (touch_wasm) {
+            ffi.v8_Context_Enter(context);
+            defer ffi.v8_Context_Exit(context);
+            try evaluate(isolate, context, "void WebAssembly; 'ok';");
+        }
         return context;
     }
 
@@ -444,19 +453,20 @@ const LifetimeRun = struct {
         ffi.v8_Isolate_Enter(isolate);
         defer ffi.v8_Isolate_Exit(isolate);
         // Warm V8's API symbols and prove that the counters see a live realm.
-        const warm = try realm(isolate);
+        const warm = try realm(isolate, true);
         ffi.v8_Context_Dispose(warm);
         collect(isolate);
         var baseline: usize = 0;
         ffi.v8_Isolate_GetContextCounts(isolate, &baseline, null);
         const handles = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
-        const held = try realm(isolate);
+        const held = try realm(isolate, false);
         var with_held: usize = 0;
         ffi.v8_Isolate_GetContextCounts(isolate, &with_held, null);
         ffi.v8_Context_Dispose(held);
         try std.testing.expect(with_held > baseline);
-        for (0..64) |_| {
-            const context = try realm(isolate);
+        // Both the pending lazy property and materialized adapters must die.
+        for (0..64) |i| {
+            const context = try realm(isolate, i % 2 == 0);
             ffi.v8_Context_Dispose(context);
         }
         collect(isolate);
@@ -868,4 +878,394 @@ test "wasm constructor argument counts match native under poisoned argument help
         \\}
         \\})()
     );
+}
+
+fn expectWasmInstalled(global: *ffi.Object, expected: bool) !void {
+    const key = "crane.wasm.intrinsicPrototypes";
+    const value = ffi.v8_Object_GetPrivateRef(global, key.ptr, key.len);
+    defer if (value) |held| ffi.v8_Value_Dispose(held);
+    try std.testing.expectEqual(expected, value != null);
+}
+
+fn checkLazyWasm(source: []const u8, installed_after: bool) !void {
+    try engine.initializeEngine(.{});
+    const LazyRun = struct {
+        source: []const u8,
+        installed_after: bool,
+        failure: ?anyerror = null,
+
+        fn body(self: *@This()) !void {
+            const isolate = ffi.v8_Isolate_New() orelse return error.NoIsolate;
+            defer ffi.v8_Isolate_Dispose(isolate);
+            ffi.v8_Isolate_Enter(isolate);
+            defer ffi.v8_Isolate_Exit(isolate);
+            const context = ffi.v8_Context_New(isolate) orelse return error.NoContext;
+            defer ffi.v8_Context_Dispose(context);
+            ffi.v8_Context_Enter(context);
+            defer ffi.v8_Context_Exit(context);
+            const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
+            defer ffi.v8_Object_Dispose(global);
+            try evaluate(isolate, context,
+                \\globalThis.wj1NativeNamespace = WebAssembly;
+                \\globalThis.wj1NativeModule = WebAssembly.Module;
+                \\globalThis.wj1NativeDescriptor = Object.getOwnPropertyDescriptor(globalThis,"WebAssembly");
+                \\"ok";
+            );
+            ffi.v8_WebAssembly_InstallAddressDescriptors(isolate, context);
+            // Probe the existing traced slot, without reading the namespace
+            // or adding a production counter/root just for the test.
+            try expectWasmInstalled(global, false);
+            try evaluate(isolate, context, self.source);
+            try expectWasmInstalled(global, self.installed_after);
+        }
+
+        fn thread(self: *@This()) void {
+            self.body() catch |err| {
+                self.failure = err;
+            };
+        }
+    };
+    var run: LazyRun = .{ .source = source, .installed_after = installed_after };
+    const thread = try std.Thread.spawn(.{}, LazyRun.thread, .{&run});
+    thread.join();
+    if (run.failure) |err| return err;
+}
+
+test "untouched wasm namespace does not initialize its adapters" {
+    try checkLazyWasm("const unused = 1 + 1; 'ok';", false);
+}
+
+test "wasm namespace deletion and overwrite before first read stay lazy" {
+    try checkLazyWasm(
+        \\(() => {
+        \\if (!delete globalThis.WebAssembly) return "delete";
+        \\if (Object.hasOwn(globalThis,"WebAssembly")) return "still present";
+        \\return "ok";
+        \\})()
+    , false);
+    try checkLazyWasm(
+        \\(() => {
+        \\const sentinel = {};
+        \\globalThis.WebAssembly = sentinel;
+        \\if (WebAssembly !== sentinel) return "overwrite";
+        \\const d = Object.getOwnPropertyDescriptor(globalThis,"WebAssembly");
+        \\if (d.value !== sentinel || !d.writable || d.enumerable || !d.configurable || "get" in d) return "descriptor";
+        \\return "ok";
+        \\})()
+    , false);
+}
+
+test "wasm lazy first descriptor read preserves data attributes and installs once" {
+    try checkLazyWasm(
+        \\(() => {
+        \\const d = Object.getOwnPropertyDescriptor(globalThis,"WebAssembly");
+        \\for (const key of ["writable","enumerable","configurable"]) if (d[key] !== wj1NativeDescriptor[key]) return key;
+        \\if ("get" in d || "set" in d || d.value !== wj1NativeNamespace) return "not native data";
+        \\const first = d.value.Module;
+        \\if (first === wj1NativeModule) return "not adapted";
+        \\if (Object.getOwnPropertyDescriptor(globalThis,"WebAssembly").value.Module !== first || WebAssembly.Module !== first) return "installed twice";
+        \\const g = new WebAssembly.Global({value:"i32",mutable:true},42);
+        \\Object.getOwnPropertyDescriptor(WebAssembly.Global.prototype,"value").set.call(g);
+        \\return g.value === 0 ? "ok" : "setter";
+        \\})()
+    , true);
+}
+
+test "wasm lazy installation captures helpers before script can replace them" {
+    try checkLazyWasm(
+        \\(() => {
+        \\const O=Object,R=Reflect,P=Proxy,T=TypeError,F=Function,A=Array,S=Symbol,Pr=Promise;
+        \\const define=O.defineProperty,desc=O.getOwnPropertyDescriptor,setProto=O.setPrototypeOf,getProto=O.getPrototypeOf;
+        \\const construct=R.construct,get=R.get,apply=R.apply,keys=R.ownKeys,bind=F.prototype.bind,slice=A.prototype.slice,resolve=Pr.resolve;
+        \\const iterator=A.prototype[S.iterator];
+        \\const bytes=new Uint8Array([0,97,115,109,1,0,0,0]);
+        \\const poison=()=>{throw "mutable initialization helper";};
+        \\try {
+        \\O.defineProperty=O.getOwnPropertyDescriptor=O.setPrototypeOf=O.getPrototypeOf=poison;
+        \\R.construct=R.get=R.apply=R.ownKeys=poison;
+        \\F.prototype.bind=A.prototype.slice=Pr.resolve=poison;
+        \\O.prototype.get=O.prototype.set=poison;
+        \\A.prototype[S.iterator]=poison;
+        \\globalThis.Object=globalThis.Reflect=globalThis.Proxy=globalThis.TypeError=globalThis.Function=globalThis.Array=globalThis.Symbol=globalThis.Promise=poison;
+        \\const wasm=WebAssembly;
+        \\const m=new wasm.Module(bytes);
+        \\if (getProto(m)!==wasm.Module.prototype) return "module";
+        \\new wasm.Memory({initial:0});
+        \\return "ok";
+        \\} catch(e) { return String(e); }
+        \\finally {
+        \\delete O.prototype.get;delete O.prototype.set;
+        \\A.prototype[S.iterator]=iterator;
+        \\globalThis.Object=O;globalThis.Reflect=R;globalThis.Proxy=P;globalThis.TypeError=T;globalThis.Function=F;globalThis.Array=A;globalThis.Symbol=S;globalThis.Promise=Pr;
+        \\O.defineProperty=define;O.getOwnPropertyDescriptor=desc;O.setPrototypeOf=setProto;O.getPrototypeOf=getProto;
+        \\R.construct=construct;R.get=get;R.apply=apply;R.ownKeys=keys;F.prototype.bind=bind;A.prototype.slice=slice;Pr.resolve=resolve;
+        \\}
+        \\})()
+    , true);
+}
+
+test "wasm prototype fallback initializes an untouched realm after namespace deletion" {
+    try check(
+        \\(() => {
+        \\const make = other.Function("return function Target() {}")();
+        \\make.prototype = null;
+        \\delete other.WebAssembly;
+        \\const made = Reflect.construct(WebAssembly.Module,[new Uint8Array([0,97,115,109,1,0,0,0])],make);
+        \\if (Object.getPrototypeOf(made) !== other.wj1OriginalWasm.Module.prototype) return "foreign prototype";
+        \\return Object.hasOwn(other,"WebAssembly") ? "recreated deleted property" : "ok";
+        \\})()
+    );
+}
+
+test "wasm lazy first read from another realm creates adapters in the owning realm" {
+    try check(
+        \\(() => {
+        \\const wasm = Reflect.get(other,"WebAssembly",{});
+        \\const stack = Object.getOwnPropertyDescriptor(wasm.Exception.prototype,"stack").get;
+        \\const setter = Object.getOwnPropertyDescriptor(wasm.Global.prototype,"value").set;
+        \\if (Object.getPrototypeOf(stack) !== other.Function.prototype || Object.getPrototypeOf(setter) !== other.Function.prototype) return "wrong adapter realm";
+        \\const made = new wasm.Module(new Uint8Array([0,97,115,109,1,0,0,0]));
+        \\if (Object.getPrototypeOf(made) !== other.wj1OriginalWasm.Module.prototype) return "wrong module realm";
+        \\const d = Object.getOwnPropertyDescriptor(other,"WebAssembly");
+        \\return d.value === wasm && d.writable && d.configurable && !d.enumerable && !("get" in d) ? "ok" : "foreign descriptor";
+        \\})()
+    );
+}
+
+test "wasm module received before namespace access preserves constructor identity" {
+    try engine.initializeEngine(.{});
+    const ReceiveRun = struct {
+        fn thread(failure: *?anyerror) void {
+            inPlatformRealm(
+                \\(() => {
+                \\const foreign = new other.WebAssembly.Module(new Uint8Array([0,97,115,109,1,0,0,0]));
+                \\const received = structuredClone(foreign);
+                \\const constructor = received.constructor;
+                \\return constructor === WebAssembly.Module ? "ok" : "received constructor changed on namespace access";
+                \\})()
+            , .window, false) catch |err| {
+                failure.* = err;
+            };
+        }
+    };
+    var failure: ?anyerror = null;
+    const thread = try std.Thread.spawn(.{}, ReceiveRun.thread, .{&failure});
+    thread.join();
+    if (failure) |err| return err;
+}
+
+/// The serialization and deserialization operations used by worker postMessage,
+/// with a fresh receiving agent whose script has never read WebAssembly.
+const FirstWasmDelivery = struct {
+    const Kind = enum { module, memory, plain, shared_buffer };
+
+    fn cluster(_: ?*anyopaque, _: runtime.Context) u64 {
+        return 116;
+    }
+    fn isolated(_: ?*anyopaque, _: runtime.Context) bool {
+        return true;
+    }
+    const hooks: engine.HostHooks = .{
+        .agentClusterOf = cluster,
+        .crossOriginIsolatedCapability = isolated,
+    };
+    const reporter: engine.Reporter = .{ .report = report, .host = null };
+    fn report(_: ?*anyopaque, _: *const engine.ErrorInfo) void {}
+    fn noTransfer(_: ?*anyopaque, _: *runtime.Instance) runtime.TransferableState {
+        return .not_transferable;
+    }
+
+    fn makeMessage(kind: Kind) !engine.SerializedWithTransfer {
+        const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &hooks, .allocator = std.testing.allocator });
+        defer engine.destroyAgent(agent);
+        const realm = try engine.createWindowRealm(&.{
+            .agent = agent,
+            .allocator = std.testing.allocator,
+            .from_snapshot = false,
+            .timer = null,
+            .origin = "https://wj1.test",
+            .create_global_object = WindowHost.create,
+        });
+        defer engine.destroyWindowRealm(realm, .global_detached);
+        const source = switch (kind) {
+            .module => "({payload:new WebAssembly.Module(new Uint8Array([0,97,115,109,1,0,0,0]))})",
+            .memory => "({payload:new WebAssembly.Memory({initial:1,maximum:2,shared:true})})",
+            .plain => "({payload:{answer:42}})",
+            .shared_buffer => "({payload:new SharedArrayBuffer(8)})",
+        };
+        const subject = try engine.evaluateClassicScript(realm, .{ .utf8 = source }, "wj1-first-delivery.js", null, reporter);
+        defer subject.release();
+        const Serialize = struct {
+            realm: runtime.Context,
+            value: runtime.JSValue,
+            result: ?engine.SerializedWithTransfer = null,
+            fn steps(data: ?*anyopaque) engine.Error!void {
+                const self: *@This() = @ptrCast(@alignCast(data.?));
+                self.result = try engine.structuredSerializeWithTransfer(self.realm, self.value, &.{}, noTransfer, null, std.testing.allocator);
+            }
+        };
+        var call: Serialize = .{ .realm = realm, .value = subject.value };
+        if (try engine.completionOf(realm, Serialize.steps, &call)) |thrown| {
+            thrown.release();
+            return error.SerializationFailed;
+        }
+        return call.result orelse error.NoSerialization;
+    }
+
+    const Delivery = struct {
+        realm: runtime.Context,
+        message: *const engine.SerializedWithTransfer,
+        fn read(data: ?*anyopaque, _: []const runtime.JSValue) runtime.EngineError!runtime.JSValue {
+            const self: *@This() = @ptrCast(@alignCast(data.?));
+            const result = engine.structuredDeserializeWithOptions(self.realm, self.message.serialized, .{
+                .array_buffers = self.message.array_buffers,
+                .shared_memory = self.message.shared_memory,
+            }) catch |err| return switch (err) {
+                error.OutOfMemory => error.OutOfMemory,
+                else => error.DataCloneError,
+            };
+            return result.take();
+        }
+    };
+
+    fn body(kind: Kind) !void {
+        runtime.initializeRuntime(std.heap.page_allocator);
+        interfaces.process_hooks.startHooksForTest();
+        try v8.context_manager.init(std.testing.allocator);
+        defer v8.context_manager.deinit();
+        var message = try makeMessage(kind);
+        defer message.deinit(std.testing.allocator);
+        // The sender is already destroyed. The message retains bytes/backing
+        // stores only, exactly as a queued worker message does.
+        const agent = try engine.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &hooks, .allocator = std.testing.allocator });
+        defer engine.destroyAgent(agent);
+        const realm = (try engine.createWorkerRealm(agent, &.{
+            .url = "https://wj1.test/receiver.js",
+            .timer = null,
+            .event_loop = inline_task_loop.eventLoop(),
+            .allocator = std.testing.allocator,
+        })).realm;
+        defer engine.destroyWorkerRealm(realm, null, null);
+        var delivery: Delivery = .{ .realm = realm, .message = &message };
+        const builtin: engine.BuiltinFunction = .{ .steps = Delivery.read, .data = &delivery };
+        try engine.defineBuiltinFunction(realm, "receive", 0, &builtin);
+        const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
+        const context: *ffi.Context = @ptrCast(@alignCast(realm.engine_ctx.?));
+        ffi.v8_Isolate_Enter(isolate);
+        defer ffi.v8_Isolate_Exit(isolate);
+        ffi.v8_Context_Enter(context);
+        defer ffi.v8_Context_Exit(context);
+        const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
+        defer ffi.v8_Object_Dispose(global);
+        try expectWasmInstalled(global, false);
+        const source = switch (kind) {
+            .module => "const received=receive().payload; const ctor=received.constructor; ctor===WebAssembly.Module ? 'ok' : 'received Module constructor changed'",
+            .memory => "const received=receive().payload; const ctor=received.constructor; ctor===WebAssembly.Memory ? 'ok' : 'received Memory constructor changed'",
+            .plain => "receive().payload.answer===42 ? 'ok' : 'plain value'",
+            .shared_buffer => "receive().payload.byteLength===8 ? 'ok' : 'shared buffer'",
+        };
+        try evaluate(isolate, context, source);
+        try expectWasmInstalled(global, kind == .module or kind == .memory);
+    }
+
+    fn check(comptime kind: Kind) !void {
+        try engine.initializeEngine(.{});
+        const RunDelivery = struct {
+            fn thread(failure: *?anyerror) void {
+                body(kind) catch |err| {
+                    failure.* = err;
+                };
+            }
+        };
+        var failure: ?anyerror = null;
+        const thread = try std.Thread.spawn(.{}, RunDelivery.thread, .{&failure});
+        thread.join();
+        if (failure) |err| return err;
+    }
+};
+
+test "worker receives a Module before namespace access with stable constructor" {
+    try FirstWasmDelivery.check(.module);
+}
+test "worker receives shared Wasm Memory before namespace access with stable constructor" {
+    try FirstWasmDelivery.check(.memory);
+}
+test "worker receives plain data without initializing Wasm" {
+    try FirstWasmDelivery.check(.plain);
+}
+test "worker receives a SharedArrayBuffer without initializing Wasm" {
+    try FirstWasmDelivery.check(.shared_buffer);
+}
+
+test "received Wasm prototype constructor overwrite and delete stay lazy" {
+    inline for (.{ "Module", "Memory" }) |name| {
+        try checkLazyWasm("(() => { const p=wj1NativeNamespace." ++ name ++ ".prototype;" ++
+            "const sentinel={}; p.constructor=sentinel; const d=Object.getOwnPropertyDescriptor(p,'constructor');" ++
+            "return d.value===sentinel && d.writable && d.configurable && !d.enumerable && !('get' in d) ? 'ok' : 'overwrite'; })()", false);
+        try checkLazyWasm("(() => { const p=wj1NativeNamespace." ++ name ++ ".prototype;" ++
+            "return delete p.constructor && !Object.hasOwn(p,'constructor') ? 'ok' : 'delete'; })()", false);
+    }
+}
+
+test "received Wasm prototype constructor mutations survive namespace initialization" {
+    inline for (.{ "Module", "Memory" }) |name| {
+        try checkLazyWasm("(() => { const p=wj1NativeNamespace." ++ name ++ ".prototype;" ++
+            "const sentinel={}; p.constructor=sentinel; void WebAssembly;" ++
+            "return p.constructor===sentinel ? 'ok' : 'lost overwrite'; })()", true);
+        try checkLazyWasm("(() => { const p=wj1NativeNamespace." ++ name ++ ".prototype;" ++
+            "delete p.constructor; void WebAssembly;" ++
+            "return !Object.hasOwn(p,'constructor') ? 'ok' : 'recreated constructor'; })()", true);
+    }
+}
+
+test "received Wasm prototype constructor redefinitions survive namespace initialization" {
+    inline for (.{ "Module", "Memory" }) |name| {
+        try checkLazyWasm("(() => { const p=wj1NativeNamespace." ++ name ++ ".prototype;" ++
+            "let calls=0; const getter=()=>{++calls; return 42;};" ++
+            "Object.defineProperty(p,'constructor',{get:getter,configurable:true}); void WebAssembly;" ++
+            "return calls===0 && Object.getOwnPropertyDescriptor(p,'constructor').get===getter ? 'ok' : 'lost accessor'; })()", true);
+        try checkLazyWasm("(() => { const p=wj1NativeNamespace." ++ name ++ ".prototype; const sentinel={};" ++
+            "Object.defineProperty(p,'constructor',{value:sentinel,writable:false,enumerable:true,configurable:false});" ++
+            "const ns=WebAssembly; const d=Object.getOwnPropertyDescriptor(p,'constructor');" ++
+            "return typeof ns." ++ name ++ "==='function' && d.value===sentinel && !d.writable && d.enumerable && !d.configurable ? 'ok' : 'lost fixed descriptor'; })()", true);
+    }
+}
+
+test "received Wasm prototype constructor descriptor first access is ordinary data" {
+    inline for (.{ "Module", "Memory" }) |name| {
+        try checkLazyWasm("(() => { const p=wj1NativeNamespace." ++ name ++ ".prototype;" ++
+            "const d=Object.getOwnPropertyDescriptor(p,'constructor'); const ns=WebAssembly;" ++
+            "return d.value===ns." ++ name ++ " && d.writable && d.configurable && !d.enumerable && !('get' in d) && !('set' in d) ? 'ok' : 'constructor descriptor'; })()", true);
+    }
+}
+
+test "namespace first access agrees with received Wasm prototype constructors" {
+    inline for (.{ "Module", "Memory" }) |name| {
+        try checkLazyWasm("(() => { const p=wj1NativeNamespace." ++ name ++ ".prototype; const ns=WebAssembly;" ++
+            "return p.constructor===ns." ++ name ++ " && Object.getOwnPropertyDescriptor(p,'constructor').value===ns." ++ name ++ " ? 'ok' : 'namespace first'; })()", true);
+    }
+}
+
+test "foreign first access to a received Wasm prototype constructor uses its owning realm" {
+    inline for (.{ "Module", "Memory" }) |name| {
+        try check("(() => { const p=other.wj1OriginalWasm." ++ name ++ ".prototype;" ++
+            "const ctor=Reflect.get(p,'constructor',{});" ++
+            "return Object.getPrototypeOf(ctor)===other.Function.prototype && ctor===other.WebAssembly." ++ name ++ " ? 'ok' : 'foreign constructor'; })()");
+    }
+}
+
+test "received Wasm prototype constructors ignore later namespace replacements" {
+    inline for (.{ "Module", "Memory" }) |name| {
+        try checkLazyWasm("(() => { const ns=WebAssembly; const ctor=ns." ++ name ++ ";" ++
+            "ns." ++ name ++ "=function sentinel(){};" ++
+            "return ctor.prototype.constructor===ctor ? 'ok' : 'mutable namespace constructor'; })()", true);
+    }
+}
+
+test "received Wasm prototype constructors initialize after namespace deletion" {
+    inline for (.{ "Module", "Memory" }) |name| {
+        try checkLazyWasm("(() => { const ns=wj1NativeNamespace; const p=ns." ++ name ++ ".prototype;" ++
+            "delete globalThis.WebAssembly; const ctor=p.constructor;" ++
+            "return ctor===ns." ++ name ++ " && !Object.hasOwn(globalThis,'WebAssembly') ? 'ok' : 'deleted namespace'; })()", true);
+    }
 }

@@ -13399,6 +13399,22 @@ static Local<Private> wasmIntrinsicPrototypesKey(Isolate* isolate) {
     return Private::ForApi(isolate, String::NewFromUtf8Literal(isolate, "crane.wasm.intrinsicPrototypes"));
 }
 
+static Local<Private> wasmPreparationKey(Isolate* isolate) {
+    return Private::ForApi(isolate, String::NewFromUtf8Literal(isolate, "crane.wasm.preparation"));
+}
+
+// Only traced references are retained before first use. The private constructor
+// factory below reads these same slots into its original constant bindings.
+enum WasmPreparationSlot : uint32_t {
+    kWasmNamespace,
+    kWasmConstruct, kWasmGet, kWasmApply, kWasmProxy, kWasmTypeError, kWasmObject,
+    kWasmDefine, kWasmOwnKeys, kWasmDescriptor, kWasmSetPrototype, kWasmPrototype,
+    kWasmFunctionPrototype, kWasmBind, kWasmHasInstanceKey, kWasmHasInstance, kWasmSlice,
+    kWasmPromise, kWasmPromiseResolve, kWasmPreparationSize,
+};
+
+static bool ensureWasmAdapters(Local<Context> context);
+
 static Local<Private> wasmExceptionStackKey(Isolate* isolate) {
     return Private::ForApi(isolate, String::NewFromUtf8Literal(isolate, "crane.wasm.exceptionStack"));
 }
@@ -13509,6 +13525,7 @@ static void WasmConstructorConstruct(const FunctionCallbackInfo<Value>& info) {
     if (!prototype->IsObject()) {
         Local<Context> target_realm;
         if (!wasmConstructorRealm(isolate, new_target).ToLocal(&target_realm)) return;
+        if (!ensureWasmAdapters(target_realm)) return;
         Local<Value> intrinsics;
         if (!target_realm->Global()->GetPrivate(target_realm, wasmIntrinsicPrototypesKey(isolate)).ToLocal(&intrinsics)) return;
         if (!intrinsics->IsArray()) {
@@ -13585,6 +13602,7 @@ static void WasmSuspendingApply(const FunctionCallbackInfo<Value>& info) {
     Local<Function> target = info[0].As<Function>();
     Local<Context> import_realm;
     if (!wasmConstructorRealm(isolate, target).ToLocal(&import_realm)) return;
+    if (!ensureWasmAdapters(import_realm)) return;
     Local<Value> intrinsics_value;
     if (!import_realm->Global()->GetPrivate(import_realm, wasmIntrinsicPrototypesKey(isolate)).ToLocal(&intrinsics_value)) return;
     if (!intrinsics_value->IsArray()) {
@@ -13645,18 +13663,14 @@ static void WasmSuspendingConstruct(const FunctionCallbackInfo<Value>& info) {
     info.GetReturnValue().Set(made);
 }
 
-/// Called once for every Window/worker realm before script runs. The private
-/// array belongs to the realm's global and contains only GC-traced objects;
-/// it has no native Global, external pointer, registry or teardown callback.
-/// Mutable namespace properties never participate in prototype fallback.
-void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>* context_handle) {
-    HandleScope handle_scope(isolate);
-    Local<Context> context = context_handle->Get(isolate);
+// Materialize only on a namespace read or an indirect use of this realm's
+// Wasm intrinsics. Public deletion/assignment never removes the private state.
+static bool initializeWasmAdapters(Local<Context> context, Local<Array> preparation) {
+    Isolate* isolate = context->GetIsolate();
     Context::Scope context_scope(context);
     NativeStepScope native_step(isolate);
-    TryCatch try_catch(isolate);
     Local<Value> wasm_value;
-    if (!context->Global()->Get(context, String::NewFromUtf8Literal(isolate, "WebAssembly")).ToLocal(&wasm_value) || !wasm_value->IsObject()) return;
+    if (!preparation->Get(context, kWasmNamespace).ToLocal(&wasm_value)) return false;
     Local<Object> wasm = wasm_value.As<Object>();
     const char* const names[] = {"Module", "Instance", "Memory", "Table", "Global", "Exception"};
     Local<Function> originals[6];
@@ -13681,14 +13695,13 @@ void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>*
     // No caller descriptor survives an outermost call. The original receiver
     // is used for every Get; a legacy nonconfigurable `index` is still ignored.
     Local<String> fast_source = String::NewFromUtf8Literal(isolate,
-        "(function() { 'use strict';"
-        "const construct = Reflect.construct, get = Reflect.get, apply = Reflect.apply;"
-        "const P = Proxy, TypeErrorCtor = TypeError, Base = Object;"
-        "const define = Object.defineProperty, ownKeys = Reflect.ownKeys, descriptorOf = Object.getOwnPropertyDescriptor;"
-        "const setPrototype = Object.setPrototypeOf, prototypeOf = Object.getPrototypeOf;"
-        "const functionPrototype = Function.prototype, bind = functionPrototype.bind;"
-        "const hasInstanceKey = Symbol.hasInstance, hasInstance = functionPrototype[hasInstanceKey];"
-        "const slice = Array.prototype.slice;"
+        "(function(saved) { 'use strict';"
+        "const construct = saved[1], get = saved[2], apply = saved[3];"
+        "const P = saved[4], TypeErrorCtor = saved[5], Base = saved[6];"
+        "const define = saved[7], ownKeys = saved[8], descriptorOf = saved[9];"
+        "const setPrototype = saved[10], prototypeOf = saved[11];"
+        "const functionPrototype = saved[12], bind = saved[13];"
+        "const hasInstanceKey = saved[14], hasInstance = saved[15], slice = saved[16];"
         "let currentDescriptor, currentAddress;"
         "const descriptor = new P({__proto__:null}, {__proto__:null, get(_, key) {"
         "return key === 'index' ? currentAddress : get(currentDescriptor, key, currentDescriptor); }});"
@@ -13722,38 +13735,38 @@ void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>*
         "return construct(target, arguments);"
         "}}}[target.name];"
         "setPrototype(W, functionPrototype);"
-        "define(W, hasInstanceKey, {value(value) { return apply(hasInstance, target, [value]); }});"
+        "define(W, hasInstanceKey, {__proto__:null, value(value) { return apply(hasInstance, target, [value]); }});"
         "const replacement = apply(bind, W, [undefined]);"
         "setPrototype(replacement, prototypeOf(target));"
-        "for (const key of ownKeys(target)) define(replacement, key, descriptorOf(target, key));"
-        "return replacement; }; })()");
+        "const keys = ownKeys(target);"
+        "for (let i = 0; i < keys.length; ++i) define(replacement, keys[i], setPrototype(descriptorOf(target, keys[i]), null));"
+        "return replacement; }; })");
     Local<Script> fast_script;
-    Local<Value> fast_factory;
+    Local<Value> fast_maker, fast_factory;
     if (!Script::Compile(context, fast_source).ToLocal(&fast_script) ||
-        !fast_script->Run(context).ToLocal(&fast_factory) || !fast_factory->IsFunction()) return;
-    Local<Value> reflect, reflect_get, proxy_constructor;
-    if (!context->Global()->Get(context, String::NewFromUtf8Literal(isolate, "Reflect")).ToLocal(&reflect) || !reflect->IsObject() ||
-        !reflect.As<Object>()->Get(context, String::NewFromUtf8Literal(isolate, "get")).ToLocal(&reflect_get) || !reflect_get->IsFunction() ||
-        !context->Global()->Get(context, String::NewFromUtf8Literal(isolate, "Proxy")).ToLocal(&proxy_constructor) || !proxy_constructor->IsFunction()) return;
+        !fast_script->Run(context).ToLocal(&fast_maker) || !fast_maker->IsFunction()) return false;
+    Local<Value> fast_args[] = {preparation};
+    if (!fast_maker.As<Function>()->Call(context, Undefined(isolate), 1, fast_args).ToLocal(&fast_factory) ||
+        !fast_factory->IsFunction()) return false;
     // Prepare everything before publishing a replacement. The original
     // functions preserve name, length, statics and call-without-new errors.
     for (uint32_t i = 0; i < 6; ++i) {
         Local<String> name = String::NewFromUtf8(isolate, names[i]).ToLocalChecked();
         Local<Value> original;
-        if (!wasm->Get(context, name).ToLocal(&original) || !original->IsFunction()) return;
+        if (!wasm->Get(context, name).ToLocal(&original) || !original->IsFunction()) return false;
         originals[i] = original.As<Function>();
-        if (!originals[i]->Get(context, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&prototypes[i]) || !prototypes[i]->IsObject()) return;
+        if (!originals[i]->Get(context, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&prototypes[i]) || !prototypes[i]->IsObject()) return false;
         Local<Function> construct;
         const uint32_t intrinsic_index = i == 5 ? 7 : i;
-        if (!Function::New(context, WasmConstructorConstruct, Integer::NewFromUnsigned(isolate, intrinsic_index), 3, ConstructorBehavior::kThrow).ToLocal(&construct)) return;
+        if (!Function::New(context, WasmConstructorConstruct, Integer::NewFromUnsigned(isolate, intrinsic_index), 3, ConstructorBehavior::kThrow).ToLocal(&construct)) return false;
         Local<Value> factory_args[] = {originals[i], construct, Integer::NewFromUnsigned(isolate, i)};
         Local<Value> replacement;
-        if (!fast_factory.As<Function>()->Call(context, Undefined(isolate), 3, factory_args).ToLocal(&replacement) || !replacement->IsFunction()) return;
+        if (!fast_factory.As<Function>()->Call(context, Undefined(isolate), 3, factory_args).ToLocal(&replacement) || !replacement->IsFunction()) return false;
         replacements[i] = replacement.As<Function>();
     }
     Local<Value> promise_constructor, promise_resolve;
-    if (!context->Global()->Get(context, String::NewFromUtf8Literal(isolate, "Promise")).ToLocal(&promise_constructor) || !promise_constructor->IsFunction() ||
-        !promise_constructor.As<Object>()->Get(context, String::NewFromUtf8Literal(isolate, "resolve")).ToLocal(&promise_resolve) || !promise_resolve->IsFunction()) return;
+    if (!preparation->Get(context, kWasmPromise).ToLocal(&promise_constructor) ||
+        !preparation->Get(context, kWasmPromiseResolve).ToLocal(&promise_resolve)) return false;
     // An empty target avoids Proxy invariants from a user's nonconfigurable
     // `index`. Both the target and handler have null prototypes; only the
     // captured Reflect.get and Proxy intrinsics can participate after setup.
@@ -13764,39 +13777,48 @@ void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>*
     Local<Script> descriptor_script;
     Local<Value> descriptor_maker, descriptor_factory;
     if (!Script::Compile(context, descriptor_source).ToLocal(&descriptor_script) ||
-        !descriptor_script->Run(context).ToLocal(&descriptor_maker) || !descriptor_maker->IsFunction()) return;
-    Local<Value> descriptor_args[] = {reflect_get, proxy_constructor};
-    if (!descriptor_maker.As<Function>()->Call(context, Undefined(isolate), 2, descriptor_args).ToLocal(&descriptor_factory) || !descriptor_factory->IsFunction()) return;
+        !descriptor_script->Run(context).ToLocal(&descriptor_maker) || !descriptor_maker->IsFunction()) return false;
+    Local<Value> descriptor_args[2];
+    if (!preparation->Get(context, kWasmGet).ToLocal(&descriptor_args[0]) ||
+        !preparation->Get(context, kWasmProxy).ToLocal(&descriptor_args[1])) return false;
+    if (!descriptor_maker.As<Function>()->Call(context, Undefined(isolate), 2, descriptor_args).ToLocal(&descriptor_factory) || !descriptor_factory->IsFunction()) return false;
     // The private JS constructor is embedding machinery, not the script
     // responsible for a CSP violation. Retain its unforgeable script ID for
     // running-script attribution below, without retaining a native handle.
+    // Slots 10/11 also serve a cloned Module/Memory's lazy constructor. They
+    // must not consult the mutable namespace after initialization.
     Local<Value> intrinsic_values[] = {prototypes[0], prototypes[1], prototypes[2], prototypes[3], prototypes[4], promise_constructor, promise_resolve, prototypes[5], descriptor_factory,
-        Integer::New(isolate, fast_script->GetUnboundScript()->GetId())};
-    Local<Array> intrinsics = Array::New(isolate, intrinsic_values, 10);
-    if (!intrinsics->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return;
-    if (!context->Global()->SetPrivate(context, wasmIntrinsicPrototypesKey(isolate), intrinsics).FromMaybe(false)) return;
+        Integer::New(isolate, fast_script->GetUnboundScript()->GetId()), replacements[0], replacements[2]};
+    Local<Array> intrinsics = Array::New(isolate, intrinsic_values, 12);
+    if (!intrinsics->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return false;
+    if (!context->Global()->SetPrivate(context, wasmIntrinsicPrototypesKey(isolate), intrinsics).FromMaybe(false)) return false;
     for (uint32_t i = 0; i < 6; ++i) {
-        if (!prototypes[i].As<Object>()->DefineOwnProperty(context, String::NewFromUtf8Literal(isolate, "constructor"), replacements[i], DontEnum).FromMaybe(false)) return;
+        // A received Module/Memory can expose its prototype before namespace
+        // access. Leave its lazy constructor alone: its getter returns the
+        // private replacement, and any user overwrite/deletion must survive.
+        if (i != 0 && i != 2) {
+            if (!prototypes[i].As<Object>()->DefineOwnProperty(context, String::NewFromUtf8Literal(isolate, "constructor"), replacements[i], DontEnum).FromMaybe(false)) return false;
+        }
         Local<String> name = String::NewFromUtf8(isolate, names[i]).ToLocalChecked();
-        if (!wasm->DefineOwnProperty(context, name, replacements[i], DontEnum).FromMaybe(false)) return;
+        if (!wasm->DefineOwnProperty(context, name, replacements[i], DontEnum).FromMaybe(false)) return false;
     }
     Local<Object> global_prototype = prototypes[4].As<Object>();
     Local<String> value_name = String::NewFromUtf8Literal(isolate, "value");
     Local<Value> descriptor_value;
-    if (!global_prototype->GetOwnPropertyDescriptor(context, value_name).ToLocal(&descriptor_value) || !descriptor_value->IsObject()) return;
+    if (!global_prototype->GetOwnPropertyDescriptor(context, value_name).ToLocal(&descriptor_value) || !descriptor_value->IsObject()) return false;
     Local<Object> descriptor = descriptor_value.As<Object>();
     Local<Value> getter, setter, enumerable, configurable;
     if (!descriptor->Get(context, String::NewFromUtf8Literal(isolate, "get")).ToLocal(&getter) ||
         !descriptor->Get(context, String::NewFromUtf8Literal(isolate, "set")).ToLocal(&setter) || !setter->IsFunction() ||
         !descriptor->Get(context, String::NewFromUtf8Literal(isolate, "enumerable")).ToLocal(&enumerable) ||
-        !descriptor->Get(context, String::NewFromUtf8Literal(isolate, "configurable")).ToLocal(&configurable)) return;
+        !descriptor->Get(context, String::NewFromUtf8Literal(isolate, "configurable")).ToLocal(&configurable)) return false;
     Local<Function> setter_adapter;
-    if (!Function::New(context, WasmGlobalValueSet, setter, 1, ConstructorBehavior::kThrow).ToLocal(&setter_adapter)) return;
+    if (!Function::New(context, WasmGlobalValueSet, setter, 1, ConstructorBehavior::kThrow).ToLocal(&setter_adapter)) return false;
     setter_adapter->SetName(String::NewFromUtf8Literal(isolate, "set value"));
     PropertyDescriptor value_descriptor(getter, setter_adapter);
     value_descriptor.set_enumerable(enumerable->IsTrue());
     value_descriptor.set_configurable(configurable->IsTrue());
-    if (!global_prototype->DefineProperty(context, value_name, value_descriptor).FromMaybe(false)) return;
+    if (!global_prototype->DefineProperty(context, value_name, value_descriptor).FromMaybe(false)) return false;
 
     // Golden rule 2: Exception.length remains V8's 1. The spec's 2 dates
     // to 2019, while Firefox/Safari still expose 1 (pinned runs above).
@@ -13806,45 +13828,158 @@ void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>*
     Local<Object> exception_prototype = prototypes[5].As<Object>();
     Local<Value> is_exception, tag_constructor;
     if (!exception_prototype->Get(context, String::NewFromUtf8Literal(isolate, "is")).ToLocal(&is_exception) || !is_exception->IsFunction() ||
-        !wasm->Get(context, String::NewFromUtf8Literal(isolate, "Tag")).ToLocal(&tag_constructor) || !tag_constructor->IsFunction()) return;
+        !wasm->Get(context, String::NewFromUtf8Literal(isolate, "Tag")).ToLocal(&tag_constructor) || !tag_constructor->IsFunction()) return false;
     Local<Name> tag_names[] = {String::NewFromUtf8Literal(isolate, "parameters")};
     Local<Value> tag_values[] = {Array::New(isolate)};
     Local<Value> tag_descriptor = Object::New(isolate, Null(isolate), tag_names, tag_values, 1);
     Local<Object> brand_tag;
-    if (!tag_constructor.As<Function>()->NewInstance(context, 1, &tag_descriptor).ToLocal(&brand_tag)) return;
+    if (!tag_constructor.As<Function>()->NewInstance(context, 1, &tag_descriptor).ToLocal(&brand_tag)) return false;
     Local<Value> brand_values[] = {is_exception, brand_tag};
     Local<Array> brand = Array::New(isolate, brand_values, 2);
-    if (!brand->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return;
+    if (!brand->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return false;
     Local<Function> stack_getter;
-    if (!Function::New(context, WasmExceptionStackGet, brand, 0, ConstructorBehavior::kThrow).ToLocal(&stack_getter)) return;
+    if (!Function::New(context, WasmExceptionStackGet, brand, 0, ConstructorBehavior::kThrow).ToLocal(&stack_getter)) return false;
     stack_getter->SetName(String::NewFromUtf8Literal(isolate, "get stack"));
     PropertyDescriptor stack_descriptor(stack_getter, Undefined(isolate));
     stack_descriptor.set_enumerable(true);
     stack_descriptor.set_configurable(true);
-    if (!exception_prototype->DefineProperty(context, String::NewFromUtf8Literal(isolate, "stack"), stack_descriptor).FromMaybe(false)) return;
+    if (!exception_prototype->DefineProperty(context, String::NewFromUtf8Literal(isolate, "stack"), stack_descriptor).FromMaybe(false)) return false;
 
     // JSPI is optional in this V8 build (disabled under --jitless).
     Local<String> suspending_name = String::NewFromUtf8Literal(isolate, "Suspending");
     Local<Value> suspending;
-    if (!wasm->Get(context, suspending_name).ToLocal(&suspending) || !suspending->IsFunction()) return;
+    if (!wasm->Get(context, suspending_name).ToLocal(&suspending)) return false;
+    if (!suspending->IsFunction()) return true;
     Local<Function> apply;
-    if (!Function::New(context, WasmSuspendingApply, {}, 3, ConstructorBehavior::kThrow).ToLocal(&apply)) return;
+    if (!Function::New(context, WasmSuspendingApply, {}, 3, ConstructorBehavior::kThrow).ToLocal(&apply)) return false;
     Local<Object> apply_handler = Object::New(isolate);
     if (!apply_handler->SetPrototypeV2(context, Null(isolate)).FromMaybe(false) ||
         !apply_handler->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "apply"), apply).FromMaybe(false) ||
-        !apply_handler->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return;
+        !apply_handler->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return false;
     Local<Function> construct;
-    if (!Function::New(context, WasmSuspendingConstruct, apply_handler, 3, ConstructorBehavior::kThrow).ToLocal(&construct)) return;
+    if (!Function::New(context, WasmSuspendingConstruct, apply_handler, 3, ConstructorBehavior::kThrow).ToLocal(&construct)) return false;
     Local<Object> construct_handler = Object::New(isolate);
     if (!construct_handler->SetPrototypeV2(context, Null(isolate)).FromMaybe(false) ||
         !construct_handler->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "construct"), construct).FromMaybe(false) ||
-        !construct_handler->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return;
+        !construct_handler->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return false;
     Local<Proxy> suspending_adapter;
-    if (!Proxy::New(context, suspending.As<Object>(), construct_handler).ToLocal(&suspending_adapter)) return;
+    if (!Proxy::New(context, suspending.As<Object>(), construct_handler).ToLocal(&suspending_adapter)) return false;
     Local<Value> suspending_prototype;
-    if (!suspending.As<Object>()->Get(context, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&suspending_prototype) || !suspending_prototype->IsObject()) return;
+    if (!suspending.As<Object>()->Get(context, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&suspending_prototype) || !suspending_prototype->IsObject()) return false;
     if (!suspending_prototype.As<Object>()->DefineOwnProperty(context, String::NewFromUtf8Literal(isolate, "constructor"), suspending_adapter, DontEnum).FromMaybe(false) ||
-        !wasm->DefineOwnProperty(context, suspending_name, suspending_adapter, DontEnum).FromMaybe(false)) return;
+        !wasm->DefineOwnProperty(context, suspending_name, suspending_adapter, DontEnum).FromMaybe(false)) return false;
+    return true;
+}
+
+static bool ensureWasmAdapters(Local<Context> context) {
+    Isolate* isolate = context->GetIsolate();
+    Local<Value> intrinsics, preparation;
+    if (!context->Global()->GetPrivate(context, wasmIntrinsicPrototypesKey(isolate)).ToLocal(&intrinsics)) return false;
+    if (intrinsics->IsArray()) return true;
+    if (!context->Global()->GetPrivate(context, wasmPreparationKey(isolate)).ToLocal(&preparation)) return false;
+    // Unprepared contexts retain the caller's existing missing-intrinsics
+    // check. Do not recreate a deleted or overwritten public namespace.
+    if (!preparation->IsArray()) return true;
+    if (!initializeWasmAdapters(context, preparation.As<Array>())) return false;
+    return context->Global()->DeletePrivate(context, wasmPreparationKey(isolate)).FromMaybe(false);
+}
+
+static void WasmNamespaceGet(Local<Name>, const PropertyCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Array> preparation = info.Data().As<Array>();
+    Local<Context> context;
+    // A different realm (or an inheriting receiver) may perform the first
+    // read. All adapters and intrinsics must belong to the namespace's realm.
+    if (!preparation->GetCreationContext(isolate).ToLocal(&context)) return;
+    Context::Scope context_scope(context);
+    if (!ensureWasmAdapters(context)) return;
+    Local<Value> wasm;
+    if (preparation->Get(context, kWasmNamespace).ToLocal(&wasm)) info.GetReturnValue().Set(wasm);
+}
+
+static void WasmPrototypeConstructorGet(const PropertyCallbackInfo<Value>& info, uint32_t intrinsic_index) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Array> preparation = info.Data().As<Array>();
+    Local<Context> context;
+    if (!preparation->GetCreationContext(isolate).ToLocal(&context)) return;
+    Context::Scope context_scope(context);
+    if (!ensureWasmAdapters(context)) return;
+    Local<Value> intrinsics, constructor;
+    if (!context->Global()->GetPrivate(context, wasmIntrinsicPrototypesKey(isolate)).ToLocal(&intrinsics) || !intrinsics->IsArray()) return;
+    if (intrinsics.As<Array>()->Get(context, intrinsic_index).ToLocal(&constructor)) info.GetReturnValue().Set(constructor);
+}
+
+static void WasmModuleConstructorGet(Local<Name>, const PropertyCallbackInfo<Value>& info) {
+    WasmPrototypeConstructorGet(info, 10);
+}
+
+static void WasmMemoryConstructorGet(Local<Name>, const PropertyCallbackInfo<Value>& info) {
+    WasmPrototypeConstructorGet(info, 11);
+}
+
+/// Prepare once before script in every Window, worker, worklet and ShadowRealm.
+/// V8 13.1.203 v8-object.h:367-387 and test-accessors.cc:860-894 guarantee
+/// that SetLazyDataProperty reads once, then becomes a data property; assignment
+/// bypasses its getter. GetOwnPropertyDescriptor resolves it as a data property
+/// (js-objects.cc:1890-1958). Deletion and replacement can skip initialization.
+/// No scripts, class factories, Tags or adapter functions are made here. The
+/// private array owns only traced references: no Global, registry or teardown.
+void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>* context_handle) {
+    HandleScope handle_scope(isolate);
+    Local<Context> context = context_handle->Get(isolate);
+    Context::Scope context_scope(context);
+    NativeStepScope native_step(isolate);
+    TryCatch try_catch(isolate);
+    Local<Object> global = context->Global();
+    Local<Value> values[kWasmPreparationSize];
+    Local<Value> reflect, function, array, array_prototype, symbol;
+    auto get = [&](Local<Value> object, const char* name, Local<Value>* value) {
+        return object->IsObject() && object.As<Object>()->Get(context,
+            String::NewFromUtf8(isolate, name, NewStringType::kInternalized).ToLocalChecked()).ToLocal(value);
+    };
+    // Capture function references now, not mutable helper objects to inspect
+    // on first access. PromiseResolve must likewise predate script tampering.
+    if (!get(global, "WebAssembly", &values[kWasmNamespace]) || !values[kWasmNamespace]->IsObject() ||
+        !get(global, "Reflect", &reflect) ||
+        !get(reflect, "construct", &values[kWasmConstruct]) ||
+        !get(reflect, "get", &values[kWasmGet]) ||
+        !get(reflect, "apply", &values[kWasmApply]) ||
+        !get(global, "Proxy", &values[kWasmProxy]) ||
+        !get(global, "TypeError", &values[kWasmTypeError]) ||
+        !get(global, "Object", &values[kWasmObject]) ||
+        !get(values[kWasmObject], "defineProperty", &values[kWasmDefine]) ||
+        !get(reflect, "ownKeys", &values[kWasmOwnKeys]) ||
+        !get(values[kWasmObject], "getOwnPropertyDescriptor", &values[kWasmDescriptor]) ||
+        !get(values[kWasmObject], "setPrototypeOf", &values[kWasmSetPrototype]) ||
+        !get(values[kWasmObject], "getPrototypeOf", &values[kWasmPrototype]) ||
+        !get(global, "Function", &function) ||
+        !get(function, "prototype", &values[kWasmFunctionPrototype]) ||
+        !get(values[kWasmFunctionPrototype], "bind", &values[kWasmBind]) ||
+        !get(global, "Symbol", &symbol) ||
+        !get(symbol, "hasInstance", &values[kWasmHasInstanceKey]) ||
+        !values[kWasmFunctionPrototype].As<Object>()->Get(context, values[kWasmHasInstanceKey]).ToLocal(&values[kWasmHasInstance]) ||
+        !get(global, "Array", &array) || !get(array, "prototype", &array_prototype) ||
+        !get(array_prototype, "slice", &values[kWasmSlice]) ||
+        !get(global, "Promise", &values[kWasmPromise]) ||
+        !get(values[kWasmPromise], "resolve", &values[kWasmPromiseResolve])) return;
+    Local<Array> preparation = Array::New(isolate, values, kWasmPreparationSize);
+    if (!preparation->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false) ||
+        !global->SetPrivate(context, wasmPreparationKey(isolate), preparation).FromMaybe(false)) return;
+    // A native Module or shared Memory can arrive by structured clone before
+    // this realm reads WebAssembly (V8 13.1.203 value-serializer.cc:654-658).
+    // These are the only cloneable native Wasm object types. Their constructor
+    // data properties are another first-use trigger; no deserializer runs JS.
+    const char* const constructor_names[] = {"Module", "Memory"};
+    AccessorNameGetterCallback constructor_getters[] = {WasmModuleConstructorGet, WasmMemoryConstructorGet};
+    for (uint32_t i = 0; i < 2; ++i) {
+        Local<Value> constructor, prototype;
+        if (!get(values[kWasmNamespace], constructor_names[i], &constructor) || !constructor->IsFunction() ||
+            !get(constructor, "prototype", &prototype) || !prototype->IsObject() ||
+            !prototype.As<Object>()->SetLazyDataProperty(context, String::NewFromUtf8Literal(isolate, "constructor"),
+                constructor_getters[i], preparation, DontEnum).FromMaybe(false)) return;
+    }
+    (void)global->SetLazyDataProperty(context, String::NewFromUtf8Literal(isolate, "WebAssembly"),
+        WasmNamespaceGet, preparation, DontEnum).FromMaybe(false);
 }
 
 } // extern "C"

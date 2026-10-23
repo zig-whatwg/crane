@@ -1,0 +1,12 @@
+# Architecture: A lazy namespace must cover native objects received first
+
+**Date**: 2026-10-22
+**Lesson**: Before moving realm setup behind a namespace getter, cover native objects that can arrive without reading that namespace.
+
+**Why**: Deserialization creates objects with the receiving realm's native prototypes. Those prototypes can expose constructors before script reads the namespace that installs constructor adapters. A test that reads the namespace first hides this ordering defect.
+
+**What Happened**: Making WebAssembly setup lazy preserved all 2,181 passing jsapi subtests, including the row's 81 gains. A new Window control then captured `received.constructor` from a cloned Module before reading `WebAssembly.Module`: reading the namespace replaced the constructor, so the identities disagreed. Fresh worker receivers reproduced it for both Module and shared Memory. Existing serialization controls had read the namespace first through `instanceof`, which initialized the adapters before the relevant observation. Plain-object and plain-SharedArrayBuffer delivery correctly left Wasm uninitialized.
+
+**Fix**: Read the linked V8 13.1.203 serializer and public lazy-property contract. `src/objects/value-serializer.cc:654–658` identifies Module and Memory as the two cloneable native Wasm types; `include/v8-object.h:367–387` documents `SetLazyDataProperty`. Arm `prototype.constructor` on those two prototypes with lazy data properties using the same traced preparation array as the namespace. The first constructor read initializes adapters in that array's creation context and returns a privately saved replacement. Initialization never writes those two properties: pre-read deletion, assignment, custom accessors and nonconfigurable redefinitions must survive. Private saved constructors also survive later namespace replacement. This avoids running private JS inside V8's deserializer, whose read is guarded against JS execution, and avoids adding work to ordinary structured clones or every SharedArrayBuffer recipient. Test constructor-first and namespace-first ordering, foreign readers, property mutations and plain delivery controls separately. Measure realm creation again because arming additional properties changes preparation cost.
+
+**Takeaway**: **Lazy setup must preserve every observation path, including objects received before the namespace; put first-use triggers on those paths and never overwrite intervening user changes.**
