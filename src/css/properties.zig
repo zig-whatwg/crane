@@ -103,6 +103,12 @@ pub const Longhand = enum(u8) {
     font_size,
     font_style,
     font_weight,
+    grid_auto_columns,
+    grid_auto_rows,
+    grid_auto_flow,
+    grid_template_columns,
+    grid_template_rows,
+    grid_template_areas,
     height,
     inline_size,
     inset_block_end,
@@ -311,6 +317,9 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 
 /// A longhand's grammar.
 pub const Grammar = enum {
+    grid_tracks,
+    grid_areas,
+    grid_flow,
     alignment,
     anchor_names,
     anchor_scope,
@@ -368,6 +377,12 @@ const infos: [Longhand.count]Info = blk: {
     const defs = [_]Info{
         // Row118 animation properties; execution is outside this value layer.
 
+        .{ .longhand = .grid_auto_columns, .inherited = false, .initial = Value.kw(.auto), .grammar = .grid_tracks },
+        .{ .longhand = .grid_auto_rows, .inherited = false, .initial = Value.kw(.auto), .grammar = .grid_tracks },
+        .{ .longhand = .grid_auto_flow, .inherited = false, .initial = .{ .grid_flow = .{} }, .grammar = .grid_flow },
+        .{ .longhand = .grid_template_columns, .inherited = false, .initial = Value.kw(.none), .grammar = .grid_tracks },
+        .{ .longhand = .grid_template_rows, .inherited = false, .initial = Value.kw(.none), .grammar = .grid_tracks },
+        .{ .longhand = .grid_template_areas, .inherited = false, .initial = Value.kw(.none), .grammar = .grid_areas },
         .{ .longhand = .align_content, .inherited = false, .initial = .{ .alignment = .{ .position = .normal } }, .grammar = .alignment },
         .{ .longhand = .align_items, .inherited = false, .initial = .{ .alignment = .{ .position = .normal } }, .grammar = .alignment },
         .{ .longhand = .align_self, .inherited = false, .initial = .{ .alignment = .{ .position = .auto } }, .grammar = .alignment },
@@ -523,6 +538,8 @@ pub const Shorthand = enum(u8) {
     border_style,
     border_top,
     border_width,
+    grid_template,
+    grid,
     inset,
     inset_block,
     inset_inline,
@@ -571,6 +588,8 @@ pub const Shorthand = enum(u8) {
             .border_color => &.{ .border_top_color, .border_right_color, .border_bottom_color, .border_left_color },
             .border_style => &.{ .border_top_style, .border_right_style, .border_bottom_style, .border_left_style },
             .border_width => &.{ .border_top_width, .border_right_width, .border_bottom_width, .border_left_width },
+            .grid_template => &.{ .grid_template_rows, .grid_template_columns, .grid_template_areas },
+            .grid => &.{ .grid_template_rows, .grid_template_columns, .grid_template_areas, .grid_auto_flow, .grid_auto_rows, .grid_auto_columns },
             .inset => &.{ .top, .right, .bottom, .left },
             .inset_block => &.{ .inset_block_start, .inset_block_end },
             .inset_inline => &.{ .inset_inline_start, .inset_inline_end },
@@ -876,6 +895,16 @@ pub const Stream = struct {
 pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Allocator.Error!?Value {
     const def = l.info();
     switch (def.grammar) {
+        .grid_tracks => {
+            const automatic = l == .grid_auto_columns or l == .grid_auto_rows;
+            if (!automatic) if (takeKeyword(stream, &.{.none})) |k| return Value.kw(k);
+            return .{ .grid_tracks = try @import("grid_tracks.zig").Tracks.consume(options, stream, if (automatic) .automatic else .template) orelse return null };
+        },
+        .grid_areas => {
+            if (takeKeyword(stream, &.{.none})) |k| return Value.kw(k);
+            return .{ .grid_areas = try @import("grid_tracks.zig").Areas.consume(options, stream) orelse return null };
+        },
+        .grid_flow => return .{ .grid_flow = @import("grid_tracks.zig").Flow.consume(stream) orelse return null },
         .alignment => return .{ .alignment = @import("alignment.zig").Value.consume(stream, std.meta.stringToEnum(@import("alignment.zig").Mode, @tagName(l)).?) orelse return null },
         .anchor_names, .anchor_scope => {
             if (takeKeyword(stream, &.{.none})) |k| return Value.kw(k);
@@ -1477,6 +1506,29 @@ fn append(options: ParseOptions, out: *std.ArrayList(Assignment), l: Longhand, v
 
 fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
     switch (s) {
+        .grid_template, .grid => {
+            const ls = s.longhands();
+            try out.ensureUnusedCapacity(options.allocator, ls.len);
+            const grid_values = @import("grid_tracks.zig");
+            if (s == .grid_template) {
+                const parsed = try grid_values.consumeTemplate(options, stream) orelse return false;
+                if (!stream.atEnd()) {
+                    parsed.deinit();
+                    return false;
+                }
+                const components = [_]Value{ parsed.rows, parsed.columns, parsed.areas };
+                for (ls, components) |l, v| out.appendAssumeCapacity(.{ .longhand = l, .value = .{ .value = v } });
+            } else {
+                const parsed = try grid_values.consumeGrid(options, stream) orelse return false;
+                if (!stream.atEnd()) {
+                    parsed.deinit();
+                    return false;
+                }
+                const components = [_]Value{ parsed.template.rows, parsed.template.columns, parsed.template.areas, .{ .grid_flow = parsed.flow }, parsed.auto_rows, parsed.auto_columns };
+                for (ls, components) |l, v| out.appendAssumeCapacity(.{ .longhand = l, .value = .{ .value = v } });
+            }
+            return true;
+        },
         .place_content, .place_items, .place_self => {
             // Align3 §§5.2, 6.3, 7.3: consume each whole alignment, then
             // default the second from the first (baseline content → start).
@@ -1875,6 +1927,9 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
             try serializeValue(l, s.argument, out, allocator);
             try out.append(allocator, ')');
         },
+        .grid_tracks => |tracks| try tracks.serialize(out, allocator),
+        .grid_areas => |areas| try areas.serialize(out, allocator),
+        .grid_flow => |flow| try flow.serialize(out, allocator),
         .alignment => |a| try a.serialize(out, allocator),
         .position_area => |a| try a.serialize(out, allocator),
         .try_fallbacks => |f| try f.list.serialize(f.computed, out, allocator),
@@ -1928,6 +1983,13 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
     if (s == .all) return false;
     const ls = s.longhands();
     switch (s) {
+        .grid_template => return @import("grid_tracks.zig").serializeTemplate(.{ .rows = vs[0].value, .columns = vs[1].value, .areas = vs[2].value }, out, allocator),
+        .grid => return @import("grid_tracks.zig").serializeGrid(.{
+            .template = .{ .rows = vs[0].value, .columns = vs[1].value, .areas = vs[2].value },
+            .flow = vs[3].value.grid_flow,
+            .auto_rows = vs[4].value,
+            .auto_columns = vs[5].value,
+        }, out, allocator),
         .position_try => {
             if (!vs[0].value.isKeyword(.normal)) {
                 try serializeValue(.position_try_order, vs[0].value, out, allocator);

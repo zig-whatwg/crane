@@ -125,6 +125,8 @@ test {
     std.testing.refAllDecls(@This());
 }
 
+pub const grid_tracks = @import("grid_tracks.zig");
+
 pub const numeric_values = @import("numeric_values.zig");
 
 pub const color_values = @import("color_values.zig");

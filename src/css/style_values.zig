@@ -728,6 +728,9 @@ pub const Value = union(enum) {
     content: *Content,
     calculation: *@import("math_values.zig").Expression,
     sizing_function: *SizingFunction,
+    grid_tracks: *@import("grid_tracks.zig").Tracks,
+    grid_areas: *@import("grid_tracks.zig").Areas,
+    grid_flow: @import("grid_tracks.zig").Flow,
     alignment: @import("alignment.zig").Value,
     position_area: @import("position_area.zig").Area,
     try_fallbacks: struct { list: *@import("anchor_fallbacks.zig").Fallbacks, computed: bool = false },
@@ -757,6 +760,8 @@ pub const Value = union(enum) {
         if (self == .content) return self.content.ref();
         if (self == .calculation) return self.calculation.ref();
         if (self == .sizing_function) return self.sizing_function.ref();
+        if (self == .grid_tracks) return self.grid_tracks.ref();
+        if (self == .grid_areas) return self.grid_areas.ref();
         if (self == .pending) return self.pending.ref();
         if (self == .try_fallbacks) return self.try_fallbacks.list.ref();
         if (self.sharedText()) |t| t.ref();
@@ -768,6 +773,8 @@ pub const Value = union(enum) {
         if (self == .content) return self.content.unref();
         if (self == .calculation) return self.calculation.unref();
         if (self == .sizing_function) return self.sizing_function.unref();
+        if (self == .grid_tracks) return self.grid_tracks.unref();
+        if (self == .grid_areas) return self.grid_areas.unref();
         if (self == .pending) return self.pending.unref();
         if (self == .try_fallbacks) return self.try_fallbacks.list.unref();
         if (self.sharedText()) |t| t.unref();
@@ -797,6 +804,9 @@ pub const Value = union(enum) {
             .content => |c| c.eql(b.content),
             .calculation => |c| c.eql(b.calculation),
             .sizing_function => |s| s.argument.eql(b.sizing_function.argument),
+            .grid_tracks => |tracks| tracks.eql(b.grid_tracks),
+            .grid_areas => |areas| areas.eql(b.grid_areas),
+            .grid_flow => |flow| std.meta.eql(flow, b.grid_flow),
             .alignment => |a_value| a_value.eql(b.alignment),
             .position_area => |a_area| a_area.eql(b.position_area),
             .try_fallbacks => |f| f.computed == b.try_fallbacks.computed and f.list.eql(b.try_fallbacks.list),
@@ -816,6 +826,9 @@ pub const Value = union(enum) {
             .color => |c| c.needsUnavailableMetrics(geometry_length),
             .calculation => |c| c.needsUnavailableMetrics(geometry_length),
             .sizing_function => |s| s.argument.needsUnavailableMetrics(geometry_length),
+            .grid_tracks => |tracks| tracks.needsUnavailableMetrics(),
+            .grid_areas,
+            .grid_flow,
             .keyword,
             .length,
             .number,
@@ -840,6 +853,9 @@ pub const Value = union(enum) {
             .color => |c| c.needsTreeCounts(),
             .calculation => |c| c.needsTreeCounts(),
             .sizing_function => |s| s.argument.needsTreeCounts(),
+            .grid_tracks => |tracks| tracks.needsTreeCounts(),
+            .grid_areas,
+            .grid_flow,
             .keyword,
             .length,
             .number,
@@ -862,6 +878,9 @@ pub const Value = union(enum) {
             .color => |c| c.needsRandomBase(),
             .calculation => |c| c.needsRandomBase(),
             .sizing_function => |s| s.argument.needsRandomBase(),
+            .grid_tracks => |tracks| tracks.needsRandomBase(),
+            .grid_areas,
+            .grid_flow,
             .keyword,
             .length,
             .number,
