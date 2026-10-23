@@ -736,6 +736,15 @@ fn openSteps(
         };
     };
 
+    // Steps 5 and 11 retain the parsed URL's blob entry before any script
+    // observes OPENED. send() must still use it after revokeObjectURL().
+    if (xhr_state.request_url) |request_url| {
+        if (std.mem.startsWith(u8, request_url, "blob:")) {
+            xhr_state.blob_url_entry = @import("dom").global_settings.captureBlobURL(instance.ctx, request_url);
+            xhr_state.blob_url_captured = true;
+        }
+    }
+
     // Step 10 (with 11, which open_algo ran): Terminate this's fetch
     // controller. Nothing observable happens between the two.
     const internal = getInternal(instance);

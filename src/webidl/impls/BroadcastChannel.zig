@@ -18,11 +18,6 @@
 //! delivery is a task posted there, which runs on the channel's own thread.
 //!
 //! Stated, not modelled:
-//! - "Obtain a storage key for non-storage purposes" is the settings
-//!   object's origin, serialized. An opaque origin serializes to "null" and
-//!   equals only itself; with no identity for one reachable here, a channel
-//!   in an opaque origin reaches only channels of its own global - so an
-//!   opaque-origin document and the workers it made do not share one.
 //! - The strong reference from the global while a channel that is not closed
 //!   has `message` or `messageerror` listeners: a channel is held from its
 //!   construction until close() or its realm's end, listeners or not (Blink
@@ -68,12 +63,9 @@ const Entry = struct {
     generation: u64,
     /// The channel name. Owned.
     name: []u8,
-    /// Its relevant settings object's storage key: the origin, serialized.
+    /// Its relevant settings object's complete canonical storage key.
     /// Owned.
     storage_key: []u8,
-    /// Its relevant global, for an opaque origin: equal only to itself (see
-    /// the file comment). Compared, never dereferenced.
-    global: *const anyopaque,
     /// Its realm's loop's inbox. A reference.
     sink: *runtime.TaskSink,
 };
@@ -123,18 +115,15 @@ const Registry = struct {
     }
 
     /// Step 6-8's destinations for a message `source` posts: the other
-    /// channels named `name` whose storage key is `source_origin` (an opaque
-    /// one: of `source_global` itself), in creation order - copied under the
+    /// channels named `name` whose storage key is `source_key`, in creation order - copied under the
     /// lock, each with a reference to its sink, which the caller releases.
     fn destinationsOf(
         self: *Registry,
         source: *runtime.Instance,
         name: []const u8,
-        source_global: *const anyopaque,
-        source_origin: []const u8,
+        source_key: @import("storage").StorageKey,
         allocator: std.mem.Allocator,
     ) !std.ArrayListUnmanaged(Destination) {
-        const opaque_source = std.mem.eql(u8, source_origin, "null");
         var list: std.ArrayListUnmanaged(Destination) = .empty;
         errdefer {
             for (list.items) |destination| destination.sink.release();
@@ -145,9 +134,8 @@ const Registry = struct {
         for (self.entries.items) |entry| {
             if (entry.instance == source) continue;
             if (!std.mem.eql(u8, entry.name, name)) continue;
-            if (opaque_source) {
-                if (entry.global != source_global) continue;
-            } else if (!std.mem.eql(u8, entry.storage_key, source_origin)) continue;
+            const destination_key = @import("storage").StorageKey.parse(entry.storage_key) orelse continue;
+            if (!source_key.equals(destination_key)) continue;
             try list.append(allocator, .{ .instance = entry.instance, .generation = entry.generation, .sink = entry.sink.retain() });
         }
         return list;
@@ -173,18 +161,16 @@ fn register(instance: *runtime.Instance) !void {
     const sink = instance.ctx.task_sink orelse return;
     const internal = getInternal(instance) orelse return;
     const global = relevantGlobal(instance) orelse return;
-    const origin = originOf(global) orelse return;
-    defer global.ctx.allocator.free(origin);
+    const key = (try dom.global_settings.storageKeyForNonStoragePurposesOf(global)) orelse return;
     const name = try registry.allocator.dupe(u8, internal.name);
     errdefer registry.allocator.free(name);
-    const storage_key = try registry.allocator.dupe(u8, origin);
+    const storage_key = try key.serialize(registry.allocator);
     errdefer registry.allocator.free(storage_key);
     try registry.add(.{
         .instance = instance,
         .generation = runtime.SlabAllocator.generationOf(instance),
         .name = name,
         .storage_key = storage_key,
-        .global = global,
         .sink = sink.retain(),
     });
 }
@@ -278,6 +264,7 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue) a
     const source_global = relevantGlobal(instance) orelse return;
     const source_origin = originOf(source_global) orelse return;
     defer source_global.ctx.allocator.free(source_origin);
+    const source_key = (try dom.global_settings.storageKeyForNonStoragePurposesOf(source_global)) orelse return;
     // "6. Let destinations be a list of BroadcastChannel objects that match
     // the following criteria: They are eligible for messaging. [Their storage
     // key] equals sourceStorageKey. Their channel name is this's channel
@@ -288,7 +275,7 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue) a
     // messaging is decided by its own task, on its own thread (a stated
     // approximation: the spec decides it now).
     const registry = Registry.of(instance.ctx) orelse return;
-    var destinations = try registry.destinationsOf(instance, internal.name, source_global, source_origin, allocator);
+    var destinations = try registry.destinationsOf(instance, internal.name, source_key, allocator);
     defer {
         for (destinations.items) |destination| destination.sink.release();
         destinations.deinit(allocator);

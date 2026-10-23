@@ -23,6 +23,7 @@ pub const CspViolation = csp.violation_events.Violation;
 /// modules that take a request's client but not cookiestore itself.
 pub const CookieJar = cookiestore.CookieJar;
 pub const NetworkContext = @import("../network/network_context.zig").NetworkContext;
+pub const CapturedBlobEntry = @import("url_record").URLRecord.BlobEntry;
 
 const fetch_timing = @import("fetch_timing.zig");
 
@@ -384,6 +385,8 @@ pub const InternalRequest = struct {
     /// Whether `origin`'s string is this request's to free (`setOrigin`);
     /// callers that assign the field directly lend theirs.
     origin_owned: bool = false,
+    /// An opaque client's origin identity, never its public serialization.
+    origin_nonce: ?u128 = null,
 
     /// The user agent's cookie jar, as the request's client reaches it
     /// ("populate request from client"; BORROWED - the Browser outlives
@@ -400,6 +403,10 @@ pub const InternalRequest = struct {
     /// (`scheme_fetch.BlobResolver`). Null: a request no Browser's realm
     /// made, for which every blob URL is a network error.
     blob_url_store: ?*anyopaque = null,
+    /// The entry captured when the URL was parsed. OWNED. `captured` is
+    /// separate because a failed lookup must not later acquire a new entry.
+    blob_url_entry: ?*CapturedBlobEntry = null,
+    blob_url_captured: bool = false,
 
     /// For a blob: request, the storage key for non-storage purposes of the
     /// environment it obtains its blob for (Fetch scheme fetch "blob" step
@@ -617,8 +624,18 @@ pub const InternalRequest = struct {
         self.blob_storage_key = copy;
     }
 
+    /// The caller lends its reference; this request takes one of its own.
+    /// Null records a failed capture, rather than requesting a late lookup.
+    pub fn setCapturedBlobEntry(self: *Self, entry: ?*CapturedBlobEntry) void {
+        const held = if (entry) |e| e.retain() else null;
+        if (self.blob_url_entry) |old| old.release();
+        self.blob_url_entry = held;
+        self.blob_url_captured = true;
+    }
+
     /// Deinitialize the request.
     pub fn deinit(self: *Self) void {
+        if (self.blob_url_entry) |entry| entry.release();
         if (self.network_partition_key) |key| self.allocator.free(key);
         if (self.blob_storage_key) |key| self.allocator.free(key);
         self.allocator.free(self.method);
@@ -700,6 +717,7 @@ pub const InternalRequest = struct {
         if (self.origin_owned and self.origin == .origin) self.allocator.free(self.origin.origin);
         self.origin = .{ .origin = copy };
         self.origin_owned = true;
+        self.origin_nonce = null;
     }
 
     /// Set the request's cryptographic nonce metadata to a copy of `nonce`,
@@ -746,6 +764,13 @@ pub const InternalRequest = struct {
             .client => return true,
             .origin => |o| o,
         };
+        if (self.blob_url_captured and std.ascii.startsWithIgnoreCase(self.currentUrl(), "blob:")) {
+            const entry = self.blob_url_entry orelse return false;
+            if (!std.mem.eql(u8, origin, entry.origin)) return false;
+            if (!std.mem.eql(u8, origin, "null")) return true;
+            const nonce = self.origin_nonce orelse return false;
+            return nonce != 0 and nonce == entry.origin_nonce;
+        }
         return origins.sameOrigin(self.allocator, self.currentUrl(), origin);
     }
 
@@ -869,10 +894,13 @@ pub const InternalRequest = struct {
             .internal_priority = self.internal_priority,
             // Copied below when it is owned.
             .origin = if (self.origin_owned) .client else self.origin,
+            .origin_nonce = self.origin_nonce,
             .top_level_navigation_initiator_origin = self.top_level_navigation_initiator_origin,
             .network_partition_key = partition,
             .cookie_jar = self.cookie_jar,
             .blob_url_store = self.blob_url_store,
+            .blob_url_entry = if (self.blob_url_entry) |entry| entry.retain() else null,
+            .blob_url_captured = self.blob_url_captured,
             .blob_storage_key = blob_storage_key,
             .blob_top_level_self_fetch = self.blob_top_level_self_fetch,
             .network = self.network,
@@ -931,6 +959,7 @@ pub const InternalRequest = struct {
         if (self.referrer == .url) try new_request.setReferrerUrl(self.referrer.url);
         // So is an origin set through `setOrigin`.
         if (self.origin_owned and self.origin == .origin) try new_request.setOrigin(self.origin.origin);
+        new_request.origin_nonce = self.origin_nonce;
         // And a policy container.
         if (self.policy_container == .container) {
             // Stage the owned union payload before publishing its tag:

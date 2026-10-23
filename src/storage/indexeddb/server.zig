@@ -368,7 +368,10 @@ pub const IDBServer = struct {
 
     /// The record of (`storage_key`, `name`), made on first use, held for
     /// the caller until `release`.
-    pub fn uniqueDatabase(self: *IDBServer, storage_key: StorageKey, name: []const u8) Allocator.Error!*UniqueIDBDatabase {
+    pub fn uniqueDatabase(self: *IDBServer, storage_key: StorageKey, name: []const u8) (Allocator.Error || error{SecurityError})!*UniqueIDBDatabase {
+        // IndexedDB open/deleteDatabase: a failed storage key is a
+        // SecurityError. Refuse it before the map can own an invalid key.
+        if (storage_key.isOpaque()) return error.SecurityError;
         self.lock();
         defer self.unlock();
         const found = try self.databases.getOrPut(self.allocator, .{ .storage_key = storage_key, .name = name });

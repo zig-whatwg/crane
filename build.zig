@@ -5609,6 +5609,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     url_ipv6_parser_mod.addImport("validation", url_validation_mod);
     url_percent_encoding_mod.addImport("encode_sets", url_encode_sets_mod);
     url_blob_url_mod.addImport("origin", url_origin_mod_internal);
+    url_blob_url_mod.addImport("api_url_parser", url_parser_api_mod);
 
     // Main url module
     const url_mod = graphModule(b, public, "url", .{
@@ -5900,6 +5901,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     file_mod.addImport("infra", infra_mod);
     file_mod.addImport("encoding", encoding_mod);
     file_mod.addImport("mimesniff", mimesniff_mod);
+    file_mod.addImport("blob_url", url_blob_url_mod);
     // file_mod.addImport("streams", streams_mod);
 
     // Add file module to impls (for Blob, File, FileReader implementations)
