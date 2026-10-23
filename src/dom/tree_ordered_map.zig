@@ -223,15 +223,17 @@ pub const Maps = struct {
     allocator: std.mem.Allocator,
     scope: Scope,
     /// Each key, owned, and its entries.
+    ///
+    /// Every new ID or name is a key the map never saw, and emptied keys
+    /// leave in batches, so std's map - which never grows while puts and
+    /// removes balance - kept every batch's tombstones (a 1,069-file runner
+    /// sample: starved in 44 of 4,082 samples; src/infra/tombstones.zig).
+    /// The batch is the only real source of removals, so the map is
+    /// rehashed in place right after it (`sweepEmptySlots`), rather than
+    /// carrying a TombstoneGuard: Maps is part of a Document's state, which
+    /// must stay in its allocation class (tests/html/af2_autofocus_test.zig).
+    // tombstones: rehashed in place after every batch of removals (sweepEmptySlots); otherwise only an allocation failure in add removes, the one key it just put
     map: std.StringHashMapUnmanaged(Slot) = .empty,
-    /// Bounds `map`'s tombstones. Every new ID or name is a key the map
-    /// never saw, and emptied keys leave in batches (`sweepEmptySlots`), so
-    /// a document whose elements come and go never grew its map and never
-    /// cleared them (a 1,069-file runner sample: starved in 44 of 4,082
-    /// samples). An `*Entry` (`entryOf`) is read and written only between
-    /// changes to the tree - no insert - and the map's walks (`clear`,
-    /// `sweepEmptySlots`) insert nothing.
-    map_guard: tombstones.TombstoneGuard = .{},
     /// How many registrations each kind holds: a kind with none answers
     /// every query without a lookup.
     totals: std.EnumArray(Kind, u32) = .initFill(0),
@@ -279,7 +281,6 @@ pub const Maps = struct {
             self.allocator.free(kv.key_ptr.*);
         }
         self.map.clearRetainingCapacity();
-        self.map_guard.reset();
         self.totals = .initFill(0);
         self.empty_slots = 0;
         self.live_peak = 0;
@@ -303,12 +304,10 @@ pub const Maps = struct {
 
     /// Add `member` under `key` for each of `kinds`: one hash lookup.
     fn add(self: *Maps, kinds: std.EnumSet(Kind), key: []const u8, member: Link) error{OutOfMemory}!void {
-        self.map_guard.beforeInsert(&self.map);
         const gop = try self.map.getOrPut(self.allocator, key);
         if (!gop.found_existing) {
             gop.key_ptr.* = self.allocator.dupe(u8, key) catch |err| {
                 self.map.removeByPtr(gop.key_ptr);
-                self.map_guard.noteRemoval(&self.map);
                 return err;
             };
             gop.value_ptr.* = .initFill(.{});
@@ -370,9 +369,13 @@ pub const Maps = struct {
             if (!slotIsEmpty(kv.value_ptr)) continue;
             const owned = kv.key_ptr.*;
             self.map.removeByPtr(kv.key_ptr);
-            self.map_guard.noteRemoval(&self.map);
             self.allocator.free(owned);
         }
+        // The batch's tombstones go at once, after the walk: in place, no
+        // allocation. Nothing holds an *Entry across a removal (`remove` ends
+        // here; `entryOf`'s readers change no tree), and at least
+        // max(64, live_peak) removals pay for this pass over the table.
+        self.map.rehash(std.hash_map.StringContext{});
         self.empty_slots = 0;
         self.live_peak = self.map.count();
     }
