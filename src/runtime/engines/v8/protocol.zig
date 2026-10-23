@@ -86,6 +86,8 @@ pub const capabilities: engine.Capabilities = .{
     // instantiateStreaming and hands each fulfilled source to the host
     // (protocol_webassembly.zig).
     .webassembly_streaming = .native,
+    // Not until every bind path marks (runtime.instance_lifecycle.markWrapped).
+    .wrap_tracking = .unsupported,
 };
 
 /// Every operation is V8 code: a test binary that compiles them all links V8.
