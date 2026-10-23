@@ -359,6 +359,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A lazy namespace must cover native objects received first](architecture-a-lazy-namespace-must-cover-native-objects-received-first.md) - Lazy setup must preserve every observation path, including objects received before the namespace; put first-use triggers on those paths and never overwrite intervening user changes.
 
 ### Spec Compliance
+- [CSS token payloads do not locate token starts](spec-compliance-css-token-payloads-do-not-locate-token-starts.md) - Keep actual source offsets with lookahead and parser marks.
 - [Currentcolor must survive filter inheritance](spec-compliance-currentcolor-must-survive-filter-inheritance.md) - Preserve symbolic currentcolor during computation and resolve it for the receiving element at CSSOM read time.
 - [Reusing a scalar parser must not inherit its quirks](spec-compliance-reusing-a-scalar-parser-must-not-inherit-its-quirks.md) - A component parser must receive its own grammar policy instead of inheriting a property's unitless quirks.
 - [Spec Compliance: Cascade Order Includes Each Declaration](spec-compliance-cascade-order-includes-each-declaration.md) - Preserve declaration order inside a rule as the final cascade tie-break, especially when logical and physical properties map to the same computed slot.
@@ -869,6 +870,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Read the Linked V8 Patch Version](debugging-read-the-linked-v8-patch-version.md) - Measure the linked binary, then read its exact source tag before designing around an internal behavior.
 
 ### Workflow
+- [Capture remote gate output while the wrapper prints it](workflow-capture-remote-gate-output-while-the-wrapper-prints-it.md) - Keep the delivered terminal log; the remote copy is removed after printing.
 - [Cancelling a remote wrapper can leave build children](workflow-cancelling-a-remote-wrapper-can-leave-build-children.md) - Verify that a cancelled wrapper's own build and test descendants have exited before starting its replacement.
 - [Workflow: A Partial WPT Submodule Replaces the Remote Fixture Tree](workflow-a-partial-wpt-submodule-replaces-the-remote-fixture-tree.md) - Keep an uninitialized lane WPT submodule empty when crane-remote supplies the shared fixture tree.
 - [A gate that builds one target cannot see another target's code](workflow-a-gate-that-builds-one-target-cannot-see-another-targets-code.md) - A platform you claim is a target you build in a gate. Code behind a target branch, a libc the OS links for you, and a step no gate runs are all unchecked until that target or step is compiled.
