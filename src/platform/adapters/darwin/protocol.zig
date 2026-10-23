@@ -4,10 +4,13 @@
 //! today's behaviour - kit/posix for clocks, randomness, threads, files and
 //! identity, kit/memory_store for the storage engine, kit/curl's event-loop
 //! port, kit/crypto, and kit/headless for every capability offered to pages.
-//! The native capabilities of the contract (SecTrust, the system SQLite,
+//! Fonts are native: CoreText behind kit/sfnt (fonts.zig, decision 20).
+//! The other native capabilities of the contract (SecTrust, the system SQLite,
 //! CommonCrypto, NSPasteboard / UIPasteboard, the OS permission system, the
 //! system UI) arrive with their recipes steps, each flipping its constant.
 
+const std = @import("std");
+const builtin = @import("builtin");
 const platform = @import("platform");
 const platform_options = @import("platform_options");
 const posix = @import("kit_posix");
@@ -17,6 +20,14 @@ const memory_store = @import("kit_memory_store");
 const curl = @import("kit_curl");
 const crypto = @import("kit_crypto");
 const browser_state = @import("kit_browser_state");
+
+/// CoreText (fonts.zig, decision 20), unless font_decoding is compiled out
+/// - or this platform is built for another OS, as the conformance test
+/// builds every platform on its host.
+const font_decoding = builtin.os.tag.isDarwin() and for (platform_options.platform_without) |capability| {
+    if (std.mem.eql(u8, capability, "font_decoding")) break false;
+} else true;
+const fonts = if (font_decoding) @import("fonts.zig") else headless;
 
 /// This platform keeps no per-Browser state beyond kit/browser_state's.
 const State = browser_state.BrowserState(struct {});
@@ -43,6 +54,8 @@ pub const protocol = struct {
         c.http2 = if (platform_options.http2) .native else .unsupported;
         // src/platform/memory.zig reads task_info / /proc/self/statm.
         c.resident_memory = .native;
+        // CoreText, after kit/sfnt's sanitizing (fonts.zig).
+        if (font_decoding) c.font_decoding = .native;
         break :blk c;
     };
 
@@ -164,6 +177,11 @@ pub const protocol = struct {
     pub const mediaVideoSize = headless.mediaVideoSize;
     pub const closeMediaDecoder = headless.closeMediaDecoder;
     pub const decodeImage = headless.decodeImage;
+    pub const decodeFont = fonts.decodeFont;
+    pub const genericFontFace = fonts.genericFontFace;
+    pub const installedFontFace = fonts.installedFontFace;
+    pub const localFontFace = fonts.localFontFace;
+    pub const systemFont = fonts.systemFont;
     pub const mediaDecodingInfo = headless.mediaDecodingInfo;
     pub const openCodec = headless.openCodec;
     pub const codecInput = headless.codecInput;

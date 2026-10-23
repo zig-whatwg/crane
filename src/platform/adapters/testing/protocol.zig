@@ -5,8 +5,9 @@
 //!
 //! Step 0 of the platform protocol: the OS services are the same kit parts
 //! darwin and linux compose; of the test capabilities the in-memory
-//! clipboard (kit/memory_clipboard) and the Zig image decoders
-//! (image_decoding.zig, decision 19) are here. The fake capture devices, the WAV
+//! clipboard (kit/memory_clipboard), the Zig image decoders
+//! (image_decoding.zig, decision 19) and the fonts (fonts.zig: kit/sfnt and
+//! fixed installed faces, decision 20) are here. The fake capture devices, the WAV
 //! and WebM decoders, the scripted permission policy (decision 9), the
 //! dialogs, the picker queue and the console sink move in with recipes step 7,
 //! with the control surface the WPT runner reaches as `platform.adapter`.
@@ -26,6 +27,9 @@ const image_decoding = if (for (platform_options.platform_without) |capability| 
     if (std.mem.eql(u8, capability, "image_decoding")) break true;
 } else false) headless else @import("image_decoding.zig");
 const layout = @import("layout.zig");
+const fonts = if (for (platform_options.platform_without) |capability| {
+    if (std.mem.eql(u8, capability, "font_decoding")) break true;
+} else false) headless else @import("fonts.zig");
 
 /// Per-Browser test state: fresh for every Browser, so nothing one test does
 /// reaches the next (WebKitTestRunner's process-global mocks need a reset).
@@ -81,6 +85,9 @@ pub const protocol = struct {
         c.clipboard = .emulated;
         // Compiled-in decoders: PNG, BMP, GIF, JPEG and SVG.
         c.image_decoding = .native;
+        // kit/sfnt (decision 20): web fonts in Zig, and fixed default,
+        // installed and system faces, so no answer depends on the machine.
+        c.font_decoding = .native;
         // STOPGAP (decision 19b): layout.zig. Deviation: only a connected
         // replaced element (an img) has a box, sized from the facts Crane
         // gives (CSS 2.1 10.3.2/10.6.2 with no style); every other node has
@@ -208,6 +215,11 @@ pub const protocol = struct {
     pub const mediaVideoSize = headless.mediaVideoSize;
     pub const closeMediaDecoder = headless.closeMediaDecoder;
     pub const decodeImage = image_decoding.decodeImage;
+    pub const decodeFont = fonts.decodeFont;
+    pub const genericFontFace = fonts.genericFontFace;
+    pub const installedFontFace = fonts.installedFontFace;
+    pub const localFontFace = fonts.localFontFace;
+    pub const systemFont = fonts.systemFont;
     pub const mediaDecodingInfo = headless.mediaDecodingInfo;
     pub const openCodec = headless.openCodec;
     pub const codecInput = headless.codecInput;

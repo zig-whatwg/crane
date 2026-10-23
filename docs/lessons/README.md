@@ -355,6 +355,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A lazy namespace must cover native objects received first](architecture-a-lazy-namespace-must-cover-native-objects-received-first.md) - Lazy setup must preserve every observation path, including objects received before the namespace; put first-use triggers on those paths and never overwrite intervening user changes.
 
 ### Spec Compliance
+- [When all three browsers ship one library, the library is the browsers](spec-compliance-when-all-three-browsers-ship-one-library-it-is-the-browsers.md) - Before ruling between spec and browsers, check whether they share an implementation (woff2): its source is the behaviour to match.
 - [Element reference associations and frozen arrays have different lifetimes](spec-compliance-element-reference-associations-and-frozen-arrays-have-different-lifetimes.md) - A weak association and a strong returned snapshot are different holders; model and test each lifetime independently.
 - [Stream authentication is independent of prompts](spec-compliance-stream-authentication-is-independent-of-prompts.md) - Separate replay eligibility from prompt availability, and compare only browsers that implement the feature.
 - [XML prefix and default declaration rules are independent](spec-compliance-xml-prefix-and-default-declaration-rules-are-independent.md) - A shared branch does not make two observable mechanisms one change; isolate their tests and preserve any deferred behavior.
@@ -623,6 +624,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Empty Legacy SVG Initializers Skip Parent State](codegen-empty-legacy-svg-initializers-skip-parent-state.md) - A correct type name is not proof of a correctly constructed object. Pin parent state before broadening a factory's interface map.
 
 ### Testing
+- [An allocation per element makes the allocation-failure sweep quadratic](testing-an-allocation-per-element-makes-the-failure-sweep-quadratic.md) - Allocate per input, never per element, in code that parses untrusted data; a slow allocation-failure sweep is counting allocations, not hanging.
 - [WPT testdriver selectors can test the wrong node](testing-wpt-testdriver-selectors-can-test-the-wrong-node.md) - Browser agreement validates the operation that actually ran, not necessarily the operation the test intended.
 - [Missing browser results may mean a test was replaced](testing-missing-browser-results-can-be-replaced-tests.md) - Test identity, observed behavior and implementer intent are three separate pieces of evidence. Keep all three explicit.
 - [Zig warning steps print failed-command footers](testing-zig-warning-steps-print-failed-command-footers.md) - Use the build summary and named test diagnostics to determine success; a command footer is context, not a result.
