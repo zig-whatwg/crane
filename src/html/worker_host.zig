@@ -1312,7 +1312,7 @@ pub const WorkerHost = struct {
         @import("dom").unloading_cleanup.run(realm);
         self.realm = null;
         // The realm's per-context data - the callbacks its script registered,
-        // its wrapper cache and every Instance in it, the global scope first -
+        // its wrapper cache and every Instance in it, the global scope last -
         // goes with it; the realm is retired, so anything holding it across
         // turns (a fetch) reads it as gone.
         self.global_scope = null;

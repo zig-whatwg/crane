@@ -174,7 +174,7 @@ fn setUp(comptime Kind: type, isolate: *ffi.Isolate, context: *ffi.Context, opti
 /// WorkerOrWorkletScriptController::DisposeContextIfNeeded does for a
 /// main-thread worklet - clear the global's native info, then release the
 /// per-context data (its wrapper cache and every Instance in it, the global
-/// scope first) and the context. The isolate, its templates and allocator,
+/// scope last) and the context. The isolate, its templates and allocator,
 /// and its other realms stay.
 pub fn destroyWorkletRealm(realm: runtime.Context) void {
     const context: *ffi.Context = @ptrCast(@alignCast(realm.engine_ctx orelse return));
@@ -186,8 +186,9 @@ pub fn destroyWorkletRealm(realm: runtime.Context) void {
     {
         ffi.v8_Context_Enter(context);
         defer ffi.v8_Context_Exit(context);
-        // The global scope is freed with the realm's wrapper cache just
-        // below; the global object must not point at it after.
+        // The global scope is freed just below, after the rest of the
+        // realm's wrapper cache (context_manager.removeContextByKey); the
+        // global object must not point at it after.
         worker_realm.bindGlobalFields(context, null);
         // The entry is retired, so `engine_ctx` reads null from here on:
         // that is how anything holding the realm across turns learns it has
