@@ -39,7 +39,7 @@ test "CSSOM replacement preserves the new resource source even for identical tex
     return error.ResourceProvenanceNotImplemented;
 }
 
-test "non-resource values and unsupported variable substitution keep their existing behavior" {
+test "non-resource values carry no URLs and unsupported substitutions remain rejected" {
     if (comptime @hasDecl(values, "ResourceSource")) return Checks.nonResources();
     return error.ResourceProvenanceNotImplemented;
 }
@@ -134,11 +134,9 @@ const Checks = struct {
         const fragment = try value(options(s), "background-image", "url(\\23 icon)");
         defer fragment.release();
         try testing.expect(fragment.resourceUrls()[0].local_fragment);
-        // The existing resolver and serialization are unchanged. The local
-        // flag, not a comparison with the sheet URL, decides fetch eligibility.
-        // Re-parsing BASE's absolute serialization cannot recover this flag;
-        // that pre-existing literal-string round-trip limit is separate (Q9).
-        try testing.expectEqualStrings("url(\"https://example.test/css/main.css#icon\")", fragment.text.bytes);
+        // Values4 §4.5.1.1: authored text retains the local fragment, while
+        // the frozen metadata and local flag decide fetch eligibility.
+        try testing.expectEqualStrings("url(\"#icon\")", fragment.text.bytes);
         const bare = try value(.{ .allocator = testing.allocator }, "background-image", "src('relative.svg')");
         defer bare.release();
         try testing.expect(bare.resourceUrls()[0].source == null);
@@ -154,7 +152,7 @@ const Checks = struct {
         try testing.expect(!missing.valid);
         try testing.expect(!missing.local_fragment);
         try testing.expectEqualStrings("", missing.url);
-        try testing.expectEqualStrings("url(\"https://example.test/css/main.css\")", empty.text.bytes);
+        try testing.expectEqualStrings("url(\"\")", empty.text.bytes);
         const failure = try value(options(s), "background-image", "url('bad[')");
         defer failure.release();
         try testing.expect(!failure.resourceUrls()[0].valid);
@@ -192,6 +190,10 @@ const Checks = struct {
         var last = second.resourceUrls()[0];
         last.range.start += image.text.bytes.len + 2;
         last.range.end += image.text.bytes.len + 2;
+        if (last.argument_range) |*argument| {
+            argument.start += image.text.bytes.len + 2;
+            argument.end += image.text.bytes.len + 2;
+        }
         const joined = try values.SharedText.createWithResources(testing.allocator, combined, &.{ image.resourceUrls()[0], last });
         defer joined.unref();
         try testing.expect(joined.resource_urls[0].source == s);
@@ -243,7 +245,7 @@ const Checks = struct {
         const urls = computed.resourceUrls();
         try testing.expectEqual(@as(usize, 3), urls.len);
         try testing.expect(urls[0].local_fragment);
-        try testing.expectEqualStrings("url(\"https://example.test/css/main.css#icon\")", computed_content.serialization[urls[0].range.start..urls[0].range.end]);
+        try testing.expectEqualStrings("url(\"#icon\")", computed_content.serialization[urls[0].range.start..urls[0].range.end]);
         try testing.expectEqualStrings("no-referrer", urls[2].source.?.referrer_policy);
         const counter = try value(options(s), "content", "counter(item, symbols(url(#marker) 'x'))");
         defer counter.release();
@@ -283,9 +285,16 @@ const Checks = struct {
         var block = try Block.parse(options(s), "--image: url(a.png); background-image: var(--image); width: calc(2px + 1px); padding-top: env(safe-area-inset-top)");
         defer block.deinit();
         try testing.expect(block.get(.background_image) == null);
-        try testing.expect(block.get(.width) == null);
+        // The typed math prerequisite now accepts width calculations. They
+        // still carry no resource provenance, including under a sheet source.
+        const width = block.get(.width).?.value.value;
+        try testing.expectEqual(@as(usize, 0), width.resourceUrls().len);
+        var width_text: std.ArrayList(u8) = .empty;
+        defer width_text.deinit(testing.allocator);
+        try block.getPropertyValue("width", &width_text);
+        try testing.expectEqualStrings("calc(3px)", width_text.items);
         try testing.expect(block.get(.padding_top) == null);
-        try testing.expectEqual(@as(usize, 1), block.length());
+        try testing.expectEqual(@as(usize, 2), block.length());
         const literal = try value(options(s), "content", "'url(fake.png)' attr(label, 'url(also-fake.png)')");
         defer literal.release();
         try testing.expectEqual(@as(usize, 0), literal.resourceUrls().len);

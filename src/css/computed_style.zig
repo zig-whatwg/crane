@@ -89,7 +89,7 @@ pub const ComputedStyle = struct {
             },
             else => {},
         }
-        try properties.serializeValue(l, v, out, allocator);
+        try @import("resolved_urls.zig").serialize(l, v, out, allocator);
     }
 };
 

@@ -123,6 +123,10 @@ pub const Content = struct {
                 var occurrence = url;
                 occurrence.range.start += out.items.len;
                 occurrence.range.end += out.items.len;
+                if (occurrence.argument_range) |*argument| {
+                    argument.start += out.items.len;
+                    argument.end += out.items.len;
+                }
                 try urls.append(a, occurrence);
             }
             switch (item.kind) {
@@ -260,7 +264,9 @@ const Parser = struct {
         const resolved = if (self.resolver) |r| r.resolve(r.context, self.allocator, raw) else null;
         var out: std.ArrayList(u8) = .empty;
         try out.appendSlice(self.allocator, "url(");
-        try values.appendString(resolved orelse raw, &out, self.allocator);
+        // Values4 §4.5: specified serialization keeps the authored URL.
+        // Frozen resolution belongs to metadata, read only by computed CSS.
+        try values.appendString(raw, &out, self.allocator);
         try out.append(self.allocator, ')');
         const occurrence = resources.ResourceUrl.describe(raw, resolved, self.resolver != null, self.source, .{ .start = 0, .end = out.items.len });
         return .{ .kind = .image, .text = out.items, .resource_urls = try resources.cloneAll(self.allocator, &.{occurrence}, 0) };

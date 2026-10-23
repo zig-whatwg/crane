@@ -6404,8 +6404,10 @@ Tests
 
 Kerning is the contextual adjustment of inter-glyph spacing of
 proportionally-spaced glyphs. It is not intended to apply to fixed-width
-glyphs, and to do so is an error. This property controls metric kerning,
-kerning that utilizes adjustment data contained in the font.
+glyphs, and to do so is an error.
+
+This property controls metric kerning, kerning that utilizes adjustment
+data contained in the font.
 
 [auto]
 : Specifies that kerning is applied, to proportionally-spaced glyphs,
@@ -6417,9 +6419,29 @@ kerning that utilizes adjustment data contained in the font.
 [none]
 : Specifies that kerning is not applied
 
-For fonts that do not include kerning data this property will have no
-visible effect. When kerning is enabled, the relevant OpenType kerning
-features are enabled (for horizontal [typographic
+<figure>
+
+<figcaption>Kerning proportionally-spaced Latin characters</figcaption>
+</figure>
+
+For fonts that do not include kerning data, this property will have no
+visible effect.
+
+Some CJK fonts have Proportional Alternate Widths; whereby glyphs
+designed to be set on full-em widths are re-spaced to be proportional.
+In OpenType, this is enabled with the [[palt]
+feature](https://learn.microsoft.com/en-us/typography/opentype/spec/features_pt).
+In that case, if requested, kerning can be applied to these glyphs. (It
+is valid to apply [palt]. if requested, and *not* apply kerning).
+For these glyphs, if kerned, the
+[[kern]](https://learn.microsoft.com/ja-jp/typography/opentype/spec/features_ko#tag-kern)
+feature should not be used; instead, if available, the Kerning for
+Alternate Proportional Widths should be applied, using the
+[[apkn]](https://learn.microsoft.com/ja-jp/typography/opentype/spec/features_ae#apkn)
+feature.
+
+When kerning is enabled, the relevant OpenType kerning features are
+enabled (for horizontal [typographic
 modes](https://drafts.csswg.org/css-writing-modes-4/#typographic-mode) and for [sideways
 typesetting](https://drafts.csswg.org/css-writing-modes-4/#typeset-sideways) in vertical [typographic
 modes], the [kern] feature; for
@@ -11452,6 +11474,8 @@ sections.
 ## 18. Changes
 
 ### [18.1. ][ Changes from the [1 February 2024 working draft](https://www.w3.org/TR/2024/WD-css-fonts-4-20240201/)]
+- Normatively stated the dependency on palt for kerning ([Issue
+ 6723](https://github.com/w3c/csswg-drafts/issues/6723))
 - Clarified that kerning applies to proportionally-spaced glyphs only.
  Removed inaccurate claim that OpenType encourages that kerning be on
  by default. ([Issue

@@ -60,7 +60,7 @@ pub const ResourceSource = struct {
 
 pub const ResourceUrl = struct {
     /// Resolved when a resolver was supplied; decoded input otherwise.
-    /// Empty input remains empty even if the legacy serializer resolves it.
+    /// Empty input stays empty even if the resolver returns the base URL.
     url: []const u8,
     /// Values 4 §4.5.1.1: set from the decoded ORIGINAL value, not its base.
     local_fragment: bool,
@@ -70,6 +70,9 @@ pub const ResourceUrl = struct {
     /// Half-open range of the URL component in the owning value's CSS text.
     /// For image-set's URL strings, this includes the quotes.
     range: Range,
+    /// A quoted URL argument or image-set string, including its quotes.
+    /// Replacing only this span preserves URL modifiers and the wrapper.
+    argument_range: ?Range = null,
 
     pub const Range = struct { start: usize, end: usize };
 
@@ -90,6 +93,10 @@ pub const ResourceUrl = struct {
         if (self.source) |s| s.ref();
         result.range.start += offset;
         result.range.end += offset;
+        if (result.argument_range) |*argument| {
+            argument.start += offset;
+            argument.end += offset;
+        }
         return result;
     }
 
@@ -102,6 +109,7 @@ pub const ResourceUrl = struct {
         if (a.local_fragment != b.local_fragment or a.valid != b.valid or
             a.range.start != b.range.start or a.range.end != b.range.end or
             !std.mem.eql(u8, a.url, b.url)) return false;
+        if (!std.meta.eql(a.argument_range, b.argument_range)) return false;
         if (a.source) |s| return if (b.source) |other| s.eql(other) else false;
         return b.source == null;
     }
@@ -175,15 +183,17 @@ pub fn collect(allocator: Allocator, text: []const u8, resolver: ?UrlResolver, s
         const token = tok.next();
         switch (token.token_type) {
             .eof => break,
-            .url => try appendToken(&out, token.value, .{ .start = begin, .end = tok.pos }, resolver, source),
+            .url => try appendToken(&out, token.value, .{ .start = begin, .end = tok.pos }, null, resolver, source),
             .function => {
                 pending_image_set = tokenizer.nameEql(token.value, "image-set") or tokenizer.nameEql(token.value, "-webkit-image-set");
                 if (tokenizer.nameEql(token.value, "url") or tokenizer.nameEql(token.value, "src")) {
                     var url_tokens = tok;
                     if (url_tokens.next().token_type != .left_paren) continue;
                     url_tokens.skipWhitespace();
+                    const argument_start = url_tokens.pos;
                     const string = url_tokens.next();
                     if (string.token_type != .string) continue;
+                    const argument_end = url_tokens.pos;
                     // Values 4 §4.5.3 permits URL modifiers after the string.
                     // Preserve their spelling and include them in the range.
                     var nesting: usize = 1;
@@ -195,7 +205,7 @@ pub fn collect(allocator: Allocator, text: []const u8, resolver: ?UrlResolver, s
                             else => {},
                         }
                     }
-                    try appendToken(&out, string.stringContents(), .{ .start = begin, .end = url_tokens.pos }, resolver, source);
+                    try appendToken(&out, string.stringContents(), .{ .start = begin, .end = url_tokens.pos }, .{ .start = argument_start, .end = argument_end }, resolver, source);
                     tok = url_tokens;
                 }
             },
@@ -211,7 +221,8 @@ pub fn collect(allocator: Allocator, text: []const u8, resolver: ?UrlResolver, s
             // Images 4 §2.4: a top-level string option is a URL; a string
             // inside type(), gradients or other functions is not.
             .string => if (image_sets.items.len > 0 and image_sets.items[image_sets.items.len - 1] == depth) {
-                try appendToken(&out, token.stringContents(), .{ .start = begin, .end = tok.pos }, resolver, source);
+                const range: ResourceUrl.Range = .{ .start = begin, .end = tok.pos };
+                try appendToken(&out, token.stringContents(), range, range, resolver, source);
             },
             else => {},
         }
@@ -219,10 +230,12 @@ pub fn collect(allocator: Allocator, text: []const u8, resolver: ?UrlResolver, s
     return out.take();
 }
 
-fn appendToken(out: *Builder, encoded: []const u8, range: ResourceUrl.Range, resolver: ?UrlResolver, source: ?*ResourceSource) Allocator.Error!void {
+fn appendToken(out: *Builder, encoded: []const u8, range: ResourceUrl.Range, argument_range: ?ResourceUrl.Range, resolver: ?UrlResolver, source: ?*ResourceSource) Allocator.Error!void {
     const raw = try tokenizer.decode(out.allocator, encoded);
     defer out.allocator.free(raw);
     const resolved = if (resolver) |r| r.resolve(r.context, out.allocator, raw) else null;
     defer if (resolved) |r| out.allocator.free(r);
-    try out.append(&.{ResourceUrl.describe(raw, resolved, resolver != null, source, range)}, 0);
+    var url = ResourceUrl.describe(raw, resolved, resolver != null, source, range);
+    url.argument_range = argument_range;
+    try out.append(&.{url}, 0);
 }

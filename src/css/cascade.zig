@@ -68,6 +68,19 @@ pub const Origin = enum(u4) {
 /// The implicit final layer of unlayered declarations.
 pub const unlayered: u16 = std.math.maxInt(u16);
 
+/// Plain identity for the tree scope where a value was declared. Zero is
+/// the document scope; this never holds a DOM object or a borrowed pointer.
+pub const TreeScopeRef = struct {
+    serial: u64 = 0,
+};
+
+/// The declaration metadata a computed value may need. Copy this out of
+/// candidates; their Source pointers are borrowed only during cascade().
+pub const ValueSource = struct {
+    tree_scope: TreeScopeRef = .{},
+    tree_count_allowed: bool = true,
+};
+
 /// Where a block of declarations enters the cascade.
 pub const Source = struct {
     origin: Origin,
@@ -82,6 +95,9 @@ pub const Source = struct {
     element_attached: bool = false,
     /// Shadow-including tree context depth (batch 2; 0 is the document).
     tree_depth: u16 = 0,
+    /// Whether this declaration may use Values 5 tree-counting inputs.
+    tree_count_allowed: bool = true,
+    tree_scope: TreeScopeRef = .{},
 };
 
 pub const Specificity = struct {
@@ -112,6 +128,9 @@ pub const Context = struct {
     /// The root element's computed font-size (rem); the initial 16px for
     /// the root itself.
     root_font_size: f64 = 16,
+    root_line_height: ?f64 = null,
+    root_vertical: bool = false,
+    root_upright: bool = false,
     /// The viewport (vw, vh).
     viewport_width: f64 = 1024,
     viewport_height: f64 = 768,
@@ -129,9 +148,9 @@ pub const Context = struct {
 const Candidate = struct {
     decl: *const Declaration,
     priority: u128,
-    origin: Origin,
-    layer: u16,
-    important: bool,
+    /// Borrowed from the caller's stable Matched slice. Candidates never
+    /// escape the synchronous cascade or enter an owned computed value.
+    source: *const Source,
 };
 
 /// Cascade 5 6.1's priority of a declaration from `source`.
@@ -155,21 +174,22 @@ fn priority(source: Source, important: bool) u128 {
     return (origin << 96) | (tree << 80) | (attached << 79) | (layer << 63) | (source.specificity.packed30() << 33) | source.order;
 }
 
-/// The cascade and the computed-value step for one element. The style is
-/// the caller's (`destroy`).
-pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*ComputedStyle {
-    const allocator = ctx.allocator;
+/// The caller finishes appending matched batches before this call, and
+/// keeps the slice and declaration blocks immutable until cascade returns.
+/// Like Blink's MatchResult/CascadeMap, candidates refer back to their
+/// matched declarations rather than duplicating all source data per property.
+fn collectCandidates(allocator: Allocator, matched: []const Matched) Allocator.Error!std.ArrayList(Candidate) {
     var candidates: std.ArrayList(Candidate) = .empty;
-    defer candidates.deinit(allocator);
-    for (matched) |m| {
+    errdefer candidates.deinit(allocator);
+    for (matched) |*m| {
+        std.debug.assert(@intFromPtr(&m.source) >= @intFromPtr(matched.ptr));
+        std.debug.assert(@intFromPtr(&m.source) + @sizeOf(Source) <= @intFromPtr(matched.ptr) + matched.len * @sizeOf(Matched));
         var it = m.block.typed();
         while (it.next()) |d| {
             try candidates.append(allocator, .{
                 .decl = d,
                 .priority = priority(m.source, d.important),
-                .origin = m.source.origin,
-                .layer = m.source.layer,
-                .important = d.important,
+                .source = &m.source,
             });
         }
     }
@@ -179,8 +199,71 @@ pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*Computed
             return a.priority > b.priority;
         }
     }.lessThan);
+    return candidates;
+}
 
-    var builder: Builder = .{ .ctx = ctx, .candidates = candidates.items };
+/// Cascade 5 §§6–7.3: a property owns a priority-ordered fallback chain.
+/// Like Blink's CascadeMap and WebKit's PropertyCascade, lookup starts at
+/// that property's head. Candidate order and borrowed Source identity stay
+/// unchanged; the separate links keep Candidate at 32 bytes.
+const CandidateIndex = struct {
+    const none = std.math.maxInt(usize);
+    heads: [Longhand.count]usize = @splat(none),
+    links: []usize,
+
+    fn init(candidates: []const Candidate, links: []usize) CandidateIndex {
+        std.debug.assert(candidates.len == links.len);
+        var index: CandidateIndex = .{ .links = links };
+        // Candidates are already strongest-first. Prepending backwards
+        // preserves that order, including equal-priority declarations.
+        var i = candidates.len;
+        while (i > 0) {
+            i -= 1;
+            const property = @intFromEnum(candidates[i].decl.longhand);
+            links[i] = index.heads[property];
+            index.heads[property] = i;
+        }
+        return index;
+    }
+
+    /// Logical 1 §4: merge a logical chain into its mapped physical chain
+    /// only after writing-mode and direction have computed. Global sorted
+    /// positions are sufficient to merge without recalculating priorities.
+    fn merge(self: *CandidateIndex, logical: Longhand, physical: Longhand) void {
+        var a = self.heads[@intFromEnum(logical)];
+        if (a == none) return;
+        self.heads[@intFromEnum(logical)] = none;
+        var b = self.heads[@intFromEnum(physical)];
+        var destination = &self.heads[@intFromEnum(physical)];
+        while (a != none and b != none) {
+            const use_a = a < b;
+            const chosen = if (use_a) a else b;
+            const next = self.links[chosen];
+            destination.* = chosen;
+            destination = &self.links[chosen];
+            if (use_a) a = next else b = next;
+        }
+        destination.* = if (a != none) a else b;
+    }
+};
+
+/// The cascade and the computed-value step for one element. The style is
+/// the caller's (`destroy`). Matched blocks must remain stable for this call.
+pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*ComputedStyle {
+    const allocator = ctx.allocator;
+    var candidates = try collectCandidates(allocator, matched);
+    defer candidates.deinit(allocator);
+    var stack_links: [64]usize = undefined;
+    const links = if (candidates.items.len <= stack_links.len)
+        stack_links[0..candidates.items.len]
+    else
+        try allocator.alloc(usize, candidates.items.len);
+    defer if (links.len > stack_links.len) allocator.free(links);
+    var builder: Builder = .{
+        .ctx = ctx,
+        .candidates = candidates.items,
+        .index = CandidateIndex.init(candidates.items, links),
+    };
     const style = try allocator.create(ComputedStyle);
     style.* = .{ .allocator = allocator, .values = computed_mod.initial_values };
     // `initial_values` holds no counted text; every slot is overwritten
@@ -194,6 +277,7 @@ pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*Computed
 const Builder = struct {
     ctx: Context,
     candidates: []const Candidate,
+    index: CandidateIndex,
     style: *ComputedStyle = undefined,
     writing_mode: Keyword = .horizontal_tb,
     direction: Keyword = .ltr,
@@ -220,7 +304,10 @@ const Builder = struct {
         while (true) {
             const winner = self.pick(l, &excluded) orelse return self.defaulted(l);
             switch (winner.decl.value) {
-                .value => |v| return .{ .value = v },
+                .value => |v| return .{ .value = .{ .value = v, .source = .{
+                    .tree_scope = winner.source.tree_scope,
+                    .tree_count_allowed = winner.source.tree_count_allowed,
+                } } },
                 .css_wide => |k| switch (k) {
                     .initial => return .{ .initial = {} },
                     .inherit => return .{ .inherit = {} },
@@ -229,8 +316,8 @@ const Builder = struct {
                     // ... author origin: Rolls back the cascaded value to the
                     // user level."
                     .revert => {
-                        if (winner.origin == .user_agent) return self.unset(l);
-                        excluded.revert_class_at_least = winner.origin.revertClass();
+                        if (winner.source.origin == .user_agent) return self.unset(l);
+                        excluded.revert_class_at_least = winner.source.origin.revertClass();
                     },
                     // "revert-layer: ... rolled back to the earlier layer, so
                     // that the specified value is calculated as if no rules
@@ -252,12 +339,32 @@ const Builder = struct {
     }
 
     fn pick(self: *const Builder, l: Longhand, excluded: *const Exclusions) ?Candidate {
-        for (self.candidates) |c| {
-            if (self.target(c.decl.longhand) != l) continue;
+        var position = self.index.heads[@intFromEnum(l)];
+        while (position != CandidateIndex.none) : (position = self.index.links[position]) {
+            const c = self.candidates[position];
             if (excluded.excludes(c)) continue;
+            // Q17/Q23–25: unavailable cap-height/ascent cannot enter scalar
+            // consumers. Only geometry lengths may remain unresolved; the
+            // next retained candidate/default wins, with no hidden CSSOM history.
+            if (c.decl.value == .value) {
+                const value = c.decl.value.value;
+                const geometry_length = switch (l.info().grammar) {
+                    .length_percentage_auto, .length_percentage_nonneg, .size, .line_width => true,
+                    else => false,
+                };
+                if (value.needsUnavailableMetrics(geometry_length)) continue;
+            }
             return c;
         }
         return null;
+    }
+
+    fn mapLogicalChains(self: *Builder) void {
+        for (0..Longhand.count) |i| {
+            const l: Longhand = @enumFromInt(i);
+            if (self.index.heads[i] == CandidateIndex.none or l.logical() == null) continue;
+            self.index.merge(l, self.target(l));
+        }
     }
 
     fn run(self: *Builder) Allocator.Error!void {
@@ -267,15 +374,18 @@ const Builder = struct {
         // (currentcolor).
         self.writing_mode = (try self.computeAndStore(.writing_mode)).keyword;
         self.direction = (try self.computeAndStore(.direction)).keyword;
+        self.mapLogicalChains();
+        _ = try self.computeAndStore(.text_orientation);
         self.used_scheme = self.elementColorScheme(try self.computeAndStore(.color_scheme));
         self.style.used_color_scheme = self.used_scheme;
         _ = try self.computeAndStore(.font_size);
+        _ = try self.computeAndStore(.line_height);
         _ = try self.computeAndStore(.color);
         for (0..Longhand.count) |i| {
             const l: Longhand = @enumFromInt(i);
             if (l.logical() != null) continue;
             switch (l) {
-                .writing_mode, .direction, .color_scheme, .font_size, .color => continue,
+                .writing_mode, .direction, .text_orientation, .color_scheme, .font_size, .line_height, .color => continue,
                 else => {},
             }
             _ = try self.computeAndStore(l);
@@ -320,7 +430,7 @@ const Builder = struct {
                 // The root's color has no parent to inherit from: "the
                 // inherited value is the initial value" (Cascade 5 7.3.2),
                 // CanvasText in the root's own color scheme.
-                if (self.ctx.parent == null and l == .color) return self.computeValue(l, l.info().initial);
+                if (self.ctx.parent == null and l == .color) return self.computeValue(l, l.info().initial, .{});
                 const p = self.parentValue(l);
                 p.retain();
                 return p;
@@ -330,23 +440,51 @@ const Builder = struct {
             // white for `color: initial` under `only dark`; Firefox 144
             // black).
             .initial => if (l == .color) l.info().initial else computed_mod.initialComputed(l),
-            .value => |v| v,
+            .value => |v| v.value,
         };
-        return self.computeValue(l, v);
+        const source: ValueSource = switch (spec) {
+            .value => |specified_value| specified_value.source,
+            .initial, .inherit => .{},
+        };
+        return self.computeValue(l, v, source);
     }
 
     fn fontSize(self: *const Builder) f64 {
         return self.style.values[@intFromEnum(Longhand.font_size)].length.value;
     }
 
-    fn computeValue(self: *Builder, l: Longhand, v: Value) Allocator.Error!Value {
+    fn computeValue(self: *Builder, l: Longhand, v: Value, source: ValueSource) Allocator.Error!Value {
+        if (v == .calculation) {
+            const expression = try v.calculation.compute(self.ctx.allocator, self.mathContext(l));
+            if (expression.computedNumber()) |number| {
+                defer expression.unref();
+                const scalar: Value = switch (number.unit) {
+                    .number => if (expression.grammar.kind == .integer)
+                        .{ .integer = @intFromFloat(number.value) }
+                    else
+                        .{ .number = number.value },
+                    .px => Value.px(number.value),
+                    .percent => .{ .length = Length.percent(number.value) },
+                    else => {
+                        // No scalar longhand currently consumes other dimensions.
+                        expression.ref();
+                        return .{ .calculation = expression };
+                    },
+                };
+                return self.computeValue(l, scalar, source);
+            }
+            return .{ .calculation = expression };
+        }
         switch (l) {
+            // Writing Modes 4 §5.1: retain the legacy spelling only until
+            // computation (Blink/Gecko ship it; their specified forms differ).
+            .text_orientation => if (v.isKeyword(.sideways_right)) return Value.kw(.sideways),
             .content => {
                 if (v == .content) {
                     if (try v.content.compute(self.ctx.allocator, self.ctx.content_attributes)) |content| return .{ .content = content };
                     // A guaranteed-invalid attr() invalidates the entire
                     // non-inherited declaration at computed-value time.
-                    return self.computeValue(.content, Value.kw(.normal));
+                    return self.computeValue(.content, Value.kw(.normal), source);
                 }
                 if (v.isKeyword(.normal)) if (self.ctx.pseudo) |pseudo| {
                     if (std.mem.eql(u8, pseudo, "before") or std.mem.eql(u8, pseudo, "after")) return Value.kw(.none);
@@ -388,7 +526,7 @@ const Builder = struct {
                         .thick => 5,
                         else => 3,
                     },
-                    .length => |len| self.absolute(len),
+                    .length => |len| self.absolute(len, l),
                     else => 0,
                 };
                 return Value.px(snapBorderWidth(px));
@@ -398,7 +536,12 @@ const Builder = struct {
         switch (v) {
             .length => |len| {
                 if (len.unit == .percent) return v;
-                return Value.px(self.absolute(len));
+                return Value.px(self.absolute(len, l));
+            },
+            .indent => |indent| {
+                const offset = try self.computeValue(.margin_left, indent.offset, source);
+                defer offset.release();
+                return .{ .indent = try @import("text_indent.zig").Indent.create(self.ctx.allocator, offset, indent.flags) };
             },
             else => {
                 v.retain();
@@ -407,36 +550,55 @@ const Builder = struct {
         }
     }
 
-    /// CSS Values 4 section 6: a length's absolute value, in px, its em
-    /// the element's own font size.
-    fn absolute(self: *const Builder, len: Length) f64 {
-        return self.absoluteWith(len, self.fontSize());
+    fn usedLineHeight(style: *const ComputedStyle) f64 {
+        const em = style.get(.font_size).length.value;
+        return switch (style.get(.line_height)) {
+            .number => |n| n * em,
+            .length => |length| length.value,
+            else => em * 1.2, // Existing normal-line-height estimate, Q17.
+        };
     }
 
-    /// A length's absolute value with `em` as the font size its
-    /// font-relative units read. ex and ch have no font metrics to read:
-    /// "it must be assumed to be 0.5em". lh and rlh take `normal`'s
-    /// customary 1.2 (stated).
-    fn absoluteWith(self: *const Builder, len: Length, em: f64) f64 {
-        return switch (len.unit) {
-            .px => len.value,
-            .cm => len.value * 96.0 / 2.54,
-            .mm => len.value * 96.0 / 25.4,
-            .Q => len.value * 96.0 / 101.6,
-            .in => len.value * 96.0,
-            .pt => len.value * 96.0 / 72.0,
-            .pc => len.value * 16.0,
-            .em => len.value * em,
-            .rem => len.value * self.ctx.root_font_size,
-            .ex, .ch => len.value * em * 0.5,
-            .lh => len.value * em * 1.2,
-            .rlh => len.value * self.ctx.root_font_size * 1.2,
-            .vw, .vi => len.value * self.ctx.viewport_width / 100,
-            .vh, .vb => len.value * self.ctx.viewport_height / 100,
-            .vmin => len.value * @min(self.ctx.viewport_width, self.ctx.viewport_height) / 100,
-            .vmax => len.value * @max(self.ctx.viewport_width, self.ctx.viewport_height) / 100,
-            .percent => len.value * em / 100,
+    fn mathContext(self: *const Builder, l: Longhand) @import("math_values.zig").Context {
+        // Values 4 §6.1.1: font-affecting properties use parent metrics;
+        // line-height additionally uses its parent's lh to avoid a cycle.
+        const font_affecting = l == .font_size or l == .font_weight;
+        const parent_em = self.parentValue(.font_size).length.value;
+        const em = if (font_affecting) parent_em else self.fontSize();
+        const parent_lh = if (self.ctx.parent) |parent| usedLineHeight(parent) else 19.2;
+        const own_lh = if (font_affecting or l == .line_height) parent_lh else usedLineHeight(self.style);
+        const root_self = self.ctx.is_root and !font_affecting;
+        const root_em = if (root_self) self.fontSize() else self.ctx.root_font_size;
+        const mode = if (font_affecting) self.parentValue(.writing_mode).keyword else self.writing_mode;
+        const orientation = if (font_affecting) self.parentValue(.text_orientation).keyword else self.style.keyword(.text_orientation);
+        return .{
+            .font_size = em,
+            .root_font_size = root_em,
+            .line_height = own_lh,
+            .root_line_height = if (self.ctx.is_root)
+                (if (font_affecting or l == .line_height) parent_lh else own_lh)
+            else
+                self.ctx.root_line_height orelse self.ctx.root_font_size * 1.2,
+            .vertical = mode == .vertical_rl or mode == .vertical_lr,
+            .upright = orientation == .upright,
+            .root_vertical = if (root_self) self.writing_mode == .vertical_rl or self.writing_mode == .vertical_lr else self.ctx.root_vertical,
+            .root_upright = if (root_self) self.style.keyword(.text_orientation) == .upright else self.ctx.root_upright,
+            .viewport_vertical = self.writing_mode != .horizontal_tb,
+            .viewport_width = self.ctx.viewport_width,
+            .viewport_height = self.ctx.viewport_height,
+            .percentage_basis = if (l == .font_size) parent_em else if (l == .line_height) self.fontSize() else null,
         };
+    }
+
+    /// CSS Values 4 section 6: a length's absolute value, in px, its em
+    /// the element's own font size.
+    fn absolute(self: *const Builder, len: Length, l: Longhand) f64 {
+        if (len.unit == .px) return len.value;
+        const unit: @import("math_values.zig").Unit = switch (len.unit) {
+            .Q => .q,
+            inline else => |u| @field(@import("math_values.zig").Unit, @tagName(u)),
+        };
+        return self.mathContext(l).resolve(.{ .value = len.value, .unit = unit }).value;
     }
 
     /// CSS Fonts 4 2.5 font-size, against the parent's computed size. The
@@ -461,7 +623,7 @@ const Builder = struct {
             },
             // "Percentages: refer to parent element's font size"; em and ex
             // likewise refer to the parent's font.
-            .length => |len| self.absoluteWith(len, parent),
+            .length => |len| self.absolute(len, .font_size),
             else => parent,
         };
     }
@@ -528,7 +690,11 @@ const Builder = struct {
         };
         for (sides) |pair| {
             const style_kw = s.keyword(pair[0]);
-            if (style_kw == .none or style_kw == .hidden) s.values[@intFromEnum(pair[1])] = Value.px(0);
+            if (style_kw == .none or style_kw == .hidden) {
+                const slot = &s.values[@intFromEnum(pair[1])];
+                slot.release();
+                slot.* = Value.px(0);
+            }
         }
     }
 };
@@ -550,7 +716,7 @@ fn snapBorderWidth(px: f64) f64 {
 }
 
 const Specified = union(enum) {
-    value: Value,
+    value: struct { value: Value, source: ValueSource },
     initial,
     inherit,
 };
@@ -567,20 +733,20 @@ const Exclusions = struct {
     fn add(self: *Exclusions, c: Candidate) void {
         if (self.count == self.layers.len) {
             // Deeper than any real chain: discard the whole origin.
-            self.revert_class_at_least = @min(self.revert_class_at_least, c.origin.revertClass());
+            self.revert_class_at_least = @min(self.revert_class_at_least, c.source.origin.revertClass());
             return;
         }
-        self.layers[self.count] = .{ .origin = c.origin, .layer = c.layer, .important = c.important };
+        self.layers[self.count] = .{ .origin = c.source.origin, .layer = c.source.layer, .important = c.decl.important };
         self.count += 1;
     }
 
     fn excludes(self: *const Exclusions, c: Candidate) bool {
-        if (c.origin.revertClass() >= self.revert_class_at_least) return true;
+        if (c.source.origin.revertClass() >= self.revert_class_at_least) return true;
         for (self.layers[0..self.count]) |lv| {
-            if (lv.origin != c.origin or lv.layer != c.layer) continue;
+            if (lv.origin != c.source.origin or lv.layer != c.source.layer) continue;
             // An important level's revert-layer also passes the normal
             // declarations of its layer.
-            if (lv.important or !c.important) return true;
+            if (lv.important or !c.decl.important) return true;
         }
         return false;
     }
@@ -864,4 +1030,302 @@ test "the element color scheme: normal is the page's, a list is resolved against
             return err;
         };
     }
+}
+
+const Cv1Cascade = @This();
+const cv1HasSourceApi = @hasDecl(Cv1Cascade, "TreeScopeRef") and
+    @hasDecl(Cv1Cascade, "ValueSource") and @hasDecl(Cv1Cascade, "collectCandidates");
+
+fn cv1SourceSpecified(matched: []const Matched, longhand: Longhand, mode: Keyword, direction: Keyword) !Specified {
+    var candidates = try Cv1Cascade.collectCandidates(testing.allocator, matched);
+    defer candidates.deinit(testing.allocator);
+    const links = try testing.allocator.alloc(usize, candidates.items.len);
+    defer testing.allocator.free(links);
+    var builder = Builder{
+        .ctx = .{ .allocator = testing.allocator, .parent = null },
+        .candidates = candidates.items,
+        .index = CandidateIndex.init(candidates.items, links),
+        .writing_mode = mode,
+        .direction = direction,
+    };
+    builder.mapLogicalChains();
+    return builder.specified(longhand);
+}
+
+test "cv1 source defaults to the document and permits tree counts" {
+    if (comptime !cv1HasSourceApi) return error.CascadeSourceApiNotImplemented;
+    const source: Source = .{ .origin = .author };
+    const value_source: Cv1Cascade.ValueSource = .{};
+    try testing.expectEqual(@as(u64, 0), source.tree_scope.serial);
+    try testing.expectEqual(@as(u64, 0), value_source.tree_scope.serial);
+    try testing.expect(source.tree_count_allowed);
+    try testing.expect(value_source.tree_count_allowed);
+}
+
+test "cv1 source candidate stays thirty two bytes" {
+    try testing.expectEqual(@as(usize, 32), @sizeOf(Candidate));
+}
+
+test "cv1 source metadata belongs to the winning declaration and is copied out of candidates" {
+    if (comptime !cv1HasSourceApi) return error.CascadeSourceApiNotImplemented;
+    var low = try TestBlock.make("opacity:.2");
+    defer low.deinit();
+    var high = try TestBlock.make("opacity:.8");
+    defer high.deinit();
+    var matched = [_]Matched{
+        .{ .block = &high.block, .source = .{ .origin = .author, .order = 2, .tree_scope = .{ .serial = 82 }, .tree_count_allowed = false } },
+        .{ .block = &low.block, .source = .{ .origin = .author, .order = 1, .tree_scope = .{ .serial = 17 } } },
+    };
+    const specified = try cv1SourceSpecified(&matched, .opacity, .horizontal_tb, .ltr);
+    matched[0].source.tree_scope.serial = 999;
+    try testing.expectEqual(@as(f64, 0.8), specified.value.value.number);
+    try testing.expectEqual(@as(u64, 82), specified.value.source.tree_scope.serial);
+    try testing.expect(!specified.value.source.tree_count_allowed);
+}
+
+test "cv1 source revert and revert layer carry the fallback declaration source" {
+    if (comptime !cv1HasSourceApi) return error.CascadeSourceApiNotImplemented;
+    var ua = try TestBlock.make("display:block;opacity:.1");
+    defer ua.deinit();
+    var low = try TestBlock.make("opacity:.4");
+    defer low.deinit();
+    var high = try TestBlock.make("display:revert;opacity:revert-layer");
+    defer high.deinit();
+    const matched = [_]Matched{
+        .{ .block = &ua.block, .source = .{ .origin = .user_agent, .tree_scope = .{ .serial = 3 } } },
+        .{ .block = &low.block, .source = .{ .origin = .author, .layer = 0, .tree_scope = .{ .serial = 4 }, .tree_count_allowed = false } },
+        .{ .block = &high.block, .source = .{ .origin = .author, .layer = 1, .tree_scope = .{ .serial = 5 } } },
+    };
+    const reverted = try cv1SourceSpecified(&matched, .display, .horizontal_tb, .ltr);
+    try testing.expectEqual(@as(u64, 3), reverted.value.source.tree_scope.serial);
+    const layered = try cv1SourceSpecified(&matched, .opacity, .horizontal_tb, .ltr);
+    try testing.expectEqual(@as(u64, 4), layered.value.source.tree_scope.serial);
+    try testing.expect(!layered.value.source.tree_count_allowed);
+}
+
+test "cv1 source logical remapping keeps the winning rule source" {
+    if (comptime !cv1HasSourceApi) return error.CascadeSourceApiNotImplemented;
+    var logical = try TestBlock.make("margin-inline-start:7px");
+    defer logical.deinit();
+    var physical = try TestBlock.make("margin-right:3px");
+    defer physical.deinit();
+    const matched = [_]Matched{
+        .{ .block = &logical.block, .source = .{ .origin = .author, .order = 2, .tree_scope = .{ .serial = 72 } } },
+        .{ .block = &physical.block, .source = .{ .origin = .author, .order = 1, .tree_scope = .{ .serial = 31 } } },
+    };
+    const specified = try cv1SourceSpecified(&matched, .margin_right, .horizontal_tb, .rtl);
+    try testing.expectEqual(@as(f64, 7), specified.value.value.length.value);
+    try testing.expectEqual(@as(u64, 72), specified.value.source.tree_scope.serial);
+}
+
+test "cv1 source initial and inherited defaults do not acquire the resetting rule source" {
+    if (comptime !cv1HasSourceApi) return error.CascadeSourceApiNotImplemented;
+    var block = try TestBlock.make("font-family:inherit;opacity:initial");
+    defer block.deinit();
+    const matched = [_]Matched{.{ .block = &block.block, .source = .{ .origin = .author, .tree_scope = .{ .serial = 29 }, .tree_count_allowed = false } }};
+    try testing.expect((try cv1SourceSpecified(&matched, .font_family, .horizontal_tb, .ltr)) == .inherit);
+    try testing.expect((try cv1SourceSpecified(&matched, .opacity, .horizontal_tb, .ltr)) == .initial);
+    try testing.expect((try cv1SourceSpecified(&.{}, .font_family, .horizontal_tb, .ltr)) == .inherit);
+    try testing.expect((try cv1SourceSpecified(&.{}, .opacity, .horizontal_tb, .ltr)) == .initial);
+}
+
+test "cv1 source borrows only after callers finish appending matched batches" {
+    if (comptime !cv1HasSourceApi) return error.CascadeSourceApiNotImplemented;
+    var first = try TestBlock.make("opacity:.2");
+    defer first.deinit();
+    var last = try TestBlock.make("opacity:.8");
+    defer last.deinit();
+    var matched: std.ArrayList(Matched) = .empty;
+    defer matched.deinit(testing.allocator);
+    try matched.appendSlice(testing.allocator, &.{.{ .block = &first.block, .source = .{ .origin = .author, .order = 1, .tree_scope = .{ .serial = 1 } } }});
+    // Force the second batch to move storage before any candidate borrows it.
+    try matched.ensureTotalCapacity(testing.allocator, matched.capacity + 32);
+    try matched.appendSlice(testing.allocator, &.{.{ .block = &last.block, .source = .{ .origin = .author, .order = 2, .tree_scope = .{ .serial = 2 } } }});
+    const specified = try cv1SourceSpecified(matched.items, .opacity, .horizontal_tb, .ltr);
+    try testing.expectEqual(@as(u64, 2), specified.value.source.tree_scope.serial);
+    const style = try cascade(.{ .allocator = testing.allocator, .parent = null }, matched.items);
+    defer style.destroy();
+    try expectResolved(style, .opacity, "0.8");
+}
+
+test "cv1 source inheritance retains parent values after declarations and parent style end" {
+    if (comptime !cv1HasSourceApi) return error.CascadeSourceApiNotImplemented;
+    try cv1SourceInheritanceRoundTrip(testing.allocator);
+}
+
+test "cv1 source candidate and inherited value allocation failures release everything" {
+    if (comptime !cv1HasSourceApi) return error.CascadeSourceApiNotImplemented;
+    try testing.checkAllAllocationFailures(testing.allocator, cv1SourceInheritanceRoundTrip, .{});
+}
+
+fn cv1SourceInheritanceRoundTrip(allocator: Allocator) !void {
+    inline for (.{ "font-family:inherit", "color:red" }) |text| {
+        const child = blk: {
+            var parent_block = try DeclarationBlock.parse(.{ .allocator = allocator }, "font-family:parent-scope");
+            defer parent_block.deinit();
+            const parent = try cascade(.{ .allocator = allocator, .parent = null }, &.{.{ .block = &parent_block, .source = .{ .origin = .author, .tree_scope = .{ .serial = 37 } } }});
+            defer parent.destroy();
+            var child_block = try DeclarationBlock.parse(.{ .allocator = allocator }, text);
+            defer child_block.deinit();
+            const result = try cascade(.{ .allocator = allocator, .parent = parent }, &.{.{ .block = &child_block, .source = .{ .origin = .author, .tree_scope = .{ .serial = 91 } } }});
+            errdefer result.destroy();
+            try testing.expectEqual(parent.get(.font_family).text, result.get(.font_family).text);
+            break :blk result;
+        };
+        defer child.destroy();
+        var out: std.ArrayList(u8) = .empty;
+        defer out.deinit(allocator);
+        try child.serializeResolved(.font_family, &out, allocator);
+        try testing.expectEqualStrings("parent-scope", out.items);
+    }
+}
+
+test "cv1 index absent properties have empty heads without reading candidates" {
+    if (comptime !@hasDecl(@This(), "CandidateIndex")) return error.CascadePropertyIndexMissing;
+    const Index = @field(@This(), "CandidateIndex");
+    var no_links: [0]usize = .{};
+    const index = Index.init(&.{}, &no_links);
+    for (index.heads) |head| try testing.expectEqual(Index.none, head);
+}
+
+test "cv1 index defaults inherit and initialize independently of unrelated declarations" {
+    var parent_block = try TestBlock.make("color:green;font-family:parent-family;opacity:.2");
+    defer parent_block.deinit();
+    const parent = try cascade(.{ .allocator = testing.allocator, .parent = null }, &.{.{ .block = &parent_block.block, .source = .{ .origin = .author } }});
+    defer parent.destroy();
+    var child_block = try TestBlock.make("width:17px;margin-top:9px");
+    defer child_block.deinit();
+    const child = try cascade(.{ .allocator = testing.allocator, .parent = parent }, &.{.{ .block = &child_block.block, .source = .{ .origin = .author } }});
+    defer child.destroy();
+    try expectResolved(child, .color, "rgb(0, 128, 0)");
+    try expectResolved(child, .font_family, "parent-family");
+    try expectResolved(child, .opacity, "1");
+    try expectResolved(child, .margin_left, "0px");
+}
+
+test "cv1 index retains origin importance layer specificity and appearance ordering" {
+    const Case = struct { first: Source, second: Source, important: bool = false, expected: []const u8 };
+    const cases = [_]Case{
+        .{ .first = .{ .origin = .user_agent }, .second = .{ .origin = .author }, .expected = "2px" },
+        .{ .first = .{ .origin = .user_agent }, .second = .{ .origin = .author }, .important = true, .expected = "1px" },
+        .{ .first = .{ .origin = .author, .layer = 0 }, .second = .{ .origin = .author, .layer = 1 }, .expected = "2px" },
+        .{ .first = .{ .origin = .author, .layer = 0 }, .second = .{ .origin = .author, .layer = 1 }, .important = true, .expected = "1px" },
+        .{ .first = .{ .origin = .author, .specificity = .{ .a = 1 } }, .second = .{ .origin = .author, .specificity = .{ .b = 9 }, .order = 10 }, .expected = "1px" },
+        .{ .first = .{ .origin = .author, .order = 7 }, .second = .{ .origin = .author, .order = 8 }, .expected = "2px" },
+        .{ .first = .{ .origin = .author, .element_attached = true }, .second = .{ .origin = .author, .specificity = .{ .a = 9 }, .order = 10 }, .expected = "1px" },
+    };
+    for (cases) |case| {
+        var first = try TestBlock.make(if (case.important) "margin-left:1px!important;color:red" else "margin-left:1px;color:red");
+        defer first.deinit();
+        var second = try TestBlock.make(if (case.important) "opacity:.5;margin-left:2px!important" else "opacity:.5;margin-left:2px");
+        defer second.deinit();
+        const style = try cascade(.{ .allocator = testing.allocator, .parent = null }, &.{
+            .{ .block = &second.block, .source = case.second },
+            .{ .block = &first.block, .source = case.first },
+        });
+        defer style.destroy();
+        try expectResolved(style, .margin_left, case.expected);
+        try expectResolved(style, .opacity, "0.5");
+    }
+}
+
+test "cv1 index shadow priority preserves the actual winning tree scope" {
+    inline for (.{ false, true }) |important| {
+        var outer = try TestBlock.make(if (important) "opacity:.2!important" else "opacity:.2");
+        defer outer.deinit();
+        var inner = try TestBlock.make(if (important) "opacity:.8!important" else "opacity:.8");
+        defer inner.deinit();
+        const result = try cv1SourceSpecified(&.{
+            .{ .block = &inner.block, .source = .{ .origin = .author, .tree_depth = 2, .tree_scope = .{ .serial = 88 } } },
+            .{ .block = &outer.block, .source = .{ .origin = .author, .tree_depth = 0, .tree_scope = .{ .serial = 22 } } },
+        }, .opacity, .horizontal_tb, .ltr);
+        try testing.expectEqual(@as(u64, if (important) 88 else 22), result.value.source.tree_scope.serial);
+        try testing.expectEqual(@as(f64, if (important) 0.8 else 0.2), result.value.value.number);
+    }
+}
+
+test "cv1 index revert and revert layer traverse only the property's fallback chain" {
+    var ua = try TestBlock.make("margin-left:1px;opacity:.1");
+    defer ua.deinit();
+    var low = try TestBlock.make("margin-left:3px;opacity:.3;color:green");
+    defer low.deinit();
+    var middle = try TestBlock.make("margin-left:revert;opacity:.5;display:block");
+    defer middle.deinit();
+    var high = try TestBlock.make("margin-left:revert-layer;opacity:revert-layer;width:99px");
+    defer high.deinit();
+    const matched = [_]Matched{
+        .{ .block = &high.block, .source = .{ .origin = .author, .layer = 2, .tree_scope = .{ .serial = 4 } } },
+        .{ .block = &ua.block, .source = .{ .origin = .user_agent, .tree_scope = .{ .serial = 1 } } },
+        .{ .block = &middle.block, .source = .{ .origin = .author, .layer = 1, .tree_scope = .{ .serial = 3 } } },
+        .{ .block = &low.block, .source = .{ .origin = .author, .layer = 0, .tree_scope = .{ .serial = 2 } } },
+    };
+    const margin = try cv1SourceSpecified(&matched, .margin_left, .horizontal_tb, .ltr);
+    const opacity = try cv1SourceSpecified(&matched, .opacity, .horizontal_tb, .ltr);
+    try testing.expectEqual(@as(f64, 1), margin.value.value.length.value);
+    try testing.expectEqual(@as(u64, 1), margin.value.source.tree_scope.serial);
+    try testing.expectEqual(@as(f64, 0.5), opacity.value.value.number);
+    try testing.expectEqual(@as(u64, 3), opacity.value.source.tree_scope.serial);
+}
+
+test "cv1 index merges logical and physical chains after both mapping properties compute" {
+    const Case = struct { mode: []const u8, direction: []const u8, inline_start: Longhand, block_start: Longhand };
+    const cases = [_]Case{
+        .{ .mode = "horizontal-tb", .direction = "ltr", .inline_start = .margin_left, .block_start = .margin_top },
+        .{ .mode = "horizontal-tb", .direction = "rtl", .inline_start = .margin_right, .block_start = .margin_top },
+        .{ .mode = "vertical-rl", .direction = "ltr", .inline_start = .margin_top, .block_start = .margin_right },
+        .{ .mode = "vertical-rl", .direction = "rtl", .inline_start = .margin_bottom, .block_start = .margin_right },
+        .{ .mode = "vertical-lr", .direction = "ltr", .inline_start = .margin_top, .block_start = .margin_left },
+        .{ .mode = "vertical-lr", .direction = "rtl", .inline_start = .margin_bottom, .block_start = .margin_left },
+        .{ .mode = "sideways-rl", .direction = "ltr", .inline_start = .margin_top, .block_start = .margin_right },
+        .{ .mode = "sideways-rl", .direction = "rtl", .inline_start = .margin_bottom, .block_start = .margin_right },
+        .{ .mode = "sideways-lr", .direction = "ltr", .inline_start = .margin_bottom, .block_start = .margin_left },
+        .{ .mode = "sideways-lr", .direction = "rtl", .inline_start = .margin_top, .block_start = .margin_left },
+    };
+    for (cases) |case| {
+        var physical = try TestBlock.make("margin:3px");
+        defer physical.deinit();
+        const text = try std.fmt.allocPrint(testing.allocator, "writing-mode:{s};direction:{s};margin-inline-start:7px;margin-block-start:11px", .{ case.mode, case.direction });
+        defer testing.allocator.free(text);
+        var logical = try TestBlock.make(text);
+        defer logical.deinit();
+        const style = try cascade(.{ .allocator = testing.allocator, .parent = null }, &.{
+            .{ .block = &logical.block, .source = .{ .origin = .author, .order = 2 } },
+            .{ .block = &physical.block, .source = .{ .origin = .author, .order = 1 } },
+        });
+        defer style.destroy();
+        try expectResolved(style, case.inline_start, "7px");
+        try expectResolved(style, case.block_start, "11px");
+        try expectResolved(style, .margin_inline_start, "7px");
+        try expectResolved(style, .margin_block_start, "11px");
+    }
+}
+
+test "cv1 index preserves cross logical physical rollback and unavailable scalar fallback" {
+    var low = try TestBlock.make("margin-inline-start:7px;opacity:.4;direction:rtl");
+    defer low.deinit();
+    var high = try TestBlock.make("margin-right:revert-layer;opacity:calc(1cap / 1px)");
+    defer high.deinit();
+    const style = try cascade(.{ .allocator = testing.allocator, .parent = null }, &.{
+        .{ .block = &high.block, .source = .{ .origin = .author, .layer = 1 } },
+        .{ .block = &low.block, .source = .{ .origin = .author, .layer = 0 } },
+    });
+    defer style.destroy();
+    try expectResolved(style, .margin_right, "7px");
+    try expectResolved(style, .opacity, "0.4");
+}
+
+test "cv1 index large candidate storage releases every allocation failure" {
+    try cv1IndexLarge(testing.allocator);
+    try testing.checkAllAllocationFailures(testing.allocator, cv1IndexLarge, .{});
+}
+
+fn cv1IndexLarge(allocator: Allocator) !void {
+    var block = try DeclarationBlock.parse(.{ .allocator = allocator }, "opacity:.25;direction:rtl;margin-inline-start:7px");
+    defer block.deinit();
+    var matched: [80]Matched = undefined;
+    for (&matched, 0..) |*entry, i| entry.* = .{ .block = &block, .source = .{ .origin = .author, .order = @intCast(i), .tree_scope = .{ .serial = i } } };
+    const style = try cascade(.{ .allocator = allocator, .parent = null }, &matched);
+    defer style.destroy();
+    try testing.expectEqual(@as(f64, 0.25), style.get(.opacity).number);
+    try testing.expectEqual(@as(f64, 7), style.get(.margin_right).length.value);
 }
