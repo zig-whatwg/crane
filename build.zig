@@ -1800,9 +1800,13 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run WHATWG spec tests (use -Dspec=<name> to filter)");
 
+    // The target, as the testing graph it imports: a host root over target
+    // modules mixes two targets in one compile, and for a Linux target from
+    // macOS std.c is Darwin's under kit/posix's Linux branch
+    // (pthread_setname_np: expected 1 argument(s), found 2).
     const eventsource_test_mod = b.createModule(.{
         .root_source_file = b.path("tests/eventsource/parser_test.zig"),
-        .target = b.graph.host,
+        .target = target,
         .optimize = optimize,
         .link_libc = true,
     });
