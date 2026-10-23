@@ -107,6 +107,7 @@ pub const geometry = @import("geometry.zig");
 // The style system's pure layer (tmp/plans/style-design.md section 3.1):
 // values, the supported properties, declaration blocks.
 pub const style_values = @import("style_values.zig");
+pub const math_values = @import("math_values.zig");
 pub const properties = @import("properties.zig");
 pub const declarations = @import("declarations.zig");
 pub const media_queries = @import("media_queries.zig");

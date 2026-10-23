@@ -74,6 +74,11 @@ pub const Keyword = enum(u8) {
     vertical_lr,
     sideways_rl,
     sideways_lr,
+    // Writing Modes 4 §5.1, also an input to relative font units.
+    mixed,
+    upright,
+    sideways,
+    sideways_right,
     // border styles
     dotted,
     dashed,
@@ -439,6 +444,76 @@ pub const Color = union(enum) {
     pub const transparent: Color = .{ .rgba = RgbaColor.transparent };
     pub const black: Color = .{ .rgba = RgbaColor.black };
 
+    /// Borrowed inputs; a computed result always owns the references it needs.
+    /// null current keeps currentcolor symbolic for inheritance through other
+    /// color properties. For the color property, pass the parent's color.
+    pub const Context = struct {
+        scheme: color_scheme_mod.Scheme = .light,
+        current: ?Color = null,
+        math: @import("math_values.zig").Context = .{},
+    };
+
+    /// Every holder of a Color takes a reference, including nested paint data.
+    /// Scalar colors are allocation-free and need no work here.
+    pub fn retain(self: Color) void {
+        if (self == .named) self.named.name.ref();
+    }
+
+    pub fn release(self: Color) void {
+        if (self == .named) self.named.name.unref();
+    }
+
+    /// Color 4 §§6.4, 15: specified keywords keep their lowercase spelling.
+    pub fn serializeSpecified(self: Color, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+        switch (self) {
+            .rgba => |c| try serializeRgba(c, out, allocator),
+            .current => try out.appendSlice(allocator, "currentcolor"),
+            .named => |n| try out.appendSlice(allocator, n.name.bytes),
+            .system => |s| try out.appendSlice(allocator, s.keyword()),
+        }
+    }
+
+    /// A computed color's own serialization. Resolve currentcolor with the
+    /// destination's current color first when CSSOM requires a used color.
+    pub fn serializeComputed(self: Color, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+        if (self.absolute()) |c| return serializeRgba(c, out, allocator);
+        return out.appendSlice(allocator, "currentcolor");
+    }
+
+    /// Returns an OWNED value; neither self nor Context's borrowed current
+    /// color is consumed. Allocation errors are part of the stable API for
+    /// future typed components even though today's scalar resolution cannot
+    /// allocate. The caller releases every successful result.
+    pub fn resolveComputed(self: Color, allocator: Allocator, context: Context) Allocator.Error!Color {
+        _ = allocator;
+        return switch (self) {
+            .current => blk: {
+                const result = context.current orelse self;
+                result.retain();
+                break :blk result;
+            },
+            .rgba => self,
+            .named => |n| .{ .rgba = n.rgba },
+            .system => |s| .{ .rgba = s.color(context.scheme) },
+        };
+    }
+
+    /// Aggregates forward this query without inspecting Color's variants.
+    /// A future typed variant must explicitly describe its dependencies.
+    pub fn needsTreeCounts(self: Color) bool {
+        return switch (self) {
+            .rgba, .current, .named, .system => false,
+        };
+    }
+
+    /// Scalar colors need no font or layout metrics, for either destination.
+    pub fn needsUnavailableMetrics(self: Color, geometry_length: bool) bool {
+        _ = geometry_length;
+        return switch (self) {
+            .rgba, .current, .named, .system => false,
+        };
+    }
+
     pub fn eql(a: Color, b: Color) bool {
         return switch (a) {
             .current => b == .current,
@@ -578,6 +653,7 @@ pub const Value = union(enum) {
     text_transform: TextTransform,
     color_scheme: ColorScheme,
     content: *Content,
+    calculation: *@import("math_values.zig").Expression,
     /// Kept as its serialization (a font-family list, an <image>).
     text: *SharedText,
     cursor: *@import("cursor_values.zig").Cursor,
@@ -605,6 +681,7 @@ pub const Value = union(enum) {
         if (self == .content) return self.content.ref();
         if (self == .cursor) return self.cursor.ref();
         if (self == .indent) return self.indent.ref();
+        if (self == .calculation) return self.calculation.ref();
         if (self.sharedText()) |t| t.ref();
     }
 
@@ -613,6 +690,7 @@ pub const Value = union(enum) {
         if (self == .content) return self.content.unref();
         if (self == .cursor) return self.cursor.unref();
         if (self == .indent) return self.indent.unref();
+        if (self == .calculation) return self.calculation.unref();
         if (self.sharedText()) |t| t.unref();
     }
 
@@ -638,6 +716,7 @@ pub const Value = union(enum) {
             .text_transform => |t| t.eql(b.text_transform),
             .color_scheme => |c| c.support.eql(b.color_scheme.support) and std.mem.eql(u8, c.text.bytes, b.color_scheme.text.bytes),
             .content => |c| c.eql(b.content),
+            .calculation => |c| c.eql(b.calculation),
             .text => |t| t == b.text or std.mem.eql(u8, t.bytes, b.text.bytes),
             .cursor => |c| c.eql(b.cursor),
             .indent => |v| v.eql(b.indent),
@@ -646,6 +725,24 @@ pub const Value = union(enum) {
 
     pub fn kw(k: Keyword) Value {
         return .{ .keyword = k };
+    }
+
+    /// Q25: exhaustive so a future aggregate must choose its metric rule.
+    pub fn needsUnavailableMetrics(self: Value, geometry_length: bool) bool {
+        return switch (self) {
+            .calculation => |c| c.needsUnavailableMetrics(geometry_length),
+            .keyword,
+            .length,
+            .number,
+            .integer,
+            .color,
+            .display,
+            .text_transform,
+            .color_scheme,
+            .content,
+            .text,
+            => false,
+        };
     }
 
     pub fn px(v: f64) Value {
@@ -674,8 +771,10 @@ pub fn appendNumber(value: f64, out: *std.ArrayList(u8), allocator: Allocator) A
     // Six significant digits, and never more than CSSOM's 6 decimals.
     const exponent: i32 = @intFromFloat(@floor(std.math.log10(magnitude)));
     const decimals: usize = @intCast(std.math.clamp(5 - exponent, 0, 6));
-    var buffer: [64]u8 = undefined;
-    const text = std.fmt.bufPrint(&buffer, "{d:.[1]}", .{ value, decimals }) catch return out.appendSlice(allocator, "0");
+    // f64's largest finite value has 309 integer digits. Include sign and
+    // all six fractional digits: finite overflow must never serialize as 0.
+    var buffer: [320]u8 = undefined;
+    const text = std.fmt.bufPrint(&buffer, "{d:.[1]}", .{ value, decimals }) catch unreachable;
     var end = text.len;
     if (std.mem.indexOfScalar(u8, text, '.') != null) {
         while (end > 0 and text[end - 1] == '0') end -= 1;

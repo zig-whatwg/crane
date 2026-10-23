@@ -779,6 +779,9 @@ const Resolution = struct {
     active: *Active,
     key: Key,
     root_font_size: f64 = 16,
+    root_line_height: f64 = 19.2,
+    root_vertical: bool = false,
+    root_upright: bool = false,
     /// The page color scheme (CSS Color Adjustment 1 2.1) and the user's
     /// preferred one, found once per style read.
     page_color_scheme: css.color_scheme.Scheme = .light,
@@ -869,7 +872,20 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
             state.setCached(.{ .style = style, .key = res.key, .@"volatile" = reads.@"volatile" or parent_volatile });
         }
         const cached = state.cached.?;
-        if (i == lineage.items.len - 1) res.root_font_size = cached.style.get(.font_size).length.value;
+        if (i == lineage.items.len - 1) {
+            // Values 4 §6.1.1: copy available root metrics at the existing
+            // root pass. Descendants retain no style pointer and recascade
+            // nothing just to evaluate their root-relative lengths.
+            res.root_font_size = cached.style.get(.font_size).length.value;
+            res.root_line_height = switch (cached.style.get(.line_height)) {
+                .length => |length| length.value,
+                .number => |number| number * res.root_font_size,
+                else => res.root_font_size * 1.2, // Existing normal estimate.
+            };
+            const mode = cached.style.keyword(.writing_mode);
+            res.root_vertical = mode == .vertical_rl or mode == .vertical_lr;
+            res.root_upright = cached.style.keyword(.text_orientation) == .upright;
+        }
         parent_style = cached.style;
         parent_volatile = cached.@"volatile";
     }
@@ -922,6 +938,9 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         .content_attributes = .{ .context = element, .get = contentAttribute },
         .pseudo = pseudo,
         .root_font_size = if (is_root) 16 else res.root_font_size,
+        .root_line_height = if (is_root) 19.2 else res.root_line_height,
+        .root_vertical = !is_root and res.root_vertical,
+        .root_upright = !is_root and res.root_upright,
         .viewport_width = res.active.media.width,
         .viewport_height = res.active.media.height,
         .is_root = is_root and pseudo == null,

@@ -22,10 +22,9 @@
 //! - CSS UI 4: appearance
 //! - CSS Cascade 5: all
 //!
-//! Stated deviations: math functions (calc() and friends) and var() make a
-//! declaration invalid until the numeric-expression capability lands
-//! (design section 6.1); an <image> other than none/url() is kept as
-//! written, unresolved.
+//! Scalar math uses typed CSS Values 4 expressions. Substitution and
+//! other math functions remain unsupported. Image/background grammars
+//! retain their rejection until their typed argument grammar lands.
 //!
 //! Spec: https://drafts.csswg.org/css-cascade-5/#shorthand
 //! Spec: https://drafts.csswg.org/cssom-1/#serializing-css-values
@@ -37,6 +36,7 @@ const Tokenizer = tokenizer_mod.Tokenizer;
 const Token = tokenizer_mod.Token;
 const values = @import("style_values.zig");
 const resources = @import("resource_values.zig");
+const math_values = @import("math_values.zig");
 const color_mod = @import("values/color.zig");
 const color_scheme_mod = @import("color_scheme.zig");
 const serialize_mod = @import("serialize.zig");
@@ -124,6 +124,7 @@ pub const Longhand = enum(u8) {
     padding_top,
     position,
     right,
+    text_orientation,
     text_transform,
     text_wrap_mode,
     top,
@@ -321,6 +322,7 @@ const infos: [Longhand.count]Info = blk: {
     const zero = Value.px(0);
     const medium_width = Value.kw(.medium);
     const defs = [_]Info{
+        .{ .longhand = .text_orientation, .inherited = true, .initial = Value.kw(.mixed), .grammar = .keywords, .keywords = &.{ .mixed, .upright, .sideways, .sideways_right } },
         .{ .longhand = .appearance, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .auto, .base, .base_select, .searchfield, .textarea, .checkbox, .radio, .menulist, .listbox, .meter, .progress_bar, .button, .textfield, .menulist_button } },
         .{ .longhand = .background_color, .inherited = false, .initial = .{ .color = Color.transparent }, .grammar = .color, .quirky_color = true },
         .{ .longhand = .background_image, .inherited = false, .initial = Value.kw(.none), .grammar = .image },
@@ -613,7 +615,10 @@ pub fn parseDeclaration(options: ParseOptions, property: Property, text: []const
         }
         return true;
     }
-    if (!(property == .longhand and property.longhand == .content) and containsUnsupportedFunction(text)) return false;
+    const content_functions = property == .longhand and property.longhand == .content;
+    const opaque_image = (property == .longhand and property.longhand == .background_image) or
+        (property == .shorthand and property.shorthand == .background);
+    if (containsUnsupportedToken(text, content_functions, opaque_image)) return false;
     var stream = Stream.init(text);
     const ok = switch (property) {
         .longhand => |l| blk: {
@@ -643,15 +648,20 @@ fn cssWideKeyword(text: []const u8) ?values.CssWide {
     return values.CssWide.parse(token.value);
 }
 
-/// Math functions and var() are not supported yet: a value naming one is
-/// invalid (stated; design section 6.1).
-fn containsUnsupportedFunction(text: []const u8) bool {
+/// Unsupported substitution/functions cannot pass through opaque grammars.
+fn containsUnsupportedToken(text: []const u8, content_functions: bool, opaque_image: bool) bool {
     var tok = Tokenizer.init(text);
     while (true) {
         const token = tok.next();
         if (token.token_type == .eof) return false;
+        // Syntax 3 section 7.2 applies inside nested functions too. Generic
+        // declaration serialization must leave these tokens invalid for
+        // this property grammar, unlike Fonts' forgiving src components.
+        if (token.token_type == .bad_string or token.token_type == .bad_url) return true;
+        if (content_functions) continue;
         if (token.token_type != .function) continue;
-        for ([_][]const u8{ "calc", "min", "max", "clamp", "var", "env", "attr", "round", "mod", "rem", "abs", "sign", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "pow", "sqrt", "hypot", "log", "exp", "progress", "calc-size", "if" }) |f| {
+        if (opaque_image and math_values.isFunction(token)) return true;
+        for ([_][]const u8{ "var", "env", "attr", "round", "mod", "rem", "abs", "sign", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "pow", "sqrt", "hypot", "log", "exp", "progress", "calc-size", "if" }) |f| {
             if (tokenizer_mod.nameEql(token.value, f)) return true;
         }
     }
@@ -771,6 +781,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .font_weight => {
             if (takeKeyword(stream, &.{ .normal, .bold, .bolder, .lighter })) |k| return Value.kw(k);
             const t = stream.peek();
+            if (math_values.isFunction(t)) return mathValue(options, stream, .{ .kind = .number, .minimum = 1, .maximum = 1000 });
             if (t.token_type != .number) return null;
             const n = t.numeric_value orelse return null;
             if (n < 1 or n > 1000) return null;
@@ -780,6 +791,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .line_height => {
             if (takeKeyword(stream, &.{.normal})) |k| return Value.kw(k);
             const t = stream.peek();
+            if (math_values.isFunction(t)) return mathValue(options, stream, .{ .kind = .length_percentage_number, .minimum = 0 });
             if (t.token_type == .number) {
                 const n = t.numeric_value orelse return null;
                 if (n < 0) return null;
@@ -790,6 +802,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         },
         .opacity => {
             const t = stream.peek();
+            if (math_values.isFunction(t)) return mathValue(options, stream, .{ .kind = .number_percentage, .minimum = 0, .maximum = 1 });
             const n: f64 = switch (t.token_type) {
                 .number => t.numeric_value orelse return null,
                 .percentage => (t.numeric_value orelse return null) / 100,
@@ -801,6 +814,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .z_index => {
             if (takeKeyword(stream, &.{.auto})) |k| return Value.kw(k);
             const t = stream.peek();
+            if (math_values.isFunction(t)) return mathValue(options, stream, .{ .kind = .integer, .minimum = std.math.minInt(i32), .maximum = std.math.maxInt(i32) });
             if (t.token_type != .number or !t.is_integer) return null;
             const n = t.numeric_value orelse return null;
             _ = stream.next();
@@ -836,14 +850,29 @@ const LengthFlags = struct {
     negative: bool,
     percent: bool = true,
     quirky: bool,
+    anchor_position: bool = false,
+    anchor_size: bool = false,
 };
 
-fn lengthPercentage(options: ParseOptions, stream: *Stream, flags: LengthFlags) ?Value {
+fn lengthPercentage(options: ParseOptions, stream: *Stream, flags: LengthFlags) Allocator.Error!?Value {
     const t = stream.peek();
+    const grammar = math_values.Grammar{
+        .kind = if (flags.percent) .length_percentage else .length,
+        .minimum = if (flags.negative) -std.math.floatMax(f64) else 0,
+        .anchor_position = flags.anchor_position,
+        .anchor_size = flags.anchor_size,
+    };
+    if (math_values.isFunction(t)) return mathValue(options, stream, grammar);
     const value: Length = switch (t.token_type) {
         .dimension => blk: {
             const n = t.numeric_value orelse return null;
-            const unit = LengthUnit.fromString(t.unit orelse return null) orelse return null;
+            const raw_unit = t.unit orelse return null;
+            const unit = LengthUnit.fromString(raw_unit) orelse {
+                const extended = math_values.Unit.parse(raw_unit) orelse return null;
+                const expression = try math_values.dimension(options.allocator, .{ .value = n, .unit = extended }, grammar) orelse return null;
+                _ = stream.next();
+                return .{ .calculation = expression };
+            };
             break :blk Length.init(n, unit);
         },
         .percentage => blk: {
@@ -864,7 +893,16 @@ fn lengthPercentage(options: ParseOptions, stream: *Stream, flags: LengthFlags) 
     return .{ .length = value };
 }
 
-fn colorValue(options: ParseOptions, stream: *Stream, def: *const Info) ?Value {
+pub fn mathValue(options: ParseOptions, stream: *Stream, grammar: math_values.Grammar) Allocator.Error!?Value {
+    const begin = stream.offset();
+    const parsed = try math_values.parse(options.allocator, stream.text[begin..], grammar) orelse return null;
+    stream.tok = Tokenizer.init(stream.text);
+    stream.tok.pos = begin + parsed.consumed;
+    stream.peeked = null;
+    return .{ .calculation = parsed.expression };
+}
+
+fn colorValue(options: ParseOptions, stream: *Stream, def: *const Info) Allocator.Error!?Value {
     const t = stream.peek();
     if (t.token_type == .ident) {
         if (tokenizer_mod.nameEql(t.value, "currentcolor")) {
@@ -883,7 +921,7 @@ fn colorValue(options: ParseOptions, stream: *Stream, def: *const Info) ?Value {
         // A <named-color> keeps its keyword; a hashless hex color (the
         // quirk) does not.
         if (t.token_type == .ident and !(options.quirks and def.quirky_color and tokenizer_mod.isHexColor(t.value))) {
-            return namedColor(options, t.value, c) catch null;
+            return try namedColor(options, t.value, c);
         }
         return .{ .color = .{ .rgba = c } };
     } else |_| {}
@@ -891,7 +929,7 @@ fn colorValue(options: ParseOptions, stream: *Stream, def: *const Info) ?Value {
     // against the element's used color scheme when it is computed.
     if (t.token_type == .ident) {
         const escaped = std.mem.indexOfScalar(u8, t.value, '\\') != null;
-        const decoded = if (escaped) tokenizer_mod.decode(options.allocator, t.value) catch return null else t.value;
+        const decoded = if (escaped) try tokenizer_mod.decode(options.allocator, t.value) else t.value;
         defer if (escaped) options.allocator.free(decoded);
         if (color_mod.SystemColor.parse(decoded)) |system| {
             _ = stream.next();
@@ -1270,8 +1308,11 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
 
 /// `<value>{1,4}`: top, right, bottom, left (CSS Box 4 "margin").
 fn fourSides(options: ParseOptions, ls: []const Longhand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
+    // Reserve before acquiring values: after parsing, transfers cannot fail.
+    try out.ensureUnusedCapacity(options.allocator, ls.len);
     var vs: [4]Value = undefined;
     var n: usize = 0;
+    errdefer for (vs[0..n]) |v| v.release();
     while (n < 4 and !stream.atEnd()) : (n += 1) {
         vs[n] = (try parseLonghand(options, ls[n], stream)) orelse {
             for (vs[0..n]) |v| v.release();
@@ -1298,18 +1339,20 @@ fn fourSides(options: ParseOptions, ls: []const Longhand, stream: *Stream, out: 
         const v = vs[order[i]];
         if (used[order[i]]) v.retain();
         used[order[i]] = true;
-        try append(options, out, l, v);
+        out.appendAssumeCapacity(.{ .longhand = l, .value = .{ .value = v } });
     }
     return true;
 }
 
 /// `<value>{1,2}`: start, end (CSS Logical 1).
 fn twoSides(options: ParseOptions, ls: []const Longhand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
+    try out.ensureUnusedCapacity(options.allocator, 2);
     const a = (try parseLonghand(options, ls[0], stream)) orelse return false;
+    errdefer a.release();
     if (stream.atEnd()) {
-        try append(options, out, ls[0], a);
+        out.appendAssumeCapacity(.{ .longhand = ls[0], .value = .{ .value = a } });
         a.retain();
-        try append(options, out, ls[1], a);
+        out.appendAssumeCapacity(.{ .longhand = ls[1], .value = .{ .value = a } });
         return true;
     }
     const b = (try parseLonghand(options, ls[1], stream)) orelse {
@@ -1321,17 +1364,23 @@ fn twoSides(options: ParseOptions, ls: []const Longhand, stream: *Stream, out: *
         b.release();
         return false;
     }
-    try append(options, out, ls[0], a);
-    try append(options, out, ls[1], b);
+    out.appendAssumeCapacity(.{ .longhand = ls[0], .value = .{ .value = a } });
+    out.appendAssumeCapacity(.{ .longhand = ls[1], .value = .{ .value = b } });
     return true;
 }
 
 /// `<line-width> || <line-style> || <color>` (CSS Backgrounds 3 "border-top"),
 /// each omitted one its initial value, set on each of the target longhands.
 fn borderSide(options: ParseOptions, width_l: Longhand, style_l: Longhand, color_l: Longhand, widths: []const Longhand, styles: []const Longhand, colors: []const Longhand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
+    try out.ensureUnusedCapacity(options.allocator, widths.len + styles.len + colors.len);
     var width: ?Value = null;
     var style: ?Value = null;
     var color: ?Value = null;
+    errdefer {
+        if (width) |v| v.release();
+        if (style) |v| v.release();
+        if (color) |v| v.release();
+    }
     var i: usize = 0;
     while (i < 3 and !stream.atEnd()) : (i += 1) {
         if (width == null) {
@@ -1365,15 +1414,15 @@ fn borderSide(options: ParseOptions, width_l: Longhand, style_l: Longhand, color
     const c = color orelse color_l.info().initial;
     for (widths, 0..) |l, k| {
         if (k > 0) w.retain();
-        try append(options, out, l, w);
+        out.appendAssumeCapacity(.{ .longhand = l, .value = .{ .value = w } });
     }
     for (styles, 0..) |l, k| {
         if (k > 0) st.retain();
-        try append(options, out, l, st);
+        out.appendAssumeCapacity(.{ .longhand = l, .value = .{ .value = st } });
     }
     for (colors, 0..) |l, k| {
         if (k > 0) c.retain();
-        try append(options, out, l, c);
+        out.appendAssumeCapacity(.{ .longhand = l, .value = .{ .value = c } });
     }
     return true;
 }
@@ -1440,7 +1489,7 @@ fn background(options: ParseOptions, stream: *Stream, out: *std.ArrayList(Assign
                 continue;
             };
             if (color == null) {
-                const c = colorValue(options, stream, Longhand.background_color.info());
+                const c = try colorValue(options, stream, Longhand.background_color.info());
                 if (c) |v| {
                     color = v;
                     continue;
@@ -1582,6 +1631,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .text_transform => |t| try t.serialize(out, allocator),
         .color_scheme => |c| try out.appendSlice(allocator, c.text.bytes),
         .content => |c| try out.appendSlice(allocator, c.serialization),
+        .calculation => |c| try c.serialize(out, allocator),
         .text => |t| try out.appendSlice(allocator, t.bytes),
         .cursor => |c| try out.appendSlice(allocator, c.text.bytes),
         .indent => |v| try v.serialize(out, allocator),
@@ -1787,7 +1837,7 @@ test "lengths: units, percentages, signs, zero and calc()" {
     try expectInvalid("width", "-1px");
     try expectInvalid("padding-top", "auto");
     try expectInvalid("margin-left", "2");
-    try expectInvalid("margin-left", "calc(1px + 2px)");
+    try expectSerialized("margin-left", "calc(1px + 2px)", "calc(3px)");
     try expectInvalid("width", "10deg");
 }
 
