@@ -651,6 +651,43 @@ const Serializer = struct {
     out: std.ArrayList(u8) = .empty,
     pending_space: bool = false,
     discard: bool = false,
+    previous: Boundary = .none,
+
+    // CSS Syntax 3 section 9's consecutive-token table. A class stores
+    // only the previous token's row, without retaining its borrowed bytes.
+    const Boundary = enum { none, ident, name, number, at, sign, slash };
+
+    fn boundary(t: Token) Boundary {
+        return switch (t.token_type) {
+            .ident => .ident,
+            .at_keyword, .hash, .dimension => .name,
+            .number => .number,
+            .delim => if (t.value.len == 1) switch (t.value[0]) {
+                '#', '-' => .name,
+                '@' => .at,
+                '.', '+' => .sign,
+                '/' => .slash,
+                else => .none,
+            } else .none,
+            else => .none,
+        };
+    }
+
+    fn needsSeparator(before: Boundary, after: Token) bool {
+        if (before == .none) return false;
+        return switch (after.token_type) {
+            .ident, .function, .url, .bad_url, .cdc => before == .ident or before == .name or before == .number or before == .at,
+            .number, .percentage, .dimension => before == .ident or before == .name or before == .number or before == .sign,
+            .left_paren => before == .ident,
+            .delim => if (after.value.len == 1) switch (after.value[0]) {
+                '-' => before == .ident or before == .name or before == .at,
+                '*' => before == .slash,
+                '%' => before == .number,
+                else => false,
+            } else false,
+            else => false,
+        };
+    }
 
     fn deinit(self: *Serializer) void {
         self.out.deinit(self.allocator);
@@ -664,12 +701,18 @@ const Serializer = struct {
         if (self.discard) return;
         if (t.token_type == .whitespace) {
             self.pending_space = self.out.items.len > 0;
+            self.previous = .none;
             return;
         }
         if (self.pending_space) {
             try self.out.append(self.allocator, ' ');
             self.pending_space = false;
+        } else if (needsSeparator(self.previous, t)) {
+            // The tokenizer discards comments. Reinsert a separator when
+            // joining tokens would change their grammar (e.g. +/**/1).
+            try self.out.appendSlice(self.allocator, "/**/");
         }
+        self.previous = boundary(t);
         const a = self.allocator;
         switch (t.token_type) {
             .ident, .function => try self.identifier(t.value),

@@ -541,7 +541,7 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .inset_inline_start, .inherited = false, .initial = Value.kw(.auto), .grammar = .length_percentage_auto, .logical = .{ .group = .inset, .side = .inline_start } },
         .{ .longhand = .left, .inherited = false, .initial = Value.kw(.auto), .grammar = .length_percentage_auto, .quirky_length = true },
         // CSS Text4 §8.2: normal computes to zero; percentages stay computed.
-        .{ .longhand = .letter_spacing, .inherited = true, .initial = Value.kw(.normal), .grammar = .letter_spacing },
+        .{ .longhand = .letter_spacing, .inherited = true, .initial = Value.kw(.normal), .grammar = .letter_spacing, .quirky_length = true },
         .{ .longhand = .line_height, .inherited = true, .initial = Value.kw(.normal), .grammar = .line_height, .quirky_length = true },
         .{ .longhand = .margin_block_end, .inherited = false, .initial = zero, .grammar = .length_percentage_auto, .logical = .{ .group = .margin, .side = .block_end } },
         .{ .longhand = .margin_block_start, .inherited = false, .initial = zero, .grammar = .length_percentage_auto, .logical = .{ .group = .margin, .side = .block_start } },
@@ -1140,7 +1140,9 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         },
         .letter_spacing => {
             if (takeKeyword(stream, &.{.normal})) |k| return Value.kw(k);
-            return lengthPercentage(options, stream, .{ .negative = true, .quirky = false });
+            // Values 4 Appendix C: only a number token gains a px unit;
+            // lengthPercentage never applies this quirk inside calc().
+            return lengthPercentage(options, stream, .{ .negative = true, .quirky = def.quirky_length });
         },
         .line_height => {
             if (takeKeyword(stream, &.{.normal})) |k| return Value.kw(k);
@@ -1750,17 +1752,22 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
             return true;
         },
         ._webkit_text_orientation => {
-            // Both shippers (Blink/WebKit) accept these three spellings.
-            // mixed/vertical-right each have one shipper and no spec rule;
-            // row 118 Q22 excludes the tied extensions. This is a one-member
-            // shorthand because its grammar differs from the longhand's.
+            // Chrome accepts vertical-right, Safari mixed, and Firefox
+            // does not ship this alias. Use Blink's complete mechanism so
+            // the alias can express the initial without accepting mixed.
+            // Row118 Q128; Blink WebkitTextOrientation in longhands_custom.cc.
+            // https://wpt.fyi/results/css/cssom/cssom-getPropertyValue-common-checks.html
+            // This is a shorthand because its grammar differs from the longhand.
             const token = stream.next();
-            if (token.token_type != .ident or !stream.atEnd()) return false;
-            const keyword = Keyword.parse(token.value) orelse return false;
-            const mapped: Keyword = switch (keyword) {
-                .upright, .sideways => keyword,
-                .sideways_right => .sideways,
-                else => return false,
+            const word = identKeywordText(token) orelse return false;
+            if (!stream.atEnd()) return false;
+            const mapped: Keyword = if (std.mem.eql(u8, word.slice(), "vertical-right")) .mixed else blk: {
+                const keyword = Keyword.parse(word.slice()) orelse return false;
+                break :blk switch (keyword) {
+                    .upright, .sideways => keyword,
+                    .sideways_right => .sideways,
+                    else => return false,
+                };
             };
             try append(options, out, .text_orientation, Value.kw(mapped));
             return true;
@@ -2222,7 +2229,11 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
             return true;
         },
         ._webkit_text_orientation => {
-            try serializeValue(.text_orientation, vs[0].value, out, allocator);
+            // Blink's specified and computed alias both map mixed back to
+            // vertical-right. The standard longhand still serializes mixed.
+            if (vs[0].value.isKeyword(.mixed)) {
+                try out.appendSlice(allocator, "vertical-right");
+            } else try serializeValue(.text_orientation, vs[0].value, out, allocator);
             return true;
         },
         .margin, .padding, .inset, .border_width, .border_style, .border_color => {

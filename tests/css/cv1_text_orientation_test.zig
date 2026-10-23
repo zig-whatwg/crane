@@ -60,7 +60,7 @@ test "legacy orientation spellings follow the shipping browser mechanisms" {
         try block.serialize(&out);
         try testing.expect(std.mem.startsWith(u8, out.items, "text-orientation:"));
     }
-    for ([_][]const u8{ "mixed", "vertical-right", "auto", "upright sideways" }) |invalid| {
+    for ([_][]const u8{ "mixed", "auto", "upright sideways" }) |invalid| {
         var assignments: std.ArrayList(css.properties.Assignment) = .empty;
         defer assignments.deinit(testing.allocator);
         try testing.expect(!try css.properties.parseDeclaration(.{ .allocator = testing.allocator }, prefixed, invalid, &assignments));
