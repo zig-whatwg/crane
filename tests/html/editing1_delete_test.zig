@@ -250,6 +250,34 @@ fn selectionFollowsTheDeletion() !void {
     const caret = try page.evaluate("(() => { const s = getSelection(); return s.isCollapsed + ':' + s.anchorNode.nodeName + ':' + s.anchorNode.textContent + ':' + s.anchorOffset; })()");
     defer std.testing.allocator.free(caret);
     try std.testing.expectEqualStrings("true:P:foobar:1", caret);
+    // A range that starts at the end of a text node and ends inside the
+    // following inline: the caret stays in that text node, outside the
+    // inline, so typing lands there (Chrome 156 and Safari 27; Firefox 158
+    // and the spec's equivalent point put it inside: editing/run/
+    // multitest.html ?9001-last "<div>abc[<b><i>de]f</i></b>ghi</div>" and
+    // its "{" and <img> forms, with inserttext, at wpt.fyi c645564b0e).
+    const InlineCase = struct { markup: []const u8, caret: []const u8 };
+    const inline_cases = [_]InlineCase{
+        .{ .markup = "<div>abc[<b><i>de]f</i></b>ghi</div>", .caret = "#text:abc:3" },
+        .{ .markup = "<div>abc{<b><i>de]f</i></b>ghi</div>", .caret = "DIV:abcfghi:1" },
+        .{ .markup = "<div>abc[<b><i><img src=about:blank>de]f</i></b>ghi</div>", .caret = "#text:abc:3" },
+    };
+    var failures: usize = 0;
+    for (inline_cases) |case| {
+        for ([_][]const u8{ "delete", "forwardDelete" }) |command| {
+            const source = try std.fmt.allocPrint(std.testing.allocator, "setupHost({f}); document.execCommand({f}, false, ''); (() => {{ const s = getSelection(); return hostHTML() + ' ' + s.isCollapsed + ':' + s.anchorNode.nodeName + ':' + s.anchorNode.textContent + ':' + s.anchorOffset; }})()", .{ std.json.fmt(case.markup, .{}), std.json.fmt(command, .{}) });
+            defer std.testing.allocator.free(source);
+            const after = try page.evaluate(source);
+            defer std.testing.allocator.free(after);
+            const expected = try std.fmt.allocPrint(std.testing.allocator, "<div>abc<b><i>f</i></b>ghi</div> true:{s}", .{case.caret});
+            defer std.testing.allocator.free(expected);
+            if (!std.mem.eql(u8, after, expected)) {
+                std.debug.print("{s} on {s}: expected {s}, got {s}\n", .{ command, case.markup, expected, after });
+                failures += 1;
+            }
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 0), failures);
     // A collapsed text deletion leaves the caret where the character was.
     try page.run("setupHost('foo[]bar'); document.execCommand('delete', false, '')");
     const after_text = try page.evaluate("(() => { const s = getSelection(); return s.isCollapsed + ':' + s.anchorNode.textContent + ':' + s.anchorOffset; })()");

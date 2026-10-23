@@ -66,8 +66,11 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
     // Steps 2-3.
     try whitespace.canonicalizeWhitespace(edit, (try edit.rangeStart()) orelse return, true);
     try whitespace.canonicalizeWhitespace(edit, (try edit.rangeEnd()) orelse return, true);
+    // The range's start as given, for the browsers' caret placement (see
+    // collapseForward).
+    const original_start = (try edit.rangeStart()) orelse return;
     // Steps 4-5.
-    var start = try common.lastEquivalentPoint((try edit.rangeStart()) orelse return);
+    var start = try common.lastEquivalentPoint(original_start);
     var end = try common.firstEquivalentPoint((try edit.rangeEnd()) orelse return);
     // Step 6: equivalent but not identical points: nothing to delete.
     if (!try common.pointIsAfter(end, start)) {
@@ -125,7 +128,7 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
     if (start.node == end.node and common.isText(start.node) and try common.isEditable(start.node)) {
         try edit.deleteData(start.node, start.offset, end.offset - start.offset);
         try whitespace.canonicalizeWhitespace(edit, start, false);
-        if (direction == .forward) try edit.collapseToStart() else try edit.collapseToEnd();
+        if (direction == .forward) try collapseForward(edit, original_start) else try edit.collapseToEnd();
         try overrides.restoreStatesAndValues(edit, recorded);
         return;
     }
@@ -195,7 +198,7 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
     if (!block_merging or start_block == null or end_block == null or
         !(try common.inSameEditingHost(start_block.?, end_block.?)) or start_block.? == end_block.?)
     {
-        if (direction == .forward) try edit.collapseToStart() else try edit.collapseToEnd();
+        if (direction == .forward) try collapseForward(edit, original_start) else try edit.collapseToEnd();
         try overrides.restoreStatesAndValues(edit, recorded);
         return;
     }
@@ -344,6 +347,31 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
     try edit.removeExtraneousLineBreaksAtTheEndOf(sb);
     // Step 41.
     try overrides.restoreStatesAndValues(edit, recorded);
+}
+
+/// Steps 21.3 and 30.1: collapse the selection to its start - at the range's
+/// ORIGINAL start when it is still in the tree and an equivalent point of
+/// the normalized start (golden rule 2, no newer spec). Steps 4
+/// and 7 move a start at a text node's end to the first equivalent point
+/// inside the following inline (`<div>abc[<b><i>de]f</i></b>ghi</div>` ->
+/// the caret at (i, 0)), so text typed next lands in <b><i>. Chrome 156 and
+/// Safari 27 keep the caret in "abc" and type `abcde<b><i>f</i></b>ghi`;
+/// Firefox 158 types `abc<b><i>def</i></b>ghi` as the spec does. wpt.fyi
+/// c645564b0e, editing/run/multitest.html?9001-last, delete and
+/// forwarddelete then inserttext d,e on `<div>abc[<b><i>de]f</i></b>ghi</div>`,
+/// `<div>abc{<b><i>de]f</i></b>ghi</div>` and the <img> form: Chrome and
+/// Safari pass all six, Firefox fails five. Majority: the original start.
+fn collapseForward(edit: *Edit, original_start: Point) !void {
+    if ((interfaces.Node.get_isConnected(original_start.node) catch false) and
+        original_start.offset <= try common.nodeLength(original_start.node))
+    {
+        if (try edit.rangeStart()) |current| {
+            if (!current.eql(original_start) and (try common.lastEquivalentPoint(original_start)).eql(try common.lastEquivalentPoint(current))) {
+                return edit.collapse(original_start.node, original_start.offset);
+            }
+        }
+    }
+    try edit.collapseToStart();
 }
 
 /// Step 34.4 under the first-line rule: move `end_block`'s first child and
