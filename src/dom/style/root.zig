@@ -16,6 +16,7 @@ pub const element_style = @import("element_style.zig");
 pub const ua_sheet = @import("ua_sheet.zig");
 pub const engine = @import("engine.zig");
 pub const inline_style = @import("inline_style.zig");
+pub const content_visibility = @import("content_visibility.zig");
 
 pub const StyleEngine = engine.StyleEngine;
 pub const SheetRecord = sheet.SheetRecord;
