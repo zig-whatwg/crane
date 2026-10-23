@@ -499,7 +499,7 @@ const Builder = struct {
             // element's color scheme (Chrome 151 and Safari 27.0.1 answer
             // white for `color: initial` under `only dark`; Firefox 144
             // black).
-            .initial => if (l == .color) l.info().initial else computed_mod.initialComputed(l),
+            .initial => if (l == .color or l == .justify_items) l.info().initial else computed_mod.initialComputed(l),
             .value => |v| v.value,
         };
         const source: ValueSource = switch (spec) {
@@ -535,6 +535,10 @@ const Builder = struct {
             }) };
         }
 
+        if (v == .alignment) {
+            const parent = if (self.ctx.parent) |p| p.get(l) else null;
+            return .{ .alignment = v.alignment.computed(if (parent) |p| if (p == .alignment) p.alignment else null else null) };
+        }
         if (v == .calculation) {
             const expression = try v.calculation.compute(self.ctx.allocator, self.computationContext(l, v, source));
             if (expression.computedNumber()) |number| {

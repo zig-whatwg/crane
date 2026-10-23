@@ -704,6 +704,7 @@ pub const Value = union(enum) {
     color_scheme: ColorScheme,
     content: *Content,
     calculation: *@import("math_values.zig").Expression,
+    alignment: @import("alignment.zig").Value,
     /// Kept as its serialization (a font-family list, an <image>).
     text: *SharedText,
     pending: *@import("pending_values.zig").Pending,
@@ -765,6 +766,7 @@ pub const Value = union(enum) {
             .color_scheme => |c| c.support.eql(b.color_scheme.support) and std.mem.eql(u8, c.text.bytes, b.color_scheme.text.bytes),
             .content => |c| c.eql(b.content),
             .calculation => |c| c.eql(b.calculation),
+            .alignment => |a_value| a_value.eql(b.alignment),
             .text => |t| t == b.text or std.mem.eql(u8, t.bytes, b.text.bytes),
             .pending => |pending| pending.eql(b.pending),
         };
@@ -788,6 +790,7 @@ pub const Value = union(enum) {
             .text_transform,
             .color_scheme,
             .content,
+            .alignment,
             .text,
             .pending, // Q88: inspect only the resolved, selected branch.
             => false,
@@ -808,6 +811,7 @@ pub const Value = union(enum) {
             .text_transform,
             .color_scheme,
             .content,
+            .alignment,
             .text,
             .pending, // Q88: inspect only the resolved, selected branch.
             => false,
@@ -826,6 +830,7 @@ pub const Value = union(enum) {
             .text_transform,
             .color_scheme,
             .content,
+            .alignment,
             .text,
             .pending, // Q88: inspect only the resolved, selected branch.
             => false,

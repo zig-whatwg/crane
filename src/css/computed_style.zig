@@ -119,6 +119,7 @@ pub const initial_values: [Longhand.count]Value = blk: {
 /// and font-size made absolute, and a border width with style none zero.
 pub fn initialComputed(l: Longhand) Value {
     return switch (l) {
+        .justify_items => .{ .alignment = .{ .position = .normal } },
         // The initial border-style is none, so the initial border-width
         // computes to 0 (CSS Backgrounds 3 "border-width" computed value).
         .border_top_width, .border_right_width, .border_bottom_width, .border_left_width, .border_block_start_width, .border_block_end_width, .border_inline_start_width, .border_inline_end_width => Value.px(0),

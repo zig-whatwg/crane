@@ -58,6 +58,9 @@ const SharedText = values.SharedText;
 /// Every supported longhand. Logical longhands are here too: they hold
 /// declarations, and the cascade maps them onto physical ones.
 pub const Longhand = enum(u8) {
+    align_content,
+    align_items,
+    align_self,
     appearance,
     background_color,
     background_image,
@@ -102,6 +105,9 @@ pub const Longhand = enum(u8) {
     inset_block_start,
     inset_inline_end,
     inset_inline_start,
+    justify_content,
+    justify_items,
+    justify_self,
     left,
     line_height,
     margin_block_end,
@@ -277,6 +283,7 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 
 /// A longhand's grammar.
 pub const Grammar = enum {
+    alignment,
     keywords,
     /// <length-percentage> | auto (margins, insets)
     length_percentage_auto,
@@ -327,6 +334,12 @@ const infos: [Longhand.count]Info = blk: {
     const defs = [_]Info{
         // Row118 animation properties; execution is outside this value layer.
 
+        .{ .longhand = .align_content, .inherited = false, .initial = .{ .alignment = .{ .position = .normal } }, .grammar = .alignment },
+        .{ .longhand = .align_items, .inherited = false, .initial = .{ .alignment = .{ .position = .normal } }, .grammar = .alignment },
+        .{ .longhand = .align_self, .inherited = false, .initial = .{ .alignment = .{ .position = .auto } }, .grammar = .alignment },
+        .{ .longhand = .justify_content, .inherited = false, .initial = .{ .alignment = .{ .position = .normal } }, .grammar = .alignment },
+        .{ .longhand = .justify_items, .inherited = false, .initial = .{ .alignment = .{ .position = .legacy } }, .grammar = .alignment },
+        .{ .longhand = .justify_self, .inherited = false, .initial = .{ .alignment = .{ .position = .auto } }, .grammar = .alignment },
         .{ .longhand = .appearance, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .auto, .base, .base_select, .searchfield, .textarea, .checkbox, .radio, .menulist, .listbox, .meter, .progress_bar, .button, .textfield, .menulist_button } },
         .{ .longhand = .background_color, .inherited = false, .initial = .{ .color = Color.transparent }, .grammar = .color, .quirky_color = true },
         .{ .longhand = .background_image, .inherited = false, .initial = Value.kw(.none), .grammar = .image },
@@ -470,6 +483,9 @@ pub const Shorthand = enum(u8) {
     padding,
     padding_block,
     padding_inline,
+    place_content,
+    place_items,
+    place_self,
     white_space,
 
     pub fn name(self: Shorthand) []const u8 {
@@ -514,6 +530,9 @@ pub const Shorthand = enum(u8) {
             .padding => &.{ .padding_top, .padding_right, .padding_bottom, .padding_left },
             .padding_block => &.{ .padding_block_start, .padding_block_end },
             .padding_inline => &.{ .padding_inline_start, .padding_inline_end },
+            .place_content => &.{ .align_content, .justify_content },
+            .place_items => &.{ .align_items, .justify_items },
+            .place_self => &.{ .align_self, .justify_self },
             .white_space => &.{ .white_space_collapse, .text_wrap_mode },
         };
     }
@@ -805,6 +824,7 @@ pub const Stream = struct {
 pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Allocator.Error!?Value {
     const def = l.info();
     switch (def.grammar) {
+        .alignment => return .{ .alignment = @import("alignment.zig").Value.consume(stream, std.meta.stringToEnum(@import("alignment.zig").Mode, @tagName(l)).?) orelse return null },
         .keywords => {
             const k = identKeyword(stream.peek()) orelse return null;
             for (def.keywords) |allowed| if (allowed == k) {
@@ -1352,6 +1372,23 @@ fn append(options: ParseOptions, out: *std.ArrayList(Assignment), l: Longhand, v
 
 fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
     switch (s) {
+        .place_content, .place_items, .place_self => {
+            // Align3 §§5.2, 6.3, 7.3: consume each whole alignment, then
+            // default the second from the first (baseline content → start).
+            const ls = s.longhands();
+            const first = (try parseLonghand(options, ls[0], stream)) orelse return false;
+            const second = if (!stream.atEnd())
+                (try parseLonghand(options, ls[1], stream)) orelse return false
+            else if (s == .place_content and first.alignment.position == .baseline)
+                Value{ .alignment = .{ .position = .start } }
+            else
+                first;
+            if (!stream.atEnd()) return false;
+            try out.ensureUnusedCapacity(options.allocator, 2);
+            out.appendAssumeCapacity(.{ .longhand = ls[0], .value = .{ .value = first } });
+            out.appendAssumeCapacity(.{ .longhand = ls[1], .value = .{ .value = second } });
+            return true;
+        },
         ._webkit_text_orientation => {
             // Both shippers (Blink/WebKit) accept these three spellings.
             // mixed/vertical-right each have one shipper and no spec rule;
@@ -1715,6 +1752,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .color_scheme => |c| try out.appendSlice(allocator, c.text.bytes),
         .content => |c| try out.appendSlice(allocator, c.serialization),
         .calculation => |c| try c.serialize(out, allocator),
+        .alignment => |a| try a.serialize(out, allocator),
         .text => |t| try out.appendSlice(allocator, t.bytes),
         .pending => |pending| if (pending.property == .longhand) try out.appendSlice(allocator, pending.text),
     }
@@ -1781,7 +1819,7 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
             }
             return true;
         },
-        .margin_block, .margin_inline, .padding_block, .padding_inline, .inset_block, .inset_inline, .border_block_width, .border_block_style, .border_block_color, .border_inline_width, .border_inline_style, .border_inline_color, .overflow => {
+        .margin_block, .margin_inline, .padding_block, .padding_inline, .inset_block, .inset_inline, .border_block_width, .border_block_style, .border_block_color, .border_inline_width, .border_inline_style, .border_inline_color, .overflow, .place_content, .place_items, .place_self => {
             try serializeValue(ls[0], vs[0].value, out, allocator);
             if (!vs[1].value.eql(vs[0].value)) {
                 try out.append(allocator, ' ');
