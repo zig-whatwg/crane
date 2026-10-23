@@ -742,6 +742,8 @@ pub const Value = union(enum) {
             .content,
             .text,
             => false,
+            .cursor => false,
+            .indent => |v| v.offset.needsUnavailableMetrics(geometry_length),
         };
     }
 
