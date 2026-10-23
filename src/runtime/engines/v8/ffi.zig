@@ -3338,11 +3338,19 @@ pub extern fn v8_Isolate_SetProtocolCodeGenerationHooks(isolate: *Isolate, strin
 pub extern fn v8_Context_IsCodeGenerationFromStringsAllowed(context: *Context) bool;
 // ---- end lane: cspenforce ----
 // ---- lane: wasmh ----
-/// Replace `context`'s WebAssembly.Memory and WebAssembly.Table with
-/// constructors that read the descriptor's `address` member, which V8 13.1
-/// knows by its earlier name `index` (v8_wrapper.cpp says how). Every realm
-/// the adapter makes calls it once, before script runs. DELETE with the V8
-/// upgrade to >= 13.3.
+/// Adapt `context`'s WebAssembly constructors to WebIDL's NewTarget-realm
+/// prototype fallback, preserving the native interface objects' shape.
+/// Memory/Table translate `address` to V8 13.1's old `index` spelling;
+/// Global.value converts an absent setter argument as undefined; JSPI wraps
+/// normal JS import returns with the import realm's intrinsic PromiseResolve.
+/// Exception exposes its captured stack through a branded prototype getter.
+/// Called once per realm before script to capture pristine helpers and arm
+/// lazy data properties on the namespace and cloneable prototype constructors.
+/// Adapter construction waits for first use, including
+/// indirect use of an untouched realm's intrinsics after namespace deletion.
+/// All retained values are GC-traced realm-owned objects; no native owning
+/// handles are created. On V8 upgrade,
+/// remove address translation at >= 13.3 and separately recheck realm fallback.
 pub extern fn v8_WebAssembly_InstallAddressDescriptors(isolate: *Isolate, context: *Context) void;
 // ---- end lane: wasmh ----
 // ---- lane: csp2 ----

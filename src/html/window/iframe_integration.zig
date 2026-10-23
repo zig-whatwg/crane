@@ -850,6 +850,16 @@ pub const IFrameIntegration = struct {
         return nested_ctx;
     }
 
+    /// The navigable's navigation in flight ends - the owner's abandon hook
+    /// sets its ongoing navigation to null, so a fetch or a commit it queued
+    /// finds it gone - because the navigable is going: its container's
+    /// document was destroyed with an ancestor navigable
+    /// (dom.navigables.destroyChildNavigable).
+    pub fn abandonNavigations(self: *IFrameIntegration) void {
+        if (self.abandon_navigations_callback) |abandon| abandon(self);
+        self.ongoing_navigation = .none;
+    }
+
     /// Called when iframe is removed from a document
     /// Per WHATWG HTML §7.3.1.6 "destroy a child navigable", the browsing context
     /// is destroyed synchronously when the iframe element is removed from the document.

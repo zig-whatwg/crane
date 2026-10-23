@@ -163,6 +163,8 @@ fn shadowRealmContextCallback(initiator_context_ptr: ?*anyopaque) callconv(.c) ?
         ffi.v8_Context_UseDefaultSecurityToken(context);
     }
 
+    ffi.v8_WebAssembly_InstallAddressDescriptors(isolate, context);
+
     // Create a Global handle for the new context
     // The C++ side expects a Global<Context>* which it will use and clean up
     const global_context = ffi.v8_Context_GlobalHandle_New(isolate, context);

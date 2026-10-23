@@ -26,14 +26,17 @@
 //!   user-timing/, resource-timing/, navigation-timing/,
 //!   performance-timeline/, hr-time/, beacon/, eventsource/, webmessaging/,
 //!   web-locks/, compression/, permissions/
+//! - approved expansion (2026-10-22): accname/, html-aam/, wai-aria/,
+//!   mathml/, css/, editing/, quirks/
 //!
 //! `in_scope_categories` below is the list; keep it in step with the INCLUDE
-//! table of tools/wpt_subset.py, which writes the 0.1 worklist.
+//! table of tools/wpt_subset.py, which writes the 0.1 worklist. Categories
+//! enable directory discovery; the worklist defines the approved file subset.
 //!
 //! ## Out-of-Scope Categories
 //!
 //! These require rendering or browser-specific features:
-//! - css/ - CSS tests (require layout)
+//! - layout and paint tests (CSS syntax, values and CSSOM are in scope)
 //! - 2dcontext/ - Canvas 2D (require graphics)
 //! - webgl/ - WebGL (require graphics)
 
@@ -190,6 +193,16 @@ pub const in_scope_categories: []const TestCategory = &.{
     .{ .name = "web-locks", .description = "Web Locks" },
     .{ .name = "compression", .description = "Compression Streams" },
     .{ .name = "permissions", .description = "Permissions API" },
+    // Approved worklist expansion (the user, 2026-10-22). These categories
+    // must also be discoverable without --from-file; the worklist carries
+    // their per-file scope, including the approved mixed geometry cases.
+    .{ .name = "accname", .description = "Accessible name computation" },
+    .{ .name = "html-aam", .description = "HTML accessibility mappings" },
+    .{ .name = "wai-aria", .description = "ARIA reflection and semantics" },
+    .{ .name = "mathml", .description = "MathML DOM integration and focus" },
+    .{ .name = "css", .description = "CSS syntax, selectors, values and CSSOM" },
+    .{ .name = "editing", .description = "Editing commands and DOM mutations" },
+    .{ .name = "quirks", .description = "Quirks parsing and DOM behavior" },
 };
 
 /// Exclusion patterns for paths that shouldn't be tested
@@ -488,7 +501,7 @@ test "isInScope" {
     try testing.expect(isInScope("encoding/textdecoder.any.js"));
     try testing.expect(isInScope("dom/events/Event.html"));
     try testing.expect(isInScope("cookiestore/cookieStore_get_set_basic.https.any.js"));
-    try testing.expect(!isInScope("css/selectors/test.html"));
+    try testing.expect(isInScope("css/selectors/test.html"));
     try testing.expect(!isInScope("webgl/test.html"));
     try testing.expect(!isInScope("html/rendering/test.html"));
 }
@@ -552,7 +565,7 @@ test "isInScope matches whole path segments, not prefixes" {
     try testing.expect(!isInScope("permissions-policy/payment-default-feature-policy.https.sub.html"));
     try testing.expect(!isInScope("permissions-request/navigator-permissions-request.https.html"));
     try testing.expect(!isInScope("permissions-revoke/permissions-revoke-camera.https.html"));
-    try testing.expect(!isInScope("html-aam/roles.html"));
+    try testing.expect(!isInScope("html-aam-extra/roles.html"));
     try testing.expect(!isInScope("html-longdesc/link-image.html"));
     try testing.expect(!isInScope("html-media-capture/capture_reflect.html"));
 
@@ -561,7 +574,49 @@ test "isInScope matches whole path segments, not prefixes" {
     try testing.expect(isInScope("/dom/nodes/Node-appendChild.html"));
     try testing.expect(isInScope("encoding/textdecoder-fatal.any.js"));
     try testing.expect(isInScope("/html/dom/aria-attribute-reflection.html"));
+    try testing.expect(isInScope("html-aam/accname-computation-by-element/button.html"));
 
     // urlpattern is in scope in its own right, not because it starts with url.
     try testing.expect(isInScope("urlpattern/urlpattern.any.js"));
+}
+
+test "the directory allowlist matches every directory in the generated worklist" {
+    const testing = std.testing;
+    const worklist = try std.Io.Dir.cwd().readFileAlloc(
+        testing.io,
+        "tests/wpt_0_1_worklist.txt",
+        testing.allocator,
+        .limited(16 << 20),
+    );
+    defer testing.allocator.free(worklist);
+
+    // --from-file bypasses isInScope. A newly approved suite must also be
+    // reachable by directory, so compare the real generated worklist with
+    // the allowlist in both directions. Per-file exclusions remain separate.
+    var seen = [_]bool{false} ** in_scope_categories.len;
+    var paths: usize = 0;
+    var lines = std.mem.splitScalar(u8, worklist, '\n');
+    while (lines.next()) |line| {
+        const path = std.mem.trim(u8, line, " \t\r");
+        if (path.len == 0 or path[0] == '#') continue;
+        const slash = std.mem.indexOfScalar(u8, path, '/') orelse return error.InvalidWorklistPath;
+        const directory = path[0..slash];
+        var allowed = false;
+        for (in_scope_categories, 0..) |category, i| {
+            if (category.enabled and std.mem.eql(u8, directory, category.name)) {
+                seen[i] = true;
+                allowed = true;
+                break;
+            }
+        }
+        if (!allowed) std.debug.print("worklist directory not allowed: {s}\n", .{directory});
+        try testing.expect(allowed);
+        paths += 1;
+    }
+    try testing.expect(paths > 0);
+    for (in_scope_categories, seen) |category, present| {
+        if (!category.enabled) continue;
+        if (!present) std.debug.print("allowed directory absent from worklist: {s}\n", .{category.name});
+        try testing.expect(present);
+    }
 }

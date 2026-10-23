@@ -1595,13 +1595,27 @@ pub const WrapperCache = struct {
                 log.debug("[wrapper_cache.deinit] ENTRY: instance={*} entry={*} local_name={s} is_iframe={s} vtable={*} state={*}", .{ inst, ent, local_name_str, is_iframe_str, inst.vtable, inst.state });
             }
         }
-        var iter = self.cache.valueIterator();
+        // Each entry leaves the map before anything of it is torn down, so
+        // the map holds only the entries still to come - never one destroyed
+        // below. A teardown here runs a type's own steps, and they can reach
+        // this cache: a response body freed ends its fetch's body, and mark
+        // resource timing makes a PerformanceResourceTiming and asks whether
+        // it is wrapped (engine.hasWrapper, through `get`). Left in the map,
+        // a handled entry answered for whatever object the slab gave its
+        // address next - "wrapped", by a destroyed entry's wrapper - and that
+        // object was never freed (lane exitleak1: the runner's intermittent
+        // groups of 5 and 6 leaked blocks at exit). `set` refuses while the
+        // cache is torn down, so nothing joins the map this walks either.
+        // (The entry iterator, not the value iterator: it re-reads the map's
+        // size, which removal lowers.)
+        var iter = self.cache.iterator();
         var processed: usize = 0;
         var skipped_cleaned: usize = 0;
         var skipped_started: usize = 0;
         var iframe_count: usize = 0;
-        while (iter.next()) |entry_ptr| {
-            const entry = entry_ptr.*;
+        while (iter.next()) |kv| {
+            const entry = kv.value_ptr.*;
+            self.cache.removeByPtr(kv.key_ptr);
             processed += 1;
 
             // Count iframes in cache
@@ -1853,6 +1867,12 @@ pub const WrapperCache = struct {
         isolate: *v8.Isolate,
     ) !void {
         _ = isolate; // Will be used for weak callback in next commit
+        // A cache being torn down takes no wrapper: its sweep (`deinit`)
+        // walks the map, and an entry put in now would be met or not as the
+        // hash order fell - a wrapper whose instance the sweep then never
+        // freed. The object stays its maker's to free (releaseIfUnwrapped
+        // finds it unwrapped).
+        if (self.is_tearing_down) return error.CacheTornDown;
         self.register();
 
         // An instance has ONE wrapper in a realm. One that is live already
