@@ -85,6 +85,9 @@ pub const InternalState = struct {
         owner: *runtime.Instance,
         value: *runtime.Instance,
         edge: same_object.Traced = .{ .slot = .{ .name = "performance" } },
+        /// `value`'s slab generation when it was made: deinit frees it only
+        /// while the slot still holds it (releaseIfUnwrapped).
+        generation: u64 = 0,
     } = null,
     /// Service Workers 5.3: this global's CacheStorage, made on first use,
     /// kept by a collector-traced edge.
@@ -92,6 +95,8 @@ pub const InternalState = struct {
         owner: *runtime.Instance,
         value: *runtime.Instance,
         edge: same_object.Traced = .{ .slot = .{ .name = "caches" } },
+        /// `value`'s slab generation when it was made (as `performance`'s).
+        generation: u64 = 0,
     } = null,
     /// The settings object's time origin (HR-Time): "run a worker" step 3's
     /// unsafe worker creation time, monotonic nanoseconds as the worker host
@@ -179,8 +184,20 @@ pub const InternalState = struct {
         self.storage_key = null;
         self.reporting.deinit(self.allocator);
         if (self.indexed_db) |*factory| factory.edge.release(factory.owner);
-        if (self.performance) |*performance| performance.edge.release(performance.owner);
-        if (self.cache_storage) |*caches| caches.edge.release(caches.owner);
+        // A Performance or CacheStorage made lazily by native code may never
+        // have been wrapped: one made while the realm's wrapper cache is torn
+        // down - a fetch body ended there asks for the global's time origin
+        // (relativeCoarseTimeOfRealm) - gets no wrapper, and nothing else
+        // would free it (lane exitleak1). A wrapped one is the cache's, and
+        // one the sweep freed already has moved its slot on: both are left.
+        if (self.performance) |*performance| {
+            performance.edge.release(performance.owner);
+            performance.value.releaseIfUnwrapped(performance.generation);
+        }
+        if (self.cache_storage) |*caches| {
+            caches.edge.release(caches.owner);
+            caches.value.releaseIfUnwrapped(caches.generation);
+        }
         if (self.crypto) |*crypto| crypto.edge.release(crypto.owner);
         if (self.trusted_types) |*factory| factory.edge.release(factory.owner);
         // The WorkerLocation and WorkerNavigator objects are the wrapper
@@ -413,7 +430,7 @@ fn settingsPerformance(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
     if (internal.performance) |performance| return performance.value;
     const performance = try interfaces.Performance.init(internal.allocator, instance.ctx);
-    internal.performance = .{ .owner = instance, .value = performance };
+    internal.performance = .{ .owner = instance, .value = performance, .generation = runtime.SlabAllocator.generationOf(performance) };
     internal.performance.?.edge.hold(instance, performance);
     return performance;
 }
@@ -424,7 +441,7 @@ fn settingsCaches(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
     if (internal.cache_storage) |caches| return caches.value;
     const caches = try interfaces.CacheStorage.init(internal.allocator, instance.ctx);
-    internal.cache_storage = .{ .owner = instance, .value = caches };
+    internal.cache_storage = .{ .owner = instance, .value = caches, .generation = runtime.SlabAllocator.generationOf(caches) };
     internal.cache_storage.?.edge.hold(instance, caches);
     return caches;
 }

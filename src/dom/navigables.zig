@@ -282,6 +282,23 @@ pub fn destroyChildNavigable(container: *runtime.Instance, integration: *IFrameI
                 i -= 1;
                 const entry = documents.items[i];
                 if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+                // A navigable inside the frame goes with it, and so does its
+                // navigation in flight: left ongoing, it committed later - a
+                // document made, and its script run, in a navigable already
+                // destroyed, and a service worker client made for a realm
+                // whose unloading cleanup had run, which nothing ever ended
+                // (navigation-during-beforeunload.html subtest 3). The frame's
+                // own navigation ends below (onRemovedFromDocument), as a
+                // navigation's unload abandons the old document's
+                // descendants' (HTMLIFrameElement unloadDocumentTree). Blink
+                // stops them all: LocalFrame::DetachImpl calls
+                // loader_.StopAllLoaders() and then DetachChildren(), which
+                // detaches each child frame the same way.
+                if (entry.browsing_context) |child_bc| {
+                    if (integrationOf(child_bc)) |child| {
+                        if (child != integration) child.abandonNavigations();
+                    }
+                }
                 document_lifecycle.unload(entry.document);
             }
         }

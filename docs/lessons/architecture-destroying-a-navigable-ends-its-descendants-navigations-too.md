@@ -1,0 +1,12 @@
+# Architecture: Destroying a navigable ends its descendants' navigations too
+
+**Date**: 2026-10-22
+**Lesson**: Removing an iframe ended the removed frame's navigation in flight but not those of the frames inside it, so a navigation started in an inner frame committed after its ancestor was gone - a document made and its script run in a destroyed navigable, and a service worker client made for a realm whose unloading cleanup had already run, which nothing ever ended.
+
+**Why**: HTML "destroy a child navigable" destroys the navigable's document and its descendants' documents; the navigables inside go with them. `destroyChildNavigable` destroyed the descendants' documents (their timers, their unloading cleanup steps, their fetches) but left each descendant's ongoing navigation set, and only the removed frame's own integration abandoned its navigations (`onRemovedFromDocument`). A navigation's own unload already did the right thing for the old document's descendants (HTMLIFrameElement.unloadDocumentTree abandons each); removal did not. Blink stops them all: LocalFrame::DetachImpl calls `loader_.StopAllLoaders()` and then `DetachChildren()`, which detaches each child frame the same way.
+
+**What Happened**: `html/browsers/browsing-the-web/unloading-documents/navigation-during-beforeunload.html` left 5 `leaked:` blocks at the WPT runner's exit on every run (main's sweep: shard aan/3). Subtest 3 removes its container iframe as soon as the inner page reports, while the frame inside the container is still navigating; logging service worker clients created and ended showed the inner frame's commit making a client after its realm was detached. The 5 blocks were the client (RealmEnvironment, its origin, storage key and creation URL) and the TaskSink it retains.
+
+**Fix**: `destroyChildNavigable` abandons each descendant navigable's navigation as it unloads its document (`IFrameIntegration.abandonNavigations`, the same owner hook `onRemovedFromDocument` and `deinit` use). Red test: tests/html/exitleak1_destroyed_frame_navigation_test.zig - an inner frame's navigation to a loopback server's slow page, its container's container removed before the answer: 5 leaked allocations on main, none after.
+
+**Takeaway**: **When a navigable goes, every navigable inside it goes too, and so do their navigations in flight: end them where the documents are destroyed, or a late commit brings a document back into a navigable nobody owns.**
