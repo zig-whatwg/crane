@@ -38,6 +38,9 @@ pub const xml_document_encoding = core.xml_document_encoding;
 pub const sanitizer = @import("sanitizer.zig");
 pub const inner_text = @import("inner_text.zig");
 pub const serialization = @import("serialization.zig");
+// The Editing spec's delete and forwardDelete commands (execCommand and the
+// Backspace/Delete keys), on the generated interfaces.
+pub const execcommand = @import("execcommand/root.zig");
 
 // Re-export all of html_core via module import (not file import)
 // This ensures Zig sees html_core as one module, not two modules owning same files
@@ -260,8 +263,6 @@ pub const event_utils = @import("event_utils.zig");
 
 /// Selection command implementations with DOM integration
 /// (Used by execCommand for selectAll, delete, forwardDelete)
-pub const selection_commands = @import("selection_commands.zig");
-
 /// Formatting command implementations with DOM integration
 /// (Used by execCommand for font/color/alignment commands)
 pub const formatting_commands = @import("formatting_commands.zig");

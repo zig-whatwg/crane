@@ -234,12 +234,12 @@ fn selectionFollowsTheDeletion() !void {
     // 34.1 collapses at the start block's end; the moved nodes are inserted
     // after it, preserving ranges): typing continues there.
     try page.run("setupHost('<p>foo</p><p>[]bar</p>'); document.execCommand('delete', false, '')");
-    const caret = try page.evaluate("const s = getSelection(); s.isCollapsed + ':' + s.anchorNode.nodeName + ':' + s.anchorNode.textContent + ':' + s.anchorOffset");
+    const caret = try page.evaluate("(() => { const s = getSelection(); return s.isCollapsed + ':' + s.anchorNode.nodeName + ':' + s.anchorNode.textContent + ':' + s.anchorOffset; })()");
     defer std.testing.allocator.free(caret);
     try std.testing.expectEqualStrings("true:P:foobar:1", caret);
     // A collapsed text deletion leaves the caret where the character was.
     try page.run("setupHost('foo[]bar'); document.execCommand('delete', false, '')");
-    const after_text = try page.evaluate("const s = getSelection(); s.isCollapsed + ':' + s.anchorNode.textContent + ':' + s.anchorOffset");
+    const after_text = try page.evaluate("(() => { const s = getSelection(); return s.isCollapsed + ':' + s.anchorNode.textContent + ':' + s.anchorOffset; })()");
     defer std.testing.allocator.free(after_text);
     try std.testing.expectEqualStrings("true:fobar:2", after_text);
 }

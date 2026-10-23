@@ -822,6 +822,18 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
         }
         return;
     }
+    // Backspace and Delete in an editing host (Editing spec, "Additional
+    // requirements": the key runs the delete / forwardDelete command). The
+    // modified forms - a word or a line - are not routed yet.
+    // TODO(editing): Ctrl/Alt/Meta+Backspace and +Delete (deleteWordBackward,
+    // deleteSoftLineBackward, ... per UI Events / Input Events).
+    if ((isKey(key, "Backspace") or isKey(key, "Delete")) and !modifiers.ctrl and !modifiers.alt and !modifiers.meta) {
+        const execcommand = @import("execcommand/root.zig");
+        if (execcommand.isEditableTarget(target)) {
+            execcommand.deleteByKey(target, if (isKey(key, "Backspace")) .delete else .forward_delete);
+            return;
+        }
+    }
     // A radio button: the arrow keys move the checkedness through its group.
     // Blink RadioInputType::HandleKeydownEvent and Gecko HTMLInputElement::
     // PostHandleEvent's eKeyPress radio branch leave modified arrows alone.

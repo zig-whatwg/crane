@@ -587,6 +587,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Source Inference Needs Browser Measurement](spec-compliance-source-inference-needs-browser-measurement.md) - Label source-based predictions as inferences until an actual browser run confirms them.
 - [XML Navigation and XHR Decode Differently](spec-compliance-xml-navigation-and-xhr-decode-differently.md) - Share encoding selection while preserving each consumer's required error mode.
 - [A Dictionary Forwarder Must Preserve Its Receiver](spec-compliance-a-dictionary-forwarder-must-preserve-its-receiver.md) - A property-forwarding adapter must preserve both the lookup target and the getter receiver; matching property values alone is insufficient.
+- [execCommand fires input only - no browser fires beforeinput for it](spec-compliance-execcommand-fires-input-only-no-browser-fires-beforeinput.md) - Before wiring events from a spec's method steps, read the WPT file that names the event and the browsers' per-subtest results; share the action between user and script paths and let only the user path announce itself.
 
 ### Codegen
 - [Unforgeable accessors must be installed on derived instances](codegen-unforgeable-accessors-must-be-installed-on-derived-instances.md) - An inherited WebIDL member still needs explicit instance installation when the engine template does not inherit that property representation.
