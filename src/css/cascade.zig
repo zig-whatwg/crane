@@ -400,6 +400,11 @@ const Builder = struct {
                 if (len.unit == .percent) return v;
                 return Value.px(self.absolute(len));
             },
+            .indent => |indent| {
+                const offset = try self.computeValue(.margin_left, indent.offset);
+                defer offset.release();
+                return .{ .indent = try @import("text_indent.zig").Indent.create(self.ctx.allocator, offset, indent.flags) };
+            },
             else => {
                 v.retain();
                 return v;

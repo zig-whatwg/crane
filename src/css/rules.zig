@@ -384,6 +384,8 @@ const Parser = struct {
                     if (token.token_type == .ident) {
                         const mark = self.markStream();
                         if (try self.consumeDeclaration()) |declaration| {
+                            errdefer self.allocator.free(declaration.name);
+                            errdefer self.allocator.free(declaration.value);
                             try declarations.append(self.allocator, declaration);
                             continue;
                         }

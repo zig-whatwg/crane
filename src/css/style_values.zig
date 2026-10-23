@@ -581,6 +581,7 @@ pub const Value = union(enum) {
     /// Kept as its serialization (a font-family list, an <image>).
     text: *SharedText,
     cursor: *@import("cursor_values.zig").Cursor,
+    indent: *@import("text_indent.zig").Indent,
 
     /// Borrowed URL candidates in serialization order, valid while this
     /// value is retained. No sheet or document lookup is needed to use them.
@@ -603,6 +604,7 @@ pub const Value = union(enum) {
     pub fn retain(self: Value) void {
         if (self == .content) return self.content.ref();
         if (self == .cursor) return self.cursor.ref();
+        if (self == .indent) return self.indent.ref();
         if (self.sharedText()) |t| t.ref();
     }
 
@@ -610,6 +612,7 @@ pub const Value = union(enum) {
     pub fn release(self: Value) void {
         if (self == .content) return self.content.unref();
         if (self == .cursor) return self.cursor.unref();
+        if (self == .indent) return self.indent.unref();
         if (self.sharedText()) |t| t.unref();
     }
 
@@ -637,6 +640,7 @@ pub const Value = union(enum) {
             .content => |c| c.eql(b.content),
             .text => |t| t == b.text or std.mem.eql(u8, t.bytes, b.text.bytes),
             .cursor => |c| c.eql(b.cursor),
+            .indent => |v| v.eql(b.indent),
         };
     }
 

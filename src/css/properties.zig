@@ -137,6 +137,7 @@ pub const Longhand = enum(u8) {
     // CSS image value families (row 119).
     cursor,
     list_style_image,
+    text_indent,
 
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
@@ -295,6 +296,7 @@ pub const Grammar = enum {
     /// CSS Generated Content 3: typed strings, attributes and layout values.
     content,
     cursor,
+    text_indent,
 };
 
 pub const Info = struct {
@@ -402,6 +404,7 @@ const infos: [Longhand.count]Info = blk: {
         // CSS UI4 §5.1.1; CSS Lists3 §3.3.
         .{ .longhand = .cursor, .inherited = true, .initial = Value.kw(.auto), .grammar = .cursor },
         .{ .longhand = .list_style_image, .inherited = true, .initial = Value.kw(.none), .grammar = .image },
+        .{ .longhand = .text_indent, .inherited = true, .initial = Value.px(0), .grammar = .text_indent },
     };
     for (defs) |def| {
         const i = @intFromEnum(def.longhand);
@@ -805,6 +808,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
             return .{ .integer = @intFromFloat(clamped) };
         },
         .cursor => return @import("cursor_values.zig").parse(options, stream),
+        .text_indent => return @import("text_indent.zig").parse(options, stream),
     }
 }
 
@@ -1580,6 +1584,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .content => |c| try out.appendSlice(allocator, c.serialization),
         .text => |t| try out.appendSlice(allocator, t.bytes),
         .cursor => |c| try out.appendSlice(allocator, c.text.bytes),
+        .indent => |v| try v.serialize(out, allocator),
     }
 }
 
