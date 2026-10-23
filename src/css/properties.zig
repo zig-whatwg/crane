@@ -22,9 +22,9 @@
 //! - CSS UI 4: appearance
 //! - CSS Cascade 5: all
 //!
-//! Scalar math uses typed CSS Values 4 expressions. Substitution and
-//! other math functions remain unsupported. Image/background grammars
-//! retain their rejection until their typed argument grammar lands.
+//! Scalar math uses typed CSS Values 4 expressions. var()/env() remain
+//! unsupported; image/background grammars retain their previous math
+//! rejection until they consume that typed parser (row 118 Q16).
 //!
 //! Spec: https://drafts.csswg.org/css-cascade-5/#shorthand
 //! Spec: https://drafts.csswg.org/cssom-1/#serializing-css-values
@@ -134,6 +134,13 @@ pub const Longhand = enum(u8) {
     width,
     writing_mode,
     z_index,
+    // Row118: complete animation value lists (Q69).
+
+    // CSS Transforms 2 §5: individual components, without layout.
+
+    // CSS Flexbox 1 §7: values independent of flex layout.
+
+    // CSS Transitions 1/2 §2: five lists; execution is separate.
 
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
@@ -159,16 +166,17 @@ pub const Longhand = enum(u8) {
     }
 };
 
-/// The longhands in lexicographic order of their names (CSSOM 7.2 step 5),
-/// which the enum's declaration order already is.
+/// CSSOM 7.2 step 5 enumerates names lexicographically, independently of
+/// declaration order. Separate property families can append contiguous blocks.
 pub const lexicographic: [Longhand.count]Longhand = blk: {
     @setEvalBranchQuota(100_000);
     var out: [Longhand.count]Longhand = undefined;
     for (0..Longhand.count) |i| out[i] = @enumFromInt(i);
-    for (1..Longhand.count) |i| {
-        if (!std.mem.lessThan(u8, out[i - 1].name(), out[i].name()))
-            @compileError("Longhand must be declared in lexicographic order: " ++ out[i].name());
-    }
+    std.mem.sort(Longhand, &out, {}, struct {
+        fn lessThan(_: void, a: Longhand, b: Longhand) bool {
+            return std.mem.lessThan(u8, a.name(), b.name());
+        }
+    }.lessThan);
     break :blk out;
 };
 
@@ -274,6 +282,7 @@ pub const Grammar = enum {
     length_percentage_nonneg,
     /// auto | <length-percentage [0,inf]> | min-content | max-content | fit-content
     size,
+    /// none replaces auto for maximum sizes (CSS Sizing 3 §3.1.3).
     line_width,
     color,
     image,
@@ -314,7 +323,8 @@ const infos: [Longhand.count]Info = blk: {
     const zero = Value.px(0);
     const medium_width = Value.kw(.medium);
     const defs = [_]Info{
-        .{ .longhand = .text_orientation, .inherited = true, .initial = Value.kw(.mixed), .grammar = .keywords, .keywords = &.{ .mixed, .upright, .sideways, .sideways_right } },
+        // Row118 animation properties; execution is outside this value layer.
+
         .{ .longhand = .appearance, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .auto, .base, .base_select, .searchfield, .textarea, .checkbox, .radio, .menulist, .listbox, .meter, .progress_bar, .button, .textfield, .menulist_button } },
         .{ .longhand = .background_color, .inherited = false, .initial = .{ .color = Color.transparent }, .grammar = .color, .quirky_color = true },
         .{ .longhand = .background_image, .inherited = false, .initial = Value.kw(.none), .grammar = .image },
@@ -350,6 +360,7 @@ const infos: [Longhand.count]Info = blk: {
         // CSS Color Adjustment 1 2.2: "Initial: normal", "Inherited: yes".
         .{ .longhand = .color_scheme, .inherited = true, .initial = Value.kw(.normal), .grammar = .color_scheme },
         .{ .longhand = .content, .inherited = false, .initial = Value.kw(.normal), .grammar = .content },
+        // CSS Contain 2 §4: non-inherited; the computed value is as specified.
         .{ .longhand = .direction, .inherited = true, .initial = Value.kw(.ltr), .grammar = .keywords, .keywords = &.{ .ltr, .rtl } },
         .{ .longhand = .display, .inherited = false, .initial = .{ .display = Display.inline_flow }, .grammar = .display },
         .{ .longhand = .float, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .left, .right, .inline_start, .inline_end } },
@@ -364,6 +375,7 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .inset_inline_end, .inherited = false, .initial = Value.kw(.auto), .grammar = .length_percentage_auto, .logical = .{ .group = .inset, .side = .inline_end } },
         .{ .longhand = .inset_inline_start, .inherited = false, .initial = Value.kw(.auto), .grammar = .length_percentage_auto, .logical = .{ .group = .inset, .side = .inline_start } },
         .{ .longhand = .left, .inherited = false, .initial = Value.kw(.auto), .grammar = .length_percentage_auto, .quirky_length = true },
+        // CSS Text4 §8.2: normal computes to zero; percentages stay computed.
         .{ .longhand = .line_height, .inherited = true, .initial = Value.kw(.normal), .grammar = .line_height, .quirky_length = true },
         .{ .longhand = .margin_block_end, .inherited = false, .initial = zero, .grammar = .length_percentage_auto, .logical = .{ .group = .margin, .side = .block_end } },
         .{ .longhand = .margin_block_start, .inherited = false, .initial = zero, .grammar = .length_percentage_auto, .logical = .{ .group = .margin, .side = .block_start } },
@@ -373,6 +385,7 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .margin_left, .inherited = false, .initial = zero, .grammar = .length_percentage_auto, .quirky_length = true },
         .{ .longhand = .margin_right, .inherited = false, .initial = zero, .grammar = .length_percentage_auto, .quirky_length = true },
         .{ .longhand = .margin_top, .inherited = false, .initial = zero, .grammar = .length_percentage_auto, .quirky_length = true },
+        // CSS Sizing 3 §§3.1.2–3.1.3 and CSS Logical 1 §4.1.
         .{ .longhand = .opacity, .inherited = false, .initial = .{ .number = 1 }, .grammar = .opacity },
         .{ .longhand = .overflow_x, .inherited = false, .initial = Value.kw(.visible), .grammar = .keywords, .keywords = &.{ .visible, .hidden, .clip, .scroll, .auto } },
         .{ .longhand = .overflow_y, .inherited = false, .initial = Value.kw(.visible), .grammar = .keywords, .keywords = &.{ .visible, .hidden, .clip, .scroll, .auto } },
@@ -385,11 +398,20 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .padding_right, .inherited = false, .initial = zero, .grammar = .length_percentage_nonneg, .quirky_length = true },
         .{ .longhand = .padding_top, .inherited = false, .initial = zero, .grammar = .length_percentage_nonneg, .quirky_length = true },
         .{ .longhand = .position, .inherited = false, .initial = Value.kw(.static), .grammar = .keywords, .keywords = &.{ .static, .relative, .absolute, .sticky, .fixed } },
+        // CSSWG reversed the position shorthand/reset resolution on 2024-09-04:
+        // https://github.com/w3c/csswg-drafts/issues/10321#issuecomment-2330338181
+        // Both pinned/upstream WPT and C/F/S ship normal as the initial value.
         .{ .longhand = .right, .inherited = false, .initial = Value.kw(.auto), .grammar = .length_percentage_auto, .quirky_length = true },
+        // Writing Modes 4 §5.1: computed as specified, including horizontal boxes.
+        .{ .longhand = .text_orientation, .inherited = true, .initial = Value.kw(.mixed), .grammar = .keywords, .keywords = &.{ .mixed, .upright, .sideways, .sideways_right } },
         .{ .longhand = .text_transform, .inherited = true, .initial = .{ .text_transform = .{} }, .grammar = .text_transform },
         .{ .longhand = .text_wrap_mode, .inherited = true, .initial = Value.kw(.wrap), .grammar = .keywords, .keywords = &.{ .wrap, .nowrap } },
         .{ .longhand = .top, .inherited = false, .initial = Value.kw(.auto), .grammar = .length_percentage_auto, .quirky_length = true },
         .{ .longhand = .unicode_bidi, .inherited = false, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .normal, .embed, .isolate, .bidi_override, .isolate_override, .plaintext } },
+        // CSS UI 4 §6.1: auto remains computed auto; selection resolves its
+        // used value against the parent. Explicit inherit uses the cascade.
+        // contain remains in the current grammar: Gecko bug 1036853 is open;
+        // Blink/WebKit also describe it as unimplemented, not declined (Q2).
         .{ .longhand = .visibility, .inherited = true, .initial = Value.kw(.visible), .grammar = .keywords, .keywords = &.{ .visible, .hidden, .collapse } },
         .{ .longhand = .white_space_collapse, .inherited = true, .initial = Value.kw(.collapse), .grammar = .keywords, .keywords = &.{ .collapse, .discard, .preserve, .preserve_breaks, .preserve_spaces, .break_spaces } },
         .{ .longhand = .width, .inherited = false, .initial = Value.kw(.auto), .grammar = .size, .quirky_length = true },
@@ -411,6 +433,7 @@ const infos: [Longhand.count]Info = blk: {
 // ============================================================================
 
 pub const Shorthand = enum(u8) {
+    _webkit_text_orientation,
     all,
     background,
     border,
@@ -454,6 +477,7 @@ pub const Shorthand = enum(u8) {
     /// The longhands, in canonical order (CSSOM "shorthand ... maps to").
     pub fn longhands(self: Shorthand) []const Longhand {
         return switch (self) {
+            ._webkit_text_orientation => &.{.text_orientation},
             .all => &all_longhands,
             .background => &.{ .background_image, .background_color },
             .border => &.{ .border_top_width, .border_right_width, .border_bottom_width, .border_left_width, .border_top_style, .border_right_style, .border_bottom_style, .border_left_style, .border_top_color, .border_right_color, .border_bottom_color, .border_left_color },
@@ -516,7 +540,17 @@ pub const Property = union(enum) {
 /// property (and is not enumerated). CSS UI 4: "-webkit-appearance" is a
 /// legacy name alias of appearance.
 const legacy_aliases = .{
+    // CSS Gaps 1 §2.4: aliases share the canonical property entries.
     .{ "-webkit-appearance", Property{ .longhand = .appearance } },
+    // CSS UI 4 §6.1 requires the legacy spelling to alias user-select.
+};
+
+/// Names exposed by CSSStyleProperties as attributes, but not as separate
+/// declarations or computed longhand entries (CSSOM 6.6.2).
+pub const legacy_alias_names = blk: {
+    var names: [legacy_aliases.len][]const u8 = undefined;
+    for (legacy_aliases, 0..) |alias, i| names[i] = alias[0];
+    break :blk names;
 };
 
 const by_name = blk: {
@@ -559,6 +593,8 @@ pub const ParseOptions = struct {
     /// CSS Variables 1 §2.1: future untyped var() substitution must supply
     /// the CONSUMING declaration's source after substituting its tokens.
     resource_source: ?*values.ResourceSource = null,
+    /// Borrowed, immutable source ordinals for numeric random() functions.
+    random_scope: ?*const @import("random_values.zig").ParseScope = null,
 };
 
 pub const UrlResolver = resources.UrlResolver;
@@ -606,11 +642,37 @@ pub fn parseDeclaration(options: ParseOptions, property: Property, text: []const
     const content_functions = property == .longhand and property.longhand == .content;
     const opaque_image = (property == .longhand and property.longhand == .background_image) or
         (property == .shorthand and property.shorthand == .background);
-    if (containsUnsupportedToken(text, content_functions, opaque_image)) return false;
+    var functions = FunctionFlags{};
+    if (containsUnsupportedToken(text, content_functions, opaque_image, &functions)) return false;
+    if (functions.random_item) {
+        const pending = try @import("pending_values.zig").Pending.create(options, property, text) orelse return false;
+        defer pending.unref();
+        const longhands: []const Longhand = switch (property) {
+            .longhand => |l| &.{l},
+            .shorthand => |sh| sh.longhands(),
+        };
+        for (longhands) |l| {
+            try out.append(options.allocator, .{ .longhand = l, .value = .{ .value = .{ .pending = pending } } });
+            pending.ref();
+        }
+        return true;
+    }
+    // Q90: one immutable ordinal table belongs to this source declaration,
+    // before shorthand expansion. Backtracking borrows it without mutation.
+    var scope = if (functions.numeric_random and options.random_scope == null)
+        try @import("random_values.zig").ParseScope.init(options.allocator, text, switch (property) {
+            .longhand => |l| l.name(),
+            .shorthand => |sh| sh.name(),
+        }, .{})
+    else
+        null;
+    defer if (scope) |*owned| owned.deinit();
+    var scoped_options = options;
+    if (scope) |*owned| scoped_options.random_scope = owned;
     var stream = Stream.init(text);
     const ok = switch (property) {
         .longhand => |l| blk: {
-            const value = (try parseLonghand(options, l, &stream)) orelse break :blk false;
+            const value = (try parseLonghand(scoped_options, l, &stream)) orelse break :blk false;
             if (!stream.atEnd()) {
                 value.release();
                 break :blk false;
@@ -619,7 +681,7 @@ pub fn parseDeclaration(options: ParseOptions, property: Property, text: []const
             try out.append(options.allocator, .{ .longhand = l, .value = .{ .value = value } });
             break :blk true;
         },
-        .shorthand => |s| try parseShorthand(options, s, &stream, out),
+        .shorthand => |s| try parseShorthand(scoped_options, s, &stream, out),
     };
     if (!ok) {
         for (out.items[start..]) |a| a.value.release();
@@ -637,18 +699,29 @@ fn cssWideKeyword(text: []const u8) ?values.CssWide {
 }
 
 /// Unsupported substitution/functions cannot pass through opaque grammars.
-fn containsUnsupportedToken(text: []const u8, content_functions: bool, opaque_image: bool) bool {
+const FunctionFlags = struct { numeric_random: bool = false, random_item: bool = false };
+
+fn containsUnsupportedToken(text: []const u8, content_functions: bool, opaque_image: bool, flags: *FunctionFlags) bool {
     var tok = Tokenizer.init(text);
+    var opaque_math = false;
     while (true) {
         const token = tok.next();
-        if (token.token_type == .eof) return false;
+        if (token.token_type == .eof) return opaque_math and !flags.random_item;
         // Syntax 3 section 7.2 applies inside nested functions too. Generic
         // declaration serialization must leave these tokens invalid for
         // this property grammar, unlike Fonts' forgiving src components.
         if (token.token_type == .bad_string or token.token_type == .bad_url) return true;
+        if (token.token_type == .function and tokenizer_mod.nameEql(token.value, "random")) flags.numeric_random = true;
+        if (token.token_type == .function and tokenizer_mod.nameEql(token.value, "random-item")) flags.random_item = true;
+        // Q56: the custom-property/env substitution foundation stays
+        // unavailable even inside an otherwise accepted pending value.
+        if (token.token_type == .function and (tokenizer_mod.nameEql(token.value, "var") or tokenizer_mod.nameEql(token.value, "env"))) return true;
         if (content_functions) continue;
         if (token.token_type != .function) continue;
-        if (opaque_image and math_values.isFunction(token)) return true;
+        if (math_values.isFunction(token)) {
+            if (opaque_image) opaque_math = true;
+            continue;
+        }
         for ([_][]const u8{ "var", "env", "attr", "round", "mod", "rem", "abs", "sign", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "pow", "sqrt", "hypot", "log", "exp", "progress", "calc-size", "if" }) |f| {
             if (tokenizer_mod.nameEql(token.value, f)) return true;
         }
@@ -812,6 +885,8 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
     }
 }
 
+/// Anchor Position 1 §§2.1–2.2: names remain case-sensitive, including
+/// duplicates. Only CSS identifier serialization changes their spelling.
 fn identKeyword(t: Token) ?Keyword {
     if (t.token_type != .ident) return null;
     if (std.mem.indexOfScalar(u8, t.value, '\\') != null) {
@@ -881,7 +956,7 @@ fn lengthPercentage(options: ParseOptions, stream: *Stream, flags: LengthFlags) 
 
 pub fn mathValue(options: ParseOptions, stream: *Stream, grammar: math_values.Grammar) Allocator.Error!?Value {
     const begin = stream.offset();
-    const parsed = try math_values.parse(options.allocator, stream.text[begin..], grammar) orelse return null;
+    const parsed = try math_values.parseWithScope(options.allocator, stream.text[begin..], grammar, options.random_scope) orelse return null;
     stream.tok = Tokenizer.init(stream.text);
     stream.tok.pos = begin + parsed.consumed;
     stream.peeked = null;
@@ -1268,6 +1343,22 @@ fn append(options: ParseOptions, out: *std.ArrayList(Assignment), l: Longhand, v
 
 fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
     switch (s) {
+        ._webkit_text_orientation => {
+            // Both shippers (Blink/WebKit) accept these three spellings.
+            // mixed/vertical-right each have one shipper and no spec rule;
+            // row 118 Q22 excludes the tied extensions. This is a one-member
+            // shorthand because its grammar differs from the longhand's.
+            const token = stream.next();
+            if (token.token_type != .ident or !stream.atEnd()) return false;
+            const keyword = Keyword.parse(token.value) orelse return false;
+            const mapped: Keyword = switch (keyword) {
+                .upright, .sideways => keyword,
+                .sideways_right => .sideways,
+                else => return false,
+            };
+            try append(options, out, .text_orientation, Value.kw(mapped));
+            return true;
+        },
         // `all` takes only the CSS-wide keywords, handled by the caller.
         .all => return false,
         .margin, .padding, .inset, .border_width, .border_style, .border_color => return fourSides(options, s.longhands(), stream, out),
@@ -1605,20 +1696,18 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
     switch (value) {
         .keyword => |k| try out.appendSlice(allocator, k.name()),
         .length => |len| try values.appendLength(len, out, allocator),
-        .number => |n| try values.appendNumber(n, out, allocator),
-        .integer => |n| try out.print(allocator, "{d}", .{n}),
-        .color => |c| switch (c) {
-            .current => try out.appendSlice(allocator, "currentcolor"),
-            .rgba => |rgba| try values.serializeRgba(rgba, out, allocator),
-            .named => |n| try out.appendSlice(allocator, n.name.bytes),
-            .system => |system| try out.appendSlice(allocator, system.keyword()),
+        .number => |n| {
+            try values.appendNumber(n, out, allocator);
         },
+        .integer => |n| try out.print(allocator, "{d}", .{n}),
+        .color => |c| try c.serializeSpecified(out, allocator),
         .display => |d| try d.serialize(out, allocator),
         .text_transform => |t| try t.serialize(out, allocator),
         .color_scheme => |c| try out.appendSlice(allocator, c.text.bytes),
         .content => |c| try out.appendSlice(allocator, c.serialization),
         .calculation => |c| try c.serialize(out, allocator),
         .text => |t| try out.appendSlice(allocator, t.bytes),
+        .pending => |pending| if (pending.property == .longhand) try out.appendSlice(allocator, pending.text),
     }
 }
 
@@ -1655,9 +1744,22 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
         try out.appendSlice(allocator, vs[0].css_wide.name());
         return true;
     }
+    // Appendix A: only the complete original shorthand can serialize a
+    // pending value; mixed/overridden placeholders serialize as empty.
+    for (vs) |v| if (v.value == .pending) {
+        const pending = v.value.pending;
+        if (pending.property != .shorthand or pending.property.shorthand != s) return false;
+        for (vs) |other| if (other.value != .pending or other.value.pending != pending) return false;
+        try out.appendSlice(allocator, pending.text);
+        return true;
+    };
     if (s == .all) return false;
     const ls = s.longhands();
     switch (s) {
+        ._webkit_text_orientation => {
+            try serializeValue(.text_orientation, vs[0].value, out, allocator);
+            return true;
+        },
         .margin, .padding, .inset, .border_width, .border_style, .border_color => {
             const top = vs[0].value;
             const right = vs[1].value;
@@ -2072,7 +2174,13 @@ test "logical sides map by writing mode and direction" {
     try testing.expectEqual(Longhand.margin_left, physicalLonghand(.margin, .left));
 }
 
-test "the lexicographic order is the enum's" {
-    try testing.expectEqualStrings("appearance", lexicographic[0].name());
+test "CSSOM enumeration sorts names independently of property blocks" {
+    var seen = [_]bool{false} ** Longhand.count;
+    for (lexicographic, 0..) |l, i| {
+        try testing.expect(!seen[@intFromEnum(l)]);
+        seen[@intFromEnum(l)] = true;
+        if (i > 0) try testing.expect(std.mem.lessThan(u8, lexicographic[i - 1].name(), l.name()));
+    }
+    for (seen) |present| try testing.expect(present);
     try testing.expectEqualStrings("z-index", lexicographic[Longhand.count - 1].name());
 }

@@ -72,12 +72,13 @@ pub const ComputedStyle = struct {
         return c.absolute() orelse (self.get(.color).color.absolute() orelse values.RgbaColor.black);
     }
 
+    /// Owned used color for CSSOM. Resolve against this element without
+    /// reducing the result to an 8-bit physical destination.
     /// CSSOM section 9: the resolved value of `l`, serialized into `out`.
     pub fn serializeResolved(self: *const ComputedStyle, l: Longhand, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
         const v = self.get(l);
+        // CSS Text4 §8.2's legacy resolved value: every computed zero is normal.
         switch (properties.Longhand.info(l).grammar) {
-            // "background-color ... color ... A resolved value special case
-            // property like color: the resolved value is the used value."
             .color => return values.serializeRgba(self.usedColor(l), out, allocator),
             // "line-height: the resolved value is normal if the computed
             // value is normal, or the used value otherwise." A number's

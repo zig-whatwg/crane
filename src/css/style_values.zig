@@ -45,6 +45,24 @@ pub const Keyword = enum(u8) {
     auto,
     none,
     normal,
+    // CSS UI 4 user-select (auto/none are shared with other properties).
+    text,
+    contain,
+    all,
+    // Row118 grid/UI values, kept in one block for parallel property work.
+    infinite,
+    content_box,
+    border_box,
+    content,
+    both,
+    horizontal,
+    vertical,
+    block,
+    @"inline",
+    bar,
+    underscore,
+    manual,
+    inert,
     // visibility
     visible,
     hidden,
@@ -74,7 +92,7 @@ pub const Keyword = enum(u8) {
     vertical_lr,
     sideways_rl,
     sideways_lr,
-    // Writing Modes 4 §5.1, also an input to relative font units.
+    // text-orientation
     mixed,
     upright,
     sideways,
@@ -92,6 +110,15 @@ pub const Keyword = enum(u8) {
     min_content,
     max_content,
     fit_content,
+    stretch,
+    // Anchor Position 1 §6.2.
+    most_width,
+    most_height,
+    most_block_size,
+    most_inline_size,
+    // Anchor Position 1 §2.4, newer WG resolution #8913 (2026-02-18):
+    // all stable engines lag; upstream WPT and implementer support agree.
+    match_parent,
     // font-size
     xx_small,
     x_small,
@@ -147,6 +174,20 @@ pub const Keyword = enum(u8) {
     thick,
     // font-family's initial value (a <generic-family>)
     serif,
+    // Row118 animation keyword lists.
+    ease,
+    reverse,
+    alternate,
+    alternate_reverse,
+    forwards,
+    backwards,
+    running,
+    paused,
+    replace,
+    add,
+    accumulate,
+    // CSS Transitions 2 §2.5.
+    allow_discrete,
 
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
@@ -308,6 +349,19 @@ pub const Display = struct {
     /// display type is block. A table caption counts with it for innerText.
     pub fn isBlockLevel(self: Display) bool {
         return self.box == .normal and self.outer == .block;
+    }
+
+    /// CSS Contain 2 section 3.1: size containment needs an eligible
+    /// principal box. Replaced inline boxes are atomic (Display 4 section
+    /// 2.1); a run-in is inline-level too. Table captions are independent
+    /// block containers, unlike the other internal table/ruby boxes.
+    pub fn canSizeContain(self: Display, replaced: bool) bool {
+        return switch (self.box) {
+            .none, .contents => false,
+            .internal => self.internal == .table_caption,
+            .normal => self.inner != .table and
+                (self.outer == .block or replaced or (self.inner != .flow and self.inner != .ruby)),
+        };
     }
 
     /// Display 4 section 2.7 "blockify": the computed outer display type
@@ -472,6 +526,10 @@ pub const Color = union(enum) {
     }
 
     /// Scalar colors need no font or layout metrics, for either destination.
+    pub fn needsRandomBase(_: Color) bool {
+        return false;
+    }
+
     pub fn needsUnavailableMetrics(self: Color, geometry_length: bool) bool {
         _ = geometry_length;
         return switch (self) {
@@ -607,6 +665,8 @@ pub const SharedText = struct {
 // Value
 // ============================================================================
 
+/// CSS Sizing 4 §3.2: an intrinsic sizing function keeps its typed argument
+/// until layout. Specified and computed values own separate argument values.
 /// A property's value, specified or computed.
 pub const Value = union(enum) {
     keyword: Keyword,
@@ -621,6 +681,7 @@ pub const Value = union(enum) {
     calculation: *@import("math_values.zig").Expression,
     /// Kept as its serialization (a font-family list, an <image>).
     text: *SharedText,
+    pending: *@import("pending_values.zig").Pending,
 
     /// Borrowed URL candidates in serialization order, valid while this
     /// value is retained. No sheet or document lookup is needed to use them.
@@ -640,15 +701,19 @@ pub const Value = union(enum) {
 
     /// Take a reference to what the value holds (a copy of it is kept).
     pub fn retain(self: Value) void {
+        if (self == .color) return self.color.retain();
         if (self == .content) return self.content.ref();
         if (self == .calculation) return self.calculation.ref();
+        if (self == .pending) return self.pending.ref();
         if (self.sharedText()) |t| t.ref();
     }
 
     /// Drop the reference `retain` took.
     pub fn release(self: Value) void {
+        if (self == .color) return self.color.release();
         if (self == .content) return self.content.unref();
         if (self == .calculation) return self.calculation.unref();
+        if (self == .pending) return self.pending.unref();
         if (self.sharedText()) |t| t.unref();
     }
 
@@ -676,6 +741,7 @@ pub const Value = union(enum) {
             .content => |c| c.eql(b.content),
             .calculation => |c| c.eql(b.calculation),
             .text => |t| t == b.text or std.mem.eql(u8, t.bytes, b.text.bytes),
+            .pending => |pending| pending.eql(b.pending),
         };
     }
 
@@ -683,20 +749,60 @@ pub const Value = union(enum) {
         return .{ .keyword = k };
     }
 
-    /// Q25: exhaustive so a future aggregate must choose its metric rule.
+    /// Q17/Q23–25: aggregate values must not hide an unsupported scalar.
+    /// Keep this switch exhaustive so a new aggregate must choose a rule.
     pub fn needsUnavailableMetrics(self: Value, geometry_length: bool) bool {
         return switch (self) {
+            .color => |c| c.needsUnavailableMetrics(geometry_length),
             .calculation => |c| c.needsUnavailableMetrics(geometry_length),
             .keyword,
             .length,
             .number,
             .integer,
-            .color,
             .display,
             .text_transform,
             .color_scheme,
             .content,
             .text,
+            .pending, // Q88: inspect only the resolved, selected branch.
+            => false,
+        };
+    }
+
+    /// Values 5 §10: only numeric trees and aggregates can need DOM counts.
+    /// Exhaustive so new wrappers must explicitly carry the dependency.
+    pub fn needsTreeCounts(self: Value) bool {
+        return switch (self) {
+            .color => |c| c.needsTreeCounts(),
+            .calculation => |c| c.needsTreeCounts(),
+            .keyword,
+            .length,
+            .number,
+            .integer,
+            .display,
+            .text_transform,
+            .color_scheme,
+            .content,
+            .text,
+            .pending, // Q88: inspect only the resolved, selected branch.
+            => false,
+        };
+    }
+
+    pub fn needsRandomBase(self: Value) bool {
+        return switch (self) {
+            .color => |c| c.needsRandomBase(),
+            .calculation => |c| c.needsRandomBase(),
+            .keyword,
+            .length,
+            .number,
+            .integer,
+            .display,
+            .text_transform,
+            .color_scheme,
+            .content,
+            .text,
+            .pending, // Q88: inspect only the resolved, selected branch.
             => false,
         };
     }

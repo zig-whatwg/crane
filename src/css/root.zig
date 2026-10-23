@@ -124,3 +124,7 @@ test {
     // Run all submodule tests
     std.testing.refAllDecls(@This());
 }
+
+pub const numeric_values = @import("numeric_values.zig");
+
+pub const random_values = @import("random_values.zig");

@@ -125,6 +125,11 @@ pub const Context = struct {
     /// Content 3 / Values 5: synchronous, never saved in a computed value.
     content_attributes: ?@import("generated_content.zig").AttributeLookup = null,
     pseudo: ?[]const u8 = null,
+    /// Q83: absent random input skips the candidate at the same availability
+    /// boundary as missing metrics. Real DOM resolution supplies this lazily.
+    random_base: ?@import("random_values.zig").Provider = null,
+    /// Borrowed and called at most once, only for a tree-dependent value.
+    tree_counts: ?struct { context: *anyopaque, get: *const fn (*anyopaque) @import("math_values.zig").TreeCounts } = null,
     /// The root element's computed font-size (rem); the initial 16px for
     /// the root itself.
     root_font_size: f64 = 16,
@@ -193,10 +198,18 @@ fn collectCandidates(allocator: Allocator, matched: []const Matched) Allocator.E
             });
         }
     }
-    // Highest priority first.
-    std.mem.sort(Candidate, candidates.items, {}, struct {
+    // Both pointers identify ordered positions in stable contiguous slices:
+    // Source in Matched, and Declaration in its block's Entry array (typed()
+    // iterates forwards). They give the original insertion order without an
+    // extra field, keeping Candidate at 32 bytes. No address escapes cascade.
+    // This total order also avoids block sort's 512-candidate stack buffer.
+    std.mem.sortUnstable(Candidate, candidates.items, {}, struct {
         fn lessThan(_: void, a: Candidate, b: Candidate) bool {
-            return a.priority > b.priority;
+            // Cascade 5 §6.1: the last declaration wins, including two
+            // declarations in one block that map to the same physical slot.
+            if (a.priority != b.priority) return a.priority > b.priority;
+            if (a.source != b.source) return @intFromPtr(a.source) > @intFromPtr(b.source);
+            return @intFromPtr(a.decl) > @intFromPtr(b.decl);
         }
     }.lessThan);
     return candidates;
@@ -264,6 +277,7 @@ pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*Computed
         .candidates = candidates.items,
         .index = CandidateIndex.init(candidates.items, links),
     };
+    defer builder.deinit();
     const style = try allocator.create(ComputedStyle);
     style.* = .{ .allocator = allocator, .values = computed_mod.initial_values };
     // `initial_values` holds no counted text; every slot is overwritten
@@ -283,6 +297,47 @@ const Builder = struct {
     direction: Keyword = .ltr,
     /// The element color scheme, once color-scheme is computed.
     used_scheme: color_scheme_mod.Scheme = .light,
+    cached_tree_counts: ?@import("math_values.zig").TreeCounts = null,
+    pending: std.ArrayList(PendingResult) = .empty,
+
+    const PendingResult = struct {
+        value: *const @import("pending_values.zig").Pending,
+        source: ValueSource,
+        outcome: @import("pending_values.zig").Outcome,
+    };
+    fn deinit(self: *Builder) void {
+        for (self.pending.items) |entry| entry.outcome.deinit(self.ctx.allocator);
+        self.pending.deinit(self.ctx.allocator);
+    }
+    fn resolvePending(self: *Builder, c: Candidate, l: Longhand) Allocator.Error!struct { assigned: properties.Assigned, unavailable: bool = false } {
+        if (c.decl.value != .value or c.decl.value.value != .pending) return .{ .assigned = c.decl.value };
+        const pending = c.decl.value.value.pending;
+        const source = ValueSource{ .tree_scope = c.source.tree_scope, .tree_count_allowed = c.source.tree_count_allowed };
+        var found: ?usize = null;
+        for (self.pending.items, 0..) |entry, index| if (entry.value == pending and std.meta.eql(entry.source, source)) {
+            found = index;
+            break;
+        };
+        const index = found orelse blk: {
+            // Pending key math may need counts; the selected assignment's
+            // normal dependency query still runs below after substitution.
+            var context = self.mathContext(l);
+            if (!source.tree_count_allowed) context.tree_counts = .{ .index = 0, .count = 0 } else context.tree_count_provider = .{ .context = self, .get = pendingTreeCounts };
+            const outcome = try pending.resolve(self.ctx.allocator, context);
+            errdefer outcome.deinit(self.ctx.allocator);
+            const at = self.pending.items.len;
+            try self.pending.append(self.ctx.allocator, .{ .value = pending, .source = source, .outcome = outcome });
+            break :blk at;
+        };
+        return switch (self.pending.items[index].outcome) {
+            .invalid => .{ .assigned = .{ .css_wide = .unset } },
+            .unavailable => .{ .assigned = .{ .css_wide = .unset }, .unavailable = true },
+            .resolved => |assignments| blk: {
+                for (assignments) |assignment| if (assignment.longhand == c.decl.longhand) break :blk .{ .assigned = assignment.value };
+                break :blk .{ .assigned = .{ .css_wide = .unset } };
+            },
+        };
+    }
 
     fn parentValue(self: *const Builder, l: Longhand) Value {
         if (self.ctx.parent) |p| return p.get(l);
@@ -299,11 +354,12 @@ const Builder = struct {
     /// Cascade 5 sections 6-7.3: the specified value of physical longhand
     /// `l` - its cascaded value through `revert` and `revert-layer`, or its
     /// default. Borrowed (not retained).
-    fn specified(self: *const Builder, l: Longhand) Specified {
+    fn specified(self: *Builder, l: Longhand) Allocator.Error!Specified {
         var excluded = Exclusions{};
         while (true) {
-            const winner = self.pick(l, &excluded) orelse return self.defaulted(l);
-            switch (winner.decl.value) {
+            const picked = (try self.pick(l, &excluded)) orelse return self.defaulted(l);
+            const winner = picked.candidate;
+            switch (picked.assigned) {
                 .value => |v| return .{ .value = .{ .value = v, .source = .{
                     .tree_scope = winner.source.tree_scope,
                     .tree_count_allowed = winner.source.tree_count_allowed,
@@ -338,7 +394,7 @@ const Builder = struct {
         return self.unset(l);
     }
 
-    fn pick(self: *const Builder, l: Longhand, excluded: *const Exclusions) ?Candidate {
+    fn pick(self: *Builder, l: Longhand, excluded: *const Exclusions) Allocator.Error!?struct { candidate: Candidate, assigned: properties.Assigned } {
         var position = self.index.heads[@intFromEnum(l)];
         while (position != CandidateIndex.none) : (position = self.index.links[position]) {
             const c = self.candidates[position];
@@ -346,15 +402,19 @@ const Builder = struct {
             // Q17/Q23–25: unavailable cap-height/ascent cannot enter scalar
             // consumers. Only geometry lengths may remain unresolved; the
             // next retained candidate/default wins, with no hidden CSSOM history.
-            if (c.decl.value == .value) {
-                const value = c.decl.value.value;
-                const geometry_length = switch (l.info().grammar) {
-                    .length_percentage_auto, .length_percentage_nonneg, .size, .line_width => true,
-                    else => false,
-                };
-                if (value.needsUnavailableMetrics(geometry_length)) continue;
-            }
-            return c;
+            const preflight = try self.resolvePending(c, l);
+            const assigned = preflight.assigned;
+            const geometry_length = switch (l.info().grammar) {
+                .length_percentage_auto, .length_percentage_nonneg, .size, .line_width => true,
+                else => false,
+            };
+            // Q25/Q83/Q88: this is the single unavailable-input decision,
+            // after pending substitution has selected just its live branch.
+            const unavailable = preflight.unavailable or (assigned == .value and
+                (assigned.value.needsUnavailableMetrics(geometry_length) or
+                    (self.ctx.random_base == null and assigned.value.needsRandomBase())));
+            if (unavailable) continue;
+            return .{ .candidate = c, .assigned = assigned };
         }
         return null;
     }
@@ -415,7 +475,7 @@ const Builder = struct {
 
     /// Compute `l` and store it (holding its own reference).
     fn computeAndStore(self: *Builder, l: Longhand) Allocator.Error!Value {
-        const v = try self.compute(l, self.specified(l));
+        const v = try self.compute(l, try self.specified(l));
         self.style.values[@intFromEnum(l)] = v;
         return v;
     }
@@ -455,7 +515,7 @@ const Builder = struct {
 
     fn computeValue(self: *Builder, l: Longhand, v: Value, source: ValueSource) Allocator.Error!Value {
         if (v == .calculation) {
-            const expression = try v.calculation.compute(self.ctx.allocator, self.mathContext(l));
+            const expression = try v.calculation.compute(self.ctx.allocator, self.computationContext(l, v, source));
             if (expression.computedNumber()) |number| {
                 defer expression.unref();
                 const scalar: Value = switch (number.unit) {
@@ -495,6 +555,7 @@ const Builder = struct {
             },
             .font_size => return Value.px(self.computeFontSize(v)),
             .font_weight => return .{ .number = self.computeFontWeight(v) },
+            // CSS Text4 §8.2: normal is zero in the computed value.
             // CSS Color 4 6.4: "if currentcolor is the specified value of
             // the color property, it is treated as if it were inherit."
             .color => if (v == .color) switch (v.color) {
@@ -554,6 +615,34 @@ const Builder = struct {
         };
     }
 
+    fn pendingTreeCounts(raw: *anyopaque) @import("math_values.zig").TreeCounts {
+        const self: *Builder = @ptrCast(@alignCast(raw));
+        if (self.cached_tree_counts == null) {
+            self.cached_tree_counts = if (self.ctx.tree_counts) |provider| provider.get(provider.context) else .{ .index = 1, .count = 1 };
+        }
+        return self.cached_tree_counts.?;
+    }
+
+    /// Values 5 §10: the source restriction belongs to the winning value,
+    /// including every nested expression. No inherited value is recomputed.
+    fn computationContext(self: *Builder, l: Longhand, v: Value, source: ValueSource) @import("math_values.zig").Context {
+        var context = self.mathContext(l);
+        if (v.needsTreeCounts()) {
+            if (!source.tree_count_allowed) {
+                context.tree_counts = .{ .index = 0, .count = 0 };
+            } else {
+                if (self.cached_tree_counts == null) {
+                    self.cached_tree_counts = if (self.ctx.tree_counts) |provider|
+                        provider.get(provider.context)
+                    else
+                        .{ .index = 1, .count = 1 };
+                }
+                context.tree_counts = self.cached_tree_counts;
+            }
+        }
+        return context;
+    }
+
     fn mathContext(self: *const Builder, l: Longhand) @import("math_values.zig").Context {
         // Values 4 §6.1.1: font-affecting properties use parent metrics;
         // line-height additionally uses its parent's lh to avoid a cycle.
@@ -567,6 +656,7 @@ const Builder = struct {
         const mode = if (font_affecting) self.parentValue(.writing_mode).keyword else self.writing_mode;
         const orientation = if (font_affecting) self.parentValue(.text_orientation).keyword else self.style.keyword(.text_orientation);
         return .{
+            .random_base = self.ctx.random_base,
             .font_size = em,
             .root_font_size = root_em,
             .line_height = own_lh,
@@ -1043,6 +1133,7 @@ fn cv1SourceSpecified(matched: []const Matched, longhand: Longhand, mode: Keywor
         .writing_mode = mode,
         .direction = direction,
     };
+    defer builder.deinit();
     builder.mapLogicalChains();
     return builder.specified(longhand);
 }
