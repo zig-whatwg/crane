@@ -92,6 +92,13 @@ pub const BlobURLStore = struct {
     /// Map from UUID string to blob entry
     entries: std.StringHashMap(BlobURLEntry),
 
+    /// Under `mutex`: bounds `entries`' tombstones. The store is its
+    /// Browser's, alive for every page, and each URL is a fresh UUID that
+    /// leaves at its revoke or its page's end, so std's map never grows and
+    /// kept every removal's tombstone (src/infra/tombstones.zig). Entries
+    /// are read by copy, and `removeEntriesFor` collects before it removes.
+    guard: @import("infra").tombstones.TombstoneGuard = .{},
+
     /// Memory allocator
     allocator: std.mem.Allocator,
 
@@ -189,6 +196,8 @@ pub const BlobURLStore = struct {
         // store: a reference of its own, which revoking releases - taken
         // only once nothing below can fail.
         try self.entries.ensureUnusedCapacity(1);
+        // A rehash keeps the capacity just ensured.
+        self.guard.beforeInsert(&self.entries);
         self.entries.putAssumeCapacity(uuid, .{
             .blob = blob.retain(),
             .storage_key = owned_key,
@@ -275,6 +284,7 @@ pub const BlobURLStore = struct {
     /// held.
     fn removeEntry(self: *BlobURLStore, uuid: []const u8) void {
         const kv = self.entries.fetchRemove(uuid) orelse return;
+        self.guard.noteRemoval(&self.entries);
         self.allocator.free(kv.key);
         self.allocator.free(@constCast(kv.value.storage_key));
         // The entry's reference to its blob's data: the last one frees it
@@ -625,4 +635,41 @@ test "BlobURLStore - invalid URL" {
     try std.testing.expect(store.resolve("not-a-blob-url", .{ .environment = "https://example.com" }) == null);
     try std.testing.expect(store.resolve("blob:", .{ .environment = "https://example.com" }) == null);
     try std.testing.expect(store.resolve("blob:https://example.com/", .{ .environment = "https://example.com" }) == null);
+}
+
+test "BlobURLStore: blob URLs made and revoked page after page keep half the store's unused slots free" {
+    // Lane hashmaps1: the store is its Browser's, alive for every page; each
+    // URL is a fresh UUID, and leaves at its revoke or its page's end - a
+    // removal, which std's map turns into a tombstone it never clears while
+    // puts and removes balance (src/infra/tombstones.zig). Entries are read
+    // by copy under the lock, and removeEntriesFor collects before it
+    // removes, so a rehash moves nothing anyone holds.
+    const tombstones = @import("infra").tombstones;
+    const allocator = std.testing.allocator;
+    var store = BlobURLStore.init(allocator);
+    defer store.deinit();
+    const blob = try BlobData.init(allocator, "page data", "text/plain");
+    defer blob.deinit();
+    var page: u8 = 0;
+    var starved: usize = 0;
+    var worst: usize = 0;
+    for (0..300) |_| {
+        for (0..16) |i| {
+            const url = try store.createObjectURL(blob, "https://example.com", &page);
+            if (i % 2 == 0) store.revokeObjectURL(url, "https://example.com");
+            allocator.free(url);
+            if (i == 0) {
+                if (!tombstones.slotCounts(&store.entries).halfOfUnusedFree()) starved += 1;
+                worst = @max(worst, tombstones.meanMissProbe(&store.entries));
+            }
+        }
+        // The page ends: the rest leave with it.
+        store.removeEntriesFor(&page);
+    }
+    try std.testing.expectEqual(@as(usize, 0), store.entries.count());
+    if (starved != 0 or worst > 8) {
+        const counts = tombstones.slotCounts(&store.entries);
+        std.debug.print("BlobURLStore.entries: {d} of 300 pages starved; worst mean miss {d} (capacity {d}, live {d}, free {d})\n", .{ starved, worst, counts.capacity, counts.live, counts.free });
+        return error.TombstonesFilledTheMap;
+    }
 }

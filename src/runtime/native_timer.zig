@@ -43,6 +43,7 @@ const TimerVTable = runtime.TimerVTable;
 const TimerDrop = runtime.TimerDrop;
 
 const log = std.log.scoped(.native_timer);
+const TombstoneGuard = @import("infra").tombstones.TombstoneGuard;
 
 // ============================================================================
 // HTML §8.6 timer initialisation: nesting and the 4ms clamp
@@ -102,7 +103,19 @@ pub const NativeTimerManager = struct {
     const Self = @This();
 
     allocator: Allocator,
+    /// Every timer is a key the map never saw - ids only grow - put when it
+    /// is armed and removed when it fires or is cleared, for every page the
+    /// Browser's loop runs. std's map never counts a tombstone against its
+    /// load, so it never grows and never clears them: before `guard` the
+    /// free slots ran out (a 1,069-file runner sample: cap 32, none free in
+    /// 3,126 of 3,455 samples) and every arm, and every clearTimeout of an id
+    /// that already fired, walked the whole table (src/infra/tombstones.zig).
     timers: std.AutoHashMap(TimerId, *Entry),
+    /// Rehashes `timers` before an insert once its removals could take half
+    /// the unused slots. Values are `*Entry`, their own allocations, so a
+    /// rehash moves nothing anyone holds; no iteration of `timers` calls
+    /// out (`pollEach` snapshots the due ids first).
+    guard: TombstoneGuard = .{},
     next_id: TimerId,
     callback_invoked: bool,
     initialized: bool,
@@ -129,6 +142,7 @@ pub const NativeTimerManager = struct {
         // finds nothing.
         var timers = self.timers;
         self.timers = std.AutoHashMap(TimerId, *Entry).init(self.allocator);
+        self.guard = .{};
         self.initialized = false;
         var iter = timers.iterator();
         while (iter.next()) |kv| {
@@ -169,6 +183,7 @@ pub const NativeTimerManager = struct {
             .cancelled = false,
         };
 
+        self.guard.beforeInsert(&self.timers);
         self.timers.put(id, entry) catch {
             self.allocator.destroy(entry);
             return 0;
@@ -190,6 +205,7 @@ pub const NativeTimerManager = struct {
         if (id == 0) return false;
 
         if (self.timers.fetchRemove(id)) |kv| {
+            self.guard.noteRemoval(&self.timers);
             const entry = kv.value;
             const was_live = !entry.cancelled;
             self.allocator.destroy(entry);
@@ -256,6 +272,7 @@ pub const NativeTimerManager = struct {
             // to clearTimeout from inside their own callback, and the callback may
             // reschedule under a new id.
             _ = self.timers.remove(id);
+            self.guard.noteRemoval(&self.timers);
             self.allocator.destroy(entry);
 
             self.callback_invoked = true;

@@ -60,6 +60,7 @@
 //!
 //! lint-impls: hook for Document, ShadowRoot
 const std = @import("std");
+const tombstones = @import("infra").tombstones;
 const runtime = @import("runtime");
 const process_start = @import("process_start.zig");
 const NodeBase = @import("node_base.zig").NodeBase;
@@ -222,6 +223,16 @@ pub const Maps = struct {
     allocator: std.mem.Allocator,
     scope: Scope,
     /// Each key, owned, and its entries.
+    ///
+    /// Every new ID or name is a key the map never saw, and emptied keys
+    /// leave in batches, so std's map - which never grows while puts and
+    /// removes balance - kept every batch's tombstones (a 1,069-file runner
+    /// sample: starved in 44 of 4,082 samples; src/infra/tombstones.zig).
+    /// The batch is the only real source of removals, so the map is
+    /// rehashed in place right after it (`sweepEmptySlots`), rather than
+    /// carrying a TombstoneGuard: Maps is part of a Document's state, which
+    /// must stay in its allocation class (tests/html/af2_autofocus_test.zig).
+    // tombstones: rehashed in place after every batch of removals (sweepEmptySlots); otherwise only an allocation failure in add removes, the one key it just put
     map: std.StringHashMapUnmanaged(Slot) = .empty,
     /// How many registrations each kind holds: a kind with none answers
     /// every query without a lookup.
@@ -232,6 +243,7 @@ pub const Maps = struct {
     /// The scope's teardown has begun: nothing is kept from here on.
     ended: bool = false,
     /// A document's named-property collections, by name (owned).
+    // tombstones: a document's, written only when script reads a named property that makes a collection, and swept only past twice what stayed (`sweep_at`); empty at every insert of a 1,069-file runner sample
     collections: std.StringHashMapUnmanaged(Collections) = .empty,
     /// The size at which remembering a collection first sweeps out the names
     /// whose collections are all gone.
@@ -359,6 +371,11 @@ pub const Maps = struct {
             self.map.removeByPtr(kv.key_ptr);
             self.allocator.free(owned);
         }
+        // The batch's tombstones go at once, after the walk: in place, no
+        // allocation. Nothing holds an *Entry across a removal (`remove` ends
+        // here; `entryOf`'s readers change no tree), and at least
+        // max(64, live_peak) removals pay for this pass over the table.
+        self.map.rehash(std.hash_map.StringContext{});
         self.empty_slots = 0;
         self.live_peak = self.map.count();
     }
@@ -901,6 +918,20 @@ pub fn inspect(scope_root: *runtime.Instance, kind: Kind, key: []const u8) ?Insp
         .count = if (entry) |e| e.count else 0,
         .first_known = if (entry) |e| e.first != null else false,
     };
+}
+
+/// How `scope_root`'s key map stands as a hash table, for tests: its slot
+/// counts and the mean slots a miss walks (infra.tombstones); null when it
+/// is no tree scope's root.
+pub const TableInspection = struct {
+    slots: tombstones.SlotCounts,
+    mean_miss: usize,
+};
+
+pub fn inspectTable(scope_root: *runtime.Instance) ?TableInspection {
+    const root = instance_bridge.getNodeBase(scope_root) orelse return null;
+    const maps = mapsOfRoot(root) orelse return null;
+    return .{ .slots = tombstones.slotCounts(&maps.map), .mean_miss = tombstones.meanMissProbe(&maps.map) };
 }
 
 /// Make `scope_root`'s maps - still empty - allocate from `allocator`, so a

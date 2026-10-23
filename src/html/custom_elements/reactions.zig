@@ -26,7 +26,20 @@ pub fn Reactions(comptime Element: type, comptime Payload: type) type {
         // before the agent's first custom element definition is registered.
         depth: usize = 0,
         frames: infra.List(Frame),
+        /// Each element record with reactions waiting: put at its first
+        /// reaction, removed when its last is taken. The agent's - alive for
+        /// every page its Browser loads - and each record is a new
+        /// allocation, so std's map, which never grows while puts and
+        /// removes balance, kept its tombstones: a 1,069-file runner sample
+        /// found it out of free slots in 152 of 154 samples, and a page that
+        /// upgrades thousands of elements at once leaves a table every later
+        /// reaction would walk (src/infra/tombstones.zig).
         pending: std.AutoHashMap(Element, Pending),
+        /// Rehashes `pending` before an insert once its removals could take
+        /// half the unused slots. Nothing iterates `pending` while script
+        /// runs, and no value pointer survives a script call (`end`,
+        /// `takeReaction`), so a rehash moves nothing anyone holds.
+        guard: infra.tombstones.TombstoneGuard = .{},
         backup: ElementQueue,
         processing_backup: bool = false,
 
@@ -104,11 +117,12 @@ pub fn Reactions(comptime Element: type, comptime Payload: type) type {
         /// On error the caller still owns payload. A true result asks the owner
         /// to queue ONE backup-processing microtask (appropriate-queue step 1.4).
         pub fn enqueue(self: *Self, element: Element, payload: Payload) !bool {
+            self.guard.beforeInsert(&self.pending);
             const entry = try self.pending.getOrPut(element);
             if (!entry.found_existing) entry.value_ptr.* = .{ .items = infra.List(Payload).init(self.allocator) };
             errdefer if (!entry.found_existing) {
                 entry.value_ptr.deinit();
-                _ = self.pending.remove(element);
+                if (self.pending.remove(element)) self.guard.noteRemoval(&self.pending);
             };
             try entry.value_ptr.items.append(payload);
             errdefer _ = entry.value_ptr.items.remove(entry.value_ptr.items.len - 1) catch unreachable;
@@ -156,6 +170,7 @@ pub fn Reactions(comptime Element: type, comptime Payload: type) type {
         /// reactions. Its existing element-queue entries safely become no-ops.
         pub fn clearElement(self: *Self, element: Element) void {
             if (self.pending.fetchRemove(element)) |entry| {
+                self.guard.noteRemoval(&self.pending);
                 var pending = entry.value;
                 pending.deinit();
             }
@@ -169,7 +184,7 @@ pub fn Reactions(comptime Element: type, comptime Payload: type) type {
                 // All data in this list has moved to invocations. Remove the
                 // entry before script can grow the map or enqueue this element.
                 pending.items.deinit();
-                _ = self.pending.remove(element);
+                if (self.pending.remove(element)) self.guard.noteRemoval(&self.pending);
             }
             return payload;
         }
