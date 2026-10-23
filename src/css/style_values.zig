@@ -142,6 +142,41 @@ pub const Keyword = enum(u8) {
     thick,
     // font-family's initial value (a <generic-family>)
     serif,
+    // CSS UI4 §5.1.1 cursor keywords.
+    default,
+    context_menu,
+    help,
+    pointer,
+    progress,
+    wait,
+    cell,
+    crosshair,
+    text,
+    vertical_text,
+    alias,
+    copy,
+    move,
+    no_drop,
+    not_allowed,
+    grab,
+    grabbing,
+    e_resize,
+    n_resize,
+    ne_resize,
+    nw_resize,
+    s_resize,
+    se_resize,
+    sw_resize,
+    w_resize,
+    ew_resize,
+    ns_resize,
+    nesw_resize,
+    nwse_resize,
+    col_resize,
+    row_resize,
+    all_scroll,
+    zoom_in,
+    zoom_out,
 
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
@@ -545,6 +580,7 @@ pub const Value = union(enum) {
     content: *Content,
     /// Kept as its serialization (a font-family list, an <image>).
     text: *SharedText,
+    cursor: *@import("cursor_values.zig").Cursor,
 
     /// Borrowed URL candidates in serialization order, valid while this
     /// value is retained. No sheet or document lookup is needed to use them.
@@ -552,6 +588,7 @@ pub const Value = union(enum) {
         return switch (self) {
             .text => |t| t.resource_urls,
             .content => |c| c.resource_urls,
+            .cursor => |c| c.text.resource_urls,
             else => &.{},
         };
     }
@@ -565,12 +602,14 @@ pub const Value = union(enum) {
     /// Take a reference to what the value holds (a copy of it is kept).
     pub fn retain(self: Value) void {
         if (self == .content) return self.content.ref();
+        if (self == .cursor) return self.cursor.ref();
         if (self.sharedText()) |t| t.ref();
     }
 
     /// Drop the reference `retain` took.
     pub fn release(self: Value) void {
         if (self == .content) return self.content.unref();
+        if (self == .cursor) return self.cursor.unref();
         if (self.sharedText()) |t| t.unref();
     }
 
@@ -597,6 +636,7 @@ pub const Value = union(enum) {
             .color_scheme => |c| c.support.eql(b.color_scheme.support) and std.mem.eql(u8, c.text.bytes, b.color_scheme.text.bytes),
             .content => |c| c.eql(b.content),
             .text => |t| t == b.text or std.mem.eql(u8, t.bytes, b.text.bytes),
+            .cursor => |c| c.eql(b.cursor),
         };
     }
 

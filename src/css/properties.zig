@@ -134,6 +134,10 @@ pub const Longhand = enum(u8) {
     writing_mode,
     z_index,
 
+    // CSS image value families (row 119).
+    cursor,
+    list_style_image,
+
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
     /// The property name.
@@ -158,16 +162,17 @@ pub const Longhand = enum(u8) {
     }
 };
 
-/// The longhands in lexicographic order of their names (CSSOM 7.2 step 5),
-/// which the enum's declaration order already is.
+/// CSSOM 7.2 step 5 enumerates names lexicographically, independently of
+/// declaration order. Separate property families can append contiguous blocks.
 pub const lexicographic: [Longhand.count]Longhand = blk: {
     @setEvalBranchQuota(100_000);
     var out: [Longhand.count]Longhand = undefined;
     for (0..Longhand.count) |i| out[i] = @enumFromInt(i);
-    for (1..Longhand.count) |i| {
-        if (!std.mem.lessThan(u8, out[i - 1].name(), out[i].name()))
-            @compileError("Longhand must be declared in lexicographic order: " ++ out[i].name());
-    }
+    std.mem.sort(Longhand, &out, {}, struct {
+        fn lessThan(_: void, a: Longhand, b: Longhand) bool {
+            return std.mem.lessThan(u8, a.name(), b.name());
+        }
+    }.lessThan);
     break :blk out;
 };
 
@@ -289,6 +294,7 @@ pub const Grammar = enum {
     color_scheme,
     /// CSS Generated Content 3: typed strings, attributes and layout values.
     content,
+    cursor,
 };
 
 pub const Info = struct {
@@ -393,6 +399,9 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .width, .inherited = false, .initial = Value.kw(.auto), .grammar = .size, .quirky_length = true },
         .{ .longhand = .writing_mode, .inherited = true, .initial = Value.kw(.horizontal_tb), .grammar = .keywords, .keywords = &.{ .horizontal_tb, .vertical_rl, .vertical_lr, .sideways_rl, .sideways_lr } },
         .{ .longhand = .z_index, .inherited = false, .initial = Value.kw(.auto), .grammar = .z_index },
+        // CSS UI4 §5.1.1; CSS Lists3 §3.3.
+        .{ .longhand = .cursor, .inherited = true, .initial = Value.kw(.auto), .grammar = .cursor },
+        .{ .longhand = .list_style_image, .inherited = true, .initial = Value.kw(.none), .grammar = .image },
     };
     for (defs) |def| {
         const i = @intFromEnum(def.longhand);
@@ -795,6 +804,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
             const clamped = std.math.clamp(n, @as(f64, std.math.minInt(i32)), @as(f64, std.math.maxInt(i32)));
             return .{ .integer = @intFromFloat(clamped) };
         },
+        .cursor => return @import("cursor_values.zig").parse(options, stream),
     }
 }
 
@@ -1569,6 +1579,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .color_scheme => |c| try out.appendSlice(allocator, c.text.bytes),
         .content => |c| try out.appendSlice(allocator, c.serialization),
         .text => |t| try out.appendSlice(allocator, t.bytes),
+        .cursor => |c| try out.appendSlice(allocator, c.text.bytes),
     }
 }
 
@@ -2022,7 +2033,19 @@ test "logical sides map by writing mode and direction" {
     try testing.expectEqual(Longhand.margin_left, physicalLonghand(.margin, .left));
 }
 
-test "the lexicographic order is the enum's" {
-    try testing.expectEqualStrings("appearance", lexicographic[0].name());
+test "CSSOM enumeration sorts names independently of property blocks" {
+    var seen = [_]bool{false} ** Longhand.count;
+    for (lexicographic, 0..) |l, i| {
+        try testing.expect(!seen[@intFromEnum(l)]);
+        seen[@intFromEnum(l)] = true;
+        if (i > 0) try testing.expect(std.mem.lessThan(u8, lexicographic[i - 1].name(), l.name()));
+    }
+    for (seen) |present| try testing.expect(present);
     try testing.expectEqualStrings("z-index", lexicographic[Longhand.count - 1].name());
+}
+
+test "cursor sorts between content and direction" {
+    const cursor_index = std.mem.indexOfScalar(Longhand, &lexicographic, .cursor).?;
+    try testing.expect(cursor_index > std.mem.indexOfScalar(Longhand, &lexicographic, .content).?);
+    try testing.expect(cursor_index < std.mem.indexOfScalar(Longhand, &lexicographic, .direction).?);
 }
