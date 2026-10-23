@@ -67,7 +67,13 @@ dialog {
  background-color: Canvas;
  color: CanvasText;
 }
+/* CSS UI 4 §6.3; Blink html.css 2135-2145, WPT revision 5d23b743bb:
+   interactivity-inert-modal-dialog-ua and interactivity-inert-html-attribute-ua.
+   Chrome ships these UA rules (5/5 and 4/4); Firefox/Safari lack the property. */
+[inert] { interactivity: inert !important; }
+
 dialog:modal {
+ interactivity: auto;
  position: fixed;
  overflow: auto;
  inset-block: 0;
@@ -325,6 +331,12 @@ input, select, textarea {
 
 input:is([type=reset i], [type=button i], [type=submit i]), button {
  text-align: center;
+}
+
+/* CSS UI 4 6.1, browser majority (Blink and Gecko, row 118 Q13/D14).
+ * Ordinary button/select/meter/progress retain their existing defaults. */
+input[type=button i], input[type=submit i], input[type=reset i] {
+ user-select: none;
 }
 
 input, button {

@@ -26,11 +26,14 @@ const Allocator = std.mem.Allocator;
 const length_mod = @import("values/length.zig");
 const color_mod = @import("values/color.zig");
 const color_scheme_mod = @import("color_scheme.zig");
+const resources = @import("resource_values.zig");
 
 pub const Length = length_mod.Length;
 pub const LengthUnit = length_mod.LengthUnit;
 pub const RgbaColor = color_mod.Color;
 pub const Content = @import("generated_content.zig").Content;
+pub const ResourceSource = resources.ResourceSource;
+pub const ResourceUrl = resources.ResourceUrl;
 
 // ============================================================================
 // Keywords
@@ -42,6 +45,24 @@ pub const Keyword = enum(u8) {
     auto,
     none,
     normal,
+    // CSS UI 4 user-select (auto/none are shared with other properties).
+    text,
+    contain,
+    all,
+    // Row118 grid/UI values, kept in one block for parallel property work.
+    infinite,
+    content_box,
+    border_box,
+    content,
+    both,
+    horizontal,
+    vertical,
+    block,
+    @"inline",
+    bar,
+    underscore,
+    manual,
+    inert,
     // visibility
     visible,
     hidden,
@@ -71,6 +92,11 @@ pub const Keyword = enum(u8) {
     vertical_lr,
     sideways_rl,
     sideways_lr,
+    // text-orientation
+    mixed,
+    upright,
+    sideways,
+    sideways_right,
     // border styles
     dotted,
     dashed,
@@ -84,6 +110,15 @@ pub const Keyword = enum(u8) {
     min_content,
     max_content,
     fit_content,
+    stretch,
+    // Anchor Position 1 §6.2.
+    most_width,
+    most_height,
+    most_block_size,
+    most_inline_size,
+    // Anchor Position 1 §2.4, newer WG resolution #8913 (2026-02-18):
+    // all stable engines lag; upstream WPT and implementer support agree.
+    match_parent,
     // font-size
     xx_small,
     x_small,
@@ -139,6 +174,20 @@ pub const Keyword = enum(u8) {
     thick,
     // font-family's initial value (a <generic-family>)
     serif,
+    // Row118 animation keyword lists.
+    ease,
+    reverse,
+    alternate,
+    alternate_reverse,
+    forwards,
+    backwards,
+    running,
+    paused,
+    replace,
+    add,
+    accumulate,
+    // CSS Transitions 2 §2.5.
+    allow_discrete,
 
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
@@ -302,6 +351,19 @@ pub const Display = struct {
         return self.box == .normal and self.outer == .block;
     }
 
+    /// CSS Contain 2 section 3.1: size containment needs an eligible
+    /// principal box. Replaced inline boxes are atomic (Display 4 section
+    /// 2.1); a run-in is inline-level too. Table captions are independent
+    /// block containers, unlike the other internal table/ruby boxes.
+    pub fn canSizeContain(self: Display, replaced: bool) bool {
+        return switch (self.box) {
+            .none, .contents => false,
+            .internal => self.internal == .table_caption,
+            .normal => self.inner != .table and
+                (self.outer == .block or replaced or (self.inner != .flow and self.inner != .ruby)),
+        };
+    }
+
     /// Display 4 section 2.7 "blockify": the computed outer display type
     /// becomes block; an inline flow-root (inline-block) loses its
     /// flow-root nature; a layout-internal box becomes a block container.
@@ -382,6 +444,8 @@ pub const Display = struct {
 /// section 6.4), which a computed value keeps as the keyword.
 pub const Color = union(enum) {
     rgba: RgbaColor,
+    /// Immutable owned CSS components, with precision and missingness intact.
+    expression: *@import("color_values.zig").Expression,
     current,
     /// A <named-color> or <system-color> keyword: its color, and the
     /// keyword (lowercase), which a specified value serializes as written
@@ -401,8 +465,104 @@ pub const Color = union(enum) {
     pub const transparent: Color = .{ .rgba = RgbaColor.transparent };
     pub const black: Color = .{ .rgba = RgbaColor.black };
 
+    /// Borrowed inputs; a computed result always owns the references it needs.
+    /// null current keeps currentcolor symbolic for inheritance through other
+    /// color properties. For the color property, pass the parent's color.
+    pub const Context = struct {
+        scheme: color_scheme_mod.Scheme = .light,
+        current: ?Color = null,
+        math: @import("math_values.zig").Context = .{},
+    };
+
+    /// Query the original stop graph before computed color resolution. The
+    /// computed stage carries the receiving element's own used scheme.
+    pub const GradientStage = union(enum) {
+        specified,
+        computed: color_scheme_mod.Scheme,
+    };
+
+    pub fn usesLegacyGradientInterpolation(self: Color, stage: GradientStage) bool {
+        return switch (self) {
+            .expression => |e| e.usesLegacyGradientInterpolation(stage),
+            .rgba, .current, .named, .system => true,
+        };
+    }
+
+    /// Every holder of a Color takes a reference, including nested paint data.
+    /// Scalar colors are allocation-free and need no work here.
+    pub fn retain(self: Color) void {
+        if (self == .named) self.named.name.ref();
+        if (self == .expression) self.expression.ref();
+    }
+
+    pub fn release(self: Color) void {
+        if (self == .named) self.named.name.unref();
+        if (self == .expression) self.expression.unref();
+    }
+
+    /// Color 4 §§6.4, 15: specified keywords keep their lowercase spelling.
+    pub fn serializeSpecified(self: Color, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+        switch (self) {
+            .expression => |e| try e.serialize(out, allocator),
+            .rgba => |c| try serializeRgba(c, out, allocator),
+            .current => try out.appendSlice(allocator, "currentcolor"),
+            .named => |n| try out.appendSlice(allocator, n.name.bytes),
+            .system => |s| try out.appendSlice(allocator, s.keyword()),
+        }
+    }
+
+    /// A computed color's own serialization. Resolve currentcolor with the
+    /// destination's current color first when CSSOM requires a used color.
+    pub fn serializeComputed(self: Color, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+        if (self == .expression) return self.expression.serialize(out, allocator);
+        if (self.absolute()) |c| return serializeRgba(c, out, allocator);
+        return out.appendSlice(allocator, "currentcolor");
+    }
+
+    /// Returns an OWNED value; neither self nor Context's borrowed current
+    /// color is consumed. Allocation errors are part of the stable API for
+    /// typed components. The caller releases every successful result.
+    pub fn resolveComputed(self: Color, allocator: Allocator, context: Context) Allocator.Error!Color {
+        return switch (self) {
+            .expression => |e| try e.resolve(allocator, context),
+            .current => blk: {
+                const result = context.current orelse self;
+                result.retain();
+                break :blk result;
+            },
+            .rgba => self,
+            .named => |n| .{ .rgba = n.rgba },
+            .system => |s| .{ .rgba = s.color(context.scheme) },
+        };
+    }
+
+    /// Aggregates forward this query without inspecting Color's variants.
+    /// A future typed variant must explicitly describe its dependencies.
+    pub fn needsTreeCounts(self: Color) bool {
+        return switch (self) {
+            .expression => |e| e.needsTreeCounts(),
+            .rgba, .current, .named, .system => false,
+        };
+    }
+
+    pub fn needsRandomBase(self: Color) bool {
+        return switch (self) {
+            .expression => |e| e.needsRandomBase(),
+            .rgba, .current, .named, .system => false,
+        };
+    }
+
+    /// Scalar colors need no font or layout metrics, for either destination.
+    pub fn needsUnavailableMetrics(self: Color, geometry_length: bool) bool {
+        return switch (self) {
+            .expression => |e| e.needsUnavailableMetrics(geometry_length),
+            .rgba, .current, .named, .system => false,
+        };
+    }
+
     pub fn eql(a: Color, b: Color) bool {
         return switch (a) {
+            .expression => |e| b == .expression and e.eql(b.expression),
             .current => b == .current,
             .rgba => |x| switch (b) {
                 .rgba => |y| x.eql(y),
@@ -420,6 +580,7 @@ pub const Color = union(enum) {
     /// with no element to take a scheme from is the UA default's (light).
     pub fn absolute(self: Color) ?RgbaColor {
         return switch (self) {
+            .expression => |e| e.bytes(),
             .rgba => |c| c,
             .named => |n| n.rgba,
             .system => |s| s.color(.light),
@@ -479,6 +640,7 @@ pub const SharedText = struct {
     refs: u32,
     allocator: Allocator,
     bytes: []u8,
+    resource_urls: []const ResourceUrl = &.{},
 
     const immortal: u32 = std.math.maxInt(u32);
 
@@ -489,6 +651,14 @@ pub const SharedText = struct {
         return self;
     }
 
+    /// Copies both text and occurrences, retaining every occurrence's source.
+    pub fn createWithResources(allocator: Allocator, bytes: []const u8, urls: []const ResourceUrl) Allocator.Error!*SharedText {
+        const self = try create(allocator, bytes);
+        errdefer self.unref();
+        self.resource_urls = try resources.cloneAll(allocator, urls, 0);
+        return self;
+    }
+
     /// Make the string uncounted: it lives until `destroyImmortal`.
     pub fn makeImmortal(self: *SharedText) void {
         self.refs = immortal;
@@ -496,6 +666,7 @@ pub const SharedText = struct {
 
     pub fn destroyImmortal(self: *SharedText) void {
         std.debug.assert(self.refs == immortal);
+        resources.releaseAll(self.allocator, self.resource_urls);
         self.allocator.free(self.bytes);
         self.allocator.destroy(self);
     }
@@ -509,6 +680,7 @@ pub const SharedText = struct {
         if (self.refs == immortal) return;
         self.refs -= 1;
         if (self.refs > 0) return;
+        resources.releaseAll(self.allocator, self.resource_urls);
         self.allocator.free(self.bytes);
         self.allocator.destroy(self);
     }
@@ -517,6 +689,31 @@ pub const SharedText = struct {
 // ============================================================================
 // Value
 // ============================================================================
+
+/// CSS Sizing 4 §3.2: an intrinsic sizing function keeps its typed argument
+/// until layout. Specified and computed values own separate argument values.
+pub const SizingFunction = struct {
+    refs: std.atomic.Value(u32) = .init(1),
+    allocator: Allocator,
+    argument: Value,
+
+    /// Takes ownership of argument on success only.
+    pub fn create(allocator: Allocator, argument: Value) Allocator.Error!*SizingFunction {
+        const self = try allocator.create(SizingFunction);
+        self.* = .{ .allocator = allocator, .argument = argument };
+        return self;
+    }
+
+    pub fn ref(self: *SizingFunction) void {
+        _ = self.refs.fetchAdd(1, .monotonic);
+    }
+
+    pub fn unref(self: *SizingFunction) void {
+        if (self.refs.fetchSub(1, .acq_rel) != 1) return;
+        self.argument.release();
+        self.allocator.destroy(self);
+    }
+};
 
 /// A property's value, specified or computed.
 pub const Value = union(enum) {
@@ -529,18 +726,69 @@ pub const Value = union(enum) {
     text_transform: TextTransform,
     color_scheme: ColorScheme,
     content: *Content,
+    calculation: *@import("math_values.zig").Expression,
+    sizing_function: *SizingFunction,
+    grid_line: *@import("grid_values.zig").Line,
+    grid_tracks: *@import("grid_tracks.zig").Tracks,
+    grid_areas: *@import("grid_tracks.zig").Areas,
+    grid_flow: @import("grid_tracks.zig").Flow,
+    caret_pair: *@import("ui_values.zig").CaretPair,
+    animation_list: *@import("animation_values.zig").List,
+    transform: *@import("transform_values.zig").Transform,
+    alignment: @import("alignment.zig").Value,
+    position_area: @import("position_area.zig").Area,
+    try_fallbacks: struct { list: *@import("anchor_fallbacks.zig").Fallbacks, computed: bool = false },
     /// Kept as its serialization (a font-family list, an <image>).
     text: *SharedText,
+    pending: *@import("pending_values.zig").Pending,
+
+    /// Borrowed URL candidates in serialization order, valid while this
+    /// value is retained. No sheet or document lookup is needed to use them.
+    pub fn resourceUrls(self: Value) []const ResourceUrl {
+        return switch (self) {
+            .text => |t| t.resource_urls,
+            .content => |c| c.resource_urls,
+            else => &.{},
+        };
+    }
+
+    /// Resource identity includes provenance; eql deliberately remains a
+    /// value/text comparison. Reuse decisions that keep a source need both.
+    pub fn resourcesEql(a: Value, b: Value) bool {
+        return resources.eql(a.resourceUrls(), b.resourceUrls());
+    }
 
     /// Take a reference to what the value holds (a copy of it is kept).
     pub fn retain(self: Value) void {
+        if (self == .color) return self.color.retain();
         if (self == .content) return self.content.ref();
+        if (self == .calculation) return self.calculation.ref();
+        if (self == .sizing_function) return self.sizing_function.ref();
+        if (self == .grid_line) return self.grid_line.ref();
+        if (self == .grid_tracks) return self.grid_tracks.ref();
+        if (self == .grid_areas) return self.grid_areas.ref();
+        if (self == .caret_pair) return self.caret_pair.ref();
+        if (self == .animation_list) return self.animation_list.ref();
+        if (self == .transform) return self.transform.ref();
+        if (self == .pending) return self.pending.ref();
+        if (self == .try_fallbacks) return self.try_fallbacks.list.ref();
         if (self.sharedText()) |t| t.ref();
     }
 
     /// Drop the reference `retain` took.
     pub fn release(self: Value) void {
+        if (self == .color) return self.color.release();
         if (self == .content) return self.content.unref();
+        if (self == .calculation) return self.calculation.unref();
+        if (self == .sizing_function) return self.sizing_function.unref();
+        if (self == .grid_line) return self.grid_line.unref();
+        if (self == .grid_tracks) return self.grid_tracks.unref();
+        if (self == .grid_areas) return self.grid_areas.unref();
+        if (self == .caret_pair) return self.caret_pair.unref();
+        if (self == .animation_list) return self.animation_list.unref();
+        if (self == .transform) return self.transform.unref();
+        if (self == .pending) return self.pending.unref();
+        if (self == .try_fallbacks) return self.try_fallbacks.list.unref();
         if (self.sharedText()) |t| t.unref();
     }
 
@@ -566,12 +814,116 @@ pub const Value = union(enum) {
             .text_transform => |t| t.eql(b.text_transform),
             .color_scheme => |c| c.support.eql(b.color_scheme.support) and std.mem.eql(u8, c.text.bytes, b.color_scheme.text.bytes),
             .content => |c| c.eql(b.content),
+            .calculation => |c| c.eql(b.calculation),
+            .sizing_function => |s| s.argument.eql(b.sizing_function.argument),
+            .grid_line => |line| line.eql(b.grid_line),
+            .grid_tracks => |tracks| tracks.eql(b.grid_tracks),
+            .grid_areas => |areas| areas.eql(b.grid_areas),
+            .grid_flow => |flow| std.meta.eql(flow, b.grid_flow),
+            .caret_pair => |pair| pair.eql(b.caret_pair),
+            .animation_list => |list| list.eql(b.animation_list),
+            .transform => |transform| transform.eql(b.transform),
+            .alignment => |a_value| a_value.eql(b.alignment),
+            .position_area => |a_area| a_area.eql(b.position_area),
+            .try_fallbacks => |f| f.computed == b.try_fallbacks.computed and f.list.eql(b.try_fallbacks.list),
             .text => |t| t == b.text or std.mem.eql(u8, t.bytes, b.text.bytes),
+            .pending => |pending| pending.eql(b.pending),
         };
     }
 
     pub fn kw(k: Keyword) Value {
         return .{ .keyword = k };
+    }
+
+    /// Q17/Q23–25: aggregate values must not hide an unsupported scalar.
+    /// Keep this switch exhaustive so a new aggregate must choose a rule.
+    pub fn needsUnavailableMetrics(self: Value, geometry_length: bool) bool {
+        return switch (self) {
+            .color => |c| c.needsUnavailableMetrics(geometry_length),
+            .calculation => |c| c.needsUnavailableMetrics(geometry_length),
+            .sizing_function => |s| s.argument.needsUnavailableMetrics(geometry_length),
+            .grid_line => |line| line.needsUnavailableMetrics(),
+            .grid_tracks => |tracks| tracks.needsUnavailableMetrics(),
+            .caret_pair => |pair| pair.needsUnavailableMetrics(),
+            .animation_list => |list| list.needsUnavailableMetrics(),
+            .transform => |transform| transform.needsUnavailableMetrics(geometry_length),
+            .grid_areas,
+            .grid_flow,
+            .keyword,
+            .length,
+            .number,
+            .integer,
+            .display,
+            .text_transform,
+            .color_scheme,
+            .content,
+            .alignment,
+            .position_area,
+            .try_fallbacks,
+            .text,
+            .pending, // Q88: inspect only the resolved, selected branch.
+            => false,
+        };
+    }
+
+    /// Values 5 §10: only numeric trees and aggregates can need DOM counts.
+    /// Exhaustive so new wrappers must explicitly carry the dependency.
+    pub fn needsTreeCounts(self: Value) bool {
+        return switch (self) {
+            .color => |c| c.needsTreeCounts(),
+            .caret_pair => |p| p.needsTreeCounts(),
+            .calculation => |c| c.needsTreeCounts(),
+            .sizing_function => |s| s.argument.needsTreeCounts(),
+            .grid_line => |line| line.needsTreeCounts(),
+            .grid_tracks => |tracks| tracks.needsTreeCounts(),
+            .animation_list => |list| list.needsTreeCounts(),
+            .transform => |transform| transform.needsTreeCounts(),
+            .grid_areas,
+            .grid_flow,
+            .keyword,
+            .length,
+            .number,
+            .integer,
+            .display,
+            .text_transform,
+            .color_scheme,
+            .content,
+            .alignment,
+            .position_area,
+            .try_fallbacks,
+            .text,
+            .pending, // Q88: inspect only the resolved, selected branch.
+            => false,
+        };
+    }
+
+    pub fn needsRandomBase(self: Value) bool {
+        return switch (self) {
+            .color => |c| c.needsRandomBase(),
+            .caret_pair => |p| p.needsRandomBase(),
+            .calculation => |c| c.needsRandomBase(),
+            .sizing_function => |s| s.argument.needsRandomBase(),
+            .grid_line => |line| line.needsRandomBase(),
+            .grid_tracks => |tracks| tracks.needsRandomBase(),
+            .animation_list => |list| list.needsRandomBase(),
+            .transform => |transform| transform.needsRandomBase(),
+            .grid_areas,
+            .grid_flow,
+            .keyword,
+            .length,
+            .number,
+            .integer,
+            .display,
+            .text_transform,
+            .color_scheme,
+            .content,
+            .alignment,
+            .position_area,
+            .try_fallbacks,
+            .text,
+            .pending, // Q88: inspect only the resolved, selected branch.
+            => false,
+        };
     }
 
     pub fn px(v: f64) Value {
@@ -600,8 +952,10 @@ pub fn appendNumber(value: f64, out: *std.ArrayList(u8), allocator: Allocator) A
     // Six significant digits, and never more than CSSOM's 6 decimals.
     const exponent: i32 = @intFromFloat(@floor(std.math.log10(magnitude)));
     const decimals: usize = @intCast(std.math.clamp(5 - exponent, 0, 6));
-    var buffer: [64]u8 = undefined;
-    const text = std.fmt.bufPrint(&buffer, "{d:.[1]}", .{ value, decimals }) catch return out.appendSlice(allocator, "0");
+    // f64's largest finite value has 309 integer digits. Include sign and
+    // all six fractional digits: finite overflow must never serialize as 0.
+    var buffer: [320]u8 = undefined;
+    const text = std.fmt.bufPrint(&buffer, "{d:.[1]}", .{ value, decimals }) catch unreachable;
     var end = text.len;
     if (std.mem.indexOfScalar(u8, text, '.') != null) {
         while (end > 0 and text[end - 1] == '0') end -= 1;

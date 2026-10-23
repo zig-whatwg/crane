@@ -5,6 +5,7 @@ const std = @import("std");
 const tokenizer = @import("tokenizer.zig");
 const css_serialize = @import("serialize.zig");
 const values = @import("style_values.zig");
+const resources = @import("resource_values.zig");
 const Allocator = std.mem.Allocator;
 const Token = tokenizer.Token;
 
@@ -13,10 +14,7 @@ pub const AttributeLookup = struct {
     get: *const fn (*const anyopaque, []const u8) ?[]const u8,
 };
 
-pub const UrlResolver = struct {
-    context: *const anyopaque,
-    resolve: *const fn (*const anyopaque, Allocator, []const u8) ?[]u8,
-};
+pub const UrlResolver = resources.UrlResolver;
 
 pub const Kind = enum { text, attribute, counter, quote, image, leader, contents, target, substitution };
 pub const Item = struct {
@@ -25,6 +23,8 @@ pub const Item = struct {
     text: []const u8,
     explicit_raw: bool = false,
     fallback: ?[]const u8 = null,
+    /// Owned by the containing Content, with ranges relative to item.text.
+    resource_urls: []const resources.ResourceUrl = &.{},
 };
 
 pub const Content = struct {
@@ -37,6 +37,8 @@ pub const Content = struct {
     items: []const Item = &.{},
     alternate: ?usize = null,
     serialization: []const u8 = "",
+    /// Borrowed copies of the items' occurrences, offset into serialization.
+    resource_urls: []const resources.ResourceUrl = &.{},
 
     fn create(allocator: Allocator) !*Content {
         const result = try allocator.create(Content);
@@ -51,6 +53,7 @@ pub const Content = struct {
     pub fn unref(self: *Content) void {
         if (self.refs.fetchSub(1, .acq_rel) != 1) return;
         const allocator = self.allocator;
+        for (self.items) |item| resources.releaseAll(self.arena.allocator(), item.resource_urls);
         self.arena.deinit();
         allocator.destroy(self);
     }
@@ -75,8 +78,11 @@ pub const Content = struct {
         errdefer result.unref();
         const a = result.arena.allocator();
         const items = try a.alloc(Item, self.items.len);
-        for (self.items, items) |item, *copy| {
+        for (self.items, items, 0..) |item, *copy, i| {
             copy.* = item;
+            copy.resource_urls = &.{};
+            // Publish only initialized slots so every error path can unref.
+            result.items = items[0 .. i + 1];
             const text = if (item.kind == .attribute) blk: {
                 const value = if (lookup) |l| l.get(l.context, item.text) else null;
                 // Values 5 8.7: only the omitted type has an implicit empty
@@ -92,6 +98,7 @@ pub const Content = struct {
             } else item.text;
             copy.text = try a.dupe(u8, text);
             if (copy.fallback) |f| copy.fallback = try a.dupe(u8, f);
+            copy.resource_urls = try resources.cloneAll(a, item.resource_urls, 0);
         }
         result.items = items;
         result.alternate = self.alternate;
@@ -109,8 +116,15 @@ pub const Content = struct {
     fn serialize(self: *Content) !void {
         const a = self.arena.allocator();
         var out: std.ArrayList(u8) = .empty;
+        var urls: std.ArrayList(resources.ResourceUrl) = .empty;
         for (self.items, 0..) |item, i| {
             if (i > 0) try out.appendSlice(a, if (self.alternate == i) " / " else " ");
+            for (item.resource_urls) |url| {
+                var occurrence = url;
+                occurrence.range.start += out.items.len;
+                occurrence.range.end += out.items.len;
+                try urls.append(a, occurrence);
+            }
             switch (item.kind) {
                 .text => try values.appendString(item.text, &out, a),
                 .attribute => {
@@ -127,15 +141,20 @@ pub const Content = struct {
             }
         }
         self.serialization = out.items;
+        self.resource_urls = urls.items;
     }
 };
 
 /// Parse a content-list (normal and none are handled by the property).
 pub fn parse(allocator: Allocator, text: []const u8, resolver: ?UrlResolver) !?*Content {
+    return parseWithSource(allocator, text, resolver, null);
+}
+
+pub fn parseWithSource(allocator: Allocator, text: []const u8, resolver: ?UrlResolver, source: ?*resources.ResourceSource) !?*Content {
     const result = try Content.create(allocator);
     var success = false;
     defer if (!success) result.unref();
-    var parser: Parser = .{ .allocator = result.arena.allocator(), .tok = .init(text), .input = text, .resolver = resolver };
+    var parser: Parser = .{ .allocator = result.arena.allocator(), .tok = .init(text), .input = text, .resolver = resolver, .source = source };
     var items: std.ArrayList(Item) = .empty;
     while (parser.peek().token_type != .eof) {
         const token = parser.peek();
@@ -146,8 +165,12 @@ pub fn parse(allocator: Allocator, text: []const u8, resolver: ?UrlResolver) !?*
             continue;
         }
         const item = (try parser.item()) orelse return null;
+        var item_kept = false;
+        defer if (!item_kept) resources.releaseAll(parser.allocator, item.resource_urls);
         if (result.alternate != null and item.kind != .text and item.kind != .attribute and item.kind != .counter and item.kind != .substitution) return null;
         try items.append(parser.allocator, item);
+        result.items = items.items;
+        item_kept = true;
     }
     if (items.items.len == 0 or result.alternate == items.items.len) return null;
     result.items = items.items;
@@ -162,6 +185,7 @@ const Parser = struct {
     input: []const u8,
     peeked: ?Token = null,
     resolver: ?UrlResolver,
+    source: ?*resources.ResourceSource,
 
     fn peek(self: *Parser) Token {
         if (self.peeked) |token| return token;
@@ -238,7 +262,12 @@ const Parser = struct {
         try out.appendSlice(self.allocator, "url(");
         try values.appendString(resolved orelse raw, &out, self.allocator);
         try out.append(self.allocator, ')');
-        return .{ .kind = .image, .text = out.items };
+        const occurrence = resources.ResourceUrl.describe(raw, resolved, self.resolver != null, self.source, .{ .start = 0, .end = out.items.len });
+        return .{ .kind = .image, .text = out.items, .resource_urls = try resources.cloneAll(self.allocator, &.{occurrence}, 0) };
+    }
+
+    fn serializedItem(self: *Parser, kind: Kind, text: []const u8) !Item {
+        return .{ .kind = kind, .text = text, .resource_urls = try resources.collect(self.allocator, text, self.resolver, self.source) };
     }
 
     fn remainingFunction(self: *Parser, start: Token, kind: Kind) !?Item {
@@ -253,7 +282,7 @@ const Parser = struct {
                     var closed: std.ArrayList(u8) = .empty;
                     try closed.appendSlice(self.allocator, self.input[begin..self.tok.pos]);
                     try closed.appendNTimes(self.allocator, ')', depth);
-                    return .{ .kind = kind, .text = closed.items };
+                    return try self.serializedItem(kind, closed.items);
                 },
                 .bad_string, .bad_url, .semicolon, .left_brace, .right_brace => return null,
                 .left_paren => depth += 1,
@@ -263,7 +292,7 @@ const Parser = struct {
         }
         if (!any) return null;
         const begin = @intFromPtr(start.value.ptr) - @intFromPtr(self.input.ptr);
-        return .{ .kind = kind, .text = try self.allocator.dupe(u8, self.input[begin..self.tok.pos]) };
+        return try self.serializedItem(kind, try self.allocator.dupe(u8, self.input[begin..self.tok.pos]));
     }
 
     fn attribute(self: *Parser, start: Token) !?Item {
@@ -296,6 +325,8 @@ const Parser = struct {
         const name = try self.ident(name_token);
         if (values.CssWide.parse(name) != null or std.ascii.eqlIgnoreCase(name, "none") or std.ascii.eqlIgnoreCase(name, "default")) return null;
         var out: std.ArrayList(u8) = .empty;
+        var urls = resources.Builder{ .allocator = self.allocator };
+        defer urls.deinit();
         try out.appendSlice(self.allocator, if (plural) "counters(" else "counter(");
         try out.appendSlice(self.allocator, try css_serialize.serializeIdentifier(self.allocator, name));
         if (plural) {
@@ -315,17 +346,19 @@ const Parser = struct {
                     try out.appendSlice(self.allocator, try css_serialize.serializeIdentifier(self.allocator, style_name));
                 }
             } else if (counter_style.token_type == .function and tokenizer.nameEql(counter_style.value, "symbols")) {
-                const symbol_text = (try self.symbols()) orelse return null;
+                const symbol_list = (try self.symbols()) orelse return null;
+                defer resources.releaseAll(self.allocator, symbol_list.resource_urls);
                 try out.appendSlice(self.allocator, ", ");
-                try out.appendSlice(self.allocator, symbol_text);
+                try urls.append(symbol_list.resource_urls, out.items.len);
+                try out.appendSlice(self.allocator, symbol_list.text);
             } else return null;
         }
         if (!self.closeFunction()) return null;
         try out.append(self.allocator, ')');
-        return .{ .kind = .counter, .text = out.items };
+        return .{ .kind = .counter, .text = out.items, .resource_urls = try urls.take() };
     }
 
-    fn symbols(self: *Parser) Allocator.Error!?[]const u8 {
+    fn symbols(self: *Parser) Allocator.Error!?Item {
         if (!self.take(.left_paren)) return null;
         var system: []const u8 = "symbolic";
         if (self.peek().token_type == .ident) {
@@ -339,6 +372,8 @@ const Parser = struct {
             if (!valid) return null;
         }
         var out: std.ArrayList(u8) = .empty;
+        var urls = resources.Builder{ .allocator = self.allocator };
+        defer urls.deinit();
         try out.appendSlice(self.allocator, "symbols(");
         if (!std.mem.eql(u8, system, "symbolic")) {
             try out.appendSlice(self.allocator, system);
@@ -347,13 +382,15 @@ const Parser = struct {
         var count: usize = 0;
         while (!self.closeFunction()) {
             const symbol = (try self.item()) orelse return null;
+            defer resources.releaseAll(self.allocator, symbol.resource_urls);
             if (symbol.kind != .text and symbol.kind != .image) return null;
             if (count > 0) try out.append(self.allocator, ' ');
+            try urls.append(symbol.resource_urls, out.items.len);
             if (symbol.kind == .text) try values.appendString(symbol.text, &out, self.allocator) else try out.appendSlice(self.allocator, symbol.text);
             count += 1;
         }
         if (count == 0 or (count < 2 and (std.mem.eql(u8, system, "numeric") or std.mem.eql(u8, system, "alphabetic")))) return null;
         try out.append(self.allocator, ')');
-        return out.items;
+        return .{ .kind = .counter, .text = out.items, .resource_urls = try urls.take() };
     }
 };

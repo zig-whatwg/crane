@@ -57,12 +57,13 @@ pub fn getRenderedText(common: *runtime.Instance, bounds: ?dom.range_boundaries.
     if (context.node == context.style_node) {
         try collector.enter(context.node, null, true);
     } else {
-        const style = (try Style.read(element)) orelse return .empty;
+        const style = (try Style.read(element, true)) orelse return .empty;
         try collector.frames.append(collector.allocator, .{
             .node = context.node,
             .style = style,
-            .next_child = context.node.first_child,
+            .next_child = if (style.skips_contents) null else context.node.first_child,
             .language = ownLanguage(element) orelse inheritedLanguage(context.style_node),
+            .used_user_select = usedUserSelect(element, style.user_select, try inheritedUserSelect(context.style_node)),
         });
     }
     try collector.collectFrames(true);
@@ -78,8 +79,6 @@ pub fn getRenderedText(common: *runtime.Instance, bounds: ?dom.range_boundaries.
         .context_break => result.lineBoundary(),
         .text => |text| try renderBoundedText(&result, text, span),
     };
-    // TODO(STYLE): user-select and content-visibility must come from computed
-    // style once that shared style-engine item supplies those longhands.
     return .initOwned(try result.bytes.toOwnedSlice(result.allocator));
 }
 
@@ -146,7 +145,7 @@ fn selectionContext(common: *runtime.Instance) !?struct { node: *NodeBase, style
     while (true) {
         if (node.node_type == NodeBase.ELEMENT_NODE) {
             const element = instanceOf(node) orelse return null;
-            const style = (try Style.read(element)) orelse return null;
+            const style = (try Style.read(element, false)) orelse return null;
             if (style.display.box == .none or style.display.isBlockLevel() or node.parent_node == null)
                 return .{ .node = node, .style_node = node };
         } else if (node.node_type == NodeBase.DOCUMENT_NODE) {
@@ -207,6 +206,53 @@ fn parentElement(node: *NodeBase) ?*NodeBase {
     return dom.instance_bridge.getNodeBase(host);
 }
 
+/// CSS UI 4 section 6.1's editable element is an editing host or a mutable
+/// textual form control, rather than every descendant inheriting editability.
+fn editableElement(element: *runtime.Instance) bool {
+    if (isHtml(element, "input") or isHtml(element, "textarea"))
+        return dom.html_pseudo_classes.matches(element, .read_write);
+    if (element.stateAs(interfaces.HTMLElement.State) == null) return false;
+    if (dom.element_data.of(element)) |data| {
+        if (dom.element_data.hasAttribute(data, "contenteditable")) {
+            const value = dom.element_data.getAttributeValue(data, "contenteditable", null);
+            if (value.len == 0 or std.ascii.eqlIgnoreCase(value, "true") or
+                std.ascii.eqlIgnoreCase(value, "plaintext-only")) return true;
+        }
+    }
+    const node = dom.instance_bridge.getNodeBase(element) orelse return false;
+    const parent = node.parent_node orelse return false;
+    if (parent.node_type != NodeBase.DOCUMENT_NODE) return false;
+    const document = instanceOf(parent) orelse return false;
+    var mode = interfaces.Document.get_designMode(document) catch return false;
+    defer mode.deinit(document.ctx.allocator);
+    return std.mem.eql(u8, mode.asSlice(), "on");
+}
+
+fn usedUserSelect(element: *runtime.Instance, specified: Keyword, parent: Keyword) Keyword {
+    // Used-value exceptions 1-2; contain/all constrain interactive selection
+    // but do not expand an explicit script-created Range (row 118 Q11).
+    if (editableElement(element)) return .contain;
+    if (specified != .auto) return specified;
+    return if (parent == .none or parent == .all) parent else .text;
+}
+
+/// The starting frame can be below an unvisited none/all ancestor, and a
+/// slotted node's inheritance parent can differ from its DOM traversal parent.
+fn inheritedUserSelect(node: *NodeBase) !Keyword {
+    var ancestor = parentElement(node);
+    while (ancestor) |parent| : (ancestor = parentElement(parent)) {
+        const element = instanceOf(parent) orelse return .text;
+        if (editableElement(element)) return .text; // contain is not inherited
+        const style = (try Style.read(element, false)) orelse return .text;
+        switch (style.user_select) {
+            .auto => {},
+            .none, .all => return style.user_select,
+            else => return .text,
+        }
+    }
+    return .text;
+}
+
 fn firstSummary(details: *NodeBase) ?*NodeBase {
     var child = details.first_child;
     while (child) |node| : (child = node.next_sibling) {
@@ -231,7 +277,7 @@ fn rootParticipates(element: *runtime.Instance, node: *NodeBase) !bool {
     // author CSS sets display:block. Its root getter falls back to textContent.
     if (isHtml(element, "audio") and !hasAttribute(element, "controls")) return false;
     if (display.box == .contents and ignoresChildren(element)) return false;
-    if (display.box != .contents and !try dom.style.isBeingRendered(element)) return false;
+    if (!try dom.style.engine.isBeingRenderedOrDelegating(element)) return false;
     var child = node;
     var ancestor = parentElement(child);
     while (ancestor) |parent| {
@@ -259,8 +305,11 @@ const Style = struct {
     transform: TextTransform,
     position: Keyword,
     floating: Keyword,
+    user_select: Keyword,
+    skips_contents: bool,
+    selectable: bool,
 
-    fn read(element: *runtime.Instance) !?Style {
+    fn read(element: *runtime.Instance, comptime bounded: bool) !?Style {
         const style = (try dom.style.computedStyle(element, null)) orelse return null;
         return .{
             .display = style.display(),
@@ -269,6 +318,13 @@ const Style = struct {
             .transform = style.textTransform(),
             .position = style.keyword(.position),
             .floating = style.keyword(.float),
+            .user_select = style.keyword(.user_select),
+            .skips_contents = dom.style.content_visibility.contentsSkipped(element, style),
+            // UI 4 §6.3: only Selection consults inertness. Host inertness
+            // cannot be undone by an explicit interactivity:auto child.
+            // Copy scalars; no borrowed style survives another style read.
+            .selectable = !bounded or (style.keyword(.interactivity) != .inert and
+                !@import("focus.zig").isHostInert(element)),
         };
     }
 };
@@ -304,6 +360,7 @@ const Frame = struct {
     word_boundary: bool = true,
     text_allowed: bool = true,
     selection: enum { none, select, optgroup } = .none,
+    used_user_select: Keyword = .text,
     table: ?usize = null,
     row: ?usize = null,
     last_row_end: ?usize = null,
@@ -356,6 +413,7 @@ const Collector = struct {
                 // HTML collection uses DOM children, never shadow-tree
                 // expansion. Unassigned light children produce no text box.
                 var assigned_text_style: ?Style = null;
+                var assigned_user_select: ?Keyword = null;
                 if (self.frames.items[index].node.is_shadow_host) {
                     const slottable = dom.slot_helpers.slottable(child) orelse continue;
                     const slot = slottable.state.assignedSlot() orelse continue;
@@ -367,7 +425,9 @@ const Collector = struct {
                         // CSS Shadow 1 §4.1: Text inherits from its assigned
                         // slot. This resolves the visited Text's inheritance
                         // parent; it does not collect the shadow tree.
-                        assigned_text_style = (try Style.read(slot_element)) orelse continue;
+                        assigned_text_style = (try Style.read(slot_element, bounded)) orelse continue;
+                        if (assigned_text_style.?.skips_contents) continue;
+                        if (bounded) assigned_user_select = usedUserSelect(slot_element, assigned_text_style.?.user_select, try inheritedUserSelect(slot));
                     }
                 }
                 if (child.node_type == NodeBase.TEXT_NODE or child.node_type == NodeBase.CDATA_SECTION_NODE) {
@@ -380,13 +440,18 @@ const Collector = struct {
                     // children, including when white-space is preserved.
                     if (tableContainer(text_style.display) and allCssWhitespace(data)) continue;
                     if (bounded) self.current_span = self.range.?.textSpan(child, data);
-                    try self.emitForRange(bounded, .{ .text = .{
-                        .bytes = data,
-                        .whitespace = text_style.whitespace,
-                        .transform = text_style.transform,
-                        .language = frame.language,
-                        .visible = text_style.visible,
-                    } });
+                    try self.emitForRange(bounded, .{
+                        .text = .{
+                            .bytes = data,
+                            .whitespace = text_style.whitespace,
+                            .transform = text_style.transform,
+                            .language = frame.language,
+                            // Keep CSS whitespace context while omitting the
+                            // unselectable run, as Blink's TextIterator does.
+                            .visible = text_style.visible and (!bounded or (text_style.selectable and
+                                (assigned_user_select orelse frame.used_user_select) != .none)),
+                        },
+                    });
                 } else if (child.node_type == NodeBase.ELEMENT_NODE) {
                     try self.enter(child, index, bounded);
                 }
@@ -395,8 +460,9 @@ const Collector = struct {
                 if (bounded) self.current_span = self.range.?.boundarySpan(frame.node, true);
                 if (frame.suffix != .none) {
                     const marker = self.tokens.items.len;
-                    if (frame.style.visible) try self.emitForRange(bounded, .nothing);
-                    const value: ?usize = if (frame.style.visible) marker else null;
+                    const visible = frame.style.visible and (!bounded or (frame.style.selectable and frame.used_user_select != .none));
+                    if (visible) try self.emitForRange(bounded, .nothing);
+                    const value: ?usize = if (visible) marker else null;
                     switch (frame.suffix) {
                         .cell => self.frames.items[frame.suffix_context].last_cell_end = value,
                         .row => self.frames.items[frame.suffix_context].last_row_end = value,
@@ -413,7 +479,7 @@ const Collector = struct {
 
     fn enter(self: *Collector, node: *NodeBase, parent_index: ?usize, comptime bounded: bool) !void {
         const element = instanceOf(node) orelse return;
-        const style = (try Style.read(element)) orelse return;
+        const style = (try Style.read(element, bounded)) orelse return;
         // Steps 1-3: a display:none subtree has no rendered descendants.
         if (style.display.box == .none) return;
         if (isHtml(element, "audio") and !hasAttribute(element, "controls")) return;
@@ -422,6 +488,13 @@ const Collector = struct {
         const names = dom.node_creation.elementNames(element) orelse return;
         const is_svg = std.mem.eql(u8, names.namespace orelse "", svg_namespace);
         var frame = Frame{ .node = node, .style = style, .next_child = node.first_child };
+        if (bounded) {
+            const inherited = if (parent != null and parentElement(node) == parent.?.node)
+                parent.?.used_user_select
+            else
+                try inheritedUserSelect(node);
+            frame.used_user_select = usedUserSelect(element, style.user_select, inherited);
+        }
         // CSS Text 4 §2.1.1: out-of-flow boundaries do not split words,
         // even though HTML emits required line breaks around their boxes.
         // WebKit previousCharacter and Gecko CanTextCrossFrameBoundary
@@ -438,8 +511,14 @@ const Collector = struct {
         }
         frame.text_allowed = !is_svg or std.mem.eql(u8, names.local_name, "text") or
             std.mem.eql(u8, names.local_name, "tspan") or std.mem.eql(u8, names.local_name, "textPath");
-        const has_box = style.visible and style.display.box != .contents;
+        const visible = style.visible and (!bounded or (style.selectable and frame.used_user_select != .none));
+        const has_box = visible and style.display.box != .contents;
         const option = isHtml(element, "option");
+        // Chrome 151/Safari 27 expose no Selection text for select-owned
+        // options in either widget mode; Firefox 158 agrees for size=1.
+        // Integrator's 2026-10-22 Q21 probe. This does not affect innerText
+        // or Range.toString, nor add Firefox's minority option UA style.
+        if (bounded and option and @import("forms/select_picker.zig").ownerSelect(element) != null) return;
         const optgroup = isHtml(element, "optgroup");
         const select = isHtml(element, "select");
         // HTML step 3's synthetic select boxes. Arbitrary wrappers are
@@ -473,7 +552,7 @@ const Collector = struct {
         // A hidden box still participates in CSS text processing, even
         // though HTML collection contributes none of its own strings or
         // required breaks. Its visible descendants remain collectible.
-        if (!style.visible and style.display.box != .contents and !selected_wrapper and !select and parent_index != null) {
+        if (!visible and style.display.box != .contents and !selected_wrapper and !select and parent_index != null) {
             frame.context_break = style.display.isBlockLevel() or isInternal(style.display, .table_caption) or option or optgroup;
             if (frame.context_break) try self.emitForRange(bounded, .{ .context_break = frame.word_boundary });
             frame.atomic = !frame.context_break and (ignoresChildren(element) or
@@ -508,7 +587,11 @@ const Collector = struct {
                 try self.emitForRange(bounded, .open_atomic);
             }
         }
-        if (has_box and option) {
+        if (style.skips_contents) {
+            // CSS Contain 2 section 4: its own box remains; none of its
+            // skipped descendants contributes rendered text.
+            frame.next_child = null;
+        } else if (has_box and option) {
             // Blink/WebKit's longstanding option-text mechanism (HTML#3797):
             // the label attribute is ignored, nested blocks add no breaks.
             if (bounded) {
@@ -559,7 +642,18 @@ const Collector = struct {
                         if (owned) for (@constCast(bytes)) |*byte| {
                             if (byte.* == 0x0c) byte.* = ' ';
                         };
-                        try self.emitForRange(true, .{ .text = .{ .bytes = bytes, .whitespace = .collapse, .owned = owned } });
+                        // Q21 probe: a body option gives C151="", F158="c",
+                        // S27="abcd". With no majority, UI 4 §6.1's used
+                        // user-select rule decides: "acd", restoring text
+                        // explicitly selected inside a none descendant.
+                        const selectable = selection_allowed: {
+                            const parent_node = parentElement(node) orelse break :selection_allowed false;
+                            const parent_element = instanceOf(parent_node) orelse break :selection_allowed false;
+                            const parent_style = (try Style.read(parent_element, true)) orelse break :selection_allowed false;
+                            const inherited = if (parent_style.user_select == .auto) try inheritedUserSelect(parent_node) else .text;
+                            break :selection_allowed parent_style.selectable and usedUserSelect(parent_element, parent_style.user_select, inherited) != .none;
+                        };
+                        try self.emitForRange(true, .{ .text = .{ .bytes = bytes, .whitespace = .collapse, .owned = owned, .visible = selectable } });
                     }
                 } else if (dom.node_creation.elementNames(instance)) |names| {
                     const ns = names.namespace orelse "";

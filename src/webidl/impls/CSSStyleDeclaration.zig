@@ -267,10 +267,17 @@ fn computedValue(internal: *InternalState, name: []const u8, out: *std.ArrayList
             if (s == .all) return;
             var resolved: [properties.max_assignments]css.style_values.Value = undefined;
             var assigned: [properties.max_assignments]properties.Assigned = undefined;
+            var initialized: usize = 0;
+            defer for (resolved[0..initialized]) |value| value.release();
             for (s.longhands(), 0..) |l, i| {
-                resolved[i] = style.get(l);
-                // A color's resolved value is its used value.
-                if (l.info().grammar == .color) resolved[i] = .{ .color = .{ .rgba = style.usedColor(l) } };
+                const value = style.get(l);
+                if (value == .color) {
+                    resolved[i] = .{ .color = try style.resolvedColor(l, internal.allocator) };
+                } else {
+                    value.retain();
+                    resolved[i] = value;
+                }
+                initialized += 1;
                 assigned[i] = .{ .value = resolved[i] };
             }
             const start = out.items.len;
@@ -324,6 +331,13 @@ fn propertyNameOf(name: []const u8, buffer: []u8) ?[]const u8 {
     if (std.mem.eql(u8, name, "cssFloat")) return "float";
     if (properties.lookup(name) != null and !hasUpper(name)) return name;
     var n: usize = 0;
+    // CSSOM 6.6.2, IDL attribute to CSS property step 2: the
+    // webkit-cased attribute sets the dash-prefix flag.
+    if (std.mem.startsWith(u8, name, "webkit") and name.len > 6 and std.ascii.isUpper(name[6])) {
+        if (buffer.len == 0) return null;
+        buffer[0] = '-';
+        n = 1;
+    }
     for (name) |c| {
         if (n + 2 > buffer.len) return null;
         if (c >= 'A' and c <= 'Z') {
@@ -335,7 +349,6 @@ fn propertyNameOf(name: []const u8, buffer: []u8) ?[]const u8 {
             n += 1;
         }
     }
-    // "webkitFoo" is "-webkit-foo"; no supported property is prefixed.
     return buffer[0..n];
 }
 
@@ -388,8 +401,9 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
     errdefer names.deinit(allocator);
     for (properties.lexicographic) |l| try names.append(allocator, runtime.DOMString.initInterned(l.name()));
     inline for (@typeInfo(properties.Shorthand).@"enum".fields) |field| {
-        try names.append(allocator, runtime.DOMString.initInterned(@as(properties.Shorthand, @enumFromInt(field.value)).name()));
+        try appendPropertyNames(&names, allocator, comptime @as(properties.Shorthand, @enumFromInt(field.value)).name());
     }
+    inline for (properties.legacy_alias_names) |name| try appendPropertyNames(&names, allocator, name);
     try names.append(allocator, runtime.DOMString.initInterned("cssFloat"));
     const internal = getInternal(instance) orelse return names.toOwnedSlice(allocator);
     if (internal.kind != .computed) {
@@ -400,6 +414,33 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
         }
     }
     return names.toOwnedSlice(allocator);
+}
+
+fn appendPropertyNames(names: *std.ArrayList(runtime.DOMString), allocator: std.mem.Allocator, comptime name: []const u8) !void {
+    try names.append(allocator, runtime.DOMString.initInterned(name));
+    // CSSOM 6.6.2: prefixed supported properties expose both WebkitFoo
+    // and webkitFoo. Build the constant names once, not on each lookup.
+    if (comptime std.mem.startsWith(u8, name, "-webkit-")) {
+        try names.append(allocator, runtime.DOMString.initInterned(comptime prefixedAttribute(name, false)));
+        try names.append(allocator, runtime.DOMString.initInterned(comptime prefixedAttribute(name, true)));
+    }
+}
+
+fn prefixedAttribute(comptime property: []const u8, comptime lowercase_first: bool) []const u8 {
+    var buffer: [property.len]u8 = undefined;
+    var length: usize = 0;
+    var upper = false;
+    for (property[@intFromBool(lowercase_first)..]) |c| {
+        if (c == '-') {
+            upper = true;
+        } else {
+            buffer[length] = if (upper) std.ascii.toUpper(c) else c;
+            length += 1;
+            upper = false;
+        }
+    }
+    const result = buffer;
+    return result[0..length];
 }
 
 /// CSSOM "CSS property to IDL attribute": each hyphen and the letter after
@@ -424,6 +465,8 @@ test "attribute names map to CSS properties" {
     try std.testing.expectEqualStrings("background-color", propertyNameOf("backgroundColor", &buffer).?);
     try std.testing.expectEqualStrings("margin-left", propertyNameOf("margin-left", &buffer).?);
     try std.testing.expectEqualStrings("float", propertyNameOf("cssFloat", &buffer).?);
+    try std.testing.expectEqualStrings("-webkit-user-select", propertyNameOf("webkitUserSelect", &buffer).?);
+    try std.testing.expectEqualStrings("-webkit-user-select", propertyNameOf("WebkitUserSelect", &buffer).?);
     const camel = try camelCased(std.testing.allocator, "border-top-left-radius");
     defer std.testing.allocator.free(camel);
     try std.testing.expectEqualStrings("borderTopLeftRadius", camel);

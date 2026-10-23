@@ -107,6 +107,7 @@ pub const geometry = @import("geometry.zig");
 // The style system's pure layer (tmp/plans/style-design.md section 3.1):
 // values, the supported properties, declaration blocks.
 pub const style_values = @import("style_values.zig");
+pub const math_values = @import("math_values.zig");
 pub const properties = @import("properties.zig");
 pub const declarations = @import("declarations.zig");
 pub const media_queries = @import("media_queries.zig");
@@ -123,3 +124,16 @@ test {
     // Run all submodule tests
     std.testing.refAllDecls(@This());
 }
+
+pub const grid_tracks = @import("grid_tracks.zig");
+pub const ui_values = @import("ui_values.zig");
+
+pub const keyframe_values = @import("keyframe_values.zig");
+
+pub const animation_values = @import("animation_values.zig");
+pub const easing_values = @import("easing_values.zig");
+pub const numeric_values = @import("numeric_values.zig");
+
+pub const color_values = @import("color_values.zig");
+pub const color_spaces = @import("color_spaces.zig");
+pub const random_values = @import("random_values.zig");

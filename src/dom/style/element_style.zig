@@ -53,6 +53,20 @@ pub const PseudoCached = struct {
     cached: Cached,
 };
 
+/// Values 5 §10 cache: scalar identities only, with no node or realm hold.
+/// The document generation rejects address reuse; tree_version rejects moves
+/// and adoption. Allocated only when a winning value asks for sibling counts.
+pub const SiblingCounts = struct {
+    value: css.math_values.TreeCounts,
+    document_address: usize,
+    document_generation: u64,
+    tree_version: u64,
+
+    pub fn matches(self: SiblingCounts, address: usize, generation: u64, version: u64) bool {
+        return self.document_address == address and self.document_generation == generation and self.tree_version == version;
+    }
+};
+
 pub const ElementStyle = struct {
     allocator: Allocator,
     /// The style attribute's declarations, once parsed.
@@ -61,6 +75,7 @@ pub const ElementStyle = struct {
     /// CSSOM "declaration block's updating flag": the block is being
     /// written into the attribute, whose change steps must not parse it.
     updating: bool = false,
+    sibling_counts: ?*SiblingCounts = null,
     cached: ?Cached = null,
     pseudo: std.ArrayList(PseudoCached) = .empty,
 
@@ -81,9 +96,19 @@ pub const ElementStyle = struct {
 
     pub fn destroy(self: *ElementStyle) void {
         if (self.inline_block) |*block| block.deinit();
+        if (self.sibling_counts) |counts| self.allocator.destroy(counts);
         self.dropCache();
         self.pseudo.deinit(self.allocator);
         self.allocator.destroy(self);
+    }
+
+    /// Cache a measured pair if possible; callers retain their stack answer
+    /// on allocation failure, so caching never changes a computed value.
+    pub fn cacheSiblingCounts(self: *ElementStyle, counts: SiblingCounts) bool {
+        const record = self.sibling_counts orelse self.allocator.create(SiblingCounts) catch return false;
+        record.* = counts;
+        self.sibling_counts = record;
+        return true;
     }
 
     /// Forget every cached style.

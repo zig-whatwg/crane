@@ -187,14 +187,29 @@ fn isActuallyDisabled(element: *Instance) bool {
 
 /// HTML "inert": an inclusive ancestor has the inert attribute or is a
 /// select's own button (4.10.6), whose whole subtree is inert.
-fn isInert(node: *Instance) bool {
+pub fn isHostInert(node: *Instance) bool {
     if (dom.dialog.inertness(node)) |inert| return inert;
     var current: ?*Instance = node;
     while (current) |n| : (current = form_associated.parentOf(n)) {
-        if (isElement(n) and (form_associated.hasAttribute(n, "inert") or
+        // HTML 6.3.2: inert is an HTML global attribute, not a foreign one.
+        const inert_attribute = form_associated.hasAttribute(n, "inert") and html_namespace: {
+            var namespace = (interfaces.Element.get_namespaceURI(n) catch null) orelse break :html_namespace false;
+            defer namespace.deinit(n.ctx.allocator);
+            break :html_namespace std.mem.eql(u8, namespace.asSlice(), "http://www.w3.org/1999/xhtml");
+        };
+        if (isElement(n) and (inert_attribute or
             @import("forms/select_picker.zig").isSelectButton(n))) return true;
     }
     return false;
+}
+
+/// CSS UI 4 §6.3 adds target computed inertness after HTML's own rule.
+/// A modal's authoritative host escape does not bypass its own CSS value.
+fn isInert(node: *Instance) bool {
+    if (isHostInert(node)) return true;
+    if (!isElement(node)) return false;
+    const style = (dom.style.engine.computedStyle(node, null) catch null) orelse return false;
+    return style.keyword(.interactivity) == .inert;
 }
 
 /// HTML 6.6.2 accepts rendered elements and those delegating rendering to
@@ -205,7 +220,7 @@ fn isBeingRendered(element: *Instance) bool {
     // A document with no browsing context (`new Document()`) renders nothing.
     const document = nodeDocument(element) orelse return false;
     if (windowOf(document) == null) return false;
-    return dom.style.engine.isBeingRenderedOrDelegating(element) catch false;
+    return dom.style.engine.isRenderedForFocus(element) catch false;
 }
 
 /// Whether `element` is a focusable area (6.6.2's first row): its tabindex
@@ -219,7 +234,7 @@ pub fn isFocusableArea(element: *Instance) bool {
     // focusable area, even with a tabindex. Focusing step 1 finds its delegate.
     if (delegatingShadowRoot(element) != null) return false;
     if (isActuallyDisabled(element)) return false;
-    if (isInert(element)) return false;
+    if (isHostInert(element)) return false;
     return isBeingRendered(element);
 }
 
@@ -537,10 +552,10 @@ fn isImageMapAreaFocusable(area: *Instance) bool {
         const contains = while (ancestor) |node| : (ancestor = form_associated.parentOf(node)) {
             if (node == map) break true;
         } else false;
-        if (!contains or isInert(image)) continue;
+        if (!contains or isHostInert(image)) continue;
         if (!(dom.style.engine.isBeingRendered(image) catch false)) continue;
         const style = (dom.style.engine.computedStyle(image, null) catch null) orelse continue;
-        if (style.keyword(.visibility) == .visible) return true;
+        if (style.keyword(.visibility) == .visible and style.keyword(.interactivity) != .inert) return true;
     }
     return false;
 }
