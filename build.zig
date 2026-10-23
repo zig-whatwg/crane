@@ -929,6 +929,65 @@ fn addTestRoot(
     step.dependOn(&run_test.step);
 }
 
+/// An executable that is compiled and never linked - nothing asks for its
+/// binary, so Zig analyses all the Zig it reaches (-fno-emit-bin) and still
+/// compiles v8_wrapper.cpp, but links nothing: no V8 archive, no system
+/// library is read. For a check (check-target, crane-check), never installed.
+fn addCompileCheck(
+    b: *std.Build,
+    name: []const u8,
+    root_path: []const u8,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    imports: []const std.Build.Module.Import,
+) *std.Build.Step.Compile {
+    const check = b.addExecutable(.{
+        .name = name,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path(root_path),
+            .target = target,
+            .optimize = optimize,
+            .imports = imports,
+        }),
+    });
+    check.root_module.addCSourceFile(.{
+        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
+        .flags = &.{ "-std=c++20", "-fno-exceptions", "-fno-rtti", "-DV8_COMPRESS_POINTERS", "-DV8_ENABLE_SANDBOX" },
+    });
+    check.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
+    check.root_module.link_libcpp = true;
+    addCrossLibraryStubs(b, check.root_module, target);
+    return check;
+}
+
+/// The system libraries a module graph names (configureStorageBackends:
+/// sqlite3 and leveldb on Linux) are resolved when the compiler starts, even
+/// for a compile that links nothing (-fno-emit-bin), and a Linux cross-compile
+/// from macOS has no sysroot to find them in: "unable to find dynamic system
+/// library 'sqlite3' ... searched paths: none", before any Zig is analysed.
+///
+/// So a compile-only check of a foreign Linux target gets empty shared
+/// libraries of those names, built from an empty file into the build's own
+/// output (the cache, never the source tree) and put on that check's own root
+/// module, which nothing else imports. They satisfy name resolution and
+/// nothing else: no artifact that links may receive them (build() asserts
+/// that neither compile-only check is asked for its binary), and anything
+/// linked for Linux needs the real libraries. A real Linux sysroot replaces
+/// them - pass its libraries instead and delete this function.
+fn addCrossLibraryStubs(b: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
+    const host = b.graph.host.result;
+    if (target.result.os.tag != .linux or (host.os.tag == .linux and host.cpu.arch == target.result.cpu.arch)) return;
+    const empty = b.addWriteFiles().add("stub.zig", "");
+    for ([_][]const u8{ "sqlite3", "leveldb" }) |library| {
+        const stub = b.addLibrary(.{
+            .name = library,
+            .linkage = .dynamic,
+            .root_module = b.createModule(.{ .root_source_file = empty, .target = target }),
+        });
+        module.addLibraryPath(stub.getEmittedBinDirectory());
+    }
+}
+
 /// Link the V8 C++ wrapper and the three static archives into `module`.
 ///
 /// `module` must be one the caller owns exclusively - a module created for a
@@ -1800,6 +1859,16 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run WHATWG spec tests (use -Dspec=<name> to filter)");
 
+    // What -Dtarget can build without running anything there: the artifacts
+    // that link no V8 are built (libwhatwg, the image codecs, the platform
+    // conformance tests); those that link V8 (crane, wpt_runner) are compiled
+    // without a binary, which analyses all their Zig and compiles
+    // v8_wrapper.cpp, and never links - there is no V8 prebuilt for any target
+    // but the build machine's (jsengines/v8/out/static). `check-linux` runs it
+    // for both Linux targets; `crane-check` is the host's crane compile.
+    const check_target_step = b.step("check-target", "Build what -Dtarget can build (libwhatwg, codecs, platform tests); compile crane and wpt_runner without linking");
+    if (image_codecs) |codecs| check_target_step.dependOn(&codecs.step);
+
     // The target, as the testing graph it imports: a host root over target
     // modules mixes two targets in one compile, and for a Linux target from
     // macOS std.c is Darwin's under kit/posix's Linux branch
@@ -2662,6 +2731,8 @@ pub fn build(b: *std.Build) void {
             // The file tests write under tmp/, relative to the repo root.
             run_conformance.setCwd(b.path("."));
             test_step.dependOn(&run_conformance.step);
+            // Built, not run: the target need not be this machine.
+            check_target_step.dependOn(&conformance.step);
         }
 
         // The WPT runner's media backends (host decoders built only into
@@ -2815,6 +2886,11 @@ pub fn build(b: *std.Build) void {
         }),
     });
     b.installArtifact(shared_lib);
+
+    // Built into the cache, not installed: a cross check must not replace the
+    // host's zig-out/lib/libwhatwg.a.
+    check_target_step.dependOn(&static_lib.step);
+    check_target_step.dependOn(&shared_lib.step);
 
     // Build step for just the C library
     const lib_step = b.step("lib", "Build the C-compatible static and shared libraries");
@@ -3118,14 +3194,17 @@ pub fn build(b: *std.Build) void {
     });
 
     // Add all imports to crane executable
-    crane_exe.root_module.addImport("runtime", runtime_mod);
-    crane_exe.root_module.addImport("interfaces", interfaces_mod);
-    crane_exe.root_module.addImport("namespaces", namespaces_mod);
-    crane_exe.root_module.addImport("browser", browser_mod);
-    crane_exe.root_module.addImport("fetch", fetch_mod);
-    crane_exe.root_module.addImport("webdriver", webdriver_mod);
-    // main adopts std.start's Io as the process Io (src/platform/host.zig).
-    crane_exe.root_module.addImport("host", host_mod);
+    const crane_exe_imports = [_]std.Build.Module.Import{
+        .{ .name = "runtime", .module = runtime_mod },
+        .{ .name = "interfaces", .module = interfaces_mod },
+        .{ .name = "namespaces", .module = namespaces_mod },
+        .{ .name = "browser", .module = browser_mod },
+        .{ .name = "fetch", .module = fetch_mod },
+        .{ .name = "webdriver", .module = webdriver_mod },
+        // main adopts std.start's Io as the process Io (src/platform/host.zig).
+        .{ .name = "host", .module = host_mod },
+    };
+    for (crane_exe_imports) |import| crane_exe.root_module.addImport(import.name, import.module);
 
     // Add V8 C++ wrapper
     crane_exe.root_module.addCSourceFile(.{
@@ -3185,6 +3264,40 @@ pub fn build(b: *std.Build) void {
     // Add "crane" as an alias for browser step (WebDriver-controlled browser)
     const crane_step = b.step("crane", "Build Crane WebDriver browser (alias for 'browser')");
     crane_step.dependOn(&install_crane_exe.step);
+
+    // crane without a binary: all of src/webdriver and the target platform's
+    // graph analysed, v8_wrapper.cpp compiled, nothing linked. Nothing else
+    // compiles either for the build machine - every test binds `testing` -
+    // which is how src/webdriver sat out the Zig 0.16 migration.
+    const crane_check = addCompileCheck(b, "crane_check", "src/webdriver/main.zig", target, optimize, &crane_exe_imports);
+    b.step("crane-check", "Compile crane (src/webdriver + the target platform's graph) without linking").dependOn(&crane_check.step);
+    check_target_step.dependOn(&crane_check.step);
+    // Part of the whole test run (the integrator, 2026-10-23: about 78 s and
+    // 2.3 GB beside a 46-minute test), one more root under its -j.
+    if ((spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) and test_selection.file == null) {
+        test_step.dependOn(&crane_check.step);
+    }
+
+    // check-target for both Linux targets, one after the other, each its own
+    // `zig build` (a module graph is built per target, and this invocation's is
+    // the host's). -j2 inside each: two root compiles at a time, as AGENTS.md
+    // asks of every local build.
+    const check_linux_step = b.step("check-linux", "check-target for aarch64-linux-gnu and x86_64-linux-gnu, -Dplatform=linux (cross-compiled; nothing runs)");
+    var previous_linux_check: ?*std.Build.Step = null;
+    for ([_][]const u8{ "aarch64-linux-gnu", "x86_64-linux-gnu" }) |triple| {
+        // -Dwpt-runner-optimize=Debug: the runner check then shares the testing
+        // graph's C libraries instead of building a ReleaseSafe set of its own
+        // for a binary that is never linked (build_mode.zig, ownCLibraries).
+        const sub_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "check-target", b.fmt("-Dtarget={s}", .{triple}), "-Dplatform=linux", "-Dwpt-runner-optimize=Debug", "-j2" });
+        sub_build.addArgs(&.{ "--cache-dir", b.cache_root.path orelse "." });
+        sub_build.addArgs(&.{ "--global-cache-dir", b.graph.global_cache_root.path orelse "." });
+        sub_build.setCwd(b.path("."));
+        // The sub-build decides what is up to date; this step always asks it.
+        sub_build.has_side_effects = true;
+        if (previous_linux_check) |previous| sub_build.step.dependOn(previous);
+        previous_linux_check = &sub_build.step;
+        check_linux_step.dependOn(&sub_build.step);
+    }
 
     // ========================================================================
     // WEBIDL TOOLS
@@ -3601,52 +3714,53 @@ pub fn build(b: *std.Build) void {
     }
 
     // WPT Runner executable for running Web Platform Tests
+    const wpt_runner_imports = [_]std.Build.Module.Import{
+        .{ .name = "clock", .module = runner_graph.clock },
+        .{ .name = "host", .module = runner_graph.host },
+        .{ .name = "xml", .module = runner_graph.xml },
+        .{ .name = "xml_document_encoding", .module = runner_graph.xml_document_encoding },
+        .{ .name = "runtime", .module = runner_graph.runtime },
+        .{ .name = "engine", .module = runner_graph.engine },
+        .{ .name = "interfaces", .module = runner_graph.interfaces },
+        .{ .name = "namespaces", .module = runner_graph.namespaces },
+        .{ .name = "fetch", .module = runner_graph.fetch },
+        // Platform abstraction for timer backend
+        .{ .name = "platform", .module = runner_graph.platform },
+        // HTML event loop and timer manager (core module without interfaces)
+        .{ .name = "html", .module = runner_graph.html_core },
+        // HTML full module with custom_elements for thread-local cleanup
+        .{ .name = "html_full", .module = runner_graph.html },
+        // DOM module for mutation observer thread-local cleanup
+        .{ .name = "dom", .module = runner_graph.dom },
+        // Infra primitives
+        .{ .name = "infra", .module = runner_graph.infra },
+        // Browser module for single-isolate WPT execution
+        .{ .name = "browser", .module = runner_graph.browser },
+        // Impls module for HTMLParser (needed for HTML test parsing)
+        .{ .name = "impls", .module = runner_graph.impls },
+        // WebIDL module for Optional type wrappers
+        .{ .name = "webidl", .module = runner_graph.webidl },
+        // Dictionaries module for Event init dictionaries
+        .{ .name = "dictionaries", .module = runner_graph.dictionaries },
+        // Storage module for cleanup
+        .{ .name = "storage", .module = runner_graph.storage },
+        // File module for blob URL store cleanup
+        .{ .name = "file", .module = runner_graph.file },
+        // The cookie store, for testdriver's cookie commands (test_driver.zig)
+        .{ .name = "cookiestore", .module = runner_graph.cookiestore },
+        // Permissions, for testdriver's set_permission (test_driver.zig).
+        .{ .name = "permissions", .module = runner_graph.permissions },
+        // MIME Sniffing's parser, for the WAV test backend's canPlayType
+        // (wav_backend.zig)
+        .{ .name = "mimesniff", .module = runner_graph.mimesniff },
+    };
     const wpt_runner_exe = b.addExecutable(.{
         .name = "wpt_runner",
         .root_module = b.createModule(.{
             .root_source_file = b.path("tests/wpt_runner/main.zig"),
             .target = target,
             .optimize = runner_modes.root,
-            .imports = &.{
-                .{ .name = "clock", .module = runner_graph.clock },
-                .{ .name = "host", .module = runner_graph.host },
-                .{ .name = "xml", .module = runner_graph.xml },
-                .{ .name = "xml_document_encoding", .module = runner_graph.xml_document_encoding },
-                .{ .name = "runtime", .module = runner_graph.runtime },
-                .{ .name = "engine", .module = runner_graph.engine },
-                .{ .name = "interfaces", .module = runner_graph.interfaces },
-                .{ .name = "namespaces", .module = runner_graph.namespaces },
-                .{ .name = "fetch", .module = runner_graph.fetch },
-                // Platform abstraction for timer backend
-                .{ .name = "platform", .module = runner_graph.platform },
-                // HTML event loop and timer manager (core module without interfaces)
-                .{ .name = "html", .module = runner_graph.html_core },
-                // HTML full module with custom_elements for thread-local cleanup
-                .{ .name = "html_full", .module = runner_graph.html },
-                // DOM module for mutation observer thread-local cleanup
-                .{ .name = "dom", .module = runner_graph.dom },
-                // Infra primitives
-                .{ .name = "infra", .module = runner_graph.infra },
-                // Browser module for single-isolate WPT execution
-                .{ .name = "browser", .module = runner_graph.browser },
-                // Impls module for HTMLParser (needed for HTML test parsing)
-                .{ .name = "impls", .module = runner_graph.impls },
-                // WebIDL module for Optional type wrappers
-                .{ .name = "webidl", .module = runner_graph.webidl },
-                // Dictionaries module for Event init dictionaries
-                .{ .name = "dictionaries", .module = runner_graph.dictionaries },
-                // Storage module for cleanup
-                .{ .name = "storage", .module = runner_graph.storage },
-                // File module for blob URL store cleanup
-                .{ .name = "file", .module = runner_graph.file },
-                // The cookie store, for testdriver's cookie commands (test_driver.zig)
-                .{ .name = "cookiestore", .module = runner_graph.cookiestore },
-                // Permissions, for testdriver's set_permission (test_driver.zig).
-                .{ .name = "permissions", .module = runner_graph.permissions },
-                // MIME Sniffing's parser, for the WAV test backend's canPlayType
-                // (wav_backend.zig)
-                .{ .name = "mimesniff", .module = runner_graph.mimesniff },
-            },
+            .imports = &wpt_runner_imports,
         }),
     });
 
@@ -3730,6 +3844,12 @@ pub fn build(b: *std.Build) void {
 
     // Add WPT options to the runner's root module
     wpt_runner_exe.root_module.addOptions("wpt_options", wpt_options);
+
+    // wpt_runner without a binary, for check-target: no snapshot (nothing runs),
+    // no link.
+    const wpt_runner_check = addCompileCheck(b, "wpt_runner_check", "tests/wpt_runner/main.zig", target, runner_modes.root, &wpt_runner_imports);
+    wpt_runner_check.root_module.addOptions("wpt_options", wpt_options);
+    check_target_step.dependOn(&wpt_runner_check.step);
 
     // Add step to clear WPT ports before running
     // There used to be a `clear_ports` pre-step here that `kill -9`ed every
@@ -4848,6 +4968,14 @@ pub fn build(b: *std.Build) void {
     });
 
     setup_step.dependOn(&setup_data.step);
+
+    // The compile-only checks may carry empty stand-ins for system libraries
+    // (addCrossLibraryStubs), so nothing may link them: a step that asks for a
+    // check's binary (an install, a run, getEmittedBin) would link against the
+    // stubs. Asked or not is known here, once every step exists.
+    for ([_]*std.Build.Step.Compile{ crane_check, wpt_runner_check }) |check| {
+        if (check.generated_bin != null) std.debug.panic("build.zig: {s} is compile-only; nothing may ask for its binary (addCrossLibraryStubs)", .{check.name});
+    }
 }
 
 /// Every Crane module, built for one platform (docs/platform-protocol.md 1.1).
