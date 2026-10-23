@@ -111,6 +111,14 @@ test "grid absolute conversion clamps overflow and scalar counts require known m
     }
 }
 
+test "fit tolerance keeps symbolic normal and its legacy property alias" {
+    try check("fit-tolerance", "normal", "normal", "normal");
+    try check("fit-tolerance", "infinite", "infinite", "infinite");
+    try check("fit-tolerance", "calc(2em + 10%)", "calc(10% + 2em)", "calc(10% + 32px)");
+    try check("flow-tolerance", "2em", "2em", "32px");
+    for ([_][]const u8{ "-1px", "auto", "1fr" }) |bad| try check("fit-tolerance", bad, "", null);
+}
+
 fn allocationFailure(allocator: std.mem.Allocator) !void {
     var block = try css.declarations.DeclarationBlock.parse(.{ .allocator = allocator }, "grid-template:[a] \"x x\" minmax(2em, 1fr) [b] / fit-content(calc(2px + 10%)) 3fr;grid-auto-rows:minmax(1px, 2fr) 3em");
     defer block.deinit();

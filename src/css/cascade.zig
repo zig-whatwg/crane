@@ -405,7 +405,7 @@ const Builder = struct {
             const preflight = try self.resolvePending(c, l);
             const assigned = preflight.assigned;
             const geometry_length = switch (l.info().grammar) {
-                .length_percentage_auto, .length_percentage_nonneg, .size, .max_size, .line_width, .signed_length => true,
+                .length_percentage_auto, .length_percentage_nonneg, .size, .max_size, .line_width, .gap, .signed_length, .fit_tolerance => true,
                 else => false,
             };
             // Q25/Q83/Q88: this is the single unavailable-input decision,

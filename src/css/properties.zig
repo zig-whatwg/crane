@@ -94,6 +94,7 @@ pub const Longhand = enum(u8) {
     bottom,
     color,
     color_scheme,
+    column_gap,
     content,
     content_visibility,
     direction,
@@ -113,6 +114,7 @@ pub const Longhand = enum(u8) {
     grid_template_columns,
     grid_template_rows,
     grid_template_areas,
+    fit_tolerance,
     accent_color,
     box_sizing,
     caret_animation,
@@ -169,6 +171,7 @@ pub const Longhand = enum(u8) {
     position_try_fallbacks,
     position_try_order,
     right,
+    row_gap,
     text_orientation,
     text_transform,
     text_wrap_mode,
@@ -337,9 +340,11 @@ pub const Grammar = enum {
     grid_tracks,
     grid_areas,
     grid_flow,
+    fit_tolerance,
     caret_color,
     auto_color,
     signed_length,
+    gap,
     alignment,
     anchor_names,
     anchor_scope,
@@ -403,6 +408,7 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .grid_template_columns, .inherited = false, .initial = Value.kw(.none), .grammar = .grid_tracks },
         .{ .longhand = .grid_template_rows, .inherited = false, .initial = Value.kw(.none), .grammar = .grid_tracks },
         .{ .longhand = .grid_template_areas, .inherited = false, .initial = Value.kw(.none), .grammar = .grid_areas },
+        .{ .longhand = .fit_tolerance, .inherited = false, .initial = Value.kw(.normal), .grammar = .fit_tolerance },
         .{ .longhand = .accent_color, .inherited = true, .initial = Value.kw(.auto), .grammar = .auto_color },
         .{ .longhand = .box_sizing, .inherited = false, .initial = Value.kw(.content_box), .grammar = .keywords, .keywords = &.{ .content_box, .border_box } },
         .{ .longhand = .caret_animation, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .manual } },
@@ -419,6 +425,8 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .grid_column_start, .inherited = false, .initial = Value.kw(.auto), .grammar = .grid_line },
         .{ .longhand = .grid_row_end, .inherited = false, .initial = Value.kw(.auto), .grammar = .grid_line },
         .{ .longhand = .grid_row_start, .inherited = false, .initial = Value.kw(.auto), .grammar = .grid_line },
+        .{ .longhand = .column_gap, .inherited = false, .initial = Value.kw(.normal), .grammar = .gap },
+        .{ .longhand = .row_gap, .inherited = false, .initial = Value.kw(.normal), .grammar = .gap },
         .{ .longhand = .align_content, .inherited = false, .initial = .{ .alignment = .{ .position = .normal } }, .grammar = .alignment },
         .{ .longhand = .align_items, .inherited = false, .initial = .{ .alignment = .{ .position = .normal } }, .grammar = .alignment },
         .{ .longhand = .align_self, .inherited = false, .initial = .{ .alignment = .{ .position = .auto } }, .grammar = .alignment },
@@ -574,6 +582,7 @@ pub const Shorthand = enum(u8) {
     border_style,
     border_top,
     border_width,
+    gap,
     grid_area,
     grid_column,
     grid_row,
@@ -628,6 +637,7 @@ pub const Shorthand = enum(u8) {
             .border_color => &.{ .border_top_color, .border_right_color, .border_bottom_color, .border_left_color },
             .border_style => &.{ .border_top_style, .border_right_style, .border_bottom_style, .border_left_style },
             .border_width => &.{ .border_top_width, .border_right_width, .border_bottom_width, .border_left_width },
+            .gap => &.{ .row_gap, .column_gap },
             .grid_area => &.{ .grid_row_start, .grid_column_start, .grid_row_end, .grid_column_end },
             .grid_column => &.{ .grid_column_start, .grid_column_end },
             .grid_row => &.{ .grid_row_start, .grid_row_end },
@@ -679,6 +689,10 @@ pub const Property = union(enum) {
 /// legacy name alias of appearance.
 const legacy_aliases = .{
     // CSS Gaps 1 §2.4: aliases share the canonical property entries.
+    .{ "flow-tolerance", Property{ .longhand = .fit_tolerance } },
+    .{ "grid-row-gap", Property{ .longhand = .row_gap } },
+    .{ "grid-column-gap", Property{ .longhand = .column_gap } },
+    .{ "grid-gap", Property{ .shorthand = .gap } },
     .{ "-webkit-appearance", Property{ .longhand = .appearance } },
     // CSS UI 4 §6.1 requires the legacy spelling to alias user-select.
     .{ "-webkit-user-select", Property{ .longhand = .user_select } },
@@ -949,12 +963,24 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
             return .{ .grid_areas = try @import("grid_tracks.zig").Areas.consume(options, stream) orelse return null };
         },
         .grid_flow => return .{ .grid_flow = @import("grid_tracks.zig").Flow.consume(stream) orelse return null },
+        .fit_tolerance => {
+            // Grid 3 §4.2: normal stays symbolic until layout determines
+            // its used value. flow-tolerance is the legacy property alias.
+            if (takeKeyword(stream, &.{ .normal, .infinite })) |k| return Value.kw(k);
+            return lengthPercentage(options, stream, .{ .negative = false, .quirky = false });
+        },
         .caret_color => return @import("ui_values.zig").consumeCaretColor(options, stream),
         .auto_color => return @import("ui_values.zig").consumeAutoColor(options, stream),
         .signed_length => return lengthPercentage(options, stream, .{ .negative = true, .percent = false, .quirky = false }),
         .grid_line => {
             if (takeKeyword(stream, &.{.auto})) |k| return Value.kw(k);
             return .{ .grid_line = try @import("grid_values.zig").Line.consume(options, stream) orelse return null };
+        },
+        .gap => {
+            // Gaps1 §2.1. The new thin/medium/thick extension is a row118
+            // Q35 follow-up pending WPT and clarified computed semantics.
+            if (takeKeyword(stream, &.{.normal})) |k| return Value.kw(k);
+            return lengthPercentage(options, stream, .{ .negative = false, .quirky = false });
         },
         .alignment => return .{ .alignment = @import("alignment.zig").Value.consume(stream, std.meta.stringToEnum(@import("alignment.zig").Mode, @tagName(l)).?) orelse return null },
         .anchor_names, .anchor_scope => {
@@ -1661,7 +1687,7 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
         // `all` takes only the CSS-wide keywords, handled by the caller.
         .all => return false,
         .margin, .padding, .inset, .border_width, .border_style, .border_color => return fourSides(options, s.longhands(), stream, out),
-        .margin_block, .margin_inline, .padding_block, .padding_inline, .inset_block, .inset_inline, .border_block_width, .border_block_style, .border_block_color, .border_inline_width, .border_inline_style, .border_inline_color => return twoSides(options, s.longhands(), stream, out),
+        .margin_block, .margin_inline, .padding_block, .padding_inline, .inset_block, .inset_inline, .border_block_width, .border_block_style, .border_block_color, .border_inline_width, .border_inline_style, .border_inline_color, .gap => return twoSides(options, s.longhands(), stream, out),
         .border_top, .border_right, .border_bottom, .border_left, .border_block_start, .border_block_end, .border_inline_start, .border_inline_end => {
             const ls = s.longhands();
             return borderSide(options, ls[0], ls[1], ls[2], &.{ls[0]}, &.{ls[1]}, &.{ls[2]}, stream, out);
@@ -2125,7 +2151,7 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
             }
             return true;
         },
-        .margin_block, .margin_inline, .padding_block, .padding_inline, .inset_block, .inset_inline, .border_block_width, .border_block_style, .border_block_color, .border_inline_width, .border_inline_style, .border_inline_color, .overflow, .place_content, .place_items, .place_self => {
+        .margin_block, .margin_inline, .padding_block, .padding_inline, .inset_block, .inset_inline, .border_block_width, .border_block_style, .border_block_color, .border_inline_width, .border_inline_style, .border_inline_color, .overflow, .place_content, .place_items, .place_self, .gap => {
             try serializeValue(ls[0], vs[0].value, out, allocator);
             if (!vs[1].value.eql(vs[0].value)) {
                 try out.append(allocator, ' ');
