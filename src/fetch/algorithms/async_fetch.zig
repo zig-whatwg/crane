@@ -478,6 +478,11 @@ pub const AsyncFetch = struct {
     fn endBody(self: *AsyncFetch) void {
         if (!self.track_body_end) return;
         self.track_body_end = false;
+        // A fetch whose client has gone, or whose global is ending
+        // (`AgentFetches.stopReporting`), reports nothing: the global it
+        // would report to is going. Its body can still end after - its
+        // reader freed with the realm (stopProducing, stopRelay).
+        if (!self.reporting) return;
         const sizes: fetch_job.BodySizes = .{ .encoded = self.body_bytes, .decoded = self.body_bytes };
         if (self.race_owner) |owner| {
             if (owner.reporting) owner.raceBodyEnded(sizes);
@@ -901,6 +906,33 @@ pub const AgentFetches = struct {
             terminated = true;
         }
         return terminated;
+    }
+
+    /// The agent's global is ending - a worker's, whose agent has that one
+    /// global, at the start of its realm's end (html
+    /// WorkerHost.teardownRealm), before anything of the realm is freed: no
+    /// fetch of the agent reports anything more (`reporting`). Resource
+    /// Timing's "mark resource timing" marks an entry for the global, which
+    /// is going. Blink comes to the same when a worker's context is
+    /// destroyed: FetchManager::ContextDestroyed disposes each loader, which
+    /// first prevents its notifications (Loader::Dispose: "Prevent
+    /// notification"), before WorkerThread::PerformShutdownOnWorkerThread
+    /// disposes the global scope; WebKit's prepareForDestruction stops its
+    /// active DOM objects first.
+    ///
+    /// The fetches go on, keepalive or not, until the fetch group is
+    /// terminated after the realm's end (`sweep`, their clients read as
+    /// gone). Nothing is called here: a closing worker's event loop drops a
+    /// task at once, inside whatever queued it, so terminating a fetch now
+    /// - failing its body - runs its readers' drop steps inside the failure,
+    /// and an EventSource's closes the source, terminating the fetch being
+    /// terminated. Muted only after the realm's objects were freed, a body
+    /// they held ended its fetch and reported timing to a global scope the
+    /// same teardown may already have freed (lane workerteardown1:
+    /// fetch/api/basic/stream-response.any.js [worker] crashed in
+    /// Performance.performanceOfRealm).
+    pub fn stopReporting(self: *AgentFetches) void {
+        for (self.live.items) |f| f.reporting = false;
     }
 
     fn nextDeliverable(self: *const AgentFetches) ?*AsyncFetch {

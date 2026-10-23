@@ -427,7 +427,7 @@ fn linkGlobalPrototype(comptime Interface: type, isolate: *ffi.Isolate, context:
 /// WorkerOrWorkletScriptController::DisposeContextIfNeeded does: clear the
 /// global's native info, then release the per-context data (the callbacks
 /// its script registered, its wrapper cache and every Instance in it - the
-/// global scope first). `retire(data)` runs once nothing can run in the realm
+/// global scope last). `retire(data)` runs once nothing can run in the realm
 /// any more but its agent's handles are still live, with the agent entered -
 /// for what a host releases with the realm (its fetches in flight). Then
 /// what the process keeps per isolate for the realm goes. The agent stays:
@@ -454,8 +454,9 @@ fn destroyWorkerRealmIn(
         ffi.v8_Context_Enter(context);
         defer ffi.v8_Context_Exit(context);
 
-        // The global scope is freed with the realm's wrapper cache just
-        // below; the global object must not point at it after.
+        // The global scope is freed just below, after the rest of the
+        // realm's wrapper cache (context_manager.removeContextByKey); the
+        // global object must not point at it after.
         bindGlobalFields(context, null);
 
         // The entry is retired, so `engine_ctx` reads null from here on:

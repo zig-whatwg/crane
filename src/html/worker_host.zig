@@ -1268,6 +1268,20 @@ pub const WorkerHost = struct {
     /// Nothing runs in the realm again.
     fn teardownRealm(self: *Self) void {
         self.phase = .realm_gone;
+        // From the start of the realm's end, no fetch of it reports anything
+        // more: the global it would report to is going (Resource Timing marks
+        // entries for the global; Blink prevents a loader's notifications
+        // when the context is destroyed - FetchManager::ContextDestroyed,
+        // Loader::Dispose - before it disposes the global scope). Muted only
+        // at the sweep after the realm's end (its `retire`), a body the
+        // realm's objects held ended its fetch in their teardown and
+        // reported timing to a global scope already freed. Muted, not
+        // terminated: the fetch group is terminated in that sweep, as
+        // before - terminated now, with its readers alive, a body's failure
+        // reaches them, and a closing worker's loop runs the drop steps of
+        // the tasks they queue at once, inside the failure
+        // (AgentFetches.stopReporting).
+        self.agent_host.fetches.stopReporting();
         removeLive(self);
         cancelWorkerTimers(self);
         self.discardAnimationFrames();
@@ -1298,7 +1312,7 @@ pub const WorkerHost = struct {
         @import("dom").unloading_cleanup.run(realm);
         self.realm = null;
         // The realm's per-context data - the callbacks its script registered,
-        // its wrapper cache and every Instance in it, the global scope first -
+        // its wrapper cache and every Instance in it, the global scope last -
         // goes with it; the realm is retired, so anything holding it across
         // turns (a fetch) reads it as gone.
         self.global_scope = null;
