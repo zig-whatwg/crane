@@ -357,6 +357,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [A native timer must preserve document task suspension](architecture-a-native-timer-must-preserve-document-task-suspension.md) - Preserve inactive-document delivery and transfer task ownership exactly once.
 - [A queued native task holds its nodes with a TaskHold, and its tracker is a lookup, not a pointer](architecture-a-queued-native-task-holds-its-nodes-with-a-task-hold.md) - A task that will hand nodes to script holds them with a TaskHold from queueing to its one end, and whatever must find that task later looks it up - after the handoff the record is the loop's.
 - [A lazy namespace must cover native objects received first](architecture-a-lazy-namespace-must-cover-native-objects-received-first.md) - Lazy setup must preserve every observation path, including objects received before the namespace; put first-use triggers on those paths and never overwrite intervening user changes.
+- [A parsed blob URL holds its entry](architecture-a-parsed-blob-url-holds-its-entry.md) - Hold the object the algorithm resolved, rather than resolving its name again later.
+- [A shared worker needs its creator's network partition](architecture-a-shared-worker-needs-its-creators-network-partition.md) - A worker needs every consumer's partition input; an absent key is not a shared key.
+- [Reject invalid keys before map insertion](architecture-reject-invalid-keys-before-map-insertion.md) - Put validity checks at map entry points; do not use non-reflexive equality as the only rejection mechanism.
 
 ### Spec Compliance
 - [CSS token payloads do not locate token starts](spec-compliance-css-token-payloads-do-not-locate-token-starts.md) - Keep actual source offsets with lookahead and parser marks.
@@ -636,6 +639,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [A partial interface's [SecureContext] is its members', not the interface's](codegen-a-partial-interfaces-securecontext-is-its-members-not-the-interfaces.md) - Before honouring an interface-level extended attribute, check that a partial or mixin did not put it there: some attributes scope members, not the interface.
 - [A generated import can rest on a typedef an upstream IDL file happens to declare](codegen-a-generated-import-can-rest-on-a-typedef-an-upstream-idl-file-happens-to-declare.md) - When a generated file relies on something being generated, codegen must generate it itself; find out by deleting an upstream file in a test fixture, not by waiting for upstream to delete it.
 - [Empty Legacy SVG Initializers Skip Parent State](codegen-empty-legacy-svg-initializers-skip-parent-state.md) - A correct type name is not proof of a correctly constructed object. Pin parent state before broadening a factory's interface map.
+- [Identical iterable types hide a key/value swap](codegen-identical-iterable-types-hide-a-key-value-swap.md) - Use asymmetric test data when the contract distinguishes two positions.
+- [Realm exposure must precede template installation](codegen-realm-exposure-must-precede-template-installation.md) - A shared template describes the interface; realm-specific exposure belongs to installation in a known realm.
+- [Refresh aliases with their realm's interface objects](codegen-refresh-aliases-with-their-realms-interface-objects.md) - An alias names the realm's interface object, not the current contents of another global property.
 
 ### Testing
 - [Testing: Allocation Failure Must Cover Owned Parser Output](testing-allocation-failure-must-cover-owned-parser-output.md) - Exercise allocation failure across parsing, ownership transfer and declaration storage, including every unconsumed item in a shorthand expansion.
@@ -788,6 +794,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [New Formats Need a Runner-Only Comparison](testing-new-formats-need-a-runner-only-comparison.md) - A baseline that cannot execute a test cannot detect regressions within that test.
 - [XML Runner Metadata Needs the XML Byte Stream](testing-xml-runner-metadata-needs-the-xml-byte-stream.md) - Corpus parity proves today's files; encoded and namespace-aware fixtures prove the format. Keep response MIME routing separate from metadata extraction.
 - [Compare WPT results through the manifest](testing-compare-wpt-results-through-the-manifest.md) - A shared directory name is not a shared test population. Preserve source identity, URL identity and coverage before interpreting a pass-count difference.
+- [Two wrong string conversions can cancel](testing-two-wrong-string-conversions-can-cancel.md) - A round trip proves agreement between two conversions, not that either conversion is correct.
 
 ### Debugging
 - [Debugging: Materialize coordinates before overwriting a vector](debugging-materialize-coordinates-before-overwriting-a-vector.md) - Compute every new coordinate from saved scalar inputs before assigning an aggregate back to its input vector.
