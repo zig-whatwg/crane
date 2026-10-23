@@ -692,6 +692,29 @@ pub const SharedText = struct {
 
 /// CSS Sizing 4 §3.2: an intrinsic sizing function keeps its typed argument
 /// until layout. Specified and computed values own separate argument values.
+pub const SizingFunction = struct {
+    refs: std.atomic.Value(u32) = .init(1),
+    allocator: Allocator,
+    argument: Value,
+
+    /// Takes ownership of argument on success only.
+    pub fn create(allocator: Allocator, argument: Value) Allocator.Error!*SizingFunction {
+        const self = try allocator.create(SizingFunction);
+        self.* = .{ .allocator = allocator, .argument = argument };
+        return self;
+    }
+
+    pub fn ref(self: *SizingFunction) void {
+        _ = self.refs.fetchAdd(1, .monotonic);
+    }
+
+    pub fn unref(self: *SizingFunction) void {
+        if (self.refs.fetchSub(1, .acq_rel) != 1) return;
+        self.argument.release();
+        self.allocator.destroy(self);
+    }
+};
+
 /// A property's value, specified or computed.
 pub const Value = union(enum) {
     keyword: Keyword,
@@ -704,6 +727,7 @@ pub const Value = union(enum) {
     color_scheme: ColorScheme,
     content: *Content,
     calculation: *@import("math_values.zig").Expression,
+    sizing_function: *SizingFunction,
     alignment: @import("alignment.zig").Value,
     position_area: @import("position_area.zig").Area,
     try_fallbacks: struct { list: *@import("anchor_fallbacks.zig").Fallbacks, computed: bool = false },
@@ -732,6 +756,7 @@ pub const Value = union(enum) {
         if (self == .color) return self.color.retain();
         if (self == .content) return self.content.ref();
         if (self == .calculation) return self.calculation.ref();
+        if (self == .sizing_function) return self.sizing_function.ref();
         if (self == .pending) return self.pending.ref();
         if (self == .try_fallbacks) return self.try_fallbacks.list.ref();
         if (self.sharedText()) |t| t.ref();
@@ -742,6 +767,7 @@ pub const Value = union(enum) {
         if (self == .color) return self.color.release();
         if (self == .content) return self.content.unref();
         if (self == .calculation) return self.calculation.unref();
+        if (self == .sizing_function) return self.sizing_function.unref();
         if (self == .pending) return self.pending.unref();
         if (self == .try_fallbacks) return self.try_fallbacks.list.unref();
         if (self.sharedText()) |t| t.unref();
@@ -770,6 +796,7 @@ pub const Value = union(enum) {
             .color_scheme => |c| c.support.eql(b.color_scheme.support) and std.mem.eql(u8, c.text.bytes, b.color_scheme.text.bytes),
             .content => |c| c.eql(b.content),
             .calculation => |c| c.eql(b.calculation),
+            .sizing_function => |s| s.argument.eql(b.sizing_function.argument),
             .alignment => |a_value| a_value.eql(b.alignment),
             .position_area => |a_area| a_area.eql(b.position_area),
             .try_fallbacks => |f| f.computed == b.try_fallbacks.computed and f.list.eql(b.try_fallbacks.list),
@@ -788,6 +815,7 @@ pub const Value = union(enum) {
         return switch (self) {
             .color => |c| c.needsUnavailableMetrics(geometry_length),
             .calculation => |c| c.needsUnavailableMetrics(geometry_length),
+            .sizing_function => |s| s.argument.needsUnavailableMetrics(geometry_length),
             .keyword,
             .length,
             .number,
@@ -811,6 +839,7 @@ pub const Value = union(enum) {
         return switch (self) {
             .color => |c| c.needsTreeCounts(),
             .calculation => |c| c.needsTreeCounts(),
+            .sizing_function => |s| s.argument.needsTreeCounts(),
             .keyword,
             .length,
             .number,
@@ -832,6 +861,7 @@ pub const Value = union(enum) {
         return switch (self) {
             .color => |c| c.needsRandomBase(),
             .calculation => |c| c.needsRandomBase(),
+            .sizing_function => |s| s.argument.needsRandomBase(),
             .keyword,
             .length,
             .number,

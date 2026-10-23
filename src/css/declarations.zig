@@ -562,6 +562,12 @@ const preferred_shorthands = blk: {
 
 fn logicalGroup(l: Longhand) ?properties.Logical.Group {
     if (l.logical()) |lg| return lg.group;
+    switch (l) {
+        .width, .height => return .size,
+        .min_width, .min_height => return .min_size,
+        .max_width, .max_height => return .max_size,
+        else => {},
+    }
     const sides = [_]PhysicalSides{
         .{ .group = .margin, .ls = .{ .margin_top, .margin_right, .margin_bottom, .margin_left } },
         .{ .group = .padding, .ls = .{ .padding_top, .padding_right, .padding_bottom, .padding_left } },

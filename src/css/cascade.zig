@@ -405,7 +405,7 @@ const Builder = struct {
             const preflight = try self.resolvePending(c, l);
             const assigned = preflight.assigned;
             const geometry_length = switch (l.info().grammar) {
-                .length_percentage_auto, .length_percentage_nonneg, .size, .line_width => true,
+                .length_percentage_auto, .length_percentage_nonneg, .size, .max_size, .line_width => true,
                 else => false,
             };
             // Q25/Q83/Q88: this is the single unavailable-input decision,
@@ -535,6 +535,11 @@ const Builder = struct {
             }) };
         }
 
+        if (v == .sizing_function) {
+            const argument = try self.computeValue(l, v.sizing_function.argument, source);
+            errdefer argument.release();
+            return .{ .sizing_function = try values.SizingFunction.create(self.ctx.allocator, argument) };
+        }
         if (v == .alignment) {
             const parent = if (self.ctx.parent) |p| p.get(l) else null;
             return .{ .alignment = v.alignment.computed(if (parent) |p| if (p == .alignment) p.alignment else null else null) };

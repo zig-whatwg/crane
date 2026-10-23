@@ -66,6 +66,7 @@ pub const Longhand = enum(u8) {
     appearance,
     background_color,
     background_image,
+    block_size,
     border_block_end_color,
     border_block_end_style,
     border_block_end_width,
@@ -103,6 +104,7 @@ pub const Longhand = enum(u8) {
     font_style,
     font_weight,
     height,
+    inline_size,
     inset_block_end,
     inset_block_start,
     inset_inline_end,
@@ -120,6 +122,14 @@ pub const Longhand = enum(u8) {
     margin_left,
     margin_right,
     margin_top,
+    max_block_size,
+    max_height,
+    max_inline_size,
+    max_width,
+    min_block_size,
+    min_height,
+    min_inline_size,
+    min_width,
     opacity,
     overflow_x,
     overflow_y,
@@ -207,7 +217,7 @@ pub const Logical = struct {
     group: Group,
     side: Side,
 
-    pub const Group = enum { margin, padding, inset, border_width, border_style, border_color };
+    pub const Group = enum { margin, padding, inset, border_width, border_style, border_color, size, min_size, max_size };
     pub const Side = enum { block_start, block_end, inline_start, inline_end };
 };
 
@@ -248,6 +258,18 @@ pub fn physicalSide(side: Logical.Side, writing_mode: Keyword, direction: Keywor
 /// The physical longhand of `group` on `side`.
 pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
     return switch (group) {
+        .size => switch (side) {
+            .top, .bottom => .height,
+            .left, .right => .width,
+        },
+        .min_size => switch (side) {
+            .top, .bottom => .min_height,
+            .left, .right => .min_width,
+        },
+        .max_size => switch (side) {
+            .top, .bottom => .max_height,
+            .left, .right => .max_width,
+        },
         .margin => switch (side) {
             .top => .margin_top,
             .right => .margin_right,
@@ -303,6 +325,7 @@ pub const Grammar = enum {
     /// auto | <length-percentage [0,inf]> | min-content | max-content | fit-content
     size,
     /// none replaces auto for maximum sizes (CSS Sizing 3 §3.1.3).
+    max_size,
     line_width,
     color,
     image,
@@ -356,6 +379,7 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .appearance, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .auto, .base, .base_select, .searchfield, .textarea, .checkbox, .radio, .menulist, .listbox, .meter, .progress_bar, .button, .textfield, .menulist_button } },
         .{ .longhand = .background_color, .inherited = false, .initial = .{ .color = Color.transparent }, .grammar = .color, .quirky_color = true },
         .{ .longhand = .background_image, .inherited = false, .initial = Value.kw(.none), .grammar = .image },
+        .{ .longhand = .block_size, .inherited = false, .initial = Value.kw(.auto), .grammar = .size, .logical = .{ .group = .size, .side = .block_start } },
         .{ .longhand = .border_block_end_color, .inherited = false, .initial = .{ .color = .current }, .grammar = .color, .logical = .{ .group = .border_color, .side = .block_end } },
         .{ .longhand = .border_block_end_style, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &border_styles, .logical = .{ .group = .border_style, .side = .block_end } },
         .{ .longhand = .border_block_end_width, .inherited = false, .initial = medium_width, .grammar = .line_width, .logical = .{ .group = .border_width, .side = .block_end } },
@@ -399,6 +423,7 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .font_style, .inherited = true, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .normal, .italic, .oblique } },
         .{ .longhand = .font_weight, .inherited = true, .initial = .{ .number = 400 }, .grammar = .font_weight },
         .{ .longhand = .height, .inherited = false, .initial = Value.kw(.auto), .grammar = .size, .quirky_length = true },
+        .{ .longhand = .inline_size, .inherited = false, .initial = Value.kw(.auto), .grammar = .size, .logical = .{ .group = .size, .side = .inline_start } },
         .{ .longhand = .inset_block_end, .inherited = false, .initial = Value.kw(.auto), .grammar = .length_percentage_auto, .logical = .{ .group = .inset, .side = .block_end } },
         .{ .longhand = .inset_block_start, .inherited = false, .initial = Value.kw(.auto), .grammar = .length_percentage_auto, .logical = .{ .group = .inset, .side = .block_start } },
         .{ .longhand = .inset_inline_end, .inherited = false, .initial = Value.kw(.auto), .grammar = .length_percentage_auto, .logical = .{ .group = .inset, .side = .inline_end } },
@@ -415,6 +440,14 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .margin_right, .inherited = false, .initial = zero, .grammar = .length_percentage_auto, .quirky_length = true },
         .{ .longhand = .margin_top, .inherited = false, .initial = zero, .grammar = .length_percentage_auto, .quirky_length = true },
         // CSS Sizing 3 §§3.1.2–3.1.3 and CSS Logical 1 §4.1.
+        .{ .longhand = .max_block_size, .inherited = false, .initial = Value.kw(.none), .grammar = .max_size, .logical = .{ .group = .max_size, .side = .block_start } },
+        .{ .longhand = .max_height, .inherited = false, .initial = Value.kw(.none), .grammar = .max_size, .quirky_length = true },
+        .{ .longhand = .max_inline_size, .inherited = false, .initial = Value.kw(.none), .grammar = .max_size, .logical = .{ .group = .max_size, .side = .inline_start } },
+        .{ .longhand = .max_width, .inherited = false, .initial = Value.kw(.none), .grammar = .max_size, .quirky_length = true },
+        .{ .longhand = .min_block_size, .inherited = false, .initial = Value.kw(.auto), .grammar = .size, .logical = .{ .group = .min_size, .side = .block_start } },
+        .{ .longhand = .min_height, .inherited = false, .initial = Value.kw(.auto), .grammar = .size, .quirky_length = true },
+        .{ .longhand = .min_inline_size, .inherited = false, .initial = Value.kw(.auto), .grammar = .size, .logical = .{ .group = .min_size, .side = .inline_start } },
+        .{ .longhand = .min_width, .inherited = false, .initial = Value.kw(.auto), .grammar = .size, .quirky_length = true },
         .{ .longhand = .opacity, .inherited = false, .initial = .{ .number = 1 }, .grammar = .opacity },
         .{ .longhand = .overflow_x, .inherited = false, .initial = Value.kw(.visible), .grammar = .keywords, .keywords = &.{ .visible, .hidden, .clip, .scroll, .auto } },
         .{ .longhand = .overflow_y, .inherited = false, .initial = Value.kw(.visible), .grammar = .keywords, .keywords = &.{ .visible, .hidden, .clip, .scroll, .auto } },
@@ -872,9 +905,25 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
             return lengthPercentage(options, stream, .{ .negative = true, .quirky = def.quirky_length, .anchor_position = inset, .anchor_size = true });
         },
         .length_percentage_nonneg => return lengthPercentage(options, stream, .{ .negative = false, .quirky = def.quirky_length }),
-        .size => {
-            if (takeKeyword(stream, &.{ .auto, .min_content, .max_content, .fit_content })) |k| return Value.kw(k);
-            return lengthPercentage(options, stream, .{ .negative = false, .quirky = def.quirky_length, .anchor_size = true });
+        .size, .max_size => {
+            // Anchor Positioning §5 limits anchor-size() to the accepted
+            // positioning properties. Flexbox's width-like basis grammar
+            // does not give flex-basis that positioning context.
+            const allow_anchor_size = true;
+            if (takeKeyword(stream, &.{def.initial.keyword})) |k| return Value.kw(k);
+            if (takeKeyword(stream, &.{ .min_content, .max_content, .fit_content, .stretch })) |k| return Value.kw(k);
+            if (stream.peek().token_type == .function and tokenizer_mod.nameEql(stream.peek().value, "fit-content")) {
+                _ = stream.next();
+                if (stream.next().token_type != .left_paren) return null;
+                const argument = try lengthPercentage(options, stream, .{ .negative = false, .quirky = false, .anchor_size = allow_anchor_size }) orelse return null;
+                defer argument.release();
+                const end = stream.next().token_type;
+                if (end != .right_paren and end != .eof) return null;
+                const function = try values.SizingFunction.create(options.allocator, argument);
+                argument.retain();
+                return .{ .sizing_function = function };
+            }
+            return lengthPercentage(options, stream, .{ .negative = false, .quirky = def.quirky_length, .anchor_size = allow_anchor_size });
         },
         .line_width => {
             if (takeKeyword(stream, &.{ .thin, .medium, .thick })) |k| return Value.kw(k);
@@ -1808,7 +1857,6 @@ fn backgroundRepeat(stream: *Stream) bool {
 
 /// CSSOM "serialize a CSS value" for one longhand's value.
 pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
-    _ = l;
     switch (value) {
         .keyword => |k| try out.appendSlice(allocator, k.name()),
         .length => |len| try values.appendLength(len, out, allocator),
@@ -1822,6 +1870,11 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .color_scheme => |c| try out.appendSlice(allocator, c.text.bytes),
         .content => |c| try out.appendSlice(allocator, c.serialization),
         .calculation => |c| try c.serialize(out, allocator),
+        .sizing_function => |s| {
+            try out.appendSlice(allocator, "fit-content(");
+            try serializeValue(l, s.argument, out, allocator);
+            try out.append(allocator, ')');
+        },
         .alignment => |a| try a.serialize(out, allocator),
         .position_area => |a| try a.serialize(out, allocator),
         .try_fallbacks => |f| try f.list.serialize(f.computed, out, allocator),
