@@ -60,6 +60,14 @@ pub const HttpCache = struct {
     /// Under `mutex`: the owner closed it.
     closed: bool = false,
     map: std.HashMapUnmanaged(Key, *Node, KeyContext, 80) = .empty,
+    /// Under `mutex`: bounds `map`'s tombstones. At its byte cap the cache
+    /// takes each response at a URL it never saw and evicts the coldest,
+    /// so std's map never grows and kept every eviction's tombstone: its
+    /// free slots ran out and every lookup that missed walked the table
+    /// (src/infra/tombstones.zig). The map holds `*Node`, and the LRU list
+    /// runs through the nodes, never through the map's values, so a rehash
+    /// moves nothing anyone holds; nothing walks the map.
+    guard: @import("infra").tombstones.TombstoneGuard = .{},
     /// Most recently used first.
     lru_head: ?*Node = null,
     lru_tail: ?*Node = null,
@@ -124,6 +132,7 @@ pub const HttpCache = struct {
             self.lru_head = null;
             self.lru_tail = null;
             self.map.clearRetainingCapacity();
+            self.guard.reset();
             self.bytes = 0;
             self.count.store(0, .release);
         }
@@ -204,6 +213,7 @@ pub const HttpCache = struct {
             self.bytes += entry.size;
             self.moveToFront(existing);
         } else {
+            self.guard.beforeInsert(&self.map);
             self.map.put(self.allocator, key, node) catch {
                 self.allocator.destroy(node);
                 return entry.release();
@@ -223,6 +233,7 @@ pub const HttpCache = struct {
             lock(self);
             defer unlock(self);
             if (self.map.fetchRemove(.{ .partition = partition, .url = url })) |kv| {
+                self.guard.noteRemoval(&self.map);
                 self.unlink(kv.value);
                 kv.value.next = null;
                 gone = kv.value;
@@ -244,7 +255,7 @@ pub const HttpCache = struct {
             while (node) |n| {
                 node = n.next;
                 if (!sameOrigin(n.entry.url, origin)) continue;
-                _ = self.map.remove(.{ .partition = n.entry.partition, .url = n.entry.url });
+                if (self.map.remove(.{ .partition = n.entry.partition, .url = n.entry.url })) self.guard.noteRemoval(&self.map);
                 self.unlink(n);
                 n.next = gone;
                 gone = n;
@@ -259,7 +270,7 @@ pub const HttpCache = struct {
         var gone: ?*Node = null;
         while (self.bytes > target) {
             const node = self.lru_tail orelse break;
-            _ = self.map.remove(.{ .partition = node.entry.partition, .url = node.entry.url });
+            if (self.map.remove(.{ .partition = node.entry.partition, .url = node.entry.url })) self.guard.noteRemoval(&self.map);
             self.unlink(node);
             node.next = gone;
             gone = node;
@@ -338,4 +349,45 @@ fn originParts(url: []const u8) ?OriginParts {
         }
     }
     return .{ .scheme = scheme, .host = host, .port = port };
+}
+
+test "HttpCache: a long-lived cache at its byte cap keeps half its map's unused slots free while it evicts" {
+    // Lane hashmaps1: a Browser's cache, at its cap, takes a response at a
+    // URL it never saw and evicts the coldest - a removal, which std's map
+    // turns into a tombstone it never clears while puts and removes
+    // balance (src/infra/tombstones.zig). The map holds *Node, its own
+    // allocation, and the LRU list runs through the nodes, never through
+    // the map's values, so a rehash moves nothing anyone holds.
+    const tombstones = @import("infra").tombstones;
+    const allocator = std.testing.allocator;
+    const store = try HttpCache.create(allocator, .{ .max_bytes = 64 * 1024 });
+    defer store.close();
+    var url_buf: [64]u8 = undefined;
+    var starved: usize = 0;
+    var worst: usize = 0;
+    for (0..20_000) |i| {
+        const url = try std.fmt.bufPrint(&url_buf, "https://cache.test/r/{d}", .{i});
+        store.publish(try StoredResponse.create(allocator, .{
+            .partition = "https://top.test",
+            .url = url,
+            .status = 200,
+            .headers = &.{.{ .name = "Cache-Control", .value = "max-age=60" }},
+            .body = "x" ** 512,
+            .request_time = 1000,
+            .response_time = 1001,
+        }));
+        // A lookup that misses, as most of a runner's are.
+        try std.testing.expect(store.lookup("https://top.test", "https://cache.test/absent") == null);
+        if (i % 100 == 99) {
+            HttpCache.lock(store);
+            defer HttpCache.unlock(store);
+            if (!tombstones.slotCounts(&store.map).halfOfUnusedFree()) starved += 1;
+            worst = @max(worst, tombstones.meanMissProbe(&store.map));
+        }
+    }
+    if (starved != 0 or worst > 8) {
+        const counts = tombstones.slotCounts(&store.map);
+        std.debug.print("HttpCache.map: {d} of 200 samples starved; worst mean miss {d} (capacity {d}, live {d}, free {d})\n", .{ starved, worst, counts.capacity, counts.live, counts.free });
+        return error.TombstonesFilledTheMap;
+    }
 }

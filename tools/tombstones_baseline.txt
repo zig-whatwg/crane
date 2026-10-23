@@ -11,11 +11,8 @@ src/browser/storage/Storage.zig SessionStorage.data 1
 src/dom/agent_cluster_keys.zig HistoricalKeys.groups 1
 src/dom/mutation_observer_algorithms.zig MutationObserverAgent.signal_slot_set 1
 src/dom/refcount.zig Ledger.gc_reachable 1
-src/fetch/cache/http_cache.zig HttpCache.map 1
-src/fetch/cors/preflight_cache.zig PreflightCache.entries 1
 src/fetch/network/auth_entries.zig AuthEntries.entries 1
 src/fetch/network/connection_pool.zig ConnectionPool.active_handles 1
-src/file/blob_url_store.zig BlobURLStore.entries 1
 src/fs/bucket.zig BucketManager.buckets 1
 src/fs/entry.zig DirectoryEntry.children 1
 src/html/custom_elements.zig ElementReactionQueues.queues 1
