@@ -155,25 +155,32 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
             current = try common.nextInTreeOrder(node);
         }
     }
-    // Step 25.
+    // Step 25. Steps 25.3 and 25.4 run in the browsers' order: the emptied
+    // inline wrappers are stripped FIRST, then the br pads whatever is left
+    // (golden rule 2, no newer spec). The spec pads the wrapper and then
+    // cannot strip it (its length is 1): `<p><b>[foo]</b>` would become
+    // `<p><b><br></b></p>`; Chrome 156, Firefox 158 and Safari 27 all give
+    // `<p><br></p>`, and the same for `<p><b><i>[foo]</i></b>` and
+    // `<span>[abc]</span>` -> `<br>` (editing/run/delete.html and
+    // forwarddelete.html at wpt.fyi c645564b0e).
     for (node_list.items) |node| {
         // Step 25.1.
         var p = (try common.parent(node)) orelse continue;
         // Step 25.2.
         try edit.removeNode(node);
-        // Step 25.3: a block emptied by the removal gets a br.
-        if (try common.blockNodeOf(p)) |block| {
-            if (!(try hasVisibleChild(block)) and try common.isEditableOrEditingHost(p)) {
-                const br = try edit.createElement("br");
-                try edit.appendChild(p, br);
-            }
-        }
         // Step 25.4: strip the emptied inline wrappers.
         if (strip_wrappers or !common.isInclusiveDescendantOf(start.node, p)) {
             while ((try common.isEditable(p)) and common.isInlineNode(p) and (try common.nodeLength(p)) == 0) {
                 const grandparent = (try common.parent(p)) orelse break;
                 try edit.removeNode(p);
                 p = grandparent;
+            }
+        }
+        // Step 25.3: a block emptied by the removal gets a br.
+        if (try common.blockNodeOf(p)) |block| {
+            if (!(try hasVisibleChild(block)) and try common.isEditableOrEditingHost(p)) {
+                const br = try edit.createElement("br");
+                try edit.appendChild(p, br);
             }
         }
     }
@@ -408,6 +415,21 @@ pub fn deleteAction(edit: *Edit) !bool {
         try deleteTheSelection(edit, true, true, .forward);
         return true;
     }
+    // Browser step (golden rule 2, no newer spec): with nothing visible
+    // between the editing host's start and the caret - only collapsed
+    // white-space, invisible nodes and the caret's own block's start -
+    // Backspace does nothing at all. Chrome 156, Firefox 158 and Safari 27
+    // leave `<div> []abc</div>` and `<div> [] abc</div>` unchanged
+    // (editing/run/delete.html ?6001-7000 at wpt.fyi c645564b0e); the spec's
+    // step 2 would strip the collapsed spaces. Blink finds no previous
+    // VisiblePosition in the editable; Gecko's WSRunScanner reaches the
+    // editing host's start. A block boundary before the caret is content:
+    // the merge goes on as the spec says.
+    {
+        const caret = (try edit.rangeStart()) orelse return true;
+        const host = (try common.editingHostOf(caret.node)) orelse return true;
+        if (!try hasVisibleContentBefore(caret, host)) return true;
+    }
     // Step 2.
     try whitespace.canonicalizeWhitespace(edit, (try edit.rangeStart()) orelse return true, true);
     // Step 3.
@@ -621,6 +643,16 @@ pub fn forwardDeleteAction(edit: *Edit) !bool {
         try deleteTheSelection(edit, true, true, .forward);
         return true;
     }
+    // Browser step: with nothing visible between the caret and the editing
+    // host's end, Delete does nothing. Chrome 156 and Safari 27 leave
+    // `<div>abc[] </div>` and `<div>abc [] </div>` unchanged; Firefox 158
+    // strips the spaces (editing/run/forwarddelete.html ?6001-7000 at
+    // wpt.fyi c645564b0e): the majority. See the delete action.
+    {
+        const caret = (try edit.rangeStart()) orelse return true;
+        const host = (try common.editingHostOf(caret.node)) orelse return true;
+        if (!try hasVisibleContentAfter(caret, host)) return true;
+    }
     // Step 2.
     try whitespace.canonicalizeWhitespace(edit, (try edit.rangeStart()) orelse return true, true);
     // Step 3.
@@ -751,6 +783,67 @@ pub fn forwardDeleteAction(edit: *Edit) !bool {
     try deleteTheSelection(edit, true, true, .forward);
     // Step 18.
     return true;
+}
+
+/// Whether `node`, met on a walk away from the caret, is content: a block
+/// boundary, a br, img or hr, or text that is not collapsible white-space.
+/// Display: none subtrees and inline containers are not.
+fn isContentOnTheLine(node: *Instance) !bool {
+    if (try common.hasDisplayNoneInclusiveAncestor(node)) return false;
+    if (common.isBlockNode(node)) return true;
+    if (try common.isHtmlElementIn(node, &.{ "br", "img", "hr" })) return true;
+    return common.isText(node) and !try common.isWhitespaceNode(node);
+}
+
+/// Whether anything visible lies between `host`'s start and `point`.
+fn hasVisibleContentBefore(point: Point, host: *Instance) !bool {
+    if (common.isText(point.node)) {
+        if (point.offset > 0 and !try common.textIsCollapsibleWhitespace(point.node, 0, point.offset)) return true;
+    } else {
+        var index: u32 = 0;
+        var child = try common.firstChild(point.node);
+        while (child) |c| : (child = try common.nextSibling(c)) {
+            if (index >= point.offset) break;
+            if (try common.isVisible(c)) return true;
+            index += 1;
+        }
+    }
+    var current = point.node;
+    while (current != host) {
+        const previous = (try common.previousInTreeOrder(current)) orelse return false;
+        if (previous == host or !common.isInclusiveDescendantOf(previous, host)) return false;
+        current = previous;
+        // The caret's ancestors are around it, not before it.
+        if (common.isAncestorOf(previous, point.node)) continue;
+        if (try isContentOnTheLine(previous)) return true;
+    }
+    return false;
+}
+
+/// Whether anything visible lies between `point` and `host`'s end.
+fn hasVisibleContentAfter(point: Point, host: *Instance) !bool {
+    if (common.isText(point.node)) {
+        const length = try common.nodeLength(point.node);
+        if (point.offset < length and !try common.textIsCollapsibleWhitespace(point.node, point.offset, length)) return true;
+    } else {
+        var child = try common.childAt(point.node, point.offset);
+        while (child) |c| : (child = try common.nextSibling(c)) {
+            if (try common.isVisible(c)) return true;
+        }
+    }
+    if (point.node == host) return false;
+    var current = try common.nextSkippingChildren(point.node);
+    while (current) |node| {
+        if (!common.isDescendantOf(node, host)) return false;
+        if (try isContentOnTheLine(node)) return true;
+        // A hidden subtree is skipped whole.
+        current = if (isElementDisplayNone(node)) try common.nextSkippingChildren(node) else try common.nextInTreeOrder(node);
+    }
+    return false;
+}
+
+fn isElementDisplayNone(node: *Instance) bool {
+    return common.isElement(node) and common.displayIsNone(node);
 }
 
 fn childBeforeIsNamed(point: Point, names: []const []const u8) !bool {

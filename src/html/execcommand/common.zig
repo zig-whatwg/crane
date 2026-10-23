@@ -757,7 +757,7 @@ pub fn isInlineNode(node: *Instance) bool {
 }
 
 /// Whether `node` or an ancestor element has display: none.
-fn hasDisplayNoneInclusiveAncestor(node: *Instance) !bool {
+pub fn hasDisplayNoneInclusiveAncestor(node: *Instance) !bool {
     var current: ?*Instance = node;
     while (current) |c| : (current = try parent(c)) {
         if (isElement(c) and displayIsNone(c)) return true;
@@ -1157,6 +1157,30 @@ pub fn lastEquivalentPoint(point_in: Point) !Point {
     var point = point_in;
     while (try nextEquivalentPoint(point)) |next| point = next;
     return point;
+}
+
+/// Whether `data[0..offset]` (UTF-16 units) is all collapsible white-space
+/// under `white_space`: spaces, tabs and carriage returns, and line feeds
+/// unless segment breaks are preserved; nothing when spaces are preserved.
+fn unitsAreCollapsibleWhitespace(data: []const u8, from: u32, to: u32, white_space: WhiteSpace) bool {
+    if (white_space.preservesSpaces()) return false;
+    const start = byteOffsetOfUnits(data, from);
+    const end = byteOffsetOfUnits(data, to);
+    if (start >= end) return false;
+    for (data[start..end]) |byte| switch (byte) {
+        ' ', '\t', '\r' => {},
+        '\n' => if (white_space.preservesNewlines()) return false,
+        else => return false,
+    };
+    return true;
+}
+
+/// Whether the UTF-16 units `from..to` of the Text node's data are all
+/// collapsible white-space under the white-space that applies to it.
+pub fn textIsCollapsibleWhitespace(node: *Instance, from: u32, to: u32) !bool {
+    var data = try textData(node);
+    defer data.deinit(node.ctx.allocator);
+    return unitsAreCollapsibleWhitespace(data.asSlice(), from, to, try whiteSpaceAround(node));
 }
 
 // ============================================================================

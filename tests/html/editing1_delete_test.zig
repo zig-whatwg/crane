@@ -84,12 +84,25 @@ const cases = [_]Case{
     .{ .input = "foo[bar]baz", .command = "delete", .expected = "foobaz" },
     .{ .input = "<b>foo[bar</b>baz]", .command = "delete", .expected = "<b>foo</b>" },
     .{ .input = "<p>[foo]</p>", .command = "delete", .expected = "<p><br></p>" },
+    .{ .input = "<p><b>[foo]</b></p>", .command = "delete", .expected = "<p><br></p>" },
+    .{ .input = "<span>[abc]</span>", .command = "forwardDelete", .expected = "<br>" },
     // canonical white-space
     .{ .input = "foo  []bar", .command = "delete", .expected = "foobar" },
     .{ .input = "foo&nbsp; []bar", .command = "delete", .expected = "foo bar" },
     .{ .input = "<pre>foo&nbsp; []bar</pre>", .command = "delete", .expected = "<pre>foo&nbsp;bar</pre>" },
     // nothing before the caret: no change, still returns true
     .{ .input = "[]foo", .command = "delete", .expected = "foo" },
+    // collapsed white-space at a line boundary is left alone (the browsers;
+    // the spec would strip it)
+    .{ .input = "<div> []abc</div>", .command = "delete", .expected = "<div> abc</div>" },
+    .{ .input = "<div> [] abc</div>", .command = "delete", .expected = "<div>  abc</div>" },
+    .{ .input = "<div>abc[] </div>", .command = "forwardDelete", .expected = "<div>abc </div>" },
+    .{ .input = "<div>abc [] </div>", .command = "forwardDelete", .expected = "<div>abc  </div>" },
+    // ...but a deletion next to it strips it, as the spec's canonicalize
+    // whitespace does and the browsers accept
+    .{ .input = "<div> a[]bc</div>", .command = "delete", .expected = "<div>bc</div>" },
+    .{ .input = "<div>abc </div><div>[]def</div>", .command = "delete", .expected = "<div>abcdef</div>" },
+    .{ .input = "<div>abc</div><div> []def</div>", .command = "delete", .expected = "<div>abcdef</div>" },
     // forwardDelete: a character after the caret, with its combining marks
     .{ .input = "foo[]bar", .command = "forwardDelete", .expected = "fooar" },
     .{ .input = "foo[]b\u{308}ar", .command = "forwardDelete", .expected = "fooar" },
